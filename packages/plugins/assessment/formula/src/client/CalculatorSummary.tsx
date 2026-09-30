@@ -1,11 +1,10 @@
 import * as stylex from '@stylexjs/stylex'
 import { useQuery } from '@tanstack/react-query'
 import { useApiQuery } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import type { CalculatorSummaryContext } from '@qualy/plugin-assessment/surfaces'
 import { formulaApi } from './api.ts'
-import { formulaMessages as m } from './i18n.ts'
+import * as m from '#messages'
 
 // The one line the question editor shows for a formula: its name, which
 // publication, and what the author called that release. Only this plugin
@@ -37,7 +36,6 @@ const styles = stylex.create({
 })
 
 export default function CalculatorSummary({ context }: { context: CalculatorSummaryContext }) {
-  const { format } = useI18n()
   const query = useApiQuery(formulaApi)
   const mine = context.calculator.ref === REF
   const versionId = mine
@@ -66,23 +64,23 @@ export default function CalculatorSummary({ context }: { context: CalculatorSumm
     >
       <div {...stylex.props(styles.head)}>
         <span {...stylex.props(styles.name)}>
-          {found === undefined ? format(m.bindingTitle) : found.functionName}
+          {found === undefined ? m.binding_title() : found.functionName}
         </span>
         {found !== undefined && (
           <span {...stylex.props(styles.version)}>
             <span aria-hidden {...stylex.props(styles.dot)} />
-            {format(m.summaryVersion, { no: found.versionNo })}
+            {m.binding_summaryVersion({ no: found.versionNo })}
           </span>
         )}
       </div>
       <span {...stylex.props(styles.note)}>
         {found === undefined
           ? versionId === null
-            ? format(m.summaryUnchosen)
-            : format(m.summaryUnknown)
+            ? m.binding_summaryUnchosen()
+            : m.binding_summaryUnknown()
           : (found.functionDescription ??
             found.releaseName ??
-            format(m.bindingParameterCount, { count: found.parameters.length }))}
+            m.binding_parameterCount({ count: found.parameters.length }))}
       </span>
     </div>
   )

@@ -4,8 +4,9 @@ import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@qualy/ui/sheet'
 import type { NormalizedInputSchema } from '@qualy/value-schema'
-import { formulaMessages as m } from './i18n.ts'
+
 import { inputFactsOf } from './report-words.ts'
+import * as m from '#messages'
 
 // The examples a template was published with, read rather than run.
 //
@@ -78,21 +79,21 @@ export function TemplateExamplesSheet({
   /** the version's own input structure, which names and orders the fields */
   readonly schema: NormalizedInputSchema | null
 }) {
-  const { format, locale } = useI18n()
+  const { locale } = useI18n()
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" xstyle={styles.panel}>
         <SheetHeader>
-          <SheetTitle>{format(m.testsTitle)}</SheetTitle>
-          <SheetDescription>{format(m.templatesExamplesHint)}</SheetDescription>
+          <SheetTitle>{m.editor_tests()}</SheetTitle>
+          <SheetDescription>{m.templates_examplesHint()}</SheetDescription>
         </SheetHeader>
         <div data-testid="template-examples" {...stylex.props(styles.list)}>
           {(open ? examples : []).map((example, index) => (
             <div key={index} data-testid="template-example" {...stylex.props(styles.example)}>
               <span {...stylex.props(styles.name)}>{example.name}</span>
               <div {...stylex.props(styles.facts)}>
-                <span {...stylex.props(styles.factsLabel)}>{format(m.testInputLabel)}</span>
-                {inputFactsOf(format, locale, schema, example.input).map((fact) => (
+                <span {...stylex.props(styles.factsLabel)}>{m.editor_testInputLabel()}</span>
+                {inputFactsOf(locale, schema, example.input).map((fact) => (
                   <span key={fact.label} {...stylex.props(styles.fact)}>
                     <span {...stylex.props(styles.factLabel)}>{fact.label}</span>
                     <span {...stylex.props(styles.factValue)}>{fact.value}</span>
@@ -100,7 +101,7 @@ export function TemplateExamplesSheet({
                 ))}
               </div>
               <span {...stylex.props(styles.expected)}>
-                <span {...stylex.props(styles.factLabel)}>{format(m.expectedLabel)}</span>
+                <span {...stylex.props(styles.factLabel)}>{m.editor_expectedLabel()}</span>
                 <span {...stylex.props(styles.expectedValue)}>{example.expected}</span>
               </span>
             </div>

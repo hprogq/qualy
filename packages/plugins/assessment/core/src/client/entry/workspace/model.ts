@@ -1,6 +1,6 @@
-import type { MessageDescriptor } from '@qualy/i18n-contract'
+import type { Message } from '@qualy/i18n-contract'
 import { identityPartsOf, type LinePart } from '../identity.ts'
-import { assessmentMessages as m } from '../../i18n.ts'
+
 import { inZone } from '../../batch/zone.ts'
 import { recordedOnly, unitsOf, type EntryDto, type FilingGateDto, type ItemDto } from '../model.ts'
 import { eachWorth, mayFile, roomLeft, type Standing, type StructureRow } from '../standing.ts'
@@ -12,6 +12,7 @@ import {
   type ClaimAct,
   type ClaimNote,
 } from '../claim-facts.ts'
+import * as m from '#messages'
 
 // What the entries workspace draws, worked out away from the drawing.
 //
@@ -163,30 +164,30 @@ export const dotOf = (row: StructureRow): Dot => {
 }
 
 /** the word a question's row says about where it stands, or nothing */
-export const rowWordOf = (row: StructureRow): MessageDescriptor | null => {
+export const rowWordOf = (row: StructureRow): Message | null => {
   switch (row.tag) {
     case 'voided':
-      return m.itemsStatusVoided
+      return m.items_statusVoided
     case 'supplement':
-      return m.entryStatusAwaitingSupplement
+      return m.entry_statusAwaitingSupplement
     case 'needs_revision':
-      return m.entryStatusNeedsRevision
+      return m.entry_statusNeedsRevision
     case 'draft':
-      return m.entryStatusDraft
+      return m.entry_statusDraft
     case 'in_review':
-      return m.entryStatusInReview
+      return m.entry_statusInReview
     case 'rejected':
-      return m.entryStatusRejected
+      return m.entry_statusRejected
     case 'partial':
-      return m.rowPartialApproved
+      return m.entry_rowPartial
     case 'approved':
       return row.item !== undefined && recordedOnly(row.item)
-        ? m.recordStandingSettled
-        : m.entryStatusApproved
+        ? m.record_standingSettled
+        : m.entry_statusApproved
     case 'recorded':
-      return m.entriesAwaitingRecord
+      return m.entries_awaitingRecord
     case 'granted':
-      return m.rowGranted
+      return m.entry_autoGranted
     default:
       return null
   }
@@ -255,7 +256,7 @@ export interface EntryLine {
   /** every value it was filed with, for finding it by search */
   readonly words: string
   readonly amount: string | null
-  readonly amountWord: MessageDescriptor
+  readonly amountWord: Message
   readonly amountTone: 'ink' | 'pending' | 'muted' | 'negative'
   /** the last thing that happened to it, and when, for ordering a list by */
   readonly at: string
@@ -267,7 +268,7 @@ export interface EntryLine {
    */
   readonly dated: boolean
   readonly act: ClaimAct
-  readonly action: MessageDescriptor
+  readonly action: Message
   /** a reviewer's words the owner has to act on, carried on the row itself */
   readonly note: ClaimNote | null
   readonly files: number
@@ -278,16 +279,16 @@ export interface EntryLine {
  * Giving a claim up is its owner's act and is said as such; voiding is what
  * happens to a question, and revoking to a record the office took back.
  */
-export const claimActWord: Readonly<Record<ClaimAct, MessageDescriptor>> = {
-  asked: m.entriesActAsked,
-  returned: m.entriesActReturned,
-  refused: m.entriesActRejected,
-  recorded: m.entriesActRecorded,
-  approved: m.entriesActApproved,
-  submitted: m.entriesActSubmitted,
-  revoked: m.entriesActRevoked,
-  abandoned: m.resultActAbandoned,
-  saved: m.entriesActSaved,
+export const claimActWord: Readonly<Record<ClaimAct, Message>> = {
+  asked: m.entries_actAsked,
+  returned: m.entries_actReturned,
+  refused: m.entries_actRejected,
+  recorded: m.entries_actRecorded,
+  approved: m.entries_actApproved,
+  submitted: m.entries_actSubmitted,
+  revoked: m.entries_actRevoked,
+  abandoned: m.result_actAbandoned,
+  saved: m.entries_actSaved,
 }
 
 /**
@@ -315,25 +316,25 @@ export const entryLineOf = (
 
   // the amount column: what it counts for now, or would once approved
   let amount: string | null = null
-  let amountWord: MessageDescriptor = m.entryScoreIfApproved
+  let amountWord: Message = m.entry_scoreIfApproved
   let amountTone: EntryLine['amountTone'] = 'pending'
   if (entry.status === 'voided') {
     // how it ended is its standing's to say, beside this; what it counts
     // for is all this column adds
-    amountWord = m.entriesAmountNotCounted
+    amountWord = m.entries_amountNotCounted
     amountTone = 'muted'
   } else if (item.status === 'voided' || entry.status === 'rejected') {
-    amountWord = m.entriesAmountNotCounted
+    amountWord = m.entries_amountNotCounted
     amountTone = 'muted'
   } else if (entry.status === 'approved') {
     if (line !== null && line.kind !== 'entry') {
-      amountWord = m.entriesAmountNotCounted
+      amountWord = m.entries_amountNotCounted
       amountTone = 'muted'
     } else {
       const value = line?.value ?? each ?? null
       const negative = value !== null && unitsOf(value) < 0
       amount = value === null ? null : two(value)
-      amountWord = negative ? m.entriesAmountDeducted : m.entryScoreCounted
+      amountWord = negative ? m.entries_amountDeducted : m.entry_scoreCounted
       amountTone = negative ? 'negative' : 'ink'
     }
   } else if (each !== undefined) {
@@ -375,7 +376,7 @@ export const entryLineOf = (
     at: at ?? entry.createdAt,
     dated: entry.status !== 'voided',
     act,
-    action: voidedWithItem(entry, item) ? m.entriesActVoided : claimActWord[act],
+    action: voidedWithItem(entry, item) ? m.entries_actVoided : claimActWord[act],
     note: claimNoteOf(entry),
     files: claimFilesOf(entry, formConfig),
   }
@@ -406,7 +407,7 @@ export type ChipKey =
 
 export interface Chip {
   readonly key: ChipKey
-  readonly label: MessageDescriptor
+  readonly label: Message
   readonly test: (entry: EntryDto) => boolean
   /** a chip whose count is the reader's own to act on */
   readonly urgent: boolean
@@ -417,26 +418,26 @@ const OWNER_TODO = new Set(['draft', 'needs_revision'])
 export const chipsFor = (viewer: Viewer, item: Pick<ItemDto, 'status'>): readonly Chip[] => [
   {
     key: 'all',
-    label: m.myEntriesFilterAll,
+    label: m.entry_filterAll,
     test: (entry) => entry.status !== 'voided',
     urgent: false,
   },
   viewer === 'owner'
     ? {
         key: 'todo',
-        label: m.myEntriesFilterTodo,
+        label: m.entry_filterTodo,
         test: (entry) => entry.supplement !== null || OWNER_TODO.has(entry.status),
         urgent: true,
       }
     : {
         key: 'waiting',
-        label: m.entriesChipWaiting,
+        label: m.entries_chipWaiting,
         test: (entry) => entry.supplement !== null || entry.status === 'needs_revision',
         urgent: false,
       },
   {
     key: 'in_review',
-    label: m.entryStatusInReview,
+    label: m.entry_statusInReview,
     test: (entry) =>
       viewer === 'owner'
         ? entry.status === 'in_review' || contested(entry)
@@ -447,7 +448,7 @@ export const chipsFor = (viewer: Viewer, item: Pick<ItemDto, 'status'>): readonl
     ? [
         {
           key: 'contested' as const,
-          label: m.entriesStatContested,
+          label: m.entries_statContested,
           test: contested,
           urgent: false,
         },
@@ -455,13 +456,13 @@ export const chipsFor = (viewer: Viewer, item: Pick<ItemDto, 'status'>): readonl
     : []),
   {
     key: 'approved',
-    label: m.entryStatusApproved,
+    label: m.entry_statusApproved,
     test: (entry) => entry.status === 'approved' && !contested(entry),
     urgent: false,
   },
   {
     key: 'rejected',
-    label: m.entryStatusRejected,
+    label: m.entry_statusRejected,
     test: (entry) => entry.status === 'rejected' && !contested(entry),
     urgent: false,
   },
@@ -473,20 +474,20 @@ export const chipsFor = (viewer: Viewer, item: Pick<ItemDto, 'status'>): readonl
   // and this is where it opens (ruling of 2026-09-26).
   {
     key: 'abandoned',
-    label: m.entryStatusAbandoned,
+    label: m.entry_statusAbandoned,
     test: (entry) =>
       entry.status === 'voided' && !administrative(entry) && !voidedWithItem(entry, item),
     urgent: false,
   },
   {
     key: 'voided',
-    label: m.entryStatusVoided,
+    label: m.entry_statusVoided,
     test: (entry) => voidedWithItem(entry, item),
     urgent: false,
   },
   {
     key: 'revoked',
-    label: m.recordStandingWithdrawn,
+    label: m.record_standingWithdrawn,
     test: (entry) => entry.status === 'voided' && administrative(entry),
     urgent: false,
   },
@@ -495,7 +496,7 @@ export const chipsFor = (viewer: Viewer, item: Pick<ItemDto, 'status'>): readonl
 /** the figures across the head: what is moving, as the reader needs it counted */
 export interface HeadStat {
   readonly key: string
-  readonly label: MessageDescriptor
+  readonly label: Message
   readonly count: number
   /** amber: waiting on the owner */
   readonly waits: boolean
@@ -508,7 +509,7 @@ export const headStatsOf = (viewer: Viewer, entries: readonly EntryDto[]): reado
     return [
       {
         key: 'in_review',
-        label: m.entryStatusInReview,
+        label: m.entry_statusInReview,
         // the same claims the list's "in review" filter holds: a settled
         // claim under appeal or re-examination is out with the reviewers
         // again, and one a reviewer has asked more of is still in review
@@ -518,13 +519,13 @@ export const headStatsOf = (viewer: Viewer, entries: readonly EntryDto[]): reado
       },
       {
         key: 'draft',
-        label: m.entryStatusDraft,
+        label: m.entry_statusDraft,
         count: count((e) => e.status === 'draft'),
         waits: false,
       },
       {
         key: 'needs_revision',
-        label: m.entryStatusNeedsRevision,
+        label: m.entry_statusNeedsRevision,
         count: count((e) => e.status === 'needs_revision'),
         waits: true,
       },
@@ -533,32 +534,32 @@ export const headStatsOf = (viewer: Viewer, entries: readonly EntryDto[]): reado
   return [
     {
       key: 'approved',
-      label: m.entryStatusApproved,
+      label: m.entry_statusApproved,
       count: count((e) => e.status === 'approved' && !contested(e)),
       waits: false,
     },
     {
       key: 'in_review',
-      label: m.entryStatusInReview,
+      label: m.entry_statusInReview,
       count: count((e) => e.status === 'in_review' && e.supplement === null && !contested(e)),
       waits: false,
     },
     {
       key: 'supplement',
-      label: m.entryStatusAwaitingSupplement,
+      label: m.entry_statusAwaitingSupplement,
       count: count((e) => e.supplement !== null),
       waits: true,
     },
     {
       key: 'needs_revision',
-      label: m.entryStatusNeedsRevision,
+      label: m.entry_statusNeedsRevision,
       count: count((e) => e.status === 'needs_revision'),
       waits: true,
     },
-    { key: 'contested', label: m.entriesStatContested, count: count(contested), waits: false },
+    { key: 'contested', label: m.entries_statContested, count: count(contested), waits: false },
     {
       key: 'rejected',
-      label: m.entryStatusRejected,
+      label: m.entry_statusRejected,
       count: count((e) => e.status === 'rejected' && !contested(e)),
       waits: false,
     },
@@ -610,7 +611,9 @@ export interface FilingRound extends RoundState {
 
 /** why a new claim cannot start on a question, with whatever fills the sentence */
 export interface FilingHeld {
-  readonly message: MessageDescriptor
+  /** which sentence it is, for a test to read off the element without its words */
+  readonly said: string
+  readonly message: Message
   readonly values?: Readonly<Record<string, string | number>>
 }
 
@@ -623,8 +626,12 @@ const filingHeldIn = (reason: string | null, round: FilingRound | null): FilingH
   const opens = round?.opens
   if (reason === 'item-out-of-scope' && opens !== null && opens !== undefined) {
     return opens.items === ''
-      ? { message: m.entriesHeldItemScopeSome }
-      : { message: m.entriesHeldItemScopeOnly, values: { items: opens.items, more: opens.more } }
+      ? { said: 'held-item-scope-some', message: m.entries_heldItemScopeSome }
+      : {
+          said: 'held-item-scope-only',
+          message: m.entries_heldItemScopeOnly,
+          values: { items: opens.items, more: opens.more },
+        }
   }
   return filingHeldOf(reason, round)
 }
@@ -692,15 +699,15 @@ export const filingOf = (
 }
 
 /** the word a question has instead of a key, where nobody files into it */
-export const badgeOf = (item: ItemDto, filing: Filing | null): MessageDescriptor | null =>
+export const badgeOf = (item: ItemDto, filing: Filing | null): Message | null =>
   item.status === 'voided'
-    ? m.itemsStatusVoided
+    ? m.items_statusVoided
     : item.itemType === 'constant'
-      ? m.paperEmptyGranted
+      ? m.paper_emptyGranted
       : recordedOnly(item)
-        ? m.entriesRecordedByStaff
+        ? m.entries_recordedByStaff
         : filing?.full === true
-          ? m.myEntriesAddFull
+          ? m.myEntries_addFull
           : null
 
 /** a question the staff reader would call unsettled: something still moving on it */

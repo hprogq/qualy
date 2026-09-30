@@ -4,9 +4,8 @@ import {
   type ResourceGrantContext,
 } from '@qualy/ui-contract'
 import { PluginSurface, useUiCollection } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
 import { Skeleton } from '@qualy/ui/skeleton'
-import { rbacMessages as m } from './i18n.ts'
+import * as m from '#messages'
 
 /** as much of a grant as saying where it came from needs */
 export interface OriginGrant {
@@ -30,7 +29,6 @@ export interface OriginGrant {
  * other two's objects. A kind nobody speaks for is named plainly.
  */
 export function GrantOrigin({ grant }: { grant: OriginGrant }) {
-  const { format } = useI18n()
   const presenters = useUiCollection(resourceGrantPresenters)
   const resource = grant.resource!
   const presenter = presenters.find(
@@ -38,7 +36,7 @@ export function GrantOrigin({ grant }: { grant: OriginGrant }) {
   )
   const plain = (
     <span data-testid="grant-origin-plain">
-      {format(m.confinedPlain, { namespace: resource.namespace, type: resource.type })}
+      {m.grants_confinedPlain({ namespace: resource.namespace, type: resource.type })}
     </span>
   )
   if (presenter === undefined) return plain

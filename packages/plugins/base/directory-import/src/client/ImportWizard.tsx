@@ -32,9 +32,10 @@ import type { ResourceFailure } from '@qualy/ui/resource-state'
 import { toast } from '@qualy/ui/toast'
 import { directoryApi } from './api.ts'
 import { FlowFrame, type FlowAction } from './flow.tsx'
-import { directoryImportMessages as m } from './i18n.ts'
+
 import { csvOf } from './take-away.ts'
 import { issueText, type IssueLike } from './words.ts'
+import * as m from '#messages'
 
 // People from a spreadsheet, in five short steps: the file, the sheet, the
 // columns, what the check found, and the record it became. The server does
@@ -562,7 +563,7 @@ export function ImportWizard({
   onClose: () => void
   onOpenRecord: (importId: string) => void
 }) {
-  const { format, formatError } = useI18n()
+  const { formatError } = useI18n()
   const failures = useLoadFailure()
   const businessNo = useTerm(authTerms.businessNumber)
   const phone = useIsBelow(PHONE)
@@ -614,16 +615,15 @@ export function ImportWizard({
       const first = issuesOf(error)[0]
       return {
         kind: 'failed',
-        title: format(m.sheetUnreadableTitle),
-        description:
-          first === undefined ? formatError(error) : issueText(format, first, businessNo),
+        title: m.sheet_unreadableTitle(),
+        description: first === undefined ? formatError(error) : issueText(first, businessNo),
         retryable: false,
       }
     }
     if (code === 'USER_IMPORT_SOURCE_UNAVAILABLE') {
       return {
         kind: 'missing',
-        title: format(m.sheetSourceGoneTitle),
+        title: m.sheet_sourceGoneTitle(),
         description: formatError(error),
         retryable: false,
       }
@@ -727,8 +727,8 @@ export function ImportWizard({
     setAt(0)
   }
 
-  const steps = [m.stepUpload, m.stepSheet, m.stepMapping, m.stepPreview, m.stepDone].map((step) =>
-    format(step),
+  const steps = [m.step_upload, m.step_sheet, m.step_mapping, m.step_preview, m.step_done].map(
+    (step) => step(),
   )
   const orgTypes = options.data?.orgTypes ?? []
   const nonRootTypes = orgTypes.filter((type) => type.id !== options.data?.root?.orgTypeId)
@@ -741,10 +741,10 @@ export function ImportWizard({
   // question, and nothing but this answers it before the check runs.
   const anchorLabel =
     anchor === null
-      ? (options.data?.root?.name ?? format(m.anchorRoot))
+      ? (options.data?.root?.name ?? m.mapping_anchorRoot())
       : anchorNamed !== null && anchorNamed.id === anchor
         ? anchorNamed.path
-        : format(m.anchorChosen)
+        : m.mapping_anchorChosen()
   const firstRow = table?.sample[0]
   const examplePath = [
     anchorLabel,
@@ -764,13 +764,13 @@ export function ImportWizard({
           <div {...stylex.props(styles.chainRow)}>
             <span aria-hidden {...stylex.props(styles.chainDot)} />
             <span {...stylex.props(styles.chainName)}>
-              {level.orgTypeId === '' ? format(m.levelTypeUnset) : typeName(level.orgTypeId)}
+              {level.orgTypeId === '' ? m.mapping_levelTypeUnset() : typeName(level.orgTypeId)}
             </span>
           </div>
           <span {...stylex.props(styles.chainFrom)}>
             {level.column === ''
-              ? format(m.columnUnset)
-              : format(m.levelFromColumn, { column: columnName(level.column) })}
+              ? m.mapping_columnUnset()
+              : m.mapping_levelFrom({ column: columnName(level.column) })}
           </span>
         </div>
       ))}
@@ -780,7 +780,7 @@ export function ImportWizard({
   /** what the file's own first row comes to, which is the proof the path is right */
   const exampleLine =
     examplePath.length === 0
-      ? format(m.exampleUnready)
+      ? m.mapping_exampleUnready()
       : [examplePath.join(' / '), exampleName].filter((part) => part !== '').join(' - ')
 
   const addLevel = () =>
@@ -804,7 +804,7 @@ export function ImportWizard({
           fill: true,
         } satisfies OrgNodePickerContext
       }
-      fallback={<Feedback message={format(m.anchorRoot)} />}
+      fallback={<Feedback message={m.mapping_anchorRoot()} />}
     />
   )
 
@@ -829,7 +829,7 @@ export function ImportWizard({
       {(id, control) => (
         <Select value={value === '' ? undefined : value} onValueChange={onChange}>
           <SelectTrigger id={id} {...control} data-testid={testId}>
-            <SelectValue placeholder={format(m.columnUnset)} />
+            <SelectValue placeholder={m.mapping_columnUnset()} />
           </SelectTrigger>
           <SelectContent>
             {headers.map((header) => (
@@ -850,7 +850,7 @@ export function ImportWizard({
       return [
         {
           key: 'next',
-          label: format(m.next),
+          label: m.step_next(),
           onClick: () => setAt(1),
           disabled: true,
           lead: true,
@@ -861,7 +861,7 @@ export function ImportWizard({
       return [
         {
           key: 'next',
-          label: format(m.next),
+          label: m.step_next(),
           onClick: () => setAt(2),
           disabled: table === undefined || headers.length === 0,
           lead: true,
@@ -872,7 +872,7 @@ export function ImportWizard({
       return [
         {
           key: 'check',
-          label: format(checking.isPending ? m.checking : m.check),
+          label: (checking.isPending ? m.mapping_checking : m.mapping_check)(),
           onClick: () => checking.mutate(),
           disabled: !mappingReady,
           pending: checking.isPending,
@@ -886,7 +886,7 @@ export function ImportWizard({
           ? [
               {
                 key: 'replace',
-                label: format(m.replaceFile),
+                label: m.upload_replace(),
                 onClick: restart,
                 variant: 'outline' as const,
               },
@@ -894,9 +894,9 @@ export function ImportWizard({
           : []),
         {
           key: 'commit',
-          label: format(committing.isPending ? m.committing : m.commitCount, {
-            count: preview?.rowCount ?? 0,
-          }),
+          label: committing.isPending
+            ? m.preview_committing()
+            : m.preview_commitCount({ count: preview?.rowCount ?? 0 }),
           onClick: () => committing.mutate(),
           disabled: errors > 0,
           pending: committing.isPending,
@@ -909,32 +909,32 @@ export function ImportWizard({
         ? [
             {
               key: 'record',
-              label: format(m.openRecord),
+              label: m.done_openRecord(),
               onClick: () => done !== null && onOpenRecord(done.importId),
               variant: 'outline' as const,
             },
             {
               key: 'again',
-              label: format(m.importAnother),
+              label: m.done_another(),
               onClick: restart,
               variant: 'outline' as const,
             },
           ]
         : []),
-      { key: 'finish', label: format(m.finish), onClick: onClose, lead: true },
+      { key: 'finish', label: m.step_finish(), onClick: onClose, lead: true },
     ]
   })()
 
   const note = (() => {
-    if (at === 0) return format(m.scopeNote, { path: anchorLabel })
-    if (at === 3 && errors > 0) return format(m.previewIssuesHint)
+    if (at === 0) return m.upload_scope({ path: anchorLabel })
+    if (at === 3 && errors > 0) return m.preview_issuesHint()
     return null
   })()
 
   const subtitle =
     uploaded === null
-      ? format(m.hint)
-      : [uploaded.filename, table?.sheet, format(m.rowCount, { count: table?.rowCount ?? 0 })]
+      ? m.import_hint()
+      : [uploaded.filename, table?.sheet, m.inspect_rowCount({ count: table?.rowCount ?? 0 })]
           .filter((part) => part !== undefined && part !== '')
           .join('　')
 
@@ -942,23 +942,23 @@ export function ImportWizard({
     <FlowFrame
       open={open}
       testId="import-wizard"
-      title={format(m.title)}
+      title={m.import_title()}
       subtitle={subtitle}
       steps={steps}
       step={at}
-      cancelLabel={format(m.cancel)}
-      closeLabel={format(m.recordClose)}
+      cancelLabel={m.dialog_cancel()}
+      closeLabel={m.record_close()}
       actions={actions}
       note={note}
       {...(at === 2 && !phone ? {} : {})}
       {...(at === 4 ? {} : { onClose })}
-      {...(at > 0 && at < 4 ? { onBack: () => setAt(at - 1), backLabel: format(m.back) } : {})}
+      {...(at > 0 && at < 4 ? { onBack: () => setAt(at - 1), backLabel: m.step_back() } : {})}
       {...(at < 4 ? { onStep: (index: number) => index < at && setAt(index) } : {})}
       {...(phone && at === 2
         ? {
             pinned: (
               <div {...stylex.props(styles.pinned)} data-testid="import-example">
-                <span {...stylex.props(styles.pinnedLabel)}>{format(m.exampleTitle)}</span>
+                <span {...stylex.props(styles.pinnedLabel)}>{m.mapping_example()}</span>
                 <span {...stylex.props(styles.pinnedPath)}>{exampleLine}</span>
               </div>
             ),
@@ -973,12 +973,12 @@ export function ImportWizard({
                 looked like from the errors of the one they guessed at */}
             <div {...stylex.props(styles.prep)} data-testid="import-prep">
               <div {...stylex.props(styles.card, styles.cardPad)}>
-                <span {...stylex.props(styles.cardTitle)}>{format(m.prepTitle)}</span>
+                <span {...stylex.props(styles.cardTitle)}>{m.prep_title()}</span>
                 {[
-                  format(m.prepPeople, { businessNo }),
-                  format(m.prepUnits),
-                  format(m.prepHeader),
-                  format(m.prepExisting, { businessNo }),
+                  m.prep_people({ businessNo }),
+                  m.prep_units(),
+                  m.prep_header(),
+                  m.prep_existing({ businessNo }),
                 ].map((line, index) => (
                   <span key={line} {...stylex.props(styles.rule)}>
                     <span {...stylex.props(styles.ruleNo)}>{index + 1}</span>
@@ -996,8 +996,8 @@ export function ImportWizard({
                       <tr>
                         {[
                           businessNo,
-                          format(m.displayNameLabel),
-                          ...format(m.prepSampleUnits).split('|'),
+                          m.mapping_displayName(),
+                          ...m.prep_sampleUnits().split('|'),
                         ].map((head) => (
                           <th key={head} {...stylex.props(styles.th)}>
                             {head}
@@ -1006,7 +1006,8 @@ export function ImportWizard({
                       </tr>
                     </thead>
                     <tbody>
-                      {format(m.prepSampleRows)
+                      {m
+                        .prep_sampleRows()
                         .split(';')
                         .map((line) => (
                           <tr key={line}>
@@ -1035,9 +1036,9 @@ export function ImportWizard({
             >
               <span {...stylex.props(styles.dropWords)}>
                 {uploading.isPending ? <Spinner /> : <FileSpreadsheetIcon aria-hidden />}
-                {format(uploading.isPending ? m.uploading : m.chooseFile)}
+                {(uploading.isPending ? m.upload_uploading : m.upload_choose)()}
               </span>
-              <span {...stylex.props(styles.quiet)}>{format(m.uploadRule)}</span>
+              <span {...stylex.props(styles.quiet)}>{m.upload_rule()}</span>
             </Dropzone>
           </div>
         )}
@@ -1053,17 +1054,17 @@ export function ImportWizard({
                 <span {...stylex.props(styles.fileFacts)}>
                   {[
                     sizeText(uploaded.size),
-                    format(m.sheetCount, { count: inspect.data?.sheets.length ?? 0 }),
+                    m.sheet_count({ count: inspect.data?.sheets.length ?? 0 }),
                   ].join('　')}
                 </span>
               </span>
               <span {...stylex.props(styles.spring)} />
               <Button variant="ghost" size="sm" onClick={restart}>
-                {format(m.replaceFile)}
+                {m.upload_replace()}
               </Button>
             </div>
             <div {...stylex.props(styles.pair)}>
-              <Field label={format(m.sheetLabel)}>
+              <Field label={m.sheet_label()}>
                 {(id) => (
                   <Select value={table?.sheet ?? sheet} onValueChange={setSheet}>
                     <SelectTrigger id={id}>
@@ -1079,7 +1080,7 @@ export function ImportWizard({
                   </Select>
                 )}
               </Field>
-              <Field label={format(m.headerRowLabel)} hint={format(m.headerRowHint)}>
+              <Field label={m.sheet_headerRow()} hint={m.sheet_headerRowHint()}>
                 {(id) => (
                   <Input
                     id={id}
@@ -1096,28 +1097,28 @@ export function ImportWizard({
               errorAction={
                 fileAtFault ? (
                   <Button variant="outline" size="sm" onClick={restart}>
-                    {format(m.replaceFile)}
+                    {m.upload_replace()}
                   </Button>
                 ) : undefined
               }
-              loadingLabel={format(m.checking)}
-              retryLabel={format(m.retry)}
+              loadingLabel={m.mapping_checking()}
+              retryLabel={m.records_retry()}
               onRetry={() => void inspect.refetch()}
               xstyle={styles.fills}
             >
               {table !== undefined && (
                 <div {...stylex.props(styles.fills, styles.stack)}>
                   <div {...stylex.props(styles.sectionHead)}>
-                    <span {...stylex.props(styles.sectionTitle)}>{format(m.sampleTitle)}</span>
+                    <span {...stylex.props(styles.sectionTitle)}>{m.sheet_sample()}</span>
                     <Badge variant="secondary">
-                      {format(m.tableShape, {
+                      {m.sheet_shape({
                         rows: table.rowCount,
                         columns: headers.length,
                       })}
                     </Badge>
                   </div>
                   {headers.length === 0 ? (
-                    <Feedback message={format(m.noHeaders)} />
+                    <Feedback message={m.sheet_noHeaders()} />
                   ) : (
                     <div {...stylex.props(styles.sample, styles.fills)}>
                       <table {...stylex.props(styles.table)}>
@@ -1154,9 +1155,9 @@ export function ImportWizard({
           (phone ? (
             <div {...stylex.props(styles.stack)}>
               <div {...stylex.props(styles.card, styles.cardPad)}>
-                <span {...stylex.props(styles.cardTitle)}>{format(m.peopleTitle)}</span>
+                <span {...stylex.props(styles.cardTitle)}>{m.mapping_people()}</span>
                 {said(
-                  format(m.displayNameLabel),
+                  m.mapping_displayName(),
                   <Select
                     value={displayNameColumn === '' ? undefined : displayNameColumn}
                     onValueChange={setDisplayNameColumn}
@@ -1165,9 +1166,9 @@ export function ImportWizard({
                       data-testid="column-name"
                       xstyle={styles.wide}
                       aria-required
-                      aria-label={format(m.displayNameLabel)}
+                      aria-label={m.mapping_displayName()}
                     >
-                      <SelectValue placeholder={format(m.columnUnset)} />
+                      <SelectValue placeholder={m.mapping_columnUnset()} />
                     </SelectTrigger>
                     <SelectContent>
                       {headers.map((header) => (
@@ -1191,7 +1192,7 @@ export function ImportWizard({
                       aria-required
                       aria-label={businessNo}
                     >
-                      <SelectValue placeholder={format(m.columnUnset)} />
+                      <SelectValue placeholder={m.mapping_columnUnset()} />
                     </SelectTrigger>
                     <SelectContent>
                       {headers.map((header) => (
@@ -1204,7 +1205,7 @@ export function ImportWizard({
                   true,
                 )}
                 {said(
-                  format(m.userTypeLabel),
+                  m.mapping_userType(),
                   <Select
                     value={userTypeId === '' ? undefined : userTypeId}
                     onValueChange={setUserTypeId}
@@ -1213,9 +1214,9 @@ export function ImportWizard({
                       data-testid="user-type"
                       xstyle={styles.wide}
                       aria-required
-                      aria-label={format(m.userTypeLabel)}
+                      aria-label={m.mapping_userType()}
                     >
-                      <SelectValue placeholder={format(m.userTypeUnset)} />
+                      <SelectValue placeholder={m.mapping_userTypeUnset()} />
                     </SelectTrigger>
                     <SelectContent>
                       {(options.data?.userTypes ?? []).map((type) => (
@@ -1229,12 +1230,12 @@ export function ImportWizard({
                 )}
               </div>
               <div {...stylex.props(styles.card, styles.cardPad)}>
-                <span {...stylex.props(styles.cardTitle)}>{format(m.levelsLabel)}</span>
+                <span {...stylex.props(styles.cardTitle)}>{m.mapping_levels()}</span>
                 <span {...stylex.props(styles.quiet)}>
-                  {format(m.anchorSaid, { path: anchorLabel })}
+                  {m.mapping_anchorSaid({ path: anchorLabel })}
                 </span>
                 {said(
-                  format(m.anchorLabel),
+                  m.mapping_anchor(),
                   <button
                     type="button"
                     data-testid="anchor-press"
@@ -1250,12 +1251,12 @@ export function ImportWizard({
                     <span aria-hidden {...stylex.props(styles.levelNo)}>
                       {index + 1}
                     </span>
-                    {levelType(level, setLevel, nonRootTypes, format)}
-                    {levelColumn(level, setLevel, headers, format)}
+                    {levelType(level, setLevel, nonRootTypes)}
+                    {levelColumn(level, setLevel, headers)}
                     <Button
                       variant="ghost"
                       size="icon-sm"
-                      aria-label={format(m.removeLevel)}
+                      aria-label={m.mapping_removeLevel()}
                       onClick={() => dropLevel(level.key)}
                     >
                       <XIcon aria-hidden />
@@ -1264,7 +1265,7 @@ export function ImportWizard({
                 ))}
                 <Button variant="outline" size="sm" onClick={addLevel}>
                   <PlusIcon aria-hidden />
-                  {format(m.addLevel)}
+                  {m.mapping_addLevel()}
                 </Button>
               </div>
             </div>
@@ -1273,7 +1274,7 @@ export function ImportWizard({
               <div {...stylex.props(styles.stack)}>
                 <div {...stylex.props(styles.trio)}>
                   {columnChoice(
-                    format(m.displayNameLabel),
+                    m.mapping_displayName(),
                     displayNameColumn,
                     setDisplayNameColumn,
                     'column-name',
@@ -1284,14 +1285,14 @@ export function ImportWizard({
                     setBusinessNoColumn,
                     'column-business',
                   )}
-                  <Field label={format(m.userTypeLabel)} required>
+                  <Field label={m.mapping_userType()} required>
                     {(id, control) => (
                       <Select
                         value={userTypeId === '' ? undefined : userTypeId}
                         onValueChange={setUserTypeId}
                       >
                         <SelectTrigger id={id} {...control} data-testid="user-type">
-                          <SelectValue placeholder={format(m.userTypeUnset)} />
+                          <SelectValue placeholder={m.mapping_userTypeUnset()} />
                         </SelectTrigger>
                         <SelectContent>
                           {(options.data?.userTypes ?? []).map((type) => (
@@ -1304,26 +1305,26 @@ export function ImportWizard({
                     )}
                   </Field>
                 </div>
-                <span {...stylex.props(styles.quiet)}>{format(m.userTypeHint)}</span>
+                <span {...stylex.props(styles.quiet)}>{m.mapping_userTypeHint()}</span>
 
                 <div {...stylex.props(styles.sectionHead)}>
-                  <span {...stylex.props(styles.sectionTitle)}>{format(m.anchorLabel)}</span>
-                  <span {...stylex.props(styles.quiet)}>{format(m.anchorHint)}</span>
+                  <span {...stylex.props(styles.sectionTitle)}>{m.mapping_anchor()}</span>
+                  <span {...stylex.props(styles.quiet)}>{m.mapping_anchorHint()}</span>
                 </div>
                 <div {...stylex.props(styles.pickerSeat)}>{anchorPicker}</div>
 
                 <div {...stylex.props(styles.sectionHead)}>
-                  <span {...stylex.props(styles.sectionTitle)}>{format(m.levelsLabel)}</span>
-                  <span {...stylex.props(styles.quiet)}>{format(m.levelsHint)}</span>
+                  <span {...stylex.props(styles.sectionTitle)}>{m.mapping_levels()}</span>
+                  <span {...stylex.props(styles.quiet)}>{m.mapping_levelsHint()}</span>
                 </div>
                 {levels.map((level) => (
                   <div key={level.key} {...stylex.props(styles.level)}>
-                    {levelType(level, setLevel, nonRootTypes, format)}
-                    {levelColumn(level, setLevel, headers, format)}
+                    {levelType(level, setLevel, nonRootTypes)}
+                    {levelColumn(level, setLevel, headers)}
                     <Button
                       variant="ghost"
                       size="icon-sm"
-                      aria-label={format(m.removeLevel)}
+                      aria-label={m.mapping_removeLevel()}
                       onClick={() => dropLevel(level.key)}
                     >
                       <XIcon aria-hidden />
@@ -1333,7 +1334,7 @@ export function ImportWizard({
                 <div>
                   <Button variant="outline" size="sm" onClick={addLevel}>
                     <PlusIcon aria-hidden />
-                    {format(m.addLevel)}
+                    {m.mapping_addLevel()}
                   </Button>
                 </div>
               </div>
@@ -1342,10 +1343,10 @@ export function ImportWizard({
                   head: the path everyone lands on, and the file's own first
                   row standing in it. */}
               <div {...stylex.props(styles.rail)} data-testid="import-example">
-                <span {...stylex.props(styles.railLabel)}>{format(m.chainTitle)}</span>
+                <span {...stylex.props(styles.railLabel)}>{m.mapping_chain()}</span>
                 {chain}
                 <span aria-hidden {...stylex.props(styles.hairline)} />
-                <span {...stylex.props(styles.railLabel)}>{format(m.exampleTitle)}</span>
+                <span {...stylex.props(styles.railLabel)}>{m.mapping_example()}</span>
                 <span {...stylex.props(styles.example)}>{exampleLine}</span>
               </div>
             </div>
@@ -1360,25 +1361,25 @@ export function ImportWizard({
             <div {...stylex.props(styles.tally)}>
               {!phone && (
                 <div {...stylex.props(styles.tallyCell)}>
-                  <span {...stylex.props(styles.tallyLabel)}>{format(m.previewChain)}</span>
+                  <span {...stylex.props(styles.tallyLabel)}>{m.preview_chain()}</span>
                   <span {...stylex.props(styles.tallyValue)} title={chainText(preview)}>
                     {chainText(preview)}
                   </span>
                 </div>
               )}
               <div {...stylex.props(styles.tallyCell)}>
-                <span {...stylex.props(styles.tallyLabel)}>{format(m.previewUsersLabel)}</span>
+                <span {...stylex.props(styles.tallyLabel)}>{m.preview_usersLabel()}</span>
                 <span {...stylex.props(styles.tallyValue)}>
-                  {format(m.previewUsers, {
+                  {m.preview_users({
                     create: preview.users.create,
                     existing: preview.users.existing,
                   })}
                 </span>
               </div>
               <div {...stylex.props(styles.tallyCell)}>
-                <span {...stylex.props(styles.tallyLabel)}>{format(m.previewNodesLabel)}</span>
+                <span {...stylex.props(styles.tallyLabel)}>{m.preview_nodesLabel()}</span>
                 <span {...stylex.props(styles.tallyValue)}>
-                  {format(m.previewNodes, {
+                  {m.preview_nodes({
                     reused: preview.nodes.reused,
                     created: preview.nodes.created,
                   })}
@@ -1391,14 +1392,14 @@ export function ImportWizard({
                 {errors === 0 ? (
                   <div {...stylex.props(styles.clean)}>
                     <span aria-hidden {...stylex.props(styles.okDot)} />
-                    {format(m.previewClean)}
+                    {m.preview_clean()}
                   </div>
                 ) : (
                   <>
                     <div {...stylex.props(styles.cardHead)}>
                       <span aria-hidden {...stylex.props(styles.badDot)} />
                       <span {...stylex.props(styles.cardTitle, styles.bad)}>
-                        {format(m.previewErrors, { count: errors })}
+                        {m.preview_errors({ count: errors })}
                       </span>
                     </div>
                     <div {...stylex.props(styles.scroller)}>
@@ -1412,11 +1413,11 @@ export function ImportWizard({
                           >
                             <span {...stylex.props(styles.issueWhere)}>
                               {issue.rowNo === null
-                                ? format(m.issueFile)
-                                : format(m.issueRow, { row: issue.rowNo })}
+                                ? m.issue_file()
+                                : m.issue_row({ row: issue.rowNo })}
                             </span>
                             <span {...stylex.props(styles.issueWhat)}>
-                              {issueText(format, issue, businessNo)}
+                              {issueText(issue, businessNo)}
                             </span>
                           </div>
                         ))}
@@ -1433,22 +1434,22 @@ export function ImportWizard({
                             uploaded?.filename ?? '',
                             preview.issues.map((issue) => [
                               issue.rowNo === null
-                                ? format(m.issueFile)
-                                : format(m.issueRow, { row: issue.rowNo }),
-                              issueText(format, issue, businessNo),
+                                ? m.issue_file()
+                                : m.issue_row({ row: issue.rowNo }),
+                              issueText(issue, businessNo),
                             ]),
-                            [format(m.columnRow), format(m.issuesColumnWhat)],
+                            [m.record_columnRow(), m.preview_issuesColumn()],
                           )
                         }
                       >
                         <DownloadIcon aria-hidden />
-                        {format(m.issuesTakeAway)}
+                        {m.preview_issuesTakeAway()}
                       </Button>
                       <span {...stylex.props(styles.spring)} />
                       {!phone && preview.issues.length > ISSUES_PER_PAGE && (
                         <Pager
                           testId="import-issues-pager"
-                          label={format(m.pagerLabel)}
+                          label={m.pager()}
                           page={issuePage}
                           pageSize={ISSUES_PER_PAGE}
                           total={preview.issues.length}
@@ -1463,16 +1464,16 @@ export function ImportWizard({
               {!phone && (
                 <div {...stylex.props(styles.card, styles.cardFills)}>
                   <div {...stylex.props(styles.cardHead)}>
-                    <span {...stylex.props(styles.cardTitle)}>{format(m.previewCreatedNodes)}</span>
+                    <span {...stylex.props(styles.cardTitle)}>{m.preview_createdNodes()}</span>
                     <span {...stylex.props(styles.spring)} />
                     <span {...stylex.props(styles.tallyLabel)}>
-                      {format(m.countOf, { count: preview.nodes.created })}
+                      {m.countOf({ count: preview.nodes.created })}
                     </span>
                   </div>
                   <div {...stylex.props(styles.scroller)}>
                     {preview.createdNodes.length === 0 ? (
                       <span {...stylex.props(styles.nodePath, styles.quiet)}>
-                        {format(m.previewNoNewNodes)}
+                        {m.preview_noNewNodes()}
                       </span>
                     ) : (
                       preview.createdNodes.map((path) => (
@@ -1495,31 +1496,31 @@ export function ImportWizard({
                 <CheckIcon size={phone ? 24 : 17} />
               </span>
               <span {...stylex.props(styles.crownWords)}>
-                <span {...stylex.props(styles.crownTitle)}>{format(m.doneTitle)}</span>
+                <span {...stylex.props(styles.crownTitle)}>{m.done_title()}</span>
                 <span {...stylex.props(styles.crownLine)}>
-                  {format(m.done, { users: done.createdUsers, nodes: done.createdNodes })}
+                  {m.done_summary({ users: done.createdUsers, nodes: done.createdNodes })}
                 </span>
                 {done.existingUsers > 0 && (
                   <span {...stylex.props(styles.crownLine)}>
-                    {format(m.doneExisting, { count: done.existingUsers })}
+                    {m.done_existing({ count: done.existingUsers })}
                   </span>
                 )}
               </span>
             </div>
             <div {...stylex.props(styles.card)}>
               <div {...stylex.props(styles.factLine)}>
-                <span {...stylex.props(styles.factLabel)}>{format(m.recordFile)}</span>
+                <span {...stylex.props(styles.factLabel)}>{m.record_file()}</span>
                 <span {...stylex.props(styles.factValue)}>{uploaded?.filename ?? ''}</span>
               </div>
               <div {...stylex.props(styles.factLine)}>
-                <span {...stylex.props(styles.factLabel)}>{format(m.recordType)}</span>
+                <span {...stylex.props(styles.factLabel)}>{m.record_type()}</span>
                 <span {...stylex.props(styles.factValue)}>
                   {(options.data?.userTypes ?? []).find((type) => type.id === userTypeId)?.name ??
                     ''}
                 </span>
               </div>
               <div {...stylex.props(styles.factLine)}>
-                <span {...stylex.props(styles.factLabel)}>{format(m.previewChain)}</span>
+                <span {...stylex.props(styles.factLabel)}>{m.preview_chain()}</span>
                 <span {...stylex.props(styles.factValue)}>
                   {[anchorLabel, ...levels.map((level) => typeName(level.orgTypeId))].join(' / ')}
                 </span>
@@ -1527,15 +1528,15 @@ export function ImportWizard({
             </div>
             <div {...stylex.props(styles.aside)}>
               <InfoIcon size={15} aria-hidden {...stylex.props(styles.asideMark)} />
-              <span>{format(m.doneKept)}</span>
+              <span>{m.done_kept()}</span>
             </div>
             {/* A pointer has room for the two places to go next beside each
                 other; a thumb finds them in the foot, where its own hand is. */}
             {!phone && (
               <div {...stylex.props(styles.ways)}>
-                <Button onClick={() => onOpenRecord(done.importId)}>{format(m.openRecord)}</Button>
+                <Button onClick={() => onOpenRecord(done.importId)}>{m.done_openRecord()}</Button>
                 <Button variant="outline" onClick={restart}>
-                  {format(m.importAnother)}
+                  {m.done_another()}
                 </Button>
               </div>
             )}
@@ -1547,18 +1548,16 @@ export function ImportWizard({
           from the foot, answers the one question, and goes away again. */}
       <FormDialog
         open={pickingAnchor}
-        title={format(m.anchorLabel)}
-        description={format(m.anchorHint)}
+        title={m.mapping_anchor()}
+        description={m.mapping_anchorHint()}
         onClose={() => setPickingAnchor(false)}
-        footer={<Button onClick={() => setPickingAnchor(false)}>{format(m.anchorDone)}</Button>}
+        footer={<Button onClick={() => setPickingAnchor(false)}>{m.mapping_anchorDone()}</Button>}
       >
         <div {...stylex.props(styles.pickerSeat)}>{anchorPicker}</div>
       </FormDialog>
     </FlowFrame>
   )
 }
-
-type Format = ReturnType<typeof useI18n>['format']
 
 /** what the server made of the mapping, as one line of the check's summary */
 function chainText(preview: Preview): string {
@@ -1571,15 +1570,14 @@ function levelType(
   level: LevelDraft,
   setLevel: (key: number, patch: Partial<LevelDraft>) => void,
   types: readonly { id: string; name: string }[],
-  format: Format,
 ) {
   return (
     <Select
       value={level.orgTypeId === '' ? undefined : level.orgTypeId}
       onValueChange={(next) => setLevel(level.key, { orgTypeId: next })}
     >
-      <SelectTrigger aria-label={format(m.levelType)} xstyle={styles.wide}>
-        <SelectValue placeholder={format(m.levelTypeUnset)} />
+      <SelectTrigger aria-label={m.mapping_levelType()} xstyle={styles.wide}>
+        <SelectValue placeholder={m.mapping_levelTypeUnset()} />
       </SelectTrigger>
       <SelectContent>
         {types.map((type) => (
@@ -1596,15 +1594,14 @@ function levelColumn(
   level: LevelDraft,
   setLevel: (key: number, patch: Partial<LevelDraft>) => void,
   headers: Inspect['table']['headers'],
-  format: Format,
 ) {
   return (
     <Select
       value={level.column === '' ? undefined : level.column}
       onValueChange={(next) => setLevel(level.key, { column: next })}
     >
-      <SelectTrigger aria-label={format(m.columnUnset)} xstyle={styles.wide}>
-        <SelectValue placeholder={format(m.columnUnset)} />
+      <SelectTrigger aria-label={m.mapping_columnUnset()} xstyle={styles.wide}>
+        <SelectValue placeholder={m.mapping_columnUnset()} />
       </SelectTrigger>
       <SelectContent>
         {headers.map((header) => (

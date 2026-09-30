@@ -18,7 +18,7 @@ import { PhotoProvider, PhotoView } from '@qualy/ui/photo-view'
 import { Spinner } from '@qualy/ui/spinner'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentApi } from '../api.ts'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import { uploadFile, type UploadDoors, type UploadedFile } from './upload.ts'
 import {
   attachmentContentUrl,
@@ -30,6 +30,7 @@ import {
   offeredOptions,
   answerOf,
 } from './model.ts'
+import * as m from '#messages'
 
 // The form an administrator composed, drawn field by field. The page hands
 // in the item's form configuration and gets back exactly the payload shape
@@ -119,9 +120,9 @@ export type EvidencePayload = Record<string, string | number | boolean | readonl
 
 /** why a file was not added, said about that file */
 const REFUSALS = {
-  'too-large': m.entryFileRefusedSize,
-  type: m.entryFileRefusedKind,
-  'too-many': m.entryFileRefusedRoom,
+  'too-large': m.entry_fileRefusedSize,
+  type: m.entry_fileRefusedKind,
+  'too-many': m.entry_fileRefusedRoom,
 } as const
 
 /** what the form shows for attachment ids it did not upload itself */
@@ -222,7 +223,7 @@ export function EvidenceForm({
    */
   advice?: Readonly<Record<string, string>>
 }) {
-  const { format, formatError, locale } = useI18n()
+  const { formatError, locale } = useI18n()
   const words = usePickerWords()
   const [uploaded, setUploaded] = useState<Record<string, UploadedFile>>({})
   const [uploading, setUploading] = useState<{ field: string; names: readonly string[] } | null>(
@@ -318,7 +319,7 @@ export function EvidenceForm({
         required={field.required === true}
         hint={
           invalid
-            ? format(m.entryNumberUnreadable)
+            ? m.entry_numberUnreadable()
             : hintOf(field, undefined, answerOf(advice, field.key))
         }
       >
@@ -397,8 +398,8 @@ export function EvidenceForm({
                     ...(field.required === true
                       ? []
                       : [{ value: UNANSWERED, label: words.unanswered }]),
-                    { value: 'true', label: format(m.recognitionYes) },
-                    { value: 'false', label: format(m.recognitionNo) },
+                    { value: 'true', label: m.recognition_yes() },
+                    { value: 'false', label: m.recognition_no() },
                   ]}
                   onChange={(next) => {
                     if (next === UNANSWERED) dropField(field.key)
@@ -427,7 +428,7 @@ export function EvidenceForm({
           const window =
             floor === undefined || ceiling === undefined
               ? undefined
-              : format(m.entryDateWithin, { start: floor, end: ceiling })
+              : m.entry_dateWithin({ start: floor, end: ceiling })
           return (
             <Field
               key={field.key}
@@ -508,15 +509,13 @@ export function EvidenceForm({
 
         const cited = (answerOf(value, field.key) as readonly string[] | undefined) ?? []
         const kinds = fileKindLabels(field.accept, (family) =>
-          format(
-            family === 'image'
-              ? m.fileKindImage
-              : family === 'video'
-                ? m.fileKindVideo
-                : family === 'audio'
-                  ? m.fileKindAudio
-                  : m.fileKindText,
-          ),
+          (family === 'image'
+            ? m.files_kindImage
+            : family === 'video'
+              ? m.files_kindVideo
+              : family === 'audio'
+                ? m.files_kindAudio
+                : m.files_kindText)(),
         )
         const most = field.maxCount ?? 1
         const room = most - cited.length
@@ -563,7 +562,7 @@ export function EvidenceForm({
             // bare catch threw all ten of them away and said "try again",
             // which is advice that cannot work.
             const refusal = entryRefusalMessage(error)
-            setUploadError(refusal === null ? formatError(error) : format(refusal))
+            setUploadError(refusal === null ? formatError(error) : refusal())
           } finally {
             setUploading(null)
             if (landed.length > 0) {
@@ -595,7 +594,7 @@ export function EvidenceForm({
                       fallbackName={
                         uploaded[attachmentId]?.filename ??
                         knownFiles[attachmentId] ??
-                        format(m.entryFileUnnamed)
+                        m.entry_fileUnnamed()
                       }
                       onRemove={
                         disabled
@@ -615,7 +614,7 @@ export function EvidenceForm({
                         key={`uploading:${name}`}
                         media={<Spinner className={stylex.props(styles.icon).className} />}
                         name={name}
-                        meta={format(m.entryFileUploading)}
+                        meta={m.entry_fileUploading()}
                       />
                     ))}
 
@@ -639,22 +638,22 @@ export function EvidenceForm({
                     >
                       <span {...stylex.props(styles.dropWords)}>
                         <UploadIcon aria-hidden className={stylex.props(styles.icon).className} />
-                        {format(m.entryFileDrop)}
+                        {m.entry_fileDrop()}
                       </span>
                       {/* what the round will take, before anybody picks a
                           file: the rules are the administrator's and they
                           are cheap to say, while finding them out by being
                           refused costs the reader a round trip each time */}
                       <span {...stylex.props(styles.dropRules)}>
-                        {kinds !== null && <span>{format(m.entryFileKinds, { kinds })}</span>}
+                        {kinds !== null && <span>{m.entry_fileKinds({ kinds })}</span>}
                         {field.maxFileBytes !== undefined && (
                           <span>
-                            {format(m.entryFileMaxSize, {
+                            {m.entry_fileMaxSize({
                               size: sizeLimitLabel(field.maxFileBytes),
                             })}
                           </span>
                         )}
-                        {most > 1 && <span>{format(m.entryFileRoom, { count: room })}</span>}
+                        {most > 1 && <span>{m.entry_fileRoom({ count: room })}</span>}
                       </span>
                     </Dropzone>
                   )}
@@ -669,7 +668,7 @@ export function EvidenceForm({
                           data-turned-away={one.reason}
                           {...stylex.props(styles.refusal)}
                         >
-                          {format(REFUSALS[one.reason], {
+                          {REFUSALS[one.reason]({
                             name: one.name,
                             size:
                               field.maxFileBytes === undefined
@@ -712,7 +711,7 @@ function CitedFile({
   onRemove?: (() => void) | undefined
 }) {
   const query = useApiQuery(assessmentApi)
-  const { format } = useI18n()
+
   const descriptor = useQuery({
     ...query.assessment.describeAttachment.queryOptions({ params: { attachmentId } }),
     staleTime: 30_000,
@@ -755,7 +754,7 @@ function CitedFile({
           {onRemove !== undefined && (
             <Button variant="ghost" size="icon-sm" type="button" onClick={onRemove}>
               <XIcon aria-hidden />
-              <VisuallyHidden>{format(m.entryFileRemove)}</VisuallyHidden>
+              <VisuallyHidden>{m.entry_fileRemove()}</VisuallyHidden>
             </Button>
           )}
         </>

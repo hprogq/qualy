@@ -4,12 +4,11 @@ import * as stylex from '@stylexjs/stylex'
 import { RefreshCwIcon } from 'lucide-react'
 import { useApiQuery } from '@qualy/web-runtime'
 import type { ApiResult } from '@qualy/web-runtime/api'
-import { useI18n } from '@qualy/web-i18n'
 import { Button } from '@qualy/ui/button'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentApi } from '../api.ts'
-import { assessmentMessages as m } from '../i18n.ts'
+import * as m from '#messages'
 
 // One person's current total on the roster.
 //
@@ -36,9 +35,9 @@ export type RosterScoreAnswer = ApiResult<
 >['scores'][number]
 
 const REASONS = {
-  'scoring-unavailable': m.rosterScoreUnavailable,
-  'account-too-large': m.rosterScoreTooLarge,
-  'timed-out': m.rosterScoreTimedOut,
+  'scoring-unavailable': m.roster_scoreUnavailable,
+  'account-too-large': m.roster_scoreTooLarge,
+  'timed-out': m.roster_scoreTimedOut,
 } as const
 
 /** the reasons asking again may answer; a reading past its ceiling will not change */
@@ -93,7 +92,7 @@ export function RosterScore({
   movedAt: number
 }) {
   const query = useApiQuery(assessmentApi)
-  const { format } = useI18n()
+
   const [asked, setAsked] = useState(false)
   // when the reader last pressed, so a re-read they did not ask for keeps
   // the total up rather than blanking it while it runs
@@ -150,7 +149,7 @@ export function RosterScore({
 
   if (pending) {
     return (
-      <span {...hooks} {...stylex.props(styles.seat)} aria-label={format(m.rosterScoreWorking)}>
+      <span {...hooks} {...stylex.props(styles.seat)} aria-label={m.roster_scoreWorking()}>
         <Skeleton className={stylex.props(styles.bone).className} />
       </span>
     )
@@ -165,13 +164,13 @@ export function RosterScore({
   if (said?.state === 'unavailable' && said.reason !== null) {
     return (
       <span {...hooks} {...stylex.props(styles.seat)}>
-        <span {...stylex.props(styles.reason)}>{format(REASONS[said.reason])}</span>
+        <span {...stylex.props(styles.reason)}>{REASONS[said.reason]()}</span>
         {PASSING.has(said.reason) && (
           <Button
             size="icon-xs"
             variant="ghost"
             data-testid="participant-score-again"
-            aria-label={format(m.rosterScoreAgainOne, { name })}
+            aria-label={m.roster_scoreAgainOne({ name })}
             onClick={ask}
           >
             <RefreshCwIcon aria-hidden />
@@ -186,10 +185,10 @@ export function RosterScore({
       <Button
         size="xs"
         variant="ghost"
-        aria-label={format(m.rosterScoreComputeOne, { name })}
+        aria-label={m.roster_scoreComputeOne({ name })}
         onClick={ask}
       >
-        {format(m.rosterScoreCompute)}
+        {m.roster_scoreCompute()}
       </Button>
     </span>
   )

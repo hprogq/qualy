@@ -5,7 +5,7 @@ import { Effect } from 'effect'
 import type { PeoplePickerViewContext } from '@qualy/ui-contract'
 import PeoplePicker from '../src/client/iam/PeoplePicker.tsx'
 import PeoplePickerView from '../src/client/iam/PeoplePickerView.tsx'
-import zhCN from '../src/client/locales/zh-CN.ts'
+import zhCN from '../messages/zh-CN.json' with { type: 'json' }
 import { apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
 // Choosing people, as a table with a head.
@@ -517,7 +517,7 @@ describe('the people picker over a list read forwards', () => {
     }
     await renderScreen({ client: world(), children: <Field /> })
     const field = page.getByTestId('people-picker-unit')
-    await expect.element(field).toHaveTextContent(zhCN['auth/picker/all-units'])
+    await expect.element(field).toHaveTextContent(zhCN['picker_allUnits'])
 
     await field.click()
     await page.getByTestId('people-picker-tree').getByText('软件学院').click()

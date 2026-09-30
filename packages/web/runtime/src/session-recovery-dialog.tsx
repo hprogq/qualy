@@ -7,8 +7,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@qualy/ui
 import { Spinner } from '@qualy/ui/spinner'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+import * as commonMessages from '@qualy/web-i18n/messages'
 
 // What a page shows while its session is being recovered
 // (session-recovery-gate.tsx holds the states; this only draws them).
@@ -103,7 +102,6 @@ export function SessionRecoveryDialog({
   onSignOut: () => void
   onReload: () => void
 }) {
-  const { format } = useI18n()
   // what it said last, kept through the close so the panel does not change
   // its words while it fades
   const [shown, setShown] = useState<SessionRecoveryState>(state ?? 'expired')
@@ -112,23 +110,23 @@ export function SessionRecoveryDialog({
   const face: Record<SessionRecoveryState, { icon: ReactNode; title: string; hint: string }> = {
     expired: {
       icon: <LockKeyholeIcon aria-hidden size={22} />,
-      title: format(commonMessages.sessionLostTitle),
-      hint: format(commonMessages.sessionLostHint),
+      title: commonMessages.session_lostTitle(),
+      hint: commonMessages.session_lostHint(),
     },
     waiting: {
       icon: <Spinner aria-hidden />,
-      title: format(commonMessages.sessionWaitingTitle),
-      hint: format(commonMessages.sessionWaitingHint),
+      title: commonMessages.session_waitingTitle(),
+      hint: commonMessages.session_waitingHint(),
     },
     blocked: {
       icon: <ExternalLinkIcon aria-hidden size={22} />,
-      title: format(commonMessages.sessionBlockedTitle),
-      hint: format(commonMessages.sessionBlockedHint),
+      title: commonMessages.session_blockedTitle(),
+      hint: commonMessages.session_blockedHint(),
     },
     switched: {
       icon: <ArrowRightLeftIcon aria-hidden size={22} />,
-      title: format(commonMessages.sessionSwitchedTitle),
-      hint: format(commonMessages.sessionSwitchedHint),
+      title: commonMessages.session_switchedTitle(),
+      hint: commonMessages.session_switchedHint(),
     },
   }
   const { icon, title, hint } = face[shown]
@@ -139,7 +137,7 @@ export function SessionRecoveryDialog({
   const primary =
     shown === 'switched' ? (
       <Button size="lg" className={grow} data-testid="session-reload" onClick={onReload}>
-        {format(commonMessages.sessionReload)}
+        {commonMessages.session_reload()}
       </Button>
     ) : shown === 'blocked' ? (
       // a link the reader follows: what a browser blocks is a tab a page
@@ -152,12 +150,12 @@ export function SessionRecoveryDialog({
           rel="noopener"
           onClick={onOpenedYourself}
         >
-          {format(commonMessages.sessionOpenSignIn)}
+          {commonMessages.session_openSignIn()}
         </a>
       </Button>
     ) : (
       <Button size="lg" className={grow} data-testid="session-sign-in" onClick={onSignIn}>
-        {format(shown === 'waiting' ? commonMessages.sessionReopen : commonMessages.sessionSignIn)}
+        {(shown === 'waiting' ? commonMessages.session_reopen : commonMessages.session_signIn)()}
       </Button>
     )
 
@@ -197,7 +195,7 @@ export function SessionRecoveryDialog({
               data-testid="session-sign-out"
               onClick={onSignOut}
             >
-              {format(commonMessages.sessionSignOut)}
+              {commonMessages.session_signOut()}
             </Button>
           )}
         </div>

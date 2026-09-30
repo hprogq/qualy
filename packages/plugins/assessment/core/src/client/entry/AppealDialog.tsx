@@ -3,14 +3,16 @@ import { useMutation } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { useApi, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { Feedback, Field, FormDialog } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { Textarea } from '@qualy/ui/textarea'
 import { toast } from '@qualy/ui/toast'
 import { assessmentApi } from '../api.ts'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import { entryRefusalMessage } from './refusals.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // Saying a decision is wrong, without touching the material.
 //
@@ -47,7 +49,7 @@ export function AppealDialog({
 }) {
   const api = useApi(assessmentApi)
   const run = useRunApi()
-  const { format, formatError } = useI18n()
+  const { formatError } = useI18n()
   const [reason, setReason] = useState('')
   const [problem, setProblem] = useState<string | null>(null)
 
@@ -61,34 +63,34 @@ export function AppealDialog({
       ),
     onMutate: () => setProblem(null),
     onSuccess: () => {
-      toast.success(format(m.entryAppealed))
+      toast.success(m.entry_appealed())
       onDone()
     },
     onError: (error: unknown) => {
       const refusal = entryRefusalMessage(error)
-      setProblem(refusal === null ? formatError(error) : format(refusal))
+      setProblem(refusal === null ? formatError(error) : refusal())
     },
   })
 
   return (
     <FormDialog
       open={open}
-      title={format(m.entryAppealTitle)}
-      description={format(m.entryAppealHint)}
+      title={m.entry_appealTitle()}
+      description={m.entry_appealHint()}
       onClose={onClose}
       footer={
         <div {...stylex.props(styles.footer)}>
           <Button variant="outline" onClick={onClose}>
-            {format(commonMessages.cancel)}
+            {commonMessages.action_cancel()}
           </Button>
           <Button disabled={send.isPending || reason.trim() === ''} onClick={() => send.mutate()}>
-            {format(m.entryAppeal)}
+            {m.entry_appeal()}
           </Button>
         </div>
       }
     >
       <div {...stylex.props(styles.body)}>
-        <Field label={format(m.entryAppealReason)} required>
+        <Field label={m.entry_appealReason()} required>
           {(id, control) => (
             <Textarea
               id={id}

@@ -1,8 +1,8 @@
 import * as stylex from '@stylexjs/stylex'
-import { isApiErrorCode, useI18n } from '@qualy/web-i18n'
+import { isApiErrorCode } from '@qualy/web-i18n'
 import { Button } from '@qualy/ui/button'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { assessmentMessages as m } from '../../i18n.ts'
+import * as m from '#messages'
 
 // The score's absence over the entries workspace, said once above everything.
 //
@@ -41,7 +41,6 @@ export function StandingNotice({
   retrying: boolean
   onRetry: () => void
 }) {
-  const { format } = useI18n()
   const tooLarge = isApiErrorCode(error, 'ASSESSMENT_SCORING_ACCOUNT_TOO_LARGE')
   return (
     <div
@@ -52,13 +51,15 @@ export function StandingNotice({
       {...stylex.props(styles.notice)}
     >
       <span {...stylex.props(styles.words)}>
-        {format(
-          stale ? m.resultStaleTitle : tooLarge ? m.resultTooLargeTitle : m.resultUnavailableTitle,
-        )}
+        {(stale
+          ? m.result_staleTitle
+          : tooLarge
+            ? m.result_tooLargeTitle
+            : m.result_unavailableTitle)()}
       </span>
       {!tooLarge && (
         <Button variant="outline" size="sm" disabled={retrying} onClick={onRetry}>
-          {format(m.resultRecalculate)}
+          {m.result_recalculate()}
         </Button>
       )}
     </div>

@@ -13,7 +13,7 @@ import {
   useSessionTransition,
 } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { AsyncSection, ConfirmDialog } from '@qualy/ui/admin'
@@ -32,11 +32,13 @@ import {
 } from '@qualy/ui/screen'
 import { Button } from '@qualy/ui/button'
 import { toast } from '@qualy/ui/toast'
-import { iamMessages as m } from '../i18n.ts'
+
 import { authApi } from '../api.ts'
 import { EntranceAccount } from '../iam/person-facts.tsx'
 import { instantWords } from '../when.ts'
 import { useReauthentication } from './Reauthentication.tsx'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // How the reader can sign in: every way in that is open to them, what it
 // knows them by, and the accounts they bound themselves - which are theirs
@@ -63,7 +65,7 @@ export default function AccountLoginsPage() {
   const query = useApiQuery(authApi)
   const queryClient = useQueryClient()
   const endSession = useSessionTransition()
-  const { format, formatError, locale } = useI18n()
+  const { formatError, locale } = useI18n()
   const describe = useLoadFailure()
   const [releasing, setReleasing] = useState<Entrance | null>(null)
   const [searchParams, setSearchParams] = useSearchParams()
@@ -105,7 +107,7 @@ export default function AccountLoginsPage() {
 
   return (
     <div {...stylex.props(styles.page)}>
-      <SectionHead title={format(m.accountLogins)} />
+      <SectionHead title={m.account_logins()} />
       {failed !== undefined && (
         // what came back from the other side, until the reader has read it:
         // put away, it leaves the address too, so a reload does not say it again
@@ -115,7 +117,7 @@ export default function AccountLoginsPage() {
             <Button
               size="icon-xs"
               variant="ghost"
-              aria-label={format(commonMessages.close)}
+              aria-label={commonMessages.action_close()}
               onClick={() =>
                 setSearchParams(
                   (current) => {
@@ -137,8 +139,8 @@ export default function AccountLoginsPage() {
         error={
           found.isError ? describe.of(found.error) : self.isError ? describe.of(self.error) : null
         }
-        loadingLabel={format(commonMessages.loading)}
-        retryLabel={format(commonMessages.retry)}
+        loadingLabel={commonMessages.state_loading()}
+        retryLabel={commonMessages.action_retry()}
         onRetry={() => {
           void found.refetch()
           void self.refetch()
@@ -151,13 +153,13 @@ export default function AccountLoginsPage() {
       >
         <Card data-testid="account-entrances">
           {entrances.length === 0 ? (
-            <CardEmpty>{format(m.accountLoginsEmpty)}</CardEmpty>
+            <CardEmpty>{m.account_loginsEmpty()}</CardEmpty>
           ) : (
             <Table columns="minmax(0, 1fr) minmax(0, 1.4fr) 9.5rem 7rem">
               <TableHead>
-                <span>{format(m.loginMethodsTitle)}</span>
-                <span>{format(m.columnAccount)}</span>
-                <span>{format(m.columnLastUsed)}</span>
+                <span>{m.loginMethods_title()}</span>
+                <span>{m.person_columnAccount()}</span>
+                <span>{m.person_columnLastUsed()}</span>
                 <span />
               </TableHead>
               {entrances.map((entrance) => {
@@ -188,12 +190,12 @@ export default function AccountLoginsPage() {
                         email: self.data?.email ?? null,
                         businessNo: self.data?.businessNo ?? null,
                       }}
-                      unbound={format(m.accountNotBound)}
+                      unbound={m.account_notBound()}
                     />
                     {entrance.lastSignInAt !== null ? (
                       <Cell numeric>{when(entrance.lastSignInAt)}</Cell>
                     ) : bound !== null || entrance.resolution?.mode === 'user-field' ? (
-                      <Cell tone="quiet">{format(m.neverUsed)}</Cell>
+                      <Cell tone="quiet">{m.person_neverUsed()}</Cell>
                     ) : (
                       <Cell />
                     )}
@@ -205,14 +207,12 @@ export default function AccountLoginsPage() {
                             page; their number is the directory's to give */}
                         {missing === 'email' && securityHref !== undefined && (
                           <Button size="xs" variant="ghost" asChild>
-                            <PageLink page="auth/account-security">
-                              {format(m.accountGoSet)}
-                            </PageLink>
+                            <PageLink page="auth/account-security">{m.account_goSet()}</PageLink>
                           </Button>
                         )}
                         {missing === 'businessNo' && (
                           <span {...stylex.props(styles.quiet)}>
-                            {format(m.accountAskAdministrator)}
+                            {m.account_askAdministrator()}
                           </span>
                         )}
                         {entrance.bindHref !== null && (
@@ -221,7 +221,7 @@ export default function AccountLoginsPage() {
                             variant="ghost"
                             onClick={() => reauthentication.ensure(() => bind(entrance))}
                           >
-                            {format(m.accountBind)}
+                            {m.account_bind()}
                           </Button>
                         )}
                         {entrance.unbindable && (
@@ -231,7 +231,7 @@ export default function AccountLoginsPage() {
                             disabled={release.isPending}
                             onClick={() => setReleasing(entrance)}
                           >
-                            {format(m.accountUnbind)}
+                            {m.account_unbind()}
                           </Button>
                         )}
                       </span>
@@ -248,12 +248,12 @@ export default function AccountLoginsPage() {
       <ConfirmDialog
         open={releasing !== null}
         tone="destructive"
-        title={format(m.accountUnbindTitle, { name: releasing?.name ?? '' })}
-        description={format(m.accountUnbindBody, {
+        title={m.account_unbindTitle({ name: releasing?.name ?? '' })}
+        description={m.account_unbindBody({
           current: releasing?.thisSession === true ? 'yes' : 'no',
         })}
-        confirmLabel={format(m.accountUnbind)}
-        cancelLabel={format(m.cancel)}
+        confirmLabel={m.account_unbind()}
+        cancelLabel={m.action_cancel()}
         pending={release.isPending}
         onCancel={() => setReleasing(null)}
         onConfirm={() => {

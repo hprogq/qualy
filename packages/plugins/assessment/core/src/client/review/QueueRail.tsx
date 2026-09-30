@@ -1,15 +1,16 @@
 import { memo, useEffect, useRef, useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
-import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { Avatar, AvatarFallback } from '@qualy/ui/avatar'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
 import { Kbd } from '@qualy/ui/kbd'
 import { CardEmpty, DetailSheet, FootNote } from '@qualy/ui/screen'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import { useDayClock, type InboxItemDto } from './model.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 const styles = stylex.create({
   list: {
@@ -102,7 +103,6 @@ export const QueueRail = memo(function QueueRail({
   onOpen: (id: string) => void
   onBack: () => void
 }) {
-  const { format } = useI18n()
   const dayClock = useDayClock()
   const [at, setAt] = useState(0)
   const list = useRef<HTMLUListElement>(null)
@@ -166,10 +166,10 @@ export const QueueRail = memo(function QueueRail({
     <DetailSheet
       open={open}
       onClose={onToggle}
-      title={format(m.reviewQueueTitle)}
+      title={m.review_queueTitle()}
       titleAside={<span {...stylex.props(styles.count)}>{remainingCount}</span>}
       width="narrow"
-      closeLabel={format(commonMessages.close)}
+      closeLabel={commonMessages.action_close()}
       testId="queue-sheet"
       footer={
         <>
@@ -177,22 +177,22 @@ export const QueueRail = memo(function QueueRail({
             <span {...stylex.props(styles.keys)}>
               <Kbd>↑</Kbd>
               <Kbd>↓</Kbd>
-              {format(m.reviewQueueKeysMove)}
+              {m.review_queueKeysMove()}
               <Kbd>↵</Kbd>
-              {format(m.reviewQueueKeysOpen)}
+              {m.review_queueKeysOpen()}
               <Kbd>Esc</Kbd>
-              {format(commonMessages.close)}
+              {commonMessages.action_close()}
             </span>
           </FootNote>
           <span {...stylex.props(styles.spacer)} />
           <Button variant="outline" size="sm" onClick={onBack}>
-            {format(m.reviewBackToQueue)}
+            {m.review_backToQueue()}
           </Button>
         </>
       }
     >
       {rows.length === 0 ? (
-        <CardEmpty>{format(m.reviewQueueEmpty)}</CardEmpty>
+        <CardEmpty>{m.review_queueEmpty()}</CardEmpty>
       ) : (
         <ul ref={list} {...stylex.props(styles.list)}>
           {rows.map((row, index) => {
@@ -221,7 +221,7 @@ export const QueueRail = memo(function QueueRail({
                   <span {...stylex.props(styles.words)}>
                     <span {...stylex.props(styles.nameLine)}>
                       <span {...stylex.props(styles.name)}>{row.participantName}</span>
-                      {current && <Badge variant="secondary">{format(m.reviewQueueCurrent)}</Badge>}
+                      {current && <Badge variant="secondary">{m.review_queueCurrent()}</Badge>}
                     </span>
                     <span {...stylex.props(styles.item)}>{row.itemTitle}</span>
                   </span>

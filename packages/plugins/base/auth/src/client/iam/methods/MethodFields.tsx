@@ -9,8 +9,9 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@qualy/ui/c
 import { Input } from '@qualy/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@qualy/ui/select'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { iamMessages as m } from '../../i18n.ts'
+
 import { fieldShown, formValues, type EntranceField, type EntranceKind } from './form-values.ts'
+import * as m from '#messages'
 
 // The boxes one kind of entrance asked for, and nothing this screen decided:
 // what a CAS server or an OAuth client needs to be told is the driver's
@@ -90,7 +91,7 @@ export function MethodFields({
   clearable?: (key: string) => boolean
   disabled?: boolean
 }) {
-  const { format, formatText } = useI18n()
+  const { formatText } = useI18n()
   const [folded, setFolded] = useState(false)
 
   const values = formValues(kind, config, draft)
@@ -104,7 +105,7 @@ export function MethodFields({
     const unreadable = stored && kept?.readable === false
     const hint =
       field.kind === 'secret' && stored
-        ? format(unreadable ? m.methodSecretUnreadable : m.methodSecretStored)
+        ? (unreadable ? m.loginMethods_secretUnreadable : m.loginMethods_secretStored)()
         : field.hint === null
           ? undefined
           : formatText(field.hint)
@@ -143,7 +144,7 @@ export function MethodFields({
                 disabled={disabled}
               >
                 <SelectTrigger id={id} data-field-key={field.key}>
-                  <SelectValue placeholder={format(m.methodChoose)} />
+                  <SelectValue placeholder={m.loginMethods_choose()} />
                 </SelectTrigger>
                 <SelectContent>
                   {field.options.map((option) => (
@@ -199,11 +200,11 @@ export function MethodFields({
                 size="sm"
                 variant="outline"
                 data-testid="secret-clear"
-                aria-label={format(m.methodSecretClearLabel, { field: formatText(field.label) })}
+                aria-label={m.loginMethods_secretClearLabel({ field: formatText(field.label) })}
                 disabled={disabled || !clearable(field.key)}
                 onClick={() => onClear(field.key)}
               >
-                {format(m.methodSecretClear)}
+                {m.loginMethods_secretClear()}
               </Button>
             </span>
           )
@@ -222,7 +223,7 @@ export function MethodFields({
           <div {...stylex.props(styles.fold)}>
             <CollapsibleTrigger asChild>
               <button type="button" {...stylex.props(styles.foldKey)}>
-                {format(m.methodAdvanced)}
+                {m.loginMethods_advanced()}
                 <ChevronDownIcon
                   aria-hidden
                   {...stylex.props(styles.foldGlyph, folded && styles.foldGlyphOpen)}

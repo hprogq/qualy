@@ -12,7 +12,7 @@ import {
   useLoadFailure,
 } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { useTerm } from '@qualy/plugin-settings/client/terms'
 import { authTerms } from '@qualy/auth-contract/terms'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
@@ -33,7 +33,7 @@ import {
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
 import { toast } from '@qualy/ui/toast'
-import { iamMessages as m } from '../i18n.ts'
+
 import { authApi } from '../api.ts'
 import { needsReauthentication, useReauthentication } from '../account/Reauthentication.tsx'
 import { PasswordChecklist } from '../password/PasswordChecklist.tsx'
@@ -41,6 +41,8 @@ import { usePasswordChecks } from '../password/checks.ts'
 import { EntranceAccount } from './person-facts.tsx'
 import { AccountFieldDialog } from './users/AccountFieldDialog.tsx'
 import { instantWords } from '../when.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // How one person gets in, as somebody administering them reads it.
 //
@@ -77,7 +79,7 @@ export default function UserIdentitiesPage() {
   const run = useRunApi()
   const query = useApiQuery(authApi)
   const queryClient = useQueryClient()
-  const { format, formatError, locale } = useI18n()
+  const { formatError, locale } = useI18n()
   // a reading of this section that failed; the person not being there is the banner's to say
   const describe = useLoadFailure()
   const entrancesHref = usePageHref('auth/login-methods')
@@ -115,14 +117,14 @@ export default function UserIdentitiesPage() {
   return (
     <div {...stylex.props(styles.page)}>
       <SectionHead
-        title={format(m.identitiesSection)}
+        title={m.person_identitiesSection()}
         actions={
           entrancesHref !== undefined && (
             <PageLink
               page="auth/login-methods"
               className={stylex.props(styles.manageLink).className}
             >
-              {format(m.manageWaysIn)}
+              {m.person_manageWaysIn()}
             </PageLink>
           )
         }
@@ -136,8 +138,8 @@ export default function UserIdentitiesPage() {
               ? describe.of(person.error)
               : null
         }
-        loadingLabel={format(commonMessages.loading)}
-        retryLabel={format(commonMessages.retry)}
+        loadingLabel={commonMessages.state_loading()}
+        retryLabel={commonMessages.action_retry()}
         onRetry={() => {
           void found.refetch()
           void person.refetch()
@@ -146,13 +148,13 @@ export default function UserIdentitiesPage() {
       >
         <Card data-testid="entrances">
           {entrances.length === 0 ? (
-            <CardEmpty>{format(m.loginMethodsEmpty)}</CardEmpty>
+            <CardEmpty>{m.loginMethods_empty()}</CardEmpty>
           ) : (
             <Table columns="minmax(0, 1fr) minmax(0, 1.4fr) 9.5rem 9rem">
               <TableHead>
-                <span>{format(m.loginMethodsTitle)}</span>
-                <span>{format(m.columnAccount)}</span>
-                <span>{format(m.columnLastUsed)}</span>
+                <span>{m.loginMethods_title()}</span>
+                <span>{m.person_columnAccount()}</span>
+                <span>{m.person_columnLastUsed()}</span>
                 <span />
               </TableHead>
               {entrances.map((entrance) => {
@@ -199,7 +201,7 @@ export default function UserIdentitiesPage() {
                           whoever is debugging */}
                       <LeadWord>{entrance.name}</LeadWord>
                       {entrance.status === 'disabled' && (
-                        <Status tone="bad">{format(m.entranceDisabled)}</Status>
+                        <Status tone="bad">{m.person_entranceDisabled()}</Status>
                       )}
                     </Cell>
                     <EntranceAccount
@@ -212,7 +214,7 @@ export default function UserIdentitiesPage() {
                     {entrance.lastSignInAt !== null ? (
                       <Cell numeric>{when(entrance.lastSignInAt)}</Cell>
                     ) : bound !== null || entrance.resolution?.mode === 'user-field' ? (
-                      <Cell tone="quiet">{format(m.neverUsed)}</Cell>
+                      <Cell tone="quiet">{m.person_neverUsed()}</Cell>
                     ) : (
                       <Cell />
                     )}
@@ -223,15 +225,15 @@ export default function UserIdentitiesPage() {
                         {missing !== null && (
                           <Button size="xs" variant="ghost" onClick={() => setFilling(missing)}>
                             {missing === 'email'
-                              ? format(m.emailSetTitle)
-                              : format(m.businessNoSetTitle, { businessNo: businessNoWord })}
+                              ? m.account_emailSetTitle()
+                              : m.person_businessNoSetTitle({ businessNo: businessNoWord })}
                           </Button>
                         )}
                         {settable && (
                           <Button size="xs" variant="ghost" onClick={() => setEditing(entrance)}>
-                            {format(
-                              bound?.hasCredential === true ? m.passwordReset : m.passwordSet,
-                            )}
+                            {(bound?.hasCredential === true
+                              ? m.person_passwordReset
+                              : m.person_passwordSet)()}
                           </Button>
                         )}
                         {manageable && bound !== null && (
@@ -241,7 +243,7 @@ export default function UserIdentitiesPage() {
                             disabled={revoke.isPending && revoke.variables === entrance}
                             onClick={() => setRevoking(entrance)}
                           >
-                            {format(m.identityRevoke)}
+                            {m.person_identityRevoke()}
                           </Button>
                         )}
                       </span>
@@ -283,10 +285,10 @@ export default function UserIdentitiesPage() {
       <ConfirmDialog
         open={revoking !== null}
         tone="destructive"
-        title={format(m.identityRevokeTitle)}
-        description={format(m.identityRevokeBody)}
-        confirmLabel={format(m.identityRevoke)}
-        cancelLabel={format(m.cancel)}
+        title={m.person_identityRevokeTitle()}
+        description={m.person_identityRevokeBody()}
+        confirmLabel={m.person_identityRevoke()}
+        cancelLabel={m.action_cancel()}
         pending={revoke.isPending}
         onCancel={() => setRevoking(null)}
         onConfirm={() => {
@@ -316,7 +318,7 @@ function PasswordDialog({
   const run = useRunApi()
   const query = useApiQuery(authApi)
   const queryClient = useQueryClient()
-  const { format, formatText, formatError } = useI18n()
+  const { formatText, formatError } = useI18n()
   const binding = entrance.binding?.mode === 'managed' ? entrance.binding : null
   const [secret, setSecret] = useState('')
   const [feedback, setFeedback] = useState<string | null>(null)
@@ -348,7 +350,7 @@ function PasswordDialog({
     onMutate: () => setFeedback(null),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: query.identity.key() })
-      toast.success(format(m.saved))
+      toast.success(m.feedback_saved())
       onClose()
     },
     onError: (error: unknown) => {
@@ -369,20 +371,20 @@ function PasswordDialog({
         open
         // what the dialog does, never the door's own name: a door called
         // "email and password" made "set the email and password password"
-        title={format(replacing ? m.passwordResetTitle : m.passwordSetTitle)}
-        description={format(replacing ? m.passwordResetFor : m.passwordFor, person)}
+        title={(replacing ? m.person_passwordResetTitle : m.person_passwordSetTitle)()}
+        description={(replacing ? m.person_passwordResetFor : m.person_passwordFor)(person)}
         onClose={onClose}
         footer={
           <>
             <Button variant="outline" onClick={onClose}>
-              {format(m.cancel)}
+              {m.action_cancel()}
             </Button>
             <Button
               type="submit"
               form="user-auth-binding"
               disabled={secret === '' || save.isPending}
             >
-              {format(m.save)}
+              {m.action_save()}
             </Button>
           </>
         }

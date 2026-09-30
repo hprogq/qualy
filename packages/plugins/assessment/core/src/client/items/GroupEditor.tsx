@@ -3,18 +3,20 @@ import { useMutation } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { useApi, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { ConfirmDialog, Field, SidePanel } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
 import { toast } from '@qualy/ui/toast'
-import type { MessageDescriptor } from '@qualy/i18n-contract'
+import type { Message } from '@qualy/i18n-contract'
 import { assessmentApi } from '../api.ts'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import { Choice } from './Choice.tsx'
 import { trimAmount } from '../entry/model.ts'
 import type { TreeGroup } from './paper.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // One section of the paper: its name and its two limits.
 //
@@ -78,7 +80,7 @@ export function GroupEditor({
 }) {
   const api = useApi(assessmentApi)
   const run = useRunApi()
-  const { format, formatError } = useI18n()
+  const { formatError } = useI18n()
   // a group holds questions; taking it away is not a keystroke
   const [removing, setRemoving] = useState(false)
   const [name, setName] = useState(editing?.name ?? '')
@@ -164,7 +166,7 @@ export function GroupEditor({
     },
     onMutate: () => setRefusals([]),
     onSuccess: (result: { groups: readonly { id: string; name: string }[] }) => {
-      toast.success(format(m.itemsGroupsSaved))
+      toast.success(m.items_groupsSaved())
       const known = new Set(groups.map((group) => group.id))
       const landed = editing?.id ?? result.groups.find((group) => !known.has(group.id))?.id ?? null
       onDone(landed)
@@ -186,7 +188,7 @@ export function GroupEditor({
       ),
     onMutate: () => setRefusals([]),
     onSuccess: () => {
-      toast.success(format(m.itemsGroupsSaved))
+      toast.success(m.items_groupsSaved())
       onDone(null)
     },
     onError,
@@ -195,7 +197,7 @@ export function GroupEditor({
   return (
     <SidePanel
       open={open}
-      title={format(editing === null ? m.itemsGroupNew : m.itemsGroupEditing)}
+      title={(editing === null ? m.items_groupNew : m.items_groupEditing)()}
       onClose={onClose}
       footer={
         <>
@@ -207,21 +209,21 @@ export function GroupEditor({
                 disabled={remove.isPending}
                 onClick={() => setRemoving(true)}
               >
-                {format(m.itemsGroupRemove)}
+                {m.items_groupRemove()}
               </Button>
               <span {...stylex.props(styles.footerGap)} />
             </>
           )}
           <Button variant="outline" onClick={onClose}>
-            {format(commonMessages.cancel)}
+            {commonMessages.action_cancel()}
           </Button>
           <Button disabled={save.isPending || name.trim() === ''} onClick={() => save.mutate()}>
-            {format(m.entrySave)}
+            {m.entry_save()}
           </Button>
         </>
       }
     >
-      <Field label={format(m.itemsGroupName)} required>
+      <Field label={m.items_groupName()} required>
         {(id, control) => (
           <Input
             id={id}
@@ -233,14 +235,14 @@ export function GroupEditor({
         )}
       </Field>
       {movable && (
-        <Field label={format(m.itemsGroupParent)} hint={format(m.itemsGroupParentHint)}>
+        <Field label={m.items_groupParent()} hint={m.items_groupParentHint()}>
           {(id) => (
             <Choice
               id={id}
               value={parent}
               options={destinations.map((group) => ({
                 value: group.id,
-                label: group.name.trim() === '' ? format(m.itemsGroupUnnamed) : group.name,
+                label: group.name.trim() === '' ? m.items_groupUnnamed() : group.name,
               }))}
               onChange={setParent}
             />
@@ -248,17 +250,17 @@ export function GroupEditor({
         </Field>
       )}
       <div {...stylex.props(styles.limitGrid)}>
-        <Field label={format(m.itemsGroupCap)} hint={format(m.itemsGroupCapHint)}>
+        <Field label={m.items_groupCap()} hint={m.items_groupCapHint()}>
           {(id) => <Input id={id} value={cap} onChange={(event) => setCap(event.target.value)} />}
         </Field>
-        <Field label={format(m.itemsGroupFloor)} hint={format(m.itemsGroupFloorHint)}>
+        <Field label={m.items_groupFloor()} hint={m.items_groupFloorHint()}>
           {(id) => (
             <Input id={id} value={floor} onChange={(event) => setFloor(event.target.value)} />
           )}
         </Field>
       </div>
       {batchStatus === 'active' && (
-        <Field label={format(m.itemsFieldReason)} hint={format(m.itemsGroupsReasonHint)}>
+        <Field label={m.items_fieldReason()} hint={m.items_groupsReasonHint()}>
           {(id) => (
             <Input id={id} value={reason} onChange={(event) => setReason(event.target.value)} />
           )}
@@ -269,7 +271,7 @@ export function GroupEditor({
           {refusals.map((refusal, index) => (
             <li key={index}>
               {groups.find((group) => group.id === refusal.groupId)?.name ?? ''}{' '}
-              {format(GROUP_REFUSALS[refusal.reason] ?? m.itemsGroupRefusedOther)}
+              {(GROUP_REFUSALS[refusal.reason] ?? m.items_groupRefusedOther)()}
             </li>
           ))}
         </ul>
@@ -277,10 +279,10 @@ export function GroupEditor({
       <ConfirmDialog
         open={removing}
         tone="destructive"
-        title={format(m.itemsGroupRemoveTitle)}
-        description={format(m.itemsGroupRemoveHint)}
-        confirmLabel={format(m.itemsGroupRemove)}
-        cancelLabel={format(commonMessages.cancel)}
+        title={m.items_groupRemoveTitle()}
+        description={m.items_groupRemoveHint()}
+        confirmLabel={m.items_groupRemove()}
+        cancelLabel={commonMessages.action_cancel()}
         pending={remove.isPending}
         onCancel={() => setRemoving(false)}
         onConfirm={() => {
@@ -292,14 +294,14 @@ export function GroupEditor({
   )
 }
 
-const GROUP_REFUSALS: Record<string, MessageDescriptor> = {
-  'group-not-found': m.itemsGroupRefusedNotFound,
-  'group-has-items': m.itemsGroupRefusedHasItems,
-  'group-has-children': m.itemsGroupRefusedHasChildren,
-  'floor-above-cap': m.itemsGroupRefusedFloorAboveCap,
-  'reason-required': m.itemsGroupRefusedReason,
-  'parent-not-in-batch': m.itemsGroupRefusedParent,
-  'parent-is-self': m.itemsGroupRefusedParent,
-  'parent-cycle': m.itemsGroupRefusedParent,
-  'one-paper-only': m.itemsGroupRefusedOnePaper,
+const GROUP_REFUSALS: Record<string, Message> = {
+  'group-not-found': m.items_groupRefusedNotFound,
+  'group-has-items': m.items_groupRefusedHasItems,
+  'group-has-children': m.items_groupRefusedHasChildren,
+  'floor-above-cap': m.items_groupRefusedFloorAboveCap,
+  'reason-required': m.items_groupRefusedReason,
+  'parent-not-in-batch': m.items_groupRefusedParent,
+  'parent-is-self': m.items_groupRefusedParent,
+  'parent-cycle': m.items_groupRefusedParent,
+  'one-paper-only': m.items_groupRefusedOnePaper,
 }

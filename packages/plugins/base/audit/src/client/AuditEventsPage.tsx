@@ -14,7 +14,7 @@ import {
   useRunApi,
 } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { AsyncSection, FormDialog } from '@qualy/ui/admin'
 import { Blank, Card, CardFoot, FootNote, Screen, Spacer, TableSkeleton } from '@qualy/ui/screen'
 import { Skeleton } from '@qualy/ui/skeleton'
@@ -22,9 +22,11 @@ import { Button } from '@qualy/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@qualy/ui/select'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
-import { auditMessages as m } from './i18n.ts'
+
 import { auditApi } from './api.ts'
 import { EventTable } from './EventTable.tsx'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // The trail, newest first. One table, three filters, a row opens into its
 // correlation ids and details - reading is the whole page, because writing
@@ -58,7 +60,7 @@ export default function AuditEventsPage() {
   const api = useApi(auditApi)
   const runApi = useRunApi()
   const query = useApiQuery(auditApi)
-  const { format, formatText } = useI18n()
+  const { formatText } = useI18n()
   const failures = useLoadFailure()
   const [action, setAction] = usePageQueryState('action')
   const [outcome, setOutcome] = usePageQueryState('outcome')
@@ -88,7 +90,7 @@ export default function AuditEventsPage() {
   const rows = useMemo(() => events.data?.pages.flatMap((page) => page.items) ?? [], [events.data])
 
   return (
-    <Screen title={format(m.title)} description={format(m.hint)} size="broad">
+    <Screen title={m.events_title()} description={m.events_hint()} size="broad">
       <div {...stylex.props(styles.filters)}>
         <Select
           value={action || ALL}
@@ -98,7 +100,7 @@ export default function AuditEventsPage() {
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value={ALL}>{format(m.anyAction)}</SelectItem>
+            <SelectItem value={ALL}>{m.events_anyAction()}</SelectItem>
             {(options.data?.actions ?? []).map((entry) => (
               <SelectItem key={entry.code} value={entry.code}>
                 {formatText(entry.name)}
@@ -114,10 +116,10 @@ export default function AuditEventsPage() {
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value={ALL}>{format(m.anyOutcome)}</SelectItem>
-            <SelectItem value="success">{format(m.outcomeSuccess)}</SelectItem>
-            <SelectItem value="denied">{format(m.outcomeDenied)}</SelectItem>
-            <SelectItem value="failure">{format(m.outcomeFailure)}</SelectItem>
+            <SelectItem value={ALL}>{m.events_anyOutcome()}</SelectItem>
+            <SelectItem value="success">{m.events_outcomeSuccess()}</SelectItem>
+            <SelectItem value="denied">{m.events_outcomeDenied()}</SelectItem>
+            <SelectItem value="failure">{m.events_outcomeFailure()}</SelectItem>
           </SelectContent>
         </Select>
         {actor === '' ? (
@@ -129,7 +131,7 @@ export default function AuditEventsPage() {
               onClick={() => setPickingActor(true)}
             >
               <UserRoundIcon aria-hidden />
-              {format(m.anyActor)}
+              {m.filter_anyActor()}
             </Button>
           )
         ) : (
@@ -142,7 +144,7 @@ export default function AuditEventsPage() {
             onClick={() => setActor('')}
           >
             <span {...stylex.props(styles.actorWord)}>
-              {rows.find((row) => row.actorUserId === actor)?.actorLabel ?? format(m.oneActor)}
+              {rows.find((row) => row.actorUserId === actor)?.actorLabel ?? m.filter_oneActor()}
             </span>
             <XIcon aria-hidden />
           </Button>
@@ -153,17 +155,17 @@ export default function AuditEventsPage() {
         pending={events.isPending}
         error={events.isError ? failures.of(events.error) : undefined}
         framed
-        loadingLabel={format(commonMessages.loading)}
-        retryLabel={format(commonMessages.retry)}
+        loadingLabel={commonMessages.state_loading()}
+        retryLabel={commonMessages.action_retry()}
         onRetry={() => void events.refetch()}
         skeleton={<TableSkeleton />}
       >
         <Card data-testid="audit-table">
-          <EventTable rows={rows} empty={format(m.empty)} onlyActor={setActor} />
+          <EventTable rows={rows} empty={m.events_empty()} onlyActor={setActor} />
           <CardFoot>
             <FootNote>
               <span data-testid="audit-count" data-count={rows.length}>
-                {format(m.loadedCount, { count: rows.length })}
+                {m.events_loadedCount({ count: rows.length })}
               </span>
             </FootNote>
             <Spacer />
@@ -174,7 +176,7 @@ export default function AuditEventsPage() {
                 disabled={events.isFetchingNextPage}
                 onClick={() => void events.fetchNextPage()}
               >
-                {format(m.loadMore)}
+                {m.events_loadMore()}
               </Button>
             )}
           </CardFoot>
@@ -186,7 +188,7 @@ export default function AuditEventsPage() {
       <FormDialog
         open={pickingActor && pickable}
         size="wide"
-        title={format(m.pickActor)}
+        title={m.filter_pickActor()}
         onClose={() => setPickingActor(false)}
       >
         <div {...stylex.props(styles.pickerSeat)}>
@@ -207,8 +209,8 @@ export default function AuditEventsPage() {
               <Blank
                 size="compact"
                 icon={<UserRoundXIcon />}
-                title={format(m.pickActorUnavailableTitle)}
-                description={format(m.pickActorUnavailable)}
+                title={m.filter_pickActorUnavailableTitle()}
+                description={m.filter_pickActorUnavailable()}
               />
             }
           />

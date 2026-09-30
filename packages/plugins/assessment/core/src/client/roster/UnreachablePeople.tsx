@@ -2,16 +2,17 @@ import { useState } from 'react'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { useApiQuery, useLoadFailure } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { AsyncSection } from '@qualy/ui/admin'
 import { Pager } from '@qualy/ui/pager'
 import { UnitPath } from '@qualy/ui/unit-path'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { assessmentApi } from '../api.ts'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import { UNNAMED } from './unit-path.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // The people on the roster a review route finds nowhere (§32.93), a page at
 // a time: for a saved question's route, or for the unit kinds a route still
@@ -94,7 +95,7 @@ export function UnreachablePeople({
   onOpenPerson?: (participantId: string) => void
 }) {
   const query = useApiQuery(assessmentApi)
-  const { format } = useI18n()
+
   const failures = useLoadFailure()
   const [page, setPage] = useState(1)
   const asked =
@@ -113,8 +114,8 @@ export function UnreachablePeople({
       pending={people.isPending}
       error={people.isError ? failures.of(people.error) : null}
       retrying={people.isFetching}
-      loadingLabel={format(commonMessages.loading)}
-      retryLabel={format(commonMessages.retry)}
+      loadingLabel={commonMessages.state_loading()}
+      retryLabel={commonMessages.action_retry()}
       onRetry={() => void people.refetch()}
     >
       <ul data-testid="unreachable-people" data-total={total} {...stylex.props(styles.people)}>
@@ -166,7 +167,7 @@ export function UnreachablePeople({
           <Pager
             compact
             testId="unreachable-pager"
-            label={format(m.unreachablePeoplePager)}
+            label={m.roster_unreachablePeoplePager()}
             page={people.data?.page ?? page}
             pageSize={PAGE_SIZE}
             total={total}

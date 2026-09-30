@@ -3,8 +3,8 @@ import { useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { PlusIcon } from 'lucide-react'
 import { useApiQuery } from '@qualy/web-runtime'
-import { useI18n, useList } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+import { useList } from '@qualy/web-i18n'
+
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { Field, RadioGroup } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
@@ -14,10 +14,12 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@qualy
 import { MAX_STAGES_PER_ROUTE } from '../../api.ts'
 import { assessmentApi } from '../api.ts'
 import { Choice } from './Choice.tsx'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import { EditorSheet } from './editor/EditorSheet.tsx'
 import { stageIssuesOf } from './editor/model.ts'
 import type { ItemOptions } from './options.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // One step of a review chain, composed away from the chain.
 //
@@ -118,7 +120,7 @@ export function StageSheet({
   onClose: () => void
 }) {
   const query = useApiQuery(assessmentApi)
-  const { format } = useI18n()
+
   const listJoin = useList()
   const [local, setLocal] = useState<StageDraft>(stage)
   // a stored step that is already wanting says so at once; a new one waits
@@ -146,14 +148,14 @@ export function StageSheet({
   const others = route.filter((one) => one.key !== stage.key)
   const [place, setPlace] = useState(Math.max(0, Math.min(at, others.length)))
   const nameOf = (one: StageDraft) =>
-    one.label.trim() === '' ? format(m.itemsStageUnnamed) : one.label.trim()
+    one.label.trim() === '' ? m.items_stageUnnamed() : one.label.trim()
   const places = Array.from({ length: others.length + 1 }, (_unused, index) => ({
     value: String(index),
-    label: format(m.itemsStagePositionOption, { n: index + 1 }),
+    label: m.items_stagePositionOption({ n: index + 1 }),
     description:
       index === others.length
-        ? format(m.itemsStagePositionLast)
-        : format(m.itemsStagePositionBefore, { name: nameOf(others[index]!) }),
+        ? m.items_stagePositionLast()
+        : m.items_stagePositionBefore({ name: nameOf(others[index]!) }),
   }))
   const escalation = local.chain === 'escalation'
   // where this route ends is where its final voice is; a panel there waits
@@ -182,10 +184,10 @@ export function StageSheet({
       open={open}
       title={
         local.label.trim() === ''
-          ? format(fresh ? m.itemsStageNew : m.itemsStageUnnamed)
+          ? (fresh ? m.items_stageNew : m.items_stageUnnamed)()
           : local.label.trim()
       }
-      tag={format(escalation ? m.itemsEscalationStageTag : m.itemsStageSettings)}
+      tag={(escalation ? m.items_escalationStageTag : m.items_stageSettings)()}
       onClose={onClose}
       testId="stage-sheet"
       footer={
@@ -198,7 +200,7 @@ export function StageSheet({
                 className={stylex.props(styles.danger).className}
                 onClick={onRemove}
               >
-                {format(m.itemsStageRemove)}
+                {m.items_stageRemove()}
               </Button>
             ) : (
               <TooltipProvider>
@@ -206,25 +208,25 @@ export function StageSheet({
                   <TooltipTrigger asChild>
                     <span {...stylex.props(styles.inlineFlex)}>
                       <Button variant="ghost" disabled>
-                        {format(m.itemsStageRemove)}
+                        {m.items_stageRemove()}
                       </Button>
                     </span>
                   </TooltipTrigger>
-                  <TooltipContent>{format(m.itemsStageKeepOne)}</TooltipContent>
+                  <TooltipContent>{m.items_stageKeepOne()}</TooltipContent>
                 </Tooltip>
               </TooltipProvider>
             ))}
           <span {...stylex.props(styles.spacer)} />
           <Button variant="outline" onClick={onClose}>
-            {format(commonMessages.cancel)}
+            {commonMessages.action_cancel()}
           </Button>
           <Button onClick={confirm} data-testid="stage-apply">
-            {format(fresh ? m.itemsStageAddConfirm : m.itemsDone)}
+            {(fresh ? m.items_stageAddConfirm : m.items_done)()}
           </Button>
         </>
       }
     >
-      <Field label={format(m.itemsStageLabel)} hint={format(m.itemsStageLabelHint)}>
+      <Field label={m.items_stageLabel()} hint={m.items_stageLabelHint()}>
         {(id) => (
           <>
             <Input
@@ -234,7 +236,7 @@ export function StageSheet({
               required
               aria-required
               aria-invalid={says('label') || undefined}
-              placeholder={format(m.itemsStageLabelPlaceholder)}
+              placeholder={m.items_stageLabelPlaceholder()}
               onChange={(event) => patch({ label: event.target.value })}
             />
             {says('label') && (
@@ -244,21 +246,21 @@ export function StageSheet({
                 data-testid="stage-problem"
                 data-about="label"
               >
-                {format(m.itemsStageLabelRequired)}
+                {m.items_stageLabelRequired()}
               </p>
             )}
           </>
         )}
       </Field>
 
-      <Field label={format(m.itemsStageKind)}>
+      <Field label={m.items_stageKind()}>
         {(id) => (
           <Choice
             id={id}
             value={local.kind}
             options={[
-              { value: 'roleAt', label: format(m.itemsStageRoleAt) },
-              { value: 'nearestRole', label: format(m.itemsStageNearestRole) },
+              { value: 'roleAt', label: m.items_stageRoleAt() },
+              { value: 'nearestRole', label: m.items_stageNearestRole() },
             ]}
             onChange={(next) => patch({ kind: next as StageDraft['kind'] })}
           />
@@ -267,7 +269,7 @@ export function StageSheet({
 
       {local.kind === 'roleAt' ? (
         <>
-          <Field label={format(m.itemsReviewLevel)}>
+          <Field label={m.items_reviewLevel()}>
             {(id) => (
               <>
                 <Choice
@@ -287,13 +289,13 @@ export function StageSheet({
                     data-testid="stage-problem"
                     data-about="level"
                   >
-                    {format(m.itemsStageLevelRequired)}
+                    {m.items_stageLevelRequired()}
                   </p>
                 )}
               </>
             )}
           </Field>
-          <Field label={format(m.itemsReviewRoles)} hint={format(m.itemsReviewRolesHint)}>
+          <Field label={m.items_reviewRoles()} hint={m.items_reviewRolesHint()}>
             {() => (
               <>
                 <div {...stylex.props(styles.roleList)}>
@@ -321,7 +323,7 @@ export function StageSheet({
                     data-testid="stage-problem"
                     data-about="roles"
                   >
-                    {format(m.itemsStageRolesRequired)}
+                    {m.items_stageRolesRequired()}
                   </p>
                 )}
               </>
@@ -335,17 +337,17 @@ export function StageSheet({
               )}
             >
               {coverage.data.nodes.length === 0
-                ? format(m.itemsReviewNoUnits)
+                ? m.items_reviewNoUnits()
                 : uncovered.length === 0
-                  ? format(m.itemsReviewCovered, { count: coverage.data.nodes.length })
-                  : format(m.itemsReviewUncovered, {
+                  ? m.items_reviewCovered({ count: coverage.data.nodes.length })
+                  : m.items_reviewUncovered({
                       names: listJoin(uncovered.map((node) => node.name)),
                     })}
             </p>
           )}
         </>
       ) : (
-        <Field label={format(m.itemsStageRole)} hint={format(m.itemsStageNearestHint)}>
+        <Field label={m.items_stageRole()} hint={m.items_stageNearestHint()}>
           {(id) => (
             <>
               <Choice
@@ -362,7 +364,7 @@ export function StageSheet({
                   data-testid="stage-problem"
                   data-about="role"
                 >
-                  {format(m.itemsStageRoleRequired)}
+                  {m.items_stageRoleRequired()}
                 </p>
               )}
             </>
@@ -371,7 +373,7 @@ export function StageSheet({
       )}
 
       {places.length > 1 && (
-        <Field label={format(m.itemsStagePosition)}>
+        <Field label={m.items_stagePosition()}>
           {(id) => (
             <Choice
               id={id}
@@ -390,7 +392,7 @@ export function StageSheet({
       {escalation && (
         <div data-testid="stage-participation" data-owed={owesSuccessor}>
           <RadioGroup
-            legend={format(m.itemsStageParticipation)}
+            legend={m.items_stageParticipation()}
             name={`participation-${stage.key}`}
             variant="cards"
             selected={local.participation}
@@ -398,13 +400,13 @@ export function StageSheet({
             options={[
               {
                 value: 'any',
-                label: format(m.itemsStageAnyone),
-                hint: format(m.itemsStageAnyoneHint),
+                label: m.items_stageAnyone(),
+                hint: m.items_stageAnyoneHint(),
               },
               {
                 value: 'all',
-                label: format(m.itemsStageEveryone),
-                hint: format(m.itemsStageEveryoneHint),
+                label: m.items_stageEveryone(),
+                hint: m.items_stageEveryoneHint(),
               },
             ]}
           />
@@ -412,7 +414,7 @@ export function StageSheet({
       )}
       {owesSuccessor && (
         <div {...stylex.props(styles.owed)} data-testid="stage-owed">
-          <p {...stylex.props(styles.owedWords)}>{format(m.itemsStageEveryoneLast)}</p>
+          <p {...stylex.props(styles.owedWords)}>{m.items_stageEveryoneLast()}</p>
           {roomAfter && onApplyAndAdd !== undefined && (
             <Button
               variant="outline"
@@ -421,7 +423,7 @@ export function StageSheet({
               data-testid="stage-add-after"
             >
               <PlusIcon aria-hidden />
-              {format(m.itemsStageAddAfter)}
+              {m.items_stageAddAfter()}
             </Button>
           )}
         </div>

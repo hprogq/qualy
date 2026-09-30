@@ -1,4 +1,3 @@
-import type { useI18n } from '@qualy/web-i18n'
 import {
   choiceLabel,
   constraintOf,
@@ -10,16 +9,15 @@ import {
   type ChoiceSchema,
   type NormalizedInputSchema,
 } from '@qualy/value-schema'
-import { formulaMessages as m } from './i18n.ts'
+
 import { kindWords } from './kind-words.ts'
 import { CASE_NOT_RUN, FAILED_UNDER_SCORING_BUDGET, OVER_SCORING_BUDGET } from '../report-codes.ts'
+import * as m from '#messages'
 
 // What a run, a publication's report or a refused contract says, in the
 // author's language rather than the validator's. The draft's examples and a
 // publication's frozen report speak about the same kinds of outcome, so both
 // read them through these.
-
-type Format = ReturnType<typeof useI18n>['format']
 
 export interface ReportProblem {
   readonly at: 'input' | 'expected' | 'output'
@@ -37,136 +35,136 @@ export interface OutcomeLike {
   readonly problems?: unknown
 }
 
-export const reasonWords = (format: Format, problem: ReportProblem): string => {
+export const reasonWords = (problem: ReportProblem): string => {
   const constraint = problem.constraint ?? ''
   switch (problem.reason) {
     case 'x-qualy-maximum':
     case 'maximum':
-      return format(m.reasonOverMax, { constraint })
+      return m.reason_overMax({ constraint })
     case 'x-qualy-minimum':
     case 'minimum':
-      return format(m.reasonUnderMin, { constraint })
+      return m.reason_underMin({ constraint })
     case 'x-qualy-maxScale':
-      return format(m.reasonScale, { constraint })
+      return m.reason_scale({ constraint })
     case 'maxLength':
-      return format(m.reasonTooLong, { constraint })
+      return m.reason_tooLong({ constraint })
     case 'minLength':
-      return format(m.reasonTooShort, { constraint })
+      return m.reason_tooShort({ constraint })
     case 'enum':
-      return format(m.reasonEnum, { constraint })
+      return m.reason_enum({ constraint })
     case 'type':
     case 'format':
-      return format(m.reasonKind, { kind: kindWords(format, problem.constraint) })
+      return m.reason_kind({ kind: kindWords(problem.constraint) })
     case 'pattern':
-      return format(m.reasonPattern, { constraint })
+      return m.reason_pattern({ constraint })
     case 'required':
-      return format(m.reasonMissing)
+      return m.reason_missing()
     case 'additionalProperties':
-      return format(m.reasonExtra)
+      return m.reason_extra()
     default:
-      return format(m.reasonOther, { reason: problem.reason })
+      return m.reason_other({ reason: problem.reason })
   }
 }
 
 // every reason a publish can realistically raise gets its own words, and the
 // most common one - an unbounded output - says exactly what to type
-export const contractReasonWords = (format: Format, reason: string): string => {
+export const contractReasonWords = (reason: string): string => {
   switch (reason) {
     case 'max-scale-invalid':
-      return format(m.profileMaxScale)
+      return m.contract_maxScale()
     case 'bounds-inverted':
-      return format(m.profileBoundsInverted)
+      return m.contract_boundsInverted()
     case 'integer-bound-missing':
-      return format(m.profileIntegerBounds)
+      return m.contract_integerBounds()
     case 'integer-bound-unsafe':
-      return format(m.profileIntegerUnsafe)
+      return m.contract_integerUnsafe()
     case 'decimal-bound-not-lexical':
-      return format(m.profileDecimalBound)
+      return m.contract_decimalBound()
     case 'decimal-bound-exceeds-scale':
-      return format(m.profileDecimalScale)
+      return m.contract_decimalScale()
     case 'length-bound-invalid':
-      return format(m.profileLengthBounds)
+      return m.contract_lengthBounds()
     case 'choice-empty':
-      return format(m.profileChoiceEmpty)
+      return m.contract_choiceEmpty()
     case 'choice-duplicate':
-      return format(m.profileChoiceDuplicate)
+      return m.contract_choiceDuplicate()
     case 'choice-too-many':
-      return format(m.profileChoiceTooMany)
+      return m.contract_choiceTooMany()
     case 'choice-value-invalid':
     case 'choice-not-a-string':
-      return format(m.profileChoiceValue)
+      return m.contract_choiceValue()
     case 'parameter-name-invalid':
-      return format(m.profileParameterName)
+      return m.contract_parameterName()
     case 'too-many-parameters':
-      return format(m.profileTooManyParameters)
+      return m.contract_tooManyParameters()
     case 'unknown-kind':
-      return format(m.profileUnknownKind)
+      return m.contract_unknownKind()
     case 'unknown-key':
-      return format(m.profileUnknownKey)
+      return m.contract_unknownKey()
     case 'annotation-too-long':
     case 'label-too-long':
-      return format(m.profileWordsTooLong)
+      return m.contract_wordsTooLong()
     case 'parameter-title-missing':
-      return format(m.contractParameterTitleMissing)
+      return m.contract_parameterTitleMissing()
     case 'parameter-title-duplicate':
-      return format(m.contractParameterTitleDuplicate)
+      return m.contract_parameterTitleDuplicate()
     case 'choice-label-missing':
-      return format(m.contractChoiceLabelMissing)
+      return m.contract_choiceLabelMissing()
     case 'choice-label-duplicate':
-      return format(m.contractChoiceLabelDuplicate)
+      return m.contract_choiceLabelDuplicate()
     case 'not-a-score-amount':
-      return format(m.contractNotScoreAmount)
+      return m.contract_notScoreAmount()
     case 'not-a-decimal':
-      return format(m.contractNotDecimal)
+      return m.contract_notDecimal()
     case 'contract-too-large':
-      return format(m.contractTooLarge)
+      return m.contract_tooLarge()
     case 'contract-error':
-      return format(m.contractError)
+      return m.contract_error()
     case 'pattern-invalid':
-      return format(m.contractPatternInvalid)
+      return m.contract_patternInvalid()
     case 'pattern-too-large':
-      return format(m.contractPatternTooLarge)
+      return m.contract_patternTooLarge()
     case 'pattern-too-complex':
-      return format(m.contractPatternTooComplex)
+      return m.contract_patternTooComplex()
     default:
-      return format(m.reasonOther, { reason })
+      return m.reason_other({ reason })
   }
 }
 
 /** a row's defect: the host's own verdicts in words, anything else as the engine said it */
-export const defectWords = (format: Format, defect: string): string => {
+export const defectWords = (defect: string): string => {
   switch (defect) {
     case CASE_NOT_RUN:
-      return format(m.caseNotRun)
+      return m.report_notRun()
     case OVER_SCORING_BUDGET:
-      return format(m.overScoringBudget)
+      return m.report_overScoringBudget()
     case FAILED_UNDER_SCORING_BUDGET:
-      return format(m.failedUnderScoringBudget)
+      return m.report_failedUnderScoringBudget()
     default:
-      return format(m.defectPrefix, { message: defect })
+      return m.report_defect({ message: defect })
   }
 }
 
 /** what a finished run says beyond its verdict, or nothing */
-export const outcomeWords = (format: Format, outcome: OutcomeLike): string | null => {
+export const outcomeWords = (outcome: OutcomeLike): string | null => {
   const problems = Array.isArray(outcome.problems) ? (outcome.problems as ReportProblem[]) : []
   if (problems.length > 0)
     return problems
       .map((problem) =>
         problem.at === 'input'
-          ? format(m.problemInput, {
+          ? m.report_problemInput({
               parameter: problem.parameter ?? '',
-              detail: reasonWords(format, problem),
+              detail: reasonWords(problem),
             })
           : problem.at === 'output'
-            ? format(m.problemOutput, { detail: reasonWords(format, problem) })
-            : format(m.problemExpected, { detail: reasonWords(format, problem) }),
+            ? m.report_problemOutput({ detail: reasonWords(problem) })
+            : m.report_problemExpected({ detail: reasonWords(problem) }),
       )
       .join('; ')
-  if (outcome.refusal !== undefined) return format(m.refusalPrefix, { message: outcome.refusal })
-  if (outcome.defect !== undefined) return defectWords(format, outcome.defect)
+  if (outcome.refusal !== undefined) return m.report_refusal({ message: outcome.refusal })
+  if (outcome.defect !== undefined) return defectWords(outcome.defect)
   if (outcome.passed === false)
-    return format(m.resultFailed, { actual: outcome.actual ?? format(m.actualNone) })
+    return m.editor_resultFailed({ actual: outcome.actual ?? m.examples_actualNone() })
   return null
 }
 
@@ -199,7 +197,6 @@ export interface InputFact {
  * what was asked.
  */
 export const inputFactsOf = (
-  format: Format,
   locale: string,
   schema: NormalizedInputSchema | null,
   value: unknown,
@@ -220,7 +217,7 @@ export const inputFactsOf = (
     const one = held[key]
     const words =
       typeof one === 'boolean'
-        ? format(one ? m.valueYes : m.valueNo)
+        ? (one ? m.value_yes : m.value_no)()
         : field !== undefined && typeof one === 'string' && kindOf(field) === 'choice'
           ? choiceLabel(field as ChoiceSchema, one, locale)
           : typeof one === 'string'
@@ -234,21 +231,17 @@ export const inputFactsOf = (
 }
 
 /** what stops one field of a try or an example, in the author's words */
-export const fieldIssueWords = (
-  format: Format,
-  schema: AtomicSchema | undefined,
-  reason: string,
-): string => {
+export const fieldIssueWords = (schema: AtomicSchema | undefined, reason: string): string => {
   switch (reason) {
     case 'required':
-      return format(m.fieldRequired)
+      return m.editor_fieldRequired()
     case 'not-an-integer':
-      return format(m.fieldNotInteger)
+      return m.editor_fieldNotInteger()
     case 'not-a-decimal':
-      return format(m.fieldNotDecimal)
+      return m.editor_fieldNotDecimal()
     default: {
       const constraint = schema === undefined ? undefined : constraintOf(schema, reason)
-      return reasonWords(format, {
+      return reasonWords({
         at: 'input',
         reason,
         ...(constraint === undefined ? {} : { constraint }),
@@ -259,17 +252,12 @@ export const fieldIssueWords = (
 
 /** a form's field problems, keyed by parameter, worded against the input contract */
 export const inputIssueWords = (
-  format: Format,
   schema: NormalizedInputSchema,
   issues: ReadonlyMap<string, string>,
 ): ReadonlyMap<string, string> =>
   new Map(
     [...issues].map(([field, reason]) => [
       field,
-      fieldIssueWords(
-        format,
-        field === '' ? undefined : parameterSchemaAt(schema, `/${field}`),
-        reason,
-      ),
+      fieldIssueWords(field === '' ? undefined : parameterSchemaAt(schema, `/${field}`), reason),
     ]),
   )

@@ -1,14 +1,14 @@
 import { useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { GripVerticalIcon, PlusIcon, XIcon } from 'lucide-react'
-import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { Button } from '@qualy/ui/button'
 import { VisuallyHidden } from '@qualy/ui/visually-hidden'
-import { assessmentMessages as m } from '../../i18n.ts'
+
 import { EditorSection, SectionCount, Tag } from './Rows.tsx'
 import { SUMMARY_FIELDS_MOST, type FieldType } from './model.ts'
 import { TYPE_LABEL } from './words.ts'
+import * as m from '#messages'
 
 // Which fields name a record wherever records are listed, in order (§32.74):
 // up to three, the first is the record's title. A file count names no record
@@ -138,7 +138,6 @@ export function SummarySection({
   problem?: string | undefined
   onChange: (next: string[]) => void
 }) {
-  const { format } = useI18n()
   const [drop, setDrop] = useState<{ id: string; edge: 'before' | 'after' } | null>(null)
   const [held, setHeld] = useState<string | null>(null)
   const eligible = candidates.filter((one) => one.type !== 'attachment' && one.type !== 'boolean')
@@ -161,14 +160,14 @@ export function SummarySection({
   }
   return (
     <EditorSection
-      title={format(m.itemsSummaryBlock)}
-      hint={format(m.itemsSummarySectionHint)}
+      title={m.items_summaryBlock()}
+      hint={m.items_summarySectionHint()}
       block="summary"
       testId="summary-block"
       aside={
         problem === undefined ? (
           <Tag testId="summary-mode">
-            {format(custom ? m.itemsSummaryCustom : m.itemsSummaryAuto)}
+            {(custom ? m.items_summaryCustom : m.items_summaryAuto)()}
           </Tag>
         ) : (
           <SectionCount tone="error">{problem}</SectionCount>
@@ -178,7 +177,7 @@ export function SummarySection({
       <div {...stylex.props(styles.card)} data-custom={custom}>
         {eligible.length === 0 && (
           <div {...stylex.props(styles.row)}>
-            <span {...stylex.props(styles.quiet)}>{format(m.itemsSummaryNoFields)}</span>
+            <span {...stylex.props(styles.quiet)}>{m.items_summaryNoFields()}</span>
           </div>
         )}
         {custom
@@ -227,8 +226,8 @@ export function SummarySection({
                   </span>
                   <span {...stylex.props(styles.ordinal)}>{index + 1}</span>
                   <span {...stylex.props(styles.name)}>{one.name}</span>
-                  <span {...stylex.props(styles.type)}>{format(TYPE_LABEL[one.type])}</span>
-                  {index === 0 && <Tag>{format(m.itemsSummaryLead)}</Tag>}
+                  <span {...stylex.props(styles.type)}>{TYPE_LABEL[one.type]()}</span>
+                  {index === 0 && <Tag>{m.items_summaryLead()}</Tag>}
                   <span {...stylex.props(styles.spacer)} />
                   <Button
                     type="button"
@@ -237,7 +236,7 @@ export function SummarySection({
                     onClick={() => onChange(chosen.filter((other) => other !== id))}
                   >
                     <XIcon aria-hidden />
-                    <VisuallyHidden>{format(m.itemsSummaryRemove)}</VisuallyHidden>
+                    <VisuallyHidden>{m.items_summaryRemove()}</VisuallyHidden>
                   </Button>
                 </div>
               )
@@ -246,15 +245,15 @@ export function SummarySection({
               <div key={one.id} {...stylex.props(styles.row)} data-testid="summary-auto-row">
                 <span {...stylex.props(styles.ordinal, styles.ordinalAuto)}>{index + 1}</span>
                 <span {...stylex.props(styles.name, styles.nameAuto)}>{one.name}</span>
-                <span {...stylex.props(styles.type)}>{format(TYPE_LABEL[one.type])}</span>
-                {index === 0 && <Tag>{format(m.itemsSummaryLead)}</Tag>}
+                <span {...stylex.props(styles.type)}>{TYPE_LABEL[one.type]()}</span>
+                {index === 0 && <Tag>{m.items_summaryLead()}</Tag>}
               </div>
             ))}
         {eligible.length > 0 && (
           <div {...stylex.props(styles.foot)}>
             {remaining.length > 0 && (
               <span {...stylex.props(styles.footLabel)}>
-                {format(custom ? m.itemsSummaryOthers : m.itemsSummaryCustom)}
+                {(custom ? m.items_summaryOthers : m.items_summaryCustom)()}
               </span>
             )}
             {remaining.map((one) => (
@@ -275,9 +274,9 @@ export function SummarySection({
             <span {...stylex.props(custom ? styles.count : styles.quiet)}>
               {custom
                 ? full
-                  ? format(m.itemsSummaryCapFull, { most: SUMMARY_FIELDS_MOST })
-                  : format(m.itemsSummaryCount, { count: chosen.length, most: SUMMARY_FIELDS_MOST })
-                : format(m.itemsSummaryAutoHint)}
+                  ? m.items_summaryCapFull({ most: SUMMARY_FIELDS_MOST })
+                  : m.items_summaryCount({ count: chosen.length, most: SUMMARY_FIELDS_MOST })
+                : m.items_summaryAutoHint()}
             </span>
           </div>
         )}

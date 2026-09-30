@@ -1,28 +1,10 @@
-import type {
-  ErrorMessageMap,
-  MessageDescriptor,
-  MessageValues,
-  ValuesOf,
-} from '@qualy/i18n-contract'
+import type { ErrorMessageMap } from '@qualy/i18n-contract'
+import * as m from '#messages'
 
 // framework-free error localization: turns a thrown api error into a
 // localized sentence from its stable code and typed data. The backend's
 // english message is a protocol fallback (openapi docs, non-browser
 // clients, missing translations), never the primary display text.
-
-// a message that declares placeholders demands them; one that declares
-// none accepts an optional bag (an icu string can still interpolate without
-// declaring it, which a formatting test catches)
-export type FormatArgs<Values> = [keyof Values] extends [never]
-  ? [values?: MessageValues]
-  : [values: Values]
-
-export interface MessageFormatter {
-  format<Descriptor extends MessageDescriptor>(
-    descriptor: Descriptor,
-    ...args: FormatArgs<ValuesOf<Descriptor>>
-  ): string
-}
 
 /**
  * A failure the api declared, whichever client produced it.
@@ -133,58 +115,36 @@ function isNetworkError(error: unknown): boolean {
 // arrives now is ACCESS_DENIED and BAD_REQUEST. Every one of those four
 // translations was unreachable, and the two that do arrive fell through to the
 // english message the server sends for non-browser clients.
-//
-// as const keeps the message ids literal, which is what lets CatalogFor derive
-// the exact key set the catalogs must cover.
-const clientUnsupported = {
-  id: 'common/error/client-unsupported',
-  defaultMessage: 'Reload the page to continue.',
-} as const satisfies MessageDescriptor
+const clientUnsupported = m.error_clientUnsupported
 
 export const commonErrorMessages = {
   AUTH_REQUIRED: {
-    message: { id: 'common/error/auth-required', defaultMessage: 'Please sign in to continue.' },
+    message: m.error_authRequired,
   },
   SESSION_EXPIRED: {
-    message: {
-      id: 'common/error/session-expired',
-      defaultMessage: 'Your session has expired. Please sign in again.',
-    },
+    message: m.error_sessionExpired,
   },
   // counted where the attempt came from and at what it was aimed; the reader
   // is told how long, rounded up to whole minutes, and nothing about which
   TOO_MANY_ATTEMPTS: {
-    message: {
-      id: 'common/error/too-many-attempts',
-      defaultMessage:
-        'Too many attempts. Try again in {minutes, plural, one {# minute} other {# minutes}}.',
-    },
+    message: m.error_tooManyAttempts,
     values: (data: { readonly retryAfterSeconds: number }) => ({
       minutes: Math.max(1, Math.ceil(data.retryAfterSeconds / 60)),
     }),
   },
   ACCESS_DENIED: {
-    message: {
-      id: 'common/error/access-denied',
-      defaultMessage: 'You are not allowed to perform this action.',
-    },
+    message: m.error_accessDenied,
   },
   BAD_REQUEST: {
-    message: { id: 'common/error/bad-request', defaultMessage: 'Some input is invalid.' },
+    message: m.error_badRequest,
   },
   REQUEST_ORIGIN_REFUSED: {
-    message: {
-      id: 'common/error/request-origin-refused',
-      defaultMessage: 'This request did not come from Qualy. Reload the page and try again.',
-    },
+    message: m.error_requestOriginRefused,
   },
   // both mean the page and the api have drifted apart: the reader's move
   // is a reload, and the release coordinator blocks the page on the rest
   API_ROUTE_NOT_FOUND: {
-    message: {
-      id: 'common/error/api-route-not-found',
-      defaultMessage: 'Reload the page to continue.',
-    },
+    message: m.error_apiRouteNotFound,
   },
   // Three findings, one sentence, one id. The api refuses a page whose
   // protocol generation it does not speak, one built from a different plugin
@@ -197,31 +157,14 @@ export const commonErrorMessages = {
   // the database, or something else the server needs, is down or saturated;
   // which one stays in the server log, and the reader's move is to wait
   SERVICE_UNAVAILABLE: {
-    message: {
-      id: 'common/error/service-unavailable',
-      defaultMessage: 'Qualy cannot complete this right now. Try again in a moment.',
-    },
+    message: m.error_serviceUnavailable,
   },
-} as const satisfies ErrorMessageMap
-
-export const networkErrorMessage = {
-  id: 'common/error/network',
-  defaultMessage: 'Cannot reach the server. Check your connection and try again.',
-} as const satisfies MessageDescriptor
-
-export const unexpectedErrorMessage = {
-  id: 'common/error/unexpected',
-  defaultMessage: 'Something went wrong. Please try again.',
-} as const satisfies MessageDescriptor
+} satisfies ErrorMessageMap
 
 // resolution order: transport failure, plugin-owned code, common code,
 // backend english message, generic fallback
-export function formatApiError(
-  error: unknown,
-  formatter: MessageFormatter,
-  registry: ErrorMessageMap = {},
-): string {
-  if (isNetworkError(error)) return formatter.format(networkErrorMessage)
+export function formatApiError(error: unknown, registry: ErrorMessageMap = {}): string {
+  if (isNetworkError(error)) return m.error_network()
   const apiError = asApiError(error)
   if (apiError) {
     const common: ErrorMessageMap = commonErrorMessages
@@ -231,9 +174,9 @@ export function formatApiError(
       // itself was type-checked against its contract, so the projection is
       // safe here even though the static link is gone
       const values = registration.values?.(apiError.data as never)
-      return formatter.format(registration.message, values ?? {})
+      return registration.message(values ?? {})
     }
     if (apiError.message) return apiError.message
   }
-  return formatter.format(unexpectedErrorMessage)
+  return m.error_unexpected()
 }

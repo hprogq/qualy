@@ -1,8 +1,8 @@
 import * as stylex from '@stylexjs/stylex'
-import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import { entryStatusMessage, type EntryDto } from './model.ts'
+import * as m from '#messages'
 
 /**
  * Where a claim stands, as one word on a tinted chip.
@@ -53,12 +53,12 @@ const styles = stylex.create({
 
 /** the same six states, in the words an administrative finding uses */
 const recordWord = {
-  draft: m.recordStandingSettled,
-  in_review: m.recordStandingAppealed,
-  needs_revision: m.recordStandingAppealed,
-  approved: m.recordStandingSettled,
-  rejected: m.recordStandingOverturned,
-  voided: m.recordStandingWithdrawn,
+  draft: m.record_standingSettled,
+  in_review: m.record_standingAppealed,
+  needs_revision: m.record_standingAppealed,
+  approved: m.record_standingSettled,
+  rejected: m.record_standingOverturned,
+  voided: m.record_standingWithdrawn,
 } as const
 
 export function EntryStanding({
@@ -100,30 +100,29 @@ export function EntryStanding({
   /** `roomy` where the chip stands in a column of its own */
   size?: 'default' | 'roomy'
 }) {
-  const { format } = useI18n()
   const administrative = source === 'record' || source === 'import'
   const contested = openRound?.origin === 'appeal' || openRound?.origin === 'reopen'
   const word =
     asked === true
-      ? m.entryStatusAwaitingSupplement
+      ? m.entry_statusAwaitingSupplement
       : contested
         ? openRound?.origin === 'appeal'
           ? administrative
-            ? m.recordStandingAppealed
-            : m.entryStatusAppealing
-          : m.entryStatusReopened
+            ? m.record_standingAppealed
+            : m.entry_statusAppealing
+          : m.entry_statusReopened
         : administrative
           ? recordWord[status]
           : status === 'draft' && revised === true
             ? // a draft with a round behind it is not a fresh draft: it
               // exists because something was asked of it
-              m.entryStatusRevising
+              m.entry_statusRevising
             : status === 'voided'
               ? // a claim somebody filed ends voided by their giving it up,
                 // or by the question it was filed under being withdrawn
                 withItem
-                ? m.entryStatusVoided
-                : m.entryStatusAbandoned
+                ? m.entry_statusVoided
+                : m.entry_statusAbandoned
               : entryStatusMessage[status]
   const standing = asked === true ? 'awaiting_supplement' : contested ? 'contested' : status
   const tone =
@@ -152,7 +151,7 @@ export function EntryStanding({
         : {})}
       {...stylex.props(styles.chip, size === 'roomy' && styles.roomy, tone)}
     >
-      {format(word)}
+      {word()}
     </span>
   )
 }

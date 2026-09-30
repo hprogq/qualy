@@ -8,12 +8,12 @@ import {
   type DrawerSignOutContext,
 } from '@qualy/ui-contract'
 import { Failure, UiSlot, useManifest, type RouteSlots } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { Button } from '@qualy/ui/button'
 import { ResourceState } from '@qualy/ui/resource-state'
 import { LoadingScreen, PageLoading } from '@qualy/ui/spinner'
 import { webRelease } from './release.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
 
 // What the host draws where the route tree has no page to show: a page or a
 // shell still loading, a page's code that failed, an address that leads
@@ -37,7 +37,6 @@ const STANDALONE: DrawerSignOutContext = { standalone: true }
  * the previous language.
  */
 export function useRouteSlots(homePath: string | undefined): RouteSlots {
-  const { format } = useI18n()
   const manifest = useManifest()
   // With no shell there is no drawer, and so no way out of the session but
   // the one a screen offers itself: whoever owns sessions contributes it, and
@@ -55,22 +54,22 @@ export function useRouteSlots(homePath: string | undefined): RouteSlots {
       // is: where the page would have been, with a retry and the way home.
       pageError: (retry) => (
         <Failure
-          title={format(commonMessages.pageFailed)}
-          description={format(commonMessages.loadFailedHint)}
+          title={commonMessages.component_pageFailed()}
+          description={commonMessages.load_failedHint()}
           onRetry={retry}
           actions={homePath === undefined ? [] : [<HomeLink key="home" to={homePath} />]}
         />
       ),
       layoutError: (retry) => (
         <Failure
-          title={format(commonMessages.layoutFailed)}
-          description={format(commonMessages.loadFailedHint)}
+          title={commonMessages.component_layoutFailed()}
+          description={commonMessages.load_failedHint()}
           onRetry={retry}
           fullscreen
         />
       ),
       componentMissing: (surface) => (
-        <MissingComponent surface={surface} title={format(commonMessages.componentMissing)} />
+        <MissingComponent surface={surface} title={commonMessages.component_missing()} />
       ),
       // The way out of a mistyped address is the home the route builder
       // resolved - one resolution, the same one the origin redirects to - so
@@ -83,8 +82,8 @@ export function useRouteSlots(homePath: string | undefined): RouteSlots {
       notFound: ({ homePath: home, standalone }) => (
         <ResourceState
           kind="missing"
-          title={format(commonMessages.notFoundTitle)}
-          description={format(commonMessages.notFoundHint)}
+          title={commonMessages.page_notFoundTitle()}
+          description={commonMessages.page_notFoundHint()}
           actions={home === undefined ? signOut : [<HomeLink key="home" to={home} primary />]}
           {...(standalone ? { xstyle: styles.standalone } : {})}
         />
@@ -94,24 +93,23 @@ export function useRouteSlots(homePath: string | undefined): RouteSlots {
       empty: (
         <ResourceState
           kind="denied"
-          title={format(commonMessages.emptyPagesTitle)}
-          description={format(
-            signedIn ? commonMessages.emptyPagesSignedInHint : commonMessages.emptyPagesHint,
-          )}
+          title={commonMessages.page_emptyTitle()}
+          description={(signedIn
+            ? commonMessages.page_emptySignedInHint
+            : commonMessages.page_emptyHint)()}
           actions={signOut}
           xstyle={styles.standalone}
         />
       ),
     }
-  }, [format, homePath, signedIn])
+  }, [homePath, signedIn])
 }
 
 /** home, as a way out of a state that is not a page */
 function HomeLink({ to, primary = false }: { to: string; primary?: boolean }) {
-  const { format } = useI18n()
   return (
     <Button asChild variant={primary ? 'default' : 'outline'}>
-      <Link to={to}>{format(commonMessages.goHome)}</Link>
+      <Link to={to}>{commonMessages.action_goHome()}</Link>
     </Button>
   )
 }

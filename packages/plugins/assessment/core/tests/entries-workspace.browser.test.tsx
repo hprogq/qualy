@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { commands, page, userEvent } from 'vitest/browser'
 import { Effect, Stream } from 'effect'
 import { addressNow, apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
-import zhCN from '../src/client/locales/zh-CN.ts'
+import zhCN from '../messages/zh-CN.json' with { type: 'json' }
 
 // The entries workspace as a reader moves through it: the structure down
 // one side, one question or section opened beside it, and the claims under
@@ -897,7 +897,7 @@ describe('reading one question’s claims', () => {
       getComputedStyle(only().querySelector('[data-part="lead"]')!).color,
     )
     // the name and its figure stand as the language's catalog words them
-    const figured = zhCN['assessment/entries/figure']
+    const figured = zhCN['entries_figure']
       .replace('{label}', '课程加权平均分')
       .replace('{value}', '95.02')
     expect(lead()).toBe(figured)
@@ -1399,9 +1399,7 @@ describe('a reading that failed', () => {
     })
     const drawer = page.getByRole('dialog')
     await expect.element(drawer).toBeVisible()
-    await drawer
-      .getByRole('button', { name: new RegExp(zhCN['assessment/entry-sheet/trail']) })
-      .click()
+    await drawer.getByRole('button', { name: new RegExp(zhCN['entrySheet_trail']) }).click()
     const failed = () => drawer.element().querySelector('[data-slot="resource-state"]')
     await expect.poll(() => failed()?.getAttribute('data-state')).toBe('missing')
     expect(failed()!.querySelector('h3')).not.toBeNull()
@@ -1799,7 +1797,7 @@ describe('what a question’s row says at a glance', () => {
     const listed = () => rows().map((row) => row.getAttribute('data-entry'))
 
     // read again with nothing new: the list stays where it opened
-    const refresh = page.getByRole('button', { name: zhCN['assessment/entry/refresh'] })
+    const refresh = page.getByRole('button', { name: zhCN['entry_refresh'] })
     await refresh.click()
     await expect.poll(() => refresh.element().hasAttribute('disabled')).toBe(false)
     expect(pressed()).toBe('abandoned')
@@ -1839,7 +1837,7 @@ describe('what a question’s row says at a glance', () => {
     await userEvent.click(document.querySelector('[data-chip="abandoned"]')!)
     await expect.poll(pressed).toBe('abandoned')
 
-    const refresh = page.getByRole('button', { name: zhCN['assessment/entry/refresh'] })
+    const refresh = page.getByRole('button', { name: zhCN['entry_refresh'] })
     await refresh.click()
     await expect.poll(() => refresh.element().hasAttribute('disabled')).toBe(false)
     expect(pressed()).toBe('abandoned')
@@ -1881,7 +1879,7 @@ describe('what a question’s row says at a glance', () => {
           }),
       },
     })
-    const holds = zhCN['assessment/entry/holds-unread']
+    const holds = zhCN['entry_holdsUnread']
     // the claim given up is behind its filter while the live ones show
     const abandoned = page.getByRole('button', { name: new RegExp(`已放弃.*${holds}`) })
     await expect.element(abandoned).toHaveAttribute('data-unread', 'true')
@@ -2093,9 +2091,9 @@ describe('what a question’s row says at a glance', () => {
     expect(worded).toEqual(['draft', 'needs_revision'])
     // ...and every row still says where it stands to a screen reader
     const said = {
-      1: zhCN['assessment/entry/status-approved'],
-      3: zhCN['assessment/entry/status-in-review'],
-      5: zhCN['assessment/entry/status-rejected'],
+      1: zhCN['entry_statusApproved'],
+      3: zhCN['entry_statusInReview'],
+      5: zhCN['entry_statusRejected'],
     } as const
     for (const [n, word] of Object.entries(said)) {
       expect(railRow(Number(n)).querySelector('[data-word]')).toBeNull()
@@ -2453,7 +2451,7 @@ describe('where filing is shut', () => {
     const held = page.getByTestId('filing-held')
     await expect.element(held).toHaveAttribute('data-reason', 'phase-closed')
     // the sentence that names the stage, which this round has
-    await expect.element(held).toHaveAttribute('data-said', 'assessment/entries/held-phase')
+    await expect.element(held).toHaveAttribute('data-said', 'held-phase')
     // said there once: no greyed key beside the title saying only "not now"
     expect(page.getByTestId('file-claim').elements()).toHaveLength(0)
   })
@@ -2463,7 +2461,7 @@ describe('where filing is shut', () => {
     await workspace({ route: `${base}?open=${itemId(2)}`, stubs: filing('item-out-of-scope') })
     const tray = page.getByTestId('entries-tray')
     await expect.element(tray).toHaveAttribute('data-reason', 'item-out-of-scope')
-    await expect.element(tray).toHaveAttribute('data-said', 'assessment/entries/held-item-scope')
+    await expect.element(tray).toHaveAttribute('data-said', 'held-item-scope')
     expect(tray.element().querySelector('[data-testid="file-claim"]')).toBeNull()
   })
 
@@ -2504,9 +2502,7 @@ describe('where filing is shut', () => {
       route: `${base}?open=${itemId(1)}`,
       stubs: { ...filing('item-out-of-scope'), ...stage([named(3), named(4)]) },
     })
-    await expect
-      .element(held)
-      .toHaveAttribute('data-said', 'assessment/entries/held-item-scope-only')
+    await expect.element(held).toHaveAttribute('data-said', 'held-item-scope-only')
     expect(held.element().textContent).toContain('品德题目 3')
     expect(held.element().textContent).toContain('品德题目 4')
     await two.unmount()
@@ -2519,9 +2515,7 @@ describe('where filing is shut', () => {
         ...stage([3, 4, 5, 6, 7].map(named)),
       },
     })
-    await expect
-      .element(held)
-      .toHaveAttribute('data-said', 'assessment/entries/held-item-scope-only')
+    await expect.element(held).toHaveAttribute('data-said', 'held-item-scope-only')
     expect(held.element().textContent).toContain('品德题目 5')
     expect(held.element().textContent).not.toContain('品德题目 6')
     await five.unmount()
@@ -2531,9 +2525,7 @@ describe('where filing is shut', () => {
       route: `${base}?open=${itemId(1)}`,
       stubs: { ...filing('item-out-of-scope'), ...stage([]) },
     })
-    await expect
-      .element(held)
-      .toHaveAttribute('data-said', 'assessment/entries/held-item-scope-some')
+    await expect.element(held).toHaveAttribute('data-said', 'held-item-scope-some')
   })
 
   // A route with nowhere to stand for the reader is no stage's doing: the
@@ -2543,7 +2535,7 @@ describe('where filing is shut', () => {
     await workspace({ route: `${base}?open=${itemId(2)}`, stubs: filing('review-level-missing') })
     const tray = page.getByTestId('entries-tray')
     await expect.element(tray).toHaveAttribute('data-reason', 'review-level-missing')
-    await expect.element(tray).toHaveAttribute('data-said', 'assessment/entries/held-route')
+    await expect.element(tray).toHaveAttribute('data-said', 'held-route')
     expect(tray.element().querySelector('[data-testid="file-claim"]')).toBeNull()
   })
 
@@ -2603,7 +2595,7 @@ describe('where filing is shut', () => {
       stubs: { ...filing('no-active-phase'), getBatch: archived },
     })
     const held = page.getByTestId('filing-held')
-    await expect.element(held).toHaveAttribute('data-said', 'assessment/entries/held-archived')
+    await expect.element(held).toHaveAttribute('data-said', 'held-archived')
     expect(page.getByTestId('phone-foot').elements()).toHaveLength(0)
     expect(page.getByTestId('file-claim').elements()).toHaveLength(0)
   })

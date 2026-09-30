@@ -1,7 +1,7 @@
 import { useInfiniteQuery } from '@tanstack/react-query'
 import { cursorPages, useLoadFailure, usePageHref, usePageNavigate } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { AsyncSection } from '@qualy/ui/admin'
@@ -25,7 +25,8 @@ import { useWhen } from '../batch/when.ts'
 import { zoneMarkOf } from '../batch/zone.ts'
 import type { ApiResult } from '@qualy/web-runtime/api'
 import type { assessmentApi } from '../api.ts'
-import { assessmentMessages as m } from '../i18n.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // The rounds one person took part in: the person's record in the
 // administration, and the reader's own account. Roster membership and
@@ -148,7 +149,7 @@ export function BatchMemberships({
   /** one page, from where the last one ended */
   fetchPage: (cursor: string | undefined) => Promise<BatchMembershipPage>
 }) {
-  const { format, locale } = useI18n()
+  const { locale } = useI18n()
   const failures = useLoadFailure()
   const navigate = usePageNavigate()
   // a row is a way into the round only for a reader who may open rounds
@@ -167,10 +168,7 @@ export function BatchMemberships({
 
   return (
     <div {...stylex.props(styles.page)}>
-      <SectionHead
-        title={format(m.personBatchesTab)}
-        count={rows.data ? items.length : undefined}
-      />
+      <SectionHead title={m.person_batchesTab()} count={rows.data ? items.length : undefined} />
       <AsyncSection
         pending={rows.isPending}
         // the list's own failure, when it has nothing to show; a further
@@ -178,24 +176,24 @@ export function BatchMemberships({
         error={rows.data === undefined && rows.isError ? failures.of(rows.error) : null}
         retrying={rows.isFetching}
         framed
-        loadingLabel={format(commonMessages.loading)}
-        retryLabel={format(commonMessages.retry)}
+        loadingLabel={commonMessages.state_loading()}
+        retryLabel={commonMessages.action_retry()}
         onRetry={() => void rows.refetch()}
         skeleton={<EditorSkeleton />}
       >
         <Card>
           {items.length === 0 ? (
-            <CardEmpty>{format(m.personBatchesEmpty)}</CardEmpty>
+            <CardEmpty>{m.person_batchesEmpty()}</CardEmpty>
           ) : (
             <Table
               columns={`minmax(0, 1.4fr) minmax(0, 1fr) 6rem ${momentColumn}`}
               openable={batchReachable}
             >
               <TableHead>
-                <span>{format(m.personBatchColumn)}</span>
-                <span>{format(m.personAnchorColumn)}</span>
-                <span>{format(m.personMembershipColumn)}</span>
-                <span>{format(m.personIncludedColumn)}</span>
+                <span>{m.person_batchColumn()}</span>
+                <span>{m.person_anchorColumn()}</span>
+                <span>{m.person_membershipColumn()}</span>
+                <span>{m.person_includedColumn()}</span>
               </TableHead>
               {items.map(({ batch, membership }, index) => (
                 <TableRow
@@ -215,17 +213,15 @@ export function BatchMemberships({
                     <StatusBadge status={batch.status} currentPhaseId={batch.currentPhaseId} />
                   </Cell>
                   <Cell title={membership.anchorNodeName ?? undefined}>
-                    {membership.anchorNodeName ?? format(m.personAnchorGone)}
+                    {membership.anchorNodeName ?? m.person_anchorGone()}
                   </Cell>
                   {/* still in the round or taken off it: what this list is
                       scanned for, kept at the end of the stacked row */}
                   <Cell narrow="end" unlabelled>
                     <Status tone={membership.status === 'excluded' ? 'bad' : 'plain'}>
-                      {format(
-                        membership.status === 'excluded'
-                          ? m.personMembershipExcluded
-                          : m.personMembershipActive,
-                      )}
+                      {(membership.status === 'excluded'
+                        ? m.person_membershipExcluded
+                        : m.person_membershipActive)()}
                     </Status>
                   </Cell>
                   <Cell numeric>
@@ -248,7 +244,7 @@ export function BatchMemberships({
                 disabled={rows.isFetchingNextPage}
                 onClick={() => void rows.fetchNextPage()}
               >
-                {format(m.personLoadMore)}
+                {m.person_loadMore()}
               </Button>
             </CardFoot>
           )}

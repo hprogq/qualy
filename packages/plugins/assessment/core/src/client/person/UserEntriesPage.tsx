@@ -8,8 +8,7 @@ import {
   usePageRouteParams,
   useRunApi,
 } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
@@ -30,7 +29,8 @@ import {
 import { Button } from '@qualy/ui/button'
 import { useWhen } from '../batch/when.ts'
 import { assessmentApi } from '../api.ts'
-import { assessmentMessages as m } from '../i18n.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // What one person filed, across the rounds the reader may look into. A
 // list to scan rather than a place to act: each line leads to the round,
@@ -108,7 +108,7 @@ export default function UserEntriesPage() {
   const api = useApi(assessmentApi)
   const run = useRunApi()
   const query = useApiQuery(assessmentApi)
-  const { format } = useI18n()
+
   const failures = useLoadFailure()
   const when = useWhen()
 
@@ -129,27 +129,24 @@ export default function UserEntriesPage() {
   const items = rows.data?.pages.flatMap((page) => page.items) ?? []
 
   const statusWord: Record<EntryStatus, string> = {
-    draft: format(m.entryStatusDraft),
-    in_review: format(m.entryStatusInReview),
-    needs_revision: format(m.entryStatusNeedsRevision),
-    approved: format(m.entryStatusApproved),
-    rejected: format(m.entryStatusRejected),
-    voided: format(m.entryStatusVoided),
+    draft: m.entry_statusDraft(),
+    in_review: m.entry_statusInReview(),
+    needs_revision: m.entry_statusNeedsRevision(),
+    approved: m.entry_statusApproved(),
+    rejected: m.entry_statusRejected(),
+    voided: m.entry_statusVoided(),
   }
   const sourceWord: Record<EntrySource, string> = {
-    self: format(m.entrySourceSelf),
-    proxy: format(m.entrySourceProxy),
-    record: format(m.entrySourceRecord),
-    import: format(m.entrySourceImport),
-    system: format(m.entrySourceSystem),
+    self: m.entry_sourceSelf(),
+    proxy: m.entry_sourceProxy(),
+    record: m.entry_sourceRecord(),
+    import: m.entry_sourceImport(),
+    system: m.entry_sourceSystem(),
   }
 
   return (
     <div {...stylex.props(styles.page)}>
-      <SectionHead
-        title={format(m.personEntriesTab)}
-        count={rows.data ? items.length : undefined}
-      />
+      <SectionHead title={m.person_entriesTab()} count={rows.data ? items.length : undefined} />
       <AsyncSection
         pending={rows.isPending}
         // the list's own failure, when it has nothing to show; a further
@@ -157,22 +154,22 @@ export default function UserEntriesPage() {
         error={rows.data === undefined && rows.isError ? failures.of(rows.error) : null}
         retrying={rows.isFetching}
         framed
-        loadingLabel={format(commonMessages.loading)}
-        retryLabel={format(commonMessages.retry)}
+        loadingLabel={commonMessages.state_loading()}
+        retryLabel={commonMessages.action_retry()}
         onRetry={() => void rows.refetch()}
         skeleton={<EditorSkeleton />}
       >
         <Card>
           {items.length === 0 ? (
-            <CardEmpty>{format(m.personEntriesEmpty)}</CardEmpty>
+            <CardEmpty>{m.person_entriesEmpty()}</CardEmpty>
           ) : (
             <Table columns="minmax(0, 1.1fr) minmax(0, 1.3fr) 6rem 6rem 8.5rem">
               <TableHead>
-                <span>{format(m.personColumnBatch)}</span>
-                <span>{format(m.personColumnItem)}</span>
-                <span>{format(m.personColumnStatus)}</span>
-                <span>{format(m.personColumnSource)}</span>
-                <span>{format(m.personColumnWhen)}</span>
+                <span>{m.person_columnBatch()}</span>
+                <span>{m.person_columnItem()}</span>
+                <span>{m.person_columnStatus()}</span>
+                <span>{m.person_columnSource()}</span>
+                <span>{m.person_columnWhen()}</span>
               </TableHead>
               {items.map((entry) => (
                 <TableRow
@@ -215,7 +212,7 @@ export default function UserEntriesPage() {
                 disabled={rows.isFetchingNextPage}
                 onClick={() => void rows.fetchNextPage()}
               >
-                {format(m.personLoadMore)}
+                {m.person_loadMore()}
               </Button>
             </CardFoot>
           )}

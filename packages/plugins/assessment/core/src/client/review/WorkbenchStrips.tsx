@@ -9,8 +9,7 @@ import {
   CircleArrowUpIcon,
 } from 'lucide-react'
 import * as stylex from '@stylexjs/stylex'
-import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { VisuallyHidden } from '@qualy/ui/visually-hidden'
 import { Avatar, AvatarFallback } from '@qualy/ui/avatar'
 import { Badge } from '@qualy/ui/badge'
@@ -20,11 +19,13 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@qualy
 import { UnitPath } from '@qualy/ui/unit-path'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import { namedChainOf } from '../roster/unit-path.ts'
 import { useBeside, useFinePointer } from './pointer.ts'
 import type { ReviewDto } from './model.ts'
 import { PART_LABEL, WORKBENCH_PARTS, type WorkbenchPart } from './Pane.tsx'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 const lg = '@media (min-width: 1024px)'
 
@@ -340,12 +341,11 @@ export function PersonStrip({
   /** brings the keyboard's panel, and takes it away */
   onKeys: () => void
 }) {
-  const { format } = useI18n()
   const fine = useFinePointer()
   const round = review.context?.worth.groupName
   // a unit that has left the organization since is said to have gone,
   // rather than drawn with the mark the line uses for levels it leaves off
-  const { levels, gone } = namedChainOf(review.unitPath, format(m.reviewUnitGone))
+  const { levels, gone } = namedChainOf(review.unitPath, m.review_unitGone())
   return (
     <header {...stylex.props(styles.personBar)}>
       {/* The one way out of the run, at every width: a small key, because
@@ -358,14 +358,14 @@ export function PersonStrip({
             <Button
               variant="ghost"
               size="icon-sm"
-              aria-label={format(m.reviewBackToQueue)}
+              aria-label={m.review_backToQueue()}
               data-testid="queue-back"
               onClick={onBack}
             >
               <ChevronLeftIcon aria-hidden />
             </Button>
           </TooltipTrigger>
-          <TooltipContent>{format(m.reviewBackToQueue)}</TooltipContent>
+          <TooltipContent>{m.review_backToQueue()}</TooltipContent>
         </Tooltip>
       </TooltipProvider>
       <Avatar className={stylex.props(styles.avatar).className}>
@@ -389,8 +389,8 @@ export function PersonStrip({
               // line, and kept on the chain
               steps={levels.length > 1 ? levels.slice(1) : levels}
               chain={{
-                label: format(m.rosterUnits),
-                closeLabel: format(commonMessages.close),
+                label: m.roster_units(),
+                closeLabel: commonMessages.action_close(),
                 levels,
               }}
             />
@@ -419,7 +419,7 @@ export function PersonStrip({
           {/* the same mark the notice below carries: the filing climbed a
               level, and one glyph says it in both places */}
           <CircleArrowUpIcon aria-hidden />
-          {format(m.reviewRouteEscalation)}
+          {m.review_routeEscalation()}
         </Badge>
       )}
       {/* this filing has been round the supplement loop before: worth knowing
@@ -427,7 +427,7 @@ export function PersonStrip({
       {review.supplements.length > 0 && (
         <Badge variant="outline" className={stylex.props(styles.hadSupplements).className}>
           <AlertCircleIcon aria-hidden />
-          {format(m.reviewHadSupplements)}
+          {m.review_hadSupplements()}
         </Badge>
       )}
       {/* who else is waiting: looked up when the reviewer wants to jump, so
@@ -440,7 +440,7 @@ export function PersonStrip({
         onClick={onQueue}
       >
         <ListIcon aria-hidden className={stylex.props(styles.queueKeyIcon).className} />
-        {format(m.reviewQueueKey)}
+        {m.review_queueKey()}
         {fine && <Kbd>Q</Kbd>}
       </Button>
       {/* the keys panel belongs to a keyboard; without one the letters are
@@ -454,7 +454,7 @@ export function PersonStrip({
           className={stylex.props(styles.keysHint).className}
           onClick={onKeys}
         >
-          {format(m.reviewKeysTitle)}
+          {m.review_keysTitle()}
           <Kbd>?</Kbd>
         </Button>
       )}
@@ -469,23 +469,18 @@ export function PersonStrip({
           {/* a phone's bar has the name's line to keep: there the place is
               said as figures alone, and in words where there is room */}
           <span {...stylex.props(styles.runAtWords)}>
-            {format(m.reviewRunPosition, { at: run.at, count: run.total })}
+            {m.review_runPosition({ at: run.at, count: run.total })}
           </span>
           <span {...stylex.props(styles.runAtFigures)}>
-            {format(m.reviewRunPositionShort, { at: run.at, count: run.total })}
+            {m.review_runPositionShort({ at: run.at, count: run.total })}
           </span>
         </p>
       )}
       <span {...stylex.props(styles.edgeKeys)}>
-        <EdgeButton
-          can={canPrev}
-          why={format(m.reviewFirstOne)}
-          label="K"
-          onPress={() => onMove(-1)}
-        >
+        <EdgeButton can={canPrev} why={m.review_firstOne()} label="K" onPress={() => onMove(-1)}>
           <ChevronUpIcon aria-hidden />
         </EdgeButton>
-        <EdgeButton can={canNext} why={format(m.reviewLastOne)} label="J" onPress={() => onMove(1)}>
+        <EdgeButton can={canNext} why={m.review_lastOne()} label="J" onPress={() => onMove(1)}>
           <ChevronDownIcon aria-hidden />
         </EdgeButton>
       </span>
@@ -547,7 +542,6 @@ export function PartStrip({
   /** hands the parent the way to a face, for links that live outside the strip */
   bind: (go: (part: WorkbenchPart) => void) => void
 }) {
-  const { format } = useI18n()
   const beside = useBeside()
   const [at, setAt] = useState<WorkbenchPart>('filing')
   // While a press is travelling to its face, the spy would call every face
@@ -662,17 +656,15 @@ export function PartStrip({
             {...stylex.props(styles.partChip, part === at ? styles.partChipAt : styles.partChipOff)}
           >
             <span {...stylex.props(styles.chipWords)}>
-              {format(PART_LABEL[part])}
+              {PART_LABEL[part]()}
               {/* the chip that is up says where in the thing it is: the
                   round for the flow, the version for the filing */}
               {part === at && part === 'flow' && (
-                <span {...stylex.props(styles.chipDetail)}>
-                  {format(m.reviewStateRound, { round })}
-                </span>
+                <span {...stylex.props(styles.chipDetail)}>{m.review_stateRound({ round })}</span>
               )}
               {part === at && part === 'filing' && (
                 <span {...stylex.props(styles.chipDetail)}>
-                  {format(m.reviewFiledVersionShort, { no: revision })}
+                  {m.review_filedVersionShort({ no: revision })}
                 </span>
               )}
               {/* something on that face is worth this reader's look and has

@@ -12,7 +12,7 @@ import * as stylex from '@stylexjs/stylex'
 import { SearchIcon } from 'lucide-react'
 import { useApiQuery } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { useTerm } from '@qualy/plugin-settings/client/terms'
 import { authTerms } from '@qualy/auth-contract/terms'
 import { Button } from '@qualy/ui/button'
@@ -23,7 +23,7 @@ import { Spinner } from '@qualy/ui/spinner'
 import { VisuallyHidden } from '@qualy/ui/visually-hidden'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentApi } from '../api.ts'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import { ORDER, WORDS, waitsOnAnything } from './filings.ts'
 import {
   ROSTER_UNFILTERED,
@@ -32,6 +32,8 @@ import {
   type RosterView,
 } from './roster-view.ts'
 import type { RosterWalk, WalkRow } from './roster-walk.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // The roster beside an open account: the people either side of whoever is
 // open, with them in the middle, and a search that narrows the same list
@@ -257,7 +259,7 @@ export function RosterWalkList({
   /** in the column beside the account, or in a sheet over it */
   seat: 'column' | 'sheet'
 }) {
-  const { format, formatError } = useI18n()
+  const { formatError } = useI18n()
   const query = useApiQuery(assessmentApi)
   const businessNo = useTerm(authTerms.businessNumber)
   const headingId = useId()
@@ -470,7 +472,7 @@ export function RosterWalkList({
     }
   }
 
-  const heading = format(m.rosterWalkHeading)
+  const heading = m.roster_walkHeading()
   const empty = walk.state === 'ready' && !walk.stale && walk.total === 0
   const firstRow = walk.rows[0]
   const lastRow = walk.rows.at(-1)
@@ -503,8 +505,8 @@ export function RosterWalkList({
         name="roster-walk-search"
         value={search.draft}
         // the column is narrow: what to type, with the full words for a reader
-        placeholder={format(m.rosterWalkSearch, { businessNo })}
-        aria-label={format(m.rosterSearch, { businessNo })}
+        placeholder={m.roster_walkSearch({ businessNo })}
+        aria-label={m.roster_search({ businessNo })}
         // it looks for somebody else, so nothing of the reader's own belongs in it
         autoComplete="off"
         data-1p-ignore=""
@@ -514,13 +516,13 @@ export function RosterWalkList({
         onKeyDown={onFieldKey}
         onBlur={() => setOpening(null)}
         lead={<SearchIcon aria-hidden {...stylex.props(styles.glass)} />}
-        tail={walk.stale ? <Spinner aria-label={format(commonMessages.loading)} /> : undefined}
+        tail={walk.stale ? <Spinner aria-label={commonMessages.state_loading()} /> : undefined}
       />
       {filtered && (
         <p data-testid="roster-walk-filtered" {...stylex.props(styles.note)}>
-          <span>{format(m.rosterWalkFiltered)}</span>
+          <span>{m.roster_walkFiltered()}</span>
           <Button variant="link" size="xs" onClick={() => onView(ROSTER_UNFILTERED)}>
-            {format(m.rosterWalkClearFilters)}
+            {m.roster_walkClearFilters()}
           </Button>
         </p>
       )}
@@ -529,7 +531,7 @@ export function RosterWalkList({
       {walk.off && who.data !== undefined && (
         <div data-testid="roster-walk-off" {...stylex.props(styles.off)}>
           <span {...stylex.props(styles.name)}>{who.data?.participant.displayName ?? ''}</span>
-          <span {...stylex.props(styles.offNote)}>{format(m.rosterWalkOff)}</span>
+          <span {...stylex.props(styles.offNote)}>{m.roster_walkOff()}</span>
         </div>
       )}
       <nav
@@ -557,24 +559,24 @@ export function RosterWalkList({
           <div role="alert" {...stylex.props(styles.blank)}>
             <p {...stylex.props(styles.blankWords)}>{formatError(walk.error)}</p>
             <Button variant="outline" size="xs" onClick={walk.retry}>
-              {format(commonMessages.retry)}
+              {commonMessages.action_retry()}
             </Button>
           </div>
         ) : empty ? (
           <div data-testid="roster-walk-empty" {...stylex.props(styles.blank)}>
             <p {...stylex.props(styles.blankWords)}>
-              {format(walk.narrowed ? m.rosterNoMatch : m.rosterEmpty)}
+              {(walk.narrowed ? m.roster_noMatch : m.roster_empty)()}
             </p>
             {walk.narrowed && (
               <span {...stylex.props(styles.blankKeys)}>
                 {view.q.trim() !== '' && (
                   <Button variant="outline" size="xs" onClick={() => search.flush('')}>
-                    {format(m.rosterWalkClearSearch)}
+                    {m.roster_walkClearSearch()}
                   </Button>
                 )}
                 {filtered && (
                   <Button variant="outline" size="xs" onClick={() => onView(ROSTER_UNFILTERED)}>
-                    {format(m.rosterWalkClearFilters)}
+                    {m.roster_walkClearFilters()}
                   </Button>
                 )}
               </span>
@@ -623,9 +625,8 @@ function WalkEntry({
   onFocus: () => void
   onOpen: () => void
 }) {
-  const { format } = useI18n()
   const waiting = ORDER.filter((kind) => row.filings[kind] > 0)
-  const said = waiting.map((kind) => format(WORDS[kind], { count: row.filings[kind] }))
+  const said = waiting.map((kind) => WORDS[kind]({ count: row.filings[kind] }))
   const excluded = row.status === 'excluded'
   return (
     <button
@@ -654,7 +655,7 @@ function WalkEntry({
         )}
       />
       <span {...stylex.props(styles.name, excluded && styles.nameOff)}>{row.displayName}</span>
-      {excluded && <span {...stylex.props(styles.tag)}>{format(m.excludedBadge)}</span>}
+      {excluded && <span {...stylex.props(styles.tag)}>{m.roster_excluded()}</span>}
       {row.businessNo !== null && <span {...stylex.props(styles.number)}>{row.businessNo}</span>}
       {said.length > 0 && <VisuallyHidden>{said.join(' ')}</VisuallyHidden>}
     </button>

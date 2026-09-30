@@ -10,9 +10,9 @@ import {
   type IntegerSchema,
   type TextSchema,
 } from '@qualy/value-schema'
-import type { useI18n } from '@qualy/web-i18n'
-import { formulaMessages as m } from './i18n.ts'
+
 import { kindWords } from './kind-words.ts'
+import * as m from '#messages'
 
 // What a parameter will accept, in words.
 //
@@ -20,22 +20,19 @@ import { kindWords } from './kind-words.ts'
 // beside a field in the try-run form, so an author reads one wording of the
 // same fact wherever they meet it.
 
-type Format = ReturnType<typeof useI18n>['format']
-
 /** the wide space these statements stand apart by, as zh typography sets them */
 const GAP = '　'
 
-const bounds = (format: Format, min: string | undefined, max: string | undefined) => {
-  if (min !== undefined && max !== undefined) return [format(m.constraintRange, { min, max })]
-  if (min !== undefined) return [format(m.constraintAtLeast, { min })]
-  if (max !== undefined) return [format(m.constraintAtMost, { max })]
+const bounds = (min: string | undefined, max: string | undefined) => {
+  if (min !== undefined && max !== undefined) return [m.constraint_range({ min, max })]
+  if (min !== undefined) return [m.constraint_atLeast({ min })]
+  if (max !== undefined) return [m.constraint_atMost({ max })]
   return []
 }
 
 /** what a schema allows, as short separate statements */
 export const constraintRules = (
   schema: AtomicSchema,
-  format: Format,
   locale: string,
   /**
    * Name a pattern instead of printing it.
@@ -51,13 +48,13 @@ export const constraintRules = (
   switch (kindOf(schema)) {
     case 'integer': {
       const integer = schema as IntegerSchema
-      return bounds(format, String(integer.minimum), String(integer.maximum))
+      return bounds(String(integer.minimum), String(integer.maximum))
     }
     case 'decimal': {
       const decimal = schema as DecimalSchema
       return [
-        ...bounds(format, decimal[DECIMAL_MINIMUM], decimal[DECIMAL_MAXIMUM]),
-        format(m.constraintScale, { scale: decimal[MAX_SCALE] }),
+        ...bounds(decimal[DECIMAL_MINIMUM], decimal[DECIMAL_MAXIMUM]),
+        m.constraint_scale({ scale: decimal[MAX_SCALE] }),
       ]
     }
     case 'choice': {
@@ -67,24 +64,20 @@ export const constraintRules = (
     case 'boolean':
       // it takes two values and only two; "anything" was the default answer
       // for a kind with no bounds to state, which reads as no rule at all
-      return [format(m.constraintBoolean)]
+      return [m.constraint_boolean()]
     case 'text': {
       const text = schema as TextSchema
       const length =
         text.minLength !== undefined && text.maxLength !== undefined
-          ? [format(m.constraintLength, { min: text.minLength, max: text.maxLength })]
+          ? [m.constraint_length({ min: text.minLength, max: text.maxLength })]
           : text.maxLength !== undefined
-            ? [format(m.constraintMaxLength, { max: text.maxLength })]
+            ? [m.constraint_maxLength({ max: text.maxLength })]
             : []
       return [
         ...length,
         ...(text.pattern === undefined
           ? []
-          : [
-              brief
-                ? format(m.constraintPatterned)
-                : format(m.constraintPattern, { pattern: text.pattern }),
-            ]),
+          : [brief ? m.constraint_patterned() : m.constraint_pattern({ pattern: text.pattern })]),
       ]
     }
     default:
@@ -93,5 +86,5 @@ export const constraintRules = (
 }
 
 /** a field's kind and its rules as one line, for the note beside its label */
-export const constraintNote = (schema: AtomicSchema, format: Format, locale: string): string =>
-  [kindWords(format, kindOf(schema)), ...constraintRules(schema, format, locale, true)].join(GAP)
+export const constraintNote = (schema: AtomicSchema, locale: string): string =>
+  [kindWords(kindOf(schema)), ...constraintRules(schema, locale, true)].join(GAP)

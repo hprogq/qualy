@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { issueSentence } from '../src/client/entry/issues.ts'
-import { assessmentMessages as m } from '../src/client/i18n.ts'
+import * as m from '#messages'
 
 // The sentence a refused field gets. The evidence driver folds a date
 // field's own bounds and the round's material window into one range and
@@ -13,29 +13,29 @@ describe('which bound a refused date is said to have broken', () => {
   const narrowed = { ...bound, min: '2026-05-01' }
 
   it.each([
-    ['a date before the window', bound, '2026-02-01', m.entryIssueOutOfMaterialRange],
+    ['a date before the window', bound, '2026-02-01', m.entry_issueOutOfMaterialRange],
     [
       'the day the window ends, which it does not hold',
       bound,
       '2026-09-01',
-      m.entryIssueOutOfMaterialRange,
+      m.entry_issueOutOfMaterialRange,
     ],
     [
       'a date in the window, before the field’s own earliest',
       narrowed,
       '2026-04-01',
-      m.entryIssueOutOfRange,
+      m.entry_issueOutOfRange,
     ],
-    ['a date before both', narrowed, '2026-02-01', m.entryIssueOutOfMaterialRange],
+    ['a date before both', narrowed, '2026-02-01', m.entry_issueOutOfMaterialRange],
   ] as const)('%s', (_case, field, value, sentence) => {
     expect(issueSentence('out-of-range', field, { value, materialRange: window })).toBe(sentence)
   })
 
   it('reads the field alone where the date is not known', () => {
     // only the window binds it, so only the window can have refused it
-    expect(issueSentence('out-of-range', bound)).toBe(m.entryIssueOutOfMaterialRange)
+    expect(issueSentence('out-of-range', bound)).toBe(m.entry_issueOutOfMaterialRange)
     // either could have: the field's own words are true of both
-    expect(issueSentence('out-of-range', narrowed)).toBe(m.entryIssueOutOfRange)
+    expect(issueSentence('out-of-range', narrowed)).toBe(m.entry_issueOutOfRange)
     // a date the window does not bind, and a number, broke their own bounds
     expect(
       issueSentence(
@@ -43,8 +43,8 @@ describe('which bound a refused date is said to have broken', () => {
         { type: 'date' },
         { value: '2026-02-01', materialRange: window },
       ),
-    ).toBe(m.entryIssueOutOfRange)
-    expect(issueSentence('out-of-range', { type: 'decimal' })).toBe(m.entryIssueOutOfRange)
-    expect(issueSentence('required', bound)).toBe(m.entryIssueRequired)
+    ).toBe(m.entry_issueOutOfRange)
+    expect(issueSentence('out-of-range', { type: 'decimal' })).toBe(m.entry_issueOutOfRange)
+    expect(issueSentence('required', bound)).toBe(m.entry_issueRequired)
   })
 })

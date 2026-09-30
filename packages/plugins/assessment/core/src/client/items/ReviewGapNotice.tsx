@@ -2,13 +2,13 @@ import { useId, useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { ChevronDownIcon, TriangleAlertIcon } from 'lucide-react'
 import { PageLink, usePageHref } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { Button } from '@qualy/ui/button'
 import { UnitPath } from '@qualy/ui/unit-path'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import { Tag } from './editor/Rows.tsx'
+import * as m from '#messages'
 
 // Review that has stopped for want of a reviewer, said in one line with the
 // way to the details and the way to fix it. Amber and not red: nothing is
@@ -154,7 +154,6 @@ export function ReviewGapNotice({
   /** the reader may put people into the round's roles, so the way there is theirs */
   canAppoint: boolean
 }) {
-  const { format } = useI18n()
   const [open, setOpen] = useState(false)
   const detailId = useId()
   // the roles are given out on the round's people page; a reader who cannot
@@ -176,7 +175,7 @@ export function ReviewGapNotice({
     >
       <TriangleAlertIcon aria-hidden {...stylex.props(styles.icon)} />
       <div {...stylex.props(styles.head)}>
-        <p {...stylex.props(styles.summary)}>{format(m.itemsStuckSummary, { waiting, units })}</p>
+        <p {...stylex.props(styles.summary)}>{m.items_stuckSummary({ waiting, units })}</p>
         <span {...stylex.props(styles.actions)}>
           <Button
             size="sm"
@@ -185,7 +184,7 @@ export function ReviewGapNotice({
             aria-controls={detailId}
             onClick={() => setOpen((was) => !was)}
           >
-            {format(open ? m.itemsStuckHide : m.itemsStuckShow)}
+            {(open ? m.items_stuckHide : m.items_stuckShow)()}
             <ChevronDownIcon
               aria-hidden
               {...stylex.props(styles.chevron, open && styles.chevronOpen)}
@@ -198,7 +197,7 @@ export function ReviewGapNotice({
                 params={{ batchId }}
                 data-testid="review-gap-appoint"
               >
-                {format(m.itemsStuckAppoint)}
+                {m.items_stuckAppoint()}
               </PageLink>
             </Button>
           )}
@@ -225,7 +224,7 @@ export function ReviewGapNotice({
                         it is rather than as an empty name */}
                     {row.nodeId === null || place.length === 0 ? (
                       <span {...stylex.props(styles.unitName, styles.unitNone)}>
-                        {format(m.itemsStuckNowhere)}
+                        {m.items_stuckNowhere()}
                       </span>
                     ) : (
                       <UnitPath steps={place} emphasis="last" xstyle={styles.unitPath} />
@@ -234,11 +233,9 @@ export function ReviewGapNotice({
                         fixes, so the row says which one it is looking at */}
                     {row.reason !== 'no-assignee' && (
                       <span {...stylex.props(styles.why)}>
-                        {format(
-                          row.reason === 'panel-seat-unfilled'
-                            ? m.itemsStuckSeat
-                            : m.itemsStuckConflict,
-                        )}
+                        {(row.reason === 'panel-seat-unfilled'
+                          ? m.items_stuckSeat
+                          : m.items_stuckConflict)()}
                       </span>
                     )}
                   </span>
@@ -248,13 +245,13 @@ export function ReviewGapNotice({
                     ))}
                   </span>
                   <span {...stylex.props(styles.count)}>
-                    {format(m.itemsStuckCount, { count: row.waiting })}
+                    {m.items_stuckCount({ count: row.waiting })}
                   </span>
                 </li>
               )
             })}
           </ul>
-          <p {...stylex.props(styles.hint)}>{format(m.itemsStuckHint)}</p>
+          <p {...stylex.props(styles.hint)}>{m.items_stuckHint()}</p>
         </div>
       )}
     </div>

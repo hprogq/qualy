@@ -1,9 +1,9 @@
 import { Fragment, useMemo, type ReactNode } from 'react'
 import * as stylex from '@stylexjs/stylex'
-import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { assessmentMessages as m } from '../../i18n.ts'
+
 import type { LinePart } from './model.ts'
+import * as m from '#messages'
 
 // A claim's identity line drawn with its field names set apart: quieter than
 // the figures they name, so "name value" reads as a label and its value
@@ -49,13 +49,12 @@ const styles = stylex.create({
 
 /** parts of a claim's identity line, joined and each worded as the reader's language has it */
 export function LineParts({ parts }: { parts: readonly LinePart[] }) {
-  const { format } = useI18n()
   const [figure, join] = useMemo(
     () => [
-      piecesOf(format(m.entriesFigure, { label: FIRST, value: SECOND })),
-      piecesOf(format(m.entriesPartJoin, { before: FIRST, after: SECOND })),
+      piecesOf(m.entries_figure({ label: FIRST, value: SECOND })),
+      piecesOf(m.entries_partJoin({ before: FIRST, after: SECOND })),
     ],
-    [format],
+    [],
   )
   const drawn = parts.map((part) =>
     part.label === null

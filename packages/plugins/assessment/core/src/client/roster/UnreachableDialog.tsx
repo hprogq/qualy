@@ -4,7 +4,7 @@ import * as stylex from '@stylexjs/stylex'
 import { ChevronDownIcon, CircleCheckIcon } from 'lucide-react'
 import { PageLink, useApiQuery, useLoadFailure, usePageHref } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { AsyncSection } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import {
@@ -20,9 +20,11 @@ import { Skeleton } from '@qualy/ui/skeleton'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { assessmentApi } from '../api.ts'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import { DialogBlank } from '../DialogBlank.tsx'
 import { UnreachablePeople } from './UnreachablePeople.tsx'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // Which questions some people on the roster cannot file, and who they are.
 //
@@ -110,7 +112,7 @@ export function UnreachableDialog({
   onOpenPerson: (participantId: string) => void
 }) {
   const query = useApiQuery(assessmentApi)
-  const { format } = useI18n()
+
   const failures = useLoadFailure()
   // the same reading the roster's notice counts from
   const alerts = useQuery({
@@ -130,16 +132,16 @@ export function UnreachableDialog({
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
       <DialogContent data-testid="unreachable-dialog" size="44rem" xstyle={styles.panel}>
         <DialogHeader>
-          <DialogTitle>{format(m.unreachableTitle)}</DialogTitle>
-          {routes.length > 0 && <DialogDescription>{format(m.unreachableHint)}</DialogDescription>}
+          <DialogTitle>{m.roster_unreachableTitle()}</DialogTitle>
+          {routes.length > 0 && <DialogDescription>{m.roster_unreachableHint()}</DialogDescription>}
         </DialogHeader>
         <DialogBody xstyle={styles.body}>
           <AsyncSection
             pending={alerts.isPending}
             error={alerts.isError ? failures.of(alerts.error) : null}
             retrying={alerts.isFetching}
-            loadingLabel={format(commonMessages.loading)}
-            retryLabel={format(commonMessages.retry)}
+            loadingLabel={commonMessages.state_loading()}
+            retryLabel={commonMessages.action_retry()}
             onRetry={() => void alerts.refetch()}
             skeleton={
               <div {...stylex.props(styles.waiting)}>
@@ -152,7 +154,7 @@ export function UnreachableDialog({
               <DialogBlank
                 testId="unreachable-quiet"
                 icon={<CircleCheckIcon />}
-                title={format(m.unreachableQuiet)}
+                title={m.roster_unreachableQuiet()}
               />
             ) : (
               <ul data-testid="unreachable-questions" {...stylex.props(styles.list)}>
@@ -174,7 +176,7 @@ export function UnreachableDialog({
         </DialogBody>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>
-            {format(commonMessages.close)}
+            {commonMessages.action_close()}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -196,7 +198,7 @@ function QuestionRow({
   onUnfold: () => void
   onOpenPerson: (participantId: string) => void
 }) {
-  const { format, locale } = useI18n()
+  const { locale } = useI18n()
   const peopleId = useId()
   // a reader who cannot open the question's settings is not led to a closed door
   const settings = usePageHref('assessment/batch-items', {
@@ -220,11 +222,11 @@ function QuestionRow({
         <span {...stylex.props(styles.what)}>
           <span {...stylex.props(styles.title)}>{route.itemTitle}</span>
           {levels !== null && (
-            <span {...stylex.props(styles.levels)}>{format(m.unreachableLevels, { levels })}</span>
+            <span {...stylex.props(styles.levels)}>{m.roster_unreachableLevels({ levels })}</span>
           )}
         </span>
         <span {...stylex.props(styles.count)}>
-          {format(m.unreachableCount, { count: route.participants })}
+          {m.roster_unreachableCount({ count: route.participants })}
         </span>
         <span {...stylex.props(styles.keys)}>
           {settings !== undefined && (
@@ -234,7 +236,7 @@ function QuestionRow({
                 params={{ batchId }}
                 search={{ question: route.itemId }}
               >
-                {format(m.unreachableEditQuestion)}
+                {m.roster_unreachableEditQuestion()}
               </PageLink>
             </Button>
           )}
@@ -245,7 +247,7 @@ function QuestionRow({
             aria-controls={peopleId}
             onClick={onUnfold}
           >
-            {format(unfolded ? m.unreachableHidePeople : m.unreachableShowPeople)}
+            {(unfolded ? m.roster_unreachableHidePeople : m.roster_unreachableShowPeople)()}
             <ChevronDownIcon
               aria-hidden
               {...stylex.props(styles.chevron, unfolded && styles.chevronOpen)}

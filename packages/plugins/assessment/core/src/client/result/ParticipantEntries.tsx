@@ -12,7 +12,7 @@ import {
   useRunApi,
 } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { AsyncSection } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { toast } from '@qualy/ui/toast'
@@ -21,7 +21,7 @@ import type { LiveLine } from '@qualy/ui/live-mark'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { assessmentApi } from '../api.ts'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import { ManagedEntrySheet } from '../entry/ManagedEntrySheet.tsx'
 import type { RedetermineInput } from '../entry/RedetermineDialog.tsx'
 import { sayEntryFailure } from '../entry/refusals.ts'
@@ -34,6 +34,8 @@ import { useLineWords } from '../entry/workspace/calc.ts'
 import { useParticipantEntries } from './participant-entries.ts'
 import { useReviewQueueQuery } from '../review/queue.ts'
 import { entryLineOf } from '../entry/workspace/model.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // One person's filings, read the way they read them: the same workspace as
 // their own page, with the staff reader's acts in place of the owner's.
@@ -132,7 +134,7 @@ export function ParticipantEntries({
   const run = useRunApi()
   const query = useApiQuery(assessmentApi)
   const queryClient = useQueryClient()
-  const { format, formatError } = useI18n()
+  const { formatError } = useI18n()
   const failures = useLoadFailure()
   const lineWords = useLineWords()
   // which question is open: the same address key the owner's page keeps
@@ -215,10 +217,10 @@ export function ParticipantEntries({
         }),
       ).then(() => input.kind),
     onSuccess: (kind) => {
-      toast.success(format(kind === 'void' ? m.staffVoided : m.staffReturned))
+      toast.success((kind === 'void' ? m.staff_voided : m.staff_returned)())
       refresh()
     },
-    onError: (error) => toast.error(sayEntryFailure(error, { format, formatError })),
+    onError: (error) => toast.error(sayEntryFailure(error, { formatError })),
   })
   const reopen = useMutation({
     mutationFn: (input: { entryId: string; reason: string }) =>
@@ -229,10 +231,10 @@ export function ParticipantEntries({
         }),
       ),
     onSuccess: () => {
-      toast.success(format(m.staffReopened))
+      toast.success(m.staff_reopened())
       refresh()
     },
-    onError: (error) => toast.error(sayEntryFailure(error, { format, formatError })),
+    onError: (error) => toast.error(sayEntryFailure(error, { formatError })),
   })
   const [correctionProblem, setCorrectionProblem] = useState<string | null>(null)
   const redetermine = useMutation({
@@ -251,10 +253,10 @@ export function ParticipantEntries({
       ),
     onMutate: () => setCorrectionProblem(null),
     onSuccess: () => {
-      toast.success(format(m.staffRedetermined))
+      toast.success(m.staff_redetermined())
       refresh()
     },
-    onError: (error) => setCorrectionProblem(sayEntryFailure(error, { format, formatError })),
+    onError: (error) => setCorrectionProblem(sayEntryFailure(error, { formatError })),
   })
 
   const mine = new Set(flat.map((entry) => entry.id))
@@ -306,8 +308,8 @@ export function ParticipantEntries({
         error={failure}
         retrying={failed?.isFetching ?? false}
         framed
-        loadingLabel={format(commonMessages.loading)}
-        retryLabel={format(commonMessages.retry)}
+        loadingLabel={commonMessages.state_loading()}
+        retryLabel={commonMessages.action_retry()}
         onRetry={() => {
           void entries.refetch()
           void items.refetch()
@@ -320,12 +322,12 @@ export function ParticipantEntries({
         {...(pending ? { xstyle: styles.fill } : {})}
       >
         {rows.length === 0 ? (
-          <p {...stylex.props(styles.empty)}>{format(m.entriesNoItems)}</p>
+          <p {...stylex.props(styles.empty)}>{m.entries_noItems()}</p>
         ) : (
           <EntriesWorkspace
             viewer="staff"
-            heading={format(m.entriesStaffHeading)}
-            totalLabel={format(m.entriesStaffTotal)}
+            heading={m.entries_staffHeading()}
+            totalLabel={m.entries_staffTotal()}
             rows={rows}
             entriesByItem={entriesByItem}
             entries={flat}
@@ -356,7 +358,7 @@ export function ParticipantEntries({
                     search={{ mode: 'manual' }}
                   >
                     <PenLineIcon aria-hidden />
-                    {format(m.entriesRecordFor)}
+                    {m.entries_recordFor()}
                   </PageLink>
                 </Button>
               ) : null
@@ -380,14 +382,14 @@ export function ParticipantEntries({
                     {...stylex.props(styles.waiting)}
                   >
                     <span {...stylex.props(styles.waitingWords)}>
-                      {format(m.entriesAwaitingYouCount, { count: awaiting.size })}
+                      {m.entries_awaitingYouCount({ count: awaiting.size })}
                     </span>
                     <Button asChild size="sm" variant="outline">
                       <PageLink
                         page="assessment/review-instance"
                         params={{ batchId, instanceId: firstAwaiting }}
                       >
-                        {format(m.entriesGoReview)}
+                        {m.entries_goReview()}
                       </PageLink>
                     </Button>
                   </div>
@@ -426,7 +428,7 @@ export function ParticipantEntries({
                   page="assessment/review-instance"
                   params={{ batchId, instanceId: awaiting.get(lingering.entry.id)! }}
                 >
-                  {format(m.entriesGoReview)}
+                  {m.entries_goReview()}
                 </PageLink>
               </Button>
             ) : undefined

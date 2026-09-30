@@ -1,45 +1,29 @@
-import { setupI18n } from '@lingui/core'
-import { compileMessage } from '@lingui/message-utils/compileMessage'
 import { Schema } from 'effect'
 import {
-  defineMessage,
   supportedLocales,
   UiTextSchema,
   literal,
   message,
-  type MessageCatalog,
-  type MessageDescriptor,
+  type Message,
 } from '@qualy/i18n-contract'
-import { describe, expect, it } from 'vitest'
-import { loadCatalogs, resolveLocale } from '../src/index.tsx'
+import { afterEach, describe, expect, it } from 'vitest'
+import { formatText, installMessages, resolveLocale } from '../src/index.tsx'
 import { bootstrapMessages } from '../src/bootstrap.ts'
-import zhCN from '../src/catalogs/zh-CN.ts'
-import { commonMessages } from '../src/messages.ts'
-import {
-  commonErrorMessages,
-  formatApiError,
-  isTransportError,
-  networkErrorMessage,
-  unexpectedErrorMessage,
-  type MessageFormatter,
-} from '../src/format.ts'
+import { formatApiError, isTransportError } from '../src/format.ts'
+import * as commonMessages from '#messages'
 
-// a formatter over the real icu engine: catalog hit wins, otherwise the
-// descriptor's english default is formatted
-const formatterFor = (catalog: MessageCatalog, locale = 'zh-CN'): MessageFormatter => {
-  const i18n = setupI18n()
-  i18n.setMessagesCompiler(compileMessage)
-  i18n.load(locale, catalog)
-  i18n.activate(locale)
-  return {
-    format: (descriptor, ...args) =>
-      i18n._({
-        id: descriptor.id,
-        message: descriptor.defaultMessage,
-        values: args[0],
-      }),
+// A page's language is marked on its root, and a message reads it there;
+// outside a page nothing is marked, so a message is given its locale.
+const onPage = (locale: string) => {
+  ;(globalThis as { document?: unknown }).document = {
+    documentElement: { dataset: { locale } },
   }
 }
+
+afterEach(() => {
+  delete (globalThis as { document?: unknown }).document
+  installMessages({})
+})
 
 // what an http api error decodes back into: the tagged class itself, its
 // fields on the instance, and the english message the server sends for
@@ -48,32 +32,24 @@ const apiError = (code: string, fields: Record<string, unknown> = {}) =>
   Object.assign(new Error('backend fallback message'), { _tag: code, ...fields })
 
 describe('web i18n runtime', () => {
-  it('translates through the catalog and falls back to the english default', () => {
-    const formatter = formatterFor(zhCN)
-    expect(formatter.format(commonMessages.retry)).toBe('重试')
-    expect(formatter.format(commonMessages.componentMissing)).toBe('该页面暂时无法打开')
-    // an untranslated id renders its english default, never an empty string
-    expect(formatter.format({ id: 'x/untranslated', defaultMessage: 'Plain default' })).toBe(
-      'Plain default',
+  it('says a message in the language of the page it is on', () => {
+    onPage('zh-CN')
+    expect(commonMessages.action_retry()).toBe(commonMessages.action_retry({}, { locale: 'zh-CN' }))
+    onPage('en-US')
+    expect(commonMessages.action_retry()).toBe(commonMessages.action_retry({}, { locale: 'en-US' }))
+    expect(commonMessages.action_retry({}, { locale: 'zh-CN' })).not.toBe(
+      commonMessages.action_retry({}, { locale: 'en-US' }),
     )
   })
 
-  it('formats icu plurals per locale', () => {
-    const descriptor = {
-      id: 'test/count',
-      defaultMessage: '{n, plural, one {# item} other {# items}}',
-    }
-    expect(formatterFor({}, 'en-US').format(descriptor, { n: 1 })).toBe('1 item')
-    expect(formatterFor({}, 'en-US').format(descriptor, { n: 3 })).toBe('3 items')
-    expect(formatterFor({ 'test/count': '{n} 项' }).format(descriptor, { n: 3 })).toBe('3 项')
+  it('refuses to guess a language where there is no page', () => {
+    expect(() => commonMessages.action_retry()).toThrow(/no locale/)
   })
 
   it('resolves api errors by code, data and transport failure', () => {
-    const formatter = formatterFor(zhCN)
+    onPage('zh-CN')
     // network failures never carry a code
-    expect(formatApiError(new TypeError('fetch failed'), formatter)).toBe(
-      formatter.format(networkErrorMessage),
-    )
+    expect(formatApiError(new TypeError('fetch failed'))).toBe(commonMessages.error_network())
     // and what a screen actually receives is the http client's wrapper, not
     // the fetch's own TypeError: the runtime turns every browser call into an
     // effect, and this shape is what its failure squashes to
@@ -82,64 +58,36 @@ describe('web i18n runtime', () => {
       reason: { _tag: 'TransportError' },
     })
     expect(isTransportError(unreachable)).toBe(true)
-    expect(formatApiError(unreachable, formatter)).toBe(formatter.format(networkErrorMessage))
+    expect(formatApiError(unreachable)).toBe(commonMessages.error_network())
     // a refusal that DID reach the server is not a transport failure
     expect(isTransportError(apiError('ACCESS_DENIED'))).toBe(false)
     // common codes are owned by the runtime
-    expect(formatApiError(apiError('ACCESS_DENIED'), formatter)).toBe('你没有执行该操作的权限。')
+    expect(formatApiError(apiError('ACCESS_DENIED'))).toBe(commonMessages.error_accessDenied())
     // a plugin registry wins over the common map and projects typed data
+    const incompatible: Message = (inputs?: { count?: number }) =>
+      `${String(inputs?.count)} blocked`
     const registry = {
       DEMO_INCOMPATIBLE: {
-        message: { id: 'demo/error/incompatible', defaultMessage: '{count} blocked' },
-        values: (data: unknown) => ({ count: (data as { count: number }).count }),
+        message: incompatible,
+        values: (data: never) => ({ count: (data as { count: number }).count }),
       },
-      ACCESS_DENIED: {
-        message: { id: 'demo/error/access-denied', defaultMessage: 'Plugin says no' },
-      },
+      ACCESS_DENIED: { message: () => 'Plugin says no' },
     }
-    expect(formatApiError(apiError('DEMO_INCOMPATIBLE', { count: 3 }), formatter, registry)).toBe(
-      '3 blocked',
-    )
-    expect(formatApiError(apiError('ACCESS_DENIED'), formatter, registry)).toBe('Plugin says no')
+    expect(formatApiError(apiError('DEMO_INCOMPATIBLE', { count: 3 }), registry)).toBe('3 blocked')
+    expect(formatApiError(apiError('ACCESS_DENIED'), registry)).toBe('Plugin says no')
     // an unmapped code degrades to the backend english message
-    expect(formatApiError(apiError('SOMETHING_NEW'), formatter, registry)).toBe(
-      'backend fallback message',
-    )
+    expect(formatApiError(apiError('SOMETHING_NEW'), registry)).toBe('backend fallback message')
     // a non-api throwable degrades to the generic message
-    expect(formatApiError({ oops: true }, formatter)).toBe(formatter.format(unexpectedErrorMessage))
+    expect(formatApiError({ oops: true })).toBe(commonMessages.error_unexpected())
   })
 
-  it('keeps every runtime message translated and compilable', () => {
-    // key completeness is enforced by CatalogFor at typecheck time; what a
-    // test adds is that each translation is valid icu the engine accepts
-    const declared = new Set<string>([
-      ...Object.values(commonMessages).map((descriptor) => descriptor.id),
-      ...Object.values(commonErrorMessages).map((entry) => entry.message.id),
-      networkErrorMessage.id,
-      unexpectedErrorMessage.id,
-    ])
-    expect(new Set(Object.keys(zhCN))).toEqual(declared)
-    for (const [id, source] of Object.entries(zhCN)) {
-      expect(() => compileMessage(source), id).not.toThrow()
-    }
-  })
-
-  it('demands the values an interpolating message declares', () => {
-    const formatter = formatterFor(zhCN)
-    // the shell's own messages carry no placeholders any more - what a
-    // reader is told never includes a module name - so the demand is shown
-    // on a message declared here
-    const greeting = defineMessage<{ name: string }>()({
-      id: 'common/test/greeting',
-      defaultMessage: 'Hello {name}',
-    })
-    // @ts-expect-error greeting declares {name}
-    formatter.format(greeting)
-    // @ts-expect-error the placeholder is named name, not who
-    formatter.format(greeting, { who: 'x' })
-    expect(formatter.format(greeting, { name: 'Qualy' })).toBe('Hello Qualy')
-    // a message without declared placeholders needs no values
-    expect(formatter.format(commonMessages.retry)).toBe('重试')
+  it('says a text the server names by id, and business data as it stands', () => {
+    onPage('en-US')
+    installMessages({ wireMessages: { 'org/navigation/organization': () => 'Organisation' } })
+    expect(formatText(message('org/navigation/organization', 'Organization'))).toBe('Organisation')
+    // an id this page does not know is said by the server's own default
+    expect(formatText(message('org/navigation/unknown', 'Unknown'))).toBe('Unknown')
+    expect(formatText(literal('软件学院'))).toBe('软件学院')
   })
 
   it('validates ui text references at the contract boundary', () => {
@@ -172,69 +120,31 @@ describe('web i18n runtime', () => {
     expect(resolveLocale({})).toBe('zh-CN')
   })
 
-  it('keeps the words said before the catalogs in step with the catalogs', () => {
-    // three of the bootstrap lines are also common messages: the same words
-    // in both places, or the screen would change its wording when the
-    // catalogs arrive
+  it('keeps the words said before the application in step with its messages', () => {
+    // the bootstrap lines that are also common messages say the same words
+    // in both places, or the screen would change its wording as it arrives
     const said = {
-      loading: commonMessages.loading,
-      stillLoading: commonMessages.stillLoading,
-      retry: commonMessages.retry,
-      updateAvailableTitle: commonMessages.updateAvailableTitle,
-      updateAvailableHint: commonMessages.updateAvailableHint,
-      later: commonMessages.later,
-      reloadNow: commonMessages.reloadNow,
-      releaseSkewTitle: commonMessages.releaseSkewTitle,
-      releaseSkewHint: commonMessages.releaseSkewHint,
-      assetFailedTitle: commonMessages.assetFailedTitle,
-      assetFailedHint: commonMessages.assetFailedHint,
-      clientProtocolTitle: commonMessages.clientProtocolTitle,
-      clientProtocolHint: commonMessages.clientProtocolHint,
-      reloadPage: commonMessages.reloadPage,
+      loading: commonMessages.state_loading,
+      stillLoading: commonMessages.state_stillLoading,
+      retry: commonMessages.action_retry,
+      updateAvailableTitle: commonMessages.release_updateAvailableTitle,
+      updateAvailableHint: commonMessages.release_updateAvailableHint,
+      later: commonMessages.action_later,
+      reloadNow: commonMessages.action_reload,
+      releaseSkewTitle: commonMessages.release_skewTitle,
+      releaseSkewHint: commonMessages.release_skewHint,
+      assetFailedTitle: commonMessages.release_assetFailedTitle,
+      assetFailedHint: commonMessages.release_assetFailedHint,
+      clientProtocolTitle: commonMessages.release_clientProtocolTitle,
+      clientProtocolHint: commonMessages.release_clientProtocolHint,
+      reloadPage: commonMessages.action_reloadPage,
     } as const
-    for (const [key, descriptor] of Object.entries(said) as [
-      keyof typeof said,
-      MessageDescriptor,
-    ][]) {
-      expect(bootstrapMessages['zh-CN'][key]).toBe((zhCN as MessageCatalog)[descriptor.id])
-      expect(bootstrapMessages['en-US'][key]).toBe(descriptor.defaultMessage)
-    }
-    // every locale says every line
     for (const locale of supportedLocales) {
+      for (const [key, sayIt] of Object.entries(said) as [keyof typeof said, Message][]) {
+        expect(bootstrapMessages[locale][key], `${locale} ${key}`).toBe(sayIt({}, { locale }))
+      }
+      // every locale says every line
       for (const line of Object.values(bootstrapMessages[locale])) expect(line.trim()).not.toBe('')
     }
-  })
-
-  it('surfaces a failing catalog chunk instead of swallowing it', async () => {
-    // the provider catches this and activates an empty catalog so the
-    // english defaults render; the loader itself must not hide the failure
-    await expect(
-      loadCatalogs('zh-CN', [
-        {
-          namespace: 'broken',
-          messages: [],
-          locales: { 'zh-CN': () => Promise.reject(new Error('chunk gone')) },
-        },
-      ]),
-    ).rejects.toThrow('chunk gone')
-  })
-
-  it('merges the common catalog with every plugin catalog for a locale', async () => {
-    const merged = await loadCatalogs('zh-CN', [
-      {
-        namespace: 'demo',
-        messages: [{ id: 'demo/a', defaultMessage: 'A' }],
-        locales: { 'zh-CN': () => Promise.resolve({ default: { 'demo/a': '甲' } }) },
-      },
-      {
-        // a plugin without a catalog for this locale contributes nothing
-        namespace: 'other',
-        messages: [{ id: 'other/a', defaultMessage: 'B' }],
-        locales: {},
-      },
-    ])
-    expect(merged['demo/a']).toBe('甲')
-    expect(merged['other/a']).toBeUndefined()
-    expect(merged['common/action/retry']).toBe('重试')
   })
 })

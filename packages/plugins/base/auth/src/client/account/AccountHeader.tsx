@@ -1,7 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { useApiQuery } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { UserRoundIcon } from 'lucide-react'
@@ -12,8 +11,9 @@ import { Tag } from '@qualy/ui/screen'
 import { useTerm } from '@qualy/plugin-settings/client/terms'
 import { authTerms } from '@qualy/auth-contract/terms'
 import { authApi } from '../api.ts'
-import { iamMessages as m } from '../i18n.ts'
+
 import { PersonFacts, type PersonFact } from '../iam/person-facts.tsx'
+import * as m from '#messages'
 
 // Who is signed in, above every page of their own account: the name, the
 // kind of person they are filed as, their number and the unit they stand
@@ -76,7 +76,7 @@ const styles = stylex.create({
 
 export default function AccountHeader() {
   const query = useApiQuery(authApi)
-  const { format } = useI18n()
+
   const businessNoWord = useTerm(authTerms.businessNumber)
   const self = useQuery(query.self.getSelf.queryOptions())
 
@@ -93,7 +93,7 @@ export default function AccountHeader() {
           </AvatarFallback>
         </Avatar>
         <div {...stylex.props(styles.text)}>
-          <p {...stylex.props(styles.unread)}>{format(m.accountHeaderUnread)}</p>
+          <p {...stylex.props(styles.unread)}>{m.account_headerUnread()}</p>
         </div>
       </div>
     )
@@ -114,7 +114,7 @@ export default function AccountHeader() {
             : [
                 {
                   key: 'unit',
-                  label: format(m.personPlacement),
+                  label: m.person_placement(),
                   value: me.unit.name,
                   title: me.unitLineage.map((step) => step.name).join(' / '),
                 },

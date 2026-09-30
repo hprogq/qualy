@@ -1,10 +1,10 @@
 import * as stylex from '@stylexjs/stylex'
-import { useI18n } from '@qualy/web-i18n'
 import { Field } from '@qualy/ui/admin'
 import { Input } from '@qualy/ui/input'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import type { CalculatorEditorContext } from '../../surfaces.ts'
+import * as m from '#messages'
 
 // The built-in arithmetic's own editor, filling the same seat every other
 // calculator fills. It renders for its own reference and nothing for the
@@ -20,12 +20,11 @@ const styles = stylex.create({
 const REF = 'fixed@1'
 
 export default function FixedCalculatorEditor({ context }: { context: CalculatorEditorContext }) {
-  const { format } = useI18n()
   if (context.calculator.ref !== REF) return null
   const value = String((context.calculator.config as { value?: unknown } | null)?.value ?? '')
   return (
     <div {...stylex.props(styles.amount)}>
-      <Field label={format(context.amountPer === 'item' ? m.itemsGrantedValue : m.itemsFixedValue)}>
+      <Field label={(context.amountPer === 'item' ? m.items_grantedValue : m.items_fixedValue)()}>
         {(id) => (
           <Input
             id={id}
@@ -35,7 +34,7 @@ export default function FixedCalculatorEditor({ context }: { context: Calculator
             onChange={(event) =>
               context.onChange({ ref: REF, config: { value: event.target.value } })
             }
-            tail={<span {...stylex.props(styles.unitTail)}>{format(m.itemsFixedValueUnit)}</span>}
+            tail={<span {...stylex.props(styles.unitTail)}>{m.items_fixedValueUnit()}</span>}
           />
         )}
       </Field>

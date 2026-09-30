@@ -1,9 +1,7 @@
 import { StrictMode } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import { render } from 'vitest-browser-react'
-import { I18nProvider } from '@qualy/web-i18n'
 import { UiProvider } from '@qualy/ui/provider'
-import { catalogs, errorMessages } from 'virtual:qualy/plugins'
 import {
   draftFromValue,
   draftsFromStored,
@@ -133,9 +131,7 @@ describe('the generated form', () => {
   const mount = (element: React.ReactElement) =>
     render(
       <StrictMode>
-        <I18nProvider catalogs={catalogs} errorMessages={errorMessages} fallback={null}>
-          <UiProvider scheme="light">{element}</UiProvider>
-        </I18nProvider>
+        <UiProvider scheme="light">{element}</UiProvider>
       </StrictMode>,
     )
 

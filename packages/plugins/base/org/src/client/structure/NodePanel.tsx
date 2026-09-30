@@ -2,8 +2,8 @@ import { Fragment, useState } from 'react'
 import { ChevronRightIcon, PlusIcon } from 'lucide-react'
 import * as stylex from '@stylexjs/stylex'
 import { PageLink, usePageHref } from '@qualy/web-runtime'
-import { useI18n, useList } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+import { useList } from '@qualy/web-i18n'
+
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { ConfirmDialog } from '@qualy/ui/admin'
 import { DeleteChecklist } from './DeleteChecklist.tsx'
@@ -21,8 +21,10 @@ import {
   TableRow,
   Tag,
 } from '@qualy/ui/screen'
-import { orgMessages as m } from '../i18n.ts'
+
 import type { Api, OrgShape, OrgTreeNodeDto, OrgTypeDto, Run } from '../shape.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // The unit on show: where it sits and what it is called, with what is done
 // to it most beside its name; five facts on one strip; the units under it as
@@ -131,7 +133,6 @@ export function NodePanel({
   /** the frame already says the unit's name and kind */
   inSheet?: boolean
 }) {
-  const { format } = useI18n()
   const listJoin = useList()
   // the roster belongs to the users screen, which not every reader of the
   // tree may open: the way through is offered only where it leads somewhere
@@ -142,7 +143,7 @@ export function NodePanel({
   const isRoot = !node.parentId
   const children = shape.childrenOf.get(node.id) ?? []
   const typeName = (id: string) =>
-    shape.types.find((type) => type.id === id)?.name ?? format(m.unknownType)
+    shape.types.find((type) => type.id === id)?.name ?? m.type_unknown()
 
   // the kinds of unit this one may hold, by the rules as they stand: the
   // create control offers only what the api would accept
@@ -179,7 +180,7 @@ export function NodePanel({
   return (
     <div {...stylex.props(styles.panel)} data-testid="node-panel">
       <div {...stylex.props(styles.intro)}>
-        <nav aria-label={format(m.pathLabel)} {...stylex.props(styles.crumbs)}>
+        <nav aria-label={m.node_path()} {...stylex.props(styles.crumbs)}>
           {path.map((step, index) => (
             <Fragment key={step.id}>
               {index > 0 && <ChevronRightIcon aria-hidden {...stylex.props(styles.crumbGlyph)} />}
@@ -215,7 +216,7 @@ export function NodePanel({
                   variant="outline"
                   onClick={() => onTask({ kind: 'rename', nodeId: node.id })}
                 >
-                  {format(m.rename)}
+                  {m.node_rename()}
                 </Button>
                 {!isRoot && node.subtreeManageable && (
                   <Button
@@ -223,13 +224,13 @@ export function NodePanel({
                     variant="outline"
                     onClick={() => onTask({ kind: 'move', nodeId: node.id })}
                   >
-                    {format(m.moveTo)}
+                    {m.node_moveTo()}
                   </Button>
                 )}
                 {allowedChildTypes.length > 0 && (
                   <Button size="sm" onClick={() => onTask({ kind: 'create', nodeId: node.id })}>
                     <PlusIcon aria-hidden />
-                    {format(m.createChild)}
+                    {m.node_createChild()}
                   </Button>
                 )}
               </>
@@ -254,8 +255,8 @@ export function NodePanel({
             }}
           >
             <Select value={nextTypeId} onValueChange={setNextTypeId}>
-              <SelectTrigger aria-label={format(m.changeType)} xstyle={styles.kindField}>
-                <SelectValue placeholder={format(m.selectType)} />
+              <SelectTrigger aria-label={m.node_changeType()} xstyle={styles.kindField}>
+                <SelectValue placeholder={m.type_select()} />
               </SelectTrigger>
               <SelectContent>
                 {retypeOptions.map((type) => (
@@ -266,14 +267,14 @@ export function NodePanel({
               </SelectContent>
             </Select>
             <Button size="sm" type="submit" disabled={nextTypeId === ''}>
-              {format(m.save)}
+              {m.action_save()}
             </Button>
           </form>
         )}
         {!node.manageable && (
           // the note is copy; that this reader may only look is not
           <p data-testid="node-note" data-manageable="false" {...stylex.props(styles.note)}>
-            {format(m.readOnly)}
+            {m.node_readOnly()}
           </p>
         )}
       </div>
@@ -282,7 +283,7 @@ export function NodePanel({
         testId="node-facts"
         items={[
           {
-            label: format(m.nodeType),
+            label: m.node_type(),
             value: typeName(node.orgTypeId),
             action:
               node.manageable && !isRoot && retypeOptions.length > 0 ? (
@@ -291,34 +292,34 @@ export function NodePanel({
                   {...stylex.props(styles.factAction)}
                   onClick={() => setRetyping((now) => !now)}
                 >
-                  {format(m.changeType)}
+                  {m.node_changeType()}
                 </button>
               ) : undefined,
           },
           {
-            label: format(m.parentLabel),
+            label: m.node_parent(),
             value: node.parentId ? (shape.byId.get(node.parentId)?.name ?? '—') : '—',
           },
           {
-            label: format(m.rankLabel),
-            value: rank > 0 ? format(m.siblingRank, { rank, total: siblings.length }) : '—',
+            label: m.node_rank(),
+            value: rank > 0 ? m.node_siblingRank({ rank, total: siblings.length }) : '—',
           },
           {
-            label: format(m.peopleHere),
-            value: headcountKnown ? format(m.peopleCount, { count: headcount }) : '—',
+            label: m.nodes_peopleHere(),
+            value: headcountKnown ? m.nodes_peopleCount({ count: headcount }) : '—',
             action: rosterReachable ? (
               <PageLink
                 page="auth/users"
                 search={{ anchor: node.id, scope: 'self' }}
                 className={stylex.props(styles.factAction).className}
               >
-                {format(m.peopleOpen)}
+                {m.nodes_peopleOpen()}
               </PageLink>
             ) : undefined,
           },
           {
-            label: format(m.childrenTitle),
-            value: format(m.countUnits, { count: children.length }),
+            label: m.node_children(),
+            value: m.node_countUnits({ count: children.length }),
           },
         ]}
       />
@@ -327,24 +328,24 @@ export function NodePanel({
           whether that one could be removed without opening it first. */}
       <Card data-testid="node-children">
         <CardHead
-          title={format(m.childrenTitle)}
+          title={m.node_children()}
           note={
             allowedChildTypes.length === 0
-              ? format(m.noChildrenAllowed)
-              : format(m.allowedHere, { types: listJoin(allowedChildTypes.map((t) => t.name)) })
+              ? m.node_noChildrenAllowed()
+              : m.node_allowedHere({ types: listJoin(allowedChildTypes.map((t) => t.name)) })
           }
         />
         {children.length === 0 ? (
-          <CardEmpty>{format(m.childrenEmpty)}</CardEmpty>
+          <CardEmpty>{m.node_childrenEmpty()}</CardEmpty>
         ) : (
           // the three facts take the width their own words need; a fixed
           // share of a panel this narrow left the names with none
           <Table columns="minmax(0, 1fr) max-content max-content max-content" openable>
             <TableHead>
-              <span>{format(m.nameLabel)}</span>
-              <span>{format(m.typeColumn)}</span>
-              <span>{format(m.peopleTitle)}</span>
-              <span>{format(m.childrenColumn)}</span>
+              <span>{m.node_name()}</span>
+              <span>{m.node_typeColumn()}</span>
+              <span>{m.nodes_people()}</span>
+              <span>{m.node_childrenColumn()}</span>
             </TableHead>
             {children.map((child) => {
               const under = (shape.childrenOf.get(child.id) ?? []).length
@@ -359,7 +360,7 @@ export function NodePanel({
                   <Cell lead>{child.name}</Cell>
                   <Cell>{typeName(child.orgTypeId)}</Cell>
                   <Cell numeric>
-                    {headcountKnown ? format(m.peopleCount, { count: headcountOf(child.id) }) : '—'}
+                    {headcountKnown ? m.nodes_peopleCount({ count: headcountOf(child.id) }) : '—'}
                   </Cell>
                   <Cell numeric tone={under === 0 ? 'quiet' : 'muted'}>
                     {under}
@@ -384,10 +385,10 @@ export function NodePanel({
 
       <ConfirmDialog
         open={confirmingDelete}
-        title={format(m.confirmDeleteNode, { name: node.name })}
-        description={format(m.confirmDeleteNodeBody)}
-        confirmLabel={format(m.deleteNode)}
-        cancelLabel={format(commonMessages.cancel)}
+        title={m.node_confirmDelete({ name: node.name })}
+        description={m.node_confirmDeleteBody()}
+        confirmLabel={m.action_deleteNode()}
+        cancelLabel={commonMessages.action_cancel()}
         onConfirm={() =>
           void run(api.org.deleteNode({ params: { nodeId: node.id } }))
             .then(() => {

@@ -1,9 +1,8 @@
 import { useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { DownloadIcon, PlusIcon, SearchIcon, ShieldOffIcon } from 'lucide-react'
-import type { MessageDescriptor } from '@qualy/i18n-contract'
+import type { Message } from '@qualy/i18n-contract'
 import { useApiQuery, usePageQueryState, usePageQueryUpdate } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
 import { useTerm } from '@qualy/plugin-settings/client/terms'
 import { authTerms } from '@qualy/auth-contract/terms'
 import { Button } from '@qualy/ui/button'
@@ -24,7 +23,7 @@ import { toast } from '@qualy/ui/toast'
 import { useLingering } from '@qualy/ui/use-lingering'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentApi } from '../api.ts'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import { useBatchLive } from '../live.ts'
 import { BatchBanner, BatchScreen } from '../batch/BatchScreen.tsx'
 import type { BatchDto } from '../phase/model.ts'
@@ -36,6 +35,7 @@ import { AdministrativeEntrySheet } from './AdministrativeEntrySheet.tsx'
 import { AdministrativeImportView } from './import/AdministrativeImportView.tsx'
 import { AdministrativeImportHistory } from './import/AdministrativeImportHistory.tsx'
 import { AdministrativeImportDetail } from './import/AdministrativeImportDetail.tsx'
+import * as m from '#messages'
 
 // The administrative record book, and the things done to it.
 //
@@ -182,7 +182,6 @@ const TOP = ['records', 'acts', 'imports']
 const depthOf = (view: string) => (TOP.includes(view) ? 0 : 1)
 
 export default function AdministrativeRecordsPage() {
-  const { format } = useI18n()
   // Which part of the page is showing, and which claim is open over it.
   // Everything that is somewhere to come back FROM pushes.
   const [tab] = usePageQueryState('tab', '', { history: 'push' })
@@ -222,8 +221,8 @@ export default function AdministrativeRecordsPage() {
 
   return (
     <BatchScreen
-      title={format(m.recordTab)}
-      description={format(m.recordHint)}
+      title={m.record_tab()}
+      description={m.record_hint()}
       banner={top ? 'section' : 'open'}
     >
       {(batch) => (
@@ -262,7 +261,6 @@ function RecordsBody({
   entryId: string
   address: ReturnType<typeof usePageQueryUpdate>
 }) {
-  const { format } = useI18n()
   const businessNo = useTerm(authTerms.businessNumber)
   const query = useApiQuery(assessmentApi)
   const [search, setSearch] = useState('')
@@ -273,22 +271,22 @@ function RecordsBody({
   // to the imports it was opened from
   const back: {
     /** what the band says while this is open */
-    title: MessageDescriptor
+    title: Message
     /** where pressing the arrow lands, said for a reader who cannot see it */
-    from: MessageDescriptor
-    label: MessageDescriptor
+    from: Message
+    label: Message
     to: Record<string, string>
   } = view.startsWith('act:')
     ? {
-        title: m.recordActDetailTitle,
-        from: m.recordActsTab,
-        label: m.recordActBack,
+        title: m.record_actDetailTitle,
+        from: m.record_actsTab,
+        label: m.record_actBack,
         to: { act: '', tab: 'acts' },
       }
     : {
-        title: m.importDetailHeading,
-        from: m.importTab,
-        label: m.importBack,
+        title: m.record_import_detailHeading,
+        from: m.record_import_tab,
+        label: m.record_import_back,
         to: { import: '', tab: 'imports' },
       }
 
@@ -318,8 +316,8 @@ function RecordsBody({
       <Card data-testid="record-no-standing">
         <Blank
           icon={<ShieldOffIcon />}
-          title={format(m.recordNoStanding)}
-          description={format(m.recordNoStandingHint)}
+          title={m.record_noStanding()}
+          description={m.record_noStandingHint()}
           xstyle={styles.refused}
         />
       </Card>
@@ -345,9 +343,9 @@ function RecordsBody({
                   xstyle={styles.bandTabs}
                 >
                   <TabsList>
-                    <TabsTrigger value="records">{format(m.recordListTab)}</TabsTrigger>
-                    <TabsTrigger value="acts">{format(m.recordActsTab)}</TabsTrigger>
-                    <TabsTrigger value="imports">{format(m.importTab)}</TabsTrigger>
+                    <TabsTrigger value="records">{m.record_listTab()}</TabsTrigger>
+                    <TabsTrigger value="acts">{m.record_actsTab()}</TabsTrigger>
+                    <TabsTrigger value="imports">{m.record_import_tab()}</TabsTrigger>
                   </TabsList>
                 </Tabs>
               </div>
@@ -360,8 +358,8 @@ function RecordsBody({
                   <Input
                     name="administrative-search"
                     value={search}
-                    placeholder={format(m.recordSearchList, { businessNo })}
-                    aria-label={format(m.recordSearchList, { businessNo })}
+                    placeholder={m.record_searchList({ businessNo })}
+                    aria-label={m.record_searchList({ businessNo })}
                     onChange={(event) => setSearch(event.target.value)}
                     className={stylex.props(styles.searchIndent).className}
                   />
@@ -375,21 +373,21 @@ function RecordsBody({
                 <Button
                   size="sm"
                   variant="outline"
-                  aria-label={format(m.importAction)}
+                  aria-label={m.record_import_action()}
                   className={stylex.props(styles.act).className}
                   onClick={() => address({ mode: 'import' }, { history: 'push' })}
                 >
                   <DownloadIcon aria-hidden {...stylex.props(styles.icon)} />
-                  <span {...stylex.props(styles.actWord)}>{format(m.importAction)}</span>
+                  <span {...stylex.props(styles.actWord)}>{m.record_import_action()}</span>
                 </Button>
                 <Button
                   size="sm"
-                  aria-label={format(m.recordNewAction)}
+                  aria-label={m.record_newAction()}
                   className={stylex.props(styles.act).className}
                   onClick={() => address({ mode: 'manual' }, { history: 'push' })}
                 >
                   <PlusIcon aria-hidden {...stylex.props(styles.icon)} />
-                  <span {...stylex.props(styles.actWord)}>{format(m.recordNewAction)}</span>
+                  <span {...stylex.props(styles.actWord)}>{m.record_newAction()}</span>
                 </Button>
               </div>
             </div>
@@ -420,13 +418,13 @@ function RecordsBody({
             <BatchBanner>
               <PageHeader
                 variant="banner"
-                title={format(back.title)}
+                title={back.title()}
                 description={
                   // One pressable sentence rather than an arrow with a label
                   // beside it: the arrow alone made the reader guess where it
                   // goes, and only the arrow was a target. Text-sized, so the
                   // band is the same height going in as coming out.
-                  <BannerBack label={format(back.label)} onBack={() => address(back.to)} />
+                  <BannerBack label={back.label()} onBack={() => address(back.to)} />
                 }
               />
             </BatchBanner>
@@ -458,10 +456,10 @@ function RecordsBody({
         <DialogContent size="46rem" xstyle={styles.errandPanel}>
           <DialogHeader className={stylex.props(styles.errandHead).className}>
             <DialogTitle>
-              {format(errand === 'import' ? m.importAction : m.recordNewAction)}
+              {(errand === 'import' ? m.record_import_action : m.record_newAction)()}
             </DialogTitle>
             <DialogDescription>
-              {format(errand === 'import' ? m.importDialogHint : m.recordDialogHint)}
+              {(errand === 'import' ? m.record_import_dialogHint : m.record_dialogHint)()}
             </DialogDescription>
           </DialogHeader>
           <DialogBody xstyle={styles.errandBody}>

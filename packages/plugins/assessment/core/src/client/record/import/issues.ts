@@ -1,5 +1,4 @@
-import type { useI18n } from '@qualy/web-i18n'
-import { assessmentMessages as m } from '../../i18n.ts'
+import * as m from '#messages'
 
 // What an import problem says, in the reader's words.
 //
@@ -8,70 +7,68 @@ import { assessmentMessages as m } from '../../i18n.ts'
 // words for still says something - its own name - because a row that turns
 // red without a reason is the failure this list exists to prevent.
 
-type Format = ReturnType<typeof useI18n>['format']
-
 /** the reasons whose sentence names the tenant's word for a person's identifier */
 const WORDED = {
-  'business-no-required': m.importReasonBusinessNoRequired,
-  'participant-not-found': m.importReasonParticipantNotFound,
+  'business-no-required': m.record_import_reason_businessNoRequired,
+  'participant-not-found': m.record_import_reason_participantNotFound,
 } as const
 
 const WORDS = {
-  'self-record-refused': m.importReasonSelfRecord,
-  'name-mismatch': m.importReasonNameMismatch,
-  'basis-required': m.importReasonBasisRequired,
-  'recognition-required': m.importReasonRecognitionRequired,
-  missing: m.importReasonRecognitionRequired,
-  'max-entries-reached': m.importReasonMaxEntries,
-  'entry-ceiling-reached': m.importReasonMaxEntries,
-  'account-ceiling-reached': m.importReasonRoundCeiling,
-  'duplicate-in-file': m.importReasonDuplicate,
-  'decimal-syntax': m.importReasonDecimal,
-  'integer-syntax': m.importReasonInteger,
-  'integer-range': m.importReasonIntegerRange,
-  'date-syntax': m.importReasonDate,
-  'not-a-date': m.importReasonDate,
-  'choice-unknown': m.importReasonChoice,
-  'boolean-syntax': m.importReasonBoolean,
-  required: m.importReasonRequired,
+  'self-record-refused': m.record_import_reason_selfRecordRefused,
+  'name-mismatch': m.record_import_reason_nameMismatch,
+  'basis-required': m.record_import_reason_basisRequired,
+  'recognition-required': m.record_import_reason_recognitionRequired,
+  missing: m.record_import_reason_recognitionRequired,
+  'max-entries-reached': m.record_import_reason_maxEntriesReached,
+  'entry-ceiling-reached': m.record_import_reason_maxEntriesReached,
+  'account-ceiling-reached': m.record_import_reason_accountCeilingReached,
+  'duplicate-in-file': m.record_import_reason_duplicateInFile,
+  'decimal-syntax': m.record_import_reason_decimalSyntax,
+  'integer-syntax': m.record_import_reason_integerSyntax,
+  'integer-range': m.record_import_reason_integerRange,
+  'date-syntax': m.record_import_reason_dateSyntax,
+  'not-a-date': m.record_import_reason_dateSyntax,
+  'choice-unknown': m.record_import_reason_choiceUnknown,
+  'boolean-syntax': m.record_import_reason_booleanSyntax,
+  required: m.record_import_reason_required,
   // past a field's own bounds, a number or a date alike
-  'out-of-range': m.importReasonOutOfRange,
+  'out-of-range': m.record_import_reason_outOfRange,
   // the round's material window, reached through what the office determined
-  'out-of-material-range': m.importReasonOutOfMaterialRange,
-  'too-long': m.importReasonTooLong,
+  'out-of-material-range': m.record_import_reason_outOfMaterialRange,
+  'too-long': m.record_import_reason_tooLong,
   // a text field's own minimum length and pattern, as the driver checks them
-  'too-short': m.importReasonTooShort,
-  'pattern-mismatch': m.importReasonPatternMismatch,
-  'participant-out-of-scope': m.importReasonOutOfScope,
-  'phase-closed': m.importReasonPhaseClosed,
-  'no-active-phase': m.importReasonNoPhase,
-  'item-out-of-scope': m.importReasonItemOutOfScope,
-  'permission-not-held': m.importReasonNotHeld,
-  'entry-not-abandonable': m.importReasonNotAbandonable,
-  'not-xlsx': m.importReasonNotXlsx,
-  'file-too-large': m.importReasonTooLarge,
-  'source-too-large': m.importReasonTooLarge,
-  'too-many-rows': m.importReasonTooManyRows,
-  'too-many-columns': m.importReasonTooManyColumns,
-  'too-many-sheets': m.importReasonTooManySheets,
-  'too-many-cells': m.importReasonTooManyCells,
-  'data-sheet-missing': m.importReasonSheetMissing,
-  'extra-sheet': m.importReasonExtraSheet,
-  'extra-column': m.importReasonExtraColumn,
-  'column-missing': m.importReasonColumnMissing,
-  'column-unknown': m.importReasonColumnUnknown,
-  'column-header-mismatch': m.importReasonColumnHeader,
-  'metadata-missing': m.importReasonMetadataMissing,
-  'metadata-corrupt': m.importReasonMetadataCorrupt,
-  'unsupported-template-version': m.importReasonOldTemplate,
-  'template-for-another-item': m.importReasonOtherItem,
-  'formula-not-allowed': m.importReasonFormula,
-  'percent-not-allowed': m.importReasonPercent,
-  'cell-too-long': m.importReasonCellTooLong,
-  'cell-error': m.importReasonCellError,
-  'source-unavailable': m.importReasonUnavailable,
-  'no-rows': m.importReasonNoRows,
-  unreadable: m.importReasonUnreadable,
+  'too-short': m.record_import_reason_tooShort,
+  'pattern-mismatch': m.record_import_reason_patternMismatch,
+  'participant-out-of-scope': m.record_import_reason_participantOutOfScope,
+  'phase-closed': m.record_import_reason_phaseClosed,
+  'no-active-phase': m.record_import_reason_noActivePhase,
+  'item-out-of-scope': m.record_import_reason_itemOutOfScope,
+  'permission-not-held': m.record_import_reason_permissionNotHeld,
+  'entry-not-abandonable': m.record_import_reason_entryNotAbandonable,
+  'not-xlsx': m.record_import_reason_notXlsx,
+  'file-too-large': m.record_import_reason_fileTooLarge,
+  'source-too-large': m.record_import_reason_fileTooLarge,
+  'too-many-rows': m.record_import_reason_tooManyRows,
+  'too-many-columns': m.record_import_reason_tooManyColumns,
+  'too-many-sheets': m.record_import_reason_tooManySheets,
+  'too-many-cells': m.record_import_reason_tooManyCells,
+  'data-sheet-missing': m.record_import_reason_dataSheetMissing,
+  'extra-sheet': m.record_import_reason_extraSheet,
+  'extra-column': m.record_import_reason_extraColumn,
+  'column-missing': m.record_import_reason_columnMissing,
+  'column-unknown': m.record_import_reason_columnUnknown,
+  'column-header-mismatch': m.record_import_reason_columnHeaderMismatch,
+  'metadata-missing': m.record_import_reason_metadataMissing,
+  'metadata-corrupt': m.record_import_reason_metadataCorrupt,
+  'unsupported-template-version': m.record_import_reason_unsupportedTemplateVersion,
+  'template-for-another-item': m.record_import_reason_templateForAnotherItem,
+  'formula-not-allowed': m.record_import_reason_formulaNotAllowed,
+  'percent-not-allowed': m.record_import_reason_percentNotAllowed,
+  'cell-too-long': m.record_import_reason_cellTooLong,
+  'cell-error': m.record_import_reason_cellError,
+  'source-unavailable': m.record_import_reason_sourceUnavailable,
+  'no-rows': m.record_import_reason_noRows,
+  unreadable: m.record_import_reason_unreadable,
 } as const
 
 export interface ImportIssue {
@@ -82,21 +79,17 @@ export interface ImportIssue {
 }
 
 /** the sentence for one problem; `businessNo` is the tenant's word for a person's identifier */
-export const reasonText = (
-  format: Format,
-  issue: Pick<ImportIssue, 'reason' | 'detail'>,
-  businessNo: string,
-) => {
+export const reasonText = (issue: Pick<ImportIssue, 'reason' | 'detail'>, businessNo: string) => {
   if (issue.reason === 'determination-refused') {
-    return format(m.importReasonDetermination, { detail: issue.detail ?? '' })
+    return m.record_import_reason_determinationRefused({ detail: issue.detail ?? '' })
   }
   if (Object.hasOwn(WORDED, issue.reason)) {
-    return format(WORDED[issue.reason as keyof typeof WORDED], { businessNo })
+    return WORDED[issue.reason as keyof typeof WORDED]({ businessNo })
   }
   const word = Object.hasOwn(WORDS, issue.reason)
     ? WORDS[issue.reason as keyof typeof WORDS]
     : undefined
-  return word === undefined ? format(m.importReasonOther, { reason: issue.reason }) : format(word)
+  return word === undefined ? m.record_import_reason_other({ reason: issue.reason }) : word()
 }
 
 /** the names a question gives its own columns, for saying which cell is wrong */
@@ -106,17 +99,12 @@ export interface ColumnNames {
 }
 
 /** which column a problem is about, as the header the reader filled in */
-export const fieldText = (
-  format: Format,
-  field: string | null,
-  names: ColumnNames,
-  businessNo: string,
-) => {
+export const fieldText = (field: string | null, names: ColumnNames, businessNo: string) => {
   if (field === null) return null
   if (field === 'businessNo') return businessNo
-  if (field === 'displayName') return format(m.importColumnName)
-  if (field === 'basis') return format(m.recordBasis)
-  if (field === 'recognition') return format(m.recordRecognition)
+  if (field === 'displayName') return m.record_import_columnName()
+  if (field === 'basis') return m.record_basis()
+  if (field === 'recognition') return m.record_recognition()
   if (field.startsWith('evidence.')) {
     const key = field.slice('evidence.'.length)
     return names.evidence.get(key) ?? key

@@ -21,11 +21,12 @@ import { DatePicker } from '@qualy/ui/date-picker'
 import { usePickerWords } from '@qualy/web-i18n/picker-words'
 import { VisuallyHidden } from '@qualy/ui/visually-hidden'
 import { acceptOf, FILE_KINDS, kindsOf, unwritableTokens } from '../../file-kinds.ts'
-import { assessmentMessages as m } from '../../i18n.ts'
+
 import { Choice } from '../Choice.tsx'
 import { nextOptionKey, type FieldDraft, type FieldType, type OptionDraft } from './model.ts'
 import { lastDay } from '../../entry/model.ts'
 import { TYPE_LABEL } from './words.ts'
+import * as m from '#messages'
 
 // The settings of one submission field, shared by the panel that edits a
 // field and the dialog that adds one. A choice's options are edited by
@@ -218,12 +219,11 @@ export function FieldSettingsForm({
   onRetype?: (type: FieldType) => void
   onDisableOption?: (optionId: string) => void
 }) {
-  const { format } = useI18n()
   const patch = (next: Partial<FieldDraft>) => onChange({ ...field, ...next })
   return (
     <>
       <div {...stylex.props(styles.group)}>
-        <Field label={format(m.itemsName)}>
+        <Field label={m.items_name()}>
           {(id) => (
             <Input
               id={id}
@@ -235,26 +235,26 @@ export function FieldSettingsForm({
             />
           )}
         </Field>
-        <Field label={format(m.itemsFieldHint)}>
+        <Field label={m.items_fieldHint()}>
           {(id) => (
             <Input
               id={id}
               value={field.description}
               maxLength={200}
-              placeholder={format(m.itemsFieldHintPlaceholder)}
+              placeholder={m.items_fieldHintPlaceholder()}
               onChange={(event) => patch({ description: event.target.value })}
             />
           )}
         </Field>
         {withType && onRetype !== undefined && (
-          <Field label={format(m.itemsFieldType)}>
+          <Field label={m.items_fieldType()}>
             {(id) => (
               <Choice
                 id={id}
                 value={field.type}
                 options={(
                   ['text', 'integer', 'decimal', 'date', 'choice', 'boolean', 'attachment'] as const
-                ).map((type) => ({ value: type, label: format(TYPE_LABEL[type]) }))}
+                ).map((type) => ({ value: type, label: TYPE_LABEL[type]() }))}
                 onChange={(next) => onRetype(next as FieldType)}
               />
             )}
@@ -263,14 +263,14 @@ export function FieldSettingsForm({
         {numberKind &&
           onRetype !== undefined &&
           (field.type === 'integer' || field.type === 'decimal') && (
-            <Field label={format(m.itemsNumberKind)}>
+            <Field label={m.items_numberKind()}>
               {(id) => (
                 <Choice
                   id={id}
                   value={field.type}
                   options={[
-                    { value: 'integer', label: format(TYPE_LABEL.integer) },
-                    { value: 'decimal', label: format(TYPE_LABEL.decimal) },
+                    { value: 'integer', label: TYPE_LABEL.integer() },
+                    { value: 'decimal', label: TYPE_LABEL.decimal() },
                   ]}
                   onChange={(next) => onRetype(next as FieldType)}
                 />
@@ -293,7 +293,7 @@ export function FieldSettingsForm({
           disabled={requiredLocked}
           onCheckedChange={(next) => patch({ required: next === true })}
         />
-        {format(m.itemsFieldRequired)}
+        {m.items_fieldRequired()}
       </label>
     </>
   )
@@ -312,7 +312,7 @@ function TypeSettings({
   onChange: (next: FieldDraft) => void
   onDisableOption?: ((optionId: string) => void) | undefined
 }) {
-  const { format, locale } = useI18n()
+  const { locale } = useI18n()
   const words = usePickerWords()
   // the pattern is the one setting most fields never need: folded until it
   // holds something, and remembered open once it has been looked at
@@ -323,7 +323,7 @@ function TypeSettings({
       return (
         <div {...stylex.props(styles.group)}>
           <div {...stylex.props(styles.pair)}>
-            <Field label={format(m.itemsFieldMinLength)}>
+            <Field label={m.items_fieldMinLength()}>
               {(id) => (
                 <Input
                   id={id}
@@ -333,7 +333,7 @@ function TypeSettings({
                 />
               )}
             </Field>
-            <Field label={format(m.itemsFieldMaxLength)}>
+            <Field label={m.items_fieldMaxLength()}>
               {(id) => (
                 <Input
                   id={id}
@@ -350,11 +350,11 @@ function TypeSettings({
                 aria-hidden
                 {...stylex.props(styles.moreGlyph, more && styles.moreGlyphOpen)}
               />
-              {format(m.itemsFieldAdvanced)}
+              {m.items_fieldAdvanced()}
             </CollapsibleTrigger>
             <CollapsibleContent>
               <div {...stylex.props(styles.moreBody)}>
-                <Field label={format(m.itemsFieldPattern)} hint={format(m.itemsFieldPatternHint)}>
+                <Field label={m.items_fieldPattern()} hint={m.items_fieldPatternHint()}>
                   {(id) => (
                     <Input
                       id={id}
@@ -373,7 +373,7 @@ function TypeSettings({
       return (
         <div {...stylex.props(styles.group)}>
           <div {...stylex.props(styles.pair)}>
-            <Field label={format(m.itemsFieldMinValue)}>
+            <Field label={m.items_fieldMinValue()}>
               {(id) => (
                 <Input
                   id={id}
@@ -383,7 +383,7 @@ function TypeSettings({
                 />
               )}
             </Field>
-            <Field label={format(m.itemsFieldMaxValue)}>
+            <Field label={m.items_fieldMaxValue()}>
               {(id) => (
                 <Input
                   id={id}
@@ -395,7 +395,7 @@ function TypeSettings({
             </Field>
           </div>
           {field.type === 'decimal' && (
-            <Field label={format(m.itemsFieldMaxScale)}>
+            <Field label={m.items_fieldMaxScale()}>
               {(id) => (
                 <Input
                   id={id}
@@ -412,7 +412,7 @@ function TypeSettings({
       return (
         <div {...stylex.props(styles.group)}>
           <div {...stylex.props(styles.pair)}>
-            <Field label={format(m.itemsFieldMinDate)}>
+            <Field label={m.items_fieldMinDate()}>
               {(id) => (
                 <DatePicker
                   id={id}
@@ -427,7 +427,7 @@ function TypeSettings({
                 />
               )}
             </Field>
-            <Field label={format(m.itemsFieldMaxDate)}>
+            <Field label={m.items_fieldMaxDate()}>
               {(id) => (
                 <DatePicker
                   id={id}
@@ -450,9 +450,9 @@ function TypeSettings({
               onCheckedChange={(next) => patch({ inMaterialRange: next === true })}
             />
             <FieldContent>
-              <FieldLabel>{format(m.itemsDateInRange)}</FieldLabel>
+              <FieldLabel>{m.items_dateInRange()}</FieldLabel>
               <FieldDescription>
-                {format(m.itemsDateWindow, {
+                {m.items_dateWindow({
                   from: materialRange.start,
                   until: lastDay(materialRange.end),
                 })}
@@ -476,7 +476,7 @@ function TypeSettings({
       return (
         <div {...stylex.props(styles.group)}>
           <div {...stylex.props(styles.pair)}>
-            <Field label={format(m.itemsFieldMaxCount)}>
+            <Field label={m.items_fieldMaxCount()}>
               {(id) => (
                 <Input
                   id={id}
@@ -486,7 +486,7 @@ function TypeSettings({
                 />
               )}
             </Field>
-            <Field label={format(m.itemsFieldMaxSize)}>
+            <Field label={m.items_fieldMaxSize()}>
               {(id) => (
                 <Input
                   id={id}
@@ -519,7 +519,6 @@ export function OptionsEditor({
   onChange: (next: OptionDraft[]) => void
   onDisable?: ((optionId: string) => void) | undefined
 }) {
-  const { format } = useI18n()
   const [showDisabled, setShowDisabled] = useState(false)
   const [held, setHeld] = useState<string | null>(null)
   const [drop, setDrop] = useState<{ id: string; edge: 'before' | 'after' } | null>(null)
@@ -553,16 +552,14 @@ export function OptionsEditor({
       data-testid="options-editor"
       data-empty={live.length === 0}
     >
-      <span {...stylex.props(styles.optionsLabel)}>{format(m.itemsOptions)}</span>
+      <span {...stylex.props(styles.optionsLabel)}>{m.items_options()}</span>
       {live.length === 0 && (
         <div {...stylex.props(styles.optionsEmpty)} data-testid="options-empty">
           <span aria-hidden {...stylex.props(styles.optionsEmptyMedia)}>
             <ListIcon {...stylex.props(styles.icon16)} />
           </span>
-          <span {...stylex.props(styles.optionsEmptyTitle)}>
-            {format(m.itemsOptionsEmptyTitle)}
-          </span>
-          <span {...stylex.props(styles.optionsEmptyHint)}>{format(m.itemsOptionsEmptyHint)}</span>
+          <span {...stylex.props(styles.optionsEmptyTitle)}>{m.items_optionsEmptyTitle()}</span>
+          <span {...stylex.props(styles.optionsEmptyHint)}>{m.items_optionsEmptyHint()}</span>
           <Button
             type="button"
             variant="outline"
@@ -571,7 +568,7 @@ export function OptionsEditor({
             onClick={add}
           >
             <PlusIcon aria-hidden />
-            {format(m.itemsChoiceAdd)}
+            {m.items_choiceAdd()}
           </Button>
         </div>
       )}
@@ -621,8 +618,8 @@ export function OptionsEditor({
               <Input
                 wrapperXstyle={styles.optionInput}
                 value={option.label}
-                placeholder={format(m.itemsOptionPlaceholder)}
-                aria-label={format(m.itemsOptionPlaceholder)}
+                placeholder={m.items_optionPlaceholder()}
+                aria-label={m.items_optionPlaceholder()}
                 aria-invalid={blank || undefined}
                 onChange={(event) =>
                   onChange(
@@ -636,19 +633,17 @@ export function OptionsEditor({
                 variant="ghost"
                 size="icon-sm"
                 onClick={() => remove(option)}
-                aria-label={format(
-                  storedOptionIds.has(option.id) && onDisable !== undefined
-                    ? m.itemsOptionDisable
-                    : m.itemsOptionRemove,
-                )}
+                aria-label={(storedOptionIds.has(option.id) && onDisable !== undefined
+                  ? m.items_optionDisable
+                  : m.items_optionRemove)()}
               >
                 <XIcon aria-hidden />
-                <VisuallyHidden>{format(m.itemsOptionRemove)}</VisuallyHidden>
+                <VisuallyHidden>{m.items_optionRemove()}</VisuallyHidden>
               </Button>
             </div>
             {blank && (
               <p {...stylex.props(styles.problem)} role="alert">
-                {format(m.itemsOptionEmpty)}
+                {m.items_optionEmpty()}
               </p>
             )}
           </div>
@@ -657,7 +652,7 @@ export function OptionsEditor({
       {live.length > 0 && (
         <button type="button" {...stylex.props(styles.addOption)} onClick={add}>
           <PlusIcon aria-hidden {...stylex.props(styles.icon13)} />
-          {format(m.itemsChoiceAdd)}
+          {m.items_choiceAdd()}
         </button>
       )}
       {off.length > 0 && (
@@ -673,7 +668,7 @@ export function OptionsEditor({
             ) : (
               <ChevronRightIcon aria-hidden {...stylex.props(styles.icon12)} />
             )}
-            {format(m.itemsDisabledOptions)} {off.length}
+            {m.items_disabledOptions()} {off.length}
           </button>
           {showDisabled &&
             off.map((option) => (
@@ -696,7 +691,7 @@ export function OptionsEditor({
                     )
                   }
                 >
-                  {format(m.itemsOptionRestore)}
+                  {m.items_optionRestore()}
                 </button>
               </div>
             ))}
@@ -711,7 +706,6 @@ const valued = (option: OptionDraft): OptionDraft =>
   option.value === '' ? { ...option, value: option.id } : option
 
 function AcceptPicker({ accept, onChange }: { accept: string; onChange: (next: string) => void }) {
-  const { format } = useI18n()
   const listJoin = useList()
   const stored = accept
     .split(',')
@@ -730,7 +724,7 @@ function AcceptPicker({ accept, onChange }: { accept: string; onChange: (next: s
   const unwritable = other ? unwritableTokens(custom) : []
   return (
     <div {...stylex.props(styles.group)}>
-      <span {...stylex.props(styles.optionsLabel)}>{format(m.itemsFieldAccept)}</span>
+      <span {...stylex.props(styles.optionsLabel)}>{m.items_fieldAccept()}</span>
       <div {...stylex.props(styles.kindGrid)}>
         {/* Picking nothing has always meant "anything", and the line at the
             foot said so - but only to somebody who read it. A field that
@@ -762,9 +756,9 @@ function AcceptPicker({ accept, onChange }: { accept: string; onChange: (next: s
                 <CheckIcon {...stylex.props(styles.icon12)} strokeWidth={3} />
               )}
             </span>
-            <span {...stylex.props(styles.kindName)}>{format(m.itemsAcceptAnyTile)}</span>
+            <span {...stylex.props(styles.kindName)}>{m.items_acceptAnyTile()}</span>
           </span>
-          <span {...stylex.props(styles.kindTokens)}>{format(m.itemsAcceptAnyTokens)}</span>
+          <span {...stylex.props(styles.kindTokens)}>{m.items_acceptAnyTokens()}</span>
         </button>
         {FILE_KINDS.map((kind) => {
           const on = picked.includes(kind.id)
@@ -783,7 +777,7 @@ function AcceptPicker({ accept, onChange }: { accept: string; onChange: (next: s
                 >
                   {on && <CheckIcon {...stylex.props(styles.icon12)} strokeWidth={3} />}
                 </span>
-                <span {...stylex.props(styles.kindName)}>{format(kind.name)}</span>
+                <span {...stylex.props(styles.kindName)}>{kind.name()}</span>
               </span>
               <span {...stylex.props(styles.kindTokens)}>{kind.tokens.join(', ')}</span>
             </button>
@@ -799,7 +793,7 @@ function AcceptPicker({ accept, onChange }: { accept: string; onChange: (next: s
               write(picked, custom, next === true)
             }}
           />
-          {format(m.itemsAcceptOther)}
+          {m.items_acceptOther()}
         </label>
         {other && (
           <>
@@ -811,19 +805,19 @@ function AcceptPicker({ accept, onChange }: { accept: string; onChange: (next: s
                 write(picked, event.target.value, true)
               }}
             />
-            <p {...stylex.props(styles.quiet)}>{format(m.itemsAcceptOtherHint)}</p>
+            <p {...stylex.props(styles.quiet)}>{m.items_acceptOtherHint()}</p>
             {unwritable.length > 0 && (
               <p {...stylex.props(styles.unwritable)}>
-                {format(m.itemsAcceptUnwritable, { tokens: listJoin(unwritable) })}
+                {m.items_acceptUnwritable({ tokens: listJoin(unwritable) })}
               </p>
             )}
           </>
         )}
       </div>
       <div {...stylex.props(styles.resolvedRow)}>
-        <span {...stylex.props(styles.resolvedLabel)}>{format(m.itemsAcceptResolved)}</span>
+        <span {...stylex.props(styles.resolvedLabel)}>{m.items_acceptResolved()}</span>
         <span {...stylex.props(styles.resolvedValue)}>
-          {resolved.length === 0 ? format(m.itemsAcceptAny) : resolved.join(', ')}
+          {resolved.length === 0 ? m.items_acceptAny() : resolved.join(', ')}
         </span>
       </div>
     </div>

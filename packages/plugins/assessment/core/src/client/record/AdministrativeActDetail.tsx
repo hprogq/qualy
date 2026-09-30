@@ -13,18 +13,20 @@ import {
 import { useI18n } from '@qualy/web-i18n'
 import { useTerm } from '@qualy/plugin-settings/client/terms'
 import { authTerms } from '@qualy/auth-contract/terms'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { AsyncSection } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { toast } from '@qualy/ui/toast'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentApi } from '../api.ts'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import { sayEntryFailure } from '../entry/refusals.ts'
 import { ReasonDialog } from '../items/ReasonDialog.tsx'
 import { RecordStanding } from './RecordStanding.tsx'
 import { useWhen } from './when.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // One bulk act, looked back on.
 //
@@ -141,7 +143,7 @@ export function AdministrativeActDetail({
   const run = useRunApi()
   const query = useApiQuery(assessmentApi)
   const queryClient = useQueryClient()
-  const { format, formatError } = useI18n()
+  const { formatError } = useI18n()
   const businessNo = useTerm(authTerms.businessNumber)
   const whenOf = useWhen()
   const [asking, setAsking] = useState(false)
@@ -169,7 +171,7 @@ export function AdministrativeActDetail({
         }),
       ),
     onSuccess: (done) => {
-      toast.success(format(m.recordActReversed, { count: done.affectedCount }))
+      toast.success(m.record_actReversed({ count: done.affectedCount }))
       // what the score is made of just changed: the act, the acts list and
       // the record book are all asked again
       void queryClient.invalidateQueries({
@@ -191,7 +193,7 @@ export function AdministrativeActDetail({
         }),
       })
     },
-    onError: (error) => toast.error(sayEntryFailure(error, { format, formatError })),
+    onError: (error) => toast.error(sayEntryFailure(error, { formatError })),
   })
 
   const found = detail.data
@@ -200,7 +202,7 @@ export function AdministrativeActDetail({
   // after it; only one that turned out not to be there, or not the
   // reader's, takes its place.
   const copy = {
-    missing: { title: format(m.recordActMissing), description: format(m.recordMissingHint) },
+    missing: { title: m.record_actMissing(), description: m.record_missingHint() },
   }
   const failure = named
     ? words.subject(detail, { missing: [RECORD_NOT_FOUND], copy })
@@ -217,7 +219,7 @@ export function AdministrativeActDetail({
             page: 'assessment/batch-record',
             params: { batchId },
             search: { tab: 'acts' },
-            label: format(m.recordActBack),
+            label: m.record_actBack(),
           }}
         />
       </div>
@@ -227,8 +229,8 @@ export function AdministrativeActDetail({
   return (
     <AsyncSection
       pending={detail.isPending}
-      loadingLabel={format(commonMessages.loading)}
-      retryLabel={format(commonMessages.retry)}
+      loadingLabel={commonMessages.state_loading()}
+      retryLabel={commonMessages.action_retry()}
       onRetry={() => void detail.refetch()}
       skeleton={
         <div {...stylex.props(styles.waiting)}>
@@ -256,7 +258,7 @@ export function AdministrativeActDetail({
         <div {...stylex.props(styles.column)} data-testid="administrative-act-detail">
           <section {...stylex.props(styles.sheet)}>
             <div {...stylex.props(styles.titleRow)}>
-              <h2 {...stylex.props(styles.title)}>{format(m.recordActTitle)}</h2>
+              <h2 {...stylex.props(styles.title)}>{m.record_actTitle()}</h2>
               <span {...stylex.props(styles.by)}>{whenOf(found.createdAt)}</span>
               <span {...stylex.props(styles.spacer)} />
               {/* offered whenever anything of it still counts; the server
@@ -269,34 +271,34 @@ export function AdministrativeActDetail({
                   onClick={() => setAsking(true)}
                   data-testid="act-reverse"
                 >
-                  {format(m.recordActReverse)}
+                  {m.record_actReverse()}
                 </Button>
               )}
             </div>
 
             <dl {...stylex.props(styles.facts)}>
-              <dt {...stylex.props(styles.term)}>{format(m.recordActItem)}</dt>
+              <dt {...stylex.props(styles.term)}>{m.record_actItem()}</dt>
               <dd {...stylex.props(styles.value)}>{found.itemTitle}</dd>
-              <dt {...stylex.props(styles.term)}>{format(m.recordTargets)}</dt>
+              <dt {...stylex.props(styles.term)}>{m.record_targets()}</dt>
               <dd {...stylex.props(styles.value)}>
-                {format(
-                  found.targetKind === 'organization' ? m.recordActByUnits : m.recordActByPeople,
-                )}
+                {(found.targetKind === 'organization'
+                  ? m.record_actByUnits
+                  : m.record_actByPeople)()}
               </dd>
-              <dt {...stylex.props(styles.term)}>{format(m.importDetailCount)}</dt>
+              <dt {...stylex.props(styles.term)}>{m.record_import_detailCount()}</dt>
               <dd {...stylex.props(styles.value)} data-count={found.recordedCount}>
-                {format(m.recordActCount, { count: found.recordedCount })}
+                {m.record_actCount({ count: found.recordedCount })}
               </dd>
-              <dt {...stylex.props(styles.term)}>{format(m.importDetailNow)}</dt>
+              <dt {...stylex.props(styles.term)}>{m.record_import_detailNow()}</dt>
               <dd {...stylex.props(styles.value)}>
                 <span {...stylex.props(styles.now)} data-voided={found.voidedCount}>
                   <span>
-                    {format(m.recordActCount, {
+                    {m.record_actCount({
                       count: found.recordedCount - found.voidedCount,
                     })}
                   </span>
                   {found.voidedCount > 0 && (
-                    <span>{format(m.recordActVoided, { count: found.voidedCount })}</span>
+                    <span>{m.record_actVoided({ count: found.voidedCount })}</span>
                   )}
                 </span>
               </dd>
@@ -304,13 +306,13 @@ export function AdministrativeActDetail({
 
             {found.events.length > 0 && (
               <dl {...stylex.props(styles.facts)}>
-                <dt {...stylex.props(styles.term)}>{format(m.recordActEvents)}</dt>
+                <dt {...stylex.props(styles.term)}>{m.record_actEvents()}</dt>
                 <dd {...stylex.props(styles.value, styles.events)}>
                   {found.events.map((one) => (
                     <span key={one.id}>
-                      {format(m.recordActEventLine, {
+                      {m.record_actEventLine({
                         when: whenOf(one.createdAt),
-                        actor: one.actorName ?? format(m.recordActorUnknown),
+                        actor: one.actorName ?? m.record_actorUnknown(),
                         count: one.affectedCount,
                         reason: one.reason ?? '',
                       })}
@@ -326,12 +328,12 @@ export function AdministrativeActDetail({
               their facts is now. A row opens that fact. */}
           {found.rows.length > 0 && (
             <>
-              <p {...stylex.props(styles.section)}>{format(m.recordActRows)}</p>
+              <p {...stylex.props(styles.section)}>{m.record_actRows()}</p>
               <div {...stylex.props(styles.card)} role="table" data-testid="act-rows">
                 <div role="row" {...stylex.props(styles.row, styles.headRow)}>
                   <span role="columnheader">{businessNo}</span>
-                  <span role="columnheader">{format(m.importColumnName)}</span>
-                  <span role="columnheader">{format(m.importColumnStatus)}</span>
+                  <span role="columnheader">{m.record_import_columnName()}</span>
+                  <span role="columnheader">{m.record_import_columnStatus()}</span>
                   <span />
                 </div>
                 {found.rows.map((one) => (
@@ -354,7 +356,7 @@ export function AdministrativeActDetail({
                         one.businessNo === null && styles.noneGiven,
                       )}
                     >
-                      {one.businessNo ?? format(m.noBusinessNoShort, { businessNo })}
+                      {one.businessNo ?? m.roster_noBusinessNo({ businessNo })}
                     </span>
                     <span role="cell" {...stylex.props(styles.cell)}>
                       {one.displayName}
@@ -372,7 +374,7 @@ export function AdministrativeActDetail({
                   data-testid="act-rows-more"
                   onClick={() => setRowsCursor(found.rowsNextCursor)}
                 >
-                  {format(m.recordMoreWho)}
+                  {m.record_moreWho()}
                 </Button>
               )}
             </>
@@ -382,9 +384,9 @@ export function AdministrativeActDetail({
               reconstructs why a round's scores moved */}
           <ReasonDialog
             open={asking}
-            title={format(m.recordActReverseTitle)}
-            description={format(m.recordActReverseHint)}
-            confirmLabel={format(m.recordActReverse)}
+            title={m.record_actReverseTitle()}
+            description={m.record_actReverseHint()}
+            confirmLabel={m.record_actReverse()}
             busy={reverse.isPending}
             onConfirm={(reason) => {
               setAsking(false)

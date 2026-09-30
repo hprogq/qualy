@@ -4,8 +4,9 @@ import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { Popover, PopoverContent, PopoverTrigger } from '@qualy/ui/popover'
 import { InfoIcon, PencilLineIcon } from 'lucide-react'
-import { formulaMessages as m } from './i18n.ts'
+
 import { fullWhen } from './library-styles.ts'
+import * as m from '#messages'
 
 // What one publication is, beside its line in the versions: its name and
 // notes, when and by whom. Who it is shared with is on the line itself, and
@@ -112,7 +113,7 @@ export function ReleaseInfoPopover({
   /** the card can stand in two places at once; each names its own mark */
   readonly testId?: string
 }) {
-  const { format, locale } = useI18n()
+  const { locale } = useI18n()
   const [open, setOpen] = useState(false)
   const [pinned, setPinned] = useState(false)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -158,14 +159,14 @@ export function ReleaseInfoPopover({
     else close()
   }
 
-  const name = release.releaseName ?? format(m.releaseUnnamed)
+  const name = release.releaseName ?? m.history_releaseUnnamed()
   return (
     <Popover open={open} onOpenChange={onOpenChange} trapFocus={pinned}>
       <PopoverTrigger asChild>
         <button
           type="button"
           data-testid={testId}
-          aria-label={format(m.releaseInfoOf, { name })}
+          aria-label={m.history_releaseInfoOf({ name })}
           onClick={() => {
             pressed.current = true
           }}
@@ -206,9 +207,9 @@ export function ReleaseInfoPopover({
           <dl {...stylex.props(styles.facts)}>
             {(
               [
-                [m.releaseOrdinalLabel, format(m.releaseOrdinal, { number: release.versionNo })],
-                [m.templatesPublishedColumn, fullWhen(release.publishedAt, locale)],
-                [m.releasePublisher, release.publishedByName ?? format(m.templatesAuthorUnknown)],
+                [m.release_ordinalLabel, m.history_releaseOrdinal({ number: release.versionNo })],
+                [m.templates_publishedColumn, fullWhen(release.publishedAt, locale)],
+                [m.release_publisher, release.publishedByName ?? m.templates_authorUnknown()],
                 // said only where it happened: a publication nobody relabelled
                 // reads as its publisher wrote it, and a line saying so would
                 // be one more thing to read for no news
@@ -216,7 +217,7 @@ export function ReleaseInfoPopover({
                   ? []
                   : ([
                       [
-                        m.releaseInfoUpdated,
+                        m.release_infoUpdated,
                         `${fullWhen(release.metadataUpdatedAt, locale)}${
                           release.metadataUpdatedByName == null
                             ? ''
@@ -226,10 +227,10 @@ export function ReleaseInfoPopover({
                     ] as const)),
               ] as const
             ).flatMap(([label, value]) => [
-              <dt key={`${label.id}-label`} {...stylex.props(styles.factLabel)}>
-                {format(label)}
+              <dt key={`${label()}-label`} {...stylex.props(styles.factLabel)}>
+                {label()}
               </dt>,
-              <dd key={`${label.id}-value`} {...stylex.props(styles.factValue)}>
+              <dd key={`${label()}-value`} {...stylex.props(styles.factValue)}>
                 {value}
               </dd>,
             ])}
@@ -245,7 +246,7 @@ export function ReleaseInfoPopover({
               {...stylex.props(styles.edit)}
             >
               <PencilLineIcon size={13} aria-hidden />
-              {format(m.versionInfoEdit)}
+              {m.release_infoEdit()}
             </button>
           )}
         </div>

@@ -3,14 +3,16 @@ import { useMutation } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { useApi, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { Field, FormDialog } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
 import { toast } from '@qualy/ui/toast'
 import { assessmentApi } from '../api.ts'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import type { ItemDto } from '../entry/model.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // Withdrawing a question from a running round: open work under it ends, and
 // what was already decided keeps its outcome. The reason is required because
@@ -38,7 +40,7 @@ export function VoidQuestionDialog({
 }) {
   const api = useApi(assessmentApi)
   const run = useRunApi()
-  const { format, formatError } = useI18n()
+  const { formatError } = useI18n()
   const [reason, setReason] = useState('')
 
   const act = useMutation({
@@ -56,25 +58,25 @@ export function VoidQuestionDialog({
   return (
     <FormDialog
       open={open}
-      title={format(m.itemsVoidTitle)}
-      description={format(m.itemsVoidHint)}
+      title={m.items_voidTitle()}
+      description={m.items_voidHint()}
       onClose={onClose}
       footer={
         <div {...stylex.props(styles.footer)}>
           <Button variant="outline" onClick={onClose}>
-            {format(commonMessages.cancel)}
+            {commonMessages.action_cancel()}
           </Button>
           <Button
             variant="destructive"
             disabled={act.isPending || reason.trim() === ''}
             onClick={() => act.mutate()}
           >
-            {format(m.itemsVoid)}
+            {m.items_void()}
           </Button>
         </div>
       }
     >
-      <Field label={format(m.itemsVoidReason)} required>
+      <Field label={m.items_voidReason()} required>
         {(id, control) => (
           <Input
             id={id}

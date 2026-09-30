@@ -2,16 +2,17 @@ import { useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { useQuery } from '@tanstack/react-query'
 import { useApiQuery, useLoadFailure } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { AsyncSection } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { assessmentApi } from '../api.ts'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import { administrativeItemsOf } from '../entry/model.ts'
 import { RecordSteps } from './RecordSteps.tsx'
 import { ItemPicker } from './ItemPicker.tsx'
 import { NoAdministrativeItems, Wizard, WizardBody, WizardFoot, WizardRail } from './wizard.tsx'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // Writing one administrative fact: which question, about whom, and what the
 // office determines by recording it.
@@ -44,7 +45,7 @@ export function ManualRecordView({
   onDone?: () => void
 }) {
   const query = useApiQuery(assessmentApi)
-  const { format } = useI18n()
+
   const failures = useLoadFailure()
   const items = useQuery(query.assessment.listItems.queryOptions({ params: { batchId } }))
   const [itemId, setItemId] = useState('')
@@ -67,14 +68,14 @@ export function ManualRecordView({
   // filed against another.
   const session = `${item?.currentRevision?.id ?? 'no-revision'}:${attempt}`
 
-  const steps = [format(m.recordStepItem), format(m.recordStepFill), format(m.recordStepConfirm)]
+  const steps = [m.record_stepItem(), m.record_stepFill(), m.record_stepConfirm()]
 
   return (
     <AsyncSection
       pending={items.isPending}
       error={items.isError ? failures.of(items.error) : null}
-      loadingLabel={format(commonMessages.loading)}
-      retryLabel={format(commonMessages.retry)}
+      loadingLabel={commonMessages.state_loading()}
+      retryLabel={commonMessages.action_retry()}
       onRetry={() => void items.refetch()}
       xstyle={styles.fill}
     >
@@ -99,7 +100,7 @@ export function ManualRecordView({
                   onClick={() => setAt(1)}
                   data-testid="record-step-next"
                 >
-                  {format(m.recordStepNext)}
+                  {m.record_stepNext()}
                 </Button>
               </WizardFoot>
             </>

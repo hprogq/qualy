@@ -1,10 +1,10 @@
 import { TriangleAlertIcon } from 'lucide-react'
 import * as stylex from '@stylexjs/stylex'
-import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { Alert, AlertAction, AlertDescription, AlertTitle } from '@qualy/ui/alert'
 import { Button } from '@qualy/ui/button'
-import { assessmentMessages as m } from '../i18n.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // The page's totals did not come: the question failed as a whole, or the
 // scoring service was down, which the server answers as one row saying so
@@ -30,7 +30,6 @@ export function ScoresNotice({
   busy: boolean
   onRetry: () => void
 }) {
-  const { format } = useI18n()
   return (
     <Alert
       data-testid="roster-scores-failed"
@@ -38,11 +37,11 @@ export function ScoresNotice({
       className={stylex.props(styles.notice).className}
     >
       <TriangleAlertIcon />
-      <AlertTitle>{format(m.rosterScoresFailed)}</AlertTitle>
+      <AlertTitle>{m.roster_scoresFailed()}</AlertTitle>
       <AlertDescription>{reason}</AlertDescription>
       <AlertAction>
         <Button size="sm" variant="outline" disabled={busy} onClick={onRetry}>
-          {format(commonMessages.retry)}
+          {commonMessages.action_retry()}
         </Button>
       </AlertAction>
     </Alert>

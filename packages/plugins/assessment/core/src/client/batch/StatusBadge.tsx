@@ -1,9 +1,9 @@
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { useI18n } from '@qualy/web-i18n'
 import { Badge } from '@qualy/ui/badge'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import { standingOf } from './standing.ts'
+import * as m from '#messages'
 
 // Where a batch stands, as a badge.
 //
@@ -118,14 +118,13 @@ export function StatusBadge({
   compact?: boolean
   xstyle?: stylex.StyleXStyles
 }) {
-  const { format } = useI18n()
   const standing = standingOf(status, currentPhaseId)
   const tone = tones[standing]
   const label = {
-    draft: m.statusDraft,
-    pending: m.statusPending,
-    active: m.statusActive,
-    archived: m.statusArchived,
+    draft: m.status_draft,
+    pending: m.status_pending,
+    active: m.status_active,
+    archived: m.status_archived,
   }[standing]
 
   return (
@@ -141,13 +140,13 @@ export function StatusBadge({
       data-standing={standing}
       // the word is what goes, not the meaning: the colour and the dot still
       // say it, and whoever cannot see them is reading this instead
-      aria-label={compact ? format(label) : undefined}
+      aria-label={compact ? label() : undefined}
     >
       <span aria-hidden {...stylex.props(styles.dotSeat)}>
         {tone.live && <span {...stylex.props(styles.pulse, tone.dot)} />}
         <span {...stylex.props(styles.dot, tone.dot)} />
       </span>
-      {!compact && format(label)}
+      {!compact && label()}
     </Badge>
   )
 }

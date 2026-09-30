@@ -1,8 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { ChevronDownIcon, ChevronRightIcon, ChevronUpIcon, RefreshCwIcon } from 'lucide-react'
-import type { MessageDescriptor } from '@qualy/i18n-contract'
-import { useI18n } from '@qualy/web-i18n'
+import type { Message } from '@qualy/i18n-contract'
 import { Button } from '@qualy/ui/button'
 import { LiveMark, type LiveState } from '@qualy/ui/live-mark'
 import { Appear, Portion } from '@qualy/ui/reveal'
@@ -10,7 +9,7 @@ import { Ticker } from '@qualy/ui/ticker'
 import { VisuallyHidden } from '@qualy/ui/visually-hidden'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
-import { assessmentMessages as m } from '../../i18n.ts'
+
 import { trimAmount } from '../model.ts'
 import type { StructureRow } from '../standing.ts'
 import { SectionFigure, UnreadCount, UnreadDot } from './marks.tsx'
@@ -25,6 +24,7 @@ import {
   type HeadStat,
   type Outline,
 } from './model.ts'
+import * as m from '#messages'
 
 // The round's structure as the reader's index of it: how far the whole has
 // got at the top, and every section and question below, each question with
@@ -502,9 +502,9 @@ export function StructureRail({
   onTodoOnly: (next: boolean) => void
   /** whether a question counts for the narrower view */
   isTodo: (row: StructureRow) => boolean
-  todoLabel: MessageDescriptor
+  todoLabel: Message
   /** what the narrower view says when nothing is left in it */
-  todoEmpty: MessageDescriptor
+  todoEmpty: Message
   refreshing: boolean
   onRefresh: () => void
   /** a column that scrolls itself, or the whole of a phone's first screen */
@@ -512,7 +512,6 @@ export function StructureRail({
   /** the questions no claim of this reader's can be handed on under, however the round stands */
   unfileable?: ReadonlySet<string>
 }) {
-  const { format } = useI18n()
   const statsId = useId()
   const [folded, setFolded] = useState<ReadonlySet<string>>(new Set())
   const scroller = useRef<HTMLDivElement | null>(null)
@@ -582,7 +581,7 @@ export function StructureRail({
   const tree =
     listed.length === 0 ? (
       <p {...stylex.props(styles.empty)} data-testid="rail-empty">
-        {format(todoEmpty)}
+        {todoEmpty()}
       </p>
     ) : (
       <ul {...stylex.props(styles.list)}>
@@ -608,7 +607,7 @@ export function StructureRail({
                   <button
                     type="button"
                     aria-expanded={!isFolded}
-                    aria-label={format(isFolded ? m.entriesUnfold : m.entriesFold, {
+                    aria-label={(isFolded ? m.entries_unfold : m.entries_fold)({
                       name: row.name,
                     })}
                     onClick={() =>
@@ -644,7 +643,7 @@ export function StructureRail({
                   </span>
                   {isFolded && (
                     <span {...stylex.props(styles.foldNote)}>
-                      {format(m.entriesFoldedCount, { count: inside })}
+                      {m.entries_foldedCount({ count: inside })}
                     </span>
                   )}
                   {/* folded away, the news under it is still said on its head */}
@@ -674,16 +673,16 @@ export function StructureRail({
                 type="button"
                 title={[
                   row.name,
-                  ...(word === null ? [] : [format(word)]),
-                  ...(held ? [format(m.entriesRowUnfileable)] : []),
+                  ...(word === null ? [] : [word()]),
+                  ...(held ? [m.entries_rowUnfileable()] : []),
                   ...(figured
                     ? [
-                        format(score < 0 ? m.entriesDeductedFact : m.entriesCountedFact, {
+                        (score < 0 ? m.entries_deductedFact : m.entries_countedFact)({
                           value: two(Math.abs(score)),
                         }),
                       ]
                     : []),
-                ].join(format(m.entriesListJoin))}
+                ].join(m.entries_listJoin())}
                 data-rail-row={row.id}
                 data-kind="item"
                 data-tag={row.tag ?? ''}
@@ -722,7 +721,7 @@ export function StructureRail({
                       {...stylex.props(styles.word, urgentTag(row) && styles.wordUrgent)}
                       style={{ maxWidth: wordRoom(row) }}
                     >
-                      {format(word)}
+                      {word()}
                     </span>
                   ) : held ? (
                     <span
@@ -731,10 +730,10 @@ export function StructureRail({
                       {...stylex.props(styles.word)}
                       style={{ maxWidth: wordRoom(row) }}
                     >
-                      {format(m.entriesRowUnfileable)}
+                      {m.entries_rowUnfileable()}
                     </span>
                   ) : null}
-                  {!drawn && word !== null && <VisuallyHidden>{format(word)}</VisuallyHidden>}
+                  {!drawn && word !== null && <VisuallyHidden>{word()}</VisuallyHidden>}
                 </span>
                 {figured && (
                   <span
@@ -776,14 +775,14 @@ export function StructureRail({
               again by hand; nothing where the round no longer moves */}
           {stream !== null && (
             <LiveMark state={stream} data-testid="entries-live">
-              {format(m.resultLive, { state: stream })}
+              {m.result_live({ state: stream })}
             </LiveMark>
           )}
           {/* the escape hatch, not the mechanism: state flows in on its own,
               and this is for the reader who wants to ask again anyway */}
           <Button variant="ghost" size="icon-sm" disabled={refreshing} onClick={onRefresh}>
             <RefreshCwIcon aria-hidden {...stylex.props(refreshing && styles.spinning)} />
-            <VisuallyHidden>{format(m.myEntriesRefresh)}</VisuallyHidden>
+            <VisuallyHidden>{m.entry_refresh()}</VisuallyHidden>
           </Button>
         </div>
         <div {...stylex.props(styles.totals)}>
@@ -798,7 +797,7 @@ export function StructureRail({
             </span>
             {total.cap !== null && (
               <span {...stylex.props(styles.quiet)}>
-                / {format(m.entriesPoints, { value: trimAmount(String(total.cap)) })}
+                / {m.entries_points({ value: trimAmount(String(total.cap)) })}
               </span>
             )}
             <span {...stylex.props(styles.spacer)} />
@@ -832,8 +831,8 @@ export function StructureRail({
           <div {...stylex.props(styles.metaRow)}>
             <span {...stylex.props(styles.meta)}>
               {outline.tops.length === 0
-                ? format(m.myEntriesQuestions, { count: items.length })
-                : format(m.myEntriesPaperMeta, {
+                ? m.entry_questions({ count: items.length })
+                : m.myEntries_paperMeta({
                     groups: outline.tops.length,
                     items: items.length,
                   })}
@@ -848,7 +847,7 @@ export function StructureRail({
                 onClick={() => onStatsShown(!statsShown)}
                 {...stylex.props(styles.statsKey)}
               >
-                {format(statsShown ? m.entriesStatsHide : m.entriesStatsShow)}
+                {(statsShown ? m.entries_statsHide : m.entries_statsShow)()}
                 {statsShown ? (
                   <ChevronUpIcon aria-hidden {...stylex.props(styles.statsKeyIcon)} />
                 ) : (
@@ -877,7 +876,7 @@ export function StructureRail({
                 >
                   <Ticker value={String(stat.count)} />
                 </b>
-                <span {...stylex.props(styles.statLabel)}>{format(stat.label)}</span>
+                <span {...stylex.props(styles.statLabel)}>{stat.label()}</span>
               </span>
             ))}
           </div>
@@ -891,12 +890,12 @@ export function StructureRail({
             onClick={() => onTodoOnly(false)}
             {...stylex.props(styles.tab, !todoOnly && styles.tabOn)}
           >
-            {format(m.paperViewAll)}
+            {m.paper_viewAll()}
             <span {...stylex.props(styles.tabCount)}>{items.length}</span>
             {newsLeftOut && (
               <>
                 <UnreadDot />
-                <VisuallyHidden>{format(m.holdsUnread)}</VisuallyHidden>
+                <VisuallyHidden>{m.entry_holdsUnread()}</VisuallyHidden>
               </>
             )}
           </button>
@@ -908,7 +907,7 @@ export function StructureRail({
             onClick={() => onTodoOnly(true)}
             {...stylex.props(styles.tab, todoOnly && styles.tabOn)}
           >
-            {format(todoLabel)}
+            {todoLabel()}
             <span {...stylex.props(styles.tabCount, todoCount > 0 && styles.tabCountWaits)}>
               <Ticker value={String(todoCount)} />
             </span>
@@ -917,7 +916,7 @@ export function StructureRail({
       </div>
       <nav
         ref={scroller}
-        aria-label={format(m.paperStructure)}
+        aria-label={m.paper_structure()}
         {...stylex.props(layout === 'column' ? styles.treeScroll : styles.treeFlow)}
       >
         {tree}

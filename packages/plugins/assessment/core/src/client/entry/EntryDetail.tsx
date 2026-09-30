@@ -4,7 +4,7 @@ import * as stylex from '@stylexjs/stylex'
 import { AlertCircleIcon, XIcon } from 'lucide-react'
 import { useApiQuery } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { Badge } from '@qualy/ui/badge'
 import { Breadcrumb } from '@qualy/ui/breadcrumb'
 import { Button } from '@qualy/ui/button'
@@ -15,7 +15,7 @@ import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { Count } from '@qualy/ui/count'
 import { assessmentApi } from '../api.ts'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import { useBatchZone } from '../batch/zone.ts'
 import { AttachmentLink } from './AttachmentLink.tsx'
 import { sourceLabelOf } from './source.ts'
@@ -26,6 +26,8 @@ import { answerOf, displayValueOf, fieldsOf, type EntryDto, type ItemDto } from 
 import { LineParts } from './workspace/LineText.tsx'
 import { useWorkspaceMode } from './workspace/layout.ts'
 import { momentOf, voidedWithItem, type EntryLine } from './workspace/model.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // One claim, in full, in a drawer over the list it came from.
 //
@@ -441,7 +443,6 @@ function SuggestedChanges({
   payload: Record<string, unknown>
   fields: ReturnType<typeof fieldsOf>
 }) {
-  const { format } = useI18n()
   if (suggested === null || typeof suggested !== 'object') return null
   const record = suggested as Record<string, unknown>
   const rows = fields.filter(
@@ -453,11 +454,11 @@ function SuggestedChanges({
   if (rows.length === 0) return null
   return (
     <div {...stylex.props(styles.suggested)} data-testid="suggested-changes">
-      <p {...stylex.props(styles.quietNote)}>{format(m.entrySuggestedTitle)}</p>
+      <p {...stylex.props(styles.quietNote)}>{m.entry_suggestedTitle()}</p>
       {rows.map((field) => {
         const said = displayValueOf(field, answerOf(record, field.key), {
-          yes: format(m.recognitionYes),
-          no: format(m.recognitionNo),
+          yes: m.recognition_yes(),
+          no: m.recognition_no(),
         })
         return (
           <p key={field.key} {...stylex.props(styles.suggestedLine)}>
@@ -497,10 +498,10 @@ export function EntryDetail({
   footer?: ReactNode
 }) {
   const query = useApiQuery(assessmentApi)
-  const { format, locale } = useI18n()
+  const { locale } = useI18n()
   const zone = useBatchZone()
   const phone = useWorkspaceMode() === 'phone'
-  const yesNo = { yes: format(m.recognitionYes), no: format(m.recognitionNo) }
+  const yesNo = { yes: m.recognition_yes(), no: m.recognition_no() }
   const [tab, setTab] = useState<'content' | 'trail'>('content')
   const payload = (entry.currentRevision?.payload ?? {}) as Record<string, unknown>
   const revisionNo = entry.currentRevision?.revisionNo
@@ -557,7 +558,7 @@ export function EntryDetail({
                 its row in the list sets them */}
             <SheetTitle className={stylex.props(styles.sheetTitle).className}>
               {summary === undefined ? (
-                format(m.entrySheetTitle)
+                m.entrySheet_title()
               ) : (
                 <LineParts parts={summary.parts.slice(0, 1)} />
               )}
@@ -583,15 +584,13 @@ export function EntryDetail({
                     openRound={entry.openRound}
                     withItem={voidedWithItem(entry, item)}
                   />
-                  <span {...stylex.props(styles.versionNote)}>
-                    {format(sourceLabelOf(entry.source))}
-                  </span>
+                  <span {...stylex.props(styles.versionNote)}>{sourceLabelOf(entry.source)()}</span>
                 </span>
                 {revisionNo !== undefined && entry.status !== 'draft' && (
                   <span data-head-fact="version" {...stylex.props(styles.headFact)}>
                     <span aria-hidden {...stylex.props(styles.headRule)} />
                     <span {...stylex.props(styles.versionNote)}>
-                      {format(m.entryVersionNo, { no: revisionNo })}
+                      {m.entry_versionNo({ no: revisionNo })}
                     </span>
                   </span>
                 )}
@@ -599,9 +598,9 @@ export function EntryDetail({
                   <span data-head-fact="when" {...stylex.props(styles.headFact)}>
                     <span aria-hidden {...stylex.props(styles.headRule)} />
                     <span {...stylex.props(styles.versionNote)}>
-                      {format(m.entriesWhen, {
+                      {m.entries_when({
                         when: timeOf(summary.at, locale, zone),
-                        action: format(summary.action),
+                        action: summary.action(),
                       })}
                     </span>
                   </span>
@@ -615,13 +614,13 @@ export function EntryDetail({
               {summary.amount !== null && (
                 <span {...stylex.props(styles.headAmountValue)}>{summary.amount}</span>
               )}
-              <span {...stylex.props(styles.versionNote)}>{format(summary.amountWord)}</span>
+              <span {...stylex.props(styles.versionNote)}>{summary.amountWord()}</span>
             </div>
           )}
           <Button
             variant="ghost"
             size="icon-sm"
-            aria-label={format(commonMessages.close)}
+            aria-label={commonMessages.action_close()}
             onClick={onClose}
           >
             <XIcon aria-hidden />
@@ -633,10 +632,10 @@ export function EntryDetail({
             [
               [
                 'content',
-                m.entrySheetContent,
-                format(m.entrySheetContentCount, { count: fields.length }),
+                m.entrySheet_content,
+                m.entrySheet_contentCount({ count: fields.length }),
               ],
-              ['trail', m.entrySheetTrail, format(m.entrySheetTrailCount, { count: versions })],
+              ['trail', m.entrySheet_trail, m.entrySheet_trailCount({ count: versions })],
             ] as const
           ).map(([key, label, count]) => (
             <button
@@ -645,7 +644,7 @@ export function EntryDetail({
               onClick={() => setTab(key)}
               {...stylex.props(styles.tab, tab === key && styles.tabOn)}
             >
-              {format(label)}
+              {label()}
               <Count>{count}</Count>
               {tab === key && <span aria-hidden {...stylex.props(styles.tabInk)} />}
             </button>
@@ -676,11 +675,9 @@ export function EntryDetail({
                           entry.refusal.kind !== 'rejected' && styles.noticeTitleReturned,
                         )}
                       >
-                        {format(
-                          entry.refusal.kind === 'rejected'
-                            ? m.entryRefusedTitle
-                            : m.entryReturnedTitle,
-                        )}
+                        {(entry.refusal.kind === 'rejected'
+                          ? m.entry_refusedTitle
+                          : m.entry_returnedTitle)()}
                       </p>
                       {entry.refusal.reason !== null && (
                         <Badge
@@ -697,7 +694,7 @@ export function EntryDetail({
                     </div>
                     {(entry.refusal.comment ?? '') !== '' && (
                       <div>
-                        <p {...stylex.props(styles.fieldLabel)}>{format(m.reviewComment)}</p>
+                        <p {...stylex.props(styles.fieldLabel)}>{m.review_comment()}</p>
                         <p {...stylex.props(styles.prose)}>{entry.refusal.comment}</p>
                       </div>
                     )}
@@ -720,24 +717,24 @@ export function EntryDetail({
                         aria-hidden
                         className={stylex.props(styles.askIcon).className}
                       />
-                      <p {...stylex.props(styles.askTitle)}>{format(m.entrySupplementTitle)}</p>
+                      <p {...stylex.props(styles.askTitle)}>{m.entry_supplementTitle()}</p>
                     </div>
                     <p {...stylex.props(styles.prose)}>{entry.supplement.instructions}</p>
                     {entry.supplement.requirements.length > 0 && (
                       <div {...stylex.props(styles.askNeeds)}>
-                        <p {...stylex.props(styles.quietNote)}>{format(m.supplementNeeds)}</p>
+                        <p {...stylex.props(styles.quietNote)}>{m.supplement_needs()}</p>
                         {entry.supplement.requirements.map((asked) => (
                           <span key={asked.key} {...stylex.props(styles.askPiece)}>
                             <span aria-hidden {...stylex.props(styles.askDot)} />
                             <span {...stylex.props(styles.askPieceName)}>{asked.label}</span>
                             <span {...stylex.props(styles.askPieceKind)}>
-                              {format(
-                                asked.kind === 'file' ? m.supplementAddFile : m.supplementAddText,
-                              )}
+                              {(asked.kind === 'file'
+                                ? m.supplement_addFile
+                                : m.supplement_addText)()}
                             </span>
                             {asked.required && (
                               <span {...stylex.props(styles.askPieceRequired)}>
-                                {format(m.supplementPieceRequired)}
+                                {m.supplement_pieceRequired()}
                               </span>
                             )}
                           </span>
@@ -749,7 +746,7 @@ export function EntryDetail({
                       disabled={onSupplement === undefined}
                       onClick={() => onSupplement?.()}
                     >
-                      {format(m.entrySupplementAnswer)}
+                      {m.entry_supplementAnswer()}
                     </Button>
                   </div>
                 )}
@@ -768,16 +765,14 @@ export function EntryDetail({
                         arrived, not on what kind of question it answers:
                         an item may accept both a claim and a record */}
                     <p {...stylex.props(styles.sectionTitle)}>
-                      {format(
-                        entry.source === 'record' || entry.source === 'import'
-                          ? m.entrySheetRecorded
-                          : m.entrySheetOwn,
-                      )}
+                      {(entry.source === 'record' || entry.source === 'import'
+                        ? m.entrySheet_recorded
+                        : m.entrySheet_own)()}
                     </p>
                     <span aria-hidden {...stylex.props(styles.sectionRule)} />
                     {revisionNo !== undefined && (
                       <p {...stylex.props(styles.sectionNote)}>
-                        {format(m.entryVersionNo, { no: revisionNo })}
+                        {m.entry_versionNo({ no: revisionNo })}
                       </p>
                     )}
                   </div>
@@ -798,13 +793,11 @@ export function EntryDetail({
                               ))}
                             </span>
                           ) : (
-                            <p {...stylex.props(styles.fieldCleared)}>
-                              {format(m.entryFieldCleared)}
-                            </p>
+                            <p {...stylex.props(styles.fieldCleared)}>{m.entry_fieldCleared()}</p>
                           )
                         ) : (
                           <p {...stylex.props(styles.fieldValue)}>
-                            {displayValueOf(field, value, yesNo) || format(m.entryFieldCleared)}
+                            {displayValueOf(field, value, yesNo) || m.entry_fieldCleared()}
                           </p>
                         )}
                       </div>
@@ -813,11 +806,9 @@ export function EntryDetail({
                   {(entry.currentRevision?.note ?? null) !== null && (
                     <div {...stylex.props(styles.field)}>
                       <p {...stylex.props(styles.fieldLabel)}>
-                        {format(
-                          entry.source === 'record' || entry.source === 'import'
-                            ? m.entryRecordBasis
-                            : m.entryNote,
-                        )}
+                        {(entry.source === 'record' || entry.source === 'import'
+                          ? m.entry_recordBasis
+                          : m.entry_note)()}
                       </p>
                       <p {...stylex.props(styles.fieldValue)}>{entry.currentRevision!.note}</p>
                     </div>
@@ -830,10 +821,10 @@ export function EntryDetail({
                 {answered.map((ask) => (
                   <section key={ask.id} {...stylex.props(styles.section)}>
                     <div {...stylex.props(styles.sectionHead)}>
-                      <p {...stylex.props(styles.sectionTitle)}>{format(m.entrySheetSupHead)}</p>
+                      <p {...stylex.props(styles.sectionTitle)}>{m.entrySheet_supHead()}</p>
                       <span aria-hidden {...stylex.props(styles.sectionRule)} />
                       <p {...stylex.props(styles.sectionNote)}>
-                        {format(m.entrySheetSupNote, {
+                        {m.entrySheet_supNote({
                           round: ask.roundNo,
                           asked: timeOf(ask.requestedAt, locale, zone),
                           answered: timeOf(ask.response!.respondedAt, locale, zone),
@@ -841,7 +832,7 @@ export function EntryDetail({
                       </p>
                     </div>
                     <p {...stylex.props(styles.supAsk)}>
-                      {format(m.entrySheetSupAsk)}　{ask.instructions}
+                      {m.entrySheet_supAsk()}　{ask.instructions}
                     </p>
                     {ask.requirements.map((piece) => {
                       const value = answerOf(
@@ -904,7 +895,7 @@ export function EntryDetail({
  * is not printed at all.
  */
 function RecognizedValues({ entry }: { entry: EntryDto }) {
-  const { format, locale } = useI18n()
+  const { locale } = useI18n()
   const zone = useBatchZone()
   const standing = entry.recognition ?? null
   if (standing === null) return null
@@ -922,7 +913,7 @@ function RecognizedValues({ entry }: { entry: EntryDto }) {
           kindOf(schema) === 'choice'
             ? (choiceLabel(schema as never, String(value), locale) ?? String(value))
             : typeof value === 'boolean'
-              ? format(value ? m.recognitionYes : m.recognitionNo)
+              ? (value ? m.recognition_yes : m.recognition_no)()
               : String(value),
       },
     ]
@@ -940,15 +931,15 @@ function RecognizedValues({ entry }: { entry: EntryDto }) {
       data-by-panel={standing.byPanel}
     >
       <div {...stylex.props(styles.standingHead)}>
-        <p {...stylex.props(styles.standingTitle)}>{format(m.recognitionTitle)}</p>
-        <Badge variant="outline">{format(sourceLabelOf(standing.source))}</Badge>
+        <p {...stylex.props(styles.standingTitle)}>{m.recognition_title()}</p>
+        <Badge variant="outline">{sourceLabelOf(standing.source)()}</Badge>
         <span {...stylex.props(styles.spacer)} />
         <p {...stylex.props(styles.standingWhen)}>
           {standing.byPanel
-            ? format(m.recognitionByPanel, { when: timeOf(standing.createdAt, locale, zone) })
+            ? m.recognition_byPanel({ when: timeOf(standing.createdAt, locale, zone) })
             : standing.actorName === null
               ? timeOf(standing.createdAt, locale, zone)
-              : format(m.recognitionBy, {
+              : m.recognition_by({
                   who: standing.actorName,
                   when: timeOf(standing.createdAt, locale, zone),
                 })}
@@ -962,7 +953,7 @@ function RecognizedValues({ entry }: { entry: EntryDto }) {
           </div>
         ))}
       </dl>
-      {stale && <p {...stylex.props(styles.fieldCleared)}>{format(m.recognitionStale)}</p>}
+      {stale && <p {...stylex.props(styles.fieldCleared)}>{m.recognition_stale()}</p>}
     </section>
   )
 }

@@ -4,10 +4,11 @@ import { useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
 import { useI18n, useList } from '@qualy/web-i18n'
 import { toast } from '@qualy/ui/toast'
 import { assessmentApi } from '../api.ts'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import { issueSentence, payloadIssuesOf } from './issues.ts'
 import { sayOwnRefusal, type RoundState } from './refusals.ts'
 import { answerOf, fieldsOf, type EntryDto, type ItemDto } from './model.ts'
+import * as m from '#messages'
 
 // The owner's three acts on a claim of their own - handing it on, taking it
 // back, giving it up - for every page that shows the claim's drawer. Each is
@@ -58,7 +59,7 @@ export function useRound(batchId: string | undefined): RoundState | null {
  * holds the act is said with the act and the stage named.
  */
 export function useOwnFailure({ items, entries, materialRange }: OwnClaims) {
-  const { format, formatError, locale } = useI18n()
+  const { formatError, locale } = useI18n()
   const listJoin = useList()
   const round = useRound(entries[0]?.batchId ?? items[0]?.batchId)
   return (error: unknown, itemId: string, entryId?: string): string => {
@@ -73,11 +74,11 @@ export function useOwnFailure({ items, entries, materialRange }: OwnClaims) {
           value: answerOf(payload, issue.field),
           ...(materialRange === undefined ? {} : { materialRange }),
         })
-        return `${field?.label ?? issue.field} ${format(sentence)}`
+        return `${field?.label ?? issue.field} ${sentence()}`
       })
-      return format(m.entryListIssues, { issues: listJoin(said) })
+      return m.entry_listIssues({ issues: listJoin(said) })
     }
-    return sayOwnRefusal(error, round, { format, locale }) ?? formatError(error)
+    return sayOwnRefusal(error, round, { locale }) ?? formatError(error)
   }
 }
 
@@ -86,7 +87,7 @@ export function useOwnClaimActs({ items, entries, materialRange }: OwnClaims) {
   const query = useApiQuery(assessmentApi)
   const run = useRunApi()
   const queryClient = useQueryClient()
-  const { format } = useI18n()
+
   const sayFailure = useOwnFailure({ items, entries, materialRange })
 
   const setStatus = useMutation({
@@ -114,13 +115,11 @@ export function useOwnClaimActs({ items, entries, materialRange }: OwnClaims) {
       ),
     onSuccess: (_result, input) => {
       toast.success(
-        format(
-          input.status === 'in_review'
-            ? m.entrySubmittedToast
-            : input.status === 'draft'
-              ? m.entryWithdrawnToast
-              : m.entryAbandonedToast,
-        ),
+        (input.status === 'in_review'
+          ? m.entry_submittedToast
+          : input.status === 'draft'
+            ? m.entry_withdrawnToast
+            : m.entry_abandonedToast)(),
       )
       void queryClient.invalidateQueries({ queryKey: query.assessment.key() })
     },

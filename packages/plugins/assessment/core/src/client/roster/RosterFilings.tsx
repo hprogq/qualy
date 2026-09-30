@@ -1,9 +1,9 @@
 import * as stylex from '@stylexjs/stylex'
-import { useI18n } from '@qualy/web-i18n'
 import { VisuallyHidden } from '@qualy/ui/visually-hidden'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import { ORDER, WORDS, type Filings } from './filings.ts'
+import * as m from '#messages'
 
 // What one person's claims are waiting on, as short counts: only the kinds
 // that have any, so a row with nothing outstanding is quiet. A round nobody
@@ -36,7 +36,6 @@ const styles = stylex.create({
 })
 
 export function RosterFilings({ filings }: { filings: Filings }) {
-  const { format } = useI18n()
   const said = ORDER.filter((kind) => filings[kind] > 0)
   return (
     <span
@@ -54,12 +53,12 @@ export function RosterFilings({ filings }: { filings: Filings }) {
           <span aria-hidden {...stylex.props(styles.none)}>
             —
           </span>
-          <VisuallyHidden>{format(m.rosterWaitingNone)}</VisuallyHidden>
+          <VisuallyHidden>{m.roster_waitingNone()}</VisuallyHidden>
         </>
       ) : (
         said.map((kind) => (
           <span key={kind} {...stylex.props(styles.one, kind === 'blocked' && styles.warn)}>
-            {format(WORDS[kind], { count: filings[kind] })}
+            {WORDS[kind]({ count: filings[kind] })}
           </span>
         ))
       )}

@@ -10,7 +10,7 @@ import {
   useRunApi,
 } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import * as stylex from '@stylexjs/stylex'
 import { AsyncSection } from '@qualy/ui/admin'
 import {
@@ -27,7 +27,7 @@ import { useLingering } from '@qualy/ui/use-lingering'
 import { toast } from '@qualy/ui/toast'
 import { Button } from '@qualy/ui/button'
 import { useIsBelow } from '@qualy/ui/use-mobile'
-import { orgMessages as m } from './i18n.ts'
+
 import { orgApi } from './api.ts'
 import { shapeOf, type Run } from './shape.ts'
 import { NodeDialogs, type NodeTask } from './structure/NodeDialogs.tsx'
@@ -36,6 +36,8 @@ import { RecycleBin } from './structure/RecycleBin.tsx'
 import { TreeTable } from './structure/TreeTable.tsx'
 import { NewTypeDialog } from './types/NewTypeDialog.tsx'
 import { TypesView } from './types/TypesView.tsx'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // The organization, with two faces over one skeleton.
 //
@@ -53,7 +55,7 @@ export default function OrgPage() {
   const api = useApi(orgApi)
   const runApi = useRunApi()
   const query = useApiQuery(orgApi)
-  const { format, formatError } = useI18n()
+  const { formatError } = useI18n()
   const failures = useLoadFailure()
   const queryClient = useQueryClient()
   const [view, setView] = usePageQueryState('view')
@@ -127,8 +129,8 @@ export default function OrgPage() {
 
   return (
     <Screen
-      title={format(m.treeTitle)}
-      description={format(types ? m.typesHint : m.structureHint)}
+      title={m.tree_title()}
+      description={(types ? m.page_typesHint : m.page_structureHint)()}
       // one width for both faces, and the switch beside the title: at the far
       // end it slid sideways whenever the face under it changed the band's
       // width or brought an action of its own
@@ -136,19 +138,19 @@ export default function OrgPage() {
       titleAside={
         <Segmented
           xstyle={styles.viewSwitch}
-          label={format(m.viewStructure)}
+          label={m.view_structure()}
           value={types ? 'types' : 'structure'}
           onChange={(next) => setView(next === 'types' ? 'types' : '')}
           options={[
-            { value: 'structure', label: format(m.viewStructure) },
-            { value: 'types', label: format(m.viewTypes) },
+            { value: 'structure', label: m.view_structure() },
+            { value: 'types', label: m.view_types() },
           ]}
         />
       }
       actions={
         rootManageable && (
           <BandActions
-            moreLabel={format(m.rowMore, { name: format(m.unitsTitle) })}
+            moreLabel={m.tree_rowMore({ name: m.tree_units() })}
             primary={
               types ? (
                 <BandAction
@@ -156,7 +158,7 @@ export default function OrgPage() {
                   icon={<PlusIcon aria-hidden />}
                   onSelect={() => setCreatingType(true)}
                 >
-                  {format(m.newTypeTitle)}
+                  {m.type_new()}
                 </BandAction>
               ) : undefined
             }
@@ -170,7 +172,7 @@ export default function OrgPage() {
                   icon={<Trash2Icon aria-hidden />}
                   onSelect={() => setBinOpen(true)}
                 >
-                  {format(m.binTitle)}
+                  {m.bin_title()}
                 </BandAction>
               )
             }
@@ -186,8 +188,8 @@ export default function OrgPage() {
             : null
         }
         framed
-        loadingLabel={format(commonMessages.loading)}
-        retryLabel={format(commonMessages.retry)}
+        loadingLabel={commonMessages.state_loading()}
+        retryLabel={commonMessages.action_retry()}
         onRetry={() => void refresh()}
         skeleton={<EditorSkeleton />}
       >
@@ -228,7 +230,7 @@ export default function OrgPage() {
           titleAside={
             <Tag>{shape.types.find((type) => type.id === shown.orgTypeId)?.name ?? ''}</Tag>
           }
-          closeLabel={format(commonMessages.close)}
+          closeLabel={commonMessages.action_close()}
           testId="node-sheet"
           // what is done to the unit sits at the foot of its sheet, where a
           // sheet's actions go; removing it stays in the body, at the end of
@@ -242,7 +244,7 @@ export default function OrgPage() {
                   variant="outline"
                   onClick={() => setTask({ kind: 'rename', nodeId: shown.id })}
                 >
-                  {format(m.rename)}
+                  {m.node_rename()}
                 </Button>
                 {shown.parentId !== null && shown.subtreeManageable && (
                   <Button
@@ -250,13 +252,13 @@ export default function OrgPage() {
                     variant="outline"
                     onClick={() => setTask({ kind: 'move', nodeId: shown.id })}
                   >
-                    {format(m.moveTo)}
+                    {m.node_moveTo()}
                   </Button>
                 )}
                 {shape.rules.some((rule) => rule.parentTypeId === shown.orgTypeId) && (
                   <Button size="sm" onClick={() => setTask({ kind: 'create', nodeId: shown.id })}>
                     <PlusIcon aria-hidden />
-                    {format(m.createChild)}
+                    {m.node_createChild()}
                   </Button>
                 )}
               </>

@@ -6,7 +6,7 @@ import { useI18n } from '@qualy/web-i18n'
 import { Badge } from '@qualy/ui/badge'
 import { Ticker } from '@qualy/ui/ticker'
 import { useIsMobile } from '@qualy/ui/use-mobile'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import { inZone, marked, useBatchZone, useZoneMark } from './zone.ts'
 import {
   displayKey,
@@ -16,6 +16,8 @@ import {
   toneOf,
   type TimelineLike,
 } from './progress.ts'
+import type { Message } from '@qualy/i18n-contract'
+import * as m from '#messages'
 
 // Where a batch is right now, in one line: the stage it is in, and how long
 // until the next one - or, when nothing follows it yet, how long it has been
@@ -213,7 +215,7 @@ export function BatchProgress({
   flat?: boolean
   xstyle?: stylex.StyleXStyles
 }) {
-  const { format, locale } = useI18n()
+  const { locale } = useI18n()
   const zone = useBatchZone()
   const markOf = useZoneMark(locale)
   // One threshold: under a tablet the bar has no room for the stage, so the
@@ -250,9 +252,7 @@ export function BatchProgress({
     progress.kind === 'until' || progress.kind === 'since'
       ? // one call, not two: it is pure, but it is also called on every tick
         // of every card in the list
-        ((span) => format(span.message as never, span.values as never))(
-          spanMessage(m, progress, form),
-        )
+        ((span) => (span.message as Message)(span.values))(spanMessage(progress, form))
       : progress.kind === 'starts'
         ? marked(
             new Date(progress.at).toLocaleString(locale, {
@@ -277,7 +277,7 @@ export function BatchProgress({
         // is in. The label is narrower than the name it introduces, so it is
         // the first thing dropped when the bar runs out of room.
         <span data-slot="stage" {...stylex.props(styles.stageSeat)}>
-          <span {...stylex.props(styles.stageLabel)}>{format(m.currentStage)}</span>
+          <span {...stylex.props(styles.stageLabel)}>{m.batch_currentStage()}</span>
           {flat ? (
             <span {...stylex.props(styles.stagePlain)}>{stage}</span>
           ) : (
@@ -315,7 +315,7 @@ export function BatchProgress({
         >
           {filled !== null && !flat && <Ring fraction={filled} />}
           {progress.kind === 'starts' && (
-            <span {...stylex.props(styles.plannedLabel)}>{format(m.plannedStart)}</span>
+            <span {...stylex.props(styles.plannedLabel)}>{m.batch_plannedStart()}</span>
           )}
           <Ticker value={said} />
         </span>

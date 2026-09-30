@@ -1,57 +1,18 @@
-import {
-  defineErrorTranslations,
-  definePluginMessages,
-  type ErrorsByCode,
-} from '@qualy/i18n-contract'
+import { defineErrorTranslations, type ErrorsByCode } from '@qualy/i18n-contract'
 import type * as authLocalErrors from '../api.ts'
+import type { Message } from '@qualy/i18n-contract'
+import * as m from '#messages'
 
-const i18n = definePluginMessages({
-  namespace: 'auth-local',
-  messages: {
-    bindingPassword: { id: 'auth-local/binding/password', defaultMessage: 'Password' },
-    entranceKind: { id: 'auth-local/entrance/kind', defaultMessage: 'Email and password' },
-    email: { id: 'auth-local/field/email', defaultMessage: 'Email' },
-    password: { id: 'auth-local/field/password', defaultMessage: 'Password' },
-    submit: { id: 'auth-local/action/submit', defaultMessage: 'Sign in' },
-    submitting: { id: 'auth-local/action/submitting', defaultMessage: 'Signing in…' },
-    wait: { id: 'auth-local/action/wait', defaultMessage: 'Try again in {time}' },
-    preparingCheck: {
-      id: 'auth-local/action/preparing-check',
-      defaultMessage: 'Preparing a security check…',
-    },
-    checking: { id: 'auth-local/action/checking', defaultMessage: 'Running a security check…' },
-    finishCheck: {
-      id: 'auth-local/action/finish-check',
-      defaultMessage: 'Complete the security check to continue',
-    },
-    forgot: { id: 'auth-local/action/forgot', defaultMessage: 'Forgot password?' },
-    showPassword: { id: 'auth-local/action/show-password', defaultMessage: 'Show password' },
-    hidePassword: { id: 'auth-local/action/hide-password', defaultMessage: 'Hide password' },
-    remember: {
-      id: 'auth-local/field/remember',
-      defaultMessage: 'Remember my email on this device',
-    },
-    emailInvalid: { id: 'auth-local/check/email', defaultMessage: 'Enter a valid email address' },
-    passwordShort: {
-      id: 'auth-local/check/password-short',
-      defaultMessage: 'A password here has at least {min, plural, other {# characters}}',
-    },
-    passwordLong: {
-      id: 'auth-local/check/password-long',
-      defaultMessage: 'A password here has at most {max, plural, other {# characters}}',
-    },
-  },
-  errors: defineErrorTranslations<ErrorsByCode<typeof authLocalErrors>>()({
-    INVALID_CREDENTIALS: {
-      id: 'auth-local/error/invalid-credentials',
-      defaultMessage: 'Incorrect email or password.',
-    },
-  }),
-  locales: {
-    'zh-CN': () => import('./locales/zh-CN.ts'),
-  },
-})
+// What this plugin's screens say is in messages/<locale>.json, called as
+// functions from #messages where it is said. What is left here is the
+// failures its api can answer with, each with its sentence.
 
-export const localMessages = i18n.messages
-export const catalogs = i18n.catalogs
-export const errorMessages = i18n.errorMessages
+export const errorMessages = defineErrorTranslations<ErrorsByCode<typeof authLocalErrors>>()({
+  INVALID_CREDENTIALS: m.error_invalidCredentials,
+}).registry
+
+// the messages the server names over the wire, by the id it sends
+export const wireMessages: Record<string, Message> = {
+  'auth-local/binding/password': m.binding_password,
+  'auth-local/entrance/kind': m.entrance_kind,
+}

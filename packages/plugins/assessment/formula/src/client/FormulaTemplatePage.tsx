@@ -12,7 +12,7 @@ import {
   usePageTitle,
 } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { Button } from '@qualy/ui/button'
@@ -22,13 +22,15 @@ import { Reveal } from '@qualy/ui/reveal'
 import { AsyncSection } from '@qualy/ui/admin'
 import { ArrowLeftIcon, ChevronRightIcon, CopyIcon } from 'lucide-react'
 import { formulaApi } from './api.ts'
-import { formulaMessages as m } from './i18n.ts'
+
 import { CopyTemplateDialog } from './CopyTemplateDialog.tsx'
 import { TemplateExamplesSheet } from './TemplateExamplesSheet.tsx'
 import { ParameterChips } from './library.tsx'
 import { fullWhen, libraryStyles as l } from './library-styles.ts'
 import { SourceView } from './SourceView.tsx'
 import type { NormalizedInputSchema } from '@qualy/value-schema'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // One offered formula, in enough detail to decide whether to start from it.
 //
@@ -144,7 +146,7 @@ const styles = stylex.create({
 export default function FormulaTemplatePage() {
   const { versionId } = usePageRouteParams('versionId')
   const query = useApiQuery(formulaApi)
-  const { format, locale } = useI18n()
+  const { locale } = useI18n()
   const navigate = usePageNavigate()
   const [copying, setCopying] = useState(false)
   const [readingExamples, setReadingExamples] = useState(false)
@@ -159,7 +161,7 @@ export default function FormulaTemplatePage() {
   // A version this reader may not discover is answered exactly as one that
   // is not there, so a template withdrawn and one never offered read alike.
   const loadFailure = useLoadFailure()
-  const gone = { title: format(m.templateGoneTitle), description: format(m.templateGoneHint) }
+  const gone = { title: m.templates_goneTitle(), description: m.templates_goneHint() }
   const absent = shaped
     ? loadFailure.subject(detail, {
         missing: ['ASSESSMENT_FORMULA_TEMPLATE_NOT_FOUND'],
@@ -175,7 +177,7 @@ export default function FormulaTemplatePage() {
     typeof (template.inputSchema as { properties?: unknown }).properties === 'object'
       ? (template.inputSchema as NormalizedInputSchema)
       : null
-  const titleRef = usePageTitle(template?.functionName ?? format(m.templatesTitle))
+  const titleRef = usePageTitle(template?.functionName ?? m.templates_title())
 
   // the whole page: a way back above a template that is not there would
   // lead back from nothing
@@ -183,7 +185,7 @@ export default function FormulaTemplatePage() {
     return (
       <LoadFailure
         failure={absent}
-        back={{ page: 'assessment-formula/templates', label: format(m.templateGoneBack) }}
+        back={{ page: 'assessment-formula/templates', label: m.templates_goneBack() }}
         onRetry={() => void detail.refetch()}
         retrying={detail.isFetching}
       />
@@ -198,13 +200,13 @@ export default function FormulaTemplatePage() {
           className={stylex.props(styles.back).className}
         >
           <ArrowLeftIcon size={15} aria-hidden />
-          {format(m.templatesTitle)}
+          {m.templates_title()}
         </PageLink>
 
         <AsyncSection
           pending={detail.isPending}
-          loadingLabel={format(commonMessages.loading)}
-          retryLabel={format(commonMessages.retry)}
+          loadingLabel={commonMessages.state_loading()}
+          retryLabel={commonMessages.action_retry()}
           onRetry={() => void detail.refetch()}
           skeleton={
             <div {...stylex.props(styles.skeleton)} aria-hidden>
@@ -224,7 +226,7 @@ export default function FormulaTemplatePage() {
                       {template.functionName}
                     </h1>
                     {template.sourceStatus === 'archived' && (
-                      <span {...stylex.props(l.tag)}>{format(m.templatesSourceArchived)}</span>
+                      <span {...stylex.props(l.tag)}>{m.templates_sourceArchived()}</span>
                     )}
                   </div>
                   {template.description !== null && template.description !== '' && (
@@ -236,35 +238,35 @@ export default function FormulaTemplatePage() {
                   className={stylex.props(styles.copy).className}
                 >
                   <CopyIcon />
-                  {format(m.templatesCopy)}
+                  {m.templates_copy()}
                 </Button>
               </div>
 
               <dl data-testid="template-detail" {...stylex.props(l.sheet, styles.facts)}>
                 <div {...stylex.props(styles.fact)}>
-                  <dt {...stylex.props(styles.factLabel)}>{format(m.versionLabel)}</dt>
+                  <dt {...stylex.props(styles.factLabel)}>{m.version_label()}</dt>
                   <dd {...stylex.props(styles.factValue)}>
                     {template.releaseName ??
-                      format(m.releaseOrdinal, { number: template.versionNo })}
+                      m.history_releaseOrdinal({ number: template.versionNo })}
                   </dd>
                 </div>
                 <div {...stylex.props(styles.fact)}>
-                  <dt {...stylex.props(styles.factLabel)}>{format(m.templatesAuthorColumn)}</dt>
+                  <dt {...stylex.props(styles.factLabel)}>{m.templates_authorColumn()}</dt>
                   <dd {...stylex.props(styles.factValue)}>
-                    {template.authorName ?? format(m.templatesAuthorUnknown)}
+                    {template.authorName ?? m.templates_authorUnknown()}
                   </dd>
                 </div>
                 <div {...stylex.props(styles.fact)}>
-                  <dt {...stylex.props(styles.factLabel)}>{format(m.templatesPublishedColumn)}</dt>
+                  <dt {...stylex.props(styles.factLabel)}>{m.templates_publishedColumn()}</dt>
                   <dd {...stylex.props(styles.factValue)}>
                     {fullWhen(template.publishedAt, locale)}
                   </dd>
                 </div>
                 <div {...stylex.props(styles.fact)}>
-                  <dt {...stylex.props(styles.factLabel)}>{format(m.testsTitle)}</dt>
+                  <dt {...stylex.props(styles.factLabel)}>{m.editor_tests()}</dt>
                   <dd {...stylex.props(styles.factValue)}>
                     {template.tests.length === 0 ? (
-                      format(m.templatesExamples, { count: 0 })
+                      m.templates_examples({ count: 0 })
                     ) : (
                       <button
                         type="button"
@@ -272,7 +274,7 @@ export default function FormulaTemplatePage() {
                         onClick={() => setReadingExamples(true)}
                         {...stylex.props(styles.examplesOpen)}
                       >
-                        {format(m.templatesExamples, { count: template.tests.length })}
+                        {m.templates_examples({ count: template.tests.length })}
                         <ChevronRightIcon size={13} aria-hidden />
                       </button>
                     )}
@@ -282,22 +284,22 @@ export default function FormulaTemplatePage() {
 
               <section {...stylex.props(l.sheet)}>
                 <div {...stylex.props(styles.paneHead)}>
-                  <span {...stylex.props(styles.paneTitle)}>{format(m.parametersLabel)}</span>
+                  <span {...stylex.props(styles.paneTitle)}>{m.parameters_label()}</span>
                   {template.parameters.length === 0 ? (
-                    <span {...stylex.props(styles.none)}>{format(m.parametersNone)}</span>
+                    <span {...stylex.props(styles.none)}>{m.parameters_none()}</span>
                   ) : (
                     <ParameterChips names={template.parameters} />
                   )}
                 </div>
                 <div {...stylex.props(styles.paneHead)}>
-                  <span {...stylex.props(styles.paneTitle)}>{format(m.templatesSource)}</span>
+                  <span {...stylex.props(styles.paneTitle)}>{m.templates_source()}</span>
                   <span {...stylex.props(l.spring)} />
-                  <span {...stylex.props(styles.paneNote)}>{format(m.templatesReadOnly)}</span>
+                  <span {...stylex.props(styles.paneNote)}>{m.templates_readOnly()}</span>
                 </div>
                 <SourceView
                   source={template.sourceTs}
                   data-testid="template-source"
-                  aria-label={format(m.templatesSource)}
+                  aria-label={m.templates_source()}
                   xstyle={styles.source}
                 />
               </section>

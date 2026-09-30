@@ -10,7 +10,7 @@ import { Textarea } from '@qualy/ui/textarea'
 import { Field, FormDialog } from '@qualy/ui/admin'
 import { toast } from '@qualy/ui/toast'
 import { formulaApi } from './api.ts'
-import { formulaMessages as m } from './i18n.ts'
+import * as m from '#messages'
 
 // What a formula is called and what it is for.
 //
@@ -55,7 +55,7 @@ export function FormulaDetailsDialog({
 }) {
   const api = useApi(formulaApi)
   const run = useRunApi()
-  const { format, formatError } = useI18n()
+  const { formatError } = useI18n()
   const [written, setWritten] = useState(name)
   const [about, setAbout] = useState(description ?? '')
   const [failure, setFailure] = useState<string | null>(null)
@@ -83,7 +83,7 @@ export function FormulaDetailsDialog({
       ),
     onMutate: () => setFailure(null),
     onSuccess: () => {
-      toast.success(format(m.detailsSaved))
+      toast.success(m.editor_detailsSaved())
       onSaved()
       onClose()
     },
@@ -93,25 +93,25 @@ export function FormulaDetailsDialog({
   return (
     <FormDialog
       open={open}
-      title={format(m.detailsTitle)}
+      title={m.editor_detailsTitle()}
       onClose={onClose}
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>
-            {format(m.cancel)}
+            {m.common_cancel()}
           </Button>
           <Button
             data-testid="formula-details-save"
             disabled={save.isPending || written.trim() === ''}
             onClick={() => save.mutate()}
           >
-            {format(m.detailsSave)}
+            {m.editor_detailsSave()}
           </Button>
         </>
       }
     >
       <div data-testid="formula-details" {...stylex.props(styles.fields)}>
-        <Field label={format(m.nameLabel)} required>
+        <Field label={m.field_name()} required>
           {(id, control) => (
             <Input
               id={id}
@@ -123,7 +123,7 @@ export function FormulaDetailsDialog({
             />
           )}
         </Field>
-        <Field label={format(m.descriptionLabel)} hint={format(m.descriptionHint)}>
+        <Field label={m.field_description()} hint={m.editor_descriptionHint()}>
           {(id) => (
             <Textarea
               id={id}

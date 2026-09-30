@@ -3,12 +3,13 @@ import { memo, useMemo } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { useI18n } from '@qualy/web-i18n'
 import { Kbd } from '@qualy/ui/kbd'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import { entryStatusMessage, trimAmount, type EntryDto } from '../entry/model.ts'
 import { summaryOf, type ReviewDto } from './model.ts'
 import { useFinePointer } from './pointer.ts'
 import { Pane } from './Pane.tsx'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
+import * as m from '#messages'
 
 const paneStyles = stylex.create({
   frame: {
@@ -327,7 +328,7 @@ function AboutParts({
   review: ReviewDto
   onOpenSibling: (entryId: string) => void
 }) {
-  const { format, locale } = useI18n()
+  const { locale } = useI18n()
   const fine = useFinePointer()
   const listed = useMemo(
     () => new Intl.ListFormat(locale, { style: 'narrow', type: 'conjunction' }),
@@ -345,26 +346,26 @@ function AboutParts({
           wording yet, so the block holds its place. */}
       {RESERVED.basis && (
         <section {...stylex.props(styles.clauseCard)}>
-          <p {...stylex.props(styles.caption)}>{format(m.myEntriesBasis)}</p>
-          <p {...stylex.props(styles.clauseBody)}>{format(m.myEntriesBasisSoon)}</p>
+          <p {...stylex.props(styles.caption)}>{m.entry_basis()}</p>
+          <p {...stylex.props(styles.clauseBody)}>{m.entry_basisSoon()}</p>
         </section>
       )}
 
       {/* first on the rail while the clause above is put away: a rule over
           the first block divides it from nothing */}
       <section {...stylex.props(styles.block, !RESERVED.basis && styles.blockFirst)}>
-        <p {...stylex.props(styles.caption)}>{format(m.reviewChainTitle)}</p>
+        <p {...stylex.props(styles.caption)}>{m.review_chainTitle()}</p>
         <Route
           stages={review.chain.normal}
           here={review.chain.route === 'normal' ? review.chain.stageId : null}
-          title={review.chain.escalation.length > 0 ? format(m.reviewRouteNormal) : null}
+          title={review.chain.escalation.length > 0 ? m.review_routeNormal() : null}
           listed={listed}
         />
         {review.chain.escalation.length > 0 && (
           <Route
             stages={review.chain.escalation}
             here={review.chain.route === 'escalation' ? review.chain.stageId : null}
-            title={format(m.reviewRouteEscalation)}
+            title={m.review_routeEscalation()}
             listed={listed}
           />
         )}
@@ -372,12 +373,12 @@ function AboutParts({
 
       {context !== null && (
         <section {...stylex.props(styles.block)}>
-          <p {...stylex.props(styles.caption)}>{format(m.reviewAboutTitle)}</p>
+          <p {...stylex.props(styles.caption)}>{m.review_aboutTitle()}</p>
           {context.worth.each !== null && (
-            <AboutRow label={format(m.reviewAboutEach)} value={trimAmount(context.worth.each)} />
+            <AboutRow label={m.review_aboutEach()} value={trimAmount(context.worth.each)} />
           )}
           {context.worth.maxEntries !== null && (
-            <AboutRow label={format(m.reviewAboutMax)} value={String(context.worth.maxEntries)} />
+            <AboutRow label={m.review_aboutMax()} value={String(context.worth.maxEntries)} />
           )}
           {context.worth.groupCap !== null && (
             <AboutRow
@@ -385,8 +386,8 @@ function AboutParts({
               // reader work out which group, and the answer is on screen
               label={
                 context.worth.groupName === null
-                  ? format(m.reviewAboutGroupCap)
-                  : format(m.reviewAboutGroupCapNamed, { group: context.worth.groupName })
+                  ? m.review_aboutGroupCap()
+                  : m.review_aboutGroupCapNamed({ group: context.worth.groupName })
               }
               value={trimAmount(context.worth.groupCap)}
             />
@@ -397,15 +398,13 @@ function AboutParts({
       {context !== null && context.siblings.length > 0 && (
         <section {...stylex.props(styles.block)}>
           <div {...stylex.props(styles.headRow)}>
-            <p {...stylex.props(styles.caption, styles.noShrink)}>
-              {format(m.reviewSiblingsTitle)}
-            </p>
+            <p {...stylex.props(styles.caption, styles.noShrink)}>{m.review_siblingsTitle()}</p>
             <span {...stylex.props(styles.spacer)} />
             {/* the keys, once, over the list they open - rather than the
                 count, which the list itself already shows */}
             {fine && (
               <span {...stylex.props(styles.aside)}>
-                {format(m.reviewSiblingsKeys, {
+                {m.review_siblingsKeys({
                   count: Math.min(context.siblings.length, 9),
                 })}
               </span>
@@ -439,16 +438,14 @@ function AboutParts({
                     )}
                   >
                     {sibling.current && (
-                      <span {...stylex.props(styles.thisMark)}>{format(m.reviewSiblingThis)}</span>
+                      <span {...stylex.props(styles.thisMark)}>{m.review_siblingThis()}</span>
                     )}
                     {summaryOf(sibling.values) === ''
                       ? review.itemTitle
                       : summaryOf(sibling.values)}
                   </span>
                   <span {...stylex.props(styles.aside)}>
-                    {format(
-                      entryStatusMessage[sibling.status as EntryDto['status']] ?? m.eventOther,
-                    )}
+                    {(entryStatusMessage[sibling.status as EntryDto['status']] ?? m.event_other)()}
                   </span>
                   {fine && index < 9 && (
                     <Kbd className={stylex.props(styles.fixed).className}>{`⌥${index + 1}`}</Kbd>
@@ -459,7 +456,7 @@ function AboutParts({
           </ul>
           {context.worth.maxEntries !== null &&
             context.siblings.length >= context.worth.maxEntries && (
-              <p {...stylex.props(styles.note)}>{format(m.reviewSiblingsFull)}</p>
+              <p {...stylex.props(styles.note)}>{m.review_siblingsFull()}</p>
             )}
         </section>
       )}
@@ -494,7 +491,6 @@ function Route({
   here: string | null
   listed: Intl.ListFormat
 }) {
-  const { format } = useI18n()
   const at = stages.findIndex((stage) => stage.id === here)
   return (
     <div {...stylex.props(styles.routeStack)}>
@@ -526,13 +522,11 @@ function Route({
                       the unit-and-roles composite only as the fallback */}
                   <span {...stylex.props(styles.stepName, current && styles.stepNameCurrent)}>
                     {stage.veiled === true
-                      ? format(m.reviewStageVeiled)
+                      ? m.review_stageVeiled()
                       : stage.nodeName === null
-                        ? format(
-                            stage.skipped === 'no-holder'
-                              ? m.reviewStageNoHolder
-                              : m.reviewStageSkipped,
-                          )
+                        ? (stage.skipped === 'no-holder'
+                            ? m.review_stageNoHolder
+                            : m.review_stageSkipped)()
                         : (stage.label ?? `${stage.nodeName}／${listed.format(stage.roleNames)}`)}
                   </span>
                   <span {...stylex.props(styles.spacer)} />
@@ -540,21 +534,19 @@ function Route({
                       a step with nothing beside it is one still ahead */}
                   {(current || passed) && (
                     <span {...stylex.props(styles.aside)}>
-                      {format(
-                        current
-                          ? m.reviewStageHere
-                          : stage.skipped === 'reviewer-conflict'
-                            ? m.reviewStageStepped
-                            : m.reviewStagePassed,
-                      )}
+                      {(current
+                        ? m.review_stageHere
+                        : stage.skipped === 'reviewer-conflict'
+                          ? m.review_stageStepped
+                          : m.review_stagePassed)()}
                     </span>
                   )}
                 </div>
                 {stage.nodeName !== null && stage.reviewers !== null && (
                   <span {...stylex.props(styles.stepWho)}>
                     {stage.reviewers.length === 0
-                      ? format(m.reviewStageNobody)
-                      : format(m.reviewStageReviewers, { who: listed.format(stage.reviewers) })}
+                      ? m.review_stageNobody()
+                      : m.review_stageReviewers({ who: listed.format(stage.reviewers) })}
                   </span>
                 )}
                 {/* what the concluded sitting here said, name by name: the
@@ -569,7 +561,7 @@ function Route({
                       <div key={said} {...stylex.props(styles.opinion)}>
                         <div {...stylex.props(styles.opinionHead)}>
                           <span {...stylex.props(styles.opinionWho)}>
-                            {opinion.who ?? format(m.eventSomebody)}
+                            {opinion.who ?? m.event_somebody()}
                           </span>
                           <span
                             data-opinion={opinion.decision}
@@ -579,11 +571,9 @@ function Route({
                                 : styles.opinionReject,
                             )}
                           >
-                            {format(
-                              opinion.decision === 'approve'
-                                ? m.reviewOpinionApprove
-                                : m.reviewOpinionReject,
-                            )}
+                            {(opinion.decision === 'approve'
+                              ? m.review_opinionApprove
+                              : m.review_opinionReject)()}
                           </span>
                           {opinion.reason !== null && (
                             <span {...stylex.props(styles.opinionReason)}>{opinion.reason}</span>

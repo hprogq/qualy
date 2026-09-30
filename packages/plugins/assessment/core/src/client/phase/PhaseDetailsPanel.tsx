@@ -1,8 +1,7 @@
 import { useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { AsyncSection, Field, SidePanel } from '@qualy/ui/admin'
 import type { ResourceFailure } from '@qualy/ui/resource-state'
 import { ModeChoice, PickList } from '@qualy/ui/screen'
@@ -11,10 +10,12 @@ import { Input } from '@qualy/ui/input'
 import { NativeSelect } from '@qualy/ui/native-select'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { Textarea } from '@qualy/ui/textarea'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import { PermissionProfileEditor } from '../PermissionProfileEditor.tsx'
 import type { PhaseDraft } from './model.ts'
 import { narrowsByItem, type ScopeSection } from './scope.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // Everything a phase is, in one panel: its name, what it is for, what it
 // opens, and which items and people it opens them for. None of it is time,
@@ -112,7 +113,6 @@ function ScopeFields({
   locked: boolean
   onDraft: (next: PhaseDraft) => void
 }) {
-  const { format } = useI18n()
   const [picking, setPicking] = useState(false)
   const some = picking || draft.itemScope.length > 0
   // nothing to narrow: the stage opens no filing action, and an allowance
@@ -123,31 +123,31 @@ function ScopeFields({
 
   return (
     <section
-      aria-label={format(m.stageScopeLegend)}
+      aria-label={m.phase_scopeLegend()}
       data-testid="phase-scope-editor"
       {...stylex.props(styles.scope)}
     >
       <div {...stylex.props(styles.scopeHead)}>
-        <h3 {...stylex.props(styles.legend)}>{format(m.stageScopeLegend)}</h3>
-        <p {...stylex.props(styles.hint)}>{format(m.scopeHint)}</p>
+        <h3 {...stylex.props(styles.legend)}>{m.phase_scopeLegend()}</h3>
+        <p {...stylex.props(styles.hint)}>{m.phase_scopeHint()}</p>
       </div>
 
       <ModeChoice
-        legend={format(m.scopeItemsLabel)}
+        legend={m.phase_scopeItems()}
         value={some ? 'some' : 'all'}
         disabled={locked || (!some && (idle || empty || failure !== null))}
         options={[
-          { value: 'all', label: format(m.scopeItemsAll) },
-          { value: 'some', label: format(m.scopeItemsSome) },
+          { value: 'all', label: m.phase_scopeItemsAll() },
+          { value: 'some', label: m.phase_scopeItemsSome() },
         ]}
         onChange={(next) => {
           setPicking(next === 'some')
           if (next === 'all' && draft.itemScope.length > 0) onDraft({ ...draft, itemScope: [] })
         }}
       />
-      {!locked && !some && idle && <p {...stylex.props(styles.hint)}>{format(m.scopeItemsIdle)}</p>}
+      {!locked && !some && idle && <p {...stylex.props(styles.hint)}>{m.phase_scopeItemsIdle()}</p>}
       {!locked && !some && !idle && empty && (
-        <p {...stylex.props(styles.hint)}>{format(m.scopeItemsNone)}</p>
+        <p {...stylex.props(styles.hint)}>{m.phase_scopeItemsNone()}</p>
       )}
       {failure !== null && (some || !idle) && (
         // the paper could not be read: said as a reading that failed, with
@@ -159,8 +159,8 @@ function ScopeFields({
           headingLevel={4}
           retrying={retrying}
           onRetry={onRetry}
-          loadingLabel={format(commonMessages.loading)}
-          retryLabel={format(commonMessages.retry)}
+          loadingLabel={commonMessages.state_loading()}
+          retryLabel={commonMessages.action_retry()}
         >
           {null}
         </AsyncSection>
@@ -174,7 +174,7 @@ function ScopeFields({
               <PickList
                 key={section.id}
                 title={section.title}
-                count={format(m.scopePicked, {
+                count={m.phase_scopePicked({
                   count: section.items.filter((item) => draft.itemScope.includes(item.id)).length,
                   total: section.items.length,
                 })}
@@ -182,21 +182,21 @@ function ScopeFields({
                   value: item.id,
                   label: item.title,
                   ...(item.status === 'draft'
-                    ? { note: format(m.itemsStatusDraft) }
+                    ? { note: m.items_statusDraft() }
                     : item.status === 'voided'
-                      ? { note: format(m.itemsStatusVoided) }
+                      ? { note: m.items_statusVoided() }
                       : {}),
                 }))}
                 selected={draft.itemScope}
                 onChange={(next) => onDraft({ ...draft, itemScope: next })}
-                toggleAllLabel={format(m.scopeSelectAll)}
+                toggleAllLabel={m.phase_scopeSelectAll()}
                 disabled={locked}
               />
             ))
           )}
           {!locked && draft.itemScope.length === 0 && (
             <p data-testid="phase-scope-unpicked" {...stylex.props(styles.warn)}>
-              {format(m.scopeItemsPick)}
+              {m.phase_scopeItemsPick()}
             </p>
           )}
         </div>
@@ -206,12 +206,12 @@ function ScopeFields({
           is to open it to everybody again, or keep the list it has */}
       {kept.length > 0 && (
         <ModeChoice
-          legend={format(m.scopePeopleLabel)}
+          legend={m.phase_scopePeople()}
           value={draft.participantScope.length > 0 ? 'kept' : 'all'}
           disabled={locked}
           options={[
-            { value: 'all', label: format(m.scopePeopleAll) },
-            { value: 'kept', label: format(m.scopePeopleKept, { count: kept.length }) },
+            { value: 'all', label: m.phase_scopePeopleAll() },
+            { value: 'kept', label: m.phase_scopePeopleKept({ count: kept.length }) },
           ]}
           onChange={(next) => onDraft({ ...draft, participantScope: next === 'kept' ? kept : [] })}
         />
@@ -251,7 +251,6 @@ export function PhaseDetailsPanel({
   onDraft: (next: PhaseDraft) => void
   onClose: () => void
 }) {
-  const { format } = useI18n()
   const [presetId, setPresetId] = useState('')
   // the sheet animates out after the draft is gone; a title that changes
   // mid-flight reads as the wrong phase opening rather than this one leaving
@@ -266,25 +265,25 @@ export function PhaseDetailsPanel({
   return (
     <SidePanel
       open={draft !== undefined}
-      title={shown?.displayName?.trim() || format(m.unnamedSegment)}
+      title={shown?.displayName?.trim() || m.plan_unnamed()}
       onClose={close}
-      footer={<Button onClick={close}>{format(m.done)}</Button>}
+      footer={<Button onClick={close}>{m.action_done()}</Button>}
     >
       {draft !== undefined && (
         <>
-          <Field label={format(m.displayNameLabel)}>
+          <Field label={m.phase_displayName()}>
             {(id) => (
               <Input
                 id={id}
                 value={draft.displayName}
                 disabled={readOnly}
-                placeholder={format(m.unnamedSegment)}
+                placeholder={m.plan_unnamed()}
                 onChange={(event) => onDraft({ ...draft, displayName: event.target.value })}
               />
             )}
           </Field>
 
-          <Field label={format(m.descriptionLabel)} hint={format(m.describeBody)}>
+          <Field label={m.phase_description()} hint={m.phase_describeBody()}>
             {(id) => (
               <Textarea
                 id={id}
@@ -292,20 +291,20 @@ export function PhaseDetailsPanel({
                 maxLength={500}
                 value={draft.description}
                 disabled={readOnly}
-                placeholder={format(m.descriptionPlaceholder)}
+                placeholder={m.phase_descriptionPlaceholder()}
                 onChange={(event) => onDraft({ ...draft, description: event.target.value })}
               />
             )}
           </Field>
 
-          <Field label={format(m.entryNoteLabel)} hint={format(m.entryNoteHint)}>
+          <Field label={m.phase_entryNote()} hint={m.phase_entryNoteHint()}>
             {(id) => (
               <Input
                 id={id}
                 maxLength={200}
                 value={draft.entryNote}
                 disabled={readOnly}
-                placeholder={format(m.entryNotePlaceholder)}
+                placeholder={m.phase_entryNotePlaceholder()}
                 onChange={(event) => onDraft({ ...draft, entryNote: event.target.value })}
               />
             )}
@@ -314,14 +313,14 @@ export function PhaseDetailsPanel({
           {!readOnly && !frozen && presets.length > 0 && (
             <div {...stylex.props(styles.presetRow)}>
               <span {...stylex.props(styles.presetSeat)}>
-                <Field label={format(m.phaseTemplateLegend)}>
+                <Field label={m.template_phaseLegend()}>
                   {(id) => (
                     <NativeSelect
                       id={id}
                       value={presetId}
                       onChange={(event) => setPresetId(event.target.value)}
                     >
-                      <option value="">{format(m.phaseTemplateChoose)}</option>
+                      <option value="">{m.template_phaseChoose()}</option>
                       {presets.map((row) => (
                         <option key={row.id} value={row.id}>
                           {row.name}
@@ -345,14 +344,14 @@ export function PhaseDetailsPanel({
                   })
                 }}
               >
-                {format(m.phaseTemplateApply)}
+                {m.template_phaseApply()}
               </Button>
             </div>
           )}
 
           <PermissionProfileEditor
-            legend={format(m.profileTitle)}
-            hint={format(m.profileHint)}
+            legend={m.profile_title()}
+            hint={m.profile_hint()}
             profile={draft.permissionProfile}
             disabled={readOnly || frozen}
             onChange={(next) => onDraft({ ...draft, permissionProfile: next })}

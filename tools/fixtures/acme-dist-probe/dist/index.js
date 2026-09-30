@@ -17,6 +17,5 @@ export default Plugin.define(
     layout: APP_SHELL,
     visibility: PUBLIC,
   }),
-  Ui.i18n('./client/i18n'),
   Browser.module('./client/boot'),
 )

@@ -21,7 +21,7 @@ import {
   cursorPages,
 } from '@qualy/web-runtime'
 import { useI18n, useList } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { AsyncSection } from '@qualy/ui/admin'
 import { Dialog, DialogBody, DialogContent, DialogHeader, DialogTitle } from '@qualy/ui/dialog'
@@ -35,7 +35,7 @@ import type { ApiResult } from '@qualy/web-runtime/api'
 import { BatchScreen } from './batch/BatchScreen.tsx'
 import { BatchFlow } from './batch/BatchFlow.tsx'
 import { calendarDaysBetween, inZone, useBatchZone, yearOf } from './batch/zone.ts'
-import { assessmentMessages as m } from './i18n.ts'
+
 import { UnreadDot } from './entry/workspace/marks.tsx'
 import {
   owesAdministration,
@@ -43,6 +43,9 @@ import {
   type AdminAlerts,
   type AlertedQuestion,
 } from './batch/admin-alerts.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import type { Message } from '@qualy/i18n-contract'
+import * as m from '#messages'
 
 // The batch's front page as one desk (§32.73, laid out to design 2a/2b):
 // the page description says what stands on the desk, the body starts
@@ -628,7 +631,6 @@ type ActivityItem = ApiResult<typeof assessmentApi, 'assessment', 'listMyActivit
 export default function BatchOverviewPage() {
   const { batchId } = usePageRouteParams('batchId')
   const query = useApiQuery(assessmentApi)
-  const { format } = useI18n()
 
   const plan = useQuery({
     ...query.assessment.getTimeline.queryOptions({ params: { batchId } }),
@@ -652,7 +654,7 @@ export default function BatchOverviewPage() {
   })
 
   return (
-    <BatchScreen title={format(m.tabOverview)} description={format(m.overviewHint)}>
+    <BatchScreen title={m.overview_tab()} description={m.overview_hint()}>
       {(batch) => (
         <div {...stylex.props(styles.desk)}>
           {/* No plan here on a phone: the band at the top of the screen is
@@ -675,7 +677,7 @@ export default function BatchOverviewPage() {
           </div>
 
           <aside {...stylex.props(styles.aside)}>
-            <h2 {...stylex.props(styles.asideTitle)}>{format(m.flowTitle)}</h2>
+            <h2 {...stylex.props(styles.asideTitle)}>{m.flow_title()}</h2>
             {plan.isPending ? (
               <div {...stylex.props(styles.asideSkeletons)}>
                 <Skeleton className={stylex.props(styles.asideSkeletonLine).className} />
@@ -714,7 +716,6 @@ function NoteText({ text }: { text: string }) {
  * dialog of its own rather than pushing the rest of the page down.
  */
 function BatchNote({ text }: { text: string }) {
-  const { format } = useI18n()
   const id = useId()
   const body = useRef<HTMLDivElement | null>(null)
   const [reading, setReading] = useState(false)
@@ -744,7 +745,7 @@ function BatchNote({ text }: { text: string }) {
       {...stylex.props(styles.note)}
     >
       <h2 id={`${id}-title`} {...stylex.props(styles.sectionTitle)}>
-        {format(m.overviewBatchNote)}
+        {m.overview_batchNote()}
       </h2>
       <div
         ref={body}
@@ -759,14 +760,14 @@ function BatchNote({ text }: { text: string }) {
           onClick={() => setReading(true)}
           {...stylex.props(styles.noteKey)}
         >
-          {format(m.overviewBatchNoteMore)}
+          {m.overview_batchNoteMore()}
           <ChevronRightIcon aria-hidden {...stylex.props(styles.noteKeyIcon)} />
         </button>
       )}
       <Dialog open={reading} onOpenChange={setReading}>
         <DialogContent data-testid="batch-note-dialog" size="40rem">
           <DialogHeader>
-            <DialogTitle>{format(m.overviewBatchNote)}</DialogTitle>
+            <DialogTitle>{m.overview_batchNote()}</DialogTitle>
           </DialogHeader>
           <DialogBody>
             <div {...stylex.props(styles.noteText, styles.noteDialogText)}>
@@ -781,37 +782,37 @@ function BatchNote({ text }: { text: string }) {
 
 const SAID: Record<'participant' | 'reviewer', Partial<Record<ActivityItem['kind'], unknown>>> = {
   participant: {
-    'entry-created': m['activity.entry-created'],
-    'entry-revised': m['activity.entry-revised'],
-    'entry-submitted': m['activity.entry-submitted'],
-    'entry-withdrawn': m['activity.entry-withdrawn'],
-    'entry-abandoned': m['activity.entry-abandoned'],
-    'entry-voided': m['activity.entry-voided'],
-    'entry-voided-with-item': m['activity.entry-voided-with-item'],
-    'review-approved': m['activity.review-approved'],
-    'review-rejected': m['activity.review-rejected'],
-    'review-escalated': m['activity.review-escalated'],
-    'appeal-filed': m['activity.appeal-filed'],
-    'review-reopened': m['activity.review-reopened'],
-    'recognition-corrected': m['activity.recognition-corrected'],
-    'approval-revoked': m['activity.approval-revoked'],
-    'rejection-overturned': m['activity.rejection-overturned'],
-    'supplement-requested': m['activity.supplement-requested'],
-    'supplement-submitted': m['activity.supplement-submitted'],
-    'supplement-cancelled': m['activity.supplement-cancelled'],
-    'revision-required': m['activity.revision-required'],
+    'entry-created': m.activity_entryCreated,
+    'entry-revised': m.activity_entryRevised,
+    'entry-submitted': m.activity_entrySubmitted,
+    'entry-withdrawn': m.activity_entryWithdrawn,
+    'entry-abandoned': m.activity_entryAbandoned,
+    'entry-voided': m.activity_entryVoided,
+    'entry-voided-with-item': m.activity_entryVoidedWithItem,
+    'review-approved': m.activity_reviewApproved,
+    'review-rejected': m.activity_reviewRejected,
+    'review-escalated': m.activity_reviewEscalated,
+    'appeal-filed': m.activity_appealFiled,
+    'review-reopened': m.activity_reviewReopened,
+    'recognition-corrected': m.activity_recognitionCorrected,
+    'approval-revoked': m.activity_approvalRevoked,
+    'rejection-overturned': m.activity_rejectionOverturned,
+    'supplement-requested': m.activity_supplementRequested,
+    'supplement-submitted': m.activity_supplementSubmitted,
+    'supplement-cancelled': m.activity_supplementCancelled,
+    'revision-required': m.activity_revisionRequired,
   },
   reviewer: {
-    'review-approved': m['activity.r.review-approved'],
-    'review-stage-approved': m['activity.r.review-stage-approved'],
-    'review-rejected': m['activity.r.review-rejected'],
-    'review-escalated': m['activity.r.review-escalated'],
-    'review-opinion-rejected': m['activity.r.review-opinion-rejected'],
-    'supplement-requested': m['activity.r.supplement-requested'],
-    'supplement-cancelled': m['activity.r.supplement-cancelled'],
-    'supplement-answered': m['activity.r.supplement-answered'],
-    'review-vote-approved': m['activity.r.review-vote-approved'],
-    'review-vote-rejected': m['activity.r.review-vote-rejected'],
+    'review-approved': m.activity_reviewerApproved,
+    'review-stage-approved': m.activity_reviewerStageApproved,
+    'review-rejected': m.activity_reviewerRejected,
+    'review-escalated': m.activity_reviewerEscalated,
+    'review-opinion-rejected': m.activity_reviewerOpinionRejected,
+    'supplement-requested': m.activity_reviewerSupplementRequested,
+    'supplement-cancelled': m.activity_reviewerSupplementCancelled,
+    'supplement-answered': m.activity_reviewerSupplementAnswered,
+    'review-vote-approved': m.activity_reviewerVoteApproved,
+    'review-vote-rejected': m.activity_reviewerVoteRejected,
   },
 }
 
@@ -929,7 +930,7 @@ function Desk({
   const api = useApi(assessmentApi)
   const run = useRunApi()
   const navigate = usePageNavigate()
-  const { format, locale } = useI18n()
+  const { locale } = useI18n()
   const failure = useLoadFailure()
   const zone = useBatchZone()
   const [lane, setLane] = useState<Lane>('all')
@@ -960,7 +961,7 @@ function Desk({
     () => activity.data?.pages.flatMap((page) => page.items) ?? [],
     [activity.data],
   )
-  const groups = useMemo(() => groupByDay(rows, locale, format, zone), [rows, locale, format, zone])
+  const groups = useMemo(() => groupByDay(rows, locale, zone), [rows, locale, zone])
   // the unread claims, marked once each: the newest row of that claim in the
   // feed carries the dot, read state stays the version pair's
   const freshRowIds = useMemo(() => {
@@ -989,8 +990,8 @@ function Desk({
           error={failure.of(overview.error)}
           framed
           retrying={overview.isFetching}
-          loadingLabel={format(commonMessages.loading)}
-          retryLabel={format(commonMessages.retry)}
+          loadingLabel={commonMessages.state_loading()}
+          retryLabel={commonMessages.action_retry()}
           onRetry={() => void overview.refetch()}
         >
           {null}
@@ -1016,8 +1017,8 @@ function Desk({
   for (const action of desk?.participant?.actions ?? []) {
     const sentence =
       action.kind === 'supplement'
-        ? format(m.overviewActionSupplement, { who: action.who ?? format(m['activity.somebody']) })
-        : format(m.overviewActionRevision)
+        ? m.overview_actionSupplement({ who: action.who ?? m.activity_somebody() })
+        : m.overview_actionRevision()
     todo.push({
       key: `${action.kind}:${action.entryId}`,
       lane: 'participant',
@@ -1025,7 +1026,7 @@ function Desk({
       subject: action.itemTitle,
       detail: action.summary === null ? sentence : `${sentence}：${action.summary}`,
       at: clockOf(action.at, locale, zone),
-      verb: format(action.kind === 'supplement' ? m.overviewGoSupplement : m.overviewGoRevision),
+      verb: (action.kind === 'supplement' ? m.overview_goSupplement : m.overview_goRevision)(),
       go: () =>
         openEntry(action.itemId, action.entryId, action.kind === 'supplement' ? 'detail' : 'entry'),
     })
@@ -1036,17 +1037,17 @@ function Desk({
       lane: 'reviewer',
       action: 'review-pending',
       count: desk!.reviewer!.pendingCount,
-      subject: format(m.overviewPendingReviews, { count: desk!.reviewer!.pendingCount }),
+      subject: m.overview_pendingReviews({ count: desk!.reviewer!.pendingCount }),
       detail:
         desk!.reviewer!.queueGroups.length === 0
           ? null
           : listJoin(
               desk!.reviewer!.queueGroups.map((group) =>
-                format(m.overviewQueueGroup, { name: group.name, count: group.count }),
+                m.overview_queueGroup({ name: group.name, count: group.count }),
               ),
             ),
       at: null,
-      verb: format(m.overviewGoReview),
+      verb: m.overview_goReview(),
       go: () => navigate('assessment/batch-reviews', { params: { batchId } }),
     })
   }
@@ -1056,20 +1057,20 @@ function Desk({
       lane: 'reviewer',
       action: 'review-answered',
       count: desk!.reviewer!.answeredAskCount,
-      subject: format(m.overviewAskAnswered, { count: desk!.reviewer!.answeredAskCount }),
+      subject: m.overview_askAnswered({ count: desk!.reviewer!.answeredAskCount }),
       detail:
         desk!.reviewer!.answeredAsks.length === 0
           ? null
           : listJoin(
               desk!.reviewer!.answeredAsks.map((ask) =>
-                format(m.overviewAskEntry, {
-                  who: ask.who ?? format(m['activity.somebody']),
+                m.overview_askEntry({
+                  who: ask.who ?? m.activity_somebody(),
                   item: ask.itemTitle,
                 }),
               ),
             ),
       at: null,
-      verb: format(m.overviewGoAsked),
+      verb: m.overview_goAsked(),
       go: () =>
         navigate('assessment/batch-reviews', { params: { batchId }, search: { view: 'asked' } }),
     })
@@ -1077,7 +1078,6 @@ function Desk({
   if (alerts !== null) {
     todo.push(
       ...adminRows(alerts, {
-        format,
         listJoin,
         go: (page) => navigate(page, { params: { batchId } }),
       }),
@@ -1087,13 +1087,11 @@ function Desk({
   // standing as much as two: the strip is how the card reads, not a way of
   // telling two standings apart
   const laneWord = (which: DeskLane) =>
-    format(
-      which === 'participant'
-        ? m.overviewLaneEntry
-        : which === 'reviewer'
-          ? m.overviewLaneReview
-          : m.overviewLaneManage,
-    )
+    (which === 'participant'
+      ? m.overview_laneEntry
+      : which === 'reviewer'
+        ? m.overview_laneReview
+        : m.overview_laneManage)()
   const todoGroups = DESK_LANES.map((which) => ({
     which,
     rows: todo.filter((row) => row.lane === which),
@@ -1105,7 +1103,7 @@ function Desk({
     <>
       <section data-count={waiting} {...stylex.props(styles.actions)}>
         <div {...stylex.props(styles.actionsHead)}>
-          <h2 {...stylex.props(styles.sectionTitle)}>{format(m.overviewActionsTitle)}</h2>
+          <h2 {...stylex.props(styles.sectionTitle)}>{m.overview_actionsTitle()}</h2>
           {waiting > 0 && <span {...stylex.props(styles.actionsCount)}>{waiting}</span>}
         </div>
         {overview.isPending || alerts?.pending === true ? (
@@ -1115,7 +1113,7 @@ function Desk({
             <span {...stylex.props(styles.clearMark)}>
               <CheckIcon aria-hidden className={stylex.props(styles.clearIcon).className} />
             </span>
-            <p {...stylex.props(styles.clearWord)}>{format(m.overviewActionsNone)}</p>
+            <p {...stylex.props(styles.clearWord)}>{m.overview_actionsNone()}</p>
           </div>
         ) : (
           <div {...stylex.props(styles.card, styles.cardRaised)} data-testid="overview-actions">
@@ -1224,7 +1222,7 @@ function Desk({
       {own && (
         <section {...stylex.props(styles.activity)}>
           <div {...stylex.props(styles.activityHead)}>
-            <h2 {...stylex.props(styles.activityTitle)}>{format(m.overviewActivityTitle)}</h2>
+            <h2 {...stylex.props(styles.activityTitle)}>{m.overview_activityTitle()}</h2>
             {(desk?.participant?.unreadEntryIds.length ?? 0) > 0 && (
               <span
                 data-testid="overview-unread"
@@ -1232,7 +1230,7 @@ function Desk({
                 {...stylex.props(styles.unreadNote)}
               >
                 <UnreadDot />
-                {format(m.overviewActivityUnread, {
+                {m.overview_activityUnread({
                   count: desk!.participant!.unreadEntryIds.length,
                 })}
               </span>
@@ -1247,13 +1245,13 @@ function Desk({
                 <TabsList>
                   {(
                     [
-                      ['all', m.overviewFilterAll],
-                      ['participant', m.overviewLaneEntry],
-                      ['reviewer', m.overviewLaneReview],
+                      ['all', m.overview_filterAll],
+                      ['participant', m.overview_laneEntry],
+                      ['reviewer', m.overview_laneReview],
                     ] as const
                   ).map(([value, label]) => (
                     <TabsTrigger key={value} value={value}>
-                      {format(label)}
+                      {label()}
                     </TabsTrigger>
                   ))}
                 </TabsList>
@@ -1286,8 +1284,8 @@ function Desk({
               error={failure.of(activity.error)}
               framed
               retrying={activity.isFetching}
-              loadingLabel={format(commonMessages.loading)}
-              retryLabel={format(commonMessages.retry)}
+              loadingLabel={commonMessages.state_loading()}
+              retryLabel={commonMessages.action_retry()}
               onRetry={() => void activity.refetch()}
             >
               {null}
@@ -1298,7 +1296,7 @@ function Desk({
               <span {...stylex.props(styles.clearMark)}>
                 <HistoryIcon aria-hidden className={stylex.props(styles.clearIcon).className} />
               </span>
-              <p {...stylex.props(styles.clearWord)}>{format(m.overviewActivityNone)}</p>
+              <p {...stylex.props(styles.clearWord)}>{m.overview_activityNone()}</p>
             </div>
           ) : (
             <div {...stylex.props(styles.card)} data-testid="overview-activity">
@@ -1314,7 +1312,7 @@ function Desk({
                     const sentence = SAID[row.perspective][row.kind]
                     const who =
                       (row.perspective === 'reviewer' ? row.subjectName : row.actorName) ??
-                      format(m['activity.somebody'])
+                      m.activity_somebody()
                     // the server already judged which rounds are still this
                     // reader's to open; everything else is a plain line
                     const openable = row.perspective === 'participant' || row.instanceId !== null
@@ -1356,7 +1354,7 @@ function Desk({
                               {freshRowIds.has(row.id + row.kind) && (
                                 <>
                                   <UnreadDot />
-                                  <VisuallyHidden>{format(m.claimUnread)}</VisuallyHidden>
+                                  <VisuallyHidden>{m.entry_claimUnread()}</VisuallyHidden>
                                 </>
                               )}
                               <span {...stylex.props(styles.feedTitle)}>{row.itemTitle}</span>
@@ -1383,8 +1381,7 @@ function Desk({
                             </span>
                           )}
                           <span {...stylex.props(styles.feedSentence)}>
-                            {sentence !== undefined &&
-                              format(sentence as (typeof m)['activity.r.review-approved'], { who })}
+                            {sentence !== undefined && (sentence as Message)({ who })}
                           </span>
                           {(row.reason !== null || row.comment !== null) && (
                             <span {...stylex.props(styles.feedQuote)}>
@@ -1407,7 +1404,7 @@ function Desk({
                   onClick={() => void activity.fetchNextPage()}
                   {...stylex.props(styles.moreRow)}
                 >
-                  {format(m.overviewActivityMore)}
+                  {m.overview_activityMore()}
                 </button>
               )}
             </div>
@@ -1428,11 +1425,9 @@ function Desk({
 function adminRows(
   alerts: AdminAlerts,
   {
-    format,
     listJoin,
     go,
   }: {
-    format: ReturnType<typeof useI18n>['format']
     listJoin: (items: readonly string[]) => string
     go: (
       page: 'assessment/batch-access' | 'assessment/batch-items' | 'assessment/batch-results',
@@ -1448,9 +1443,9 @@ function adminRows(
       action: 'admin-unreadable',
       kind: 'retry',
       busy: alerts.retrying,
-      subject: format(m.overviewAdminFailed),
+      subject: m.overview_adminFailed(),
       detail: null,
-      verb: format(commonMessages.retry),
+      verb: commonMessages.action_retry(),
       go: alerts.retry,
     })
   }
@@ -1459,8 +1454,8 @@ function adminRows(
     const waiting = gaps.reduce((total, one) => total + one.waiting, 0)
     const units = new Set(gaps.map((one) => one.nodeId ?? '')).size
     const named = gaps.slice(0, MOST_NAMED).map((one) =>
-      format(m.overviewAdminGapUnit, {
-        unit: one.nodeName ?? format(m.itemsStuckNowhere),
+      m.overview_adminGapUnit({
+        unit: one.nodeName ?? m.items_stuckNowhere(),
         roles: listJoin(one.roleNames),
       }),
     )
@@ -1468,12 +1463,12 @@ function adminRows(
       key: 'admin-review-gap',
       action: 'admin-review-gap',
       count: waiting,
-      subject: format(m.itemsStuckSummary, { waiting, units }),
+      subject: m.items_stuckSummary({ waiting, units }),
       detail:
         gaps.length > MOST_NAMED
-          ? format(m.overviewAdminMoreUnits, { total: gaps.length, items: listJoin(named) })
+          ? m.overview_adminMoreUnits({ total: gaps.length, items: listJoin(named) })
           : listJoin(named),
-      verb: format(m.itemsStuckAppoint),
+      verb: m.items_stuckAppoint(),
       go: () => go('assessment/batch-access'),
     })
   }
@@ -1488,12 +1483,12 @@ function adminRows(
     const total = questions.length
     if (stopped === 'submit') {
       return total > MOST_NAMED
-        ? format(m.overviewAdminCannotSubmitMany, { items, total })
-        : format(m.overviewAdminCannotSubmit, { items })
+        ? m.overview_adminCannotSubmitMany({ items, total })
+        : m.overview_adminCannotSubmit({ items })
     }
     return total > MOST_NAMED
-      ? format(m.overviewAdminCannotAppealMany, { items, total })
-      : format(m.overviewAdminCannotAppeal, { items })
+      ? m.overview_adminCannotAppealMany({ items, total })
+      : m.overview_adminCannotAppeal({ items })
   }
   if (cannotSubmit > 0) {
     row({
@@ -1501,9 +1496,9 @@ function adminRows(
       action: 'admin-unreachable',
       count: cannotSubmit,
       items: submitItems.map((one) => one.id),
-      subject: format(m.overviewAdminUnreachable, { count: cannotSubmit }),
+      subject: m.overview_adminUnreachable({ count: cannotSubmit }),
       detail: named(submitItems, 'submit'),
-      verb: format(m.overviewGoItems),
+      verb: m.overview_goItems(),
       go: () => go('assessment/batch-items'),
     })
   }
@@ -1513,9 +1508,9 @@ function adminRows(
       action: 'admin-unappealable',
       count: cannotAppeal,
       items: appealItems.map((one) => one.id),
-      subject: format(m.overviewAdminUnreachableAppeal, { count: cannotAppeal }),
+      subject: m.overview_adminUnreachableAppeal({ count: cannotAppeal }),
       detail: named(appealItems, 'appeal'),
-      verb: format(m.overviewGoItems),
+      verb: m.overview_goItems(),
       go: () => go('assessment/batch-items'),
     })
   }
@@ -1527,13 +1522,13 @@ function adminRows(
       count: changed > 0 ? changed : unavailable,
       subject:
         changed > 0
-          ? format(m.placementPrompt, { count: changed })
-          : format(m.placementUnavailablePrompt, { count: unavailable }),
+          ? m.placement_prompt({ count: changed })
+          : m.placement_unavailablePrompt({ count: unavailable }),
       detail:
         changed > 0 && unavailable > 0
-          ? format(m.overviewAdminPlacementsGone, { count: unavailable })
+          ? m.overview_adminPlacementsGone({ count: unavailable })
           : null,
-      verb: format(m.overviewGoRoster),
+      verb: m.overview_goRoster(),
       go: () => go('assessment/batch-results'),
     })
   }
@@ -1542,9 +1537,9 @@ function adminRows(
       key: 'admin-access',
       action: 'admin-access',
       count: alerts.accessPending,
-      subject: format(m.overviewAdminAccess, { count: alerts.accessPending }),
+      subject: m.overview_adminAccess({ count: alerts.accessPending }),
       detail: null,
-      verb: format(m.overviewGoAccess),
+      verb: m.overview_goAccess(),
       go: () => go('assessment/batch-access'),
     })
   }
@@ -1563,7 +1558,6 @@ const clockOf = (iso: string, locale: string, zone: string | undefined) =>
 function groupByDay(
   rows: readonly ActivityItem[],
   locale: string,
-  format: ReturnType<typeof useI18n>['format'],
   zone: string | undefined,
 ): readonly { key: string; label: string; aside: string | null; items: ActivityItem[] }[] {
   const now = Date.now()
@@ -1591,8 +1585,8 @@ function groupByDay(
     const weekday = new Intl.DateTimeFormat(locale, { weekday: 'short', ...inZone(zone) }).format(
       at,
     )
-    if (diff === 0) return { key: 'today', label: format(m.overviewToday), aside: spelled }
-    if (diff === 1) return { key: 'yesterday', label: format(m.overviewYesterday), aside: spelled }
+    if (diff === 0) return { key: 'today', label: m.overview_today(), aside: spelled }
+    if (diff === 1) return { key: 'yesterday', label: m.overview_yesterday(), aside: spelled }
     return { key: spelled, label: spelled, aside: weekday }
   }
   const groups: { key: string; label: string; aside: string | null; items: ActivityItem[] }[] = []

@@ -1,10 +1,9 @@
 import type { ReactNode } from 'react'
 import { CheckIcon } from 'lucide-react'
 import * as stylex from '@stylexjs/stylex'
-import { useI18n } from '@qualy/web-i18n'
 import { Badge } from '@qualy/ui/badge'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { assessmentMessages as m } from '../i18n.ts'
+import * as m from '#messages'
 
 // The roles that were considered, including the ones that cannot be given.
 //
@@ -99,11 +98,11 @@ const styles = stylex.create({
 })
 
 const REASONS = {
-  'user-type': m.roleRefusedUserType,
-  authority: m.roleRefusedAuthority,
-  'self-escalation': m.roleRefusedSelfEscalation,
-  unavailable: m.roleRefusedUnavailable,
-  'beyond-batch': m.roleRefusedBeyondBatch,
+  'user-type': m.access_roleRefusedUserType,
+  authority: m.access_roleRefusedAuthority,
+  'self-escalation': m.access_roleRefusedSelfEscalation,
+  unavailable: m.access_roleRefusedUnavailable,
+  'beyond-batch': m.access_roleRefusedBeyondBatch,
 } as const
 
 export function RolePicker({
@@ -118,7 +117,6 @@ export function RolePicker({
   empty: ReactNode
   onChange: (roleId: string) => void
 }) {
-  const { format } = useI18n()
   if (roles.length === 0) return empty
   return (
     <ul role="radiogroup" {...stylex.props(styles.list)}>
@@ -149,7 +147,7 @@ export function RolePicker({
               </span>
               {role.refusal !== null && (
                 <Badge variant="outline" className={stylex.props(styles.reason).className}>
-                  {format(REASONS[role.refusal])}
+                  {REASONS[role.refusal]()}
                 </Badge>
               )}
             </button>

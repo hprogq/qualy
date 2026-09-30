@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { useApi, useApiQuery, useLoadFailure, usePageHref, useRunApi } from '@qualy/web-runtime'
 import { getApiErrorCode, useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { AsyncSection, Field, FormDialog, useSettledCheck } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
@@ -11,7 +11,7 @@ import { Card, DefListSkeleton, SectionHead } from '@qualy/ui/screen'
 import { toast } from '@qualy/ui/toast'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
-import { iamMessages as m } from '../i18n.ts'
+
 import { authApi } from '../api.ts'
 import { EmailWithStanding } from '../iam/person-facts.tsx'
 import { emailShaped } from '../iam/users/field-refusals.ts'
@@ -19,6 +19,8 @@ import { SessionsCard } from './security-records.tsx'
 import { PasswordChecklist } from '../password/PasswordChecklist.tsx'
 import { usePasswordChecks } from '../password/checks.ts'
 import { needsReauthentication, useReauthentication } from './Reauthentication.tsx'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // The reader's own password and address, as two lines of one card: what
 // stands now, and the one thing that can be done about it. Doing it is a
@@ -77,18 +79,18 @@ const styles = stylex.create({
 
 export default function AccountSecurityPage() {
   const query = useApiQuery(authApi)
-  const { format } = useI18n()
+
   const describe = useLoadFailure()
   const self = useQuery(query.self.getSelf.queryOptions())
   const me = self.data
   return (
     <div {...stylex.props(styles.page)}>
-      <SectionHead title={format(m.accountSecurity)} />
+      <SectionHead title={m.account_security()} />
       <AsyncSection
         pending={self.isPending}
         error={self.isError ? describe.of(self.error) : null}
-        loadingLabel={format(commonMessages.loading)}
-        retryLabel={format(commonMessages.retry)}
+        loadingLabel={commonMessages.state_loading()}
+        retryLabel={commonMessages.action_retry()}
         onRetry={() => void self.refetch()}
         skeleton={
           <Card>
@@ -148,7 +150,7 @@ function PasswordSetting({
   const run = useRunApi()
   const query = useApiQuery(authApi)
   const queryClient = useQueryClient()
-  const { format, formatError } = useI18n()
+  const { formatError } = useI18n()
   const formId = useId()
   const reauthentication = useReauthentication(usePageHref('auth/account-security'))
   const [open, setOpen] = useState(false)
@@ -189,7 +191,7 @@ function PasswordSetting({
       ),
     onSuccess: async () => {
       close()
-      toast.success(format(m.passwordChanged))
+      toast.success(m.account_passwordChanged())
       await queryClient.invalidateQueries({ queryKey: query.self.key() })
     },
     onError: (error: unknown) => {
@@ -203,17 +205,17 @@ function PasswordSetting({
   const settable = standing === 'set' || (standing === 'unset' && emailVerified)
   const said =
     standing === 'unavailable'
-      ? format(m.passwordNotOpen)
+      ? m.account_passwordNotOpen()
       : standing === 'set'
-        ? format(m.passwordIsSet)
+        ? m.account_passwordIsSet()
         : settable
-          ? format(m.passwordIsUnset)
-          : format(m.passwordNeedsEmail)
+          ? m.account_passwordIsUnset()
+          : m.account_passwordNeedsEmail()
   return (
     <Setting
       testId="password-card"
       data-standing={standing}
-      name={format(m.passwordSection)}
+      name={m.account_password()}
       standing={<span {...stylex.props(standing !== 'set' && styles.quiet)}>{said}</span>}
       {...(settable
         ? {
@@ -226,7 +228,7 @@ function PasswordSetting({
                   standing === 'set' ? setOpen(true) : reauthentication.ensure(() => setOpen(true))
                 }
               >
-                {format(standing === 'set' ? m.passwordChange : m.passwordSetFirst)}
+                {(standing === 'set' ? m.account_passwordChange : m.account_passwordSet)()}
               </Button>
             ),
           }
@@ -235,19 +237,19 @@ function PasswordSetting({
       {reauthentication.dialog}
       <FormDialog
         open={settable && open}
-        title={format(standing === 'set' ? m.passwordChange : m.passwordSetFirst)}
+        title={(standing === 'set' ? m.account_passwordChange : m.account_passwordSet)()}
         onClose={close}
         footer={
           <>
             <Button variant="ghost" type="button" onClick={close}>
-              {format(m.cancel)}
+              {m.action_cancel()}
             </Button>
             <Button
               type="submit"
               form={formId}
               disabled={save.isPending || !fresh || !again || (standing === 'set' && !current)}
             >
-              {format(m.passwordSave)}
+              {m.account_passwordSave()}
             </Button>
           </>
         }
@@ -270,7 +272,7 @@ function PasswordSetting({
           }}
         >
           {standing === 'set' && (
-            <Field label={format(m.currentPassword)} required>
+            <Field label={m.account_currentPassword()} required>
               {(id, control) => (
                 <Input
                   id={id}
@@ -284,7 +286,7 @@ function PasswordSetting({
               )}
             </Field>
           )}
-          <Field label={format(m.resetNewPassword)} required>
+          <Field label={m.reset_newPassword()} required>
             {(id, control) => (
               <Input
                 id={id}
@@ -305,7 +307,7 @@ function PasswordSetting({
               refused={refused}
             />
           )}
-          <Field label={format(m.resetConfirmPassword)} required>
+          <Field label={m.reset_confirmPassword()} required>
             {(id, control) => (
               <Input
                 id={id}
@@ -319,7 +321,7 @@ function PasswordSetting({
           </Field>
           {mismatch && (
             <p data-testid="password-mismatch" {...stylex.props(styles.refusal)}>
-              {format(m.passwordMismatch)}
+              {m.reset_mismatch()}
             </p>
           )}
           {save.isError && !refusedByList && !needsReauthentication(save.error) && (
@@ -334,13 +336,13 @@ function PasswordSetting({
 function EmailSetting({ email, verified }: { email: string | null; verified: boolean }) {
   const api = useApi(authApi)
   const run = useRunApi()
-  const { format, formatError } = useI18n()
+  const { formatError } = useI18n()
   const formId = useId()
   const reauthentication = useReauthentication(usePageHref('auth/account-security'))
   const [open, setOpen] = useState(false)
   const [next, setNext] = useState('')
   const shape = useSettledCheck(next, (typed) =>
-    emailShaped(typed) ? null : format(m.emailInvalid),
+    emailShaped(typed) ? null : m.person_emailInvalid(),
   )
   const close = () => {
     setOpen(false)
@@ -349,14 +351,14 @@ function EmailSetting({ email, verified }: { email: string | null; verified: boo
   }
   const verify = useMutation({
     mutationFn: () => run(api.self.createSelfEmailVerification({})),
-    onSuccess: () => toast.success(format(m.verificationSent)),
+    onSuccess: () => toast.success(m.account_verificationSent()),
     onError: (error: unknown) => toast.error(formatError(error)),
   })
   const change = useMutation({
     mutationFn: () => run(api.self.createSelfEmailChange({ payload: { newEmail: next } })),
     onSuccess: () => {
       close()
-      toast.success(format(m.changeSent))
+      toast.success(m.account_changeSent())
     },
     onError: (error: unknown) => {
       if (needsReauthentication(error)) reauthentication.ask(() => change.mutate())
@@ -367,7 +369,7 @@ function EmailSetting({ email, verified }: { email: string | null; verified: boo
   return (
     <Setting
       testId="email-card"
-      name={format(m.emailLabel)}
+      name={m.users_email()}
       standing={<EmailWithStanding email={email} verified={verified} />}
       actions={
         <>
@@ -378,7 +380,7 @@ function EmailSetting({ email, verified }: { email: string | null; verified: boo
               disabled={verify.isPending}
               onClick={() => verify.mutate()}
             >
-              {format(m.sendVerification)}
+              {m.account_sendVerification()}
             </Button>
           )}
           <Button
@@ -386,7 +388,7 @@ function EmailSetting({ email, verified }: { email: string | null; verified: boo
             variant="outline"
             onClick={() => reauthentication.ensure(() => setOpen(true))}
           >
-            {format(email === null ? m.emailSetAction : m.emailChangeAction)}
+            {(email === null ? m.account_emailSet : m.account_emailChange)()}
           </Button>
         </>
       }
@@ -394,19 +396,19 @@ function EmailSetting({ email, verified }: { email: string | null; verified: boo
       {reauthentication.dialog}
       <FormDialog
         open={open}
-        title={format(email === null ? m.emailSetTitle : m.emailChangeTitle)}
+        title={(email === null ? m.account_emailSetTitle : m.account_emailChangeTitle)()}
         onClose={close}
         footer={
           <>
             <Button variant="ghost" type="button" onClick={close}>
-              {format(m.cancel)}
+              {m.action_cancel()}
             </Button>
             <Button
               type="submit"
               form={formId}
               disabled={change.isPending || next.trim() === '' || !emailShaped(next)}
             >
-              {format(m.sendChange)}
+              {m.account_sendChange()}
             </Button>
           </>
         }
@@ -420,9 +422,9 @@ function EmailSetting({ email, verified }: { email: string | null; verified: boo
           }}
         >
           <Field
-            label={format(m.newEmail)}
+            label={m.account_newEmail()}
             required
-            hint={format(email === null ? m.changeHint : m.changeConsequence)}
+            hint={(email === null ? m.account_changeHint : m.account_changeConsequence)()}
             error={taken ? formatError(change.error) : shape.error}
           >
             {(id, control) => (

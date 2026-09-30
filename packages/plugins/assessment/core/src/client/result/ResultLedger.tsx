@@ -19,7 +19,7 @@ import { AlignLeftIcon, BarChart3Icon, ChevronDownIcon, ChevronRightIcon } from 
 import { isApiErrorCode, useI18n, useList } from '@qualy/web-i18n'
 import type { LinePart } from '../entry/identity.ts'
 import { LineParts } from '../entry/workspace/LineText.tsx'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import { inZone, useBatchZone } from '../batch/zone.ts'
 import { EntryStanding } from '../entry/EntryStanding.tsx'
 import type { EntryDto } from '../entry/model.ts'
@@ -38,6 +38,7 @@ import {
   type LedgerSection,
   type FilingShut,
 } from './ledger.ts'
+import * as m from '#messages'
 
 export type { LedgerEntry, LedgerItem, LedgerResult } from './ledger.ts'
 
@@ -1148,8 +1149,6 @@ export function ResultLedger({
   )
 }
 
-type Format = ReturnType<typeof useI18n>['format']
-
 /** the day something happened, on the batch's clock, the way a ledger dates a line */
 const dayOf = (at: string | null, locale: string, zone: string | undefined): string | null => {
   const moment = at === null ? Number.NaN : Date.parse(at)
@@ -1180,13 +1179,12 @@ function Head({
   closed: 'archived' | 'excluded' | null
   stream: LiveState | null
 }) {
-  const { format } = useI18n()
   return (
     <header {...stylex.props(styles.head)}>
       <div {...stylex.props(styles.headMain)}>
         <div {...stylex.props(styles.titleRow)}>
           {heading === undefined ? (
-            <p {...stylex.props(styles.totalLabel)}>{format(m.resultGrandTotal)}</p>
+            <p {...stylex.props(styles.totalLabel)}>{m.result_grandTotal()}</p>
           ) : (
             <h1 {...stylex.props(styles.title)}>{heading}</h1>
           )}
@@ -1194,7 +1192,7 @@ function Head({
               longer moves, which the note under the total says */}
           {stream !== null && (
             <LiveMark state={stream} data-testid="result-live">
-              {format(m.resultLive, { state: stream })}
+              {m.result_live({ state: stream })}
             </LiveMark>
           )}
         </div>
@@ -1213,7 +1211,7 @@ function Head({
               data-full={two(model.fullCents)}
               {...stylex.props(styles.outOf)}
             >
-              {format(m.resultOutOf, { full: plain(two(model.fullCents)) })}
+              {m.result_outOf({ full: plain(two(model.fullCents)) })}
             </span>
           )}
         </div>
@@ -1227,12 +1225,12 @@ function Head({
         >
           {/* a closed account says why it stopped, not what a decision would do */}
           {closed === null
-            ? format(m.resultHeadNote, {
+            ? m.result_headNote({
                 pending: model.pending,
                 drafts: model.drafts,
                 trimmed: model.trimmedCents > 0 ? two(model.trimmedCents) : 'none',
               })
-            : format(m.resultClosedNote, {
+            : m.result_closedNote({
                 kind: closed,
                 reader,
                 trimmed: model.trimmedCents > 0 ? two(model.trimmedCents) : 'none',
@@ -1285,7 +1283,6 @@ function Strip({
   start: boolean
   onJump: (id: string) => void
 }) {
-  const { format } = useI18n()
   const row = useRef<HTMLElement>(null)
   // the chip being read stays in sight as the reading moves past the edge
   useEffect(() => {
@@ -1301,7 +1298,7 @@ function Strip({
   return (
     <nav
       ref={row}
-      aria-label={format(m.resultOutlineLabel)}
+      aria-label={m.result_outlineLabel()}
       data-testid="result-strip"
       {...stylex.props(
         styles.measure,
@@ -1349,7 +1346,6 @@ function Outline({
   room: number | null
   onJump: (id: string) => void
 }) {
-  const { format } = useI18n()
   const list = useRef<HTMLElement>(null)
   // dozens of groups scroll inside the outline; the one being read stays in it
   useEffect(() => {
@@ -1370,13 +1366,13 @@ function Outline({
   return (
     <nav
       ref={list}
-      aria-label={format(m.resultOutlineLabel)}
+      aria-label={m.result_outlineLabel()}
       data-testid="result-outline"
       {...stylex.props(styles.outline)}
       style={{ top, ...(room === null ? {} : { maxHeight: Math.max(160, room) }) }}
     >
       <p {...stylex.props(styles.outlineHeading)}>
-        {format(m.resultOutlineHeading, { count: model.tops.length })}
+        {m.result_outlineHeading({ count: model.tops.length })}
       </p>
       {model.tops.map((group) => {
         const on = group.id === active
@@ -1463,7 +1459,6 @@ function Section({
   holdSection: (element: HTMLElement | null) => void
   holdBand: (element: HTMLElement | null) => void
 }) {
-  const { format } = useI18n()
   const group = section.group
   // the paper's own questions are the paper speaking and need no heading;
   // questions no group holds need one only beside groups that have theirs
@@ -1495,10 +1490,10 @@ function Section({
             </span>
           )}
           <h2 title={group?.name} {...stylex.props(styles.bandName)}>
-            {group?.name ?? format(m.resultUngrouped)}
+            {group?.name ?? m.result_ungrouped()}
           </h2>
           {group?.full === true && (
-            <span {...stylex.props(styles.fullMark)}>{format(m.resultGroupFull)}</span>
+            <span {...stylex.props(styles.fullMark)}>{m.result_groupFull()}</span>
           )}
           {/* room left and claims still to be decided are promises a closed account cannot keep */}
           {group !== null &&
@@ -1507,8 +1502,8 @@ function Section({
             (group.pending > 0 || group.leftCents !== null) && (
               <span {...stylex.props(styles.bandNote)}>
                 {group.pending > 0
-                  ? format(m.resultGroupPending, { count: group.pending })
-                  : format(m.resultGroupLeft, { value: two(group.leftCents ?? 0) })}
+                  ? m.result_groupPending({ count: group.pending })
+                  : m.result_groupLeft({ value: two(group.leftCents ?? 0) })}
               </span>
             )}
           <span {...stylex.props(styles.spacer)} />
@@ -1574,7 +1569,6 @@ function Figure({
 
 /** a group inside a top group: a lighter heading, not a band that holds */
 function SubBand({ group }: { group: LedgerGroupView }) {
-  const { format } = useI18n()
   return (
     <div
       data-testid="ledger-subgroup"
@@ -1588,7 +1582,7 @@ function SubBand({ group }: { group: LedgerGroupView }) {
       <h3 title={group.name} {...stylex.props(styles.subName)}>
         {group.name}
       </h3>
-      {group.full && <span {...stylex.props(styles.fullMark)}>{format(m.resultGroupFull)}</span>}
+      {group.full && <span {...stylex.props(styles.fullMark)}>{m.result_groupFull()}</span>}
       <span {...stylex.props(styles.spacer)} />
       <Figure cents={group.cents} capCents={group.capCents} size="sub" />
     </div>
@@ -1685,12 +1679,11 @@ const madeOf = (
   closed: boolean,
   /** why the stages keep the question shut to the reader, if they do */
   shut: FilingShut | null,
-  format: Format,
   list: (parts: readonly string[]) => string,
   dayOf: (at: string | null) => string | null,
 ): Made => {
-  if (item.voided) return { kind: 'voided', said: format(m.resultMade, { kind: 'voided' }) }
-  if (item.derived) return { kind: 'derived', said: format(m.resultMade, { kind: 'derived' }) }
+  if (item.voided) return { kind: 'voided', said: m.result_made({ kind: 'voided' }) }
+  if (item.derived) return { kind: 'derived', said: m.result_made({ kind: 'derived' }) }
   const { facts } = item
   const moving = facts.pending + facts.asked + facts.returned + facts.drafts + facts.reconsidering
   const only = item.lines.length === 1 ? item.lines[0] : undefined
@@ -1698,13 +1691,13 @@ const madeOf = (
     // a record says when the office made it; a filing's own date is on the
     // filing page, one press away
     const day = only.recorded ? dayOf(only.at) : null
-    const said = format(m.resultWord, { kind: only.standing })
+    const said = m.result_word({ kind: only.standing })
     const word = day === null ? said : `${day} ${said}`
     return { kind: 'claim', said: word, identity: only.parts.length === 0 ? null : only.parts }
   }
   const told: readonly string[] = tag === null ? [] : TAG_SAYS[tag.kind]
   const parts = FACT_ORDER.filter((kind) => facts[kind] > 0 && !told.includes(kind)).map((kind) =>
-    format(m.resultFact, {
+    m.result_fact({
       kind: (closed ? STOPPED[kind] : undefined) ?? kind,
       count: facts[kind],
     }),
@@ -1713,7 +1706,7 @@ const madeOf = (
     return { kind: closed && moving > 0 ? 'unsettled' : 'claims', said: list(parts) }
   }
   if (tag !== null) {
-    return { kind: 'waits', said: format(m.resultWaitsFor, { kind: tag.kind, reader }) }
+    return { kind: 'waits', said: m.result_waitsFor({ kind: tag.kind, reader }) }
   }
   // the office's record is still to come only while the account is open;
   // nothing filed where the stages let nobody file is not a choice not to
@@ -1724,7 +1717,7 @@ const madeOf = (
     : shut === null
       ? 'none'
       : SHUT_MADE[shut]
-  return { kind: nothing, said: format(m.resultMade, { kind: nothing }) }
+  return { kind: nothing, said: m.result_made({ kind: nothing }) }
 }
 
 const SHUT_MADE = { before: 'unopened', after: 'ended', between: 'shut' } as const satisfies Record<
@@ -1801,7 +1794,7 @@ function ItemRow({
   /** filing another claim on the question, where the reader may right now */
   onAdd: (() => void) | null
 }) {
-  const { format, locale } = useI18n()
+  const { locale } = useI18n()
   const zone = useBatchZone()
   const list = useList()
   const panelId = useId()
@@ -1854,9 +1847,7 @@ function ItemRow({
   // no mark says one is waiting to be handled or decided
   const tag = closed ? null : tagOf(item)
   const rule = ruleOf(item)
-  const made = madeOf(item, tag, reader, closed, shut, format, list, (at) =>
-    dayOf(at, locale, zone),
-  )
+  const made = madeOf(item, tag, reader, closed, shut, list, (at) => dayOf(at, locale, zone))
   const nothing = item.lines.length === 0 && item.cents === 0
   const inset = { paddingInlineStart: 16 + item.depth * INDENT }
   // what pressing the row does, drawn after the line under its name: opens in
@@ -1892,7 +1883,7 @@ function ItemRow({
               tag.attention ? styles.tagAttention : styles.tagNeutral,
             )}
           >
-            {format(m.resultTag, { kind: tag.kind, count: tag.count, reader })}
+            {m.result_tag({ kind: tag.kind, count: tag.count, reader })}
           </span>
         )}
       </span>
@@ -1935,7 +1926,7 @@ function ItemRow({
         )}
       </span>
       <span data-rule={rule?.kind} {...stylex.props(styles.rule)}>
-        {rule === null ? '' : format(m.resultRule, rule)}
+        {rule === null ? '' : m.result_rule(rule)}
       </span>
     </>
   )
@@ -2040,7 +2031,6 @@ function Lines({
   /** filing another claim on the question, on the page where that is done */
   toAdd: (() => void) | null
 }) {
-  const { format } = useI18n()
   const [whole, setWhole] = useState(false)
   const seat = useRef<HTMLDivElement>(null)
   const long = claims.length > LINES_SHOWN
@@ -2096,7 +2086,7 @@ function Lines({
                 onClick={goOn}
                 {...stylex.props(styles.more, styles.pressable)}
               >
-                {format(m.resultShowRest, { count: hidden })}
+                {m.result_showRest({ count: hidden })}
                 <ChevronDownIcon aria-hidden {...stylex.props(styles.moreIcon)} />
               </button>
             )}
@@ -2109,7 +2099,7 @@ function Lines({
                 onClick={toWaiting}
                 {...stylex.props(styles.more, styles.pressable)}
               >
-                {format(m.resultFollow, { kind: 'todo', count: waiting, reader })}
+                {m.result_follow({ kind: 'todo', count: waiting, reader })}
                 <ChevronRightIcon aria-hidden {...stylex.props(styles.moreIcon)} />
               </button>
             )}
@@ -2122,7 +2112,7 @@ function Lines({
                 onClick={all}
                 {...stylex.props(styles.more, styles.pressable)}
               >
-                {format(m.resultMore, { count: item.lines.length, reader })}
+                {m.result_more({ count: item.lines.length, reader })}
                 <ChevronRightIcon aria-hidden {...stylex.props(styles.moreIcon)} />
               </button>
             )}
@@ -2135,7 +2125,7 @@ function Lines({
                 onClick={rest}
                 {...stylex.props(styles.more, styles.pressable)}
               >
-                {format(m.resultFollow, { kind: 'rest', count: item.aside, reader })}
+                {m.result_follow({ kind: 'rest', count: item.aside, reader })}
                 <ChevronRightIcon aria-hidden {...stylex.props(styles.moreIcon)} />
               </button>
             )}
@@ -2147,7 +2137,7 @@ function Lines({
                 onClick={toAdd}
                 {...stylex.props(styles.more, styles.pressable)}
               >
-                {format(m.resultAddAway)}
+                {m.result_addAway()}
                 <ChevronRightIcon aria-hidden {...stylex.props(styles.moreIcon)} />
               </button>
             )}
@@ -2160,16 +2150,16 @@ function Lines({
 
 /** what last happened to a claim, in the words the filing page lists it with */
 const ACT_SAID = {
-  asked: m.entriesActAsked,
-  returned: m.entriesActReturned,
-  refused: m.entriesActRejected,
-  recorded: m.entriesActRecorded,
-  approved: m.entriesActApproved,
-  submitted: m.entriesActSubmitted,
-  revoked: m.entriesActRevoked,
+  asked: m.entries_actAsked,
+  returned: m.entries_actReturned,
+  refused: m.entries_actRejected,
+  recorded: m.entries_actRecorded,
+  approved: m.entries_actApproved,
+  submitted: m.entries_actSubmitted,
+  revoked: m.entries_actRevoked,
   // given up by its owner, in the word its chip on the same line uses
-  abandoned: m.resultActAbandoned,
-  saved: m.entriesActSaved,
+  abandoned: m.result_actAbandoned,
+  saved: m.entries_actSaved,
 } as const satisfies Record<LedgerAct, unknown>
 
 /**
@@ -2191,7 +2181,7 @@ function LineRow({
   closed: boolean
   onEntryOpen: ((entryId: string) => void) | undefined
 }) {
-  const { format, locale } = useI18n()
+  const { locale } = useI18n()
   const zone = useBatchZone()
   const tagKind = UNCOUNTED.has(line.standing) ? line.standing : null
   const claim = line.claim
@@ -2217,11 +2207,11 @@ function LineRow({
   const standing =
     tagKind !== null ? (
       <span data-line-tag={tagKind} {...stylex.props(styles.lineTag)}>
-        {format(m.resultLineTag, { kind: tagKind })}
+        {m.result_lineTag({ kind: tagKind })}
       </span>
     ) : stopped !== null ? (
       <span data-stopped={stopped} {...stylex.props(styles.lineTag)}>
-        {format(m.resultStopped, { kind: stopped })}
+        {m.result_stopped({ kind: stopped })}
       </span>
     ) : claim === null ? null : (
       <EntryStanding
@@ -2255,16 +2245,14 @@ function LineRow({
           <span {...stylex.props(styles.lineFacts)}>
             {when !== null && (
               <span {...stylex.props(styles.lineKeep)}>
-                {claim === null
-                  ? when
-                  : format(m.entriesWhen, { when, action: format(ACT_SAID[claim.act]) })}
+                {claim === null ? when : m.entries_when({ when, action: ACT_SAID[claim.act]() })}
               </span>
             )}
             {claim !== null && claim.files > 0 && (
               <>
                 {when !== null && <span aria-hidden {...stylex.props(styles.lineRule)} />}
                 <span {...stylex.props(styles.lineKeep)}>
-                  {format(m.entriesFiles, { count: claim.files })}
+                  {m.entries_files({ count: claim.files })}
                 </span>
               </>
             )}
@@ -2281,9 +2269,9 @@ function LineRow({
               )}
             >
               {note.kind === 'return'
-                ? format(m.entriesNoteReturned, { text: note.text })
+                ? m.entries_noteReturned({ text: note.text })
                 : note.kind === 'ask'
-                  ? format(m.entriesNoteAsked, { text: note.text })
+                  ? m.entries_noteAsked({ text: note.text })
                   : note.text}
             </span>
           </>
@@ -2328,7 +2316,7 @@ function LineRow({
               </span>
               {/* a draft has to be handed in first, as its question's row says */}
               <span {...stylex.props(styles.lineWouldWord)}>
-                {format(unsent ? m.resultIfSubmitted : m.entryScoreIfApproved)}
+                {(unsent ? m.result_ifSubmitted : m.entry_scoreIfApproved)()}
               </span>
             </>
           )
@@ -2372,7 +2360,6 @@ function LineRow({
 
 /** a limit that bit, with what the group came to and the difference written out */
 function Trim({ adjustment }: { adjustment: LedgerAdjustmentView }) {
-  const { format } = useI18n()
   const delta = adjustment.deltaCents
   return (
     <div
@@ -2384,7 +2371,7 @@ function Trim({ adjustment }: { adjustment: LedgerAdjustmentView }) {
     >
       <AlignLeftIcon aria-hidden {...stylex.props(styles.trimIcon)} />
       <span {...stylex.props(styles.trimText)}>
-        {format(m.resultTrim, {
+        {m.result_trim({
           rule: adjustment.rule,
           group: adjustment.name,
           raw: two(adjustment.rawCents),
@@ -2397,10 +2384,9 @@ function Trim({ adjustment }: { adjustment: LedgerAdjustmentView }) {
 }
 
 function Foot({ total }: { total: number }) {
-  const { format } = useI18n()
   return (
     <div {...stylex.props(styles.foot)}>
-      <span {...stylex.props(styles.footLabel)}>{format(m.resultGrandTotal)}</span>
+      <span {...stylex.props(styles.footLabel)}>{m.result_grandTotal()}</span>
       <span {...stylex.props(styles.spacer)} />
       <span {...stylex.props(styles.footValue, total < 0 && styles.negative)}>{two(total)}</span>
     </div>
@@ -2409,11 +2395,10 @@ function Foot({ total }: { total: number }) {
 
 /** a round that asks nothing: the room the ledger would take says so */
 function Nothing({ action }: { action: ReactNode }) {
-  const { format } = useI18n()
   return (
     <div data-testid="result-empty" {...stylex.props(styles.empty)}>
       <BarChart3Icon aria-hidden {...stylex.props(styles.emptyMark)} />
-      <p {...stylex.props(styles.emptyTitle)}>{format(m.resultNothingAsked)}</p>
+      <p {...stylex.props(styles.emptyTitle)}>{m.result_nothingAsked()}</p>
       {action}
     </div>
   )
@@ -2438,7 +2423,7 @@ export function ResultUnavailable({
   onRetry: () => void
   action?: ReactNode
 }) {
-  const { format, formatError } = useI18n()
+  const { formatError } = useI18n()
   const tooLarge = isApiErrorCode(error, 'ASSESSMENT_SCORING_ACCOUNT_TOO_LARGE')
   return (
     <section
@@ -2447,15 +2432,15 @@ export function ResultUnavailable({
       {...stylex.props(styles.unavailable)}
     >
       <p {...stylex.props(styles.unavailableTitle)}>
-        {format(tooLarge ? m.resultTooLargeTitle : m.resultUnavailableTitle)}
+        {(tooLarge ? m.result_tooLargeTitle : m.result_unavailableTitle)()}
       </p>
       <p {...stylex.props(styles.unavailableHint)}>
-        {tooLarge ? formatError(error) : format(m.resultUnavailableHint)}
+        {tooLarge ? formatError(error) : m.result_unavailableHint()}
       </p>
       <div {...stylex.props(styles.unavailableActions)}>
         {!tooLarge && (
           <Button variant="outline" size="sm" disabled={retrying} onClick={onRetry}>
-            {format(m.resultRecalculate)}
+            {m.result_recalculate()}
           </Button>
         )}
         {action}

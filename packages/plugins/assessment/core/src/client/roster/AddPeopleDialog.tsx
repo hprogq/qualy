@@ -3,10 +3,9 @@ import * as stylex from '@stylexjs/stylex'
 import { ShieldQuestionIcon } from 'lucide-react'
 import { UiSlot } from '@qualy/web-runtime'
 import { peoplePickerView } from '@qualy/ui-contract'
-import { useI18n } from '@qualy/web-i18n'
 import { useTerm } from '@qualy/plugin-settings/client/terms'
 import { authTerms } from '@qualy/auth-contract/terms'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { Button } from '@qualy/ui/button'
 import {
   Dialog,
@@ -17,10 +16,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@qualy/ui/dialog'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import { DialogBlank } from '../DialogBlank.tsx'
 import { AdmissionOutcome, type AdmissionOutcomeFacts } from './AdmissionOutcome.tsx'
 import { useCandidates } from './candidates.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // Adding people to the roster one at a time, or a dozen at a time.
 //
@@ -61,7 +62,6 @@ export function AddPeopleDialog({
   onReview?: () => void
   onClose: () => void
 }) {
-  const { format } = useI18n()
   const businessNo = useTerm(authTerms.businessNumber)
   const [chosen, setChosen] = useState<readonly string[]>([])
   useEffect(() => {
@@ -74,13 +74,13 @@ export function AddPeopleDialog({
       <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
         <DialogContent size="32rem" data-testid="add-people-outcome">
           <DialogHeader>
-            <DialogTitle>{format(m.addPeopleTitle)}</DialogTitle>
+            <DialogTitle>{m.roster_addTitle()}</DialogTitle>
           </DialogHeader>
           <DialogBody>
             <AdmissionOutcome facts={outcome} {...(onReview === undefined ? {} : { onReview })} />
           </DialogBody>
           <DialogFooter>
-            <Button onClick={onClose}>{format(m.admittedDone)}</Button>
+            <Button onClick={onClose}>{m.roster_admittedDone()}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -91,8 +91,8 @@ export function AddPeopleDialog({
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
       <DialogContent size="68rem" xstyle={styles.panel}>
         <DialogHeader>
-          <DialogTitle>{format(m.addPeopleTitle)}</DialogTitle>
-          <DialogDescription>{format(m.addPeopleHint, { businessNo })}</DialogDescription>
+          <DialogTitle>{m.roster_addTitle()}</DialogTitle>
+          <DialogDescription>{m.roster_addHint({ businessNo })}</DialogDescription>
         </DialogHeader>
         <DialogBody>
           <UiSlot
@@ -104,7 +104,7 @@ export function AddPeopleDialog({
               disabled: candidates.rows
                 .filter((row) => row.roster === 'active')
                 .map((row) => row.userId),
-              disabledLabel: format(m.addPeopleOnRoster),
+              disabledLabel: m.roster_addOnRoster(),
               onToggle: (userId: string) => {
                 const row = candidates.rows.find((one) => one.userId === userId)
                 if (row?.roster === 'active') return
@@ -118,18 +118,18 @@ export function AddPeopleDialog({
               <DialogBlank
                 testId="add-people-unavailable"
                 icon={<ShieldQuestionIcon />}
-                title={format(m.pickerUnavailable)}
-                description={format(m.pickerUnavailableHint)}
+                title={m.roster_pickerUnavailable()}
+                description={m.roster_pickerUnavailableHint()}
               />
             }
           />
         </DialogBody>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>
-            {format(commonMessages.cancel)}
+            {commonMessages.action_cancel()}
           </Button>
           <Button disabled={pending || chosen.length === 0} onClick={() => onAdd(chosen)}>
-            {format(m.addPeopleConfirm, { count: chosen.length })}
+            {m.roster_addConfirm({ count: chosen.length })}
           </Button>
         </DialogFooter>
       </DialogContent>

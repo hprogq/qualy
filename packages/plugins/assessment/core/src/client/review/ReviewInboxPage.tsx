@@ -11,8 +11,7 @@ import {
   usePageQueryUpdate,
   usePageRouteParams,
 } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { VisuallyHidden } from '@qualy/ui/visually-hidden'
 import { AsyncSection } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
@@ -26,7 +25,7 @@ import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { Count } from '@qualy/ui/count'
 import { assessmentApi } from '../api.ts'
 import { useBatchLive } from '../live.ts'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import { BatchScreen } from '../batch/BatchScreen.tsx'
 import { AwaitingSection } from './AwaitingSection.tsx'
 import { useAwaitingQuery, useQueueRefresh, useReviewQueueQuery } from './queue.ts'
@@ -34,6 +33,8 @@ import { useDraftSweep } from './use-draft.ts'
 import { rememberQueuePlace } from './queue-place.ts'
 import { ItemQueue, PersonQueue, QueueSkeleton, TimeQueue } from './QueueViews.tsx'
 import { matchesSearch, pageNumberOf, type InboxItemDto } from './model.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // The queue, laid out three ways: by question so one standard is applied in
 // a row, by submitted time to clear a backlog oldest first, by participant
@@ -278,7 +279,6 @@ function useOpenRow(batchId: string) {
 }
 
 export default function ReviewInboxPage() {
-  const { format } = useI18n()
   const { batchId } = usePageRouteParams('batchId')
   const query = useApiQuery(assessmentApi)
   const [view] = usePageQueryState('view', 'item')
@@ -294,7 +294,7 @@ export default function ReviewInboxPage() {
   const first = queue.all[0]
   return (
     <BatchScreen
-      title={format(m.reviewTab)}
+      title={m.review_tab()}
       description={
         // held open while the batch is read, so the line arriving does not
         // push the page down under the reader
@@ -309,7 +309,7 @@ export default function ReviewInboxPage() {
         // who only wants to get through what is waiting
         reviewing && first !== undefined ? (
           <Button data-testid="review-start" onClick={() => open(first, '')}>
-            {format(m.reviewRunStart)}
+            {m.review_runStart()}
           </Button>
         ) : undefined
       }
@@ -325,8 +325,8 @@ export default function ReviewInboxPage() {
           <EmptyScreen
             state="no-standing"
             icon={<ShieldIcon aria-hidden className={stylex.props(styles.emptyIcon).className} />}
-            title={format(m.reviewNoRoleTitle)}
-            body={format(m.reviewNoStandingHint)}
+            title={m.review_noRoleTitle()}
+            body={m.review_noStandingHint()}
           />
         )
       }
@@ -340,7 +340,6 @@ export default function ReviewInboxPage() {
  * there is any: a zero there is a fact nobody asked for.
  */
 function QueueStanding({ queue }: { queue: Queue }) {
-  const { format } = useI18n()
   if (queue.inbox.data === undefined) {
     return queue.inbox.isPending ? (
       <Skeleton className={stylex.props(styles.standingBones).className} />
@@ -349,9 +348,9 @@ function QueueStanding({ queue }: { queue: Queue }) {
   const pending = queue.all.length
   const today = queue.inbox.data.handledToday
   const parts: ReactNode[] = [
-    format(m.reviewGroupCount, { count: pending }),
-    format(m.reviewStandingToday, { count: today }),
-    ...(queue.awaiting > 0 ? [format(m.reviewStandingAwaiting, { count: queue.awaiting })] : []),
+    m.review_groupCount({ count: pending }),
+    m.review_standingToday({ count: today }),
+    ...(queue.awaiting > 0 ? [m.review_standingAwaiting({ count: queue.awaiting })] : []),
   ]
   return (
     <span
@@ -382,7 +381,6 @@ function QueueBody({
   queue: Queue
   onOpen: (row: InboxItemDto, run: string) => void
 }) {
-  const { format } = useI18n()
   const loadFailure = useLoadFailure()
   const location = useLocation()
   const navigate = useNavigate()
@@ -477,8 +475,8 @@ function QueueBody({
       retrying={queue.inbox.isFetching}
       // on the page's own ground, under its title, where the queue would stand
       framed
-      loadingLabel={format(commonMessages.loading)}
-      retryLabel={format(commonMessages.retry)}
+      loadingLabel={commonMessages.state_loading()}
+      retryLabel={commonMessages.action_retry()}
       onRetry={() => void queue.inbox.refetch()}
       skeleton={<QueueSkeleton />}
       xstyle={styles.fill}
@@ -493,16 +491,16 @@ function QueueBody({
               xstyle={styles.viewsField}
             >
               <TabsList>
-                <TabsTrigger value="item">{format(m.reviewTabByItem)}</TabsTrigger>
-                <TabsTrigger value="time">{format(m.reviewTabByTime)}</TabsTrigger>
-                <TabsTrigger value="person">{format(m.reviewTabByPerson)}</TabsTrigger>
+                <TabsTrigger value="item">{m.review_tabByItem()}</TabsTrigger>
+                <TabsTrigger value="time">{m.review_tabByTime()}</TabsTrigger>
+                <TabsTrigger value="person">{m.review_tabByPerson()}</TabsTrigger>
                 {/* Its own room, not a section under the queue: what is out
                     with somebody else is nothing to decide now, and stacked
                     below the queue it shouted over every empty state. The
                     count rides the tab so the door says whether it is worth
                     opening. */}
                 <TabsTrigger value="asked">
-                  {format(m.reviewAwaitingTab)}
+                  {m.review_awaitingTab()}
                   {queue.awaiting > 0 && <Count>{queue.awaiting}</Count>}
                 </TabsTrigger>
               </TabsList>
@@ -516,7 +514,7 @@ function QueueBody({
                 onClick={() => setSeeking((open) => !open)}
               >
                 <SearchIcon aria-hidden />
-                <VisuallyHidden>{format(m.reviewSearchPlaceholder)}</VisuallyHidden>
+                <VisuallyHidden>{m.review_searchPlaceholder()}</VisuallyHidden>
               </Button>
             )}
             {view !== 'asked' && (
@@ -525,7 +523,7 @@ function QueueBody({
                     picker; by time a question is one more narrowing */}
                 {view === 'time' && (
                   <Filter
-                    label={format(m.reviewFilterAllItems)}
+                    label={m.review_filterAllItems()}
                     value={itemKey}
                     options={itemOptions}
                     onChange={(next) => narrow({ item: next })}
@@ -533,7 +531,7 @@ function QueueBody({
                 )}
                 {unitOptions.length > 0 && (
                   <Filter
-                    label={format(m.reviewFilterAllUnits)}
+                    label={m.review_filterAllUnits()}
                     value={unitFilter}
                     options={unitOptions}
                     onChange={(next) => narrow({ unit: next })}
@@ -543,10 +541,10 @@ function QueueBody({
                   <SearchIcon aria-hidden className={stylex.props(styles.searchIcon).className} />
                   <Input
                     name="review-search"
-                    aria-label={format(m.reviewSearchPlaceholder)}
+                    aria-label={m.review_searchPlaceholder()}
                     className={stylex.props(styles.searchInput).className}
                     value={search}
-                    placeholder={format(m.reviewSearchPlaceholder)}
+                    placeholder={m.review_searchPlaceholder()}
                     onChange={(event) => onSearch(event.target.value)}
                   />
                 </div>
@@ -559,10 +557,10 @@ function QueueBody({
               <Input
                 autoFocus
                 name="review-search"
-                aria-label={format(m.reviewSearchPlaceholder)}
+                aria-label={m.review_searchPlaceholder()}
                 className={stylex.props(styles.searchInputWide).className}
                 value={search}
-                placeholder={format(m.reviewSearchPlaceholder)}
+                placeholder={m.review_searchPlaceholder()}
                 onChange={(event) => onSearch(event.target.value)}
               />
             </div>
@@ -583,8 +581,8 @@ function QueueBody({
               icon={
                 <FileTextIcon aria-hidden className={stylex.props(styles.emptyIcon).className} />
               }
-              title={format(m.reviewClosedTitle)}
-              body={format(m.reviewClosedBody)}
+              title={m.review_closedTitle()}
+              body={m.review_closedBody()}
             />
           ) : // two different quiet days: everything handled, or nothing has
           // arrived yet. The counter is what tells them apart
@@ -592,8 +590,8 @@ function QueueBody({
             <EmptyScreen
               state="done"
               mark={<DoneMark />}
-              title={format(m.reviewAllDoneTitle)}
-              body={format(m.reviewAllDoneBody, { count: queue.inbox.data?.handledToday ?? 0 })}
+              title={m.review_allDoneTitle()}
+              body={m.review_allDoneBody({ count: queue.inbox.data?.handledToday ?? 0 })}
             />
           ) : (
             <EmptyScreen
@@ -601,13 +599,13 @@ function QueueBody({
               icon={
                 <FileTextIcon aria-hidden className={stylex.props(styles.emptyIcon).className} />
               }
-              title={format(m.reviewNothingTitle)}
-              body={format(m.reviewNothingBody)}
+              title={m.review_nothingTitle()}
+              body={m.review_nothingBody()}
             />
           )
         ) : rows.length === 0 ? (
           <p data-testid="review-no-matches" {...stylex.props(styles.noMatches)}>
-            {format(m.reviewMatchesNone)}
+            {m.review_matchesNone()}
           </p>
         ) : view === 'item' ? (
           <ItemQueue

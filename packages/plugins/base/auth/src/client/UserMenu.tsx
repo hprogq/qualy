@@ -18,11 +18,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@qualy/ui/dropdown-menu'
-import { authMessages as m } from './i18n.ts'
+
 import { authApi } from './api.ts'
 import { useIdentity } from './identity.ts'
 import { LocaleChoicePicker, ThemeChoicePicker } from './identity-bits.tsx'
 import { initialsOf } from './initials.ts'
+import * as m from '#messages'
 
 // The account at the end of the top bar: an avatar and a name, opening a menu
 // with the whole identity - their number, their type, where they stand in the
@@ -210,7 +211,7 @@ export default function UserMenu() {
   const api = useApi(authApi)
   const run = useRunApi()
 
-  const { format, formatError } = useI18n()
+  const { formatError } = useI18n()
   const businessNo = useTerm(authTerms.businessNumber)
   const endSession = useSessionTransition()
   const [menuOpen, setMenuOpen] = useState(false)
@@ -225,7 +226,7 @@ export default function UserMenu() {
     if (isAuthenticationError(me.error)) {
       return (
         <Button variant="outline" size="sm" asChild>
-          <PageLink page="auth/login">{format(m.signIn)}</PageLink>
+          <PageLink page="auth/login">{m.action_signIn()}</PageLink>
         </Button>
       )
     }
@@ -251,7 +252,7 @@ export default function UserMenu() {
           <span {...stylex.props(styles.whoNo)}>{user.businessNo}</span>
         ) : (
           <span {...stylex.props(styles.whoNo, styles.whoNoAbsent)}>
-            {format(m.noBusinessNo, { businessNo })}
+            {m.session_noBusinessNo({ businessNo })}
           </span>
         )}
       </span>
@@ -304,12 +305,12 @@ export default function UserMenu() {
           {/* appearance and language are personal preferences, so they live
               with the account rather than in the page chrome. Both are held
               by the browser: nothing about them reaches the server. */}
-          <PreferenceRow label={format(m.appearance)}>
+          <PreferenceRow label={m.preference_appearance()}>
             <ThemeChoicePicker />
           </PreferenceRow>
           {/* the same row shape as the appearance above: chosen in place,
               nothing opens over the menu */}
-          <PreferenceRow label={format(m.language)}>
+          <PreferenceRow label={m.preference_language()}>
             <LocaleChoicePicker />
           </PreferenceRow>
           <DropdownMenuSeparator />
@@ -325,7 +326,7 @@ export default function UserMenu() {
                 .catch((error: unknown) => toast.error(formatError(error)))
             }}
           >
-            {format(m.signOut)}
+            {m.action_signOut()}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

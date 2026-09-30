@@ -46,6 +46,12 @@
     "./server/session": "./src/server/session.ts",
     "./server/sign-in": "./src/server/sign-in.ts"
   },
+  "imports": {
+    "#messages": {
+      "types": "./.qualy/messages.d.ts",
+      "default": "./.qualy/messages.js"
+    }
+  },
   "peerDependencies": {
     "react": "catalog:"
   },

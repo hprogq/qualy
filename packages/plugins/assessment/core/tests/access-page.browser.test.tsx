@@ -6,7 +6,7 @@ import { Effect } from 'effect'
 import { AccessAdjustDialog } from '../src/client/access/AccessAdjustDialog.tsx'
 import { AccessSyncDialog } from '../src/client/access/AccessSyncDialog.tsx'
 import { appointSearch } from '../src/client/access/view.ts'
-import zh from '../src/client/locales/zh-CN.ts'
+import zh from '../messages/zh-CN.json' with { type: 'json' }
 import { addressNow, apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
 // How one round's staff reads at the widths people actually use: a role and
@@ -288,10 +288,7 @@ describe('the grid of capabilities', () => {
         .elements()
         .find((cell) => cell.getAttribute('data-state') === 'withheld')!
       expect(withheld.textContent).toBe(
-        zh['assessment/access/permission-withheld'].replace(
-          '{name}',
-          zh['assessment/permission/ranking-view'],
-        ),
+        zh['access_permissionWithheld'].replace('{name}', zh['permission_rankingView']),
       )
     })
   })

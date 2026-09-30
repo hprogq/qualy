@@ -2,9 +2,8 @@ import { InfoIcon, TriangleAlertIcon } from 'lucide-react'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
-import { useI18n } from '@qualy/web-i18n'
 import { Button } from '@qualy/ui/button'
-import { assessmentMessages as m } from '../i18n.ts'
+import * as m from '#messages'
 
 // One line saying something changed, and the button that opens it.
 //
@@ -64,7 +63,6 @@ export function AccessSyncNotice({
   lapsedTotal: number
   onOpen: () => void
 }) {
-  const { format } = useI18n()
   if (pendingTotal === 0 && lapsedTotal === 0) return null
   const decide = pendingTotal > 0
 
@@ -85,7 +83,7 @@ export function AccessSyncNotice({
         <InfoIcon aria-hidden {...stylex.props(styles.icon, styles.iconLapsed)} />
       )}
       <span {...stylex.props(styles.words)}>
-        {format(decide ? m.accessSyncPrompt : m.accessSyncLapsedPrompt)}
+        {(decide ? m.access_syncPrompt : m.access_syncLapsedPrompt)()}
       </span>
       <Button
         size="sm"
@@ -93,7 +91,7 @@ export function AccessSyncNotice({
         className={stylex.props(styles.open).className}
         onClick={onOpen}
       >
-        {format(m.accessSyncOpen)}
+        {m.access_syncOpen()}
       </Button>
     </div>
   )

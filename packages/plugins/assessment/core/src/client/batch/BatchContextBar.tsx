@@ -11,7 +11,6 @@ import {
   usePageRouteParams,
   usePublishWorkspaceCapabilities,
 } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { Button } from '@qualy/ui/button'
@@ -20,12 +19,13 @@ import { VisuallyHidden } from '@qualy/ui/visually-hidden'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@qualy/ui/sheet'
 import { useIsBelow } from '@qualy/ui/use-mobile'
 import { assessmentApi } from '../api.ts'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import { BatchFlow } from './BatchFlow.tsx'
 import { BatchZone } from './BatchZone.tsx'
 import { BatchProgress } from './BatchProgress.tsx'
 import { BatchSwitcher } from './BatchSwitcher.tsx'
 import { holdsStanding, useBatchAbsence } from './absence.ts'
+import * as m from '#messages'
 
 /** where the band stops being one line and becomes the window's own head */
 const HEAD_BREAKPOINT = 768
@@ -256,7 +256,7 @@ const styles = stylex.create({
 export default function BatchContextBar() {
   const { batchId } = usePageRouteParams('batchId')
   const query = useApiQuery(assessmentApi)
-  const { format } = useI18n()
+
   const head = useIsBelow(HEAD_BREAKPOINT)
   const [flowOpen, setFlowOpen] = useState(false)
   // an address that cannot name a batch is not asked about
@@ -305,7 +305,7 @@ export default function BatchContextBar() {
       <SubjectAbsence>
         <LoadFailure
           failure={absent}
-          back={{ page: 'assessment/batches', label: format(m.batchGoneBack) }}
+          back={{ page: 'assessment/batches', label: m.batch_goneBack() }}
           onRetry={() => void detail.refetch()}
           retrying={detail.isFetching}
         />
@@ -326,9 +326,9 @@ export default function BatchContextBar() {
             className={stylex.props(styles.backButton).className}
             asChild
           >
-            <PageLink page="assessment/batches" aria-label={format(m.backToList)}>
+            <PageLink page="assessment/batches" aria-label={m.batch_back()}>
               <ArrowLeftIcon />
-              <span {...stylex.props(styles.backWord)}>{format(m.backToList)}</span>
+              <span {...stylex.props(styles.backWord)}>{m.batch_back()}</span>
             </PageLink>
           </Button>
         </div>
@@ -364,7 +364,7 @@ export default function BatchContextBar() {
           // change height from one round to the next, and whoever arranges
           // the stages learns here that nobody has.
           <span {...stylex.props(styles.emptyStrip)}>
-            {format(stages.length === 0 ? m.noPhasesYet : m.phasesOver)}
+            {(stages.length === 0 ? m.batch_noPhases : m.batch_phasesOver)()}
           </span>
         ) : (
           <>
@@ -383,7 +383,7 @@ export default function BatchContextBar() {
                 type="button"
                 data-testid="stage-key"
                 aria-haspopup="dialog"
-                title={format(m.viewFullFlow)}
+                title={m.flow_view()}
                 onClick={() => setFlowOpen(true)}
                 {...stylex.props(styles.stageKey)}
               >
@@ -391,7 +391,7 @@ export default function BatchContextBar() {
                   <BatchProgress showStage timeline={stages} xstyle={styles.progressText} />
                 </BatchZone>
                 {/* heard after the stage it opens the plan of */}
-                <VisuallyHidden>{format(m.viewFullFlow)}</VisuallyHidden>
+                <VisuallyHidden>{m.flow_view()}</VisuallyHidden>
               </button>
             )}
             {/* the whole plan, one press away rather than repeated above
@@ -403,7 +403,7 @@ export default function BatchContextBar() {
                 className={stylex.props(styles.flowButton).className}
                 onClick={() => setFlowOpen(true)}
               >
-                {format(m.fullFlow)}
+                {m.flow_full()}
                 <ChevronRightIcon aria-hidden />
               </Button>
             )}
@@ -416,7 +416,7 @@ export default function BatchContextBar() {
             bottom on a phone, where the thumb is */}
         <SheetContent side={head ? 'bottom' : 'right'} xstyle={styles.flowPanel}>
           <SheetHeader>
-            <SheetTitle>{format(m.flowTitle)}</SheetTitle>
+            <SheetTitle>{m.flow_title()}</SheetTitle>
           </SheetHeader>
           <div {...stylex.props(styles.flowBody)}>
             <BatchZone zone={batch?.timezone}>

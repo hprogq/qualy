@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useApiQuery, useLoadFailure, usePageNavigate } from '@qualy/web-runtime'
 import { useI18n, useList } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { useState } from 'react'
 import { PlusIcon } from 'lucide-react'
 import { AsyncSection } from '@qualy/ui/admin'
@@ -21,10 +21,12 @@ import {
   TableRow,
   Tag,
 } from '@qualy/ui/screen'
-import { rbacMessages as m } from './i18n.ts'
+
 import type { RoleRow } from './RoleEditor.tsx'
 import { NewRoleForm } from './NewRoleForm.tsx'
 import { accessApi } from './api.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // Roles, as two tables rather than one list: a tenant-wide role acts
 // everywhere the moment it is granted, a per-unit role waits to be anchored
@@ -41,7 +43,7 @@ const COLUMNS = 'minmax(0, 1.1fr) 5.5rem 5rem minmax(0, 1fr) minmax(0, 1fr) 5rem
 
 export default function RolesPage() {
   const query = useApiQuery(accessApi)
-  const { format, locale } = useI18n()
+  const { locale } = useI18n()
   const describe = useLoadFailure()
   const figure = new Intl.NumberFormat(locale)
   const listJoin = useList()
@@ -55,14 +57,14 @@ export default function RolesPage() {
   const groups: { key: 'tenant' | 'org'; title: string; hint: string; rows: RoleRow[] }[] = [
     {
       key: 'tenant',
-      title: format(m.tenantGroup),
-      hint: format(m.tenantGroupHint),
+      title: m.roles_tenantGroup(),
+      hint: m.roles_tenantGroupHint(),
       rows: all.filter((role) => role.kind === 'tenant'),
     },
     {
       key: 'org',
-      title: format(m.orgGroup),
-      hint: format(m.orgGroupHint),
+      title: m.roles_orgGroup(),
+      hint: m.roles_orgGroupHint(),
       rows: all.filter((role) => role.kind === 'org'),
     },
   ]
@@ -72,42 +74,39 @@ export default function RolesPage() {
   /** who may hold it: everybody, the listed kinds, or - on a draft - nothing said yet */
   const holders = (role: RoleRow) => {
     // the canonical administrator is exempt, which is not the same as unset
-    if (role.systemKey !== null) return { words: format(m.exemptWord), unset: false }
-    if (role.holderPolicy.mode === 'unrestricted')
-      return { words: format(m.anyoneWord), unset: false }
+    if (role.systemKey !== null) return { words: m.roles_exempt(), unset: false }
+    if (role.holderPolicy.mode === 'unrestricted') return { words: m.roles_anyone(), unset: false }
     const names = namesOf(role.holderPolicy.userTypeIds, options.data?.userTypes ?? [])
-    return names === ''
-      ? { words: format(m.unsetWord), unset: true }
-      : { words: names, unset: false }
+    return names === '' ? { words: m.roles_unset(), unset: true } : { words: names, unset: false }
   }
   /** where it may be held; a tenant role is held nowhere in particular */
   const anchors = (role: RoleRow) => {
     if (role.anchorPolicy === null)
-      return { words: format(m.notApplicable), unset: false, quiet: true }
+      return { words: m.roles_notApplicable(), unset: false, quiet: true }
     if (role.anchorPolicy.mode === 'unrestricted') {
-      return { words: format(m.anywhereWord), unset: false, quiet: false }
+      return { words: m.roles_anywhere(), unset: false, quiet: false }
     }
     const names = namesOf(role.anchorPolicy.orgTypeIds, options.data?.orgTypes ?? [])
     return names === ''
-      ? { words: format(m.unsetWord), unset: true, quiet: false }
+      ? { words: m.roles_unset(), unset: true, quiet: false }
       : { words: names, unset: false, quiet: false }
   }
 
   return (
     <Screen
-      title={format(m.rolesTitle)}
-      description={format(m.rolesHint)}
+      title={m.roles_title()}
+      description={m.roles_hint()}
       actions={
         canManage && (
           <BandActions
-            moreLabel={format(commonMessages.bandMore)}
+            moreLabel={commonMessages.action_more()}
             primary={
               <BandAction
                 variant="primary"
                 icon={<PlusIcon aria-hidden />}
                 onSelect={() => setCreating(true)}
               >
-                {format(m.newRole)}
+                {m.roles_new()}
               </BandAction>
             }
           />
@@ -120,14 +119,14 @@ export default function RolesPage() {
         // on the page's own ground, where the list would have stood in a card
         framed
         retrying={roles.isFetching}
-        loadingLabel={format(commonMessages.loading)}
-        retryLabel={format(commonMessages.retry)}
+        loadingLabel={commonMessages.state_loading()}
+        retryLabel={commonMessages.action_retry()}
         onRetry={() => void roles.refetch()}
         skeleton={<TableSkeleton />}
       >
         {all.length === 0 ? (
           <Card>
-            <CardEmpty>{format(m.rolesEmpty)}</CardEmpty>
+            <CardEmpty>{m.roles_empty()}</CardEmpty>
           </Card>
         ) : (
           groups
@@ -137,12 +136,12 @@ export default function RolesPage() {
                 <CardHead title={group.title} note={group.hint} />
                 <Table columns={COLUMNS} openable>
                   <TableHead>
-                    <span>{format(m.rolesTitle)}</span>
-                    <span>{format(m.tabPermissions)}</span>
-                    <span>{format(m.columnGrants)}</span>
-                    <span>{format(m.columnHolders)}</span>
-                    <span>{format(m.columnAnchors)}</span>
-                    <span>{format(m.factStatus)}</span>
+                    <span>{m.roles_title()}</span>
+                    <span>{m.roles_tabPermissions()}</span>
+                    <span>{m.roles_columnGrants()}</span>
+                    <span>{m.roles_columnHolders()}</span>
+                    <span>{m.roles_columnAnchors()}</span>
+                    <span>{m.roles_factStatus()}</span>
                   </TableHead>
                   {group.rows.map((role) => {
                     const who = holders(role)
@@ -158,13 +157,13 @@ export default function RolesPage() {
                       >
                         <Cell lead>
                           <LeadWord>{role.name}</LeadWord>
-                          {role.systemKey !== null && <Tag>{format(m.systemBadge)}</Tag>}
-                          {!role.assignable && <Tag outline>{format(m.unassignableBadge)}</Tag>}
+                          {role.systemKey !== null && <Tag>{m.badge_system()}</Tag>}
+                          {!role.assignable && <Tag outline>{m.badge_unassignable()}</Tag>}
                         </Cell>
                         <Cell numeric>
                           {role.holdsEveryPermission
-                            ? format(m.everyWord)
-                            : format(m.countItems, { count: role.permissions.length })}
+                            ? m.roles_every()
+                            : m.roles_countItems({ count: role.permissions.length })}
                         </Cell>
                         {/* the column is named above, and on a phone the row
                             carries that name - so the cell is the count */}
@@ -199,13 +198,11 @@ export default function RolesPage() {
                                   : 'plain'
                             }
                           >
-                            {format(
-                              role.status === 'active'
-                                ? m.statusOn
-                                : role.status === 'draft'
-                                  ? m.draftBadge
-                                  : m.disabledBadge,
-                            )}
+                            {(role.status === 'active'
+                              ? m.roles_statusOn
+                              : role.status === 'draft'
+                                ? m.badge_draft
+                                : m.badge_disabled)()}
                           </Status>
                         </Cell>
                       </TableRow>

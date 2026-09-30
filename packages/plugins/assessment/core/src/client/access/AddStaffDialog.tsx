@@ -12,7 +12,7 @@ import {
   type PeoplePickerContext,
 } from '@qualy/ui-contract'
 import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { Button } from '@qualy/ui/button'
 import {
   Dialog,
@@ -26,10 +26,12 @@ import {
 import { Skeleton } from '@qualy/ui/skeleton'
 import { Steps } from '@qualy/ui/steps'
 import { assessmentApi } from '../api.ts'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import { DialogBlank } from '../DialogBlank.tsx'
 import { useCandidates } from '../roster/candidates.ts'
 import { RolePicker } from './RolePicker.tsx'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // Bringing somebody in for this round only, one question at a time.
 //
@@ -48,7 +50,11 @@ import { RolePicker } from './RolePicker.tsx'
 // domain either way: the units this round covers. The role step then asks,
 // for every person and unit chosen, which roles hold.
 
-const STEPS = [m.addStaffStepWho, m.addStaffStepWhere, m.addStaffStepAs] as const
+const STEPS = [
+  m.access_addStaffStepWho,
+  m.access_addStaffStepWhere,
+  m.access_addStaffStepAs,
+] as const
 
 const styles = stylex.create({
   // a fixed height, so the step that holds a picker does not resize the
@@ -111,7 +117,7 @@ export function AddStaffDialog({
   onClose: () => void
 }) {
   const query = useApiQuery(assessmentApi)
-  const { format, formatError } = useI18n()
+  const { formatError } = useI18n()
   const [step, setStep] = useState(0)
   const [chosen, setChosen] = useState<readonly string[]>([])
   const [unitIds, setUnitIds] = useState<readonly string[]>([])
@@ -185,8 +191,8 @@ export function AddStaffDialog({
     <DialogBlank
       testId="add-staff-unavailable"
       icon={<ShieldQuestionIcon />}
-      title={format(unit ? m.unitPickerUnavailable : m.pickerUnavailable)}
-      description={format(m.pickerUnavailableHint)}
+      title={(unit ? m.roster_unitPickerUnavailable : m.roster_pickerUnavailable)()}
+      description={m.roster_pickerUnavailableHint()}
     />
   )
 
@@ -199,20 +205,20 @@ export function AddStaffDialog({
         {...(nowhere ? {} : { xstyle: styles.panel })}
       >
         <DialogHeader>
-          <DialogTitle>{format(m.addStaffTitle)}</DialogTitle>
-          {!nowhere && <DialogDescription>{format(m.addStaffHint)}</DialogDescription>}
+          <DialogTitle>{m.access_addStaffTitle()}</DialogTitle>
+          {!nowhere && <DialogDescription>{m.access_addStaffHint()}</DialogDescription>}
         </DialogHeader>
         <DialogBody xstyle={styles.body}>
           {nowhere ? (
             <DialogBlank
               testId="add-staff-nowhere"
               icon={<UsersIcon />}
-              title={format(m.addStaffNowhere)}
-              description={format(m.addStaffNowhereHint)}
+              title={m.access_addStaffNowhere()}
+              description={m.access_addStaffNowhereHint()}
               action={
                 <Button variant="outline" size="sm" asChild>
                   <PageLink page="assessment/batch-results" params={{ batchId }}>
-                    {format(m.addStaffGoRoster)}
+                    {m.access_addStaffGoRoster()}
                   </PageLink>
                 </Button>
               }
@@ -220,7 +226,7 @@ export function AddStaffDialog({
           ) : (
             <>
               <Steps
-                steps={STEPS.map((label) => format(label))}
+                steps={STEPS.map((label) => label())}
                 current={step}
                 // a step already answered is a way back to it
                 onSelect={(at) => at <= step && setStep(at)}
@@ -261,11 +267,11 @@ export function AddStaffDialog({
                 <DialogBlank
                   testId="add-staff-units-failed"
                   icon={<NetworkIcon />}
-                  title={format(m.addStaffUnitsFailed)}
+                  title={m.access_addStaffUnitsFailed()}
                   description={formatError(units.error)}
                   action={
                     <Button variant="outline" size="sm" onClick={() => void units.refetch()}>
-                      {format(commonMessages.retry)}
+                      {commonMessages.action_retry()}
                     </Button>
                   }
                 />
@@ -273,7 +279,7 @@ export function AddStaffDialog({
 
               {step === 1 && !units.isError && (
                 <div {...stylex.props(styles.stepWords)}>
-                  <p {...stylex.props(styles.quiet)}>{format(m.addStaffWhereHint)}</p>
+                  <p {...stylex.props(styles.quiet)}>{m.access_addStaffWhereHint()}</p>
                   <UiSlot
                     token={orgNodePickerView}
                     context={{
@@ -291,7 +297,7 @@ export function AddStaffDialog({
 
               {step === 2 && (
                 <div {...stylex.props(styles.stepWords)}>
-                  <p {...stylex.props(styles.quiet)}>{format(m.addStaffAsHint)}</p>
+                  <p {...stylex.props(styles.quiet)}>{m.access_addStaffAsHint()}</p>
                   {/* a selection the server will not answer for - too many
                   people and units at once - is said as that, not as a
                   list of roles that happens to be empty */}
@@ -303,7 +309,7 @@ export function AddStaffDialog({
                         title={formatError(probes.error)}
                         action={
                           <Button variant="outline" size="sm" onClick={() => setStep(0)}>
-                            {format(m.addStaffChangeSelection)}
+                            {m.access_addStaffChangeSelection()}
                           </Button>
                         }
                       />
@@ -320,11 +326,11 @@ export function AddStaffDialog({
                         <DialogBlank
                           testId="add-staff-no-roles"
                           icon={<ShieldQuestionIcon />}
-                          title={format(m.addStaffNoRoles)}
-                          description={format(m.addStaffNoRolesHint)}
+                          title={m.access_addStaffNoRoles()}
+                          description={m.access_addStaffNoRolesHint()}
                           action={
                             <Button variant="outline" size="sm" onClick={() => setStep(1)}>
-                              {format(m.addStaffChangeUnit)}
+                              {m.access_addStaffChangeUnit()}
                             </Button>
                           }
                         />
@@ -340,7 +346,7 @@ export function AddStaffDialog({
         {nowhere ? (
           <DialogFooter>
             <Button variant="outline" onClick={onClose}>
-              {format(commonMessages.close)}
+              {commonMessages.action_close()}
             </Button>
           </DialogFooter>
         ) : (
@@ -350,22 +356,22 @@ export function AddStaffDialog({
               disabled={step === 0}
               onClick={() => setStep((at) => Math.max(0, at - 1))}
             >
-              {format(commonMessages.back)}
+              {commonMessages.action_back()}
             </Button>
             <div {...stylex.props(styles.footSide)}>
               <Button variant="outline" onClick={onClose}>
-                {format(commonMessages.cancel)}
+                {commonMessages.action_cancel()}
               </Button>
               {step < 2 ? (
                 <Button disabled={!answered[step]} onClick={() => setStep((at) => at + 1)}>
-                  {format(m.next)}
+                  {m.action_next()}
                 </Button>
               ) : (
                 <Button
                   disabled={pending || !ready}
                   onClick={() => ready && onAdd({ userIds: chosen, orgNodeIds, roleId })}
                 >
-                  {format(m.addStaffConfirm)}
+                  {m.access_addStaffConfirm()}
                 </Button>
               )}
             </div>

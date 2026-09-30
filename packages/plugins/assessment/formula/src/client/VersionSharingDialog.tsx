@@ -4,7 +4,7 @@ import { useMutation, useQuery } from '@tanstack/react-query'
 import { Share2Icon } from 'lucide-react'
 import { useApi, useApiQuery, useLoadFailure, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { UiSlot } from '@qualy/web-runtime'
 import { orgNodePicker } from '@qualy/ui-contract'
@@ -15,7 +15,8 @@ import { AsyncSection, FormDialog } from '@qualy/ui/admin'
 import { Blank } from '@qualy/ui/screen'
 import { toast } from '@qualy/ui/toast'
 import { formulaApi } from './api.ts'
-import { formulaMessages as m } from './i18n.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // Who one published version has been offered to, as a list to tick rather
 // than a chip to hunt for.
@@ -87,7 +88,7 @@ export function VersionSharingDialog({
   const api = useApi(formulaApi)
   const run = useRunApi()
   const query = useApiQuery(formulaApi)
-  const { format, formatError } = useI18n()
+  const { formatError } = useI18n()
   const loadFailure = useLoadFailure()
   const [chosen, setChosen] = useState<readonly string[]>([])
   const [failure, setFailure] = useState<string | null>(null)
@@ -149,7 +150,7 @@ export function VersionSharingDialog({
       ),
     onMutate: () => setFailure(null),
     onSuccess: async () => {
-      toast.success(format(m.sharingSaved))
+      toast.success(m.sharing_saved())
       await sharing.refetch()
       onSaved()
       onClose()
@@ -160,24 +161,24 @@ export function VersionSharingDialog({
   return (
     <FormDialog
       open={open && version !== null}
-      title={format(m.sharingTitle, { name: version?.name ?? '' })}
+      title={m.sharing_title({ name: version?.name ?? '' })}
       onClose={onClose}
       footer={
         settled ? (
           <Button variant="outline" onClick={onClose}>
-            {format(commonMessages.close)}
+            {commonMessages.action_close()}
           </Button>
         ) : (
           <>
             <Button variant="ghost" onClick={onClose}>
-              {format(m.cancel)}
+              {m.common_cancel()}
             </Button>
             <Button
               data-testid="formula-sharing-save"
               disabled={replace.isPending || sharing.data === undefined}
               onClick={() => replace.mutate(chosen)}
             >
-              {format(m.sharingSave)}
+              {m.sharing_save()}
             </Button>
           </>
         )
@@ -196,8 +197,8 @@ export function VersionSharingDialog({
               missing: ['ASSESSMENT_FORMULA_VERSION_NOT_FOUND'],
             })}
             retrying={sharing.isFetching || options.isFetching}
-            loadingLabel={format(commonMessages.loading)}
-            retryLabel={format(commonMessages.retry)}
+            loadingLabel={commonMessages.state_loading()}
+            retryLabel={commonMessages.action_retry()}
             onRetry={() => {
               if (sharing.isError) void sharing.refetch()
               if (options.isError) void options.refetch()
@@ -209,18 +210,18 @@ export function VersionSharingDialog({
           <Blank
             size="compact"
             icon={<Share2Icon />}
-            title={format(m.sharingNoOptions)}
-            description={format(m.sharingNoOptionsHint)}
+            title={m.sharing_noOptions()}
+            description={m.sharing_noOptionsHint()}
           />
         ) : (
           <>
-            <p {...stylex.props(styles.hint)}>{format(m.sharingHint)}</p>
+            <p {...stylex.props(styles.hint)}>{m.sharing_hint()}</p>
             {/* what it is offered to now, named rather than counted */}
             <section {...stylex.props(styles.part)}>
               <h3 {...stylex.props(styles.partTitle)}>
-                {format(m.sharingCurrent)}
+                {m.sharing_current()}
                 <span {...stylex.props(styles.partCount)}>
-                  {scopes.length === 0 ? format(m.sharingPrivate) : scopes.length}
+                  {scopes.length === 0 ? m.sharing_private() : scopes.length}
                 </span>
               </h3>
               {scopes.length === 0 ? null : (
@@ -234,7 +235,7 @@ export function VersionSharingDialog({
               )}
             </section>
             <section {...stylex.props(styles.part)}>
-              <h3 {...stylex.props(styles.partTitle)}>{format(m.sharingChoose)}</h3>
+              <h3 {...stylex.props(styles.partTitle)}>{m.sharing_choose()}</h3>
               {sharing.isPending || options.isPending ? (
                 <Skeleton className={stylex.props(styles.seat).className} />
               ) : (

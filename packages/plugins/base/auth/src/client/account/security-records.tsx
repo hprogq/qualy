@@ -16,7 +16,7 @@ import {
   useRunApi,
 } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { AsyncSection, ConfirmDialog } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import {
@@ -35,10 +35,12 @@ import { ToggleGroup, ToggleGroupItem } from '@qualy/ui/toggle-group'
 import { DateRangePicker, type DateRange } from '@qualy/ui/date-range-picker'
 import { Pager } from '@qualy/ui/pager'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { iamMessages as m } from '../i18n.ts'
+
 import { authApi } from '../api.ts'
 import { instantWords } from '../when.ts'
 import { deviceWords } from './device.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // What is signed in as the reader now, for the security page, and the record
 // of every time somebody came in, for its own page. A session is named by the
@@ -131,7 +133,7 @@ export function SessionsCard({ person }: { person?: RecordPerson }) {
   const run = useRunApi()
   const query = useApiQuery(authApi)
   const queryClient = useQueryClient()
-  const { format, formatError, locale } = useI18n()
+  const { formatError, locale } = useI18n()
   const describe = useLoadFailure()
   const [confirming, setConfirming] = useState(false)
   // somebody else's session, asked about before it is ended: a stray press
@@ -168,7 +170,7 @@ export function SessionsCard({ person }: { person?: RecordPerson }) {
         ? run(api.self.deleteSelfSession({ params: { sessionId } }))
         : run(api.identity.deleteUserSession({ params: { userId: person.userId, sessionId } })),
     onSuccess: async () => {
-      toast.success(format(m.sessionEnded))
+      toast.success(m.sessions_endDone())
       await refresh()
     },
     onError: (error: unknown) => toast.error(formatError(error)),
@@ -179,7 +181,7 @@ export function SessionsCard({ person }: { person?: RecordPerson }) {
         ? run(api.self.deleteSelfSessions({}))
         : run(api.identity.deleteUserSessions({ params: { userId: person.userId } })),
     onSuccess: async ({ ended }) => {
-      toast.success(format(m.sessionsEnded, { count: ended }))
+      toast.success(m.sessions_ended({ count: ended }))
       await refresh()
     },
     onError: (error: unknown) => toast.error(formatError(error)),
@@ -187,7 +189,7 @@ export function SessionsCard({ person }: { person?: RecordPerson }) {
 
   return (
     <Card data-testid="sessions-card" data-count={items.length}>
-      <CardHead title={format(m.sessionsTitle)}>
+      <CardHead title={m.sessions_title()}>
         {/* the history of how they came in is its own page; this card is
             what is signed in now. Somebody else's history is on the page
             this card stands on. */}
@@ -197,21 +199,21 @@ export function SessionsCard({ person }: { person?: RecordPerson }) {
             unavailable={null}
             className={stylex.props(styles.all).className}
           >
-            {format(m.sessionsActivity)}
+            {m.sessions_activity()}
           </PageLink>
         )}
       </CardHead>
       <AsyncSection
         pending={sessions.isPending}
         error={sessions.isError ? describe.of(sessions.error) : null}
-        loadingLabel={format(commonMessages.loading)}
-        retryLabel={format(commonMessages.retry)}
+        loadingLabel={commonMessages.state_loading()}
+        retryLabel={commonMessages.action_retry()}
         onRetry={() => void sessions.refetch()}
         skeleton={<TableSkeleton rows={2} />}
       >
         {/* the reader's own list always has the session in hand; somebody
             else's may have none at all */}
-        {items.length === 0 && <CardEmpty>{format(m.personSessionsNone)}</CardEmpty>}
+        {items.length === 0 && <CardEmpty>{m.person_sessionsNone()}</CardEmpty>}
         {items.map((session) => (
           <div
             key={session.id}
@@ -222,15 +224,15 @@ export function SessionsCard({ person }: { person?: RecordPerson }) {
             <span {...stylex.props(styles.words)}>
               <span {...stylex.props(styles.line)}>
                 <span {...stylex.props(styles.device)}>
-                  {deviceWords(session.userAgent) ?? format(m.unknownDevice)}
+                  {deviceWords(session.userAgent) ?? m.sessions_unknownDevice()}
                 </span>
-                {session.current && <Status tone="ok">{format(m.sessionCurrent)}</Status>}
+                {session.current && <Status tone="ok">{m.sessions_current()}</Status>}
               </span>
               <Meta
                 parts={[
-                  session.entrance?.name ?? format(m.entranceGone),
+                  session.entrance?.name ?? m.sessions_entranceGone(),
                   session.clientIp,
-                  format(m.sessionActive, {
+                  m.sessions_active({
                     when: instantWords(locale, session.lastUsedAt ?? session.createdAt),
                   }),
                 ]}
@@ -248,12 +250,12 @@ export function SessionsCard({ person }: { person?: RecordPerson }) {
                         id: session.id,
                         // said inside a sentence, so the words that stand
                         // alone as a row's heading are not the ones used
-                        device: deviceWords(session.userAgent) ?? format(m.unknownDeviceInline),
+                        device: deviceWords(session.userAgent) ?? m.sessions_unknownDeviceInline(),
                       })
                 }
                 className={stylex.props(styles.end).className}
               >
-                {format(person === undefined ? m.sessionEnd : m.personSessionEnd)}
+                {(person === undefined ? m.sessions_end : m.person_sessionEnd)()}
               </Button>
             )}
           </div>
@@ -267,7 +269,7 @@ export function SessionsCard({ person }: { person?: RecordPerson }) {
                 disabled={sessions.isFetchingNextPage}
                 onClick={() => void sessions.fetchNextPage()}
               >
-                {format(m.showMore)}
+                {m.sessions_more()}
               </Button>
             )}
             <Spacer />
@@ -278,7 +280,7 @@ export function SessionsCard({ person }: { person?: RecordPerson }) {
                 disabled={endOthers.isPending}
                 onClick={() => setConfirming(true)}
               >
-                {format(person === undefined ? m.sessionsEndOthers : m.personSessionsEndAll)}
+                {(person === undefined ? m.sessions_endOthers : m.person_sessionsEndAll)()}
               </Button>
             )}
           </CardFoot>
@@ -289,14 +291,14 @@ export function SessionsCard({ person }: { person?: RecordPerson }) {
         tone="destructive"
         title={
           person === undefined
-            ? format(m.sessionsEndOthersTitle)
-            : format(m.personSessionsEndAllTitle, { name: person.name })
+            ? m.sessions_endOthersTitle()
+            : m.person_sessionsEndAllTitle({ name: person.name })
         }
-        description={format(
-          person === undefined ? m.sessionsEndOthersBody : m.personSessionsEndAllBody,
-        )}
-        confirmLabel={format(person === undefined ? m.sessionsEndOthers : m.personSessionsEndAll)}
-        cancelLabel={format(m.cancel)}
+        description={(person === undefined
+          ? m.sessions_endOthersBody
+          : m.person_sessionsEndAllBody)()}
+        confirmLabel={(person === undefined ? m.sessions_endOthers : m.person_sessionsEndAll)()}
+        cancelLabel={m.action_cancel()}
         pending={endOthers.isPending}
         onCancel={() => setConfirming(false)}
         onConfirm={() => {
@@ -308,10 +310,10 @@ export function SessionsCard({ person }: { person?: RecordPerson }) {
         <ConfirmDialog
           open={ending !== null}
           tone="destructive"
-          title={format(m.personSessionEndTitle, { device: ending?.device ?? '' })}
-          description={format(m.personSessionEndBody, { name: person.name })}
-          confirmLabel={format(m.personSessionEnd)}
-          cancelLabel={format(m.cancel)}
+          title={m.person_sessionEndTitle({ device: ending?.device ?? '' })}
+          description={m.person_sessionEndBody({ name: person.name })}
+          confirmLabel={m.person_sessionEnd()}
+          cancelLabel={m.action_cancel()}
           pending={endOne.isPending}
           onCancel={() => setEnding(null)}
           onConfirm={() => {
@@ -351,15 +353,15 @@ type Change = ApiResult<typeof authApi, 'self', 'listSelfAccountChanges'>['items
 
 /** the days to read within */
 function Period({ range, onChange }: { range: DateRange; onChange: (next: DateRange) => void }) {
-  const { format, locale } = useI18n()
+  const { locale } = useI18n()
   return (
     <DateRangePicker
       value={range}
       onChange={onChange}
-      placeholder={format(m.activityPeriod)}
+      placeholder={m.activity_period()}
       localeTag={locale}
-      monthLabel={format(commonMessages.calendarMonth)}
-      yearLabel={format(commonMessages.calendarYear)}
+      monthLabel={commonMessages.calendar_month()}
+      yearLabel={commonMessages.calendar_year()}
       xstyle={styles.period}
     />
   )
@@ -379,17 +381,16 @@ function Pages({
   busy: boolean
   onPage: (page: number) => void
 }) {
-  const { format } = useI18n()
   if (total <= PAGE_SIZE) return null
   return (
     <Pager
       testId="records-pager"
-      label={format(m.pagerLabel)}
+      label={m.users_pager()}
       page={page}
       pageSize={PAGE_SIZE}
       total={total}
       disabled={busy}
-      summary={format(m.recordsSummary, {
+      summary={m.activity_summary({
         from: (page - 1) * PAGE_SIZE + 1,
         to: (page - 1) * PAGE_SIZE + shown,
         total,
@@ -401,7 +402,7 @@ function Pages({
 
 /** one attempt: when first - a record is read by time - then from what, through which door */
 function SignInRow({ attempt }: { attempt: SignIn }) {
-  const { format, locale } = useI18n()
+  const { locale } = useI18n()
   return (
     <div
       data-testid="sign-in-row"
@@ -414,18 +415,18 @@ function SignInRow({ attempt }: { attempt: SignIn }) {
           <span {...stylex.props(styles.device, styles.when)}>
             {instantWords(locale, attempt.occurredAt)}
           </span>
-          {attempt.current && <Status tone="plain">{format(m.signInThisSession)}</Status>}
+          {attempt.current && <Status tone="plain">{m.signIns_thisSession()}</Status>}
         </span>
         <Meta
           parts={[
-            deviceWords(attempt.userAgent) ?? format(m.unknownDevice),
-            attempt.entrance?.name ?? format(m.entranceGone),
+            deviceWords(attempt.userAgent) ?? m.sessions_unknownDevice(),
+            attempt.entrance?.name ?? m.sessions_entranceGone(),
             attempt.clientIp,
           ]}
         />
       </span>
       <Status tone={attempt.outcome === 'success' ? 'ok' : 'bad'}>
-        {format(attempt.outcome === 'success' ? m.signInSucceeded : m.signInRefused)}
+        {(attempt.outcome === 'success' ? m.signIns_succeeded : m.signIns_refused)()}
       </Status>
     </div>
   )
@@ -433,7 +434,7 @@ function SignInRow({ attempt }: { attempt: SignIn }) {
 
 /** one change: when, what, and whether the reader did it */
 function ChangeRow({ change }: { change: Change }) {
-  const { format, formatText, locale } = useI18n()
+  const { formatText, locale } = useI18n()
   return (
     <div data-testid="account-change" data-actor={change.actor} {...stylex.props(styles.row)}>
       <span {...stylex.props(styles.words)}>
@@ -442,7 +443,7 @@ function ChangeRow({ change }: { change: Change }) {
         </span>
         <span {...stylex.props(styles.meta)}>
           <span>{formatText(change.name)}</span>
-          <span>{format(change.actor === 'self' ? m.changeBySelf : m.changeByOther)}</span>
+          <span>{(change.actor === 'self' ? m.activity_bySelf : m.activity_byOther)()}</span>
         </span>
       </span>
     </div>
@@ -476,7 +477,6 @@ function RecordCard<Item extends { readonly id: string }>({
   /** the whole record, for the sheet */
   whole: ReactNode
 }) {
-  const { format } = useI18n()
   const describe = useLoadFailure()
   const [open, setOpen] = useState(false)
   const items = recent.data?.items ?? []
@@ -493,15 +493,15 @@ function RecordCard<Item extends { readonly id: string }>({
             data-testid={`${testId}-all`}
             onClick={() => setOpen(true)}
           >
-            {format(m.recordsAll)}
+            {m.activity_all()}
           </Button>
         )}
       </CardHead>
       <AsyncSection
         pending={recent.isPending}
         error={recent.isError ? describe.of(recent.error) : null}
-        loadingLabel={format(commonMessages.loading)}
-        retryLabel={format(commonMessages.retry)}
+        loadingLabel={commonMessages.state_loading()}
+        retryLabel={commonMessages.action_retry()}
         onRetry={() => void recent.refetch()}
         skeleton={<TableSkeleton rows={3} />}
       >
@@ -521,7 +521,7 @@ function RecordCard<Item extends { readonly id: string }>({
         // a height of its own: filled from a request, and filtered after, it
         // would otherwise grow under the reader as the rows arrive
         fill
-        closeLabel={format(commonMessages.close)}
+        closeLabel={commonMessages.action_close()}
         testId={`${testId}-sheet`}
       >
         {open && whole}
@@ -561,13 +561,12 @@ const useSignIns = (
 
 /** the sign-ins: the latest few here, all of them in the sheet */
 export function SignInRecords({ person }: { person?: RecordPerson }) {
-  const { format } = useI18n()
   const recent = useSignIns(person, { page: '1', limit: String(RECENT) })
   return (
     <RecordCard
       testId="sign-ins-card"
-      title={format(m.activitySignIns)}
-      empty={format(m.signInsEmpty)}
+      title={m.activity_signIns()}
+      empty={m.signIns_empty()}
       recent={recent}
       row={(attempt: SignIn) => <SignInRow attempt={attempt} />}
       whole={<AllSignIns person={person} />}
@@ -578,7 +577,7 @@ export function SignInRecords({ person }: { person?: RecordPerson }) {
 /** what was done to the reader's account: the latest few here, all of it in the sheet */
 export function AccountChanges() {
   const query = useApiQuery(authApi)
-  const { format } = useI18n()
+
   const recent = useQuery(
     query.self.listSelfAccountChanges.queryOptions({
       query: { page: '1', limit: String(RECENT) },
@@ -587,8 +586,8 @@ export function AccountChanges() {
   return (
     <RecordCard
       testId="account-changes"
-      title={format(m.activityChanges)}
-      empty={format(m.changesEmpty)}
+      title={m.activity_changes()}
+      empty={m.activity_changesEmpty()}
       recent={recent}
       row={(change: Change) => <ChangeRow change={change} />}
       whole={<AllChanges />}
@@ -598,7 +597,6 @@ export function AccountChanges() {
 
 /** every sign-in, a numbered page at a time, within the days and outcome asked for */
 function AllSignIns({ person }: { person: RecordPerson | undefined }) {
-  const { format } = useI18n()
   const describe = useLoadFailure()
   const [outcome, setOutcome] = useState<'all' | 'success' | 'failure'>('all')
   const [range, setRange] = useState<DateRange>({ start: '', end: '' })
@@ -619,16 +617,16 @@ function AllSignIns({ person }: { person: RecordPerson | undefined }) {
       <div {...stylex.props(styles.tools)}>
         <ToggleGroup
           value={outcome}
-          aria-label={format(m.signInsFilter)}
+          aria-label={m.signIns_filter()}
           onValueChange={(next) => {
             if (next === '') return
             setOutcome(next as typeof outcome)
             setPage(1)
           }}
         >
-          <ToggleGroupItem value="all">{format(m.signInsFilterAll)}</ToggleGroupItem>
-          <ToggleGroupItem value="success">{format(m.signInsFilterSucceeded)}</ToggleGroupItem>
-          <ToggleGroupItem value="failure">{format(m.signInsFilterRefused)}</ToggleGroupItem>
+          <ToggleGroupItem value="all">{m.signIns_filterAll()}</ToggleGroupItem>
+          <ToggleGroupItem value="success">{m.signIns_filterSucceeded()}</ToggleGroupItem>
+          <ToggleGroupItem value="failure">{m.signIns_filterRefused()}</ToggleGroupItem>
         </ToggleGroup>
         <Period
           range={range}
@@ -642,13 +640,13 @@ function AllSignIns({ person }: { person: RecordPerson | undefined }) {
         <AsyncSection
           pending={signIns.isPending}
           error={signIns.isError ? describe.of(signIns.error) : null}
-          loadingLabel={format(commonMessages.loading)}
-          retryLabel={format(commonMessages.retry)}
+          loadingLabel={commonMessages.state_loading()}
+          retryLabel={commonMessages.action_retry()}
           onRetry={() => void signIns.refetch()}
           skeleton={<TableSkeleton rows={6} />}
         >
           {items.length === 0 ? (
-            <CardEmpty>{format(m.signInsEmpty)}</CardEmpty>
+            <CardEmpty>{m.signIns_empty()}</CardEmpty>
           ) : (
             items.map((attempt) => <SignInRow key={attempt.id} attempt={attempt} />)
           )}
@@ -668,7 +666,7 @@ function AllSignIns({ person }: { person: RecordPerson | undefined }) {
 /** every change, a numbered page at a time, within the days asked for */
 function AllChanges() {
   const query = useApiQuery(authApi)
-  const { format } = useI18n()
+
   const describe = useLoadFailure()
   const [range, setRange] = useState<DateRange>({ start: '', end: '' })
   const [page, setPage] = useState(1)
@@ -694,13 +692,13 @@ function AllChanges() {
         <AsyncSection
           pending={changes.isPending}
           error={changes.isError ? describe.of(changes.error) : null}
-          loadingLabel={format(commonMessages.loading)}
-          retryLabel={format(commonMessages.retry)}
+          loadingLabel={commonMessages.state_loading()}
+          retryLabel={commonMessages.action_retry()}
           onRetry={() => void changes.refetch()}
           skeleton={<TableSkeleton rows={6} />}
         >
           {items.length === 0 ? (
-            <CardEmpty>{format(m.changesEmpty)}</CardEmpty>
+            <CardEmpty>{m.activity_changesEmpty()}</CardEmpty>
           ) : (
             items.map((change) => <ChangeRow key={change.id} change={change} />)
           )}

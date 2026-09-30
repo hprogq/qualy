@@ -2,7 +2,7 @@ import { StrictMode, type ReactNode } from 'react'
 import { Route, Routes, useLocation } from 'react-router'
 import { render } from 'vitest-browser-react'
 import { locators, type Locator } from 'vitest/browser'
-import { I18nProvider } from '@qualy/web-i18n'
+import { installMessages } from '@qualy/web-i18n'
 import {
   GuardedMemoryRouter,
   ThemeProvider,
@@ -15,7 +15,7 @@ import { UiProvider } from '@qualy/ui/provider'
 import { Effect } from 'effect'
 import { toast } from '@qualy/ui/toast'
 
-import type { I18nProviderProps } from '@qualy/web-i18n'
+import type { ErrorMessageMap, Message } from '@qualy/i18n-contract'
 
 declare module 'vitest/browser' {
   interface LocatorSelectors {
@@ -113,7 +113,7 @@ export function apiError(code: string, data?: Record<string, unknown>) {
 
 export function renderScreen({
   client,
-  catalogs,
+  wireMessages,
   errorMessages,
   registry,
   children,
@@ -127,14 +127,13 @@ export function renderScreen({
 }: {
   client: FakeClient
   /**
-   * The message catalogs this screen's copy comes from.
-   *
-   * A plugin's own, for a test about that plugin's screen; the whole
-   * aggregate's, for a test about the product. The runtime's own common
-   * catalog is always there - it ships with the provider.
+   * What is said by code rather than by the screen: the api failures this
+   * screen may meet, and the texts its server names by id. A plugin's own,
+   * for a test about that plugin's screen; the whole aggregate's, for a test
+   * about the product. Everything else a screen says itself.
    */
-  catalogs?: I18nProviderProps['catalogs']
-  errorMessages?: I18nProviderProps['errorMessages']
+  errorMessages?: ErrorMessageMap
+  wireMessages?: Readonly<Record<string, Message>>
   /**
    * The renderers this screen may resolve, by surface.
    *
@@ -169,8 +168,9 @@ export function renderScreen({
   localStorage.clear()
   for (const [key, value] of Object.entries(storage)) localStorage.setItem(key, value)
   // the shell's boot script marks the root with the locale it resolved and
-  // the runtime takes the mark; here the harness stands in for the script
+  // every message reads the mark; here the harness stands in for the script
   document.documentElement.dataset['locale'] = locale
+  installMessages({ errorMessages: errorMessages ?? {}, wireMessages: wireMessages ?? {} })
   // the toast queue is module-global: a success said in one test would
   // replay into the next screen's toaster and stand over its top bar
   toast.dismiss()
@@ -181,47 +181,45 @@ export function renderScreen({
   // about it because only the browser had StrictMode on.
   return render(
     <StrictMode>
-      <I18nProvider catalogs={catalogs ?? []} errorMessages={errorMessages ?? {}} fallback={null}>
-        {/* the same order the app composes: theme around the runtime, so a
+      {/* the same order the app composes: theme around the runtime, so a
             component reading the theme works here exactly as it does there */}
-        <ThemeProvider>
-          <WidgetBridge>
-            <RuntimeProvider
-              clientFor={() => client}
-              registry={{ ...emptyComponentRegistry(), ...registry }}
-            >
-              {/* the app's own router over a history in memory: a page that
+      <ThemeProvider>
+        <WidgetBridge>
+          <RuntimeProvider
+            clientFor={() => client}
+            registry={{ ...emptyComponentRegistry(), ...registry }}
+          >
+            {/* the app's own router over a history in memory: a page that
                   asks before it is left asks here too */}
-              <GuardedMemoryRouter initialEntries={[route]}>
-                <Address />
-                {routes ? (
-                  <Routes>
-                    {routes.map((entry) => (
-                      <Route key={entry.path} path={entry.path} element={<>{entry.element}</>}>
-                        {entry.children?.map((child) =>
-                          child.path === undefined ? (
-                            <Route key="index" index element={<>{child.element}</>} />
-                          ) : (
-                            <Route
-                              key={child.path}
-                              path={child.path}
-                              element={<>{child.element}</>}
-                            />
-                          ),
-                        )}
-                      </Route>
-                    ))}
-                  </Routes>
-                ) : path ? (
-                  <RouteHost path={path}>{children}</RouteHost>
-                ) : (
-                  children
-                )}
-              </GuardedMemoryRouter>
-            </RuntimeProvider>
-          </WidgetBridge>
-        </ThemeProvider>
-      </I18nProvider>
+            <GuardedMemoryRouter initialEntries={[route]}>
+              <Address />
+              {routes ? (
+                <Routes>
+                  {routes.map((entry) => (
+                    <Route key={entry.path} path={entry.path} element={<>{entry.element}</>}>
+                      {entry.children?.map((child) =>
+                        child.path === undefined ? (
+                          <Route key="index" index element={<>{child.element}</>} />
+                        ) : (
+                          <Route
+                            key={child.path}
+                            path={child.path}
+                            element={<>{child.element}</>}
+                          />
+                        ),
+                      )}
+                    </Route>
+                  ))}
+                </Routes>
+              ) : path ? (
+                <RouteHost path={path}>{children}</RouteHost>
+              ) : (
+                children
+              )}
+            </GuardedMemoryRouter>
+          </RuntimeProvider>
+        </WidgetBridge>
+      </ThemeProvider>
     </StrictMode>,
   )
 }

@@ -24,7 +24,7 @@ import { Input } from '@qualy/ui/input'
 import type { CalculatorEditorContext } from '@qualy/plugin-assessment/surfaces'
 import { formulaApi } from './api.ts'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { formulaMessages as m } from './i18n.ts'
+import * as m from '#messages'
 
 // Choosing which published formula a question is scored by, in two steps:
 // which formula, then which of its publications.
@@ -273,7 +273,6 @@ const parameterWords = (option: Option, locale: string): readonly string[] => {
 const TAGS_SHOWN = 3
 
 function ParameterTags({ words, end = false }: { words: readonly string[]; end?: boolean }) {
-  const { format } = useI18n()
   const listJoin = useList()
   const shown = words.length > TAGS_SHOWN + 1 ? words.slice(0, TAGS_SHOWN) : words
   return (
@@ -285,7 +284,7 @@ function ParameterTags({ words, end = false }: { words: readonly string[]; end?:
       ))}
       {shown.length < words.length && (
         <span {...stylex.props(styles.more)}>
-          {format(m.bindingMoreParameters, { count: words.length - shown.length })}
+          {m.binding_moreParameters({ count: words.length - shown.length })}
         </span>
       )}
     </span>
@@ -293,7 +292,7 @@ function ParameterTags({ words, end = false }: { words: readonly string[]; end?:
 }
 
 export default function CalculatorEditor({ context }: { context: CalculatorEditorContext }) {
-  const { format, locale } = useI18n()
+  const { locale } = useI18n()
   const loadFailure = useLoadFailure()
   const api = useApi(formulaApi)
   const query = useApiQuery(formulaApi)
@@ -393,7 +392,7 @@ export default function CalculatorEditor({ context }: { context: CalculatorEdito
         )
   const formula = opened === null ? undefined : formulas.find((one) => one.functionId === opened)
   const releaseWords = (option: Option) =>
-    option.releaseName ?? format(m.bindingReleaseNo, { no: option.versionNo })
+    option.releaseName ?? m.binding_releaseNo({ no: option.versionNo })
   const dateWords = (iso: string) => {
     const at = new Date(iso)
     return new Intl.DateTimeFormat(locale, {
@@ -408,14 +407,13 @@ export default function CalculatorEditor({ context }: { context: CalculatorEdito
     const candidate = formula.versions.find((one) => one.versionId === selected) ?? null
     const impact = ((): string => {
       if (candidate === null) return ''
-      if (candidate.versionId === chosen) return format(m.bindingImpactChosen)
-      if (inUse === null)
-        return format(m.bindingImpactFresh, { count: candidate.parameters.length })
+      if (candidate.versionId === chosen) return m.binding_impactChosen()
+      if (inUse === null) return m.binding_impactFresh({ count: candidate.parameters.length })
       const added = candidate.parameters.filter((one) => !inUse.parameters.includes(one)).length
       const removed = inUse.parameters.filter((one) => !candidate.parameters.includes(one)).length
-      if (added > 0) return format(m.bindingImpactAdded, { count: added })
-      if (removed > 0) return format(m.bindingImpactRemoved, { count: removed })
-      return format(m.bindingImpactSame)
+      if (added > 0) return m.binding_impactAdded({ count: added })
+      if (removed > 0) return m.binding_impactRemoved({ count: removed })
+      return m.binding_impactSame()
     })()
     const use = () => {
       if (candidate === null) return
@@ -431,7 +429,7 @@ export default function CalculatorEditor({ context }: { context: CalculatorEdito
             size="icon-sm"
             className={stylex.props(styles.back).className}
             onClick={() => setOpened(null)}
-            aria-label={format(m.bindingBack)}
+            aria-label={m.binding_back()}
           >
             <ArrowLeftIcon aria-hidden />
           </Button>
@@ -447,15 +445,11 @@ export default function CalculatorEditor({ context }: { context: CalculatorEdito
         </div>
         <div {...stylex.props(styles.head, styles.versionColumns)}>
           <span />
-          <span>{format(m.bindingColVersion)}</span>
-          <span>{format(m.bindingColRelease)}</span>
-          <span>{format(m.bindingColDate)}</span>
+          <span>{m.binding_colVersion()}</span>
+          <span>{m.binding_colRelease()}</span>
+          <span>{m.binding_colDate()}</span>
         </div>
-        <div
-          role="radiogroup"
-          aria-label={format(m.bindingColVersion)}
-          {...stylex.props(styles.list)}
-        >
+        <div role="radiogroup" aria-label={m.binding_colVersion()} {...stylex.props(styles.list)}>
           {formula.versions.map((option) => {
             const held = context.disabled || !(option.bindableForNew || option.current)
             const on = option.versionId === selected
@@ -484,14 +478,14 @@ export default function CalculatorEditor({ context }: { context: CalculatorEdito
                   <span {...stylex.props(styles.nameLine)}>
                     <span {...stylex.props(styles.name)}>{releaseWords(option)}</span>
                     {option.versionId === chosen && (
-                      <span {...stylex.props(styles.tag)}>{format(m.bindingInUse)}</span>
+                      <span {...stylex.props(styles.tag)}>{m.binding_inUse()}</span>
                     )}
                     {option.versionId === latest?.versionId && (
-                      <span {...stylex.props(styles.tag)}>{format(m.bindingLatest)}</span>
+                      <span {...stylex.props(styles.tag)}>{m.binding_latest()}</span>
                     )}
                   </span>
                   {!option.bindableForNew ? (
-                    <span {...stylex.props(styles.sub)}>{format(m.bindingWithdrawn)}</span>
+                    <span {...stylex.props(styles.sub)}>{m.binding_withdrawn()}</span>
                   ) : (
                     option.releaseNotes !== null &&
                     option.releaseNotes.trim() !== '' && (
@@ -502,7 +496,7 @@ export default function CalculatorEditor({ context }: { context: CalculatorEdito
                   )}
                 </span>
                 <span {...stylex.props(styles.cell)}>
-                  {format(m.bindingReleaseNo, { no: option.versionNo })}
+                  {m.binding_releaseNo({ no: option.versionNo })}
                 </span>
                 <span {...stylex.props(styles.cell)}>{dateWords(option.publishedAt)}</span>
               </button>
@@ -515,14 +509,14 @@ export default function CalculatorEditor({ context }: { context: CalculatorEdito
           </span>
           <span {...stylex.props(styles.spacer)} />
           <Button variant="outline" onClick={() => setOpened(null)}>
-            {format(m.bindingPrevious)}
+            {m.binding_previous()}
           </Button>
           <Button
             disabled={candidate === null || candidate.versionId === chosen}
             onClick={use}
             data-testid="formula-version-use"
           >
-            {format(m.bindingUse)}
+            {m.binding_use()}
           </Button>
         </div>
       </div>
@@ -537,8 +531,8 @@ export default function CalculatorEditor({ context }: { context: CalculatorEdito
           <Input
             type="search"
             value={search}
-            aria-label={format(m.bindingSearch)}
-            placeholder={format(m.bindingSearch)}
+            aria-label={m.binding_search()}
+            placeholder={m.binding_search()}
             wrapperXstyle={styles.searchSeat}
             className={stylex.props(styles.searchInput).className}
             onChange={(event) => setSearch(event.target.value)}
@@ -546,15 +540,15 @@ export default function CalculatorEditor({ context }: { context: CalculatorEdito
         </div>
       </div>
       <div {...stylex.props(styles.head, styles.formulaColumns)}>
-        <span>{format(m.bindingColFormula)}</span>
-        <span>{format(m.bindingColParameters)}</span>
-        <span>{format(m.bindingColLatest)}</span>
+        <span>{m.binding_colFormula()}</span>
+        <span>{m.binding_colParameters()}</span>
+        <span>{m.binding_colLatest()}</span>
         <span />
       </div>
       <div {...stylex.props(styles.list)}>
         {versions.isPending ? (
           <div {...stylex.props(styles.blank)}>
-            <span {...stylex.props(styles.blankHint)}>{format(m.bindingLoading)}</span>
+            <span {...stylex.props(styles.blankHint)}>{m.binding_loading()}</span>
           </div>
         ) : versions.isError && matching.length === 0 ? (
           // the formulas could not be listed, which is not the same as there
@@ -579,10 +573,10 @@ export default function CalculatorEditor({ context }: { context: CalculatorEdito
               <SearchXIcon aria-hidden {...stylex.props(styles.blankIcon)} />
             )}
             <span {...stylex.props(styles.blankTitle)}>
-              {format(needle === '' ? m.bindingEmptyTitle : m.bindingNoMatchTitle)}
+              {(needle === '' ? m.binding_emptyTitle : m.binding_noMatchTitle)()}
             </span>
             <span {...stylex.props(styles.blankHint)}>
-              {format(needle === '' ? m.bindingEmptyHint : m.bindingNoMatchHint)}
+              {(needle === '' ? m.binding_emptyHint : m.binding_noMatchHint)()}
             </span>
           </div>
         ) : (
@@ -608,7 +602,7 @@ export default function CalculatorEditor({ context }: { context: CalculatorEdito
                   <span {...stylex.props(styles.nameLine)}>
                     <span {...stylex.props(styles.name)}>{one.name}</span>
                     {holdsCurrent && (
-                      <span {...stylex.props(styles.tag)}>{format(m.bindingCurrent)}</span>
+                      <span {...stylex.props(styles.tag)}>{m.binding_current()}</span>
                     )}
                   </span>
                   {one.description !== null && one.description !== '' && (
@@ -632,7 +626,7 @@ export default function CalculatorEditor({ context }: { context: CalculatorEdito
               disabled={versions.isFetchingNextPage}
               onClick={() => void versions.fetchNextPage()}
             >
-              {format(m.bindingMore)}
+              {m.binding_more()}
             </Button>
           </div>
         ) : null}
@@ -643,11 +637,11 @@ export default function CalculatorEditor({ context }: { context: CalculatorEdito
           data-testid="formula-count"
           data-count={formulas.length}
         >
-          {format(m.bindingCount, { count: formulas.length })}
+          {m.binding_count({ count: formulas.length })}
         </span>
         <span {...stylex.props(styles.spacer)} />
         <PageLink page="assessment-formula/list" className={stylex.props(styles.manage).className}>
-          {format(m.bindingManage)}
+          {m.binding_manage()}
           <ChevronRightIcon aria-hidden {...stylex.props(styles.icon12)} />
         </PageLink>
       </div>

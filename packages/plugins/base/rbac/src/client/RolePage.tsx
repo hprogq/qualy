@@ -6,12 +6,13 @@ import {
   useLoadFailure,
   usePageRouteParams,
 } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { BandBack, EditorSkeleton, Screen } from '@qualy/ui/screen'
-import { rbacMessages as m } from './i18n.ts'
+
 import { RoleEditor } from './RoleEditor.tsx'
 import { accessApi } from './api.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // One role's own page, reached from its row in the list.
 //
@@ -26,7 +27,7 @@ import { accessApi } from './api.ts'
 export default function RolePage() {
   const { roleId } = usePageRouteParams('roleId')
   const query = useApiQuery(accessApi)
-  const { format } = useI18n()
+
   const describe = useLoadFailure()
   const roles = useQuery(query.access.listRoles.queryOptions({ query: {} }))
   const role = roles.data?.roles.find((candidate) => candidate.id === roleId)
@@ -45,12 +46,12 @@ export default function RolePage() {
       <LoadFailure
         failure={
           roles.data !== undefined
-            ? describe.missing({ copy: { missing: { title: format(m.roleGone) } } })
+            ? describe.missing({ copy: { missing: { title: m.roles_gone() } } })
             : describe.of(roles.error)
         }
         onRetry={() => void roles.refetch()}
         retrying={roles.isFetching}
-        back={{ page: 'rbac/roles', label: format(m.backToRoles) }}
+        back={{ page: 'rbac/roles', label: m.roles_back() }}
       />
     )
   }
@@ -58,12 +59,12 @@ export default function RolePage() {
     <Screen
       back={
         <BandBack as={PageLink} page="rbac/roles">
-          {format(m.backToRoles)}
+          {m.roles_back()}
         </BandBack>
       }
-      title={format(m.editRole)}
+      title={m.roles_edit()}
     >
-      <div role="status" aria-label={format(commonMessages.loading)}>
+      <div role="status" aria-label={commonMessages.state_loading()}>
         <EditorSkeleton />
       </div>
     </Screen>

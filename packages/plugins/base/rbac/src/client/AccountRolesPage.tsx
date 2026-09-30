@@ -4,15 +4,17 @@ import * as stylex from '@stylexjs/stylex'
 import { useApiQuery, useLoadFailure } from '@qualy/web-runtime'
 import type { ApiResult } from '@qualy/web-runtime/api'
 import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { AsyncSection } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { Card, CardEmpty, SectionHead, TableSkeleton, Tag } from '@qualy/ui/screen'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { rbacMessages as m } from './i18n.ts'
+
 import { accessApi } from './api.ts'
 import { GrantOrigin } from './GrantOrigin.tsx'
 import { useMoment } from './when.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // The reader's own roles, read-only: each role they hold, where it holds and
 // for how long, and what it lets them do, by name. What a reader can act on
@@ -49,13 +51,13 @@ type Role = ApiResult<typeof accessApi, 'access', 'listSelfRoles'>['roles'][numb
 
 export default function AccountRolesPage() {
   const query = useApiQuery(accessApi)
-  const { format } = useI18n()
+
   const describe = useLoadFailure()
   const roles = useQuery(query.access.listSelfRoles.queryOptions({}))
   const items = roles.data?.roles ?? []
   return (
     <div {...stylex.props(styles.page)}>
-      <SectionHead title={format(m.accountRolesTitle)} />
+      <SectionHead title={m.account_title()} />
       <AsyncSection
         pending={roles.isPending}
         error={roles.isError ? describe.of(roles.error) : null}
@@ -64,8 +66,8 @@ export default function AccountRolesPage() {
         framed
         headingLevel={3}
         retrying={roles.isFetching}
-        loadingLabel={format(commonMessages.loading)}
-        retryLabel={format(commonMessages.retry)}
+        loadingLabel={commonMessages.state_loading()}
+        retryLabel={commonMessages.action_retry()}
         onRetry={() => void roles.refetch()}
         skeleton={
           <Card>
@@ -75,7 +77,7 @@ export default function AccountRolesPage() {
       >
         <Card data-testid="account-roles">
           {items.length === 0 ? (
-            <CardEmpty>{format(m.accountRolesEmpty)}</CardEmpty>
+            <CardEmpty>{m.account_empty()}</CardEmpty>
           ) : (
             items.map((role) => <RoleRow key={role.grantId} role={role} />)
           )}
@@ -89,15 +91,15 @@ export default function AccountRolesPage() {
 const SHOWN = 8
 
 function RoleRow({ role }: { role: Role }) {
-  const { format, formatText } = useI18n()
+  const { formatText } = useI18n()
   const moment = useMoment()
   const [open, setOpen] = useState(false)
   const where =
     role.target.kind === 'tenant'
-      ? format(m.tenantWide)
+      ? m.grants_tenantWide()
       : role.target.coverage === 'subtree'
-        ? format(m.atSubtree, { node: role.target.orgNodeName })
-        : format(m.atNode, { node: role.target.orgNodeName })
+        ? m.grants_atSubtree({ node: role.target.orgNodeName })
+        : m.grants_atNode({ node: role.target.orgNodeName })
   const powers = open ? role.permissions : role.permissions.slice(0, SHOWN)
   return (
     <div
@@ -123,15 +125,15 @@ function RoleRow({ role }: { role: Role }) {
             />
           )}
           {role.validFrom !== null && new Date(role.validFrom).getTime() > Date.now() && (
-            <span>{format(m.validFrom, { when: moment(role.validFrom) })}</span>
+            <span>{m.grants_validFrom({ when: moment(role.validFrom) })}</span>
           )}
           {role.validUntil !== null && (
-            <span>{format(m.validUntil, { when: moment(role.validUntil) })}</span>
+            <span>{m.grants_validUntil({ when: moment(role.validUntil) })}</span>
           )}
         </span>
       </div>
       {role.allPermissions ? (
-        <span {...stylex.props(styles.where)}>{format(m.accountRolesAll)}</span>
+        <span {...stylex.props(styles.where)}>{m.account_all()}</span>
       ) : role.permissions.length === 0 ? null : (
         <>
           <div {...stylex.props(styles.powers)}>
@@ -147,8 +149,8 @@ function RoleRow({ role }: { role: Role }) {
               onClick={() => setOpen((was) => !was)}
             >
               {open
-                ? format(m.accountRolesFewer)
-                : format(m.accountRolesMore, { count: role.permissions.length - SHOWN })}
+                ? m.account_fewer()
+                : m.account_more({ count: role.permissions.length - SHOWN })}
             </Button>
           )}
         </>

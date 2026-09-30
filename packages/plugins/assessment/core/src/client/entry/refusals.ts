@@ -1,5 +1,5 @@
-import type { MessageDescriptor } from '@qualy/i18n-contract'
-import { assessmentMessages as m } from '../i18n.ts'
+import type { Message } from '@qualy/i18n-contract'
+import * as m from '#messages'
 
 // Why an entry action was refused, as a sentence about this round rather
 // than about the software. One code carries the whole matrix (§ the entry
@@ -7,74 +7,74 @@ import { assessmentMessages as m } from '../i18n.ts'
 // translated reaches a person as "this cannot be done right now", which
 // tells them nothing they can act on.
 
-const SENTENCES: Record<string, MessageDescriptor> = {
-  'not-your-entry': m.refuseNotYours,
-  'not-your-participant': m.refuseNotYours,
-  'entry-channel-closed': m.refuseChannelClosed,
-  'participant-not-found': m.refuseNotYours,
-  'participant-not-active': m.refuseNotActive,
-  'participant-out-of-reach': m.refuseOutOfReach,
-  'entry-not-editable': m.refuseNotEditable,
-  'entry-changed': m.refuseEntryChanged,
-  'entry-not-submittable': m.refuseNotSubmittable,
-  'entry-needs-revision': m.refuseNeedsRevision,
-  'entry-not-withdrawable': m.refuseNotWithdrawable,
-  'review-under-way': m.refuseReviewUnderWay,
-  'appeal-not-withdrawable': m.refuseAppealNotWithdrawable,
-  'appeal-under-way': m.refuseAppealUnderWay,
-  'nothing-to-appeal': m.refuseNothingToAppeal,
-  'appeal-exhausted': m.refuseAppealExhausted,
-  'decision-superseded': m.refuseDecisionSuperseded,
-  'review-already-open': m.refuseReviewOpen,
-  'max-entries-reached': m.refuseMaxEntries,
-  'entry-ceiling-reached': m.refuseMaxEntries,
-  'account-ceiling-reached': m.refuseRoundCeiling,
-  'item-not-active': m.refuseItemVoided,
-  'item-not-configured': m.refuseItemUnconfigured,
-  'item-type-not-installed': m.refuseItemUnconfigured,
-  'review-level-missing': m.refuseReviewLevelMissing,
-  'no-appeal-route': m.refuseNoAppealRoute,
-  'basis-required': m.refuseBasisRequired,
-  'self-record-refused': m.refuseSelfRecord,
-  'self-reopen-refused': m.refuseOwnClaim,
-  'self-redetermine-refused': m.refuseOwnClaim,
-  'redetermination-unchanged': m.refuseRedeterminationUnchanged,
-  'nothing-to-redetermine': m.refuseNothingToRedetermine,
-  'not-participant': m.refuseNotParticipant,
-  'permission-not-held': m.refuseNoPermission,
-  'not-reviewer': m.refuseNotReviewer,
-  'no-active-phase': m.refusePhaseClosed,
-  'phase-closed': m.refusePhaseClosed,
-  'item-out-of-scope': m.refuseOutOfScope,
-  'participant-out-of-scope': m.refuseOutOfScope,
-  'must-revise-first': m.refuseNeedsRevision,
-  'entry-not-abandonable': m.refuseNotAbandonable,
-  'supplement-already-open': m.refuseSupplementOpen,
-  'request-not-open': m.refuseRequestClosed,
-  'requirements-unreadable': m.refuseSupplementUnreadable,
-  'not-requester': m.refuseNotRequester,
-  'awaiting-supplement': m.refuseAwaitingSupplement,
-  'review-not-open': m.refuseReviewNotOpen,
-  'item-not-fileable': m.refuseNotFileable,
-  'entry-not-returnable': m.refuseNotReturnable,
-  'owner-cannot-refile': m.refuseOwnerCannotRefile,
-  'reason-required': m.refuseReasonRequired,
-  'item-not-administrative': m.refuseNotAdministrative,
-  'attachment-required': m.refuseAttachmentRequired,
-  'chain-unreadable': m.refuseChainUnreadable,
-  'chain-ends-here': m.refuseChainEndsHere,
-  'decision-not-available': m.refuseDecisionNotAvailable,
+const SENTENCES: Record<string, Message> = {
+  'not-your-entry': m.entry_refuseNotYours,
+  'not-your-participant': m.entry_refuseNotYours,
+  'entry-channel-closed': m.entry_refuseChannelClosed,
+  'participant-not-found': m.entry_refuseNotYours,
+  'participant-not-active': m.entry_refuseNotActive,
+  'participant-out-of-reach': m.entry_refuseOutOfReach,
+  'entry-not-editable': m.entry_refuseNotEditable,
+  'entry-changed': m.entry_refuseEntryChanged,
+  'entry-not-submittable': m.entry_refuseNotSubmittable,
+  'entry-needs-revision': m.entry_refuseNeedsRevision,
+  'entry-not-withdrawable': m.entry_refuseNotWithdrawable,
+  'review-under-way': m.entry_refuseReviewUnderWay,
+  'appeal-not-withdrawable': m.entry_refuseAppealNotWithdrawable,
+  'appeal-under-way': m.entry_refuseAppealUnderWay,
+  'nothing-to-appeal': m.entry_refuseNothingToAppeal,
+  'appeal-exhausted': m.entry_refuseAppealExhausted,
+  'decision-superseded': m.entry_refuseDecisionSuperseded,
+  'review-already-open': m.entry_refuseReviewOpen,
+  'max-entries-reached': m.entry_refuseMaxEntries,
+  'entry-ceiling-reached': m.entry_refuseMaxEntries,
+  'account-ceiling-reached': m.entry_refuseRoundCeiling,
+  'item-not-active': m.entry_refuseItemVoided,
+  'item-not-configured': m.entry_refuseItemUnconfigured,
+  'item-type-not-installed': m.entry_refuseItemUnconfigured,
+  'review-level-missing': m.entry_refuseReviewLevelMissing,
+  'no-appeal-route': m.entry_refuseNoAppealRoute,
+  'basis-required': m.entry_refuseBasisRequired,
+  'self-record-refused': m.entry_refuseSelfRecord,
+  'self-reopen-refused': m.entry_refuseOwnClaim,
+  'self-redetermine-refused': m.entry_refuseOwnClaim,
+  'redetermination-unchanged': m.entry_refuseRedeterminationUnchanged,
+  'nothing-to-redetermine': m.entry_refuseNothingToRedetermine,
+  'not-participant': m.entry_refuseNotParticipant,
+  'permission-not-held': m.entry_refuseNoPermission,
+  'not-reviewer': m.entry_refuseNotReviewer,
+  'no-active-phase': m.entry_refusePhaseClosed,
+  'phase-closed': m.entry_refusePhaseClosed,
+  'item-out-of-scope': m.entry_refuseOutOfScope,
+  'participant-out-of-scope': m.entry_refuseOutOfScope,
+  'must-revise-first': m.entry_refuseNeedsRevision,
+  'entry-not-abandonable': m.entry_refuseNotAbandonable,
+  'supplement-already-open': m.refuse_supplementOpen,
+  'request-not-open': m.refuse_requestClosed,
+  'requirements-unreadable': m.refuse_supplementUnreadable,
+  'not-requester': m.entry_refuseNotRequester,
+  'awaiting-supplement': m.refuse_awaitingSupplement,
+  'review-not-open': m.refuse_reviewNotOpen,
+  'item-not-fileable': m.entry_refuseNotFileable,
+  'entry-not-returnable': m.entry_refuseNotReturnable,
+  'owner-cannot-refile': m.entry_refuseOwnerCannotRefile,
+  'reason-required': m.entry_refuseReasonRequired,
+  'item-not-administrative': m.entry_refuseNotAdministrative,
+  'attachment-required': m.entry_refuseAttachmentRequired,
+  'chain-unreadable': m.entry_refuseChainUnreadable,
+  'chain-ends-here': m.entry_refuseChainEndsHere,
+  'decision-not-available': m.entry_refuseDecisionNotAvailable,
   // what storage said about an upload, passed through as the refusal's reason
-  'file-too-large': m.refuseFileTooLarge,
-  'owner-quota-exceeded': m.refuseStorageFull,
-  'tenant-quota-exceeded': m.refuseStorageFull,
-  'too-many-reservations': m.refuseUploadBusy,
-  'rate-limited': m.refuseUploadBusy,
-  'being-cleaned-up': m.refuseUploadBusy,
-  'not-uploaded': m.refuseUploadAgain,
-  expired: m.refuseUploadAgain,
-  failed: m.refuseUploadAgain,
-  oversized: m.refuseUploadAgain,
+  'file-too-large': m.entry_refuseFileTooLarge,
+  'owner-quota-exceeded': m.entry_refuseStorageFull,
+  'tenant-quota-exceeded': m.entry_refuseStorageFull,
+  'too-many-reservations': m.entry_refuseUploadBusy,
+  'rate-limited': m.entry_refuseUploadBusy,
+  'being-cleaned-up': m.entry_refuseUploadBusy,
+  'not-uploaded': m.entry_refuseUploadAgain,
+  expired: m.entry_refuseUploadAgain,
+  failed: m.entry_refuseUploadAgain,
+  oversized: m.entry_refuseUploadAgain,
 }
 
 /**
@@ -84,18 +84,17 @@ const SENTENCES: Record<string, MessageDescriptor> = {
  * be sent for review" to somebody pressing "appeal" names the wrong route
  * and the wrong act.
  */
-const BY_ACT: Record<string, Record<string, MessageDescriptor>> = {
-  appeal: { 'review-level-missing': m.refuseAppealRouteMissing },
-  reopen: { 'review-level-missing': m.refuseReopenRouteMissing },
+const BY_ACT: Record<string, Record<string, Message>> = {
+  appeal: { 'review-level-missing': m.entry_refuseAppealRouteMissing },
+  reopen: { 'review-level-missing': m.entry_refuseReopenRouteMissing },
 }
 
 /** a reason's sentence, as the act it held needs it said */
-const sentenceOf = (action: string | null, reason: string): MessageDescriptor | null =>
+const sentenceOf = (action: string | null, reason: string): Message | null =>
   (action === null ? undefined : BY_ACT[action]?.[reason]) ?? SENTENCES[reason] ?? null
 
 /** the sentence for a bare reason code, for a blocked act's tooltip */
-export const entryRefusalReason = (reason: string): MessageDescriptor | null =>
-  SENTENCES[reason] ?? null
+export const entryRefusalReason = (reason: string): Message | null => SENTENCES[reason] ?? null
 
 /** where the round stands, as far as saying which stage holds an act goes */
 export interface RoundState {
@@ -106,7 +105,9 @@ export interface RoundState {
 
 /** a sentence, with whatever fills it */
 export interface Said {
-  readonly message: MessageDescriptor
+  /** which sentence it is, for a test to read off the element without its words */
+  readonly said: string
+  readonly message: Message
   readonly values?: Readonly<Record<string, string>>
 }
 
@@ -144,13 +145,13 @@ export const holdOf = (reason: string | null, round: RoundState | null): Hold | 
   }
 }
 
-const FILING_HELD: Record<Exclude<Hold['why'], 'phase'>, MessageDescriptor> = {
-  stage: m.entriesHeldNow,
-  archived: m.entriesHeldArchived,
-  unstarted: m.entriesHeldNotStarted,
-  idle: m.entriesHeldNoPhase,
-  item: m.entriesHeldItemScope,
-  people: m.entriesHeldParticipantScope,
+const FILING_HELD: Record<Exclude<Hold['why'], 'phase'>, Said> = {
+  stage: { said: 'held-now', message: m.entries_heldNow },
+  archived: { said: 'held-archived', message: m.entries_heldArchived },
+  unstarted: { said: 'held-not-started', message: m.entries_heldNotStarted },
+  idle: { said: 'held-no-phase', message: m.entries_heldNoPhase },
+  item: { said: 'held-item-scope', message: m.entries_heldItemScope },
+  people: { said: 'held-participant-scope', message: m.entries_heldParticipantScope },
 }
 
 /**
@@ -163,13 +164,15 @@ const FILING_HELD: Record<Exclude<Hold['why'], 'phase'>, MessageDescriptor> = {
  */
 export const filingHeldOf = (reason: string | null, round: RoundState | null): Said => {
   const hold = holdOf(reason, round)
-  if (hold?.why === 'phase') return { message: m.entriesHeldPhase, values: { phase: hold.phase } }
-  if (hold !== null) return { message: FILING_HELD[hold.why] }
+  if (hold?.why === 'phase') {
+    return { said: 'held-phase', message: m.entries_heldPhase, values: { phase: hold.phase } }
+  }
+  if (hold !== null) return FILING_HELD[hold.why]
   return reason === 'account-ceiling-reached'
-    ? { message: m.entriesHeldRoundFull }
+    ? { said: 'held-round-full', message: m.entries_heldRoundFull }
     : reason === 'review-level-missing'
-      ? { message: m.entriesHeldRoute }
-      : { message: m.entriesHeldNow }
+      ? { said: 'held-route', message: m.entries_heldRoute }
+      : { said: 'held-now', message: m.entries_heldNow }
 }
 
 /** the owner's acts on a claim of theirs that a stage may hold */
@@ -185,7 +188,6 @@ const HELD_ACTS: ReadonlySet<string> = new Set<HeldAct>([
 
 /** how the sentences below are put into words */
 export interface HeldWords {
-  readonly format: (descriptor: MessageDescriptor, values?: Record<string, string>) => string
   readonly locale: string
 }
 
@@ -198,11 +200,11 @@ export interface HeldWords {
  * the round gives it a name.
  */
 export const sayHeld = (hold: Hold, acts: readonly HeldAct[], words: HeldWords): string =>
-  words.format(m.entryHeld, {
+  m.entry_held({
     why: hold.why,
     phase: hold.why === 'phase' ? hold.phase : '',
     acts: new Intl.ListFormat(words.locale, { type: 'disjunction' }).format(
-      acts.map((act) => words.format(m.entryHeldAct, { act })),
+      acts.map((act) => m.entry_heldAct({ act })),
     ),
   })
 
@@ -215,7 +217,7 @@ export const sayBlocked = (
 ): string => {
   const hold = holdOf(reason, round)
   if (hold !== null) return sayHeld(hold, [act], words)
-  return words.format((reason === null ? null : sentenceOf(act, reason)) ?? m.entryBlockedNow)
+  return ((reason === null ? null : sentenceOf(act, reason)) ?? m.entry_blockedNow)()
 }
 
 /** the act and the reason of a refused entry act, or null when this is not one */
@@ -245,19 +247,19 @@ export const sayOwnRefusal = (
   const hold = holdOf(refusal.reason, round)
   if (hold !== null && refusal.action === 'create') {
     const said = filingHeldOf(refusal.reason, round)
-    return words.format(said.message, said.values === undefined ? undefined : { ...said.values })
+    return said.message(said.values === undefined ? undefined : { ...said.values })
   }
   if (hold !== null && HELD_ACTS.has(refusal.action)) {
     return sayHeld(hold, [refusal.action as HeldAct], words)
   }
-  return words.format(sentenceOf(refusal.action, refusal.reason) ?? m.refuseOther)
+  return (sentenceOf(refusal.action, refusal.reason) ?? m.entry_refuseOther)()
 }
 
 /** the sentence for a refusal, or null when this is not one */
-export const entryRefusalMessage = (error: unknown): MessageDescriptor | null => {
+export const entryRefusalMessage = (error: unknown): Message | null => {
   const refusal = refusalOf(error)
   if (refusal === null) return null
-  return sentenceOf(refusal.action, refusal.reason) ?? m.refuseOther
+  return sentenceOf(refusal.action, refusal.reason) ?? m.entry_refuseOther
 }
 
 /**
@@ -267,10 +269,9 @@ export const entryRefusalMessage = (error: unknown): MessageDescriptor | null =>
 export const sayEntryFailure = (
   error: unknown,
   words: {
-    format: (descriptor: MessageDescriptor) => string
     formatError: (error: unknown) => string
   },
 ): string => {
   const refusal = entryRefusalMessage(error)
-  return refusal === null ? words.formatError(error) : words.format(refusal)
+  return refusal === null ? words.formatError(error) : refusal()
 }

@@ -8,7 +8,7 @@ import {
   useRunApi,
 } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import * as stylex from '@stylexjs/stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { AsyncSection, ConfirmDialog, Feedback } from '@qualy/ui/admin'
@@ -25,11 +25,13 @@ import {
   TableRow,
 } from '@qualy/ui/screen'
 import { Button } from '@qualy/ui/button'
-import { rbacMessages as m } from './i18n.ts'
+
 import { GrantOrigin } from './GrantOrigin.tsx'
 import { GrantRoleDialog } from './GrantRoleForm.tsx'
 import { accessApi } from './api.ts'
 import { useMoment } from './when.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // What one person has been granted, as a section of their record.
 //
@@ -81,7 +83,7 @@ export default function UserRoleGrantsPage() {
   const run = useRunApi()
   const query = useApiQuery(accessApi)
   const queryClient = useQueryClient()
-  const { format, formatError } = useI18n()
+  const { formatError } = useI18n()
   const describe = useLoadFailure()
   const moment = useMoment()
   // whose authority is waiting on an answer; taking one away is not undone
@@ -111,19 +113,19 @@ export default function UserRoleGrantsPage() {
 
   const where = (grant: Grant) =>
     grant.target.kind === 'tenant'
-      ? format(m.tenantWide)
+      ? m.grants_tenantWide()
       : grant.target.coverage === 'subtree'
-        ? format(m.atSubtree, { node: grant.target.orgNodeName })
-        : format(m.atNode, { node: grant.target.orgNodeName })
+        ? m.grants_atSubtree({ node: grant.target.orgNodeName })
+        : m.grants_atNode({ node: grant.target.orgNodeName })
 
   const window = (grant: Grant) => (
     <>
       {grant.validFrom !== null && (
-        <span>{format(m.validFrom, { when: moment(grant.validFrom) })}</span>
+        <span>{m.grants_validFrom({ when: moment(grant.validFrom) })}</span>
       )}
       {grant.validUntil !== null && (
         <span data-testid="grant-until">
-          {format(m.validUntil, { when: moment(grant.validUntil) })}
+          {m.grants_validUntil({ when: moment(grant.validUntil) })}
         </span>
       )}
     </>
@@ -133,11 +135,11 @@ export default function UserRoleGrantsPage() {
     <div {...stylex.props(styles.page)}>
       <section {...stylex.props(styles.section)}>
         <SectionHead
-          title={format(m.organizationalSection)}
+          title={m.grants_organizational()}
           // a count is a fact of the reading, and there is none before it
           // arrives or when it fails
           count={grants.data === undefined ? undefined : organizational.length}
-          aside={format(m.organizationalHint)}
+          aside={m.grants_organizationalHint()}
           actions={
             // only for a reader who may give a role somewhere: a form that
             // could only ever say "nothing here for you" is not an errand
@@ -151,7 +153,7 @@ export default function UserRoleGrantsPage() {
                 }}
               >
                 <PlusIcon aria-hidden />
-                {format(m.grantOpen)}
+                {m.grants_open()}
               </Button>
             )
           }
@@ -165,19 +167,19 @@ export default function UserRoleGrantsPage() {
           framed
           headingLevel={3}
           retrying={grants.isFetching}
-          loadingLabel={format(commonMessages.loading)}
-          retryLabel={format(commonMessages.retry)}
+          loadingLabel={commonMessages.state_loading()}
+          retryLabel={commonMessages.action_retry()}
           onRetry={() => void grants.refetch()}
         >
           <Card>
             {organizational.length === 0 ? (
-              <CardEmpty>{format(m.organizationalEmpty)}</CardEmpty>
+              <CardEmpty>{m.grants_organizationalEmpty()}</CardEmpty>
             ) : (
               <Table columns="minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1fr) 4.5rem">
                 <TableHead>
-                  <span>{format(m.grantRole)}</span>
-                  <span>{format(m.grantScope)}</span>
-                  <span>{format(m.columnWindow)}</span>
+                  <span>{m.grants_role()}</span>
+                  <span>{m.grants_scope()}</span>
+                  <span>{m.grants_columnWindow()}</span>
                   <span />
                 </TableHead>
                 {organizational.map((grant) => (
@@ -190,7 +192,7 @@ export default function UserRoleGrantsPage() {
                     <Cell lead>
                       <LeadWord>{grant.roleName}</LeadWord>
                       {grant.roleStatus === 'disabled' && (
-                        <Status tone="bad">{format(m.disabledBadge)}</Status>
+                        <Status tone="bad">{m.badge_disabled()}</Status>
                       )}
                     </Cell>
                     <Cell title={where(grant)} unlabelled>
@@ -202,7 +204,7 @@ export default function UserRoleGrantsPage() {
                       }
                     >
                       {grant.validFrom === null && grant.validUntil === null ? (
-                        format(m.windowOpen)
+                        m.grants_windowOpen()
                       ) : (
                         <span {...stylex.props(styles.origin)}>{window(grant)}</span>
                       )}
@@ -217,7 +219,7 @@ export default function UserRoleGrantsPage() {
                           disabled={revoke.isPending && revoke.variables === grant.id}
                           onClick={() => setRevoking(grant.id)}
                         >
-                          {format(m.revokeAction)}
+                          {m.action_revoke()}
                         </Button>
                       )}
                     </span>
@@ -235,20 +237,20 @@ export default function UserRoleGrantsPage() {
       {!(grants.isError && grants.data === undefined) && (
         <section {...stylex.props(styles.section)}>
           <SectionHead
-            title={format(m.confinedSection)}
+            title={m.grants_confined()}
             count={grants.data === undefined ? undefined : confined.length}
-            aside={format(m.confinedHint)}
+            aside={m.grants_confinedHint()}
           />
           {grants.data !== undefined && (
             <Card>
               {confined.length === 0 ? (
-                <CardEmpty>{format(m.confinedEmpty)}</CardEmpty>
+                <CardEmpty>{m.grants_confinedEmpty()}</CardEmpty>
               ) : (
                 <Table columns="minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.6fr)">
                   <TableHead>
-                    <span>{format(m.grantRole)}</span>
-                    <span>{format(m.grantScope)}</span>
-                    <span>{format(m.columnOrigin)}</span>
+                    <span>{m.grants_role()}</span>
+                    <span>{m.grants_scope()}</span>
+                    <span>{m.grants_columnOrigin()}</span>
                   </TableHead>
                   {confined.map((grant) => (
                     <TableRow
@@ -261,7 +263,7 @@ export default function UserRoleGrantsPage() {
                       <Cell lead>
                         <LeadWord>{grant.roleName}</LeadWord>
                         {grant.roleStatus === 'disabled' && (
-                          <Status tone="bad">{format(m.disabledBadge)}</Status>
+                          <Status tone="bad">{m.badge_disabled()}</Status>
                         )}
                       </Cell>
                       <Cell title={where(grant)} unlabelled>
@@ -293,10 +295,10 @@ export default function UserRoleGrantsPage() {
       <ConfirmDialog
         open={revoking !== null}
         tone="destructive"
-        title={format(m.revokeTitle)}
-        description={format(m.revokeHint)}
-        confirmLabel={format(m.revokeAction)}
-        cancelLabel={format(commonMessages.cancel)}
+        title={m.grants_revokeTitle()}
+        description={m.grants_revokeHint()}
+        confirmLabel={m.action_revoke()}
+        cancelLabel={commonMessages.action_cancel()}
         pending={revoke.isPending}
         onCancel={() => setRevoking(null)}
         onConfirm={() => {

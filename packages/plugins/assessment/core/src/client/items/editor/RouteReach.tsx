@@ -3,8 +3,7 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { TriangleAlertIcon } from 'lucide-react'
 import { useApiQuery } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { Button } from '@qualy/ui/button'
 import {
@@ -18,8 +17,10 @@ import {
 } from '@qualy/ui/dialog'
 import { useLingering } from '@qualy/ui/use-lingering'
 import { assessmentApi } from '../../api.ts'
-import { assessmentMessages as m } from '../../i18n.ts'
+
 import { UnreachablePeople } from '../../roster/UnreachablePeople.tsx'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // A route that finds some of the roster nowhere, said under the route while
 // it is being composed (§32.93).
@@ -74,7 +75,6 @@ interface Asked {
 const PER_PAGE = '10'
 
 export function RouteReach(asked: Asked) {
-  const { format } = useI18n()
   const query = useApiQuery(assessmentApi)
   const [open, setOpen] = useState(false)
   const shown = useLingering(open ? asked : null)
@@ -103,13 +103,13 @@ export function RouteReach(asked: Asked) {
         <p {...stylex.props(styles.words)}>
           <TriangleAlertIcon aria-hidden {...stylex.props(styles.icon)} />
           <span>
-            {format(asked.chain === 'normal' ? m.itemsReachNormal : m.itemsReachEscalation, {
+            {(asked.chain === 'normal' ? m.items_reachNormal : m.items_reachEscalation)({
               count: total,
             })}
           </span>
         </p>
         <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
-          {format(m.itemsReachView)}
+          {m.items_reachView()}
         </Button>
       </div>
       {shown !== null && (
@@ -130,24 +130,21 @@ function UnreachableDialog({
   open: boolean
   onClose: () => void
 }) {
-  const { format } = useI18n()
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
       <DialogContent data-testid="route-reach-dialog" size="40rem">
         <DialogHeader>
           <DialogTitle>
-            {format(
-              asked.chain === 'normal' ? m.itemsReachTitleNormal : m.itemsReachTitleEscalation,
-            )}
+            {(asked.chain === 'normal' ? m.items_reachTitleNormal : m.items_reachTitleEscalation)()}
           </DialogTitle>
-          <DialogDescription>{format(m.itemsReachHint)}</DialogDescription>
+          <DialogDescription>{m.items_reachHint()}</DialogDescription>
         </DialogHeader>
         <DialogBody>
           <UnreachablePeople batchId={asked.batchId} of={{ nodeTypeIds: asked.levels }} />
         </DialogBody>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>
-            {format(commonMessages.close)}
+            {commonMessages.action_close()}
           </Button>
         </DialogFooter>
       </DialogContent>

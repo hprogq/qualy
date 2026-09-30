@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
-import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { EllipsisIcon } from 'lucide-react'
 import { Button } from '@qualy/ui/button'
@@ -15,7 +14,7 @@ import {
   DropdownMenuTrigger,
 } from '@qualy/ui/dropdown-menu'
 import { Card, CardEmpty, CardHead, SearchField, StickyFill, TreeRow } from '@qualy/ui/screen'
-import { iamMessages as m } from '../../i18n.ts'
+import * as m from '#messages'
 
 // The units this reader may look into, as one card that runs to the bottom of
 // the window and stays there while the roster beside it scrolls: how many
@@ -101,7 +100,6 @@ export function UnitTree({
   onOpen: (id: string) => void
   onScope: (next: 'self' | 'subtree') => void
 }) {
-  const { format } = useI18n()
   const [search, setSearch] = useState('')
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set())
   const term = search.trim().toLowerCase()
@@ -141,7 +139,7 @@ export function UnitTree({
         tally={people.toLocaleString()}
         expandable={folding && (childrenOf.get(unit.id) ?? []).length > 0}
         collapsed={collapsed.has(unit.id)}
-        expandLabel={format(m.foldBranch)}
+        expandLabel={m.users_foldBranch()}
         onToggle={() => {
           const next = new Set(collapsed)
           if (!next.delete(unit.id)) next.add(unit.id)
@@ -155,21 +153,21 @@ export function UnitTree({
   // the same choices wherever they are offered from
   const menu = (
     <>
-      <DropdownMenuLabel>{format(m.scopeLabel)}</DropdownMenuLabel>
+      <DropdownMenuLabel>{m.users_scope()}</DropdownMenuLabel>
       <DropdownMenuRadioGroup
         value={scope}
         onValueChange={(next) => onScope(next === 'self' ? 'self' : 'subtree')}
       >
         <DropdownMenuRadioItem value="subtree" data-scope-option="subtree">
-          {format(m.scopeSubtree)}
+          {m.users_scopeSubtree()}
         </DropdownMenuRadioItem>
         <DropdownMenuRadioItem value="self" data-scope-option="self">
-          {format(m.scopeSelf)}
+          {m.users_scopeSelf()}
         </DropdownMenuRadioItem>
       </DropdownMenuRadioGroup>
       <DropdownMenuSeparator />
       <DropdownMenuItem onSelect={() => setCollapsed(new Set())}>
-        {format(m.expandAll)}
+        {m.users_expandAll()}
       </DropdownMenuItem>
       <DropdownMenuItem
         onSelect={() =>
@@ -178,7 +176,7 @@ export function UnitTree({
           )
         }
       >
-        {format(m.collapseAll)}
+        {m.users_collapseAll()}
       </DropdownMenuItem>
     </>
   )
@@ -189,7 +187,7 @@ export function UnitTree({
         name="tree-search"
         value={search}
         onChange={setSearch}
-        label={format(m.treeSearch)}
+        label={m.users_treeSearch()}
         xstyle={styles.searchBox}
       />
       {/* in a sheet the scope and the folds have no card head to live in,
@@ -197,7 +195,7 @@ export function UnitTree({
       {bare && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button size="icon-sm" variant="outline" aria-label={format(m.treeMenu)}>
+            <Button size="icon-sm" variant="outline" aria-label={m.users_treeMenu()}>
               <EllipsisIcon aria-hidden />
             </Button>
           </DropdownMenuTrigger>
@@ -210,12 +208,12 @@ export function UnitTree({
     <div {...stylex.props(styles.scroll, bare && styles.scrollBare)}>
       {matches !== null ? (
         matches.length === 0 ? (
-          <CardEmpty>{format(m.treeSearchEmpty)}</CardEmpty>
+          <CardEmpty>{m.users_treeSearchEmpty()}</CardEmpty>
         ) : (
           matches.map((unit) => row(unit, 0, false))
         )
       ) : rows.length === 0 ? (
-        <CardEmpty>{format(m.noAnchors)}</CardEmpty>
+        <CardEmpty>{m.users_noAnchors()}</CardEmpty>
       ) : (
         rows.map(({ unit, depth }) => row(unit, depth, true))
       )}
@@ -234,10 +232,10 @@ export function UnitTree({
   return (
     <StickyFill>
       <Card data-testid="unit-tree" data-scope={scope} xstyle={styles.card}>
-        <CardHead title={format(m.unitsTitle)} note={format(m.unitsCount, { count: units.length })}>
+        <CardHead title={m.users_units()} note={m.users_unitsCount({ count: units.length })}>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button size="icon-xs" variant="ghost" aria-label={format(m.treeMenu)}>
+              <Button size="icon-xs" variant="ghost" aria-label={m.users_treeMenu()}>
                 <EllipsisIcon aria-hidden />
               </Button>
             </DropdownMenuTrigger>

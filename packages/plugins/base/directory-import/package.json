@@ -16,6 +16,12 @@
     "./package.json": "./package.json",
     "./server": "./src/server/index.ts"
   },
+  "imports": {
+    "#messages": {
+      "types": "./.qualy/messages.d.ts",
+      "default": "./.qualy/messages.js"
+    }
+  },
   "peerDependencies": {
     "react": "catalog:"
   },

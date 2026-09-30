@@ -6,8 +6,9 @@ import * as stylex from '@stylexjs/stylex'
 import { Feedback, Field, FormDialog, RadioGroup } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
-import { rbacMessages as m } from './i18n.ts'
+
 import { accessApi } from './api.ts'
+import * as m from '#messages'
 
 // Creation carries identity only: a role starts as a draft and is configured
 // in the editor, where completeness is checked when it is activated. The form
@@ -38,7 +39,7 @@ export function NewRoleForm({
   const run = useRunApi()
   const query = useApiQuery(accessApi)
   const queryClient = useQueryClient()
-  const { format, formatError } = useI18n()
+  const { formatError } = useI18n()
   const [feedback, setFeedback] = useState<string | null>(null)
   // a name another role already has is the name's to fix, said under it
   const [taken, setTaken] = useState<string | null>(null)
@@ -65,16 +66,16 @@ export function NewRoleForm({
   return (
     <FormDialog
       open={open}
-      title={format(m.newRole)}
-      description={format(m.newRoleHint)}
+      title={m.roles_new()}
+      description={m.roles_newHint()}
       onClose={onClose}
       footer={
         <>
           <Button variant="outline" onClick={onClose}>
-            {format(m.cancel)}
+            {m.action_cancel()}
           </Button>
           <Button type="submit" form="new-role" disabled={create.isPending || name.trim() === ''}>
-            {format(m.create)}
+            {m.action_create()}
           </Button>
         </>
       }
@@ -88,7 +89,7 @@ export function NewRoleForm({
           create.mutate()
         }}
       >
-        <Field label={format(m.nameLabel)} required error={taken}>
+        <Field label={m.field_name()} required error={taken}>
           {(id, control) => (
             <Input
               id={id}
@@ -106,11 +107,11 @@ export function NewRoleForm({
             choice needs the sentence explaining what it commits to */}
         <RadioGroup
           variant="cards"
-          legend={format(m.kindLegend)}
+          legend={m.field_kind()}
           name="role-kind"
           options={[
-            { value: 'org', label: format(m.kindOrg), hint: format(m.kindOrgHint) },
-            { value: 'tenant', label: format(m.kindTenant), hint: format(m.kindTenantHint) },
+            { value: 'org', label: m.field_kindOrg(), hint: m.field_kindOrgHint() },
+            { value: 'tenant', label: m.field_kindTenant(), hint: m.field_kindTenantHint() },
           ]}
           selected={kind}
           onChange={(value) => setKind(value as 'tenant' | 'org')}

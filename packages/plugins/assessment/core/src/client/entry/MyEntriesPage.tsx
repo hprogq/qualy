@@ -10,8 +10,8 @@ import {
   usePageQueryUpdate,
   useRunApi,
 } from '@qualy/web-runtime'
-import { useI18n, useList } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+import { useList } from '@qualy/web-i18n'
+
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { AsyncSection } from '@qualy/ui/admin'
 import { toast } from '@qualy/ui/toast'
@@ -19,7 +19,7 @@ import { useLingering } from '@qualy/ui/use-lingering'
 import { assessmentApi } from '../api.ts'
 import { useBatchLive } from '../live.ts'
 import { useMyEntriesQuery } from './my-entries.ts'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import { BatchScreen } from '../batch/BatchScreen.tsx'
 import { AppealDialog } from './AppealDialog.tsx'
 import { SupplementAnswerDialog } from './SupplementAnswerDialog.tsx'
@@ -35,6 +35,8 @@ import { StandingNotice } from './workspace/StandingNotice.tsx'
 import { useLineWords } from './workspace/calc.ts'
 import { entryLineOf, type FilingRound, type RoundState } from './workspace/model.ts'
 import { useWorkspaceMode } from './workspace/layout.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // One's own filings: the round's structure, one question of it opened, and
 // every claim filed under that question - with the way to file another.
@@ -60,7 +62,6 @@ const styles = stylex.create({
 })
 
 export default function MyEntriesPage() {
-  const { format } = useI18n()
   // From a tablet up the page is a workbench: its columns scroll each in
   // their own place and the window never does, so it says so to the shell,
   // which then keeps no room for a scroll bar that never comes. On a phone
@@ -69,7 +70,7 @@ export default function MyEntriesPage() {
   return (
     // no band: the rail carries the page's own name and numbers, and the
     // workspace fills whatever the shell gives it
-    <BatchScreen title={format(m.myEntriesTab)} size="full" chrome="none" requires="personal">
+    <BatchScreen title={m.entry_tab()} size="full" chrome="none" requires="personal">
       {(batch) => (
         <Body
           batchId={batch.id}
@@ -94,7 +95,7 @@ function Body({
   const query = useApiQuery(assessmentApi)
   const api = useApi(assessmentApi)
   const run = useRunApi()
-  const { format } = useI18n()
+
   const failures = useLoadFailure()
   const queryClient = useQueryClient()
   const mode = useWorkspaceMode()
@@ -273,7 +274,7 @@ function Body({
     },
     onSuccess: (entry) => {
       toast.success(
-        format(entry.status === 'approved' ? m.entryDeclaredCounted : m.entryDeclaredFiled),
+        (entry.status === 'approved' ? m.entry_declaredCounted : m.entry_declaredFiled)(),
       )
       refresh()
     },
@@ -396,8 +397,8 @@ function Body({
       error={failure === null ? null : failures.of(failure)}
       retrying={items.isFetching || groups.isFetching || mine.isFetching}
       headingLevel={2}
-      loadingLabel={format(commonMessages.loading)}
-      retryLabel={format(commonMessages.retry)}
+      loadingLabel={commonMessages.state_loading()}
+      retryLabel={commonMessages.action_retry()}
       onRetry={() => {
         void items.refetch()
         void groups.refetch()
@@ -409,12 +410,12 @@ function Body({
       xstyle={styles.fill}
     >
       {rows.length === 0 ? (
-        <p {...stylex.props(styles.empty)}>{format(m.myEntriesEmpty)}</p>
+        <p {...stylex.props(styles.empty)}>{m.entry_empty()}</p>
       ) : (
         <EntriesWorkspace
           viewer="owner"
-          heading={format(m.myEntriesTab)}
-          totalLabel={format(m.entriesCountedTotal)}
+          heading={m.entry_tab()}
+          totalLabel={m.entries_countedTotal()}
           live={closed ? null : { live, lost, heard }}
           rows={rows}
           entriesByItem={entriesByItem}

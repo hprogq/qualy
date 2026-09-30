@@ -12,13 +12,13 @@ import {
   type ChoiceSchema,
 } from '@qualy/value-schema'
 import { draftFromValue, type FieldDraft as ValueDraft } from '@qualy/web-value-form/model'
-import type { MessageDescriptor, UiText } from '@qualy/i18n-contract'
+import type { Message, UiText } from '@qualy/i18n-contract'
 import { Feedback } from '@qualy/ui/admin'
 import { DatePicker } from '@qualy/ui/date-picker'
 import { Input } from '@qualy/ui/input'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { calculatorEditorSlot, calculatorSummarySlot } from '../../../surfaces.ts'
-import { assessmentMessages as m } from '../../i18n.ts'
+
 import { trimAmount } from '../../entry/model.ts'
 import { Choice } from '../Choice.tsx'
 import type { Placement } from '../paper.ts'
@@ -51,6 +51,7 @@ import {
   type EditorProblem,
 } from './model.ts'
 import { TYPE_LABEL, fieldTakesOf, kindWords, problemWords, sentences, takesOf } from './words.ts'
+import * as m from '#messages'
 
 // The arithmetic and the form it is fed from, as three lists under one
 // method: what the formula takes, what a reviewer determines, what a
@@ -220,7 +221,7 @@ export function ScoringTab({
   /** which fields name a record in a list, in order */
   onSummary: (fieldIds: string[]) => void
 }) {
-  const { format, formatText, locale } = useI18n()
+  const { formatText, locale } = useI18n()
   const words = usePickerWords()
   const [choosing, setChoosing] = useState(false)
   const automatic = draft.mode === 'automatic'
@@ -229,9 +230,8 @@ export function ScoringTab({
   const fixed = chosenCalculator.ref === 'fixed@1'
   const parameters = contract === null ? [] : inputOrder(contract.inputSchema)
   const chosenLabel = calculators.find((one) => one.ref === chosenCalculator.ref)?.label
-  const methodName =
-    chosenLabel === undefined ? format(m.itemsCalculatorFixed) : formatText(chosenLabel)
-  const separator = format(m.listSeparator)
+  const methodName = chosenLabel === undefined ? m.items_calculatorFixed() : formatText(chosenLabel)
+  const separator = m.items_listSeparator()
   const slotContext = { batchId, itemId, calculator: chosenCalculator }
 
   const parameterProblem = (parameter: string) =>
@@ -260,22 +260,22 @@ export function ScoringTab({
         data-block={block}
         data-code={one.code}
       >
-        {problemWords(one, format)}
+        {problemWords(one)}
       </p>
     ))
 
-  const asideOf = (block: EditorBlock, wrong: MessageDescriptor = m.itemsBlockFix) => {
+  const asideOf = (block: EditorBlock, wrong: Message = m.items_blockFix) => {
     const counted = countsOf(problems, block)
     if (counted.errors > 0) {
       // the block's own count sentence is about its rows; a fault of the
       // block as a whole is counted in the plain words
-      const said = blockProblems(block).length > 0 ? m.itemsBlockFix : wrong
-      return <SectionCount tone="error">{format(said, { count: counted.errors })}</SectionCount>
+      const said = blockProblems(block).length > 0 ? m.items_blockFix : wrong
+      return <SectionCount tone="error">{said({ count: counted.errors })}</SectionCount>
     }
     if (counted.pending > 0) {
       return (
         <SectionCount tone="pending">
-          {format(m.itemsBlockPending, { count: counted.pending })}
+          {m.items_blockPending({ count: counted.pending })}
         </SectionCount>
       )
     }
@@ -284,9 +284,9 @@ export function ScoringTab({
 
   return (
     <div {...stylex.props(styles.stack)}>
-      <EditorSection title={format(m.itemsScoringMethod)} testId="scoring-method" block="method">
+      <EditorSection title={m.items_scoringMethod()} testId="scoring-method" block="method">
         {draft.scoring.language === 'unsupported' ? (
-          <Feedback message={format(m.itemsScoringUnsupported)} />
+          <Feedback message={m.items_scoringUnsupported()} />
         ) : (
           <div
             {...stylex.props(
@@ -300,7 +300,7 @@ export function ScoringTab({
                 <span {...stylex.props(styles.methodName)} data-testid="scoring-method-name">
                   {methodName}
                 </span>
-                <span {...stylex.props(styles.methodNote)}>{format(m.itemsScoringFixedNote)}</span>
+                <span {...stylex.props(styles.methodNote)}>{m.items_scoringFixedNote()}</span>
                 {/* the amount is the whole configuration of a fixed method,
                     so it is edited right here rather than behind a dialog */}
                 <div {...stylex.props(styles.methodAmount)}>
@@ -331,7 +331,7 @@ export function ScoringTab({
                 {...stylex.props(styles.methodChange)}
                 onClick={() => setChoosing(true)}
               >
-                {format(m.itemsScoringChange)}
+                {m.items_scoringChange()}
                 <ChevronRightIcon aria-hidden {...stylex.props(rowWords.icon12)} />
               </button>
             )}
@@ -339,19 +339,19 @@ export function ScoringTab({
         )}
         {methodProblem !== undefined && (
           <p {...stylex.props(styles.problemLine)} role="alert" data-testid="method-problem">
-            {problemWords(methodProblem, format)}
+            {problemWords(methodProblem)}
           </p>
         )}
         {versioned && contractState.kind === 'pending' && (
           <p {...stylex.props(styles.status)} data-testid="contract-pending">
-            {format(m.itemsContractPending)}
+            {m.items_contractPending()}
           </p>
         )}
         {versioned && contractState.kind === 'refused' && (
-          <Feedback message={format(m.itemsScoringUnreadable)} />
+          <Feedback message={m.items_scoringUnreadable()} />
         )}
         {versioned && contractState.kind === 'unavailable' && (
-          <Feedback message={format(m.itemsContractRetrying)} />
+          <Feedback message={m.items_contractRetrying()} />
         )}
       </EditorSection>
 
@@ -372,9 +372,9 @@ export function ScoringTab({
 
       {versioned && contract !== null && (
         <EditorSection
-          title={format(m.itemsParameters)}
-          hint={review ? format(m.itemsParametersHint) : undefined}
-          aside={asideOf('parameters', m.itemsParametersWrong)}
+          title={m.items_parameters()}
+          hint={review ? m.items_parametersHint() : undefined}
+          aside={asideOf('parameters', m.items_parametersWrong)}
           testId="scoring-parameters"
           block="parameters"
         >
@@ -382,12 +382,12 @@ export function ScoringTab({
             <ListHead
               layout="values"
               columns={[
-                format(m.itemsColumnParameter),
-                format(m.itemsColumnTypeRange),
-                format(automatic ? m.itemsColumnValue : m.itemsColumnSource),
+                m.items_columnParameter(),
+                m.items_columnTypeRange(),
+                (automatic ? m.items_columnValue : m.items_columnSource)(),
               ]}
             />
-            {parameters.length === 0 && <EmptyRow>{format(m.itemsParametersNone)}</EmptyRow>}
+            {parameters.length === 0 && <EmptyRow>{m.items_parametersNone()}</EmptyRow>}
             {parameters.map((parameter) => {
               const schema = parameterSchemaOf(contract, parameter)!
               const binding =
@@ -404,9 +404,9 @@ export function ScoringTab({
                   takes={
                     <TakesCell
                       wrap
-                      kind={kindWords(schema, format)}
+                      kind={kindWords(schema)}
                       separator={separator}
-                      {...takesOf(schema, locale, format)}
+                      {...takesOf(schema, locale)}
                     />
                   }
                   third={
@@ -438,22 +438,18 @@ export function ScoringTab({
 
       {review && versioned && contract !== null && (
         <EditorSection
-          title={format(m.itemsRecognitions)}
-          hint={format(m.itemsRecognitionsHint)}
+          title={m.items_recognitions()}
+          hint={m.items_recognitionsHint()}
           aside={asideOf('recognitions')}
           testId="scoring-recognitions"
           block="recognitions"
         >
           <ListCard>
             <ListHead
-              columns={[
-                format(m.itemsColumnField),
-                format(m.itemsColumnRange),
-                format(m.itemsColumnLinkedField),
-              ]}
+              columns={[m.items_columnField(), m.items_columnRange(), m.items_columnLinkedField()]}
             />
             {recognitionRows(draft, contract).length === 0 && (
-              <EmptyRow>{format(m.itemsRecognitionsEmpty)}</EmptyRow>
+              <EmptyRow>{m.items_recognitionsEmpty()}</EmptyRow>
             )}
             {recognitionRows(draft, contract).map(({ parameter, handle, recognition }) => {
               const schema = parameterSchemaOf(contract, parameter)!
@@ -469,24 +465,24 @@ export function ScoringTab({
               return (
                 <ListRow
                   key={handle}
-                  name={unnamed ? format(m.itemsFieldUnnamed) : recognition.label}
+                  name={unnamed ? m.items_fieldUnnamed() : recognition.label}
                   unnamed={unnamed}
                   takes={
                     <TakesCell
-                      kind={kindWords(admitted, format)}
+                      kind={kindWords(admitted)}
                       separator={separator}
-                      {...takesOf(admitted, locale, format)}
+                      {...takesOf(admitted, locale)}
                       count={
                         offered > 0 && kept < offered
-                          ? format(m.itemsNarrowedCount, { kept, total: offered })
+                          ? m.items_narrowedCount({ kept, total: offered })
                           : undefined
                       }
                     />
                   }
                   third={
                     field === undefined ? (
-                      <span {...stylex.props(styles.unlinked)} title={format(m.itemsUnlinkedRow)}>
-                        {format(m.itemsUnlinkedRow)}
+                      <span {...stylex.props(styles.unlinked)} title={m.items_unlinkedRow()}>
+                        {m.items_unlinkedRow()}
                       </span>
                     ) : (
                       <span {...stylex.props(styles.linkedLine)}>
@@ -498,13 +494,13 @@ export function ScoringTab({
                           title={field.label}
                           data-testid="linked-field-name"
                         >
-                          {field.label.trim() === '' ? format(m.itemsFieldUnnamed) : field.label}
+                          {field.label.trim() === '' ? m.items_fieldUnnamed() : field.label}
                         </span>
-                        <span {...stylex.props(styles.linkedNote)}>{format(m.itemsLinked)}</span>
+                        <span {...stylex.props(styles.linkedNote)}>{m.items_linked()}</span>
                       </span>
                     )
                   }
-                  problem={problem === undefined ? undefined : problemWords(problem, format)}
+                  problem={problem === undefined ? undefined : problemWords(problem)}
                   onOpen={() => onOpenRecognition(handle)}
                   testId="recognition-row"
                   data={{ handle, linked: field !== undefined, problem: problem?.code }}
@@ -518,8 +514,8 @@ export function ScoringTab({
 
       {!automatic && (
         <EditorSection
-          title={format(m.itemsForm)}
-          hint={format(m.itemsFormHint)}
+          title={m.items_form()}
+          hint={m.items_formHint()}
           aside={asideOf('form')}
           testId="scoring-form"
           block="form"
@@ -528,13 +524,13 @@ export function ScoringTab({
             <ListHead
               layout="drag"
               columns={[
-                format(m.itemsColumnField),
-                format(m.itemsColumnTypeRange),
-                format(m.itemsColumnRequirement),
+                m.items_columnField(),
+                m.items_columnTypeRange(),
+                m.items_columnRequirement(),
               ]}
             />
             {draft.fields.length === 0 && (
-              <EmptyRow testId="form-empty">{format(m.itemsFormNone)}</EmptyRow>
+              <EmptyRow testId="form-empty">{m.items_formNone()}</EmptyRow>
             )}
             <FormRows
               draft={draft}
@@ -546,7 +542,7 @@ export function ScoringTab({
             />
             <FooterAction
               icon={<PlusIcon aria-hidden {...stylex.props(rowWords.icon14)} />}
-              label={format(m.itemsFieldAdd)}
+              label={m.items_formAdd()}
               onClick={onAddField}
             />
           </ListCard>
@@ -558,11 +554,11 @@ export function ScoringTab({
         <SummarySection
           candidates={draft.fields.map((field) => ({
             id: field.id,
-            name: field.label.trim() === '' ? format(m.itemsFieldUnnamed) : field.label,
+            name: field.label.trim() === '' ? m.items_fieldUnnamed() : field.label,
             type: field.type,
           }))}
           elected={draft.summaryFieldIds}
-          problem={summaryProblem === undefined ? undefined : problemWords(summaryProblem, format)}
+          problem={summaryProblem === undefined ? undefined : problemWords(summaryProblem)}
           onChange={onSummary}
         />
       )}
@@ -573,12 +569,12 @@ export function ScoringTab({
           <span>
             {sentences(
               [
-                format(m.itemsAutomaticNote),
+                m.items_automaticNote(),
                 fixed && draft.fixedValue.trim() !== ''
-                  ? format(m.itemsAutomaticResult, { value: trimAmount(draft.fixedValue.trim()) })
+                  ? m.items_automaticResult({ value: trimAmount(draft.fixedValue.trim()) })
                   : '',
                 placement.sections[0] !== undefined && placement.sections[0].cap !== null
-                  ? format(m.itemsAutomaticCap, {
+                  ? m.items_automaticCap({
                       group: placement.sections[0].name,
                       cap: trimAmount(placement.sections[0].cap),
                     })
@@ -619,7 +615,6 @@ function ParameterSource({
   onSource: (source: 'recognition' | 'constant' | 'filed') => void
   onConstant: (draft: ValueDraft) => void
 }) {
-  const { format } = useI18n()
   const wrong = problem !== undefined && problem.tone === 'error'
   const valueWrong = wrong && problem.code.startsWith('constant-')
   const constantSeat =
@@ -636,7 +631,7 @@ function ParameterSource({
     ) : null
   const line = wrong ? (
     <span {...stylex.props(styles.problemLine)} role="alert" data-testid="parameter-problem">
-      {problemWords(problem, format)}
+      {problemWords(problem)}
     </span>
   ) : null
   if (mode === 'automatic') {
@@ -661,16 +656,16 @@ function ParameterSource({
     <div {...stylex.props(styles.valueColumn)}>
       <div {...stylex.props(styles.valueLine)}>
         <Choice
-          aria-label={format(m.itemsColumnSource)}
+          aria-label={m.items_columnSource()}
           value={chosen}
           placeholder={words.unanswered}
           invalid={wrong && !valueWrong}
           xstyle={mode === 'direct' ? styles.sourcePickWide : styles.sourcePick}
           options={[
             mode === 'direct'
-              ? { value: 'filed', label: format(m.itemsSourceFiled) }
-              : { value: 'recognition', label: format(m.itemsSourceRecognition) },
-            { value: 'constant', label: format(m.itemsSourceConstant) },
+              ? { value: 'filed', label: m.items_sourceFiled() }
+              : { value: 'recognition', label: m.items_sourceRecognition() },
+            { value: 'constant', label: m.items_sourceConstant() },
           ]}
           onChange={(next) => onSource(next as 'recognition' | 'constant' | 'filed')}
         />
@@ -680,7 +675,7 @@ function ParameterSource({
         {problem !== undefined && problem.tone === 'pending' && (
           <span {...stylex.props(styles.pendingLine)} data-testid="parameter-pending">
             <span aria-hidden {...stylex.props(styles.pendingDot)} />
-            {format(m.itemsSourceUnset)}
+            {m.items_sourceUnset()}
           </span>
         )}
       </div>
@@ -707,13 +702,12 @@ function ConstantValue({
   words: ReturnType<typeof usePickerWords>
   onChange: (draft: ValueDraft) => void
 }) {
-  const { format } = useI18n()
   const kind = kindOf(schema)
   const label = parameterTitle(null, parameter, locale)
   if (kind === 'boolean') {
     const answers = [
-      { value: false, label: format(m.itemsNo) },
-      { value: true, label: format(m.itemsYes) },
+      { value: false, label: m.items_no() },
+      { value: true, label: m.items_yes() },
     ] as const
     return (
       <span
@@ -805,10 +799,9 @@ function FormRows({
   onOpenField: (key: string) => void
   onReorder: (orderedKeys: readonly string[]) => void
 }) {
-  const { format } = useI18n()
   const [held, setHeld] = useState<string | null>(null)
   const [drop, setDrop] = useState<{ key: string; edge: 'before' | 'after' } | null>(null)
-  const separator = format(m.listSeparator)
+  const separator = m.items_listSeparator()
   const edgeOf = (event: React.DragEvent) => {
     const box = event.currentTarget.getBoundingClientRect()
     return event.clientY < box.top + box.height / 2 ? ('before' as const) : ('after' as const)
@@ -839,36 +832,36 @@ function FormRows({
             layout="drag"
             // the field's own name, linked or not: the determination it
             // feeds is named on its own row
-            name={unnamed ? format(m.itemsFieldUnnamed) : field.label}
+            name={unnamed ? m.items_fieldUnnamed() : field.label}
             unnamed={unnamed}
             tag={
               link === undefined ? undefined : (
                 <Tag testId="field-link-tag">
-                  {format(draft.mode === 'direct' ? m.itemsParameterTag : m.itemsLinkedTag)}
+                  {(draft.mode === 'direct' ? m.items_parameterTag : m.items_linkedTag)()}
                 </Tag>
               )
             }
             takes={
               admitted === null ? (
                 <TakesCell
-                  kind={format(TYPE_LABEL[field.type])}
+                  kind={TYPE_LABEL[field.type]()}
                   separator={separator}
-                  {...fieldTakesOf(field, format)}
+                  {...fieldTakesOf(field)}
                 />
               ) : (
                 <TakesCell
-                  kind={kindWords(admitted, format)}
+                  kind={kindWords(admitted)}
                   separator={separator}
-                  {...takesOf(admitted, locale, format)}
+                  {...takesOf(admitted, locale)}
                 />
               )
             }
             third={
               <span {...stylex.props(required ? styles.required : styles.optional)}>
-                {format(required ? m.itemsFieldRequired : m.itemsOptional)}
+                {(required ? m.items_fieldRequired : m.items_optional)()}
               </span>
             }
-            problem={problem === undefined ? undefined : problemWords(problem, format)}
+            problem={problem === undefined ? undefined : problemWords(problem)}
             handle={
               <DragHandle onPress={() => setHeld(field.key)} onRelease={() => setHeld(null)} />
             }

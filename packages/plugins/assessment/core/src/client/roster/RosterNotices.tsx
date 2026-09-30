@@ -1,10 +1,9 @@
 import type { ReactNode } from 'react'
 import { InfoIcon, TriangleAlertIcon } from 'lucide-react'
 import * as stylex from '@stylexjs/stylex'
-import { useI18n } from '@qualy/web-i18n'
 import { Button } from '@qualy/ui/button'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { assessmentMessages as m } from '../i18n.ts'
+import * as m from '#messages'
 
 // What the roster is waiting on its administrator for, over the list: the
 // organization having people somewhere other than this round does, and
@@ -101,7 +100,6 @@ export function RosterNotices({
   onPlacements: () => void
   onUnreachable: () => void
 }) {
-  const { format } = useI18n()
   const moved =
     placements !== null && (placements.changedTotal > 0 || placements.unavailableTotal > 0)
       ? placements
@@ -120,10 +118,10 @@ export function RosterNotices({
           tone={moved.changedTotal > 0 ? 'decide' : 'inform'}
           words={
             moved.changedTotal > 0
-              ? format(m.placementPrompt, { count: moved.changedTotal })
-              : format(m.placementUnavailablePrompt, { count: moved.unavailableTotal })
+              ? m.placement_prompt({ count: moved.changedTotal })
+              : m.placement_unavailablePrompt({ count: moved.unavailableTotal })
           }
-          action={format(m.placementOpen)}
+          action={m.placement_open()}
           onOpen={onPlacements}
         />
       )}
@@ -132,8 +130,8 @@ export function RosterNotices({
           data-testid="unreachable-notice"
           data-count={String(stuck)}
           tone="decide"
-          words={format(m.rosterUnreachablePrompt, { count: stuck })}
-          action={format(m.rosterUnreachableOpen)}
+          words={m.roster_unreachablePrompt({ count: stuck })}
+          action={m.roster_unreachableOpen()}
           onOpen={onUnreachable}
         />
       )}

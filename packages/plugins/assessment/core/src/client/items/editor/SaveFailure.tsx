@@ -1,12 +1,12 @@
 import type { ReactNode } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { CircleAlertIcon, XIcon } from 'lucide-react'
-import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { Button } from '@qualy/ui/button'
-import { assessmentMessages as m } from '../../i18n.ts'
+
 import { ProblemRows } from './PendingList.tsx'
 import type { EditorProblem } from './model.ts'
+import * as m from '#messages'
 
 // What a refused save says, at the top of the page it was refused on.
 //
@@ -93,7 +93,6 @@ export function FailureList({
   onGo: (problem: EditorProblem) => void
   onDismiss: () => void
 }) {
-  const { format } = useI18n()
   if (problems.length === 0) return null
   return (
     <div
@@ -107,16 +106,16 @@ export function FailureList({
           <CircleAlertIcon aria-hidden {...stylex.props(styles.markIcon)} />
         </span>
         <span {...stylex.props(styles.title)}>
-          {format(m.itemsSaveFailedCount, { count: problems.length })}
+          {m.items_saveFailedCount({ count: problems.length })}
         </span>
-        <span {...stylex.props(styles.hint)}>{format(m.itemsSaveFailedHint)}</span>
+        <span {...stylex.props(styles.hint)}>{m.items_saveFailedHint()}</span>
         <span {...stylex.props(styles.spacer)} />
         <Button
           variant="ghost"
           size="icon-xs"
           className={stylex.props(styles.close).className}
           onClick={onDismiss}
-          aria-label={format(m.itemsDismiss)}
+          aria-label={m.items_dismiss()}
         >
           <XIcon aria-hidden />
         </Button>

@@ -4,7 +4,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { UserRoundCheckIcon } from 'lucide-react'
 import { PageLink, useApi, useApiQuery, useLoadFailure, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { useTerm } from '@qualy/plugin-settings/client/terms'
 import { authTerms } from '@qualy/auth-contract/terms'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
@@ -30,8 +30,10 @@ import { useIsBelow } from '@qualy/ui/use-mobile'
 import { Textarea } from '@qualy/ui/textarea'
 import { toast } from '@qualy/ui/toast'
 import { directoryApi } from './api.ts'
-import { directoryImportMessages as m } from './i18n.ts'
+
 import { whenText } from './words.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // One import as history: what it did, what became of the people, and the
 // two things that can still be done to it - reversing it, which deletes
@@ -131,7 +133,7 @@ export function ImportRecordSheet({
   open: boolean
   onClose: () => void
 }) {
-  const { format, formatError, locale } = useI18n()
+  const { formatError, locale } = useI18n()
   const businessNo = useTerm(authTerms.businessNumber)
   const phone = useIsBelow(768)
   const api = useApi(directoryApi)
@@ -171,7 +173,7 @@ export function ImportRecordSheet({
         }),
       ),
     onSuccess: (outcome) => {
-      toast.success(format(m.reversed, { retired: outcome.retired }))
+      toast.success(m.reverse_done({ retired: outcome.retired }))
       setReversing(false)
       refresh()
     },
@@ -180,9 +182,7 @@ export function ImportRecordSheet({
   const clean = useMutation({
     mutationFn: () => run(api.directory.cleanUserImportNodes({ params: { importId } })),
     onSuccess: (outcome) => {
-      toast.success(
-        format(m.cleaned, { deleted: outcome.deleted, retained: outcome.retained.length }),
-      )
+      toast.success(m.clean_done({ deleted: outcome.deleted, retained: outcome.retained.length }))
       setCleaning(false)
       refresh()
     },
@@ -195,16 +195,16 @@ export function ImportRecordSheet({
   const absent = failed.subject(detail, {
     missing: ['USER_IMPORT_NOT_FOUND'],
     copy: {
-      missing: { title: format(m.recordMissing) },
-      failed: { title: format(m.recordFailed) },
+      missing: { title: m.record_missing() },
+      failed: { title: m.record_failed() },
     },
   })
   const items = rows.data?.items ?? []
   const standingWords = {
-    active: m.standingActive,
-    disabled: m.standingDisabled,
-    deleted: m.standingDeleted,
-    missing: m.standingMissing,
+    active: m.record_standingActive,
+    disabled: m.record_standingDisabled,
+    deleted: m.record_standingDeleted,
+    missing: m.record_standingMissing,
   } as const
 
   return (
@@ -212,15 +212,15 @@ export function ImportRecordSheet({
       open={open}
       onClose={onClose}
       width="wide"
-      title={found === undefined ? format(m.recordsTitle) : found.import.filename}
-      closeLabel={format(m.recordClose)}
+      title={found === undefined ? m.records_title() : found.import.filename}
+      closeLabel={m.record_close()}
       testId="import-record-sheet"
     >
       <AsyncSection
         pending={detail.isPending}
         error={absent}
-        loadingLabel={format(m.recordLoading)}
-        retryLabel={format(m.retry)}
+        loadingLabel={m.record_loading()}
+        retryLabel={m.records_retry()}
         onRetry={() => void detail.refetch()}
       >
         {found !== undefined && (
@@ -228,11 +228,11 @@ export function ImportRecordSheet({
             <FactStrip
               columns={4}
               items={[
-                { label: format(m.recordBy), value: found.import.actorName ?? '—' },
-                { label: format(m.recordAt), value: whenText(locale, found.import.createdAt) },
-                { label: format(m.recordType), value: found.import.userTypeName ?? '—' },
+                { label: m.record_by(), value: found.import.actorName ?? '—' },
+                { label: m.record_at(), value: whenText(locale, found.import.createdAt) },
+                { label: m.record_type(), value: found.import.userTypeName ?? '—' },
                 {
-                  label: format(m.recordUnder),
+                  label: m.record_under(),
                   value:
                     [
                       found.import.anchorPath,
@@ -245,10 +245,10 @@ export function ImportRecordSheet({
             />
 
             <Card>
-              <CardHead title={format(m.recordOutcome)} />
+              <CardHead title={m.record_outcome()} />
               <div {...stylex.props(styles.outcome)}>
                 <span data-testid="import-counts">
-                  {format(m.recordCounts, {
+                  {m.record_counts({
                     users: found.import.createdUserCount,
                     existing: found.import.existingUserCount,
                     nodes: found.import.createdNodeCount,
@@ -259,7 +259,7 @@ export function ImportRecordSheet({
                   data-testid="import-standing"
                   data-living={found.import.standing.living}
                 >
-                  {format(m.recordStanding, found.import.standing)}
+                  {m.record_standing(found.import.standing)}
                 </span>
                 {/* the counts above are the import's own; what of it this
                     reader is not shown is said, not left as an empty list */}
@@ -269,7 +269,7 @@ export function ImportRecordSheet({
                     data-testid="import-hidden-rows"
                     data-count={found.hidden.rows}
                   >
-                    {format(m.recordHiddenRows, { count: found.hidden.rows })}
+                    {m.record_hiddenRows({ count: found.hidden.rows })}
                   </span>
                 )}
                 {found.hidden.nodes > 0 && (
@@ -278,7 +278,7 @@ export function ImportRecordSheet({
                     data-testid="import-hidden-nodes"
                     data-count={found.hidden.nodes}
                   >
-                    {format(m.recordHiddenNodes, { count: found.hidden.nodes })}
+                    {m.record_hiddenNodes({ count: found.hidden.nodes })}
                   </span>
                 )}
               </div>
@@ -289,11 +289,11 @@ export function ImportRecordSheet({
                   says where it is instead of a button that invites a mis-hit. */}
               {phone ? (
                 <CardFoot inset>
-                  <FootNote>{format(m.undoElsewhere)}</FootNote>
+                  <FootNote>{m.record_undoElsewhere()}</FootNote>
                 </CardFoot>
               ) : (
                 <CardFoot inset>
-                  <FootNote>{format(m.recordUndoHint)}</FootNote>
+                  <FootNote>{m.record_undoHint()}</FootNote>
                   <Spacer />
                   <Button
                     variant="outline"
@@ -303,7 +303,7 @@ export function ImportRecordSheet({
                     }
                     onClick={() => setCleaning(true)}
                   >
-                    {format(m.clean)}
+                    {m.clean_action()}
                   </Button>
                   <Button
                     variant="outline"
@@ -311,7 +311,7 @@ export function ImportRecordSheet({
                     disabled={found.import.standing.living === 0}
                     onClick={() => setReversing(true)}
                   >
-                    {format(m.reverse)}
+                    {m.reverse_action()}
                   </Button>
                 </CardFoot>
               )}
@@ -319,14 +319,14 @@ export function ImportRecordSheet({
 
             {found.events.length > 0 && (
               <Card>
-                <CardHead title={format(m.recordEvents)} />
+                <CardHead title={m.record_events()} />
                 <Table columns="minmax(0, 1.4fr) minmax(0, 1fr)">
                   {found.events.map((event) => (
                     <TableRow key={event.id} data-testid="import-event" data-kind={event.kind}>
                       <Cell lead>
                         {event.kind === 'reversed'
-                          ? format(m.eventReversed, { count: event.affectedUserCount })
-                          : format(m.eventCleaned, {
+                          ? m.event_reversed({ count: event.affectedUserCount })
+                          : m.event_nodesCleaned({
                               deleted: event.deletedNodeCount,
                               retained: event.retainedNodeCount,
                             })}
@@ -345,14 +345,14 @@ export function ImportRecordSheet({
             {!phone && found.nodes.length > 0 && (
               <Card>
                 <CardHead
-                  title={format(m.recordNodes)}
-                  note={format(m.countOf, { count: found.nodes.length })}
+                  title={m.record_nodes()}
+                  note={m.countOf({ count: found.nodes.length })}
                 />
                 <Table columns="minmax(0, 1fr) 5rem 5rem">
                   <TableHead>
-                    <span>{format(m.columnUnit)}</span>
-                    <span>{format(m.columnOutcome)}</span>
-                    <span>{format(m.columnStanding)}</span>
+                    <span>{m.record_columnUnit()}</span>
+                    <span>{m.record_columnOutcome()}</span>
+                    <span>{m.record_columnStanding()}</span>
                   </TableHead>
                   {found.nodes
                     .slice((nodePage - 1) * NODES_PER_PAGE, nodePage * NODES_PER_PAGE)
@@ -367,21 +367,17 @@ export function ImportRecordSheet({
                           {node.path}
                         </Cell>
                         <Cell>
-                          {format(
-                            node.disposition === 'created'
-                              ? m.dispositionCreated
-                              : m.dispositionReused,
-                          )}
+                          {(node.disposition === 'created' ? m.record_created : m.record_reused)()}
                         </Cell>
                         <Status tone={node.present ? 'plain' : 'bad'}>
-                          {format(node.present ? m.nodePresent : m.nodeGone)}
+                          {(node.present ? m.record_nodePresent : m.record_nodeGone)()}
                         </Status>
                       </TableRow>
                     ))}
                 </Table>
                 <CardFoot>
                   <Pager
-                    label={format(m.pagerLabel)}
+                    label={m.pager()}
                     page={nodePage}
                     pageSize={NODES_PER_PAGE}
                     total={found.nodes.length}
@@ -393,8 +389,8 @@ export function ImportRecordSheet({
 
             <Card>
               <CardHead
-                title={format(m.recordRows)}
-                note={format(m.countOf, { count: rows.data?.total ?? found.import.sourceRowCount })}
+                title={m.record_rows()}
+                note={m.countOf({ count: rows.data?.total ?? found.import.sourceRowCount })}
               />
               {phone ? (
                 items.map((row) => {
@@ -427,21 +423,17 @@ export function ImportRecordSheet({
                       </span>
                       <span {...stylex.props(styles.personStanding)}>
                         <span>
-                          {format(
-                            row.disposition === 'created'
-                              ? m.dispositionCreated
-                              : m.dispositionExisting,
-                          )}
+                          {(row.disposition === 'created' ? m.record_created : m.record_existing)()}
                         </span>
                         {/* only what is wrong is marked: a column of grey
                             words with one red one in it is read at a glance */}
                         {gone ? (
                           <span {...stylex.props(styles.gone)}>
                             <span aria-hidden {...stylex.props(styles.goneDot)} />
-                            {format(standingWords[row.standing])}
+                            {standingWords[row.standing]()}
                           </span>
                         ) : (
-                          <span>{format(standingWords[row.standing])}</span>
+                          <span>{standingWords[row.standing]()}</span>
                         )}
                       </span>
                     </div>
@@ -450,12 +442,12 @@ export function ImportRecordSheet({
               ) : (
                 <Table columns="3.5rem 7.5rem 6rem minmax(0, 1fr) 4.5rem 4.5rem">
                   <TableHead>
-                    <span>{format(m.columnRow)}</span>
+                    <span>{m.record_columnRow()}</span>
                     <span>{businessNo}</span>
-                    <span>{format(m.columnName)}</span>
-                    <span>{format(m.columnUnit)}</span>
-                    <span>{format(m.columnOutcome)}</span>
-                    <span>{format(m.columnStanding)}</span>
+                    <span>{m.record_columnName()}</span>
+                    <span>{m.record_columnUnit()}</span>
+                    <span>{m.record_columnOutcome()}</span>
+                    <span>{m.record_columnStanding()}</span>
                   </TableHead>
                   {items.map((row) => (
                     <TableRow
@@ -483,18 +475,14 @@ export function ImportRecordSheet({
                       </Cell>
                       <Cell title={row.orgPath}>{row.orgPath}</Cell>
                       <Cell>
-                        {format(
-                          row.disposition === 'created'
-                            ? m.dispositionCreated
-                            : m.dispositionExisting,
-                        )}
+                        {(row.disposition === 'created' ? m.record_created : m.record_existing)()}
                       </Cell>
                       <Status
                         tone={
                           row.standing === 'deleted' || row.standing === 'missing' ? 'bad' : 'plain'
                         }
                       >
-                        {format(standingWords[row.standing])}
+                        {standingWords[row.standing]()}
                       </Status>
                     </TableRow>
                   ))}
@@ -503,7 +491,7 @@ export function ImportRecordSheet({
               <CardFoot>
                 <Pager
                   testId="import-rows-pager"
-                  label={format(m.pagerLabel)}
+                  label={m.pager()}
                   page={rows.data?.page ?? rowPage}
                   pageSize={ROWS_PER_PAGE}
                   total={rows.data?.total ?? 0}
@@ -518,11 +506,11 @@ export function ImportRecordSheet({
 
       <FormDialog
         open={reversing}
-        title={format(m.reverseTitle)}
+        title={m.reverse_title()}
         description={
           reversal.data === undefined || nothingLeft
             ? undefined
-            : format(m.reversalHint, {
+            : m.reverse_hint({
                 count: reversal.data.toRetire,
                 bindings: reversal.data.withBindings,
                 grants: reversal.data.withGrants,
@@ -533,7 +521,7 @@ export function ImportRecordSheet({
           <div {...stylex.props(styles.row)}>
             <span {...stylex.props(styles.spacer)} />
             <Button variant="outline" onClick={() => setReversing(false)}>
-              {format(nothingLeft ? commonMessages.close : m.cancel)}
+              {(nothingLeft ? commonMessages.action_close : m.dialog_cancel)()}
             </Button>
             {reversal.data !== undefined && !nothingLeft && (
               <Button
@@ -541,7 +529,7 @@ export function ImportRecordSheet({
                 disabled={reason.trim() === '' || reverse.isPending}
                 onClick={() => reverse.mutate()}
               >
-                {format(m.reverseConfirm)}
+                {m.reverse_confirm()}
               </Button>
             )}
           </div>
@@ -550,20 +538,16 @@ export function ImportRecordSheet({
         <AsyncSection
           pending={reversal.isPending}
           error={reversal.isError ? failed.of(reversal.error) : null}
-          loadingLabel={format(commonMessages.loading)}
-          retryLabel={format(commonMessages.retry)}
+          loadingLabel={commonMessages.state_loading()}
+          retryLabel={commonMessages.action_retry()}
           onRetry={() => void reversal.refetch()}
         >
           {nothingLeft ? (
             <div data-testid="reverse-nothing">
-              <Blank
-                size="compact"
-                icon={<UserRoundCheckIcon />}
-                title={format(m.reverseNothing)}
-              />
+              <Blank size="compact" icon={<UserRoundCheckIcon />} title={m.reverse_nothing()} />
             </div>
           ) : (
-            <Field required label={format(m.reverseReason)}>
+            <Field required label={m.reverse_reason()}>
               {(id) => (
                 <Textarea
                   id={id}
@@ -579,10 +563,10 @@ export function ImportRecordSheet({
 
       <ConfirmDialog
         open={cleaning}
-        title={format(m.cleanTitle)}
-        description={format(m.cleanHint)}
-        confirmLabel={format(m.cleanConfirm)}
-        cancelLabel={format(m.cancel)}
+        title={m.clean_title()}
+        description={m.clean_hint()}
+        confirmLabel={m.clean_confirm()}
+        cancelLabel={m.dialog_cancel()}
         pending={clean.isPending}
         onConfirm={() => clean.mutate()}
         onCancel={() => setCleaning(false)}

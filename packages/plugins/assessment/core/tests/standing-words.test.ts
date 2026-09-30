@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { assessmentMessages as m } from '../src/client/i18n.ts'
-import zhCN from '../src/client/locales/zh-CN.ts'
+import type { SupportedLocale } from '@qualy/i18n-contract'
+
+import * as m from '#messages'
 
 // Every standing a claim's chip can show is a word of its own, in every
 // language the product speaks: two standings sharing a word read as one on
@@ -9,48 +10,47 @@ import zhCN from '../src/client/locales/zh-CN.ts'
 // its owner took back to edit.
 
 const STANDINGS = [
-  m.entryStatusDraft,
-  m.entryStatusRevising,
-  m.entryStatusInReview,
-  m.entryStatusNeedsRevision,
-  m.entryStatusAwaitingSupplement,
-  m.entryStatusAppealing,
-  m.entryStatusReopened,
-  m.entryStatusApproved,
-  m.entryStatusRejected,
-  m.entryStatusAbandoned,
+  m.entry_statusDraft,
+  m.entry_statusRevising,
+  m.entry_statusInReview,
+  m.entry_statusNeedsRevision,
+  m.entry_statusAwaitingSupplement,
+  m.entry_statusAppealing,
+  m.entry_statusReopened,
+  m.entry_statusApproved,
+  m.entry_statusRejected,
+  m.entry_statusAbandoned,
   // an office record's own standings; one under appeal is the same news as
   // a claim under appeal, and may say it in the same word
-  m.recordStandingSettled,
-  m.recordStandingOverturned,
-  m.recordStandingWithdrawn,
+  m.record_standingSettled,
+  m.record_standingOverturned,
+  m.record_standingWithdrawn,
 ]
 
-/** standings that share a word, as `id = id` pairs */
-const shared = (wordOf: (id: string, fallback: string) => string) => {
-  const seen = new Map<string, string>()
+/** standings that share a word in one language, as `index = index` pairs */
+const shared = (locale: SupportedLocale) => {
+  const seen = new Map<string, number>()
   const clashes: string[] = []
-  for (const standing of STANDINGS) {
-    const word = wordOf(standing.id, standing.defaultMessage).trim().toLowerCase()
+  STANDINGS.forEach((standing, index) => {
+    const word = standing({}, { locale }).trim().toLowerCase()
     const first = seen.get(word)
-    if (first === undefined) seen.set(word, standing.id)
-    else clashes.push(`${first} = ${standing.id}`)
-  }
+    if (first === undefined) seen.set(word, index)
+    else clashes.push(`${String(first)} = ${String(index)}`)
+  })
   return clashes
 }
 
 describe('the words a claim’s standing is said in', () => {
   it('gives every standing its own word in English', () => {
-    expect(shared((_id, fallback) => fallback)).toEqual([])
+    expect(shared('en-US')).toEqual([])
   })
 
   it('gives every standing its own word in Chinese', () => {
-    const catalog = zhCN as Record<string, string>
-    expect(shared((id, fallback) => catalog[id] ?? fallback)).toEqual([])
+    expect(shared('zh-CN')).toEqual([])
   })
 
   it('keeps the office taking a record back apart from the owner’s own withdrawing', () => {
-    const owner = m.entryWithdraw.defaultMessage.toLowerCase()
-    expect(m.recordStandingWithdrawn.defaultMessage.toLowerCase()).not.toContain(owner)
+    const owner = m.entry_withdraw({}, { locale: 'en-US' }).toLowerCase()
+    expect(m.record_standingWithdrawn({}, { locale: 'en-US' }).toLowerCase()).not.toContain(owner)
   })
 })

@@ -16,10 +16,10 @@ import {
   type Path,
 } from 'react-router'
 import { ConfirmDialog } from '@qualy/ui/admin'
-import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { createLeaveGate, leavesThePage, navigationSteps, type LeaveGate } from './leave-gate.ts'
 import { sharedContext } from './shared-context.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
 
 // The router the application runs under, with a gate on its history (see
 // leave-gate.ts), and the question it asks when a page with unsaved changes
@@ -76,7 +76,6 @@ export function GuardedMemoryRouter({
 }
 
 function LeaveQuestion({ gate, children }: { gate: LeaveGate; children: ReactNode }) {
-  const { format } = useI18n()
   const held = useSyncExternalStore(gate.subscribe, gate.held, gate.held)
   // Saving holds the question open until the save answers. The dialog closes
   // itself on any answer pressed, which would put the question away - and
@@ -90,20 +89,20 @@ function LeaveQuestion({ gate, children }: { gate: LeaveGate; children: ReactNod
       {children}
       <ConfirmDialog
         open={held !== null || saving}
-        title={format(commonMessages.leaveTitle)}
-        description={format(commonMessages.leaveHint)}
-        cancelLabel={format(commonMessages.leaveStay)}
+        title={commonMessages.leave_title()}
+        description={commonMessages.leave_hint()}
+        cancelLabel={commonMessages.leave_stay()}
         pending={saving}
         {...(save === undefined
           ? {
               // nothing to keep the changes with: going is going without them
-              confirmLabel: format(commonMessages.leaveDiscard),
+              confirmLabel: commonMessages.leave_discard(),
               tone: 'destructive' as const,
               onConfirm: leave,
             }
           : {
-              confirmLabel: format(commonMessages.leaveSave),
-              otherLabel: format(commonMessages.leaveDiscard),
+              confirmLabel: commonMessages.leave_save(),
+              otherLabel: commonMessages.leave_discard(),
               onOther: leave,
               onConfirm: () => {
                 const going = held

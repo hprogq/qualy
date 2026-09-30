@@ -12,16 +12,16 @@ import {
   type ComponentRegistry,
 } from '@qualy/web-runtime'
 import { UiProvider } from '@qualy/ui/provider'
-import { I18nProvider, resolveInitialLocale } from '@qualy/web-i18n'
+import { installMessages, resolveInitialLocale } from '@qualy/web-i18n'
 import { bootstrapMessages } from '@qualy/web-i18n/bootstrap'
-import { ColdStart, LoadingScreen } from '@qualy/ui/spinner'
+import { ColdStart } from '@qualy/ui/spinner'
 import {
-  catalogs,
   errorMessages,
   layoutComponents,
   loginComponents,
   pageComponents,
   slotComponents,
+  wireMessages,
 } from 'virtual:qualy/plugins'
 import { releases, webRelease } from './release.ts'
 import { useRouteSlots } from './route-states.tsx'
@@ -54,30 +54,30 @@ const registry: ComponentRegistry = {
 // the catalogs will arrive in.
 const coldStartCopy = bootstrapMessages[resolveInitialLocale()]
 
+// what the assembly's plugins say for their api failures and for the texts
+// their server names by id; everything else a screen says itself
+installMessages({ errorMessages, wireMessages })
+
 export default function App() {
-  // localization wraps everything: even the manifest loading and error
-  // states are localized, so the shell never renders untranslated copy.
   // The cold-start host wraps it all, above every provider, and draws the
   // one loading screen the fallbacks below claim in turn - each of them
   // told by the tree, from its first render, that it is a claim.
   return (
     <ColdStart copy={coldStartCopy}>
-      <I18nProvider catalogs={catalogs} errorMessages={errorMessages} fallback={<LoadingScreen />}>
-        <ThemeProvider>
-          <WidgetBridge>
-            <RuntimeProvider
-              registry={registry}
-              clientIdentity={webRelease}
-              onClientUnsupported={(reason) => releases.notifyClientUnsupported(reason)}
-              signInPage={SIGN_IN_PAGE}
-            >
-              <GuardedBrowserRouter>
-                <ManifestRouter />
-              </GuardedBrowserRouter>
-            </RuntimeProvider>
-          </WidgetBridge>
-        </ThemeProvider>
-      </I18nProvider>
+      <ThemeProvider>
+        <WidgetBridge>
+          <RuntimeProvider
+            registry={registry}
+            clientIdentity={webRelease}
+            onClientUnsupported={(reason) => releases.notifyClientUnsupported(reason)}
+            signInPage={SIGN_IN_PAGE}
+          >
+            <GuardedBrowserRouter>
+              <ManifestRouter />
+            </GuardedBrowserRouter>
+          </RuntimeProvider>
+        </WidgetBridge>
+      </ThemeProvider>
     </ColdStart>
   )
 }

@@ -20,7 +20,7 @@ import { draftsFromStored, materializeInput, type FieldDraft } from '@qualy/web-
 import { useTryRecords } from './try-records.ts'
 import { DownloadIcon, HistoryIcon, LockIcon, MoreHorizontalIcon } from 'lucide-react'
 import { formulaApi } from './api.ts'
-import { formulaMessages as m } from './i18n.ts'
+
 import { fullWhen } from './library-styles.ts'
 import { LazyFormulaSourceViewer } from './lazy-editors.ts'
 import { inputIssueWords, inputSummaryOf } from './report-words.ts'
@@ -28,6 +28,7 @@ import { TryRunPanel, type TryOutcome } from './TryRunPanel.tsx'
 import { TryRecordsDrawer } from './TryRecordsDrawer.tsx'
 import { WorkbenchBar, WorkbenchLayout } from './WorkbenchLayout.tsx'
 import { workbenchStyles as w } from './workbench-styles.ts'
+import * as m from '#messages'
 
 // One saved state of the draft, as it was saved: its source and its examples,
 // read-only. It is a draft, not a publication, so a try compiles its source
@@ -98,7 +99,7 @@ export function RevisionView({
   const api = useApi(formulaApi)
   const run = useRunApi()
   const query = useApiQuery(formulaApi)
-  const { format, formatError, locale } = useI18n()
+  const { formatError, locale } = useI18n()
   const [panelTab, setPanelTab] = useState('examples')
   const [phoneTab, setPhoneTab] = useState('source')
   const [drafts, setDrafts] = useState<Record<string, FieldDraft>>({})
@@ -123,7 +124,7 @@ export function RevisionView({
   )
   const revision = detail.data?.revision
   const current = revisionNo === draftRevision
-  const label = format(m.revisionNumber, { number: revisionNo })
+  const label = m.history_revisionNumber({ number: revisionNo })
   const blank = revision !== undefined && revision.sourceTs.trim() === ''
 
   // the structure the saved source declares, asked only once it is on screen
@@ -145,7 +146,7 @@ export function RevisionView({
     if (revision === undefined) return
     const filename = fileNameOf([functionName, label], '.ts')
     downloadText({ filename, text: revision.sourceTs, type: 'text/typescript;charset=utf-8' })
-    toast.success(format(m.downloaded, { file: filename }))
+    toast.success(m.editor_downloaded({ file: filename }))
   }
 
   const runTry = async () => {
@@ -156,10 +157,10 @@ export function RevisionView({
     if (materialized.value === null) {
       // the fields mark themselves, but on a long contract they do it
       // somewhere the reader is not looking
-      const words = inputIssueWords(format, schema, materialized.issues)
+      const words = inputIssueWords(schema, materialized.issues)
       setIssues(words)
       setVerdict({ at: Date.now(), kind: 'refused' })
-      toast.error(format(m.runNeedsFields, { count: words.size }))
+      toast.error(m.editor_runNeedsFields({ count: words.size }))
       return
     }
     setIssues(undefined)
@@ -191,23 +192,23 @@ export function RevisionView({
     if (revision === undefined) return ''
     switch (revision.origin) {
       case 'created':
-        return format(m.revisionCreated)
+        return m.history_revisionCreated()
       case 'saved':
-        return format(m.revisionSaved)
+        return m.history_revisionSaved()
       case 'copied-from-template':
-        return format(m.revisionCopied)
+        return m.history_revisionCopied()
       case 'migration':
-        return format(m.revisionMigration)
+        return m.history_revisionMigration()
       case 'restored-from-version':
-        return format(m.revisionRestoredRelease, {
+        return m.history_revisionRestoredRelease({
           name:
             revision.sourceVersion === null
               ? ''
               : (revision.sourceVersion.releaseName ??
-                format(m.releaseOrdinal, { number: revision.sourceVersion.versionNo })),
+                m.history_releaseOrdinal({ number: revision.sourceVersion.versionNo })),
         })
       case 'restored-from-draft':
-        return format(m.revisionRestoredRevision, { number: revision.sourceDraftRevisionNo ?? 0 })
+        return m.history_revisionRestoredRevision({ number: revision.sourceDraftRevisionNo ?? 0 })
     }
   }
 
@@ -227,14 +228,14 @@ export function RevisionView({
         retrying={detail.isFetching}
         extra={
           <Button size="sm" variant={retryable ? 'outline' : 'default'} onClick={onBack}>
-            {format(m.backToDraft)}
+            {m.history_backToDraft()}
           </Button>
         }
       />
     </div>
   ) : (
     <div role="status" {...stylex.props(styles.loading)}>
-      <Spinner aria-label={format(m.editorLoading)} />
+      <Spinner aria-label={m.editor_loading()} />
     </div>
   )
 
@@ -243,7 +244,7 @@ export function RevisionView({
       pending
     ) : blank ? (
       <div {...stylex.props(w.emptyFill)}>
-        <EmptyRow>{format(m.revisionEmptySource)}</EmptyRow>
+        <EmptyRow>{m.revision_emptySource()}</EmptyRow>
       </div>
     ) : (
       <div {...stylex.props(styles.sourceFill)}>
@@ -253,8 +254,8 @@ export function RevisionView({
             lease={lease}
             name={`revision-${String(revisionNo)}`}
             source={revision.sourceTs}
-            label={format(m.revisionSource)}
-            readOnlyLabel={format(m.readOnly)}
+            label={m.revision_source()}
+            readOnlyLabel={m.history_readOnly()}
             data-testid="formula-revision-source"
           />
         </Suspense>
@@ -263,20 +264,20 @@ export function RevisionView({
 
   const tryRun = (phone: boolean) => (
     <TryRunPanel
-      title={format(m.tryTitle)}
+      title={m.editor_tryTitle()}
       narrow={phone}
       status={
         compiled.data === undefined
-          ? { state: 'loading', tone: 'working', words: format(m.structureLoading) }
-          : { state: 'synced', tone: 'quiet', words: format(m.structureSynced) }
+          ? { state: 'loading', tone: 'working', words: m.editor_structureLoading() }
+          : { state: 'synced', tone: 'quiet', words: m.editor_structureSynced() }
       }
       schema={compiled.data?.inputSchema ?? null}
       pending={
         blank
-          ? { state: 'blank', words: format(m.compileBlank), working: false, off: false }
+          ? { state: 'blank', words: m.editor_compileBlank(), working: false, off: false }
           : compiled.isError
-            ? { state: 'refused', words: format(m.structureRefused), working: false, off: true }
-            : { state: 'loading', words: format(m.structureLoading), working: true, off: false }
+            ? { state: 'refused', words: m.editor_structureRefused(), working: false, off: true }
+            : { state: 'loading', words: m.editor_structureLoading(), working: true, off: false }
       }
       drafts={drafts}
       onDraft={(name, draft) => setDrafts({ ...drafts, [name]: draft })}
@@ -302,28 +303,28 @@ export function RevisionView({
   const examples =
     revision === undefined ? null : revision.tests.length === 0 ? (
       <div {...stylex.props(w.emptyFill)}>
-        <EmptyRow>{format(m.revisionNoExamples)}</EmptyRow>
+        <EmptyRow>{m.revision_noExamples()}</EmptyRow>
       </div>
     ) : (
       <table data-testid="formula-revision-examples" {...stylex.props(w.reportTable)}>
         <thead>
           <tr>
-            <th {...stylex.props(w.reportHead)}>{format(m.testName)}</th>
-            <th {...stylex.props(w.reportHead)}>{format(m.examplesInputColumn)}</th>
-            <th {...stylex.props(w.reportHead)}>{format(m.examplesExpectedColumn)}</th>
+            <th {...stylex.props(w.reportHead)}>{m.editor_testName()}</th>
+            <th {...stylex.props(w.reportHead)}>{m.examples_inputColumn()}</th>
+            <th {...stylex.props(w.reportHead)}>{m.examples_expectedColumn()}</th>
           </tr>
         </thead>
         <tbody>
           {revision.tests.map((test, index) => (
             <tr key={index}>
               <td {...stylex.props(w.reportCell)}>
-                {test.name === '' ? format(m.exampleUnnamed) : test.name}
+                {test.name === '' ? m.examples_unnamed() : test.name}
               </td>
               <td {...stylex.props(w.reportCell, w.wrapMono, w.quiet)}>
                 {inputSummaryOf(test.input)}
               </td>
               <td {...stylex.props(w.reportCell, w.mono)}>
-                {test.expected === '' ? format(m.expectedNone) : test.expected}
+                {test.expected === '' ? m.examples_expectedNone() : test.expected}
               </td>
             </tr>
           ))}
@@ -336,15 +337,17 @@ export function RevisionView({
       <dl data-testid="formula-revision-details" {...stylex.props(w.facts)}>
         {(
           [
-            [m.revisionOrigin, origin()],
-            [m.revisionSavedAt, fullWhen(revision.savedAt, locale)],
-            [m.revisionSavedBy, revision.savedByName ?? format(m.templatesAuthorUnknown)],
-            [m.envSourceSha, revision.sourceSha256],
+            [m.revision_origin, origin()],
+            [m.revision_savedAt, fullWhen(revision.savedAt, locale)],
+            [m.revision_savedBy, revision.savedByName ?? m.templates_authorUnknown()],
+            [m.release_envSourceSha, revision.sourceSha256],
           ] as const
         ).map(([name, value]) => (
-          <div key={name.id} {...stylex.props(w.fact)}>
-            <dt {...stylex.props(w.factLabel)}>{format(name)}</dt>
-            <dd {...stylex.props(w.factValue, name === m.envSourceSha && w.wrapMono)}>{value}</dd>
+          <div key={name()} {...stylex.props(w.fact)}>
+            <dt {...stylex.props(w.factLabel)}>{name()}</dt>
+            <dd {...stylex.props(w.factValue, name === m.release_envSourceSha && w.wrapMono)}>
+              {value}
+            </dd>
           </div>
         ))}
       </dl>
@@ -361,7 +364,7 @@ export function RevisionView({
       className={narrow ? stylex.props(styles.wide).className : undefined}
     >
       <HistoryIcon aria-hidden />
-      {format(m.revisionRestore)}
+      {m.revision_restore()}
     </Button>
   )
 
@@ -375,7 +378,7 @@ export function RevisionView({
         <WorkbenchBar
           narrow={narrow}
           frozen
-          backLabel={format(m.backToDraft)}
+          backLabel={m.history_backToDraft()}
           onBack={onBack}
           titleRef={titleRef}
           title={<span {...stylex.props(w.title)}>{label}</span>}
@@ -383,11 +386,11 @@ export function RevisionView({
             <>
               <span {...stylex.props(w.standing, w.standingOutline)}>
                 <LockIcon size={11} aria-hidden />
-                {format(m.readOnly)}
+                {m.history_readOnly()}
               </span>
               {current ? (
                 <span {...stylex.props(w.standing, w.standingQuiet)}>
-                  {format(m.revisionCurrent)}
+                  {m.history_revisionCurrent()}
                 </span>
               ) : null}
             </>
@@ -413,7 +416,7 @@ export function RevisionView({
                 onClick={download}
               >
                 <DownloadIcon aria-hidden />
-                {format(m.downloadCode)}
+                {m.history_downloadCode()}
               </Button>
               {restoreButton}
             </>
@@ -422,14 +425,14 @@ export function RevisionView({
           phoneMenu={
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon-sm" aria-label={format(m.moreActions)}>
+                <Button variant="ghost" size="icon-sm" aria-label={m.editor_moreActions()}>
                   <MoreHorizontalIcon />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onSelect={onBack}>{format(m.backToDraft)}</DropdownMenuItem>
+                <DropdownMenuItem onSelect={onBack}>{m.history_backToDraft()}</DropdownMenuItem>
                 <DropdownMenuItem disabled={revision === undefined || blank} onSelect={download}>
-                  {format(m.downloadCode)}
+                  {m.history_downloadCode()}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -438,36 +441,36 @@ export function RevisionView({
       }
       source={source}
       tryRun={tryRun(false)}
-      tryLabel={format(m.tryTitle)}
+      tryLabel={m.editor_tryTitle()}
       panelTabs={[
         {
           value: 'examples',
-          label: format(m.testsTitle),
+          label: m.editor_tests(),
           count: revision?.tests.length ?? 0,
           content: scroll(examples),
         },
-        { value: 'details', label: format(m.revisionInfo), content: scroll(details) },
+        { value: 'details', label: m.revision_info(), content: scroll(details) },
       ]}
       panelTab={panelTab}
       onPanelTab={setPanelTab}
-      panelLabel={format(m.revisionInfo)}
+      panelLabel={m.revision_info()}
       phoneTabs={[
-        { value: 'source', label: format(m.phoneSourceTab), content: source },
-        { value: 'try', label: format(m.tryTitle), content: tryRun(true) },
+        { value: 'source', label: m.editor_phoneSourceTab(), content: source },
+        { value: 'try', label: m.editor_tryTitle(), content: tryRun(true) },
         {
           value: 'examples',
-          label: format(m.testsTitle),
+          label: m.editor_tests(),
           count: revision?.tests.length ?? 0,
           content: scroll(examples),
         },
-        { value: 'details', label: format(m.revisionInfo), content: scroll(details) },
+        { value: 'details', label: m.revision_info(), content: scroll(details) },
       ]}
       phoneTab={phoneTab}
       onPhoneTab={setPhoneTab}
       gate={{
-        label: format(m.historyTitle),
+        label: m.history_title(),
         tone: 'quiet',
-        words: current ? format(m.revisionCurrent) : origin(),
+        words: current ? m.history_revisionCurrent() : origin(),
       }}
       foot={restoreButton}
     >

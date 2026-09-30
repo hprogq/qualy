@@ -8,6 +8,7 @@ import { defineConfig } from 'vite'
 import {
   qualyBootFrame,
   qualyChunkGraph,
+  qualyMessages,
   qualyPlugins,
   qualyRelease,
   qualyShellStyle,
@@ -18,6 +19,13 @@ const stylexUnplugin =
   stylexUnpluginModule.default as unknown as (typeof stylexUnpluginModule)['default']['default']
 
 const repoRoot = fileURLToPath(new URL('../..', import.meta.url))
+
+// The size under which a pool of shared messages joins its nearest neighbour.
+// Measured on the four first screens (docs/adr/0011): at 0 every combination
+// of pages was its own chunk and each screen asked for 15-30 more files than
+// the Lingui build; at 64 KiB each asks for fewer, and still carries 53-68 KB
+// less than it (Brotli).
+const MESSAGE_POOL_BYTES = 64 * 1024
 
 export default defineConfig(({ mode }) => ({
   // This build reads no `.env`, and says so.
@@ -39,6 +47,8 @@ export default defineConfig(({ mode }) => ({
     // the bundle and beside it, answered at /__qualy/release in dev
     qualyRelease(),
     qualyPlugins(),
+    // every package's messages, compiled before anything resolves #messages
+    qualyMessages(),
     // the first frame, and beside it what the shell says when nothing of the
     // application ever runs - from the same table the cold start reads
     qualyBootFrame({ copy: bootstrapMessages }),
@@ -126,20 +136,21 @@ export default defineConfig(({ mode }) => ({
               test: /[\\/]node_modules[\\/]@mantine[\\/]/,
               priority: 2,
             },
-            // One locale, one file. Every plugin dynamic-imports its own
-            // table for the chosen locale, and all of them are awaited before
-            // the first screen - eight requests standing in a row where one
-            // would do. Pooled by the locale in the path, so a plugin or a
-            // language added later joins its own pool without being named
-            // here. Dependencies stay out: these are leaf tables, and pulling
-            // their helpers along duplicated 16 KB that shared chunks already
-            // carry.
+            // The compiled messages (docs/adr/0011-i18n-paraglide.md): one
+            // module per message, each where the code that says it is. One a
+            // single entry says stays in that entry's chunk; one several say
+            // is pooled by which entries say it, and the pools under the
+            // threshold join their nearest neighbour - otherwise every
+            // combination of pages became a chunk of a few hundred bytes. A
+            // message imports nothing that imports it back, so pooling them
+            // can close no ring.
             {
-              name: (id) => {
-                const locale = /[\\/](?:locales|catalogs)[\\/]([A-Za-z-]+)\.ts$/.exec(id)
-                return locale === null ? null : `locale-${locale[1]}`
-              },
+              name: 'messages',
+              test: /[\\/]\.qualy[\\/](?:i18n[\\/]|messages\.js$)/,
               priority: 1,
+              minShareCount: 2,
+              entriesAware: true,
+              entriesAwareMergeThreshold: MESSAGE_POOL_BYTES,
               includeDependenciesRecursively: false,
             },
             // The dust the automatic splitter leaves: an icon re-export, a

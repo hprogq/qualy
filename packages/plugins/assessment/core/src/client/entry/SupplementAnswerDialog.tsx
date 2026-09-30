@@ -3,16 +3,18 @@ import { useMutation } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { useApi, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { Feedback, FormDialog } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { toast } from '@qualy/ui/toast'
 import { assessmentApi } from '../api.ts'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import { EvidenceForm, type EvidenceFieldSpec, type EvidencePayload } from './EvidenceForm.tsx'
 import { entryRefusalMessage } from './refusals.ts'
 import type { EntryDto, EntrySupplementDto } from './model.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // Answering the reviewer's ask. The filing itself stays exactly as it was -
 // the answer travels beside it, on the round that asked - which is why this
@@ -55,7 +57,7 @@ export function SupplementAnswerDialog({
 }) {
   const api = useApi(assessmentApi)
   const run = useRunApi()
-  const { format, formatError } = useI18n()
+  const { formatError } = useI18n()
   const [payload, setPayload] = useState<EvidencePayload>({})
   const [problem, setProblem] = useState<string | null>(null)
 
@@ -91,12 +93,12 @@ export function SupplementAnswerDialog({
       ),
     onMutate: () => setProblem(null),
     onSuccess: () => {
-      toast.success(format(m.entrySupplementSent))
+      toast.success(m.entry_supplementSent())
       onDone()
     },
     onError: (error: unknown) => {
       const refusal = entryRefusalMessage(error)
-      setProblem(refusal === null ? formatError(error) : format(refusal))
+      setProblem(refusal === null ? formatError(error) : refusal())
     },
   })
 
@@ -114,18 +116,18 @@ export function SupplementAnswerDialog({
   return (
     <FormDialog
       open={open}
-      title={format(m.entrySupplementDialogTitle)}
+      title={m.entry_supplementDialogTitle()}
       onClose={onClose}
       footer={
         <div {...stylex.props(styles.footer)}>
           <Button variant="outline" onClick={onClose}>
-            {format(commonMessages.cancel)}
+            {commonMessages.action_cancel()}
           </Button>
           <Button
             disabled={send.isPending || !ready || !evidenceValid || uploading}
             onClick={() => send.mutate()}
           >
-            {format(m.entrySubmit)}
+            {m.entry_submit()}
           </Button>
         </div>
       }

@@ -11,7 +11,7 @@ import { Input } from '@qualy/ui/input'
 import { VisuallyHidden } from '@qualy/ui/visually-hidden'
 import { MAX_STAGES_PER_ROUTE } from '../../../api.ts'
 import { assessmentApi } from '../../api.ts'
-import { assessmentMessages as m } from '../../i18n.ts'
+
 import { amountOf, trimAmount, unitsOf } from '../../entry/model.ts'
 import type { ItemOptions } from '../options.ts'
 import type { Placement } from '../paper.ts'
@@ -28,6 +28,7 @@ import {
 } from './model.ts'
 import { RouteReach } from './RouteReach.tsx'
 import { problemWords, sentences } from './words.ts'
+import * as m from '#messages'
 
 // How many records one person may hold and how they fold into a score, then
 // the steps a submission walks. The rules are one card of three cells - two
@@ -378,7 +379,6 @@ export function RulesTab({
   /** a new step, composed in its panel before it joins the chain at `at` */
   onAddStage: (chain: 'normal' | 'escalation', at?: number) => void
 }) {
-  const { format } = useI18n()
   const normal = draft.stages.filter((one) => one.chain === 'normal')
   const escalation = draft.stages.filter((one) => one.chain === 'escalation')
   const countsProblem = problems.find((one) => one.block === 'counts')
@@ -388,13 +388,13 @@ export function RulesTab({
   const unappealable = channelsOf(draft).includes('participant') && escalation.length === 0
   const noAppeal = unappealable && (
     <p {...stylex.props(styles.note)} data-testid="no-appeal-route">
-      {format(m.itemsNoAppealRoute)}
+      {m.items_noAppealRoute()}
     </p>
   )
 
   return (
     <div {...stylex.props(styles.stack)}>
-      <EditorSection title={format(m.itemsRulesCounts)} testId="rules-counts" block="counts">
+      <EditorSection title={m.items_rulesCounts()} testId="rules-counts" block="counts">
         <RulesCard
           draft={draft}
           placement={placement}
@@ -429,8 +429,8 @@ export function RulesTab({
           />
         </>
       ) : (
-        <EditorSection title={format(m.itemsReviewChain)} testId="review-chain" block="review">
-          <p {...stylex.props(styles.note)}>{format(m.itemsDirectNote)}</p>
+        <EditorSection title={m.items_reviewChain()} testId="review-chain" block="review">
+          <p {...stylex.props(styles.note)}>{m.items_directNote()}</p>
           {noAppeal}
         </EditorSection>
       )}
@@ -452,7 +452,7 @@ function RulesCard({
   problem: EditorProblem | undefined
   onPatch: (next: Partial<Draft>) => void
 }) {
-  const { format, formatText, locale } = useI18n()
+  const { formatText, locale } = useI18n()
   const entries = draft.maxEntries.trim() === '' ? null : Number(draft.maxEntries)
   const folding = foldingOf(draft)
   const each = Number(draft.fixedValue.trim())
@@ -462,35 +462,34 @@ function RulesCard({
     !perEntryAmount || counted === null || !Number.isFinite(each)
       ? null
       : amountOf(unitsOf(draft.fixedValue.trim()) * counted)
-  const methodName =
-    method.label === null ? format(m.itemsScoringMethodFixed) : formatText(method.label)
+  const methodName = method.label === null ? m.items_scoringMethodFixed() : formatText(method.label)
   const chain = placement.sections
     .map((section) =>
       section.cap === null
-        ? format(m.itemsCeilingSectionFree, { name: section.name })
-        : format(m.itemsCeilingSectionCapped, {
+        ? m.items_ceilingSectionFree({ name: section.name })
+        : m.items_ceilingSectionCapped({
             name: section.name,
             value: trimAmount(section.cap),
           }),
     )
-    .join(format(m.listSeparator))
+    .join(m.items_listSeparator())
   const value = trimAmount(draft.fixedValue.trim())
   const how = !perEntryAmount
-    ? format(m.itemsCeilingHowRule, { name: methodName })
+    ? m.items_ceilingHowRule({ name: methodName })
     : folding.rule === 'max'
-      ? format(m.itemsCeilingHowMax, { value })
+      ? m.items_ceilingHowMax({ value })
       : folding.rule === 'top-n'
-        ? format(m.itemsCeilingHowTopN, { value, count: counted ?? folding.n })
+        ? m.items_ceilingHowTopN({ value, count: counted ?? folding.n })
         : counted === null
-          ? format(m.itemsCeilingHowAny, { value })
-          : format(m.itemsCeilingHow, { value, count: counted })
+          ? m.items_ceilingHowAny({ value })
+          : m.items_ceilingHow({ value, count: counted })
   const unsupported = draft.scoring.language === 'unsupported'
   const entriesWrong = problem?.code === 'max-entries-invalid'
   const topNWrong = problem?.code === 'top-n-invalid'
   const foldings: readonly [Draft['folding'], string][] = [
-    ['sum', format(m.itemsFoldingSum)],
-    ['max', format(m.itemsFoldingMax)],
-    ['top-n', format(m.itemsFoldingTopN)],
+    ['sum', m.items_foldingSum()],
+    ['max', m.items_foldingMax()],
+    ['top-n', m.items_foldingTopN()],
   ]
 
   return (
@@ -501,7 +500,7 @@ function RulesCard({
           belongs to. A way with no number shows no box at all. */}
       <div {...stylex.props(styles.cell)}>
         <span {...stylex.props(styles.cellLabel)} id="item-entries-label">
-          {format(m.itemsFieldMax)}
+          {m.items_fieldMax()}
         </span>
         <div
           role="radiogroup"
@@ -523,12 +522,12 @@ function RulesCard({
                 aria-hidden
                 {...stylex.props(styles.radio, entries !== null && styles.radioOn)}
               />
-              {format(m.itemsMaxEntriesSome)}
+              {m.items_maxEntriesSome()}
             </button>
             {entries !== null && (
               <span {...stylex.props(styles.amount)}>
                 <Input
-                  aria-label={format(m.itemsFieldMax)}
+                  aria-label={m.items_fieldMax()}
                   aria-invalid={entriesWrong || undefined}
                   inputMode="numeric"
                   wrapperXstyle={styles.amountInput}
@@ -536,7 +535,7 @@ function RulesCard({
                   value={draft.maxEntries}
                   onChange={(event) => onPatch({ maxEntries: event.target.value })}
                 />
-                {format(m.itemsEntriesUnit)}
+                {m.items_entriesUnit()}
               </span>
             )}
           </div>
@@ -553,20 +552,20 @@ function RulesCard({
                 aria-hidden
                 {...stylex.props(styles.radio, entries === null && styles.radioOn)}
               />
-              {format(m.itemsMaxEntriesAny)}
+              {m.items_maxEntriesAny()}
             </button>
           </div>
         </div>
         {entriesWrong && (
           <p {...stylex.props(styles.problemLine)} role="alert" data-testid="counts-problem">
-            {problemWords(problem, format)}
+            {problemWords(problem)}
           </p>
         )}
       </div>
 
       <div {...stylex.props(styles.cell)}>
         <span {...stylex.props(styles.cellLabel)} id="item-folding-label">
-          {format(m.itemsFolding)}
+          {m.items_folding()}
         </span>
         <div
           role="radiogroup"
@@ -596,7 +595,7 @@ function RulesCard({
                 {rule === 'top-n' && on && (
                   <span {...stylex.props(styles.amount)}>
                     <Input
-                      aria-label={format(m.itemsFoldingN)}
+                      aria-label={m.items_foldingN()}
                       aria-invalid={topNWrong || undefined}
                       inputMode="numeric"
                       wrapperXstyle={styles.amountInput}
@@ -604,7 +603,7 @@ function RulesCard({
                       value={draft.topN}
                       onChange={(event) => onPatch({ topN: event.target.value })}
                     />
-                    {format(m.itemsFoldingNUnit)}
+                    {m.items_foldingNUnit()}
                   </span>
                 )}
               </div>
@@ -613,7 +612,7 @@ function RulesCard({
         </div>
         {(topNWrong || problem?.code === 'folding-refused') && (
           <p {...stylex.props(styles.problemLine)} role="alert" data-testid="counts-problem">
-            {problemWords(problem, format)}
+            {problemWords(problem)}
           </p>
         )}
       </div>
@@ -623,19 +622,19 @@ function RulesCard({
         data-testid="item-ceiling"
         data-ceiling={!perEntryAmount ? 'by-rule' : (ceiling ?? 'unlimited')}
       >
-        <span {...stylex.props(styles.cellLabel)}>{format(m.itemsCeiling)}</span>
+        <span {...stylex.props(styles.cellLabel)}>{m.items_ceiling()}</span>
         <span {...stylex.props(styles.ceilingValue)}>
           {!perEntryAmount
-            ? format(m.itemsCeilingByRule)
+            ? m.items_ceilingByRule()
             : ceiling === null
-              ? format(m.itemsCeilingOpen)
-              : format(m.itemsCeilingAmount, { value: ceiling })}
+              ? m.items_ceilingOpen()
+              : m.items_ceilingAmount({ value: ceiling })}
         </span>
         <p {...stylex.props(styles.ceilingProse)}>
           {sentences(
             [
-              perEntryAmount ? format(m.itemsCeilingHowLine, { how }) : how,
-              chain === '' ? '' : format(m.itemsCeilingNote, { chain }),
+              perEntryAmount ? m.items_ceilingHowLine({ how }) : how,
+              chain === '' ? '' : m.items_ceilingNote({ chain }),
             ],
             locale,
           )}
@@ -674,7 +673,6 @@ function StepChain({
   /** a line said under the chain, when there is something to say about it */
   note?: ReactNode
 }) {
-  const { format } = useI18n()
   const query = useApiQuery(assessmentApi)
   // who covers each level, asked for the whole chain at once so that the
   // heading can count the steps that are short of reviewers
@@ -718,28 +716,26 @@ function StepChain({
   const short = steps.filter(
     (stage, index) => problemOf(stage.key) === undefined && uncoveredAt(index) > 0,
   ).length
-  const title = format(chain === 'normal' ? m.itemsReviewChain : m.itemsEscalationTitle)
+  const title = (chain === 'normal' ? m.items_reviewChain : m.items_escalationTitle)()
   // a route holds so many steps and no more; past that there is nowhere to
   // put one, so no place offers itself (the save would be refused anyway)
   const full = steps.length >= MAX_STAGES_PER_ROUTE
   const nameOf = (stage: StageDraft) =>
-    stage.label.trim() === '' ? format(m.itemsStageUnnamed) : stage.label.trim()
+    stage.label.trim() === '' ? m.items_stageUnnamed() : stage.label.trim()
 
   return (
     <EditorSection
       title={title}
-      hint={format(chain === 'normal' ? m.itemsReviewChainLong : m.itemsEscalationLong)}
+      hint={(chain === 'normal' ? m.items_reviewChainLong : m.items_escalationLong)()}
       aside={
         wrong > 0 ? (
-          <SectionCount tone="error">{format(m.itemsStagesWrong, { count: wrong })}</SectionCount>
+          <SectionCount tone="error">{m.items_stagesWrong({ count: wrong })}</SectionCount>
         ) : chainProblem !== undefined ? (
-          <SectionCount tone={chainProblem.tone}>{problemWords(chainProblem, format)}</SectionCount>
+          <SectionCount tone={chainProblem.tone}>{problemWords(chainProblem)}</SectionCount>
         ) : waiting > 0 ? (
-          <SectionCount tone="pending">
-            {format(m.itemsPendingCount, { count: waiting })}
-          </SectionCount>
+          <SectionCount tone="pending">{m.items_pendingCount({ count: waiting })}</SectionCount>
         ) : short > 0 ? (
-          <SectionCount tone="pending">{format(m.itemsStagesShort, { count: short })}</SectionCount>
+          <SectionCount tone="pending">{m.items_stagesShort({ count: short })}</SectionCount>
         ) : undefined
       }
       testId={chain === 'normal' ? 'review-chain' : 'escalation-chain'}
@@ -759,7 +755,7 @@ function StepChain({
             </span>
           </div>
           <div {...stylex.props(styles.endWords)}>
-            {format(chain === 'normal' ? m.itemsFlowSubmitLine : m.itemsEscalationStartLine)}
+            {(chain === 'normal' ? m.items_flowSubmitLine : m.items_escalationStartLine)()}
           </div>
         </div>
 
@@ -783,10 +779,9 @@ function StepChain({
                     onClick={() => onAdd(index)}
                     data-testid="chain-insert"
                     data-at={index}
-                    aria-label={format(
-                      chain === 'normal' ? m.itemsStageInsert : m.itemsEscalationInsert,
-                      { n: index + 1, name: nameOf(stage) },
-                    )}
+                    aria-label={(chain === 'normal'
+                      ? m.items_stageInsert
+                      : m.items_escalationInsert)({ n: index + 1, name: nameOf(stage) })}
                   >
                     <span {...stylex.props(styles.rail)}>
                       <span aria-hidden {...stylex.props(styles.line)} />
@@ -795,9 +790,7 @@ function StepChain({
                       <span {...stylex.props(styles.insertMark)}>
                         <PlusIcon {...stylex.props(styles.icon12)} />
                       </span>
-                      <span {...stylex.props(styles.insertWords)}>
-                        {format(m.itemsStageInsertHere)}
-                      </span>
+                      <span {...stylex.props(styles.insertWords)}>{m.items_stageInsertHere()}</span>
                     </span>
                   </button>
                 )}
@@ -836,9 +829,9 @@ function StepChain({
                         {/* the mark beside the card says which step this is; a
                             reader who cannot see it hears it first */}
                         <VisuallyHidden>
-                          {format(m.itemsStagePositionOption, { n: index + 1 })}{' '}
+                          {m.items_stagePositionOption({ n: index + 1 })}{' '}
                         </VisuallyHidden>
-                        {named ? stage.label.trim() : format(m.itemsStageUnnamed)}
+                        {named ? stage.label.trim() : m.items_stageUnnamed()}
                       </span>
                       {settled && (
                         <span {...stylex.props(styles.cardWho)}>
@@ -846,7 +839,7 @@ function StepChain({
                             {stage.kind === 'roleAt'
                               ? (options.orgTypes.find((one) => one.id === stage.nodeTypeId)
                                   ?.name ?? '')
-                              : format(m.itemsStageWalkUp)}
+                              : m.items_stageWalkUp()}
                           </span>
                           <span aria-hidden {...stylex.props(styles.rule)} />
                           <span {...stylex.props(styles.roles)}>
@@ -861,11 +854,9 @@ function StepChain({
                               ))}
                           </span>
                           <span>
-                            {format(
-                              chain === 'escalation' && stage.participation === 'all'
-                                ? m.itemsStageRuleAll
-                                : m.itemsStageRuleAny,
-                            )}
+                            {(chain === 'escalation' && stage.participation === 'all'
+                              ? m.items_stageRuleAll
+                              : m.items_stageRuleAny)()}
                           </span>
                         </span>
                       )}
@@ -876,7 +867,7 @@ function StepChain({
                           data-testid="step-problem"
                           data-code={problem.code}
                         >
-                          {problemWords(problem, format)}
+                          {problemWords(problem)}
                         </span>
                       )}
                     </span>
@@ -886,10 +877,10 @@ function StepChain({
                         data-testid="step-coverage"
                       >
                         {nodes.length === 0
-                          ? format(m.itemsReviewNoUnits)
+                          ? m.items_reviewNoUnits()
                           : uncovered === 0
-                            ? format(m.itemsReviewCovered, { count: nodes.length })
-                            : format(m.itemsReviewUncoveredCount, { count: uncovered })}
+                            ? m.items_reviewCovered({ count: nodes.length })
+                            : m.items_reviewUncoveredCount({ count: uncovered })}
                       </span>
                     )}
                     <ChevronRightIcon aria-hidden {...stylex.props(styles.chevron)} />
@@ -916,8 +907,8 @@ function StepChain({
           </span>
           <span {...stylex.props(styles.addWords, full && styles.addWordsOff)}>
             {full
-              ? format(m.itemsProblemStagesTooMany, { max: MAX_STAGES_PER_ROUTE })
-              : format(chain === 'normal' ? m.itemsStageAdd : m.itemsEscalationAddStep)}
+              ? m.items_problemStagesTooMany({ max: MAX_STAGES_PER_ROUTE })
+              : (chain === 'normal' ? m.items_stageAdd : m.items_escalationAddStep)()}
           </span>
         </button>
 
@@ -928,7 +919,7 @@ function StepChain({
             </span>
           </div>
           <div {...stylex.props(styles.endWords, styles.endWordsLast)}>
-            {format(chain === 'normal' ? m.itemsFlowDoneLine : m.itemsEscalationDoneLine)}
+            {(chain === 'normal' ? m.items_flowDoneLine : m.items_escalationDoneLine)()}
           </div>
         </div>
       </div>

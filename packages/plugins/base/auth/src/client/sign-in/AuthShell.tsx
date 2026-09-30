@@ -5,7 +5,7 @@ import { CheckIcon, ChevronDownIcon, GlobeIcon, MonitorIcon, MoonIcon, SunIcon }
 import { useTheme, type ThemeChoice } from '@qualy/web-runtime'
 import { Mark } from '@qualy/brand/mark'
 import { Wordmark } from '@qualy/brand/wordmark'
-import { localeNames, useI18n, useLocale } from '@qualy/web-i18n'
+import { localeNames, useLocale } from '@qualy/web-i18n'
 import { useChooseLocale } from '../locale-choice.ts'
 import { supportedLocales } from '@qualy/i18n-contract'
 import {
@@ -16,7 +16,7 @@ import {
 } from '@qualy/ui/dropdown-menu'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { VisuallyHidden } from '@qualy/ui/visually-hidden'
-import { authMessages as m } from '../i18n.ts'
+import * as m from '#messages'
 
 // The frame every page a visitor reaches before signing in stands in: the
 // product on the left, and one column on the right for whatever the page
@@ -150,14 +150,14 @@ const styles = stylex.create({
 function LanguageMenu() {
   const locale = useLocale()
   const setLocale = useChooseLocale()
-  const { format } = useI18n()
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <button type="button" {...stylex.props(styles.language)}>
           <GlobeIcon size={15} strokeWidth={1.8} aria-hidden />
           {/* named by what it is and then by the language it shows */}
-          <VisuallyHidden>{format(m.language)}</VisuallyHidden>
+          <VisuallyHidden>{m.preference_language()}</VisuallyHidden>
           {localeNames[locale]}
           <ChevronDownIcon size={13} aria-hidden />
         </button>
@@ -182,11 +182,11 @@ export function Ring() {
 /** the appearance, chosen from the corner beside the language */
 function ThemeMenu() {
   const { choice, setChoice } = useTheme()
-  const { format } = useI18n()
+
   const options: { value: ThemeChoice; label: string; icon: typeof SunIcon }[] = [
-    { value: 'light', label: format(m.themeLight), icon: SunIcon },
-    { value: 'dark', label: format(m.themeDark), icon: MoonIcon },
-    { value: 'system', label: format(m.themeSystem), icon: MonitorIcon },
+    { value: 'light', label: m.preference_themeLight(), icon: SunIcon },
+    { value: 'dark', label: m.preference_themeDark(), icon: MoonIcon },
+    { value: 'system', label: m.preference_themeSystem(), icon: MonitorIcon },
   ]
   const Current = options.find((option) => option.value === choice)?.icon ?? MonitorIcon
   return (
@@ -194,7 +194,7 @@ function ThemeMenu() {
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          aria-label={format(m.appearance)}
+          aria-label={m.preference_appearance()}
           data-testid="sign-in-theme"
           {...stylex.props(styles.theme)}
         >

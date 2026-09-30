@@ -3,9 +3,10 @@ import { useApiQuery } from '@qualy/web-runtime'
 import type { ApiResult } from '@qualy/web-runtime/api'
 import { useI18n } from '@qualy/web-i18n'
 import { assessmentApi } from '../api.ts'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import { answerOf, displayValueOf, fieldsOf } from '../entry/model.ts'
 import { calendarDaysBetween, inZone, useBatchZone, yearOf } from '../batch/zone.ts'
+import * as m from '#messages'
 
 // What the review screens agree on: the queue row, the three ways it is
 // laid out, and the run - the ordered slice of the queue a reviewer walks
@@ -188,13 +189,13 @@ const dayLabel = (at: Date, locale: string, zone?: string): string =>
  * an hour behind it is noise.
  */
 export function useDayClock(): (iso: string) => string {
-  const { format, locale } = useI18n()
+  const { locale } = useI18n()
   const zone = useBatchZone()
   return (iso: string) => {
     const at = new Date(iso)
     const days = calendarDaysBetween(at.getTime(), Date.now(), zone)
     if (days <= 0) return clockLabel(iso, locale, zone)
-    if (days === 1) return format(m.timeYesterday)
+    if (days === 1) return m.time_yesterday()
     return dayLabel(at, locale, zone)
   }
 }
@@ -206,14 +207,14 @@ export function useDayClock(): (iso: string) => string {
  * because by then the minute says nothing a reviewer acts on.
  */
 export function useQueueClock(): (iso: string) => string {
-  const { format, locale } = useI18n()
+  const { locale } = useI18n()
   const zone = useBatchZone()
   return (iso: string) => {
     const at = new Date(iso)
     const days = calendarDaysBetween(at.getTime(), Date.now(), zone)
     const time = clockLabel(iso, locale, zone)
     if (days <= 0) return time
-    if (days === 1) return format(m.timeYesterdayAt, { time })
+    if (days === 1) return m.time_yesterdayAt({ time })
     if (yearOf(at.getTime(), zone) !== yearOf(Date.now(), zone)) return dayLabel(at, locale, zone)
     return `${dayLabel(at, locale, zone)} ${time}`
   }
@@ -264,11 +265,11 @@ export const pageNumberOf = (raw: string): number => {
  * still shown beside it, because a record has to say when.
  */
 export function useHowLongAgo(): (iso: string) => string {
-  const { format, locale } = useI18n()
+  const { locale } = useI18n()
   return (iso: string) => {
     const delta = new Date(iso).getTime() - Date.now()
     const abs = Math.abs(delta)
-    if (abs < 60_000) return format(m.justNow)
+    if (abs < 60_000) return m.plan_justNow()
     const [unit, size]: [Intl.RelativeTimeFormatUnit, number] =
       abs < 3_600_000
         ? ['minute', 60_000]

@@ -4,11 +4,10 @@ import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { ChevronsUpDownIcon } from 'lucide-react'
 import type { PeoplePickerViewContext } from '@qualy/ui-contract'
-import { useI18n } from '@qualy/web-i18n'
 import { useLoadFailure } from '@qualy/web-runtime'
 import { useTerm } from '@qualy/plugin-settings/client/terms'
 import { authTerms } from '@qualy/auth-contract/terms'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { AsyncSection, FormDialog } from '@qualy/ui/admin'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
@@ -20,9 +19,11 @@ import { Skeleton } from '@qualy/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@qualy/ui/table'
 import { ToggleGroup, ToggleGroupItem } from '@qualy/ui/toggle-group'
 import { useIsBelow } from '@qualy/ui/use-mobile'
-import { authMessages as m } from '../i18n.ts'
+
 import { OrgTree } from './OrgTree.tsx'
 import { UnitPath, type PathStep } from './users/UnitPath.tsx'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // Choosing people: the drawing, without the people.
 //
@@ -345,7 +346,6 @@ const styles = stylex.create({
 type Row = PeoplePickerViewContext['rows'][number]
 
 export default function PeoplePickerView({ context }: { context: PeoplePickerViewContext }) {
-  const { format } = useI18n()
   const describe = useLoadFailure()
   const businessNo = useTerm(authTerms.businessNumber)
   const [typed, setTyped] = useState(context.search)
@@ -359,8 +359,8 @@ export default function PeoplePickerView({ context }: { context: PeoplePickerVie
   // is: the field says what the list is narrowed to, never what it is for
   const unitName =
     context.nodeId === null
-      ? format(m.pickerAllUnits)
-      : (context.nodes.find((node) => node.id === context.nodeId)?.name ?? format(m.pickerUnits))
+      ? m.picker_allUnits()
+      : (context.nodes.find((node) => node.id === context.nodeId)?.name ?? m.picker_units())
 
   // the caller hears about the search once it has stopped moving; it is the
   // one that has to go and fetch on the strength of it
@@ -447,8 +447,8 @@ export default function PeoplePickerView({ context }: { context: PeoplePickerVie
   const tree = (
     <OrgTree
       nodes={context.nodes}
-      emptyLabel={format(m.pickerNoUnits)}
-      expandLabel={format(m.pickerExpand)}
+      emptyLabel={m.picker_noUnits()}
+      expandLabel={m.picker_expand()}
       selected={context.nodeId}
       onSelect={(picked) => {
         context.onNodeChange(picked.id)
@@ -457,10 +457,10 @@ export default function PeoplePickerView({ context }: { context: PeoplePickerVie
     />
   )
 
-  const number = (row: Row) => row.businessNo ?? format(m.personNoBusinessNo, { businessNo })
+  const number = (row: Row) => row.businessNo ?? m.person_noBusinessNo({ businessNo })
 
   const table = (
-    <Table fill aria-label={format(m.pickerPeople)} xstyle={styles.fixed}>
+    <Table fill aria-label={m.picker_people()} xstyle={styles.fixed}>
       <colgroup>
         <col {...stylex.props(styles.colTick)} />
         {/* the unit takes what is left where there is one, the name where not */}
@@ -475,26 +475,26 @@ export default function PeoplePickerView({ context }: { context: PeoplePickerVie
             {pageBox && (
               <Checkbox
                 checked={pageState}
-                aria-label={format(m.pickerTakePage)}
+                aria-label={m.picker_takePage()}
                 data-testid="people-picker-page"
                 onCheckedChange={(next) => takePage(next)}
               />
             )}
           </TableHead>
           <TableHead scope="col" xstyle={styles.headCell}>
-            {format(m.columnName)}
+            {m.users_columnName()}
           </TableHead>
           <TableHead scope="col" xstyle={styles.headCell} title={businessNo}>
             {businessNo}
           </TableHead>
           {withUnits && (
             <TableHead scope="col" xstyle={styles.headCell}>
-              {format(m.columnUnit)}
+              {m.users_columnUnit()}
             </TableHead>
           )}
           {withKinds && (
             <TableHead scope="col" xstyle={styles.headCell}>
-              {format(m.columnType)}
+              {m.users_columnType()}
             </TableHead>
           )}
         </TableRow>
@@ -568,19 +568,19 @@ export default function PeoplePickerView({ context }: { context: PeoplePickerVie
         <label {...stylex.props(styles.pageBar)}>
           <Checkbox
             checked={pageState}
-            aria-label={format(m.pickerTakePage)}
+            aria-label={m.picker_takePage()}
             data-testid="people-picker-page"
             onCheckedChange={(next) => takePage(next)}
           />
-          <span {...stylex.props(styles.pageBarWord)}>{format(m.pickerTakePage)}</span>
+          <span {...stylex.props(styles.pageBarWord)}>{m.picker_takePage()}</span>
           {context.paging !== undefined && counted && (
             <span {...stylex.props(styles.pageBarTotal)}>
-              {format(m.pickerTotal, { count: context.paging.total })}
+              {m.picker_total({ count: context.paging.total })}
             </span>
           )}
         </label>
       )}
-      <ul {...stylex.props(styles.lines)} aria-label={format(m.pickerPeople)}>
+      <ul {...stylex.props(styles.lines)} aria-label={m.picker_people()}>
         {context.rows.map((row) => {
           const isBlocked = blocked.has(row.id)
           const isChosen = chosen.has(row.id)
@@ -672,8 +672,8 @@ export default function PeoplePickerView({ context }: { context: PeoplePickerVie
       value={context.scope}
       onValueChange={(next) => next && context.onScopeChange(next as 'self' | 'subtree')}
     >
-      <ToggleGroupItem value="self">{format(m.pickerScopeSelf)}</ToggleGroupItem>
-      <ToggleGroupItem value="subtree">{format(m.pickerScopeSubtree)}</ToggleGroupItem>
+      <ToggleGroupItem value="self">{m.picker_scopeSelf()}</ToggleGroupItem>
+      <ToggleGroupItem value="subtree">{m.picker_scopeSubtree()}</ToggleGroupItem>
     </ToggleGroup>
   )
 
@@ -684,9 +684,9 @@ export default function PeoplePickerView({ context }: { context: PeoplePickerVie
     paging === undefined ? (
       <CursorPager
         testId="people-picker-pager"
-        label={format(m.pagerLabel)}
-        previousLabel={format(m.pickerPrevious)}
-        nextLabel={format(m.pickerNext)}
+        label={m.users_pager()}
+        previousLabel={m.picker_previous()}
+        nextLabel={m.picker_next()}
         page={context.position ?? (context.hasPrevious ? 2 : 1)}
         hasNext={context.hasNext}
         disabled={busy}
@@ -696,9 +696,9 @@ export default function PeoplePickerView({ context }: { context: PeoplePickerVie
     ) : counted ? (
       <Pager
         testId="people-picker-pager"
-        label={format(m.pagerLabel)}
-        previousLabel={format(m.pickerPrevious)}
-        nextLabel={format(m.pickerNext)}
+        label={m.users_pager()}
+        previousLabel={m.picker_previous()}
+        nextLabel={m.picker_next()}
         page={paging.page}
         pageSize={paging.pageSize}
         total={paging.total}
@@ -706,7 +706,7 @@ export default function PeoplePickerView({ context }: { context: PeoplePickerVie
         // its line with how many are chosen
         compact
         disabled={busy}
-        {...(phone ? {} : { summary: format(m.pickerTotal, { count: paging.total }) })}
+        {...(phone ? {} : { summary: m.picker_total({ count: paging.total }) })}
         onPage={paging.onPage}
       />
     ) : null
@@ -718,10 +718,10 @@ export default function PeoplePickerView({ context }: { context: PeoplePickerVie
     >
       {!folded && (
         <div {...stylex.props(styles.side)}>
-          <p {...stylex.props(styles.heading)}>{format(m.pickerUnits)}</p>
+          <p {...stylex.props(styles.heading)}>{m.picker_units()}</p>
           <div {...stylex.props(styles.tree)}>{tree}</div>
           {context.nodesTruncated === true && (
-            <p {...stylex.props(styles.aside)}>{format(commonMessages.moreResults)}</p>
+            <p {...stylex.props(styles.aside)}>{commonMessages.state_moreResults()}</p>
           )}
         </div>
       )}
@@ -735,7 +735,7 @@ export default function PeoplePickerView({ context }: { context: PeoplePickerVie
               size="sm"
               justify="space-between"
               data-testid="people-picker-unit"
-              aria-label={format(m.pickerUnits)}
+              aria-label={m.picker_units()}
               className={stylex.props(styles.unitField).className}
               onClick={() => setPickingUnit(true)}
             >
@@ -752,8 +752,8 @@ export default function PeoplePickerView({ context }: { context: PeoplePickerVie
           <Input
             value={typed}
             onChange={(event) => setTyped(event.target.value)}
-            placeholder={format(m.pickerSearch, { businessNo })}
-            aria-label={format(m.pickerSearch, { businessNo })}
+            placeholder={m.picker_search({ businessNo })}
+            aria-label={m.picker_search({ businessNo })}
             className={stylex.props(styles.search).className}
           />
           {context.userTypes.length > 0 && (
@@ -761,15 +761,11 @@ export default function PeoplePickerView({ context }: { context: PeoplePickerVie
               value={context.userTypeId === '' ? ANY : context.userTypeId}
               onValueChange={(next) => context.onUserTypeChange(next === ANY ? '' : next)}
             >
-              <SelectTrigger
-                size="sm"
-                xstyle={styles.typeField}
-                aria-label={format(m.personUserType)}
-              >
+              <SelectTrigger size="sm" xstyle={styles.typeField} aria-label={m.person_userType()}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={ANY}>{format(m.pickerAnyType)}</SelectItem>
+                <SelectItem value={ANY}>{m.picker_anyType()}</SelectItem>
                 {context.userTypes.map((type) => (
                   <SelectItem key={type.id} value={type.id}>
                     {type.name}
@@ -795,8 +791,8 @@ export default function PeoplePickerView({ context }: { context: PeoplePickerVie
               // the words of reading; a sentence already worded is shown as given
               context.failure != null ? describe.of(context.failure) : (context.error ?? null)
             }
-            loadingLabel={format(commonMessages.loading)}
-            retryLabel={format(commonMessages.retry)}
+            loadingLabel={commonMessages.state_loading()}
+            retryLabel={commonMessages.action_retry()}
             onRetry={context.onRetry}
             skeleton={
               <div {...stylex.props(styles.waiting)}>
@@ -813,7 +809,7 @@ export default function PeoplePickerView({ context }: { context: PeoplePickerVie
             }
           >
             {context.rows.length === 0 ? (
-              <p {...stylex.props(styles.nobody)}>{format(m.pickerNobody)}</p>
+              <p {...stylex.props(styles.nobody)}>{m.picker_nobody()}</p>
             ) : phone ? (
               lines
             ) : (
@@ -829,10 +825,10 @@ export default function PeoplePickerView({ context }: { context: PeoplePickerVie
             data-count={context.value.length}
             data-elsewhere={many ? offPage : 0}
           >
-            {format(m.pickerChosen, { count: context.value.length })}
+            {m.picker_chosen({ count: context.value.length })}
             {offPage > 0 && many && (
               <span {...stylex.props(styles.aside)}>
-                {format(m.pickerChosenElsewhere, { count: offPage })}
+                {m.picker_chosenElsewhere({ count: offPage })}
               </span>
             )}
           </span>
@@ -844,7 +840,7 @@ export default function PeoplePickerView({ context }: { context: PeoplePickerVie
               data-testid="people-picker-clear"
               onClick={() => replace([])}
             >
-              {format(m.pickerClear)}
+              {m.picker_clear()}
             </Button>
           )}
           <span {...stylex.props(styles.pages)}>{pager}</span>
@@ -857,11 +853,11 @@ export default function PeoplePickerView({ context }: { context: PeoplePickerVie
       <FormDialog
         open={pickingUnit}
         size="medium"
-        title={format(m.pickerUnits)}
+        title={m.picker_units()}
         onClose={() => setPickingUnit(false)}
         footer={
           <Button variant="outline" size="sm" onClick={() => setPickingUnit(false)}>
-            {format(commonMessages.cancel)}
+            {commonMessages.action_cancel()}
           </Button>
         }
       >

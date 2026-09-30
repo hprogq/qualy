@@ -1,13 +1,13 @@
 import { useState } from 'react'
 import { HistoryIcon, UploadIcon } from 'lucide-react'
-import { useI18n } from '@qualy/web-i18n'
 import { BandAction } from '@qualy/ui/screen'
 import { useLingering } from '@qualy/ui/use-lingering'
 import type { UsersPageActionsContext } from '@qualy/ui-contract'
-import { directoryImportMessages as m } from './i18n.ts'
+
 import { ImportRecordSheet } from './ImportRecord.tsx'
 import { ImportRecords } from './ImportRecords.tsx'
 import { ImportWizard } from './ImportWizard.tsx'
+import * as m from '#messages'
 
 // Importing people, from the roster and without leaving it.
 //
@@ -17,7 +17,6 @@ import { ImportWizard } from './ImportWizard.tsx'
 // it, and the list is still there when the record is put away.
 
 export default function ImportUsersAction({ context }: { context: UsersPageActionsContext }) {
-  const { format } = useI18n()
   const [importing, setImporting] = useState(false)
   const [listing, setListing] = useState(false)
   const [recordId, setRecordId] = useState<string | null>(null)
@@ -42,10 +41,10 @@ export default function ImportUsersAction({ context }: { context: UsersPageActio
         icon={<HistoryIcon aria-hidden />}
         onSelect={() => setListing(true)}
       >
-        {format(m.recordsTitle)}
+        {m.records_title()}
       </BandAction>
       <BandAction variant="outline" icon={<UploadIcon aria-hidden />} onSelect={startImport}>
-        {format(m.action)}
+        {m.users_action()}
       </BandAction>
 
       <ImportWizard

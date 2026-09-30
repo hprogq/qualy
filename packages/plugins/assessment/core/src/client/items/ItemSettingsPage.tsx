@@ -12,7 +12,7 @@ import {
   useRunApi,
 } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { AsyncSection, ConfirmDialog } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
@@ -22,7 +22,7 @@ import { useLingering } from '@qualy/ui/use-lingering'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { toast } from '@qualy/ui/toast'
 import { assessmentApi } from '../api.ts'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import { BatchScreen } from '../batch/BatchScreen.tsx'
 import { ItemEditor } from './editor/ItemEditor.tsx'
 import { GroupEditor } from './GroupEditor.tsx'
@@ -35,6 +35,8 @@ import { ReasonDialog } from './ReasonDialog.tsx'
 import { ReviewGapNotice } from './ReviewGapNotice.tsx'
 import { VoidQuestionDialog } from './VoidQuestionDialog.tsx'
 import { amountOf, trimAmount, unitsOf, type ItemDto } from '../entry/model.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // Composing a round: the paper's structure, and one question opened out.
 //
@@ -328,7 +330,6 @@ function QuestionSkeleton() {
 }
 
 export default function ItemSettingsPage() {
-  const { format } = useI18n()
   // Held out here because the band at the top of the page is the one the
   // open question speaks through, and the page has to know when to give it
   // up.
@@ -403,8 +404,8 @@ export default function ItemSettingsPage() {
 
   return (
     <BatchScreen
-      title={format(m.itemsTab)}
-      description={format(m.itemsHint)}
+      title={m.items_tab()}
+      description={m.items_hint()}
       banner={shown !== '' && questionUp ? 'open' : 'section'}
       // the round's notes belong to the structure: an address naming a
       // question drops them at once, so the outline of the question stands
@@ -492,7 +493,7 @@ function Editor({
   const api = useApi(assessmentApi)
   const run = useRunApi()
   const queryClient = useQueryClient()
-  const { format, formatError } = useI18n()
+  const { formatError } = useI18n()
   const failures = useLoadFailure()
   const groups = useQuery(query.assessment.listScoreGroups.queryOptions({ params: { batchId } }))
   const items = useQuery(query.assessment.listItems.queryOptions({ params: { batchId } }))
@@ -602,7 +603,7 @@ function Editor({
     mutationFn: (itemId: string) =>
       run(api.assessment.setItemStatus({ params: { itemId }, payload: { status: 'active' } })),
     onSuccess: () => {
-      toast.success(format(m.itemsPublished))
+      toast.success(m.items_published())
       void refresh()
     },
     onError: (error) => toast.error(refusedPublish(error, formatError)),
@@ -883,7 +884,7 @@ function Editor({
       <div {...stylex.props(styles.grow, styles.structureArea)}>
         <StructureTable
           batchId={batchId}
-          title={paper.name.trim() === '' ? format(m.itemsGroupUnnamed) : paper.name}
+          title={paper.name.trim() === '' ? m.items_groupUnnamed() : paper.name}
           note={<PaperLimits paper={paper} />}
           summary={
             <PaperShare
@@ -924,8 +925,8 @@ function Editor({
       error={unread === null ? null : failures.of(unread, { missing: [BATCH_MISSING] })}
       framed
       retrying={groups.isFetching || items.isFetching || options.isFetching}
-      loadingLabel={format(commonMessages.loading)}
-      retryLabel={format(commonMessages.retry)}
+      loadingLabel={commonMessages.state_loading()}
+      retryLabel={commonMessages.action_retry()}
       onRetry={() => {
         if (groups.isError) void groups.refetch()
         if (items.isError) void items.refetch()
@@ -974,8 +975,8 @@ function Editor({
       {lingeringMove !== null && (
         <ReasonDialog
           open={pendingMove !== null}
-          title={format(m.itemsMoveReasonTitle)}
-          description={format(m.itemsReasonHint)}
+          title={m.items_moveReasonTitle()}
+          description={m.items_reasonHint()}
           busy={moveItem.isPending}
           onConfirm={(reason) => {
             moveItem.mutate({ ...lingeringMove, reason })
@@ -991,9 +992,9 @@ function Editor({
       <ConfirmDialog
         open={holding}
         tone="destructive"
-        title={format(m.itemsLeaveUnsaved)}
-        confirmLabel={format(m.discardEdits)}
-        cancelLabel={format(commonMessages.cancel)}
+        title={m.items_leaveUnsaved()}
+        confirmLabel={m.plan_discard()}
+        cancelLabel={commonMessages.action_cancel()}
         onConfirm={onLetGo}
         onCancel={onStay}
       />
@@ -1001,10 +1002,10 @@ function Editor({
       <ConfirmDialog
         open={deleting !== null}
         tone="destructive"
-        title={format(m.itemsDeleteConfirm, { title: deleting?.title ?? '' })}
-        description={format(m.itemsDeleteConfirmHint)}
-        confirmLabel={format(m.itemsDelete)}
-        cancelLabel={format(commonMessages.cancel)}
+        title={m.items_deleteConfirm({ title: deleting?.title ?? '' })}
+        description={m.items_deleteConfirmHint()}
+        confirmLabel={m.items_delete()}
+        cancelLabel={commonMessages.action_cancel()}
         pending={remove.isPending}
         onCancel={() => setDeleting(null)}
         onConfirm={() => {
@@ -1078,18 +1079,17 @@ const placementOf = (
 
 /** what the whole paper is worth, and the least it may come to */
 function PaperLimits({ paper }: { paper: TreeGroup }) {
-  const { format } = useI18n()
   return (
     <span {...stylex.props(styles.limits)}>
       <span>
-        {format(m.paperTotal)}{' '}
-        {paper.cap === null ? format(m.structureUncapped) : trimAmount(paper.cap)}
+        {m.items_paperTotal()}{' '}
+        {paper.cap === null ? m.items_structureUncapped() : trimAmount(paper.cap)}
       </span>
       <span aria-hidden {...stylex.props(styles.limitRule)} />
       <span>
         {paper.floor === null
-          ? format(m.paperFloorNone)
-          : `${format(m.itemsGroupFloor)} ${trimAmount(paper.floor)}`}
+          ? m.items_paperFloorNone()
+          : `${m.items_groupFloor()} ${trimAmount(paper.floor)}`}
       </span>
     </span>
   )
@@ -1113,7 +1113,6 @@ function PaperShare({
   roots: readonly TreeGroup[]
   onEdit: () => void
 }) {
-  const { format } = useI18n()
   const capped = roots.length > 0 && roots.every((group) => group.cap !== null)
   const held = roots.reduce((total, group) => total + unitsOf(group.cap ?? 0), 0)
   const total = paper.cap === null ? null : unitsOf(paper.cap)
@@ -1140,15 +1139,15 @@ function PaperShare({
         ) : (
           <span {...stylex.props(styles.stripBar)}>
             {sum === null && roots.length > 0 && (
-              <span {...stylex.props(styles.unsetNote)}>{format(m.paperCapUnset)}</span>
+              <span {...stylex.props(styles.unsetNote)}>{m.items_paperCapUnset()}</span>
             )}
           </span>
         )}
         {sum !== null && (
           <span {...stylex.props(styles.stripMeta)}>
             {total === null
-              ? format(m.paperAllocatedFree, { sum })
-              : format(m.paperAllocated, { sum, total: trimAmount(paper.cap!) })}
+              ? m.items_paperAllocatedFree({ sum })
+              : m.items_paperAllocated({ sum, total: trimAmount(paper.cap!) })}
           </span>
         )}
         <Button
@@ -1158,12 +1157,12 @@ function PaperShare({
           onClick={onEdit}
         >
           <PencilIcon aria-hidden />
-          {format(m.paperEdit)}
+          {m.items_paperEdit()}
         </Button>
       </div>
       {over && (
         <p {...stylex.props(styles.overNote)}>
-          {format(m.paperCapOver, { sum: sum, total: trimAmount(paper.cap!) })}
+          {m.items_paperCapOver({ sum: sum, total: trimAmount(paper.cap!) })}
         </p>
       )}
     </div>
@@ -1191,20 +1190,19 @@ function QuestionActions({
   onRestore: () => void
   onDelete: () => void
 }) {
-  const { format } = useI18n()
   return (
     <>
       {item.status === 'draft' && (
         <DropdownMenuItem disabled={busy || unsaved} onSelect={onPublish}>
-          {unsaved ? format(m.itemsPublishAfterSave) : format(m.itemsPublish)}
+          {unsaved ? m.items_publishAfterSave() : m.items_publish()}
         </DropdownMenuItem>
       )}
       {item.status === 'active' && batchStatus !== 'draft' && (
-        <DropdownMenuItem onSelect={onVoid}>{format(m.itemsVoid)}</DropdownMenuItem>
+        <DropdownMenuItem onSelect={onVoid}>{m.items_void()}</DropdownMenuItem>
       )}
       {item.status === 'voided' && (
         <DropdownMenuItem disabled={busy} onSelect={onRestore}>
-          {format(m.itemsRestore)}
+          {m.items_restore()}
         </DropdownMenuItem>
       )}
       {/* one never published leaves without a trace; one published keeps its
@@ -1213,7 +1211,7 @@ function QuestionActions({
         <>
           <DropdownMenuSeparator />
           <DropdownMenuItem variant="destructive" disabled={busy} onSelect={onDelete}>
-            {format(m.itemsDelete)}
+            {m.items_delete()}
           </DropdownMenuItem>
         </>
       )}

@@ -4,7 +4,7 @@ import * as stylex from '@stylexjs/stylex'
 import type { AtomicSchema } from '@qualy/value-schema'
 import { useApiQuery } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { usePickerWords } from '@qualy/web-i18n/picker-words'
 import { ValueFieldsForm } from '@qualy/web-value-form/InputValueForm'
 import { draftsFromFields, materializeFields, type FieldDraft } from '@qualy/web-value-form/model'
@@ -13,7 +13,8 @@ import { Button } from '@qualy/ui/button'
 import { Textarea } from '@qualy/ui/textarea'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentApi } from '../api.ts'
-import { assessmentMessages as m } from '../i18n.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // Correcting a concluded claim, as the person holding that power answers it:
 // the reviewer's own question - does it pass, and when it does, what is it
@@ -55,7 +56,7 @@ export function RedetermineDialog({
   onConfirm: (input: RedetermineInput) => void
   onClose: () => void
 }) {
-  const { format, locale } = useI18n()
+  const { locale } = useI18n()
   const words = usePickerWords()
   const query = useApiQuery(assessmentApi)
   const contract = useQuery({
@@ -87,13 +88,13 @@ export function RedetermineDialog({
   return (
     <FormDialog
       open={open}
-      title={format(m.staffRedetermineTitle)}
-      description={format(m.staffRedetermineHint)}
+      title={m.staff_redetermineTitle()}
+      description={m.staff_redetermineHint()}
       onClose={onClose}
       footer={
         <div {...stylex.props(styles.footer)}>
           <Button variant="outline" onClick={onClose}>
-            {format(commonMessages.cancel)}
+            {commonMessages.action_cancel()}
           </Button>
           <Button
             disabled={busy || !ready}
@@ -107,21 +108,21 @@ export function RedetermineDialog({
               })
             }
           >
-            {format(m.staffRedetermine)}
+            {m.staff_redetermine()}
           </Button>
         </div>
       }
     >
       <div {...stylex.props(styles.body)} data-testid="redetermine-form" data-decision={decision}>
         <RadioGroup
-          legend={format(m.staffRedetermineDecision)}
+          legend={m.staff_redetermineDecision()}
           name="redetermine-decision"
           variant="cards"
           selected={decision}
           onChange={(next) => setDecision(next === 'approve' ? 'approve' : 'reject')}
           options={[
-            { value: 'approve', label: format(m.reviewApprove) },
-            { value: 'reject', label: format(m.staffRedetermineReject) },
+            { value: 'approve', label: m.review_approve() },
+            { value: 'reject', label: m.staff_redetermineReject() },
           ]}
         />
         {decision === 'approve' && fields.length > 0 && (
@@ -134,7 +135,7 @@ export function RedetermineDialog({
             scope="redetermine"
           />
         )}
-        <Field label={format(m.staffRedetermineReason)}>
+        <Field label={m.staff_redetermineReason()}>
           {(id) => (
             <Textarea
               id={id}
@@ -146,7 +147,7 @@ export function RedetermineDialog({
         </Field>
         {running && (
           <p {...stylex.props(styles.warning)} data-testid="redetermine-ends-round">
-            {format(m.staffRedetermineEndsRound)}
+            {m.staff_redetermineEndsRound()}
           </p>
         )}
         <Feedback message={problem} />

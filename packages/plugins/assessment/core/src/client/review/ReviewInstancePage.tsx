@@ -15,8 +15,8 @@ import {
   useRunApi,
 } from '@qualy/web-runtime'
 import { isApiErrorCode, useI18n } from '@qualy/web-i18n'
-import type { MessageDescriptor } from '@qualy/i18n-contract'
-import { commonMessages } from '@qualy/web-i18n/messages'
+import type { Message } from '@qualy/i18n-contract'
+
 import { AsyncSection, ConfirmDialog } from '@qualy/ui/admin'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
@@ -27,7 +27,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@qualy
 import { toast } from '@qualy/ui/toast'
 import { assessmentApi } from '../api.ts'
 import { useBatchLive } from '../live.ts'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import { BatchScreen } from '../batch/BatchScreen.tsx'
 import { entryStatusMessage, type EntryDto } from '../entry/model.ts'
 import { sayEntryFailure } from '../entry/refusals.ts'
@@ -63,6 +63,8 @@ import { useFinePointer } from './pointer.ts'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // The workbench: one submission a screen, walked in a run.
 //
@@ -676,9 +678,8 @@ const heldWordsOf = (staged: StagedDecision): HeldWords =>
       }
 
 export default function ReviewInstancePage() {
-  const { format } = useI18n()
   return (
-    <BatchScreen title={format(m.reviewDetailTab)} size="full" chrome="none">
+    <BatchScreen title={m.review_detailTab()} size="full" chrome="none">
       {(batch) => <Workbench batch={batch} />}
     </BatchScreen>
   )
@@ -693,7 +694,7 @@ function Workbench({ batch }: { batch: BatchDto }) {
   const run = useRunApi()
   const navigate = usePageNavigate()
   const queryClient = useQueryClient()
-  const { format, formatError } = useI18n()
+  const { formatError } = useI18n()
 
   // The live channel carries wake-ups, never data: on each one the screen
   // re-reads whichever authorized query the wake-up names. While the channel
@@ -803,7 +804,7 @@ function Workbench({ batch }: { batch: BatchDto }) {
         setLog((current) => current.filter((entry) => entry.instanceId !== staged.instanceId))
         hold(staged)
       }
-      toast.error(sayEntryFailure(error, { format, formatError }))
+      toast.error(sayEntryFailure(error, { formatError }))
       refresh()
     },
   })
@@ -862,14 +863,14 @@ function Workbench({ batch }: { batch: BatchDto }) {
   /** the closest thing to a cause the refetched round can still say */
   const lostBecause =
     detail.data?.review.outcome === 'cancelled'
-      ? m.reviewGoneWithdrawn
+      ? m.review_goneWithdrawn
       : detail.data?.review.outcome === 'superseded'
-        ? m.reviewGoneRerouted
+        ? m.review_goneRerouted
         : detail.data?.review.outcome === 'subject-excluded'
-          ? m.reviewGoneExcluded
+          ? m.review_goneExcluded
           : detail.data?.review.state === 'completed'
-            ? m.reviewGoneDecided
-            : m.reviewGoneBody
+            ? m.review_goneDecided
+            : m.review_goneBody
 
   // Said out loud once, over whatever dialog the reader is writing in - the
   // banner may be standing behind it. And a decision waiting out its undo
@@ -879,14 +880,14 @@ function Workbench({ batch }: { batch: BatchDto }) {
   useEffect(() => {
     if (!lostTurn || told.current.has(instanceId)) return
     told.current.add(instanceId)
-    toast.info(format(lostBecause))
+    toast.info(lostBecause())
     // only if what is waiting belongs to the round that was lost. A decision
     // staged on one round and a turn lost on the next are two different
     // rounds, and taking the first one back would quietly discard a decision
     // that was still perfectly good.
     if (deferred.pending?.instanceId === instanceId) {
       deferred.undo()
-      toast.info(format(m.reviewGoneUndone))
+      toast.info(m.review_goneUndone())
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lostTurn])
@@ -924,8 +925,8 @@ function Workbench({ batch }: { batch: BatchDto }) {
   const [stack, setStack] = useState<HTMLDivElement | null>(null)
   useDraftSweep()
   const columns = useBenchColumns(stack, {
-    flow: format(m.reviewResizeFlow),
-    about: format(m.reviewResizeAbout),
+    flow: m.review_resizeFlow(),
+    about: m.review_resizeAbout(),
   })
   const beside = useBeside()
   // Which faces of this round have been under the reader, this sitting.
@@ -955,23 +956,23 @@ function Workbench({ batch }: { batch: BatchDto }) {
     return marks
   }, [flowMatters, aboutMatters, visited])
   /** the decision dialogs' last quiet word: faces that matter, still unread */
-  const unseen = (): readonly { part: WorkbenchPart; say: MessageDescriptor }[] => {
+  const unseen = (): readonly { part: WorkbenchPart; say: Message }[] => {
     if (beside) return []
-    const gaps: { part: WorkbenchPart; say: MessageDescriptor }[] = []
+    const gaps: { part: WorkbenchPart; say: Message }[] = []
     if (flowMatters && !visited.has('flow')) {
-      gaps.push({ part: 'flow', say: m.reviewGuardUnseenFlow })
+      gaps.push({ part: 'flow', say: m.review_guardUnseenFlow })
     }
     if (aboutMatters && !visited.has('about')) {
-      gaps.push({ part: 'about', say: m.reviewGuardUnseenAbout })
+      gaps.push({ part: 'about', say: m.review_guardUnseenAbout })
     }
     return gaps
   }
-  const caution = (gaps: readonly { part: WorkbenchPart; say: MessageDescriptor }[]) =>
+  const caution = (gaps: readonly { part: WorkbenchPart; say: Message }[]) =>
     gaps.length === 0 ? undefined : (
       <div data-testid="decision-caution" {...stylex.props(styles.cautionCard)}>
         {gaps.map((gap) => (
           <span key={gap.part} {...stylex.props(styles.cautionLine)}>
-            <span {...stylex.props(styles.cautionWords)}>{format(gap.say)}</span>
+            <span {...stylex.props(styles.cautionWords)}>{gap.say()}</span>
             <button
               type="button"
               {...stylex.props(styles.cautionGo)}
@@ -980,7 +981,7 @@ function Workbench({ batch }: { batch: BatchDto }) {
                 partGo.current?.(gap.part)
               }}
             >
-              {format(m.reviewGuardOpen)}
+              {m.review_guardOpen()}
             </button>
           </span>
         ))}
@@ -1071,10 +1072,10 @@ function Workbench({ batch }: { batch: BatchDto }) {
         }),
       ),
     onSuccess: () => {
-      toast.success(format(m.supplementWithdrawn))
+      toast.success(m.supplement_withdrawn())
       refresh()
     },
-    onError: (error) => toast.error(sayEntryFailure(error, { format, formatError })),
+    onError: (error) => toast.error(sayEntryFailure(error, { formatError })),
   })
 
   const may = (act: 'approve' | 'reject' | 'escalate' | 'supplement') =>
@@ -1228,7 +1229,7 @@ function Workbench({ batch }: { batch: BatchDto }) {
   const reviewAbsence = {
     missing: ['ASSESSMENT_REVIEW_NOT_FOUND'],
     copy: {
-      missing: { title: format(m.reviewMissingTitle), description: format(m.reviewMissingHint) },
+      missing: { title: m.review_missingTitle(), description: m.review_missingHint() },
     },
   }
   const failure = !addressable
@@ -1248,7 +1249,7 @@ function Workbench({ batch }: { batch: BatchDto }) {
             page: 'assessment/batch-reviews',
             params: { batchId: batch.id },
             search: queuePlaceOf(batch.id),
-            label: format(m.reviewBackToQueue),
+            label: m.review_backToQueue(),
           }}
         />
       </div>
@@ -1258,8 +1259,8 @@ function Workbench({ batch }: { batch: BatchDto }) {
   return (
     <AsyncSection
       pending={inbox.isPending && detail.isPending}
-      loadingLabel={format(commonMessages.loading)}
-      retryLabel={format(commonMessages.retry)}
+      loadingLabel={commonMessages.state_loading()}
+      retryLabel={commonMessages.action_retry()}
       onRetry={() => {
         void inbox.refetch()
         void detail.refetch()
@@ -1347,7 +1348,7 @@ function Workbench({ batch }: { batch: BatchDto }) {
                   !review.capabilities.canCancelSupplement &&
                   !review.capabilities.canAnswerSupplement && (
                     <p data-testid="review-readonly" {...stylex.props(styles.readonlyBar)}>
-                      {format(m.reviewReadOnly)}
+                      {m.review_readOnly()}
                     </p>
                   )}
                 {/* The turn was lost mid-thought - settled elsewhere,
@@ -1362,10 +1363,10 @@ function Workbench({ batch }: { batch: BatchDto }) {
                     {...stylex.props(styles.goneBanner)}
                   >
                     <div {...stylex.props(styles.goneWords)}>
-                      <p {...stylex.props(styles.goneTitle)}>{format(m.reviewGoneTitle)}</p>
+                      <p {...stylex.props(styles.goneTitle)}>{m.review_goneTitle()}</p>
                       <p {...stylex.props(styles.goneBody)}>
-                        {format(lostBecause)}
-                        {` ${format(m.reviewGoneKept)}`}
+                        {lostBecause()}
+                        {` ${m.review_goneKept()}`}
                       </p>
                     </div>
                     <span {...stylex.props(styles.spacer)} />
@@ -1377,11 +1378,11 @@ function Workbench({ batch }: { batch: BatchDto }) {
                           if (next !== undefined) goTo(next.instanceId)
                         }}
                       >
-                        {format(m.reviewGoneNext)}
+                        {m.review_goneNext()}
                       </Button>
                     ) : (
                       <Button size="sm" onClick={backToQueue}>
-                        {format(m.reviewGoneFinish)}
+                        {m.review_goneFinish()}
                       </Button>
                     )}
                   </div>
@@ -1445,11 +1446,9 @@ function Workbench({ batch }: { batch: BatchDto }) {
                   <footer {...stylex.props(styles.awaitingFoot)}>
                     <InfoIcon aria-hidden className={stylex.props(styles.awaitingIcon).className} />
                     <div {...stylex.props(styles.awaitingWords)}>
-                      <p {...stylex.props(styles.awaitingTitle)}>
-                        {format(m.supplementWaitingTitle)}
-                      </p>
+                      <p {...stylex.props(styles.awaitingTitle)}>{m.supplement_waitingTitle()}</p>
                       <p {...stylex.props(styles.awaitingBody)}>
-                        {format(m.supplementWaitingBody, { who: review.participantName })}
+                        {m.supplement_waitingBody({ who: review.participantName })}
                       </p>
                     </div>
                     <span {...stylex.props(styles.spacer)} />
@@ -1463,7 +1462,7 @@ function Workbench({ batch }: { batch: BatchDto }) {
                             disabled={withdrawSupplement.isPending}
                             onClick={() => setWithdrawing(open.id)}
                           >
-                            {format(m.supplementWithdraw)}
+                            {m.supplement_withdraw()}
                           </Button>
                         )
                       })()}
@@ -1471,7 +1470,7 @@ function Workbench({ batch }: { batch: BatchDto }) {
                 )}
                 {review.state === 'completed' && review.outcome !== null && (
                   <div {...stylex.props(styles.outcomeRow)}>
-                    <Badge variant="outline">{format(reviewOutcomeMessage(review.outcome))}</Badge>
+                    <Badge variant="outline">{reviewOutcomeMessage(review.outcome)()}</Badge>
                   </div>
                 )}
               </>
@@ -1587,10 +1586,10 @@ function Workbench({ batch }: { batch: BatchDto }) {
         <ConfirmDialog
           open={withdrawing !== null}
           tone="destructive"
-          title={format(m.supplementWithdrawConfirm)}
-          description={format(m.supplementWithdrawConfirmHint)}
-          confirmLabel={format(m.supplementWithdraw)}
-          cancelLabel={format(commonMessages.cancel)}
+          title={m.supplement_withdrawConfirm()}
+          description={m.supplement_withdrawConfirmHint()}
+          confirmLabel={m.supplement_withdraw()}
+          cancelLabel={commonMessages.action_cancel()}
           pending={withdrawSupplement.isPending}
           onCancel={() => setWithdrawing(null)}
           onConfirm={() => {
@@ -1617,11 +1616,11 @@ function Workbench({ batch }: { batch: BatchDto }) {
   )
 }
 
-const DECISION_LABEL: Record<SessionEntry['decision'], MessageDescriptor> = {
-  approve: m.reviewApprove,
-  reject: m.reviewReject,
-  escalate: m.reviewEscalate,
-  supplement: m.reviewSupplementAsked,
+const DECISION_LABEL: Record<SessionEntry['decision'], Message> = {
+  approve: m.review_approve,
+  reject: m.review_reject,
+  escalate: m.review_escalate,
+  supplement: m.review_supplementAsked,
 }
 
 /** the word box and the four choices; only ⌘↵ ever submits */
@@ -1632,7 +1631,6 @@ function DecisionBar({
   review: ReviewDto
   onDialog: (next: 'approve' | 'reject' | 'escalate' | 'supplement') => void
 }) {
-  const { format } = useI18n()
   // What each word will do from here, told on hover. The server says
   // whether an approval or a rejection said here concludes the round: in
   // the middle of the escalation route both are opinions the next step
@@ -1645,16 +1643,16 @@ function DecisionBar({
   const revisiting = revisitsResult(review)
   const approveTip = review.actions.approvalConcludes
     ? revisiting
-      ? m.reviewTipApproveRevisit
-      : m.reviewTipApprove
+      ? m.review_tipApproveRevisit
+      : m.review_tipApprove
     : onLadder
-      ? m.reviewTipApproveOpinion
-      : m.reviewTipApproveMid
+      ? m.review_tipApproveOpinion
+      : m.review_tipApproveMid
   const rejectTip = !review.actions.rejectionReturns
-    ? m.reviewTipRejectMid
+    ? m.review_tipRejectMid
     : revisiting
-      ? m.reviewTipRejectRevisit
-      : m.reviewTipReject
+      ? m.review_tipRejectRevisit
+      : m.review_tipReject
 
   return (
     <footer {...stylex.props(styles.decisionFooter)} data-revisits={String(revisiting)}>
@@ -1678,18 +1676,18 @@ function DecisionBar({
         <ActionKey
           act="escalate"
           offer={review.actions.escalate}
-          label={format(m.reviewEscalate)}
+          label={m.review_escalate()}
           kbd="E"
-          why={format(onLadder ? m.reviewTipEscalateMid : m.reviewTipEscalate)}
+          why={(onLadder ? m.review_tipEscalateMid : m.review_tipEscalate)()}
           xstyle={styles.phoneRouting}
           onPress={() => onDialog('escalate')}
         />
         <ActionKey
           act="supplement"
           offer={review.actions.supplement}
-          label={format(m.reviewSupplementAsk)}
+          label={m.review_supplementAsk()}
           kbd="S"
-          why={format(m.reviewTipSupplement)}
+          why={m.review_tipSupplement()}
           xstyle={styles.phoneRouting}
           onPress={() => onDialog('supplement')}
         />
@@ -1697,10 +1695,10 @@ function DecisionBar({
         <ActionKey
           act="reject"
           offer={review.actions.reject}
-          label={format(m.reviewReject)}
+          label={m.review_reject()}
           icon={<CornerUpLeftIcon aria-hidden />}
           kbd="R"
-          why={format(rejectTip)}
+          why={rejectTip()}
           concludes={review.actions.rejectionReturns}
           xstyle={[styles.rejectKey, styles.phoneVerdict]}
           kbdClassName="bg-[color-mix(in_oklab,var(--q-danger)_12%,transparent)] text-[var(--q-danger)]"
@@ -1709,10 +1707,10 @@ function DecisionBar({
         <ActionKey
           act="approve"
           offer={review.actions.approve}
-          label={format(m.reviewApprove)}
+          label={m.review_approve()}
           icon={<CheckIcon aria-hidden />}
           kbd="A"
-          why={format(approveTip)}
+          why={approveTip()}
           concludes={review.actions.approvalConcludes}
           xstyle={[styles.approveKey, styles.phoneVerdict]}
           kbdClassName="bg-[color-mix(in_oklab,var(--q-success)_12%,transparent)] text-[var(--q-success-foreground)]"
@@ -1757,10 +1755,9 @@ function ActionKey({
   kbdClassName?: string
   onPress: () => void
 }) {
-  const { format } = useI18n()
   const fine = useFinePointer()
   const blocked = offer.state !== 'available'
-  const because = blocked ? format(actionBlockedMessage(offer.reason)) : why
+  const because = blocked ? actionBlockedMessage(offer.reason)() : why
   const key = (
     <Button
       variant="outline"
@@ -1805,18 +1802,18 @@ const revisitsResult = (review: Pick<ReviewDto, 'events'>): boolean =>
   review.events.some((event) => event.kind === 'appealed' || event.kind === 'reopened')
 
 /** the words for a blocked act, keyed by the server's stable reason codes */
-const actionBlockedMessage = (reason: string | null): MessageDescriptor => {
+const actionBlockedMessage = (reason: string | null): Message => {
   switch (reason) {
     case 'no-route':
-      return m.reviewBlockedNoRoute
+      return m.review_blockedNoRoute
     case 'route-closed':
-      return m.reviewBlockedRouteClosed
+      return m.review_blockedRouteClosed
     case 'phase-closed':
-      return m.reviewBlockedPhaseClosed
+      return m.review_blockedPhaseClosed
     case 'route-end':
-      return m.reviewBlockedRouteEnd
+      return m.review_blockedRouteEnd
     default:
-      return m.reviewBlockedUnavailable
+      return m.review_blockedUnavailable
   }
 }
 
@@ -1832,7 +1829,6 @@ function SiblingSheet({
   sibling: NonNullable<ReviewDto['context']>['siblings'][number] | null
   onClose: () => void
 }) {
-  const { format } = useI18n()
   return (
     <Dialog open={open && sibling !== null} onOpenChange={(next) => !next && onClose()}>
       <DialogContent size="32rem">
@@ -1842,7 +1838,7 @@ function SiblingSheet({
             <span {...stylex.props(styles.siblingStanding)}>
               {sibling === null
                 ? ''
-                : format(entryStatusMessage[sibling.status as EntryDto['status']] ?? m.eventOther)}
+                : (entryStatusMessage[sibling.status as EntryDto['status']] ?? m.event_other)()}
             </span>
           </DialogTitle>
         </DialogHeader>
@@ -1869,7 +1865,6 @@ function UndoPill({
   deadline: number
   onUndo: () => void
 }) {
-  const { format } = useI18n()
   const [left, setLeft] = useState(() => Math.ceil((deadline - Date.now()) / 1000))
   const started = useRef(Math.max(0, (deadline - Date.now()) / 1000))
   useEffect(() => {
@@ -1892,15 +1887,13 @@ function UndoPill({
       </CountdownRing>
       <p {...stylex.props(styles.undoSentence)}>
         <span {...stylex.props(styles.undoName)}>{staged.participantName}</span>
-        {format(
-          staged.kind === 'supplement'
-            ? DECISION_LABEL.supplement
-            : (DECISION_LABEL[staged.decision as SessionEntry['decision']] ?? m.reviewApprove),
-        )}
+        {(staged.kind === 'supplement'
+          ? DECISION_LABEL.supplement
+          : (DECISION_LABEL[staged.decision as SessionEntry['decision']] ?? m.review_approve))()}
       </p>
-      <p {...stylex.props(styles.undoClock)}>{format(m.reviewUndoPending, { seconds: left })}</p>
+      <p {...stylex.props(styles.undoClock)}>{m.review_undoPending({ seconds: left })}</p>
       <Button variant="outline" size="sm" onClick={onUndo}>
-        {format(m.reviewUndo)}
+        {m.review_undo()}
         <Kbd>⌘Z</Kbd>
       </Button>
     </div>
@@ -1909,30 +1902,29 @@ function UndoPill({
 
 /** the keyboard, spelled out; ? brings it and takes it away */
 function KeysPanel({ onClose }: { onClose: () => void }) {
-  const { format } = useI18n()
-  const keys: readonly [string, MessageDescriptor][] = [
-    ['A', m.reviewKeyApprove],
-    ['R', m.reviewKeyReject],
-    ['E', m.reviewKeyEscalate],
-    ['S', m.reviewKeySupplement],
-    ['⌘↵', m.reviewKeySubmit],
-    ['⌘Z', m.reviewKeyUndo],
-    ['J / K', m.reviewKeyMove],
-    ['Q', m.reviewKeyQueue],
-    ['1–9', m.reviewKeyFiles],
-    ['D', m.reviewKeyCompare],
-    ['⇧D', m.reviewKeyVersions],
-    ['H', m.reviewKeyTrail],
-    ['⌥1–⌥9', m.reviewKeySiblings],
-    ['Esc', m.reviewKeyCancel],
+  const keys: readonly [string, Message][] = [
+    ['A', m.review_keyApprove],
+    ['R', m.review_keyReject],
+    ['E', m.review_keyEscalate],
+    ['S', m.review_keySupplement],
+    ['⌘↵', m.review_keySubmit],
+    ['⌘Z', m.review_keyUndo],
+    ['J / K', m.review_keyMove],
+    ['Q', m.review_keyQueue],
+    ['1–9', m.review_keyFiles],
+    ['D', m.review_keyCompare],
+    ['⇧D', m.review_keyVersions],
+    ['H', m.review_keyTrail],
+    ['⌥1–⌥9', m.review_keySiblings],
+    ['Esc', m.review_keyCancel],
   ]
   return (
     <div {...stylex.props(styles.keysPanel)}>
       <div {...stylex.props(styles.keysHead)}>
-        <p {...stylex.props(styles.keysTitle)}>{format(m.reviewKeysTitle)}</p>
+        <p {...stylex.props(styles.keysTitle)}>{m.review_keysTitle()}</p>
         <span {...stylex.props(styles.keysSpacer)} />
         <button type="button" {...stylex.props(styles.keysToggle)} onClick={onClose}>
-          {format(m.reviewKeysToggle)}
+          {m.review_keysToggle()}
         </button>
       </div>
       <dl {...stylex.props(styles.keysList)}>
@@ -1941,11 +1933,11 @@ function KeysPanel({ onClose }: { onClose: () => void }) {
             <dt {...stylex.props(styles.keysKey)}>
               <Kbd className={stylex.props(styles.capWide).className}>{key}</Kbd>
             </dt>
-            <dd {...stylex.props(styles.keysWord)}>{format(message)}</dd>
+            <dd {...stylex.props(styles.keysWord)}>{message()}</dd>
           </div>
         ))}
       </dl>
-      <p {...stylex.props(styles.keysFoot)}>{format(m.reviewKeysFoot)}</p>
+      <p {...stylex.props(styles.keysFoot)}>{m.review_keysFoot()}</p>
     </div>
   )
 }
@@ -1965,7 +1957,6 @@ function DoneScreen({
   startedAt: number
   inboxRows: readonly InboxItemDto[]
 }) {
-  const { format } = useI18n()
   const navigate = usePageNavigate()
   const counts = {
     approve: log.filter((entry) => entry.decision === 'approve').length,
@@ -1995,16 +1986,14 @@ function DoneScreen({
       <Stagger className={stylex.props(styles.doneStack).className} step={0.08}>
         <div {...stylex.props(styles.doneHead)}>
           <DoneMark className={stylex.props(styles.doneMark).className} />
-          <h2 {...stylex.props(styles.doneTitle)}>
-            {format(m.reviewDoneTitle, { count: log.length })}
-          </h2>
+          <h2 {...stylex.props(styles.doneTitle)}>{m.review_doneTitle({ count: log.length })}</h2>
         </div>
         <div {...stylex.props(styles.doneStats)}>
-          <DoneStat label={format(m.reviewApprove)} value={counts.approve} />
-          <DoneStat label={format(m.reviewReject)} value={counts.reject} />
-          <DoneStat label={format(m.reviewEscalate)} value={counts.escalate} />
+          <DoneStat label={m.review_approve()} value={counts.approve} />
+          <DoneStat label={m.review_reject()} value={counts.reject} />
+          <DoneStat label={m.review_escalate()} value={counts.escalate} />
           <span {...stylex.props(styles.keysSpacer)} />
-          <DoneStat label={format(m.reviewDoneSpent)} value={spentLabel} />
+          <DoneStat label={m.review_doneSpent()} value={spentLabel} />
         </div>
         <div {...stylex.props(styles.doneActions)}>
           {next !== null && (
@@ -2016,16 +2005,14 @@ function DoneScreen({
                 })
               }
             >
-              {format(m.reviewDoneNext, { title: next[1].title, count: next[1].rows.length })}
+              {m.review_doneNext({ title: next[1].title, count: next[1].rows.length })}
             </Button>
           )}
           <Button variant="outline" onClick={onBack}>
-            {format(m.reviewDoneBack)}
+            {m.review_doneBack()}
           </Button>
           <span {...stylex.props(styles.keysSpacer)} />
-          <p {...stylex.props(styles.doneLeft)}>
-            {format(m.reviewDoneLeft, { count: inboxRows.length })}
-          </p>
+          <p {...stylex.props(styles.doneLeft)}>{m.review_doneLeft({ count: inboxRows.length })}</p>
         </div>
       </Stagger>
     </div>

@@ -13,12 +13,16 @@
     "./picker-words": "./src/picker-words.ts",
     "./locale-channel": "./src/locale-channel.ts"
   },
+  "imports": {
+    "#messages": {
+      "types": "./.qualy/messages.d.ts",
+      "default": "./.qualy/messages.js"
+    }
+  },
   "peerDependencies": {
     "react": "catalog:"
   },
   "dependencies": {
-    "@lingui/core": "catalog:",
-    "@lingui/message-utils": "catalog:",
     "@qualy/i18n-contract": "workspace:*"
   },
   "devDependencies": {

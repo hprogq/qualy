@@ -2,10 +2,10 @@ import { useState } from 'react'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import type { PeoplePickerContext } from '@qualy/ui-contract'
 import { useApiQuery } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
 import { authApi } from '../api.ts'
-import { authMessages as m } from '../i18n.ts'
+
 import PeoplePickerView from './PeoplePickerView.tsx'
+import * as m from '#messages'
 
 // Choosing people out of the directory.
 //
@@ -28,7 +28,6 @@ const PAGE = 20
 
 export default function PeoplePicker({ context }: { context: PeoplePickerContext }) {
   const query = useApiQuery(authApi)
-  const { format } = useI18n()
 
   const [nodeId, setNodeId] = useState<string | null>(null)
   const [scope, setScope] = useState<'self' | 'subtree'>('subtree')
@@ -102,7 +101,7 @@ export default function PeoplePicker({ context }: { context: PeoplePickerContext
         ...(context.single === undefined ? {} : { single: context.single }),
         ...(context.disabled === undefined
           ? {}
-          : { disabled: context.disabled, disabledLabel: format(m.pickerAlreadyIn) }),
+          : { disabled: context.disabled, disabledLabel: m.picker_alreadyIn() }),
         pending: people.isPending && here !== null,
         ...(waiting === undefined ? {} : { waiting }),
         failure: people.isError ? people.error : null,

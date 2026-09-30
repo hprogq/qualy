@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
-import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { Field, FormDialog } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { Textarea } from '@qualy/ui/textarea'
-import { assessmentMessages as m } from '../i18n.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // Why a running round changed.
 //
@@ -46,7 +46,6 @@ export function ReasonDialog({
   onConfirm: (reason: string) => void
   onClose: () => void
 }) {
-  const { format } = useI18n()
   const [reason, setReason] = useState('')
 
   return (
@@ -58,15 +57,15 @@ export function ReasonDialog({
       footer={
         <div {...stylex.props(styles.footer)}>
           <Button variant="outline" onClick={onClose}>
-            {format(commonMessages.cancel)}
+            {commonMessages.action_cancel()}
           </Button>
           <Button disabled={busy || reason.trim() === ''} onClick={() => onConfirm(reason.trim())}>
-            {confirmLabel ?? format(m.entrySave)}
+            {confirmLabel ?? m.entry_save()}
           </Button>
         </div>
       }
     >
-      <Field label={format(m.itemsFieldReason)} required>
+      <Field label={m.items_fieldReason()} required>
         {(id, control) => (
           <Textarea
             id={id}

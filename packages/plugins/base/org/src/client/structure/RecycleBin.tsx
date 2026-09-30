@@ -2,14 +2,16 @@ import { useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { useApiQuery } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { Button } from '@qualy/ui/button'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { CardEmpty, DetailSheet, Tag } from '@qualy/ui/screen'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { orgMessages as m } from '../i18n.ts'
+
 import { orgApi } from '../api.ts'
 import type { Api, OrgShape, Run } from '../shape.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // The units taken out of the structure, and the way back for each. A unit is
 // put back where it stood, so one whose own parent is in here too waits for
@@ -53,7 +55,7 @@ export function RecycleBin({
   run: Run
   onClose: () => void
 }) {
-  const { format, locale } = useI18n()
+  const { locale } = useI18n()
   const query = useApiQuery(orgApi)
   const binned = useQuery({
     ...query.org.listDeletedNodes.queryOptions({}),
@@ -71,9 +73,9 @@ export function RecycleBin({
     <DetailSheet
       open={open}
       onClose={onClose}
-      title={format(m.binTitle)}
-      meta={<span {...stylex.props(styles.note)}>{format(m.binHint)}</span>}
-      closeLabel={format(commonMessages.close)}
+      title={m.bin_title()}
+      meta={<span {...stylex.props(styles.note)}>{m.bin_hint()}</span>}
+      closeLabel={commonMessages.action_close()}
       testId="org-bin"
     >
       {binned.isPending ? (
@@ -83,7 +85,7 @@ export function RecycleBin({
           <Skeleton height={16} width="62%" radius={4} />
         </div>
       ) : nodes.length === 0 ? (
-        <CardEmpty>{format(m.binEmpty)}</CardEmpty>
+        <CardEmpty>{m.bin_empty()}</CardEmpty>
       ) : (
         <ul {...stylex.props(styles.list)} data-count={nodes.length}>
           {nodes.map((node) => (
@@ -99,13 +101,13 @@ export function RecycleBin({
                   <Tag>{shape.types.find((type) => type.id === node.orgTypeId)?.name ?? ''}</Tag>
                 </span>
                 <span {...stylex.props(styles.note)}>
-                  {format(m.binWhere, {
+                  {m.bin_where({
                     parent: node.parentName ?? '',
                     when: when.format(new Date(node.deletedAt)),
                   })}
                 </span>
                 {!node.restorable && (
-                  <span {...stylex.props(styles.note)}>{format(m.binParentFirst)}</span>
+                  <span {...stylex.props(styles.note)}>{m.bin_parentFirst()}</span>
                 )}
               </span>
               <Button
@@ -121,7 +123,7 @@ export function RecycleBin({
                   ).catch(() => undefined)
                 }
               >
-                {format(m.binRestore)}
+                {m.bin_restore()}
               </Button>
             </li>
           ))}

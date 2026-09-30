@@ -13,8 +13,9 @@ import { Pager } from '@qualy/ui/pager'
 import { useIsBelow } from '@qualy/ui/use-mobile'
 import { directoryApi } from './api.ts'
 import { FlowFrame } from './flow.tsx'
-import { directoryImportMessages as m } from './i18n.ts'
+
 import { whenText } from './words.ts'
+import * as m from '#messages'
 
 // What has been imported before, newest first, a page at a time.
 //
@@ -104,7 +105,7 @@ export function ImportRecords({
   /** the other half of the same errand: import again, from where the history is */
   onImport: () => void
 }) {
-  const { format, locale } = useI18n()
+  const { locale } = useI18n()
   const failures = useLoadFailure()
   const phone = useIsBelow(PHONE)
   const query = useApiQuery(directoryApi)
@@ -127,15 +128,15 @@ export function ImportRecords({
       open={open}
       onClose={onClose}
       testId="import-records"
-      title={format(m.recordsTitle)}
-      subtitle={format(m.recordsHint)}
-      cancelLabel={format(m.recordClose)}
-      closeLabel={format(m.recordClose)}
+      title={m.records_title()}
+      subtitle={m.records_hint()}
+      cancelLabel={m.record_close()}
+      closeLabel={m.record_close()}
       actions={[]}
       headActions={
         <Button size="sm" onClick={onImport}>
           <UploadIcon aria-hidden />
-          {format(m.action)}
+          {m.users_action()}
         </Button>
       }
       {...(total > RECORDS_PER_PAGE
@@ -144,12 +145,12 @@ export function ImportRecords({
               <div {...stylex.props(styles.pager)}>
                 <Pager
                   testId="import-records-pager"
-                  label={format(m.pagerLabel)}
+                  label={m.pager()}
                   page={imports.data?.page ?? page}
                   pageSize={RECORDS_PER_PAGE}
                   total={total}
                   disabled={imports.isFetching}
-                  summary={format(m.countOf, { count: total })}
+                  summary={m.countOf({ count: total })}
                   onPage={setPage}
                 />
               </div>
@@ -160,8 +161,8 @@ export function ImportRecords({
       <AsyncSection
         pending={imports.isPending}
         error={imports.isError ? failures.of(imports.error) : null}
-        loadingLabel={format(m.recordsLoading)}
-        retryLabel={format(m.retry)}
+        loadingLabel={m.records_loading()}
+        retryLabel={m.records_retry()}
         onRetry={() => void imports.refetch()}
         skeleton={<TableSkeleton rows={6} />}
         xstyle={styles.fills}
@@ -169,12 +170,12 @@ export function ImportRecords({
         {items.length === 0 ? (
           <Empty>
             <EmptyHeader>
-              <EmptyTitle>{format(m.recordsEmpty)}</EmptyTitle>
+              <EmptyTitle>{m.records_empty()}</EmptyTitle>
             </EmptyHeader>
             <EmptyContent>
               <Button variant="outline" onClick={onImport}>
                 <UploadIcon aria-hidden />
-                {format(m.action)}
+                {m.users_action()}
               </Button>
             </EmptyContent>
           </Empty>
@@ -192,11 +193,11 @@ export function ImportRecords({
               >
                 <span {...stylex.props(styles.cardHead)}>
                   <span {...stylex.props(styles.cardName)}>{one.filename}</span>
-                  {reversed(one) && <Tag>{format(m.recordReversed)}</Tag>}
+                  {reversed(one) && <Tag>{m.record_reversed()}</Tag>}
                   <ChevronRightIcon size={14} aria-hidden {...stylex.props(styles.chevron)} />
                 </span>
                 <span {...stylex.props(styles.cardCounts)}>
-                  {format(m.recordCounts, {
+                  {m.record_counts({
                     users: one.createdUserCount,
                     existing: one.existingUserCount,
                     nodes: one.createdNodeCount,
@@ -213,10 +214,10 @@ export function ImportRecords({
         ) : (
           <Table columns="minmax(0, 1.3fr) minmax(0, 1.4fr) 6rem 8.5rem" openable>
             <TableHead>
-              <span>{format(m.recordFile)}</span>
-              <span>{format(m.recordOutcome)}</span>
-              <span>{format(m.recordBy)}</span>
-              <span>{format(m.recordAt)}</span>
+              <span>{m.record_file()}</span>
+              <span>{m.record_outcome()}</span>
+              <span>{m.record_by()}</span>
+              <span>{m.record_at()}</span>
             </TableHead>
             {items.map((one) => (
               <TableRow
@@ -228,10 +229,10 @@ export function ImportRecords({
               >
                 <Cell lead title={one.filename}>
                   <LeadWord>{one.filename}</LeadWord>
-                  {reversed(one) && <Tag outline>{format(m.recordReversed)}</Tag>}
+                  {reversed(one) && <Tag outline>{m.record_reversed()}</Tag>}
                 </Cell>
                 <Cell>
-                  {format(m.recordCounts, {
+                  {m.record_counts({
                     users: one.createdUserCount,
                     existing: one.existingUserCount,
                     nodes: one.createdNodeCount,

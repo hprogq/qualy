@@ -6,13 +6,14 @@ import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
 import { Kbd } from '@qualy/ui/kbd'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import { reviewEventMessage } from './events.ts'
 import { timeLabel, type ReviewDto } from './model.ts'
 import { useBatchZone } from '../batch/zone.ts'
 import { useFinePointer } from './pointer.ts'
 import { EscalationNotice } from './EscalationNotice.tsx'
 import { Pane } from './Pane.tsx'
+import * as m from '#messages'
 
 const belowLg = '@media (max-width: 1023.98px)'
 const lg = '@media (min-width: 1024px)'
@@ -319,7 +320,7 @@ export const FlowColumn = memo(function FlowColumn({
   /** whether the escalation notice stands outside the pager instead of here */
   lifted: boolean
 }) {
-  const { format, locale } = useI18n()
+  const { locale } = useI18n()
   const zone = useBatchZone()
   const fine = useFinePointer()
   const previous = review.context?.previous ?? null
@@ -338,10 +339,7 @@ export const FlowColumn = memo(function FlowColumn({
   const said =
     spoken === null || previous === null
       ? ''
-      : format(
-          spoken.message,
-          spoken.needsActor ? { who: previous.actorName ?? format(m.eventSomebody) } : {},
-        )
+      : spoken.message(spoken.needsActor ? { who: previous.actorName ?? m.event_somebody() } : {})
   return (
     <Pane as="section" part="flow" innerXstyle={paneStyles.inner}>
       <section {...stylex.props(styles.body)}>
@@ -349,9 +347,9 @@ export const FlowColumn = memo(function FlowColumn({
             says which part this is and which round it is on, and a second
             heading under it read as a third voice saying the same thing. */}
         <div {...stylex.props(styles.deskHead)}>
-          <h3 {...stylex.props(styles.heading)}>{format(m.reviewPrior)}</h3>
+          <h3 {...stylex.props(styles.heading)}>{m.review_prior()}</h3>
           <Badge variant="secondary" className={stylex.props(styles.noShrink).className}>
-            {format(m.reviewStateRound, { round: review.roundNo })}
+            {m.review_stateRound({ round: review.roundNo })}
           </Badge>
           <span {...stylex.props(styles.spacer)} />
           {/* What this round says is only the last part of the story, and the
@@ -363,7 +361,7 @@ export const FlowColumn = memo(function FlowColumn({
             className={stylex.props(styles.trailButton).className}
             onClick={onTrail}
           >
-            {format(m.reviewTrailFullOpen)}
+            {m.review_trailFullOpen()}
             {fine && <Kbd>H</Kbd>}
           </Button>
         </div>
@@ -381,19 +379,17 @@ export const FlowColumn = memo(function FlowColumn({
                 line cannot hold all three. */}
             <div {...stylex.props(styles.prevHead)}>
               <p {...stylex.props(styles.prevTitle)}>
-                {format(
-                  withdrawn
-                    ? m.reviewPreviousWithdrawn
-                    : rerouted
-                      ? m.reviewPreviousRerouted
-                      : previous.kind === 'approved'
-                        ? m.reviewPreviousApproved
-                        : m.reviewPreviousTitle,
-                )}
+                {(withdrawn
+                  ? m.review_previousWithdrawn
+                  : rerouted
+                    ? m.review_previousRerouted
+                    : previous.kind === 'approved'
+                      ? m.review_previousApproved
+                      : m.review_previousTitle)()}
               </p>
               <span {...stylex.props(styles.prevWhen)}>
                 <Badge variant="secondary" className={stylex.props(styles.roundBadge).className}>
-                  {format(m.reviewStateRound, { round: previous.roundNo })}
+                  {m.review_stateRound({ round: previous.roundNo })}
                 </Badge>
                 <span {...stylex.props(styles.time)}>{timeLabel(previous.at, locale, zone)}</span>
               </span>
@@ -437,10 +433,10 @@ export const FlowColumn = memo(function FlowColumn({
             {earlier.length > 0 && (
               <div {...stylex.props(styles.earlier)}>
                 <div {...stylex.props(styles.earlierHead)}>
-                  <p {...stylex.props(styles.sectionLabel)}>{format(m.reviewEarlierRounds)}</p>
+                  <p {...stylex.props(styles.sectionLabel)}>{m.review_earlierRounds()}</p>
                   <span {...stylex.props(styles.spacer)} />
                   <p {...stylex.props(styles.quiet)}>
-                    {format(m.reviewEarlierCount, { count: earlier.length })}
+                    {m.review_earlierCount({ count: earlier.length })}
                   </p>
                 </div>
                 {/* Round, grounds, time - never who. This list answers
@@ -453,8 +449,8 @@ export const FlowColumn = memo(function FlowColumn({
                 {earlier.map((one, index) => {
                   const took = one.kind === 'cancelled-by-submitter'
                   const grounds = took
-                    ? format(m.reviewEarlierWithdrawn)
-                    : (one.reason ?? format(m.reviewEarlierReturned))
+                    ? m.review_earlierWithdrawn()
+                    : (one.reason ?? m.review_earlierReturned())
                   return (
                     // Wrap by the column's own width, never squeeze: the
                     // grounds are the row's point and keep a floor of their
@@ -467,7 +463,7 @@ export const FlowColumn = memo(function FlowColumn({
                       {...stylex.props(styles.earlierRow)}
                     >
                       <span {...stylex.props(styles.earlierNo)}>
-                        {format(m.reviewStateRound, { round: one.roundNo })}
+                        {m.review_stateRound({ round: one.roundNo })}
                       </span>
                       <span
                         title={grounds}
@@ -483,7 +479,7 @@ export const FlowColumn = memo(function FlowColumn({
                 })}
               </div>
             )}
-            {!withdrawn && <p {...stylex.props(styles.hint)}>{format(m.reviewPreviousHint)}</p>}
+            {!withdrawn && <p {...stylex.props(styles.hint)}>{m.review_previousHint()}</p>}
           </div>
         )}
         {/* What has happened since this round opened, told apart from the
@@ -492,10 +488,10 @@ export const FlowColumn = memo(function FlowColumn({
             where there IS history - a first round has nothing to be told
             apart from, and the pane's own header already drew a line. */}
         <div {...stylex.props(styles.thisRound, previous !== null && styles.thisRoundRule)}>
-          <p {...stylex.props(styles.sectionLabel)}>{format(m.reviewThisRound)}</p>
+          <p {...stylex.props(styles.sectionLabel)}>{m.review_thisRound()}</p>
           <span {...stylex.props(styles.spacer)} />
           {review.state !== 'completed' && review.capabilities.canDecide && (
-            <p {...stylex.props(styles.quiet)}>{format(m.reviewAwaitingYou)}</p>
+            <p {...stylex.props(styles.quiet)}>{m.review_awaitingYou()}</p>
           )}
         </div>
         {review.events.length === 0 ? (
@@ -513,13 +509,12 @@ export const FlowColumn = memo(function FlowColumn({
               // judges exactly one, and the trail should say which
               const title =
                 event.kind === 'submitted'
-                  ? format(m.entryTrailSubmittedBy, {
-                      who: event.actorName ?? format(m.eventSomebody),
+                  ? m.entry_trailSubmittedBy({
+                      who: event.actorName ?? m.event_somebody(),
                       no: review.revision.revisionNo,
                     })
-                  : format(
-                      said.message,
-                      said.needsActor ? { who: event.actorName ?? format(m.eventSomebody) } : {},
+                  : said.message(
+                      said.needsActor ? { who: event.actorName ?? m.event_somebody() } : {},
                     )
               const last = index === review.events.length - 1
               return (
@@ -550,10 +545,10 @@ export const FlowColumn = memo(function FlowColumn({
         {/* the stacked page's way into the whole story, sitting where the
             story just ended; beside the columns the heading row carries it */}
         <button type="button" onClick={onTrail} {...stylex.props(styles.trailDoor)}>
-          {format(m.reviewTrailFullOpen)}
+          {m.review_trailFullOpen()}
           {earlier.length > 0 && (
             <span {...stylex.props(styles.nums)}>
-              {format(m.reviewEarlierCount, { count: earlier.length })}
+              {m.review_earlierCount({ count: earlier.length })}
             </span>
           )}
           <ChevronRightIcon aria-hidden className={stylex.props(styles.chevron).className} />

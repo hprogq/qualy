@@ -5,7 +5,7 @@ import { Route, Routes, useNavigate } from 'react-router'
 import { describe, expect, it, vi } from 'vitest'
 import { page, userEvent } from 'vitest/browser'
 import { Effect, Queue, Stream } from 'effect'
-import zhCN from '../src/client/locales/zh-CN.ts'
+import zhCN from '../messages/zh-CN.json' with { type: 'json' }
 import { addressNow, apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
 // The staff account, as somebody uses it: find a person, read why their
@@ -478,7 +478,7 @@ describe('the participant results screen', () => {
     // whether to wait or to do something else
     await expect
       .poll(() => document.querySelector('[data-sonner-toast]')?.textContent ?? '')
-      .toContain(zhCN['assessment/entry/refuse-not-returnable'])
+      .toContain(zhCN['entry_refuseNotReturnable'])
   })
 
   it('offers no correction in an archived round', async () => {
@@ -580,8 +580,8 @@ describe('the participant results screen', () => {
   // re-determine now: the two are separate powers, and a hint towards an act
   // the reader cannot see is not a way on.
   it.each([
-    ['available', 'assessment/staff/reopen-no-route'],
-    ['hidden', 'assessment/staff/reopen-no-route-only'],
+    ['available', 'staff_reopenNoRoute'],
+    ['hidden', 'staff_reopenNoRouteOnly'],
   ] as const)(
     'says why re-examining is shut, and points on only where it can (re-determine %s)',
     async (state, sentence) => {

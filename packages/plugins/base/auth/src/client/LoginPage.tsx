@@ -36,17 +36,19 @@ import {
   type SessionDestination,
 } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { Skeleton } from '@qualy/ui/skeleton'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import type { LoginMethod } from '@qualy/auth-contract/login'
-import { authMessages as m } from './i18n.ts'
+
 import { authApi } from './api.ts'
 import { AuthShell, Ring } from './sign-in/AuthShell.tsx'
 import { gapped } from './sign-in/gapped.ts'
 import { returnPathFrom, startHref } from './sign-in/return-path.ts'
 import { LoginMethodGlyph } from './sign-in/glyph.tsx'
 import { SharedDeviceChoice } from './sign-in/SharedDevice.tsx'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // The sign-in page: which workspace this is, and the ways into it.
 //
@@ -466,7 +468,7 @@ export default function LoginPage() {
   const probe = useRunApi({ recoverSession: false })
   const navigate = useNavigate()
   const manifest = useManifest()
-  const { format, locale } = useI18n()
+  const { locale } = useI18n()
   const startSession = useSessionTransition()
   const [params, setParams] = useSearchParams()
   const still = useReducedMotion() === true
@@ -609,7 +611,7 @@ export default function LoginPage() {
         </span>
       )}
       <h1 {...stylex.props(styles.title, context.data?.tenant == null && styles.titleAlone)}>
-        {format(m.title)}
+        {m.login_title()}
       </h1>
     </>
   )
@@ -624,8 +626,8 @@ export default function LoginPage() {
           <Block
             testId="sign-in-resumed"
             icon={<CircleCheckIcon size={18} color="currentColor" />}
-            title={format(m.resumedTitle)}
-            body={format(m.resumedHint)}
+            title={m.login_resumedTitle()}
+            body={m.login_resumedHint()}
           />
         </div>
       )
@@ -635,7 +637,7 @@ export default function LoginPage() {
       return (
         <div data-testid="sign-in-waiting" aria-busy {...stylex.props(styles.panel)}>
           <Skeleton className={stylex.props(styles.boneLine).className} />
-          <h1 {...stylex.props(styles.title)}>{format(m.title)}</h1>
+          <h1 {...stylex.props(styles.title)}>{m.login_title()}</h1>
           <Skeleton className={stylex.props(styles.boneSub).className} />
           <div {...stylex.props(styles.primaries)}>
             {[0, 1, 2].map((key) => (
@@ -658,8 +660,8 @@ export default function LoginPage() {
             testId="sign-in-unavailable"
             icon={<WifiOffIcon size={18} color="currentColor" />}
             tone="danger"
-            title={format(m.methodsFailedTitle)}
-            body={format(m.methodsFailedHint)}
+            title={m.login_methodsFailed()}
+            body={m.login_methodsFailedHint()}
             action={
               <button
                 type="button"
@@ -667,7 +669,7 @@ export default function LoginPage() {
                 disabled={context.isFetching}
                 onClick={() => void context.refetch()}
               >
-                {format(commonMessages.retry)}
+                {commonMessages.action_retry()}
               </button>
             }
           />
@@ -681,8 +683,8 @@ export default function LoginPage() {
           <Block
             testId="sign-in-empty"
             icon={<LockIcon size={18} />}
-            title={format(m.noMethodsTitle)}
-            body={format(m.noMethods)}
+            title={m.login_noMethodsTitle()}
+            body={m.login_noMethods()}
           />
         </div>
       )
@@ -691,7 +693,7 @@ export default function LoginPage() {
       return (
         <div {...stylex.props(styles.panel)}>
           <BackButton
-            label={format(m.otherMethods)}
+            label={m.login_otherMethods()}
             onClick={() => go(params.get('from') === 'more' ? { view: 'more' } : {})}
           />
           {/* the workspace small and the way in large, as on the first view */}
@@ -703,7 +705,7 @@ export default function LoginPage() {
           <h1
             {...stylex.props(styles.subTitle, context.data?.tenant != null && styles.eyebrowTitle)}
           >
-            {format(m.signInWith, { name: gapped(chosen.name, locale) })}
+            {m.login_signInWith({ name: gapped(chosen.name, locale) })}
           </h1>
           <MethodRenderer
             method={chosen}
@@ -768,7 +770,7 @@ export default function LoginPage() {
             >
               <Ring />
               <span {...stylex.props(styles.goingWords)}>
-                {format(m.goingTo, { name: gapped(leaving.name, locale) })}
+                {m.login_goingTo({ name: gapped(leaving.name, locale) })}
               </span>
               <button
                 type="button"
@@ -778,7 +780,7 @@ export default function LoginPage() {
                   setLeaving(null)
                 }}
               >
-                {format(m.stayHere)}
+                {m.login_stay()}
               </button>
             </motion.div>
           )}
@@ -864,23 +866,23 @@ function Block({
  * error - it is mostly nobody's fault - and is said in grey.
  */
 function useNotice(failed: { _tag: string; retryAfterSeconds: number } | undefined) {
-  const { format, formatError } = useI18n()
+  const { formatError } = useI18n()
   if (failed === undefined) return undefined
   const minutes = Math.max(1, Math.ceil(failed.retryAfterSeconds / 60))
   switch (failed._tag) {
     case 'AUTH_EXTERNAL_ACCOUNT_UNBOUND':
-      return { tone: 'danger', title: format(m.failUnboundTitle), body: format(m.failUnboundBody) }
+      return { tone: 'danger', title: m.login_failUnbound(), body: m.login_failUnboundBody() }
     case 'AUTH_FLOW_REJECTED':
-      return { tone: 'info', title: format(m.failFlowTitle), body: format(m.failFlowBody) }
+      return { tone: 'info', title: m.login_failFlow(), body: m.login_failFlowBody() }
     case 'AUTH_PERSON_NOT_FOUND':
-      return { tone: 'danger', title: format(m.failPersonTitle), body: format(m.failPersonBody) }
+      return { tone: 'danger', title: m.login_failPerson(), body: m.login_failPersonBody() }
     case 'AUTH_METHOD_UNAVAILABLE':
-      return { tone: 'danger', title: format(m.failMethodTitle), body: format(m.failMethodBody) }
+      return { tone: 'danger', title: m.login_failMethod(), body: m.login_failMethodBody() }
     case 'TOO_MANY_ATTEMPTS':
       return {
         tone: 'danger',
-        title: format(m.failAttemptsTitle),
-        body: format(m.failAttemptsBody, { minutes }),
+        title: m.login_failAttempts(),
+        body: m.login_failAttemptsBody({ minutes }),
       }
     default:
       // a driver's own reason: its sentence, and the ways in below it
@@ -909,7 +911,7 @@ function Home({
   demoAccounts: readonly { readonly label: string }[]
   onDemo: (index: number) => void
 }) {
-  const { format, locale } = useI18n()
+  const { locale } = useI18n()
   const still = useReducedMotion() === true
   const notice = useNotice(failed)
   const [tip, setTip] = useState<string | null>(null)
@@ -934,7 +936,7 @@ function Home({
   return (
     <div {...stylex.props(styles.panel)}>
       {header}
-      <p {...stylex.props(styles.sub)}>{format(m.chooseMethod)}</p>
+      <p {...stylex.props(styles.sub)}>{m.login_choose()}</p>
       <AnimatePresence initial={!still}>
         {notice !== undefined && failed !== undefined && (
           <motion.div
@@ -969,7 +971,7 @@ function Home({
             </span>
             <button
               type="button"
-              aria-label={format(m.dismiss)}
+              aria-label={m.login_dismiss()}
               {...stylex.props(styles.noticeClose)}
               onClick={onDismiss}
             >
@@ -1007,7 +1009,7 @@ function Home({
               <span {...stylex.props(styles.primaryName)}>{method.name}</span>
               {method.code === last && (
                 <span data-testid="sign-in-last" {...stylex.props(styles.last)}>
-                  {format(m.lastWayIn)}
+                  {m.login_lastUsed()}
                 </span>
               )}
               {/* on, whichever way it goes: the arrow leans that way under the pointer */}
@@ -1028,7 +1030,7 @@ function Home({
         <>
           <div {...stylex.props(styles.divider)}>
             <span {...stylex.props(styles.rule)} />
-            {format(m.demoHeading)}
+            {m.login_demo()}
             <span {...stylex.props(styles.rule)} />
           </div>
           <div data-testid="sign-in-demo" {...stylex.props(styles.demoRow)}>
@@ -1051,13 +1053,13 @@ function Home({
         <>
           <div {...stylex.props(styles.divider, primary.length === 0 && styles.dividerAlone)}>
             <span {...stylex.props(styles.rule)} />
-            {format(m.otherMethodsHeading)}
+            {m.login_others()}
             <span {...stylex.props(styles.rule)} />
           </div>
           <div {...stylex.props(styles.tiles)}>
             {tiles.map((method) => {
-              const signIn = format(m.signInWith, { name: gapped(method.name, locale) })
-              const said = method.code === last ? format(m.lastUsedName, { name: signIn }) : signIn
+              const signIn = m.login_signInWith({ name: gapped(method.name, locale) })
+              const said = method.code === last ? m.login_lastUsedName({ name: signIn }) : signIn
               return (
                 <span key={method.code} {...stylex.props(styles.tileSeat)}>
                   <button
@@ -1083,10 +1085,10 @@ function Home({
             {overflow && (
               <button
                 type="button"
-                aria-label={format(m.allOtherMethods, { count: others.length })}
+                aria-label={m.login_allOthers({ count: others.length })}
                 data-testid="sign-in-more"
                 {...stylex.props(styles.tile, styles.moreTile)}
-                {...tipOf(format(m.allOtherMethods, { count: others.length }))}
+                {...tipOf(m.login_allOthers({ count: others.length }))}
                 onClick={onMore}
               >
                 <EllipsisIcon size={20} aria-hidden />
@@ -1129,7 +1131,6 @@ function AllMethods({
   onBack: () => void
   onChoose: (method: LoginMethod) => void
 }) {
-  const { format } = useI18n()
   const [search, setSearch] = useState('')
   const shown = useMemo(() => {
     const wanted = search.trim().toLowerCase()
@@ -1139,13 +1140,13 @@ function AllMethods({
   }, [methods, search])
   return (
     <div data-testid="sign-in-all" {...stylex.props(styles.panel)}>
-      <BackButton label={format(m.back)} onClick={onBack} />
+      <BackButton label={m.login_back()} onClick={onBack} />
       <div {...stylex.props(styles.headingRow)}>
         <h1 {...stylex.props(styles.subTitle)} style={{ marginTop: 0 }}>
-          {format(m.otherMethodsHeading)}
+          {m.login_others()}
         </h1>
         <span {...stylex.props(styles.count)}>
-          {format(m.otherMethodsCount, { count: methods.length })}
+          {m.login_othersCount({ count: methods.length })}
         </span>
       </div>
       {methods.length > SEARCHABLE && (
@@ -1153,8 +1154,8 @@ function AllMethods({
           <SearchIcon size={16} aria-hidden />
           <input
             type="search"
-            aria-label={format(m.searchMethods)}
-            placeholder={format(m.searchMethods)}
+            aria-label={m.login_search()}
+            placeholder={m.login_search()}
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             {...stylex.props(styles.searchInput)}
@@ -1180,12 +1181,12 @@ function AllMethods({
             </span>
             <span {...stylex.props(styles.primaryName)}>{method.name}</span>
             {method.code === last && (
-              <span {...stylex.props(styles.last)}>{format(m.lastWayIn)}</span>
+              <span {...stylex.props(styles.last)}>{m.login_lastUsed()}</span>
             )}
           </button>
         ))}
       </div>
-      {shown.length === 0 && <p {...stylex.props(styles.noMatch)}>{format(m.noMethodMatch)}</p>}
+      {shown.length === 0 && <p {...stylex.props(styles.noMatch)}>{m.login_noMatch()}</p>}
     </div>
   )
 }
@@ -1199,7 +1200,6 @@ function MethodRenderer({
   onAuthenticated: () => void
   prefill: { readonly email: string; readonly publicPassword: string } | undefined
 }) {
-  const { format } = useI18n()
   // Two ways a driver can fail to draw its form, one thing to say about
   // them: not in this build, or throwing. From the doorstep both mean this
   // way in is not working - use another, which is the way back above.
@@ -1215,7 +1215,7 @@ function MethodRenderer({
         {...stylex.props(styles.noticeIcon, styles.noticeDangerIcon)}
       />
       <span {...stylex.props(styles.noticeWords)}>
-        <span {...stylex.props(styles.noticeTitle)}>{format(m.rendererMissing)}</span>
+        <span {...stylex.props(styles.noticeTitle)}>{m.login_rendererMissing()}</span>
       </span>
     </div>
   )

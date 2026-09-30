@@ -1,10 +1,9 @@
 import * as stylex from '@stylexjs/stylex'
-import { useI18n } from '@qualy/web-i18n'
 import { useTerm } from '@qualy/plugin-settings/client/terms'
 import { authTerms } from '@qualy/auth-contract/terms'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { Cell, Status } from '@qualy/ui/screen'
-import { iamMessages as m } from '../i18n.ts'
+import * as m from '#messages'
 
 // Facts about one person that read the same whoever is looking: somebody
 // administering them in the directory, or the person on their own account.
@@ -85,8 +84,7 @@ export function EmailWithStanding({
   email: string | null
   verified: boolean
 }) {
-  const { format } = useI18n()
-  if (email === null) return <>{format(m.emailNone)}</>
+  if (email === null) return <>{m.users_emailNone()}</>
   return (
     <span {...stylex.props(styles.emailLine)}>
       {email}
@@ -95,7 +93,7 @@ export function EmailWithStanding({
         data-testid="email-verified"
         data-verified={verified ? 'yes' : 'no'}
       >
-        {format(verified ? m.emailVerified : m.emailUnverified)}
+        {(verified ? m.users_emailVerified : m.users_emailUnverified)()}
       </Status>
     </span>
   )
@@ -131,15 +129,14 @@ export function EntranceAccount({
   /** what an account nobody bound yet is called, in the reader's own voice */
   unbound?: string
 }) {
-  const { format } = useI18n()
   const businessNoWord = useTerm(authTerms.businessNumber)
-  if (entrance.admits === false) return <Cell tone="quiet">{format(m.entranceNotAdmitted)}</Cell>
+  if (entrance.admits === false) return <Cell tone="quiet">{m.person_entranceNotAdmitted()}</Cell>
   const resolution = entrance.resolution
-  if (resolution === null) return <Cell tone="quiet">{format(m.driverMissing)}</Cell>
+  if (resolution === null) return <Cell tone="quiet">{m.person_driverMissing()}</Cell>
   if (resolution.mode === 'binding-subject') {
     const bound = entrance.bound
     return bound === null ? (
-      <Cell tone="quiet">{unbound ?? format(m.entranceSelf)}</Cell>
+      <Cell tone="quiet">{unbound ?? m.person_entranceSelf()}</Cell>
     ) : (
       <Cell tone="plain" unlabelled title={bound.subject ?? undefined}>
         <span {...stylex.props(styles.code)}>{bound.displayLabel ?? bound.subject}</span>
@@ -151,8 +148,8 @@ export function EntranceAccount({
     return (
       <Cell tone="warn">
         {resolution.field === 'email'
-          ? format(m.emailMissing)
-          : format(m.businessNoMissing, { businessNo: businessNoWord })}
+          ? m.person_emailMissing()
+          : m.person_businessNoMissing({ businessNo: businessNoWord })}
       </Cell>
     )
   }
@@ -162,13 +159,15 @@ export function EntranceAccount({
         <span {...stylex.props(styles.code)}>{value}</span>
         {entrance.binding?.mode === 'managed' ? (
           <Status tone={entrance.bound?.hasCredential === true ? 'ok' : 'warn'}>
-            {format(entrance.bound?.hasCredential === true ? m.credentialSet : m.credentialUnset)}
+            {(entrance.bound?.hasCredential === true
+              ? m.person_credentialSet
+              : m.person_credentialUnset)()}
           </Status>
         ) : (
           <span {...stylex.props(styles.aside)}>
             {resolution.field === 'email'
-              ? format(m.fromEmail)
-              : format(m.byBusinessNo, { businessNo: businessNoWord })}
+              ? m.person_fromEmail()
+              : m.person_byBusinessNo({ businessNo: businessNoWord })}
           </span>
         )}
       </span>

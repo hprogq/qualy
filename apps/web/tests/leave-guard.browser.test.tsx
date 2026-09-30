@@ -4,7 +4,6 @@ import { render } from 'vitest-browser-react'
 import { StrictMode, useState } from 'react'
 import { Link, Route, Routes, useNavigate } from 'react-router'
 import { Effect } from 'effect'
-import { I18nProvider } from '@qualy/web-i18n'
 import { UiProvider } from '@qualy/ui/provider'
 import { GuardedBrowserRouter, useLeaveGuard, useSessionTransition } from '@qualy/web-runtime'
 import { addressNow, emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
@@ -237,16 +236,14 @@ describe('a page with unsaved changes, under the browser’s own history', () =>
   const mountInBrowser = (editor: React.ReactNode = <Editor saves={false} />) =>
     render(
       <StrictMode>
-        <I18nProvider catalogs={[]} errorMessages={{}} fallback={null}>
-          <UiProvider scheme="light">
-            <GuardedBrowserRouter>
-              <Routes>
-                <Route path="/start" element={<Link to="/editor">open the editor</Link>} />
-                <Route path="/editor" element={editor} />
-              </Routes>
-            </GuardedBrowserRouter>
-          </UiProvider>
-        </I18nProvider>
+        <UiProvider scheme="light">
+          <GuardedBrowserRouter>
+            <Routes>
+              <Route path="/start" element={<Link to="/editor">open the editor</Link>} />
+              <Route path="/editor" element={editor} />
+            </Routes>
+          </GuardedBrowserRouter>
+        </UiProvider>
       </StrictMode>,
     )
 

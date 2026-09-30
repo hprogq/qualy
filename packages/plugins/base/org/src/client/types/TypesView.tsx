@@ -1,11 +1,12 @@
 import * as stylex from '@stylexjs/stylex'
-import { useI18n, useList } from '@qualy/web-i18n'
+import { useList } from '@qualy/web-i18n'
 import { useLingering } from '@qualy/ui/use-lingering'
 import { Card, CardEmpty, Cell, Table, TableHead, TableRow } from '@qualy/ui/screen'
-import { orgMessages as m } from '../i18n.ts'
+
 import type { Api, OrgShape, Run } from '../shape.ts'
 import { RulesGraph } from './RulesGraph.tsx'
 import { TypeSheet } from './TypeSheet.tsx'
+import * as m from '#messages'
 
 // The grammar the structure obeys: the rules as a picture, the kinds as a
 // table saying the same thing in words, and one kind opened beside them.
@@ -33,7 +34,6 @@ export function TypesView({
   run: Run
   canManage: boolean
 }) {
-  const { format } = useI18n()
   const listJoin = useList()
   const open = shape.types.find((type) => type.id === openId)
   const shown = useLingering(open ?? null)
@@ -47,14 +47,14 @@ export function TypesView({
       <RulesGraph shape={shape} openId={open?.id ?? null} onOpen={onOpen} />
       <Card data-testid="types-table">
         {shape.types.length === 0 ? (
-          <CardEmpty>{format(m.typeListEmpty)}</CardEmpty>
+          <CardEmpty>{m.type_listEmpty()}</CardEmpty>
         ) : (
           <Table columns="minmax(0, 0.9fr) 5.5rem minmax(0, 1.2fr) minmax(0, 1.2fr)" openable>
             <TableHead>
-              <span>{format(m.typesTitle)}</span>
-              <span>{format(m.typeCountColumn)}</span>
-              <span>{format(m.allowedChildrenTitle)}</span>
-              <span>{format(m.allowedUnder)}</span>
+              <span>{m.type_title()}</span>
+              <span>{m.type_countColumn()}</span>
+              <span>{m.type_allowedChildren()}</span>
+              <span>{m.type_allowedUnder()}</span>
             </TableHead>
             {shape.types.map((type) => {
               const holds = namesOf(
@@ -84,10 +84,10 @@ export function TypesView({
                   {/* how many there are is what this list is scanned by, so
                       stacked it keeps the end of the row */}
                   <Cell numeric narrow="end" unlabelled>
-                    {format(m.countUnits, { count: shape.nodesOfType.get(type.id) ?? 0 })}
+                    {m.node_countUnits({ count: shape.nodesOfType.get(type.id) ?? 0 })}
                   </Cell>
                   <Cell tone={holds.length === 0 ? 'quiet' : 'plain'} title={listJoin(holds)}>
-                    {holds.length === 0 ? format(m.none) : listJoin(holds)}
+                    {holds.length === 0 ? m.type_none() : listJoin(holds)}
                   </Cell>
                   {/* what may sit under this kind is the rule somebody came
                       for; what this kind may sit under is the same six rules
@@ -97,7 +97,7 @@ export function TypesView({
                     tone={under.length === 0 ? 'quiet' : 'plain'}
                     title={listJoin(under)}
                   >
-                    {under.length === 0 ? format(m.noneTopKind) : listJoin(under)}
+                    {under.length === 0 ? m.type_noneTop() : listJoin(under)}
                   </Cell>
                 </TableRow>
               )

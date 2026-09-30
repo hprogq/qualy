@@ -7,7 +7,7 @@ import { useApi, useApiQuery, useLoadFailure, useRunApi } from '@qualy/web-runti
 import { useI18n } from '@qualy/web-i18n'
 import { useTerm } from '@qualy/plugin-settings/client/terms'
 import { authTerms } from '@qualy/auth-contract/terms'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { AsyncSection, Field } from '@qualy/ui/admin'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
@@ -19,7 +19,7 @@ import { toast } from '@qualy/ui/toast'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@qualy/ui/tooltip'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentApi, assessmentUrls } from '../../api.ts'
-import { assessmentMessages as m } from '../../i18n.ts'
+
 import { administrativeItemsOf, fieldsOf, sizeLabel, type ItemDto } from '../../entry/model.ts'
 import { uploadFile } from '../../entry/upload.ts'
 import { sayEntryFailure } from '../../entry/refusals.ts'
@@ -36,6 +36,8 @@ import {
   WizardSection,
 } from '../wizard.tsx'
 import { fieldText, reasonText, type ColumnNames, type ImportIssue } from './issues.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // A workbook of administrative facts, taken in.
 //
@@ -224,7 +226,7 @@ export function AdministrativeImportView({
   const run = useRunApi()
   const query = useApiQuery(assessmentApi)
   const queryClient = useQueryClient()
-  const { format, formatError, locale } = useI18n()
+  const { formatError, locale } = useI18n()
   const failures = useLoadFailure()
   const businessNo = useTerm(authTerms.businessNumber)
   const items = useQuery(query.assessment.listItems.queryOptions({ params: { batchId } }))
@@ -284,7 +286,7 @@ export function AdministrativeImportView({
         file,
       ),
     onSuccess: (file) => setUploaded(file),
-    onError: (error) => toast.error(sayEntryFailure(error, { format, formatError })),
+    onError: (error) => toast.error(sayEntryFailure(error, { formatError })),
   })
 
   const check = useMutation({
@@ -326,7 +328,7 @@ export function AdministrativeImportView({
         }),
       ),
     onSuccess: (done) => {
-      toast.success(format(m.importDone, { count: done.importedCount }))
+      toast.success(m.record_import_done({ count: done.importedCount }))
       void queryClient.invalidateQueries({
         queryKey: query.assessment.listAdministrativeEntries.key({
           params: { batchId },
@@ -341,7 +343,7 @@ export function AdministrativeImportView({
       })
       onImported(done.importId)
     },
-    onError: (error) => toast.error(sayEntryFailure(error, { format, formatError })),
+    onError: (error) => toast.error(sayEntryFailure(error, { formatError })),
   })
 
   const choose = (next: string) => {
@@ -361,7 +363,7 @@ export function AdministrativeImportView({
     }
     return {
       issues: [] as readonly ImportIssue[],
-      sentence: sayEntryFailure(check.error, { format, formatError }),
+      sentence: sayEntryFailure(check.error, { formatError }),
     }
   })()
   const stale = preview !== null && checkedBasis !== basis
@@ -374,14 +376,14 @@ export function AdministrativeImportView({
     (preview.summary.warnings === 0 || confirmed) &&
     !commit.isPending
 
-  const steps = [format(m.recordStepItem), format(m.importStepFile), format(m.importStepConfirm)]
+  const steps = [m.record_stepItem(), m.record_import_stepFile(), m.record_import_stepConfirm()]
 
   return (
     <AsyncSection
       pending={items.isPending}
       error={items.isError ? failures.of(items.error) : null}
-      loadingLabel={format(commonMessages.loading)}
-      retryLabel={format(commonMessages.retry)}
+      loadingLabel={commonMessages.state_loading()}
+      retryLabel={commonMessages.action_retry()}
       onRetry={() => void items.refetch()}
       xstyle={styles.fill}
     >
@@ -407,22 +409,22 @@ export function AdministrativeImportView({
                   onClick={() => setAt(1)}
                   data-testid="record-step-next"
                 >
-                  {format(m.recordStepNext)}
+                  {m.record_stepNext()}
                 </Button>
               </WizardFoot>
             </>
           ) : at === 1 || preview === null ? (
             <>
               <WizardBody>
-                <WizardSection title={format(m.importTemplateTitle)}>
-                  <span {...stylex.props(styles.quiet)}>{format(m.importTemplateHint)}</span>
+                <WizardSection title={m.record_import_templateTitle()}>
+                  <span {...stylex.props(styles.quiet)}>{m.record_import_templateHint()}</span>
                   <span {...stylex.props(styles.templateRow)}>
                     <TemplateDownload item={item} />
                   </span>
                 </WizardSection>
 
-                <WizardSection title={format(m.importFile)}>
-                  <Field label={format(m.importFile)} hideLabel hint={format(m.importFileHint)}>
+                <WizardSection title={m.record_import_file()}>
+                  <Field label={m.record_import_file()} hideLabel hint={m.record_import_fileHint()}>
                     {() => (
                       <div {...stylex.props(styles.seat)} data-upload-seat>
                         {uploaded === null ? (
@@ -439,7 +441,9 @@ export function AdministrativeImportView({
                           >
                             <span data-slot="dropzone-said" {...stylex.props(styles.uploading)}>
                               {upload.isPending && <Spinner />}
-                              {format(upload.isPending ? m.importUploading : m.importChooseFile)}
+                              {(upload.isPending
+                                ? m.record_import_uploading
+                                : m.record_import_chooseFile)()}
                             </span>
                           </Dropzone>
                         ) : (
@@ -459,7 +463,7 @@ export function AdministrativeImportView({
                                   check.reset()
                                 }}
                               >
-                                {format(m.importChooseAnother)}
+                                {m.record_import_chooseAnother()}
                               </Button>
                             }
                           />
@@ -469,11 +473,11 @@ export function AdministrativeImportView({
                   </Field>
                 </WizardSection>
 
-                <WizardSection title={format(m.importDefaultBasis)}>
+                <WizardSection title={m.record_import_defaultBasis()}>
                   <Field
-                    label={format(m.importDefaultBasis)}
+                    label={m.record_import_defaultBasis()}
                     hideLabel
-                    hint={format(m.importDefaultBasisHint)}
+                    hint={m.record_import_defaultBasisHint()}
                   >
                     {(id) => (
                       <Input
@@ -487,14 +491,14 @@ export function AdministrativeImportView({
 
                 {refusal !== null && (
                   <div {...stylex.props(styles.refused)} data-testid="import-refused">
-                    <p {...stylex.props(styles.refusedTitle)}>{format(m.importFileUnreadable)}</p>
+                    <p {...stylex.props(styles.refusedTitle)}>{m.record_import_fileUnreadable()}</p>
                     {refusal.sentence !== null ? (
                       <p {...stylex.props(styles.quiet)}>{refusal.sentence}</p>
                     ) : (
                       <div {...stylex.props(styles.fileIssues)}>
                         {refusal.issues.map((issue, index) => (
                           <span key={index} data-reason={issue.reason}>
-                            {reasonText(format, issue, businessNo)}
+                            {reasonText(issue, businessNo)}
                           </span>
                         ))}
                       </div>
@@ -505,7 +509,7 @@ export function AdministrativeImportView({
                     <div {...stylex.props(styles.templateRow)}>
                       <TemplateDownload item={item} />
                       <span {...stylex.props(styles.templateNote)}>
-                        {format(m.importRefusedHint)}
+                        {m.record_import_refusedHint()}
                       </span>
                     </div>
                   </div>
@@ -514,20 +518,22 @@ export function AdministrativeImportView({
               <WizardFoot
                 status={
                   check.isPending
-                    ? format(m.importChecking)
-                    : format(uploaded === null ? m.importNeedsFile : m.importReadyToCheck)
+                    ? m.record_import_checking()
+                    : (uploaded === null
+                        ? m.record_import_needsFile
+                        : m.record_import_readyToCheck)()
                 }
                 blocked={uploaded === null}
               >
                 <Button variant="outline" onClick={() => setAt(0)} data-testid="record-step-back">
-                  {format(m.recordStepBack)}
+                  {m.record_stepBack()}
                 </Button>
                 <Button
                   disabled={uploaded === null || upload.isPending || check.isPending}
                   onClick={() => check.mutate({ attachmentId: uploaded!.attachmentId, basis })}
                   data-testid="record-step-next"
                 >
-                  {format(m.recordStepNext)}
+                  {m.record_stepNext()}
                 </Button>
               </WizardFoot>
             </>
@@ -535,16 +541,16 @@ export function AdministrativeImportView({
             <>
               <WizardBody>
                 {preview.summary.errors === 0 && (
-                  <WizardNotice>{format(m.recordEffectNotice)}</WizardNotice>
+                  <WizardNotice>{m.record_effectNotice()}</WizardNotice>
                 )}
-                <WizardSection title={format(m.importResult)}>
+                <WizardSection title={m.record_import_result()}>
                   <WizardRecap>
-                    <WizardRecapRow term={format(m.recordActItem)}>{item.title}</WizardRecapRow>
-                    <WizardRecapRow term={format(m.importFile)}>
+                    <WizardRecapRow term={m.record_actItem()}>{item.title}</WizardRecapRow>
+                    <WizardRecapRow term={m.record_import_file()}>
                       {uploaded?.filename ?? ''}
                     </WizardRecapRow>
                     {basis.trim() !== '' && (
-                      <WizardRecapRow term={format(m.importDefaultBasis)}>
+                      <WizardRecapRow term={m.record_import_defaultBasis()}>
                         {basis.trim()}
                       </WizardRecapRow>
                     )}
@@ -559,37 +565,37 @@ export function AdministrativeImportView({
                   >
                     {/* the total is context, not a verdict, so it stays plain
                         at every width */}
-                    <span>{format(m.importSummaryRows, { count: preview.summary.rows })}</span>
+                    <span>{m.record_import_summaryRows({ count: preview.summary.rows })}</span>
                     <span {...stylex.props(styles.tallyPart, styles.tallyGood)}>
-                      {format(m.importSummaryValid, { count: preview.summary.valid })}
+                      {m.record_import_summaryValid({ count: preview.summary.valid })}
                     </span>
                     {preview.summary.warnings > 0 && (
                       <span {...stylex.props(styles.tallyPart, styles.tallyCheck)}>
-                        {format(m.importSummaryWarnings, { count: preview.summary.warnings })}
+                        {m.record_import_summaryWarnings({ count: preview.summary.warnings })}
                       </span>
                     )}
                     {preview.summary.errors > 0 && (
                       <span {...stylex.props(styles.tallyPart, styles.tallyBad)}>
-                        {format(m.importSummaryErrors, { count: preview.summary.errors })}
+                        {m.record_import_summaryErrors({ count: preview.summary.errors })}
                       </span>
                     )}
                   </div>
 
                   {preview.summary.errors > 0 ? (
-                    <WizardNotice bad>{format(m.importFixAndRetry)}</WizardNotice>
+                    <WizardNotice bad>{m.record_import_fixAndRetry()}</WizardNotice>
                   ) : flagged.length === 0 && preview.summary.rows > 0 ? (
-                    <p {...stylex.props(styles.quiet)}>{format(m.importAllReady)}</p>
+                    <p {...stylex.props(styles.quiet)}>{m.record_import_allReady()}</p>
                   ) : null}
                 </WizardSection>
 
                 {shown.length > 0 && (
-                  <WizardSection title={format(m.importRows)}>
+                  <WizardSection title={m.record_import_rows()}>
                     <div {...stylex.props(styles.table)} role="table">
                       <div role="row" {...stylex.props(styles.row, styles.head)}>
-                        <span role="columnheader">{format(m.importColumnRow)}</span>
+                        <span role="columnheader">{m.record_import_columnRow()}</span>
                         <span role="columnheader">{businessNo}</span>
-                        <span role="columnheader">{format(m.importColumnName)}</span>
-                        <span role="columnheader">{format(m.importColumnIssues)}</span>
+                        <span role="columnheader">{m.record_import_columnName()}</span>
+                        <span role="columnheader">{m.record_import_columnIssues()}</span>
                       </div>
                       {shown.map((row) => (
                         <div
@@ -615,7 +621,7 @@ export function AdministrativeImportView({
                             {row.issues.length === 0
                               ? null
                               : row.issues.map((issue, index) => {
-                                  const where = fieldText(format, issue.field, names, businessNo)
+                                  const where = fieldText(issue.field, names, businessNo)
                                   return (
                                     <span key={index} {...stylex.props(styles.issue)}>
                                       <Badge
@@ -623,18 +629,16 @@ export function AdministrativeImportView({
                                           issue.severity === 'error' ? 'destructive' : 'outline'
                                         }
                                       >
-                                        {format(
-                                          issue.severity === 'error'
-                                            ? m.importSeverityError
-                                            : m.importSeverityWarning,
-                                        )}
+                                        {(issue.severity === 'error'
+                                          ? m.record_import_severityError
+                                          : m.record_import_severityWarning)()}
                                       </Badge>
                                       <span>
                                         {where === null
-                                          ? reasonText(format, issue, businessNo)
-                                          : format(m.importIssueAt, {
+                                          ? reasonText(issue, businessNo)
+                                          : m.record_import_issueAt({
                                               field: where,
-                                              reason: reasonText(format, issue, businessNo),
+                                              reason: reasonText(issue, businessNo),
                                             })}
                                       </span>
                                     </span>
@@ -648,8 +652,8 @@ export function AdministrativeImportView({
                       <div {...stylex.props(styles.rowsHead)}>
                         <Button size="sm" variant="ghost" onClick={() => setShowAll((all) => !all)}>
                           {showAll
-                            ? format(m.importShowProblems)
-                            : format(m.importShowAll, { count: preview.summary.rows })}
+                            ? m.record_import_showProblems()
+                            : m.record_import_showAll({ count: preview.summary.rows })}
                         </Button>
                       </div>
                     )}
@@ -664,28 +668,26 @@ export function AdministrativeImportView({
                       onCheckedChange={setConfirmed}
                       data-testid="import-confirm-warnings"
                     />
-                    {format(m.importConfirmWarnings)}
+                    {m.record_import_confirmWarnings()}
                   </label>
                 )}
                 <Button variant="outline" onClick={() => setAt(1)} data-testid="record-step-back">
-                  {format(m.recordStepBack)}
+                  {m.record_stepBack()}
                 </Button>
                 {/* The one press that writes anything stays on the screen
                     even when it cannot be pressed. A button that disappears
                     leaves the reader looking for it; a grey one that says
                     why on hover leaves them looking at what to fix. */}
                 <CommitButton
-                  label={format(m.importCommit, { count: preview.summary.valid })}
+                  label={m.record_import_commit({ count: preview.summary.valid })}
                   why={
                     ready
                       ? null
-                      : format(
-                          !preview.canCommit
-                            ? m.importBlockedErrors
-                            : preview.summary.warnings > 0 && !confirmed
-                              ? m.importBlockedWarnings
-                              : m.importBlockedBusy,
-                        )
+                      : (!preview.canCommit
+                          ? m.record_import_blockedErrors
+                          : preview.summary.warnings > 0 && !confirmed
+                            ? m.record_import_blockedWarnings
+                            : m.record_import_blockedBusy)()
                   }
                   onPress={() => commit.mutate()}
                 />
@@ -735,7 +737,6 @@ function CommitButton({
 
 /** the one press that answers "where do I get the right file" */
 function TemplateDownload({ item }: { item: ItemDto }) {
-  const { format } = useI18n()
   return (
     <Button asChild variant="outline" size="sm">
       <a
@@ -746,7 +747,7 @@ function TemplateDownload({ item }: { item: ItemDto }) {
         data-testid="import-template"
       >
         <DownloadIcon aria-hidden {...stylex.props(styles.icon)} />
-        {format(m.importTemplate, { item: item.title })}
+        {m.record_import_template({ item: item.title })}
       </a>
     </Button>
   )

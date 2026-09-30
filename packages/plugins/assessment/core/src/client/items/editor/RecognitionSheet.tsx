@@ -20,7 +20,7 @@ import { DatePicker } from '@qualy/ui/date-picker'
 import { Field as FieldRow, FieldContent, FieldDescription, FieldLabel } from '@qualy/ui/field'
 import { usePickerWords } from '@qualy/web-i18n/picker-words'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@qualy/ui/tooltip'
-import { assessmentMessages as m } from '../../i18n.ts'
+
 import { EditorSheet } from './EditorSheet.tsx'
 import { sheetStyles } from './shared-styles.ts'
 import {
@@ -41,6 +41,7 @@ import {
   linkVerdictOf,
   type LinkVerdict,
 } from './words.ts'
+import * as m from '#messages'
 
 // One determination, owned here in full: what it is called, what it admits,
 // and which submission field starts it. The field it is linked to keeps its
@@ -158,7 +159,7 @@ export function RecognitionSheet({
   onPage: (handle: string) => void
   onClose: () => void
 }) {
-  const { format, locale } = useI18n()
+  const { locale } = useI18n()
   const listJoin = useList()
   const [choosing, setChoosing] = useState(false)
   const row =
@@ -175,41 +176,33 @@ export function RecognitionSheet({
   const admitted = admittedSchemaOf(recognition, schema)
   const linked = draft.fields.find((one) => one.id === recognition.fieldId)
   const at = siblings.indexOf(handle)
-  const title = recognition.label.trim() === '' ? format(m.itemsFieldUnnamed) : recognition.label
+  const title = recognition.label.trim() === '' ? m.items_fieldUnnamed() : recognition.label
 
   if (choosing) {
     return (
       <EditorSheet
         open={open}
-        title={format(m.itemsLinkExisting)}
+        title={m.items_linkExisting()}
         onBack={() => setChoosing(false)}
         onClose={onClose}
         testId="link-existing-sheet"
       >
         <p {...stylex.props(styles.hint)}>
-          {format(m.itemsLinkExistingHint, {
+          {m.items_linkExistingHint({
             name: title,
-            type: [kindWords(admitted, format), boundsWords(admitted, locale, format, listJoin)]
+            type: [kindWords(admitted), boundsWords(admitted, locale, listJoin)]
               .filter((one) => one !== '')
-              .join(format(m.listSeparator)),
+              .join(m.items_listSeparator()),
           })}
         </p>
         {draft.fields.length === 0 ? (
-          <p {...stylex.props(styles.hint)}>{format(m.itemsLinkExistingNone)}</p>
+          <p {...stylex.props(styles.hint)}>{m.items_linkExistingNone()}</p>
         ) : (
           <div {...stylex.props(styles.candidates)}>
             {draft.fields.map((field) => {
-              const verdict = linkVerdictOf(
-                draft,
-                contract,
-                admitted,
-                field,
-                format,
-                listJoin,
-                locale,
-              )
+              const verdict = linkVerdictOf(draft, contract, admitted, field, listJoin, locale)
               const dim = verdict.kind === 'kind-mismatch' || verdict.kind === 'taken'
-              const name = field.label.trim() === '' ? format(m.itemsFieldUnnamed) : field.label
+              const name = field.label.trim() === '' ? m.items_fieldUnnamed() : field.label
               return (
                 <div
                   key={field.key}
@@ -221,36 +214,36 @@ export function RecognitionSheet({
                   <span {...stylex.props(styles.candidateWords)}>
                     <span {...stylex.props(styles.candidateName)}>{name}</span>
                     <span {...stylex.props(styles.candidateTakes)}>
-                      {format(TYPE_LABEL[field.type])} {fieldBoundsWords(field, format, listJoin)}
+                      {TYPE_LABEL[field.type]()} {fieldBoundsWords(field, listJoin)}
                     </span>
                   </span>
                   {verdict.kind === 'fits' && (
                     <>
-                      <span {...stylex.props(styles.verdict)}>{format(m.itemsLinkFits)}</span>
+                      <span {...stylex.props(styles.verdict)}>{m.items_linkFits()}</span>
                       <Button size="sm" onClick={() => onLinkExisting(field.id, verdict)}>
-                        {format(m.itemsLinkAction)}
+                        {m.items_linkAction()}
                       </Button>
                     </>
                   )}
                   {verdict.kind === 'differs' && (
                     <>
                       <span {...stylex.props(styles.verdict, styles.verdictDiffers)}>
-                        {format(m.itemsLinkDiffers)}
+                        {m.items_linkDiffers()}
                       </span>
                       <Button
                         size="sm"
                         variant="outline"
                         onClick={() => onLinkExisting(field.id, verdict)}
                       >
-                        {format(m.itemsLinkAdjustAction)}
+                        {m.items_linkAdjustAction()}
                       </Button>
                     </>
                   )}
                   {verdict.kind === 'kind-mismatch' && (
-                    <span {...stylex.props(styles.verdict)}>{format(m.itemsLinkKindMismatch)}</span>
+                    <span {...stylex.props(styles.verdict)}>{m.items_linkKindMismatch()}</span>
                   )}
                   {verdict.kind === 'taken' && (
-                    <span {...stylex.props(styles.verdict)}>{format(m.itemsLinkTaken)}</span>
+                    <span {...stylex.props(styles.verdict)}>{m.items_linkTaken()}</span>
                   )}
                 </div>
               )
@@ -265,7 +258,7 @@ export function RecognitionSheet({
     <EditorSheet
       open={open}
       title={title}
-      tag={format(m.itemsRecognitionTag)}
+      tag={m.items_recognitionTag()}
       pager={{
         index: at,
         total: siblings.length,
@@ -283,14 +276,14 @@ export function RecognitionSheet({
         <>
           <span {...stylex.props(sheetStyles.footerSpacer)} />
           <Button variant="outline" onClick={onClose}>
-            {format(m.itemsDone)}
+            {m.items_done()}
           </Button>
         </>
       }
       testId="recognition-sheet"
     >
       <div {...stylex.props(styles.group)}>
-        <Field label={format(m.itemsName)}>
+        <Field label={m.items_name()}>
           {(id) => (
             <Input
               id={id}
@@ -302,13 +295,13 @@ export function RecognitionSheet({
             />
           )}
         </Field>
-        <Field label={format(m.itemsRecognitionDescription)}>
+        <Field label={m.items_recognitionDescription()}>
           {(id) => (
             <Input
               id={id}
               value={recognition.description}
               maxLength={200}
-              placeholder={format(m.itemsRecognitionDescriptionPlaceholder)}
+              placeholder={m.items_recognitionDescriptionPlaceholder()}
               onChange={(event) => onPatch({ description: event.target.value })}
             />
           )}
@@ -324,7 +317,7 @@ export function RecognitionSheet({
       />
 
       <div {...stylex.props(styles.block)}>
-        <span {...stylex.props(styles.blockTitle)}>{format(m.itemsLinkSection)}</span>
+        <span {...stylex.props(styles.blockTitle)}>{m.items_linkSection()}</span>
         <div
           {...stylex.props(styles.linkBox)}
           data-testid="recognition-link"
@@ -332,13 +325,13 @@ export function RecognitionSheet({
         >
           {linked === undefined ? (
             <>
-              <p {...stylex.props(styles.quietLine)}>{format(m.itemsUnlinkedHint)}</p>
+              <p {...stylex.props(styles.quietLine)}>{m.items_unlinkedHint()}</p>
               <div {...stylex.props(styles.actions)}>
                 <Button size="sm" onClick={onLinkNew}>
-                  {format(m.itemsLinkNew)}
+                  {m.items_linkNew()}
                 </Button>
                 <Button size="sm" variant="outline" onClick={() => setChoosing(true)}>
-                  {format(m.itemsLinkExisting)}
+                  {m.items_linkExisting()}
                 </Button>
               </div>
             </>
@@ -347,21 +340,21 @@ export function RecognitionSheet({
               <div {...stylex.props(styles.linkLine)}>
                 <LinkIcon aria-hidden {...stylex.props(styles.linkIcon)} />
                 <span {...stylex.props(styles.linkName)} data-testid="recognition-linked-field">
-                  {linked.label.trim() === '' ? format(m.itemsFieldUnnamed) : linked.label}
+                  {linked.label.trim() === '' ? m.items_fieldUnnamed() : linked.label}
                 </span>
-                <span {...stylex.props(styles.quiet)}>{format(m.itemsLinkedHint)}</span>
+                <span {...stylex.props(styles.quiet)}>{m.items_linkedHint()}</span>
               </div>
               <label {...stylex.props(styles.checkLabel)}>
                 <Checkbox
                   checked={linked.required}
                   onCheckedChange={(next) => onLinkRequired(next === true)}
                 />
-                {format(m.itemsLinkRequired)}
-                <span {...stylex.props(styles.quiet)}>{format(m.itemsLinkRequiredHint)}</span>
+                {m.items_linkRequired()}
+                <span {...stylex.props(styles.quiet)}>{m.items_linkRequiredHint()}</span>
               </label>
               <div {...stylex.props(styles.actions)}>
                 <Button size="sm" variant="outline" onClick={onUnlink}>
-                  {format(m.itemsUnlink)}
+                  {m.items_unlink()}
                 </Button>
               </div>
             </>
@@ -398,7 +391,7 @@ export function RangeEditor({
   onRefinement: (next: AtomicSchema | null) => void
   title?: string
 }) {
-  const { format, locale } = useI18n()
+  const { locale } = useI18n()
   const words = usePickerWords()
   const kind = kindOf(parameter)
   const admitted = admittedSchemaOf(recognition, parameter)
@@ -412,7 +405,7 @@ export function RangeEditor({
   const narrowed =
     JSON.stringify(recognition.refinement) !==
     JSON.stringify(refinementOf(parameter, {}, description))
-  const heading = title ?? format(kind === 'choice' ? m.itemsOptions : m.itemsRange)
+  const heading = title ?? (kind === 'choice' ? m.items_options : m.items_range)()
 
   if (kind === 'choice') {
     const source = parameter as ChoiceSchema
@@ -439,7 +432,7 @@ export function RangeEditor({
             disabled={!narrowed}
             onClick={() => onRefinement(refinementOf(parameter, {}, description))}
           >
-            {format(m.itemsRestoreDefault)}
+            {m.items_restoreDefault()}
           </button>
         </div>
         {options.map((option) => (
@@ -462,14 +455,14 @@ export function RangeEditor({
                       {...stylex.props(styles.optionLock)}
                       tabIndex={0}
                       role="img"
-                      aria-label={format(m.itemsOptionHeldDetermined)}
+                      aria-label={m.items_optionHeldDetermined()}
                       data-testid="option-held"
                       data-held-by={pinnedBy(option.value)}
                     >
                       <LockIcon aria-hidden {...stylex.props(styles.optionLockIcon)} />
                     </span>
                   </TooltipTrigger>
-                  <TooltipContent>{format(m.itemsOptionHeldDetermined)}</TooltipContent>
+                  <TooltipContent>{m.items_optionHeldDetermined()}</TooltipContent>
                 </Tooltip>
               </TooltipProvider>
             ) : (
@@ -502,7 +495,7 @@ export function RangeEditor({
         ))}
         {options.some((option) => option.enabled && pinnedBy(option.value) !== null) && (
           <p {...stylex.props(styles.heldHint)} data-testid="options-held-hint">
-            {format(m.itemsOptionsHeldHint)}
+            {m.items_optionsHeldHint()}
           </p>
         )}
       </div>
@@ -539,11 +532,11 @@ export function RangeEditor({
             disabled={!narrowed}
             onClick={() => onRefinement(refinementOf(parameter, {}, description))}
           >
-            {format(m.itemsRestoreDefault)}
+            {m.items_restoreDefault()}
           </button>
         </div>
         <div {...stylex.props(styles.pair)}>
-          <Field label={format(m.itemsFieldMinDate)}>
+          <Field label={m.items_fieldMinDate()}>
             {(id) => (
               <DatePicker
                 id={id}
@@ -556,7 +549,7 @@ export function RangeEditor({
               />
             )}
           </Field>
-          <Field label={format(m.itemsFieldMaxDate)}>
+          <Field label={m.items_fieldMaxDate()}>
             {(id) => (
               <DatePicker
                 id={id}
@@ -577,8 +570,8 @@ export function RangeEditor({
             onCheckedChange={(next) => write({ inMaterialRange: next === true })}
           />
           <FieldContent>
-            <FieldLabel>{format(m.itemsDateInRange)}</FieldLabel>
-            <FieldDescription>{format(m.itemsDateInRangeHint)}</FieldDescription>
+            <FieldLabel>{m.items_dateInRange()}</FieldLabel>
+            <FieldDescription>{m.items_dateInRangeHint()}</FieldDescription>
           </FieldContent>
         </FieldRow>
       </div>
@@ -616,11 +609,11 @@ export function RangeEditor({
             onRefinement(refinementOf(parameter, {}, description))
           }}
         >
-          {format(m.itemsRestoreDefault)}
+          {m.items_restoreDefault()}
         </button>
       </div>
       <div {...stylex.props(styles.pair)}>
-        <Field label={format(kind === 'text' ? m.itemsFieldMinLength : m.itemsFieldMinValue)}>
+        <Field label={(kind === 'text' ? m.items_fieldMinLength : m.items_fieldMinValue)()}>
           {(id) => (
             <Input
               id={id}
@@ -632,7 +625,7 @@ export function RangeEditor({
             />
           )}
         </Field>
-        <Field label={format(kind === 'text' ? m.itemsFieldMaxLength : m.itemsFieldMaxValue)}>
+        <Field label={(kind === 'text' ? m.items_fieldMaxLength : m.items_fieldMaxValue)()}>
           {(id) => (
             <Input
               id={id}
@@ -647,7 +640,7 @@ export function RangeEditor({
       </div>
       {(problemMin !== null || problemMax !== null) && (
         <p {...stylex.props(styles.problem)} role="alert">
-          {format(m.itemsProblemRefinementWidens)}
+          {m.items_problemRefinementWidens()}
         </p>
       )}
     </div>

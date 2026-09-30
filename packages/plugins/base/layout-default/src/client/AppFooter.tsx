@@ -3,8 +3,7 @@ import { Wordmark } from '@qualy/brand/wordmark'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { PageContainer } from '@qualy/ui/page-container'
-import { useI18n } from '@qualy/web-i18n'
-import { layoutMessages as m } from './i18n.ts'
+import * as m from '#messages'
 
 // The application's signature, once, under the page: the wordmark and its
 // line. It belongs to the shell of the applications' own pages and to
@@ -54,14 +53,13 @@ const styles = stylex.create({
 })
 
 export function AppFooter() {
-  const { format } = useI18n()
   return (
     <footer data-shell-foot="" {...stylex.props(styles.foot)}>
       <PageContainer>
         <div {...stylex.props(styles.row)}>
           <div {...stylex.props(styles.brand)}>
             <Wordmark height={12} title="Qualy" />
-            <span {...stylex.props(styles.tagline)}>{format(m.tagline)}</span>
+            <span {...stylex.props(styles.tagline)}>{m.footer_tagline()}</span>
           </div>
         </div>
       </PageContainer>

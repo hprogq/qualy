@@ -9,7 +9,6 @@ import {
   LockIcon,
   PlusIcon,
 } from 'lucide-react'
-import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { Button } from '@qualy/ui/button'
@@ -20,9 +19,10 @@ import {
   DropdownMenuTrigger,
 } from '@qualy/ui/dropdown-menu'
 import { Card, CardEmpty, CardHead, SearchField } from '@qualy/ui/screen'
-import { orgMessages as m } from '../i18n.ts'
+
 import type { OrgShape, OrgTreeNodeDto } from '../shape.ts'
 import type { NodeTask } from './NodeDialogs.tsx'
+import * as m from '#messages'
 
 // The whole structure, the whole width of the page.
 //
@@ -197,7 +197,6 @@ export function TreeTable({
   /** a task started from a row: a unit under it, another name, another place */
   onTask: (task: NodeTask) => void
 }) {
-  const { format } = useI18n()
   const [search, setSearch] = useState('')
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set())
   const term = search.trim().toLowerCase()
@@ -303,7 +302,7 @@ export function TreeTable({
               <button
                 type="button"
                 aria-expanded={!collapsed.has(node.id)}
-                aria-label={`${format(m.foldBranch)} ${node.name}`}
+                aria-label={`${m.tree_foldBranch()} ${node.name}`}
                 {...stylex.props(styles.twistie)}
                 onClick={(event) => {
                   const next = new Set(collapsed)
@@ -360,12 +359,10 @@ export function TreeTable({
             <Button
               size="icon-xs"
               variant="ghost"
-              aria-label={format(m.rowAdd, { name: node.name })}
+              aria-label={m.tree_rowAdd({ name: node.name })}
               aria-disabled={!canHold(node) || undefined}
               title={
-                canHold(node)
-                  ? undefined
-                  : format(m.rowAddBarred, { type: typeName(node.orgTypeId) })
+                canHold(node) ? undefined : m.tree_rowAddBarred({ type: typeName(node.orgTypeId) })
               }
               data-row-action="create"
               data-barred={!canHold(node)}
@@ -383,7 +380,7 @@ export function TreeTable({
               <Button
                 size="icon-xs"
                 variant="ghost"
-                aria-label={format(m.rowMore, { name: node.name })}
+                aria-label={m.tree_rowMore({ name: node.name })}
                 data-row-action="more"
               >
                 <EllipsisIcon aria-hidden />
@@ -391,16 +388,16 @@ export function TreeTable({
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem onSelect={() => onOpen(node.id)}>
-                {format(m.rowOpen)}
+                {m.tree_rowOpen()}
               </DropdownMenuItem>
               {node.manageable && (
                 <DropdownMenuItem onSelect={() => onTask({ kind: 'rename', nodeId: node.id })}>
-                  {format(m.rename)}
+                  {m.node_rename()}
                 </DropdownMenuItem>
               )}
               {node.manageable && node.parentId !== null && node.subtreeManageable && (
                 <DropdownMenuItem onSelect={() => onTask({ kind: 'move', nodeId: node.id })}>
-                  {format(m.moveTo)}
+                  {m.node_moveTo()}
                 </DropdownMenuItem>
               )}
             </DropdownMenuContent>
@@ -413,14 +410,14 @@ export function TreeTable({
   return (
     <Card data-testid="org-tree" xstyle={styles.bare}>
       <CardHead
-        title={<span {...stylex.props(styles.cardWord)}>{format(m.unitsTitle)}</span>}
-        note={format(m.treeCounts, { total: shape.nodes.length, manageable })}
+        title={<span {...stylex.props(styles.cardWord)}>{m.tree_units()}</span>}
+        note={m.tree_counts({ total: shape.nodes.length, manageable })}
       >
         <SearchField
           name="org-search"
           value={search}
           onChange={setSearch}
-          label={format(m.searchPlaceholder)}
+          label={m.tree_search()}
           xstyle={styles.tools}
         />
         {/* two marks rather than two phrases: side by side the words read as
@@ -429,8 +426,8 @@ export function TreeTable({
           <Button
             size="icon-sm"
             variant="outline"
-            aria-label={format(m.expandAll)}
-            title={format(m.expandAll)}
+            aria-label={m.tree_expandAll()}
+            title={m.tree_expandAll()}
             onClick={() => setCollapsed(new Set())}
           >
             <ChevronsUpDownIcon aria-hidden />
@@ -438,8 +435,8 @@ export function TreeTable({
           <Button
             size="icon-sm"
             variant="outline"
-            aria-label={format(m.collapseAll)}
-            title={format(m.collapseAll)}
+            aria-label={m.tree_collapseAll()}
+            title={m.tree_collapseAll()}
             onClick={() => setCollapsed(new Set(branches.map((node) => node.id)))}
           >
             <ChevronsDownUpIcon aria-hidden />
@@ -447,22 +444,22 @@ export function TreeTable({
         </span>
       </CardHead>
       <div {...stylex.props(styles.head)}>
-        <span>{format(m.nameLabel)}</span>
-        <span>{format(m.typeColumn)}</span>
-        <span {...stylex.props(styles.end)}>{format(m.peopleHere)}</span>
-        <span {...stylex.props(styles.end)}>{format(m.childrenColumn)}</span>
+        <span>{m.node_name()}</span>
+        <span>{m.node_typeColumn()}</span>
+        <span {...stylex.props(styles.end)}>{m.nodes_peopleHere()}</span>
+        <span {...stylex.props(styles.end)}>{m.node_childrenColumn()}</span>
         <span />
       </div>
       {matches !== null ? (
         // what a search leaves is a set of matches, not a tree: the branches
         // that would lead to them are not part of the answer
         matches.length === 0 ? (
-          <CardEmpty>{format(m.searchEmpty)}</CardEmpty>
+          <CardEmpty>{m.tree_searchEmpty()}</CardEmpty>
         ) : (
           matches.map((node) => row(node, 0, false))
         )
       ) : rows.length === 0 ? (
-        <CardEmpty>{format(m.treeEmpty)}</CardEmpty>
+        <CardEmpty>{m.tree_empty()}</CardEmpty>
       ) : (
         rows.map(({ node, depth }) => row(node, depth, true))
       )}

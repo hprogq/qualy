@@ -40,7 +40,7 @@ import {
   WorkspaceCapabilityScope,
   useWorkspaceCapabilities,
 } from '@qualy/web-runtime'
-import { LocalizedText, useI18n } from '@qualy/web-i18n'
+import { LocalizedText } from '@qualy/web-i18n'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { Sheet, SheetContent, SheetTitle } from '@qualy/ui/sheet'
 import { useIsBelow } from '@qualy/ui/use-mobile'
@@ -49,7 +49,7 @@ import { AppsBar, BottomBar } from './BottomBar.tsx'
 import { NavIcon } from './icons.tsx'
 import { useAppNavigation } from './useAppNavigation.ts'
 import { byOrder, fill, hasEntriesBelow, isHere, useCellsAcross, useNavDrawer } from './rail.ts'
-import { layoutMessages as m } from './i18n.ts'
+import * as m from '#messages'
 
 // The shape two contracts share: the same applications across the top, then
 // a strip saying what is open and a rail of everything that can be done to
@@ -1052,7 +1052,7 @@ function CapableRailShell({
   const capabilities = useWorkspaceCapabilities()
   const params = useParams()
   const { pathname } = useLocation()
-  const { format } = useI18n()
+
   const narrow = useIsBelow(SHELL_BREAKPOINT)
   // on a phone inside a workspace the head belongs to the workspace, and the
   // product's own bar is not drawn at all
@@ -1151,7 +1151,7 @@ function CapableRailShell({
   // entries only fade, which changes no layout.
   const rail = (
     <nav {...stylex.props(styles.railNav)}>
-      <div {...stylex.props(styles.toggleSeat)}>{toggle(format(m.toggleSidebar))}</div>
+      <div {...stylex.props(styles.toggleSeat)}>{toggle(m.shell_toggleSidebar())}</div>
       <div
         // out of reach as well as out of sight: a link nobody can see is
         // still a link the keyboard walks into and the screen reader reads
@@ -1290,7 +1290,7 @@ function CapableRailShell({
           {/* the record's own sections, across, at the foot of the banner
               that says whose record it is */}
           {banner && narrow && (
-            <PersonChips label={format(m.personSections)} name={pathname.split('/')[1] ?? ''}>
+            <PersonChips label={m.person_sections()} name={pathname.split('/')[1] ?? ''}>
               {run.map((item) => (
                 <PersonChip
                   key={item.id}
@@ -1336,7 +1336,7 @@ function CapableRailShell({
             <div {...stylex.props(styles.personSeat)}>
               {!narrow && (
                 <nav
-                  aria-label={format(m.personSections)}
+                  aria-label={m.person_sections()}
                   data-testid="person-sections"
                   {...stylex.props(styles.personNav)}
                 >
@@ -1354,7 +1354,7 @@ function CapableRailShell({
                     <section key={group.id} {...stylex.props(styles.personGroup)}>
                       <p {...stylex.props(styles.personHeading)}>
                         {group.label === undefined ? (
-                          format(m.personAccount)
+                          m.person_account()
                         ) : (
                           <LocalizedText value={group.label} />
                         )}
@@ -1456,7 +1456,7 @@ function CapableRailShell({
         sectionsAtFoot && (
           <BottomBar
             reach="narrow"
-            label={format(m.workspaceSections)}
+            label={m.workspace_sections()}
             // Held open rather than drawn early. Entries gated on what the
             // open workspace may do are not known until it says, and a bar
             // that drew the two ungated ones first and the rest a beat later
@@ -1476,7 +1476,7 @@ function CapableRailShell({
             more={
               spilled
                 ? {
-                    label: format(m.allSections),
+                    label: m.shell_allSections(),
                     // lit while what is open is one of the ones it holds, so
                     // the bar never reads as though the reader is nowhere
                     active:
@@ -1512,9 +1512,7 @@ function CapableRailShell({
         {/* the drawer's own shape, merged into the sheet's rather than
             racing it: same properties, one compiled rule */}
         <SheetContent side="bottom" showCloseButton={false} xstyle={styles.drawerPanel}>
-          <SheetTitle {...stylex.props(a11yStyles.visuallyHidden)}>
-            {format(m.navCapsule)}
-          </SheetTitle>
+          <SheetTitle {...stylex.props(a11yStyles.visuallyHidden)}>{m.shell_nav()}</SheetTitle>
           {/* the person at the head, the pages in the middle, the account at
               the foot - and the shell owns none of the head or the foot's
               controls: whoever owns sessions fills those seats */}
@@ -1573,7 +1571,7 @@ function CapableRailShell({
             {/* the modules the bar at the foot gave up its cells for -
                 destinations, not tabs - with the way out at the row's end */}
             <div data-testid="drawer-modules" {...stylex.props(styles.modulesRow)}>
-              <span {...stylex.props(styles.modulesLabel)}>{format(m.otherPages)}</span>
+              <span {...stylex.props(styles.modulesLabel)}>{m.shell_otherModules()}</span>
               <div {...stylex.props(styles.modulesWrap)}>
                 {apps.map((app) => (
                   <NavLink

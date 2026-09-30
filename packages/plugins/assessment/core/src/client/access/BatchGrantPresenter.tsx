@@ -2,10 +2,9 @@ import { Skeleton } from '@qualy/ui/skeleton'
 import { useQuery } from '@tanstack/react-query'
 import type { ResourceGrantContext } from '@qualy/ui-contract'
 import { PageLink, useApiQuery } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
 import * as stylex from '@stylexjs/stylex'
 import { assessmentApi } from '../api.ts'
-import { assessmentMessages as m } from '../i18n.ts'
+import * as m from '#messages'
 
 // A grant confined to one round, in this plugin's words: which round, and
 // the way to it. Rendered by the grants screen for exactly this kind of
@@ -32,7 +31,7 @@ const styles = stylex.create({
 export default function BatchGrantPresenter({ context }: { context: ResourceGrantContext }) {
   const batchId = context.grant.resource.id
   const query = useApiQuery(assessmentApi)
-  const { format } = useI18n()
+
   const batch = useQuery({
     ...query.assessment.getBatch.queryOptions({ params: { batchId } }),
     staleTime: 60_000,
@@ -49,7 +48,7 @@ export default function BatchGrantPresenter({ context }: { context: ResourceGran
       {batch.isPending ? (
         <Skeleton height={11} width="8rem" radius={4} />
       ) : name === undefined ? (
-        <span>{format(m.grantFromSomeBatch)}</span>
+        <span>{m.access_grantFromSomeBatch()}</span>
       ) : (
         <PageLink
           page="assessment/batch"

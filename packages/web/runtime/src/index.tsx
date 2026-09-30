@@ -32,8 +32,8 @@ import type { ClientUnsupportedReason } from '@qualy/release-contract'
 import { matchPath, useNavigate, useParams, useSearchParams } from 'react-router'
 import type { UiCollectionToken, UiSlotToken } from '@qualy/ui-contract'
 import { Toaster } from '@qualy/ui/toast'
-import { isAuthenticationError, useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+import { isAuthenticationError } from '@qualy/web-i18n'
+
 import { LoadingScreen } from '@qualy/ui/spinner'
 import { afterFlight } from '@qualy/ui/flight'
 import { clientFor, type ClientIdentity, type ClientOf, type TransportOptions } from './api.ts'
@@ -63,6 +63,7 @@ import { PluginComponent, type PluginComponentProps } from './component-boundary
 import { Failure } from './failure.tsx'
 import { useLoadFailure } from './load-failure.tsx'
 import { useUnguardedMove } from './leave-guard.tsx'
+import * as commonMessages from '@qualy/web-i18n/messages'
 
 export { Failure } from './failure.tsx'
 export {
@@ -330,7 +331,6 @@ function RuntimeLoader({
   registry,
   children,
 }: Omit<Runtime, 'manifest'> & { children: ReactNode }) {
-  const { format } = useI18n()
   const describe = useLoadFailure()
   const query = utilsFor(appApi) as QueryUtils<ClientOf<typeof appApi>>
   const queryClient = useQueryClient()
@@ -395,7 +395,7 @@ function RuntimeLoader({
       // with its own move for the reader. What failed is Qualy itself, not
       // some content inside it, and the heading says so.
       const failure = describe.of(manifest.error, {
-        copy: { failed: { title: format(commonMessages.manifestLoadFailed) } },
+        copy: { failed: { title: commonMessages.manifest_loadFailed() } },
       })
       return (
         <Failure

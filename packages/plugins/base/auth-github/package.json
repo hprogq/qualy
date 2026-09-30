@@ -11,6 +11,12 @@
     "./client/i18n": "./src/client/i18n.ts",
     "./package.json": "./package.json"
   },
+  "imports": {
+    "#messages": {
+      "types": "./.qualy/messages.d.ts",
+      "default": "./.qualy/messages.js"
+    }
+  },
   "dependencies": {
     "@qualy/api-kit": "workspace:*",
     "@qualy/auth-contract": "workspace:*",

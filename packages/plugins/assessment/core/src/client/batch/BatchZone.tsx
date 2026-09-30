@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import {
   BatchZoneContext,
   deviceDiffers,
@@ -11,6 +11,7 @@ import {
   useBatchZone,
   zoneNameOf,
 } from './zone.ts'
+import * as m from '#messages'
 
 // The batch's clock, handed down and said out loud.
 //
@@ -45,10 +46,10 @@ function useZoneLabel(
   zone: string | undefined,
   at?: number,
 ): { readonly label: string; readonly offset: string } | null {
-  const { format, locale } = useI18n()
+  const { locale } = useI18n()
   if (zone === undefined) return null
   const { name, offset } = zoneNameOf(zone, locale, at)
-  return { label: name === undefined ? offset : format(m.zoneNamed, { name, offset }), offset }
+  return { label: name === undefined ? offset : m.zone_named({ name, offset }), offset }
 }
 
 /** a moment as a number, or undefined when there is none or it does not parse */
@@ -86,7 +87,6 @@ export function ZoneNote({
   at?: number | string | null
   xstyle?: stylex.StyleXStyles
 }) {
-  const { format } = useI18n()
   const zone = useBatchZone()
   const moment = momentOf(at)
   const said = useZoneLabel(zone, moment)
@@ -100,7 +100,7 @@ export function ZoneNote({
       data-device={deviceDiffers(zone, moment) ? 'different' : 'same'}
       {...stylex.props(styles.note, xstyle)}
     >
-      {format(purpose === 'enter' ? m.zoneEnter : m.zoneNote, { zone: said.label })}
+      {(purpose === 'enter' ? m.zone_enter : m.zone_note)({ zone: said.label })}
     </span>
   )
 }
@@ -111,13 +111,12 @@ export function ZoneNote({
  * year, not only today, since the screen shows times from both halves of it.
  */
 export function ZoneAwayNotice({ xstyle }: { xstyle?: stylex.StyleXStyles }) {
-  const { format } = useI18n()
   const zone = useBatchZone()
   const said = useZoneLabel(zone)
   if (!deviceEverDiffers(zone) || said === null) return null
   return (
     <p data-testid="batch-zone-away" data-zone={zone} {...stylex.props(styles.away, xstyle)}>
-      {format(m.zoneAway, { zone: said.label })}
+      {m.zone_away({ zone: said.label })}
     </p>
   )
 }

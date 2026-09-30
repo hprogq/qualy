@@ -13,6 +13,12 @@
     "./db": "./src/db/entities.ts",
     "./package.json": "./package.json"
   },
+  "imports": {
+    "#messages": {
+      "types": "./.qualy/messages.d.ts",
+      "default": "./.qualy/messages.js"
+    }
+  },
   "peerDependencies": {
     "react": "catalog:"
   },

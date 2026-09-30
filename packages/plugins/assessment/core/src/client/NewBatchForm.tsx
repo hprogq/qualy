@@ -6,7 +6,7 @@ import { Building2Icon, NetworkIcon, UserRoundXIcon } from 'lucide-react'
 import { useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
 import { useIsMobile } from '@qualy/ui/use-mobile'
 import { useI18n, useLocale } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { dayAfter } from './entry/model.ts'
 import { CheckboxGroup, Feedback, Field, FormDialog, SidePanel } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
@@ -17,9 +17,11 @@ import { Input } from '@qualy/ui/input'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { Steps } from '@qualy/ui/steps'
 import { TreeSelect } from '@qualy/ui/tree-select'
-import { assessmentMessages as m } from './i18n.ts'
+
 import { assessmentApi } from './api.ts'
 import { DialogBlank } from './DialogBlank.tsx'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // Creating a batch, one decision at a time: what it is, then who it covers.
 //
@@ -61,7 +63,7 @@ export function NewBatchDialog({
   const run = useRunApi()
   const query = useApiQuery(assessmentApi)
   const queryClient = useQueryClient()
-  const { format, formatError } = useI18n()
+  const { formatError } = useI18n()
   const locale = useLocale()
 
   // asked for when the form is opened, not when the page behind it loads: a
@@ -105,7 +107,7 @@ export function NewBatchDialog({
       ),
     onMutate: () => setFailure(null),
     onSuccess: async (result: { batch: { id: string } }) => {
-      toast.success(format(m.toastBatchCreated))
+      toast.success(m.toast_batchCreated())
       reset()
       await queryClient.invalidateQueries({ queryKey: query.assessment.key() })
       onCreated(result.batch.id)
@@ -138,26 +140,26 @@ export function NewBatchDialog({
 
   const footer = nowhere ? (
     <Button variant="outline" onClick={close}>
-      {format(commonMessages.close)}
+      {commonMessages.action_close()}
     </Button>
   ) : (
     <>
       {step === 0 ? (
         <Button variant="outline" onClick={close}>
-          {format(m.cancel)}
+          {m.action_cancel()}
         </Button>
       ) : (
         <Button variant="outline" onClick={() => setStep(0)}>
-          {format(m.back)}
+          {m.action_back()}
         </Button>
       )}
       {step === 0 ? (
         <Button disabled={!basicsReady} onClick={() => setStep(1)}>
-          {format(m.next)}
+          {m.action_next()}
         </Button>
       ) : (
         <Button disabled={create.isPending || !scopeReady} onClick={() => create.mutate()}>
-          {format(m.create)}
+          {m.action_create()}
         </Button>
       )}
     </>
@@ -169,20 +171,20 @@ export function NewBatchDialog({
         testId="new-batch-stuck"
         kind={stuck}
         icon={<Building2Icon />}
-        title={format(m.newBatchNoUnits)}
-        description={format(m.newBatchNoUnitsHint)}
+        title={m.batch_newNoUnits()}
+        description={m.batch_newNoUnitsHint()}
       />
     ) : stuck === 'no-types' ? (
       <DialogBlank
         testId="new-batch-stuck"
         kind={stuck}
         icon={<UserRoundXIcon />}
-        title={format(m.newBatchNoTypes)}
-        description={format(m.newBatchNoTypesHint)}
+        title={m.batch_newNoTypes()}
+        description={m.batch_newNoTypesHint()}
       />
     ) : (
       <>
-        <Steps steps={[format(m.stepBasics), format(m.stepScope)]} current={step} />
+        <Steps steps={[m.batch_stepBasics(), m.batch_stepScope()]} current={step} />
         <Feedback message={failure} />
 
         {step === 1 && optionsFailed ? (
@@ -192,7 +194,7 @@ export function NewBatchDialog({
             testId="new-batch-stuck"
             kind="failed"
             icon={<NetworkIcon />}
-            title={format(m.newBatchOptionsFailed)}
+            title={m.batch_newOptionsFailed()}
             description={formatError(nodes.error ?? userTypes.error)}
             action={
               <Button
@@ -203,33 +205,33 @@ export function NewBatchDialog({
                   void userTypes.refetch()
                 }}
               >
-                {format(commonMessages.retry)}
+                {commonMessages.action_retry()}
               </Button>
             }
           />
         ) : step === 0 ? (
           <FieldGroup>
-            <Field label={format(m.nameLabel)} required>
+            <Field label={m.batch_name()} required>
               {(id, control) => (
                 <Input
                   id={id}
                   {...control}
                   value={name}
-                  placeholder={format(m.namePlaceholder)}
+                  placeholder={m.batch_namePlaceholder()}
                   onChange={(event) => setName(event.target.value)}
                 />
               )}
             </Field>
-            <Field label={format(m.materialRange)} required>
+            <Field label={m.batch_materialRange()} required>
               {(id) => (
                 <DateRangePicker
                   id={id}
                   value={range}
                   onChange={setRange}
-                  placeholder={format(m.pickDateRange)}
+                  placeholder={m.action_pickDateRange()}
                   localeTag={locale}
-                  monthLabel={format(commonMessages.calendarMonth)}
-                  yearLabel={format(commonMessages.calendarYear)}
+                  monthLabel={commonMessages.calendar_month()}
+                  yearLabel={commonMessages.calendar_year()}
                 />
               )}
             </Field>
@@ -238,12 +240,12 @@ export function NewBatchDialog({
           // The choices wait in their own places while they arrive: an empty
           // tree drawn meanwhile says "there are none", which is not yet known.
           <FieldGroup>
-            <Field label={format(m.scopeLegend)} required>
+            <Field label={m.batch_scope()} required>
               {() =>
                 nodes.data === undefined ? (
                   <div
                     role="status"
-                    aria-label={format(commonMessages.loading)}
+                    aria-label={commonMessages.state_loading()}
                     data-testid="new-batch-waiting"
                     {...stylex.props(styles.scopeTreeFrame)}
                   >
@@ -255,19 +257,19 @@ export function NewBatchDialog({
                       value={scopeNodeIds}
                       onChange={setScopeNodeIds}
                       nodes={nodes.data.nodes}
-                      emptyLabel={format(m.scopeEmpty)}
-                      emptyHint={format(m.newBatchNoUnitsHint)}
+                      emptyLabel={m.batch_scopeEmpty()}
+                      emptyHint={m.batch_newNoUnitsHint()}
                     />
                   </div>
                 )
               }
             </Field>
             {userTypes.data === undefined ? (
-              <Field label={format(m.userTypesLegend)} required>
+              <Field label={m.batch_userTypes()} required>
                 {() => (
                   <div
                     role="status"
-                    aria-label={format(commonMessages.loading)}
+                    aria-label={commonMessages.state_loading()}
                     data-testid="new-batch-waiting"
                   >
                     <Skeleton className={stylex.props(styles.waitingKinds).className} />
@@ -276,7 +278,7 @@ export function NewBatchDialog({
               </Field>
             ) : (
               <CheckboxGroup
-                legend={format(m.userTypesLegend)}
+                legend={m.batch_userTypes()}
                 required
                 options={userTypes.data.userTypes.map((type) => ({
                   value: type.id,
@@ -284,8 +286,8 @@ export function NewBatchDialog({
                 }))}
                 selected={userTypeIds}
                 onChange={setUserTypeIds}
-                emptyLabel={format(m.userTypesEmpty)}
-                emptyHint={format(m.newBatchNoTypesHint)}
+                emptyLabel={m.batch_userTypesEmpty()}
+                emptyHint={m.batch_newNoTypesHint()}
               />
             )}
           </FieldGroup>
@@ -294,11 +296,11 @@ export function NewBatchDialog({
     )
 
   return narrow ? (
-    <SidePanel open={open} title={format(m.newBatch)} onClose={close} footer={footer}>
+    <SidePanel open={open} title={m.batch_new()} onClose={close} footer={footer}>
       {body}
     </SidePanel>
   ) : (
-    <FormDialog open={open} title={format(m.newBatch)} onClose={close} footer={footer}>
+    <FormDialog open={open} title={m.batch_new()} onClose={close} footer={footer}>
       {body}
     </FormDialog>
   )

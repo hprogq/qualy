@@ -6,11 +6,12 @@ import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { EmptyRow } from '@qualy/ui/empty-row'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@qualy/ui/sheet'
 import type { NormalizedInputSchema } from '@qualy/value-schema'
-import { formulaMessages as m } from './i18n.ts'
+
 import { shortTime } from './library-styles.ts'
 import { inputFactsOf, type InputFact } from './report-words.ts'
 import type { TryRecord } from './try-records.ts'
 import { workbenchStyles as w } from './workbench-styles.ts'
+import * as m from '#messages'
 
 // The tries this browser remembers, as a drawer rather than a column.
 //
@@ -187,17 +188,17 @@ export function TryRecordsDrawer({
   readonly onPick: (record: TryRecord) => void
   readonly onClear: () => void
 }) {
-  const { format, locale } = useI18n()
+  const { locale } = useI18n()
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side={narrow ? 'bottom' : 'right'} xstyle={styles.panel}>
         <SheetHeader>
-          <SheetTitle>{format(m.tryRecordsTitle)}</SheetTitle>
-          <SheetDescription>{format(m.tryRecordsHint)}</SheetDescription>
+          <SheetTitle>{m.try_recordsTitle()}</SheetTitle>
+          <SheetDescription>{m.try_recordsHint()}</SheetDescription>
         </SheetHeader>
         {records.length === 0 ? (
           <div {...stylex.props(styles.fill)}>
-            <EmptyRow>{format(m.tryRecordsEmpty)}</EmptyRow>
+            <EmptyRow>{m.try_recordsEmpty()}</EmptyRow>
           </div>
         ) : (
           <div data-testid="formula-try-records" {...stylex.props(styles.list)}>
@@ -214,12 +215,10 @@ export function TryRecordsDrawer({
                     <span {...stylex.props(styles.when)}>
                       {shortTime(new Date(record.at).toISOString(), locale)}
                     </span>
-                    {old ? (
-                      <span {...stylex.props(styles.old)}>{format(m.tryRecordOld)}</span>
-                    ) : null}
-                    <span {...stylex.props(styles.resultLabel)}>{format(m.resultLabel)}</span>
+                    {old ? <span {...stylex.props(styles.old)}>{m.try_recordOld()}</span> : null}
+                    <span {...stylex.props(styles.resultLabel)}>{m.editor_resultLabel()}</span>
                     <span {...stylex.props(styles.value, failed && styles.valueBad)}>
-                      {failed ? format(m.tryRecordFailed) : record.outcome.actual}
+                      {failed ? m.try_recordFailed() : record.outcome.actual}
                     </span>
                     <span {...stylex.props(w.spring)} />
                     <button
@@ -229,19 +228,17 @@ export function TryRecordsDrawer({
                       onClick={() => onPick(record)}
                       {...stylex.props(styles.again)}
                     >
-                      {format(m.tryRecordPick)}
+                      {m.try_recordPick()}
                     </button>
                   </div>
-                  <RecordFacts facts={inputFactsOf(format, locale, schema, record.input)} />
+                  <RecordFacts facts={inputFactsOf(locale, schema, record.input)} />
                   {failed ? (
                     <span {...stylex.props(styles.reason)}>
-                      {format(
-                        record.outcome.refusal !== undefined
-                          ? m.tryRecordRefused
-                          : record.outcome.defect !== undefined
-                            ? m.tryRecordCrashed
-                            : m.tryRecordInvalid,
-                      )}
+                      {(record.outcome.refusal !== undefined
+                        ? m.try_recordRefused
+                        : record.outcome.defect !== undefined
+                          ? m.try_recordCrashed
+                          : m.try_recordInvalid)()}
                     </span>
                   ) : null}
                 </div>
@@ -253,7 +250,7 @@ export function TryRecordsDrawer({
           <div {...stylex.props(styles.foot)}>
             <span {...stylex.props(w.spring)} />
             <button type="button" onClick={onClear} {...stylex.props(styles.clear)}>
-              {format(m.tryRecordsClear)}
+              {m.try_recordsClear()}
             </button>
           </div>
         )}
@@ -274,7 +271,6 @@ const FACTS_SHOWN = 3
  * puts each parameter on its own line where the next one starts under it.
  */
 function RecordFacts({ facts }: { facts: readonly InputFact[] }) {
-  const { format } = useI18n()
   const [open, setOpen] = useState(false)
   const rest = facts.length - FACTS_SHOWN
   if (open)
@@ -289,7 +285,7 @@ function RecordFacts({ facts }: { facts: readonly InputFact[] }) {
           ))}
         </dl>
         <button type="button" onClick={() => setOpen(false)} {...stylex.props(styles.more)}>
-          {format(m.tryRecordFewerFacts)}
+          {m.editor_tryRecordFewerFacts()}
         </button>
       </>
     )
@@ -308,7 +304,7 @@ function RecordFacts({ facts }: { facts: readonly InputFact[] }) {
       </dl>
       {rest > 0 && (
         <button type="button" onClick={() => setOpen(true)} {...stylex.props(styles.more)}>
-          {format(m.tryRecordMoreFacts, { count: rest })}
+          {m.editor_tryRecordMoreFacts({ count: rest })}
         </button>
       )}
     </>

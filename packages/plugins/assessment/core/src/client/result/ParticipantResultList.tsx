@@ -18,7 +18,7 @@ import { UiSlot, useApi, useApiQuery, useLoadFailure, useRunApi } from '@qualy/w
 import { useI18n } from '@qualy/web-i18n'
 import { useTerm } from '@qualy/plugin-settings/client/terms'
 import { authTerms } from '@qualy/auth-contract/terms'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { orgNodePickerView } from '@qualy/ui-contract'
 import { AsyncSection, Feedback } from '@qualy/ui/admin'
 import {
@@ -73,12 +73,14 @@ import {
   type RosterView,
   type RosterWaiting,
 } from '../roster/roster-view.ts'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import { assessmentApi } from '../api.ts'
 import { useBatchLive } from '../live.ts'
 import { ROSTER_MAX_WAIT, ROSTER_SETTLE, settler, SYNC_FRESH } from '../roster/live-settle.ts'
 import { ScoresNotice } from '../roster/ScoresNotice.tsx'
 import type { BatchLiveEvent } from '../../api.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // The roster, walked by page, with where each person stands.
 //
@@ -178,12 +180,12 @@ const MOVES_TOTALS: ReadonlySet<BatchLiveEvent['kind']> = new Set([
   'result-changed',
 ])
 
-const WAITING_WORDS: Record<RosterWaiting, (typeof m)[keyof typeof m]> = {
-  inReview: m.rosterWaitingInReview,
-  toSupplement: m.rosterWaitingToSupplement,
-  reconsidering: m.rosterWaitingReconsidering,
-  toRevise: m.rosterWaitingToRevise,
-  blocked: m.rosterWaitingBlocked,
+const WAITING_WORDS: Record<RosterWaiting, () => string> = {
+  inReview: m.roster_waitingInReview,
+  toSupplement: m.roster_waitingToSupplement,
+  reconsidering: m.roster_waitingReconsidering,
+  toRevise: m.roster_waitingToRevise,
+  blocked: m.roster_waitingBlocked,
 }
 
 /** where a row is stacked, and what stands against it has to say so */
@@ -381,7 +383,7 @@ export function ParticipantResultList({
   const api = useApi(assessmentApi)
   const run = useRunApi()
   const queryClient = useQueryClient()
-  const { format, formatError } = useI18n()
+  const { formatError } = useI18n()
   const failures = useLoadFailure()
   const [failure, setFailure] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
@@ -588,7 +590,7 @@ export function ParticipantResultList({
       if (warns(result)) setAdded(result)
       else {
         setAdding(false)
-        toast.success(format(m.toastAdded, { count: result.added }))
+        toast.success(m.toast_added({ count: result.added }))
       }
       void invalidate()
     },
@@ -610,7 +612,7 @@ export function ParticipantResultList({
       if (warns(result)) setImported(result)
       else {
         setImporting(false)
-        toast.success(format(m.toastImported, { count: result.added }))
+        toast.success(m.toast_imported({ count: result.added }))
       }
       void invalidate()
     },
@@ -642,7 +644,7 @@ export function ParticipantResultList({
     onMutate: () => setFailure(null),
     onSuccess: (result: { status: 'active' | 'excluded' }) => {
       setExcluding(null)
-      toast.success(format(result.status === 'excluded' ? m.toastExcluded : m.toastRestored))
+      toast.success((result.status === 'excluded' ? m.toast_excluded : m.toast_restored)())
       void invalidate()
     },
     onError,
@@ -660,7 +662,7 @@ export function ParticipantResultList({
         }),
       ),
     onSuccess: (result: { synced: number; kept: number }) => {
-      toast.success(format(m.placementSettled, { count: result.synced + result.kept }))
+      toast.success(m.placement_settled({ count: result.synced + result.kept }))
       void invalidate()
     },
     // a refusal is about what the dialog shows, so it is said there and the
@@ -707,9 +709,8 @@ export function ParticipantResultList({
   )
 
   const narrowed = view.q !== '' || view.unit !== '' || view.status !== '' || view.waiting !== ''
-  const unitWord =
-    view.unit === '' ? format(m.rosterUnitsAll) : (unitName ?? format(m.rosterUnitChosen))
-  const waitingHead = format(m.rosterColumnWaiting)
+  const unitWord = view.unit === '' ? m.roster_unitsAll() : (unitName ?? m.roster_unitChosen())
+  const waitingHead = m.roster_columnWaiting()
   const waitingColumn = useWaitingColumn(rows, waitingHead)
   // The person's column, measured from what this page's rows say: the name
   // with the marks beside it, and the unit path under it on one line.
@@ -717,16 +718,14 @@ export function ParticipantResultList({
     let widest = 0
     for (const row of rows) {
       const marks = [
-        ...(row.status === 'excluded'
-          ? [widthOf(format(m.excludedBadge), MARK_SIZE, 400) + 12]
-          : []),
+        ...(row.status === 'excluded' ? [widthOf(m.roster_excluded(), MARK_SIZE, 400) + 12] : []),
         ...(row.placement === 'current'
           ? []
           : [
               widthOf(
-                format(
-                  row.placement === 'changed' ? m.placementChangedMark : m.placementUnavailableMark,
-                ),
+                (row.placement === 'changed'
+                  ? m.roster_placementChanged
+                  : m.roster_placementUnavailable)(),
                 MARK_SIZE,
                 600,
               ) + 22,
@@ -741,11 +740,11 @@ export function ParticipantResultList({
       widest = Math.max(widest, name, path)
     }
     return Math.ceil(Math.min(PERSON_MOST, Math.max(PERSON_LEAST, widest + 8)))
-  }, [rows, units.data, byUnit, format])
+  }, [rows, units.data, byUnit])
   const columns = `${numberColumn} minmax(${String(PERSON_LEAST)}px, ${String(personWidth)}px) minmax(${waitingColumn}, 1fr) ${tailColumns}`
 
   const listSection = (
-    <section aria-label={format(m.participantResultsTab)} {...stylex.props(styles.listColumn)}>
+    <section aria-label={m.participantResults_tab()} {...stylex.props(styles.listColumn)}>
       <div {...stylex.props(styles.toolbar)}>
         {narrow ? (
           <button
@@ -753,7 +752,7 @@ export function ParticipantResultList({
             data-testid="roster-unit-switch"
             data-unit={view.unit}
             data-off-tree={offTree}
-            aria-label={`${format(m.rosterUnits)} ${unitWord}`}
+            aria-label={`${m.roster_units()} ${unitWord}`}
             aria-haspopup="dialog"
             {...stylex.props(styles.unitSwitch)}
             onClick={() => setUnitsOpen(true)}
@@ -769,7 +768,7 @@ export function ParticipantResultList({
             data-testid="roster-tree-toggle"
             data-open="true"
             aria-expanded
-            aria-label={format(m.rosterTreeHide)}
+            aria-label={m.roster_treeHide()}
             onClick={() => foldTree(false)}
           >
             <PanelLeftCloseIcon aria-hidden />
@@ -783,7 +782,7 @@ export function ParticipantResultList({
             data-open="false"
             data-unit={view.unit}
             aria-expanded={false}
-            aria-label={`${format(m.rosterTreeShow)} ${unitWord}`}
+            aria-label={`${m.roster_treeShow()} ${unitWord}`}
             {...stylex.props(styles.unitSwitch)}
             onClick={() => foldTree(true)}
           >
@@ -795,7 +794,7 @@ export function ParticipantResultList({
           name="roster-search"
           value={search.draft}
           onChange={search.setDraft}
-          label={format(m.rosterSearch, { businessNo })}
+          label={m.roster_search({ businessNo })}
           xstyle={styles.search}
         />
         <Select
@@ -805,16 +804,16 @@ export function ParticipantResultList({
           }
         >
           <SelectTrigger
-            aria-label={format(m.rosterStatusLabel)}
+            aria-label={m.roster_statusLabel()}
             data-testid="roster-status"
             xstyle={styles.choice}
           >
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value={ALL}>{format(m.rosterStatusAny)}</SelectItem>
-            <SelectItem value="active">{format(m.participantActive)}</SelectItem>
-            <SelectItem value="excluded">{format(m.excludedBadge)}</SelectItem>
+            <SelectItem value={ALL}>{m.roster_statusAny()}</SelectItem>
+            <SelectItem value="active">{m.roster_active()}</SelectItem>
+            <SelectItem value="excluded">{m.roster_excluded()}</SelectItem>
           </SelectContent>
         </Select>
         <Select
@@ -824,18 +823,18 @@ export function ParticipantResultList({
           }
         >
           <SelectTrigger
-            aria-label={format(m.rosterWaitingLabel)}
+            aria-label={m.roster_waitingLabel()}
             data-testid="roster-waiting"
             xstyle={styles.choice}
           >
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value={ALL}>{format(m.rosterWaitingAny)}</SelectItem>
-            <SelectItem value="any">{format(m.rosterWaitingSomething)}</SelectItem>
+            <SelectItem value={ALL}>{m.roster_waitingAny()}</SelectItem>
+            <SelectItem value="any">{m.roster_waitingSomething()}</SelectItem>
             {ROSTER_WAITING.map((kind) => (
               <SelectItem key={kind} value={kind}>
-                {format(WAITING_WORDS[kind])}
+                {WAITING_WORDS[kind]()}
               </SelectItem>
             ))}
           </SelectContent>
@@ -845,23 +844,21 @@ export function ParticipantResultList({
           onValueChange={(next) => onView({ sort: next as RosterView['sort'] })}
         >
           <SelectTrigger
-            aria-label={format(m.rosterSortLabel)}
+            aria-label={m.roster_sortLabel()}
             data-testid="roster-sort"
             xstyle={styles.choice}
           >
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="unit">{format(m.rosterSortUnit)}</SelectItem>
-            <SelectItem value="name">{format(m.rosterSortName)}</SelectItem>
-            <SelectItem value="business-no">
-              {format(m.rosterSortBusinessNo, { businessNo })}
-            </SelectItem>
+            <SelectItem value="unit">{m.roster_sortUnit()}</SelectItem>
+            <SelectItem value="name">{m.roster_sortName()}</SelectItem>
+            <SelectItem value="business-no">{m.roster_sortBusinessNo({ businessNo })}</SelectItem>
           </SelectContent>
         </Select>
         {participants.isFetching && !participants.isPending && (
           <Spinner
-            aria-label={format(commonMessages.loading)}
+            aria-label={commonMessages.state_loading()}
             className={stylex.props(styles.busy).className}
           />
         )}
@@ -873,17 +870,17 @@ export function ParticipantResultList({
           {...stylex.props(styles.offTree)}
         >
           <span {...stylex.props(styles.offTreeName)}>
-            {format(m.rosterUnitNarrowed, {
-              unit: unitName ?? format(m.rosterUnitChosen),
+            {m.roster_unitNarrowed({
+              unit: unitName ?? m.roster_unitChosen(),
             })}
           </span>
           <Button
             size="xs"
             variant="outline"
-            aria-label={format(m.rosterUnitClearLabel)}
+            aria-label={m.roster_unitClearLabel()}
             onClick={() => onView({ unit: '' })}
           >
-            {format(m.rosterUnitClear)}
+            {m.roster_unitClear()}
           </Button>
         </div>
       )}
@@ -900,7 +897,7 @@ export function ParticipantResultList({
         serviceDown && (
           <ScoresNotice
             cause="scoring-unavailable"
-            reason={format(m.rosterScoreUnavailable)}
+            reason={m.roster_scoreUnavailable()}
             busy={scores.isFetching}
             onRetry={() => void scores.refetch()}
           />
@@ -917,8 +914,8 @@ export function ParticipantResultList({
         }
         retrying={participants.isFetching}
         framed
-        loadingLabel={format(commonMessages.loading)}
-        retryLabel={format(commonMessages.retry)}
+        loadingLabel={commonMessages.state_loading()}
+        retryLabel={commonMessages.action_retry()}
         onRetry={() => void participants.refetch()}
         skeleton={
           <div {...stylex.props(styles.skFrame)}>
@@ -940,13 +937,13 @@ export function ParticipantResultList({
           <Table columns={columns}>
             <TableHead>
               <span>{businessNo}</span>
-              <span>{format(m.columnParticipant)}</span>
+              <span>{m.roster_columnName()}</span>
               <span>{waitingHead}</span>
-              <span {...stylex.props(styles.headEnd)}>{format(m.rosterColumnScore)}</span>
+              <span {...stylex.props(styles.headEnd)}>{m.roster_columnScore()}</span>
               <span />
             </TableHead>
             {rows.length === 0 ? (
-              <CardEmpty>{format(narrowed ? m.rosterNoMatch : m.rosterEmpty)}</CardEmpty>
+              <CardEmpty>{(narrowed ? m.roster_noMatch : m.roster_empty)()}</CardEmpty>
             ) : (
               rows.map((row) => {
                 const { steps, path, unknown } = unitPath(row.anchorLineage)
@@ -962,7 +959,7 @@ export function ParticipantResultList({
                       {row.status === 'excluded' && (
                         <span {...stylex.props(styles.mark)}>
                           <Status tone="bad" data-testid="participant-excluded">
-                            {format(m.excludedBadge)}
+                            {m.roster_excluded()}
                           </Status>
                         </span>
                       )}
@@ -1001,7 +998,7 @@ export function ParticipantResultList({
                       <>
                         <Cell lead>{who}</Cell>
                         <Cell numeric unlabelled tone={row.businessNo === null ? 'quiet' : 'muted'}>
-                          {row.businessNo ?? format(m.noBusinessNoShort, { businessNo })}
+                          {row.businessNo ?? m.roster_noBusinessNo({ businessNo })}
                         </Cell>
                       </>
                     ) : (
@@ -1016,7 +1013,7 @@ export function ParticipantResultList({
                           tone={row.businessNo === null ? 'quiet' : 'plain'}
                           title={
                             row.businessNo === null
-                              ? format(m.noBusinessNoShort, { businessNo })
+                              ? m.roster_noBusinessNo({ businessNo })
                               : undefined
                           }
                         >
@@ -1026,7 +1023,7 @@ export function ParticipantResultList({
                                 —
                               </span>
                               <VisuallyHidden>
-                                {format(m.noBusinessNoShort, { businessNo })}
+                                {m.roster_noBusinessNo({ businessNo })}
                               </VisuallyHidden>
                             </span>
                           )}
@@ -1068,7 +1065,7 @@ export function ParticipantResultList({
                               size="icon-xs"
                               variant="ghost"
                               data-testid="participant-actions"
-                              aria-label={format(m.rosterRowActions, { name: row.displayName })}
+                              aria-label={m.roster_rowActions({ name: row.displayName })}
                               onClick={(event) => event.stopPropagation()}
                             >
                               <EllipsisIcon aria-hidden />
@@ -1076,7 +1073,7 @@ export function ParticipantResultList({
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem onSelect={() => onOpen(row.id)}>
-                              {format(m.participantResultsOpen)}
+                              {m.participantResults_open()}
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               data-testid="participant-standing"
@@ -1089,7 +1086,7 @@ export function ParticipantResultList({
                                   : setExcluding({ id: row.id, name: row.displayName })
                               }
                             >
-                              {format(row.status === 'excluded' ? m.restore : m.exclude)}
+                              {(row.status === 'excluded' ? m.roster_restore : m.roster_exclude)()}
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -1104,12 +1101,12 @@ export function ParticipantResultList({
             <CardFoot>
               <Pager
                 testId="roster-pager"
-                label={format(m.rosterPagerLabel)}
+                label={m.roster_pager()}
                 page={page}
                 pageSize={ROSTER_PAGE_SIZE}
                 total={total}
                 disabled={participants.isFetching}
-                summary={format(m.rosterPageSummary, {
+                summary={m.roster_pageSummary({
                   from: total === 0 ? 0 : (page - 1) * ROSTER_PAGE_SIZE + 1,
                   to: (page - 1) * ROSTER_PAGE_SIZE + rows.length,
                   total,
@@ -1137,7 +1134,7 @@ export function ParticipantResultList({
           above it which round, so a band saying it again only pushed the
           list down. */}
       <header {...stylex.props(styles.head)}>
-        <h1 {...stylex.props(styles.title)}>{format(m.participantResultsTab)}</h1>
+        <h1 {...stylex.props(styles.title)}>{m.participantResults_tab()}</h1>
         {/* how many the list holds, or how many answer what it was asked;
             an empty list says so itself, below */}
         {total > 0 && (
@@ -1147,17 +1144,17 @@ export function ParticipantResultList({
             data-narrowed={narrowed}
             {...stylex.props(styles.count)}
           >
-            {format(narrowed ? m.rosterMatchCount : m.participantCount, { count: total })}
+            {(narrowed ? m.roster_matchCount : m.roster_count)({ count: total })}
           </span>
         )}
         <span {...stylex.props(styles.spacer)} />
         {manageable && (
           <span {...stylex.props(styles.actions)}>
             <Button size="sm" variant="outline" onClick={() => setImporting(true)}>
-              {format(m.importFromOrganization)}
+              {m.roster_import()}
             </Button>
             <Button size="sm" onClick={() => setAdding(true)}>
-              {format(m.addPeople)}
+              {m.roster_add()}
             </Button>
           </span>
         )}
@@ -1178,7 +1175,7 @@ export function ParticipantResultList({
           min={220}
           max={TREE_MOST}
           from={TWO_COLUMNS}
-          handleLabel={format(m.rosterUnitsResize)}
+          handleLabel={m.roster_unitsResize()}
           // with room for the tree beside the table, it is simply there,
           // filling the window's height from where it stands
           side={
@@ -1201,8 +1198,8 @@ export function ParticipantResultList({
         <DetailSheet
           open={unitsOpen}
           onClose={() => setUnitsOpen(false)}
-          title={format(m.rosterUnits)}
-          closeLabel={format(commonMessages.close)}
+          title={m.roster_units()}
+          closeLabel={commonMessages.action_close()}
           testId="roster-unit-sheet"
           fill
         >
@@ -1212,10 +1209,10 @@ export function ParticipantResultList({
 
       <ConfirmDialog
         open={excluding !== null}
-        title={format(m.excludeTitle, { name: excluding?.name ?? '' })}
-        description={format(m.excludeBody)}
-        confirmLabel={format(m.exclude)}
-        cancelLabel={format(commonMessages.cancel)}
+        title={m.roster_excludeTitle({ name: excluding?.name ?? '' })}
+        description={m.roster_excludeBody()}
+        confirmLabel={m.roster_exclude()}
+        cancelLabel={commonMessages.action_cancel()}
         pending={setStatus.isPending}
         tone="destructive"
         onConfirm={() =>
@@ -1272,11 +1269,10 @@ export function ParticipantResultList({
  * roster that spelt out every move would be a roster of moves.
  */
 function PlacementMark({ placement }: { placement: 'current' | 'changed' | 'unavailable' }) {
-  const { format } = useI18n()
   if (placement === 'current') return null
   return (
     <Badge variant="outline" data-testid="placement-mark" data-placement={placement}>
-      {format(placement === 'changed' ? m.placementChangedMark : m.placementUnavailableMark)}
+      {(placement === 'changed' ? m.roster_placementChanged : m.roster_placementUnavailable)()}
     </Badge>
   )
 }

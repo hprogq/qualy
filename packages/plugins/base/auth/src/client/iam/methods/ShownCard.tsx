@@ -12,12 +12,14 @@ import { Popover, PopoverContent, PopoverTrigger } from '@qualy/ui/popover'
 import { Card, CardHead, DefLine, DefList } from '@qualy/ui/screen'
 import { toast } from '@qualy/ui/toast'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { iamMessages as m } from '../../i18n.ts'
+
 import { authApi } from '../../api.ts'
 import { LOGIN_ICON_MAX_BYTES, LOGIN_ICON_SVG_MAX_BYTES, LOGIN_ICON_TYPES } from '../../../api.ts'
 import { LoginMethodGlyph } from '../../sign-in/glyph.tsx'
 import type { IconSurface } from '../../sign-in/surface.ts'
 import type { ProviderRow } from './MethodSheet.tsx'
+import type { Message } from '@qualy/i18n-contract'
+import * as m from '#messages'
 
 // Where an entrance stands on the sign-in page and how it is drawn there.
 //
@@ -30,25 +32,23 @@ import type { ProviderRow } from './MethodSheet.tsx'
 // version for each.
 
 /** a message this module formats, whichever one */
-type Said = Parameters<ReturnType<typeof useI18n>['format']>[0]
-
-const NAMES: Record<BuiltinLoginIcon, Said> = {
-  campus: m.iconNameCampus,
-  key: m.iconNameKey,
-  mail: m.iconNameMail,
-  'id-card': m.iconNameIdCard,
-  shield: m.iconNameShield,
-  globe: m.iconNameGlobe,
-  github: m.iconNameGithub,
-  gitlab: m.iconNameGitlab,
-  microsoft: m.iconNameMicrosoft,
-  google: m.iconNameGoogle,
-  apple: m.iconNameApple,
-  wechat: m.iconNameWechat,
-  wecom: m.iconNameWecom,
-  dingtalk: m.iconNameDingtalk,
-  feishu: m.iconNameFeishu,
-  qq: m.iconNameQq,
+const NAMES: Record<BuiltinLoginIcon, Message> = {
+  campus: m.loginIcon_campus,
+  key: m.loginIcon_key,
+  mail: m.loginIcon_mail,
+  'id-card': m.loginIcon_idCard,
+  shield: m.loginIcon_shield,
+  globe: m.loginIcon_globe,
+  github: m.loginIcon_github,
+  gitlab: m.loginIcon_gitlab,
+  microsoft: m.loginIcon_microsoft,
+  google: m.loginIcon_google,
+  apple: m.loginIcon_apple,
+  wechat: m.loginIcon_wechat,
+  wecom: m.loginIcon_wecom,
+  dingtalk: m.loginIcon_dingtalk,
+  feishu: m.loginIcon_feishu,
+  qq: m.loginIcon_qq,
 }
 
 const styles = stylex.create({
@@ -119,7 +119,7 @@ export function ShownCard({
   const query = useApiQuery(authApi)
   const runApi = useRunApi()
   const queryClient = useQueryClient()
-  const { format, formatError } = useI18n()
+  const { formatError } = useI18n()
   const [picking, setPicking] = useState(false)
   const file = useRef<HTMLInputElement>(null)
   const refresh = () => queryClient.invalidateQueries({ queryKey: query.identity.key() })
@@ -187,7 +187,7 @@ export function ShownCard({
     },
     onSuccess: async () => {
       setPicking(false)
-      toast.success(format(m.methodIconSaved))
+      toast.success(m.loginMethods_iconSaved())
       await refresh()
     },
     onError: (error: unknown) => toast.error(formatError(error)),
@@ -205,7 +205,7 @@ export function ShownCard({
   const preview = (surface: IconSurface, small = false) => (
     <span
       data-testid={`method-icon-${surface}`}
-      title={format(surface === 'light' ? m.methodIconOnLight : m.methodIconOnDark)}
+      title={(surface === 'light' ? m.loginMethods_iconOnLight : m.loginMethods_iconOnDark)()}
       {...stylex.props(
         styles.preview,
         surface === 'light' ? styles.onLight : styles.onDark,
@@ -227,15 +227,15 @@ export function ShownCard({
 
   return (
     <Card data-testid="method-shown" data-prominence={provider.prominence}>
-      <CardHead title={format(m.methodShownTitle)} />
+      <CardHead title={m.loginMethods_shown()} />
       <DefList>
-        <DefLine label={format(m.methodShownAs)}>
+        <DefLine label={m.loginMethods_shownAs()}>
           <span>
-            {format(primary ? m.methodShownPrimary : m.methodShownSecondary, { position })}
+            {(primary ? m.loginMethods_shownPrimary : m.loginMethods_shownSecondary)({ position })}
           </span>
-          <span {...stylex.props(styles.aside)}>{format(m.methodOrderHint)}</span>
+          <span {...stylex.props(styles.aside)}>{m.loginMethods_orderHint()}</span>
         </DefLine>
-        <DefLine label={format(m.methodIconLabel)}>
+        <DefLine label={m.loginMethods_icon()}>
           <span {...stylex.props(styles.iconLine)}>
             <span data-testid="method-icon" {...stylex.props(styles.previews)}>
               {preview('light')}
@@ -245,19 +245,21 @@ export function ShownCard({
               <Popover open={picking} onOpenChange={setPicking}>
                 <PopoverTrigger asChild>
                   <Button size="sm" variant="outline" disabled={choose.isPending}>
-                    {format(choose.isPending ? m.methodIconUploading : m.methodIconChange)}
+                    {(choose.isPending
+                      ? m.loginMethods_iconUploading
+                      : m.loginMethods_iconChange)()}
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent align="start" width={340}>
                   <div data-testid="icon-picker" {...stylex.props(styles.picker)}>
-                    <span {...stylex.props(styles.pickerTitle)}>{format(m.methodIconTitle)}</span>
+                    <span {...stylex.props(styles.pickerTitle)}>{m.loginMethods_iconTitle()}</span>
                     <div {...stylex.props(styles.grid)}>
                       {BUILTIN_LOGIN_ICONS.map((key) => (
                         <button
                           key={key}
                           type="button"
-                          title={format(NAMES[key])}
-                          aria-label={format(NAMES[key])}
+                          title={NAMES[key]()}
+                          aria-label={NAMES[key]()}
                           aria-pressed={chosenKey === key}
                           data-icon-choice={key}
                           disabled={choose.isPending}
@@ -274,12 +276,12 @@ export function ShownCard({
                       ))}
                     </div>
                     <div {...stylex.props(styles.section)}>
-                      <span {...stylex.props(styles.pickerTitle)}>{format(m.methodIconOwn)}</span>
+                      <span {...stylex.props(styles.pickerTitle)}>{m.loginMethods_iconOwn()}</span>
                       <div {...stylex.props(styles.slot)} data-testid="icon-slot-light">
                         {preview('light', true)}
                         <span {...stylex.props(styles.slotWords)}>
                           <span {...stylex.props(styles.slotName)}>
-                            {format(m.methodIconOnLight)}
+                            {m.loginMethods_iconOnLight()}
                           </span>
                         </span>
                         <Button
@@ -289,21 +291,19 @@ export function ShownCard({
                           onClick={() => pick('light')}
                         >
                           <ImageUpIcon aria-hidden />
-                          {format(m.methodIconUpload)}
+                          {m.loginMethods_iconUpload()}
                         </Button>
                       </div>
                       <div {...stylex.props(styles.slot)} data-testid="icon-slot-dark">
                         {preview('dark', true)}
                         <span {...stylex.props(styles.slotWords)}>
                           <span {...stylex.props(styles.slotName)}>
-                            {format(m.methodIconOnDark)}
+                            {m.loginMethods_iconOnDark()}
                           </span>
                           <span {...stylex.props(styles.aside)}>
-                            {format(
-                              image === null
-                                ? m.methodIconDarkNeedsLight
-                                : m.methodIconDarkOptional,
-                            )}
+                            {(image === null
+                              ? m.loginMethods_iconDarkNeedsLight
+                              : m.loginMethods_iconDarkOptional)()}
                           </span>
                         </span>
                         {image?.onDark != null ? (
@@ -314,7 +314,7 @@ export function ShownCard({
                             onClick={() => choose.mutate({ kind: 'clear', surface: 'dark' })}
                           >
                             <XIcon aria-hidden />
-                            {format(m.methodIconRemoveDark)}
+                            {m.loginMethods_iconRemoveDark()}
                           </Button>
                         ) : (
                           <Button
@@ -325,11 +325,11 @@ export function ShownCard({
                             onClick={() => pick('dark')}
                           >
                             <ImageUpIcon aria-hidden />
-                            {format(m.methodIconUpload)}
+                            {m.loginMethods_iconUpload()}
                           </Button>
                         )}
                       </div>
-                      <span {...stylex.props(styles.aside)}>{format(m.methodIconUploadHint)}</span>
+                      <span {...stylex.props(styles.aside)}>{m.loginMethods_iconUploadHint()}</span>
                     </div>
                     {provider.iconChosen && (
                       <div {...stylex.props(styles.pickerActions)}>
@@ -340,7 +340,7 @@ export function ShownCard({
                           onClick={() => choose.mutate({ kind: 'default' })}
                         >
                           <RotateCcwIcon aria-hidden />
-                          {format(m.methodIconDefault)}
+                          {m.loginMethods_iconDefault()}
                         </Button>
                       </div>
                     )}
@@ -377,7 +377,7 @@ export function ShownCard({
             )}
           </span>
         </DefLine>
-        <DefLine label={format(m.methodRecommend)}>
+        <DefLine label={m.loginMethods_recommend()}>
           <label {...stylex.props(styles.recommend)}>
             <span {...stylex.props(styles.recommendBox)}>
               <Checkbox
@@ -387,7 +387,7 @@ export function ShownCard({
                 onCheckedChange={(next) => recommend.mutate(next === true)}
               />
             </span>
-            <span {...stylex.props(styles.aside)}>{format(m.methodRecommendHint)}</span>
+            <span {...stylex.props(styles.aside)}>{m.loginMethods_recommendHint()}</span>
           </label>
         </DefLine>
       </DefList>

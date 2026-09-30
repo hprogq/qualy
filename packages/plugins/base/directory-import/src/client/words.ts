@@ -1,10 +1,7 @@
-import type { useI18n } from '@qualy/web-i18n'
-import { directoryImportMessages as m } from './i18n.ts'
+import * as m from '#messages'
 
 // What an import problem says, in the reader's words; and when something
 // happened, in their calendar.
-
-type Format = ReturnType<typeof useI18n>['format']
 
 export interface IssueLike {
   readonly field: string | null
@@ -21,78 +18,78 @@ const cellOf = (issue: IssueLike): string =>
     : 'none'
 
 const FIELD_WORDS = {
-  displayName: m.fieldDisplayName,
-  userType: m.fieldUserType,
-  organization: m.fieldOrganization,
+  displayName: m.field_displayName,
+  userType: m.field_userType,
+  organization: m.field_organization,
 } as const
 
 /** the sentence for one problem; `businessNo` is the tenant's word for a person's identifier */
-export const issueText = (format: Format, issue: IssueLike, businessNo: string): string => {
+export const issueText = (issue: IssueLike, businessNo: string): string => {
   switch (issue.reason) {
     case 'business-no-required':
-      return format(m.issueBusinessNoRequired, { businessNo })
+      return m.issue_businessNoRequired({ businessNo })
     case 'business-no-too-long':
-      return format(m.issueBusinessNoTooLong, { businessNo })
+      return m.issue_businessNoTooLong({ businessNo })
     case 'duplicate-in-file':
-      return format(m.issueDuplicate, { businessNo, row: issue.detail ?? '' })
+      return m.issue_duplicateInFile({ businessNo, row: issue.detail ?? '' })
     case 'display-name-required':
-      return format(m.issueDisplayNameRequired)
+      return m.issue_displayNameRequired()
     case 'display-name-too-long':
-      return format(m.issueDisplayNameTooLong)
+      return m.issue_displayNameTooLong()
     case 'org-level-required':
-      return format(m.issueOrgLevelRequired)
+      return m.issue_orgLevelRequired()
     case 'org-name-too-long':
-      return format(m.issueOrgNameTooLong)
+      return m.issue_orgNameTooLong()
     case 'control-character':
-      return format(m.issueControlCharacter)
+      return m.issue_controlCharacter()
     case 'too-many-cells':
-      return format(m.issueTooManyCells)
+      return m.issue_tooManyCells()
     case 'not-xlsx':
-      return format(m.issueNotXlsx)
+      return m.issue_notXlsx()
     case 'file-too-large':
     case 'source-too-large':
-      return format(m.issueFileTooLarge)
+      return m.issue_fileTooLarge()
     case 'too-many-sheets':
-      return format(m.issueTooManySheets)
+      return m.issue_tooManySheets()
     case 'sheet-missing':
-      return format(m.issueSheetMissing)
+      return m.issue_sheetMissing()
     case 'too-many-rows':
-      return format(m.issueTooManyRows)
+      return m.issue_tooManyRows()
     case 'too-many-columns':
-      return format(m.issueTooManyColumns)
+      return m.issue_tooManyColumns()
     case 'cell-too-long':
-      return format(m.issueCellTooLong, { cell: cellOf(issue) })
+      return m.issue_cellTooLong({ cell: cellOf(issue) })
     case 'formula-not-allowed':
-      return format(m.issueFormula, { cell: cellOf(issue) })
+      return m.issue_formulaNotAllowed({ cell: cellOf(issue) })
     case 'cell-error':
-      return format(m.issueCellError, { cell: cellOf(issue) })
+      return m.issue_cellError({ cell: cellOf(issue) })
     case 'header-row-out-of-range':
-      return format(m.issueHeaderRowOutOfRange)
+      return m.issue_headerRowOutOfRange()
     case 'unreadable':
-      return format(m.issueUnreadable)
+      return m.issue_unreadable()
     case 'user-conflict':
-      return format(m.issueUserConflict, {
+      return m.issue_userConflict({
         businessNo,
         fields: (issue.detail ?? '')
           .split(',')
           .filter((field) => field !== '')
           .map((field) =>
             Object.hasOwn(FIELD_WORDS, field)
-              ? format(FIELD_WORDS[field as keyof typeof FIELD_WORDS])
+              ? FIELD_WORDS[field as keyof typeof FIELD_WORDS]()
               : field,
           )
           .join('/'),
       })
     case 'business-no-taken':
-      return format(m.issueBusinessNoTaken, { businessNo })
+      return m.issue_businessNoTaken({ businessNo })
     case 'node-type-conflict':
-      return format(m.issueNodeConflict, { path: issue.detail ?? '' })
+      return m.issue_nodeTypeConflict({ path: issue.detail ?? '' })
     case 'unit-out-of-reach':
-      return format(m.issueUnitOutOfReach, { path: issue.detail ?? '' })
+      return m.issue_unitOutOfReach({ path: issue.detail ?? '' })
     case 'placement-out-of-reach':
-      return format(m.issuePlacementOutOfReach, { path: issue.detail ?? '' })
+      return m.issue_placementOutOfReach({ path: issue.detail ?? '' })
     default:
-      return format(m.issueOther, { reason: issue.reason })
+      return m.issue_other({ reason: issue.reason })
   }
 }
 

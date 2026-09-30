@@ -4,13 +4,14 @@ import * as stylex from '@stylexjs/stylex'
 import { CircleAlertIcon, UsersIcon } from 'lucide-react'
 import { useApiQuery } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { Button } from '@qualy/ui/button'
 import { CursorPager } from '@qualy/ui/pager'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentApi } from '../api.ts'
-import { assessmentMessages as m } from '../i18n.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // Who the chosen units come to, before anybody confirms them.
 //
@@ -108,7 +109,7 @@ export function UnitRoster({
   userTypeIds: readonly string[]
 }) {
   const query = useApiQuery(assessmentApi)
-  const { format, formatError } = useI18n()
+  const { formatError } = useI18n()
   const question = `${[...orgNodeIds].sort().join(',')}:${[...userTypeIds].sort().join(',')}`
   // the cursor stack carries the question it belongs to: a cursor from one
   // selection applied to another silently skips or repeats people
@@ -143,9 +144,9 @@ export function UnitRoster({
   return (
     <div {...stylex.props(styles.frame)} data-testid="unit-roster">
       <div {...stylex.props(styles.head)}>
-        <p {...stylex.props(styles.title)}>{format(m.recordUnitRosterTitle)}</p>
+        <p {...stylex.props(styles.title)}>{m.record_unitRoster()}</p>
         <span {...stylex.props(styles.spacer)} />
-        <span {...stylex.props(styles.note)}>{format(m.recordUnitRosterNote)}</span>
+        <span {...stylex.props(styles.note)}>{m.record_unitRosterNote()}</span>
       </div>
       {people.isPending ? (
         <div {...stylex.props(styles.bones)}>
@@ -163,13 +164,13 @@ export function UnitRoster({
           <CircleAlertIcon aria-hidden {...stylex.props(styles.stateIcon)} />
           <span>{formatError(people.error)}</span>
           <Button size="sm" variant="outline" onClick={() => void people.refetch()}>
-            {format(commonMessages.retry)}
+            {commonMessages.action_retry()}
           </Button>
         </div>
       ) : rows.length === 0 ? (
         <div data-testid="unit-roster-state" data-kind="empty" {...stylex.props(styles.state)}>
           <UsersIcon aria-hidden {...stylex.props(styles.stateIcon)} />
-          <span>{format(m.recordUnitRosterEmpty)}</span>
+          <span>{m.record_unitRosterEmpty()}</span>
         </div>
       ) : (
         <ul {...stylex.props(styles.list)}>
@@ -190,9 +191,9 @@ export function UnitRoster({
       {(at > 0 || nextCursor !== null) && (
         <CursorPager
           testId="unit-roster-pager"
-          label={format(m.rosterPagerLabel)}
-          previousLabel={format(m.previousPage)}
-          nextLabel={format(m.nextPage)}
+          label={m.roster_pager()}
+          previousLabel={m.action_previousPage()}
+          nextLabel={m.action_nextPage()}
           page={at + 1}
           hasNext={nextCursor !== null}
           disabled={people.isFetching}

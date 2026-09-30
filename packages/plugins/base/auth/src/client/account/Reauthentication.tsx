@@ -4,14 +4,16 @@ import * as stylex from '@stylexjs/stylex'
 import { ShieldOffIcon } from 'lucide-react'
 import { LoadFailure, useApi, useApiQuery, useLoadFailure, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { Feedback, Field, FormDialog } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
 import { Blank } from '@qualy/ui/screen'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { iamMessages as m } from '../i18n.ts'
+
 import { authApi } from '../api.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // Showing it is you before a change that decides who can reach the account:
 // moving the address, setting a first password, binding another way in.
@@ -90,7 +92,7 @@ function ReauthenticationDialog({
   const run = useRunApi()
   const query = useApiQuery(authApi)
   const queryClient = useQueryClient()
-  const { format, formatError } = useI18n()
+  const { formatError } = useI18n()
   const describe = useLoadFailure()
   const formId = useId()
   const state = useQuery(query.self.getSelfReauthentication.queryOptions())
@@ -154,17 +156,17 @@ function ReauthenticationDialog({
   return (
     <FormDialog
       open
-      title={format(m.reauthTitle)}
+      title={m.account_reauthTitle()}
       onClose={close}
       footer={
         nothingToDo ? (
           <Button variant="outline" type="button" onClick={close}>
-            {format(commonMessages.close)}
+            {commonMessages.action_close()}
           </Button>
         ) : (
           <>
             <Button variant="ghost" type="button" onClick={close}>
-              {format(m.cancel)}
+              {m.action_cancel()}
             </Button>
             {method === 'email' && (
               <Button
@@ -173,12 +175,12 @@ function ReauthenticationDialog({
                 disabled={send.isPending}
                 onClick={() => send.mutate()}
               >
-                {format(sent ? m.reauthCodeAgain : m.reauthCodeSend)}
+                {(sent ? m.account_reauthCodeAgain : m.account_reauthCodeSend)()}
               </Button>
             )}
             {(method === 'password' || (method === 'email' && sent)) && (
               <Button type="submit" form={formId} disabled={prove.isPending || !typed}>
-                {format(m.reauthContinue)}
+                {m.account_reauthContinue()}
               </Button>
             )}
           </>
@@ -194,7 +196,7 @@ function ReauthenticationDialog({
         onSubmit={submit}
       >
         {method === 'password' && (
-          <Field label={format(m.currentPassword)} hint={format(m.reauthPasswordHint)}>
+          <Field label={m.account_currentPassword()} hint={m.account_reauthPasswordHint()}>
             {(id) => (
               <Input
                 id={id}
@@ -209,7 +211,10 @@ function ReauthenticationDialog({
         )}
         {method === 'email' &&
           (sent ? (
-            <Field label={format(m.reauthCodeLabel)} hint={format(m.reauthCodeSentHint, { email })}>
+            <Field
+              label={m.account_reauthCodeLabel()}
+              hint={m.account_reauthCodeSentHint({ email })}
+            >
               {(id) => (
                 <Input
                   id={id}
@@ -222,11 +227,11 @@ function ReauthenticationDialog({
               )}
             </Field>
           ) : (
-            <p {...stylex.props(styles.said)}>{format(m.reauthCodeHint, { email })}</p>
+            <p {...stylex.props(styles.said)}>{m.account_reauthCodeHint({ email })}</p>
           ))}
         {method === 'sign-in' && (
           <>
-            <p {...stylex.props(styles.said)}>{format(m.reauthSignInHint)}</p>
+            <p {...stylex.props(styles.said)}>{m.account_reauthSignInHint()}</p>
             <div {...stylex.props(styles.ways)}>
               {(state.data?.entrances ?? []).map((entrance) => (
                 <Button
@@ -237,7 +242,7 @@ function ReauthenticationDialog({
                   data-provider-id={entrance.providerId}
                   onClick={() => again(entrance.href)}
                 >
-                  {format(m.reauthSignInWith, { name: entrance.name })}
+                  {m.account_reauthSignInWith({ name: entrance.name })}
                 </Button>
               ))}
             </div>
@@ -247,8 +252,8 @@ function ReauthenticationDialog({
           <Blank
             size="compact"
             icon={<ShieldOffIcon aria-hidden />}
-            title={format(m.reauthUnavailableTitle)}
-            description={format(m.reauthUnavailable)}
+            title={m.account_reauthUnavailableTitle()}
+            description={m.account_reauthUnavailable()}
           />
         )}
         {unreadable && (

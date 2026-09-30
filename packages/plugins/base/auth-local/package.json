@@ -13,6 +13,12 @@
     "./package.json": "./package.json",
     "./password": "./src/password.ts"
   },
+  "imports": {
+    "#messages": {
+      "types": "./.qualy/messages.d.ts",
+      "default": "./.qualy/messages.js"
+    }
+  },
   "peerDependencies": {
     "react": "catalog:"
   },

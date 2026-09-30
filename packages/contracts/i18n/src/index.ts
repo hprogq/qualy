@@ -24,30 +24,15 @@ export type UiText = MessageRef | LiteralText
 
 export type MessageValues = Record<string, unknown>
 
-// a translatable message reference used by frontend code directly (error
-// registries, page copy); MessageRef is its serialized form for manifests
-export interface MessageDescriptor<Id extends MessageId = MessageId> {
-  id: Id
-  defaultMessage: string
-}
-
-// a message whose icu source interpolates: __values is a phantom carrying
-// the placeholders it needs. It is required (never assigned at runtime) so
-// "declares placeholders" stays decidable at the type level — an optional
-// property cannot be told apart from an absent one.
-export interface ValuedMessageDescriptor<
-  Values extends MessageValues,
-  Id extends MessageId = MessageId,
-> extends MessageDescriptor<Id> {
-  readonly __values: Values
-}
-
-// the placeholders a descriptor demands, or none
-export type ValuesOf<Descriptor> = Descriptor extends { __values: infer Values }
-  ? Values extends MessageValues
-    ? Values
-    : Record<never, never>
-  : Record<never, never>
+/**
+ * A message held as a value: a compiled message function (a package's
+ * `#messages`), passed along until something says it.
+ *
+ * Its inputs are loose here because a table of messages of different shapes
+ * is exactly what this type is for; a message called where it is imported
+ * keeps the exact inputs its facade declares.
+ */
+export type Message = (inputs?: any, options?: { readonly locale?: SupportedLocale }) => string
 
 /**
  * A value as an ICU `select` branch can name it.
@@ -59,15 +44,6 @@ export type ValuesOf<Descriptor> = Descriptor extends { __values: infer Values }
  */
 export const selectKey = (value: string): string =>
   value.replace(/-([a-z0-9])/g, (_, next: string) => next.toUpperCase())
-
-// declares a message and the values it expects:
-// defineMessage<{ count: number }>()({ id, defaultMessage }). Typescript
-// cannot parse the icu source, so the declaration is the contract and a
-// formatting test proves the string agrees with it.
-export const defineMessage =
-  <Values extends MessageValues>() =>
-  <Id extends MessageId>(descriptor: { id: Id; defaultMessage: string }) =>
-    descriptor as ValuedMessageDescriptor<Values, Id>
 
 export const message = (id: MessageId, defaultMessage: string): MessageRef => ({
   kind: 'message',
@@ -113,41 +89,9 @@ export const UiTextSchema = Schema.Union([
   }),
 ])
 
-// locale catalogs are plain records from message id to an icu message string
-// (typescript modules, so they ride the normal typecheck and test pipeline;
-// po interchange can be layered on later without changing this contract)
-export type MessageCatalog = Record<MessageId, string>
-
-// the exact key set a message table requires of its catalogs: a missing key,
-// an orphan key or a typo fails typecheck instead of waiting for the runtime
-export type CatalogFor<Messages extends Record<string, MessageDescriptor>> = {
-  [Id in Messages[keyof Messages]['id']]: string
-}
-
 export type SupportedLocale = 'zh-CN' | 'en-US'
 export const supportedLocales: readonly SupportedLocale[] = ['zh-CN', 'en-US']
 export const defaultLocale: SupportedLocale = 'zh-CN'
-/**
- * The locale each descriptor's `defaultMessage` already speaks.
- *
- * It is the one locale a plugin may ship no catalog for. Every other one is
- * required, which the type cannot say - `locales` is partial by design, so a
- * plugin shipping nothing at all typechecked and, until the gate learned this
- * distinction, passed a completeness check that skipped whatever was absent.
- */
-export const fallbackLocale: SupportedLocale = 'en-US'
-
-// what a plugin's client module may export as `catalogs`: its namespace and
-// lazy per-locale catalogs (only non-english catalogs are required; the
-// defaultMessage in each reference is the english fallback)
-export interface PluginCatalogs {
-  namespace: string
-  // every message the plugin declares, so completeness can be checked
-  // without guessing which exports hold descriptors
-  messages: readonly MessageDescriptor[]
-  locales: Partial<Record<SupportedLocale, () => Promise<{ default: MessageCatalog }>>>
-}
-
 // --- typed api error localization ---
 
 /**
@@ -185,7 +129,7 @@ type ErrorPayloadOf<Exported> = Exported extends abstract new (...args: never[])
 
 // values() receives the data of its own code, never `unknown`
 export interface ErrorMessageRegistration<Data = unknown> {
-  message: MessageDescriptor
+  message: Message
   values?: (data: Data) => MessageValues
 }
 
@@ -195,33 +139,29 @@ export interface ErrorMessageRegistration<Data = unknown> {
 // of every plugin casting its own data.
 export type ErrorMessageMap = Record<string, ErrorMessageRegistration<never>>
 
-// a translation entry is either a plain descriptor (static sentence) or a
-// valued message plus the projection from the error's typed data to its icu
-// placeholders. A ValuedMessageDescriptor cannot take the plain form: its
-// required __values phantom collides with the never-typed exclusion, so a
-// message that interpolates cannot be registered without its values().
-type PlainDescriptor = MessageDescriptor & { __values?: never }
+/** a message that reads nothing, the only kind registered bare */
+type PlainMessage = (
+  inputs?: Record<string, never>,
+  options?: { readonly locale?: SupportedLocale },
+) => string
 
-// a valued entry pairs a message with the projection from the error's data
-// to that message's placeholders
-export interface ValuedErrorTranslation<Data, Message extends MessageDescriptor> {
-  message: Message
-  values: (data: Data) => ValuesOf<Message>
-}
-
+// a translation entry is either a message that reads nothing, or a message
+// plus the projection from the error's typed data to what it reads. A
+// message that reads something cannot take the plain form: its inputs are
+// required, and a required parameter does not fit an optional one.
 export type ErrorTranslation<Data> =
-  | PlainDescriptor
-  | { message: ValuedMessageDescriptor<MessageValues>; values: (data: Data) => MessageValues }
+  | PlainMessage
+  | { message: (inputs: any) => string; values: (data: Data) => MessageValues }
 
 // second pass over the table the compiler already inferred: now that each
 // entry's message type is concrete, the projection's return type can be
-// pinned to that message's declared placeholders. A single-pass parameter
-// cannot express this — an object literal has no way to say "my values
-// returns whatever my sibling message declares".
+// pinned to what that message reads. A single-pass parameter cannot express
+// this - an object literal has no way to say "my values returns whatever my
+// sibling message reads".
 type CheckedTranslations<Table, Errors> = {
   [Code in keyof Table]: Code extends keyof Errors
-    ? Table[Code] extends { message: infer Message extends MessageDescriptor }
-      ? ValuedErrorTranslation<Errors[Code], Message>
+    ? Table[Code] extends { message: infer Said extends (inputs: never) => string }
+      ? { message: Said; values: (data: Errors[Code]) => Parameters<Said>[0] }
       : Table[Code]
     : // a code nothing can raise has no valid translation
       never
@@ -229,7 +169,6 @@ type CheckedTranslations<Table, Errors> = {
 
 export interface ErrorTranslationSet {
   registry: ErrorMessageMap
-  descriptors: Record<string, MessageDescriptor>
 }
 
 // translations for one module's failures: every code must be translated, a
@@ -248,80 +187,31 @@ export const defineErrorTranslations =
     translations: Table & CheckedTranslations<Table, Errors>,
   ): ErrorTranslationSet => {
     const registry: Record<string, ErrorMessageRegistration<never>> = {}
-    const descriptors: Record<string, MessageDescriptor> = {}
-    const entries = Object.entries(translations) as [string, ErrorTranslation<unknown>][]
-    for (const [code, entry] of entries) {
-      const registration =
-        'message' in entry && typeof entry.message === 'object'
-          ? (entry as { message: MessageDescriptor; values: (data: never) => MessageValues })
-          : { message: entry as MessageDescriptor }
-      registry[code] = registration
-      descriptors[code] = registration.message
+    for (const [code, entry] of Object.entries(translations) as [
+      string,
+      ErrorTranslation<unknown>,
+    ][]) {
+      registry[code] = typeof entry === 'function' ? { message: entry } : entry
     }
-    return { registry, descriptors }
+    return { registry }
   }
 
-// a plugin may translate errors from more than one declaration set — its own
-// and a shared invariant it can raise — and definePluginMessages takes one
-// set, so they are joined here rather than by hand at each call site
+// a plugin may translate errors from more than one declaration set - its own
+// and a shared invariant it can raise - so they are joined here rather than
+// by hand at each call site
 export function mergeErrorTranslations(
   ...sets: readonly ErrorTranslationSet[]
 ): ErrorTranslationSet {
   const registry: ErrorMessageMap = {}
-  const descriptors: Record<string, MessageDescriptor> = {}
   for (const set of sets) {
     for (const code of Object.keys(set.registry)) {
       if (Object.hasOwn(registry, code)) {
         throw new Error(`error code ${code} is translated twice`)
       }
       registry[code] = set.registry[code]!
-      descriptors[code] = set.descriptors[code]!
     }
   }
-  return { registry, descriptors }
-}
-
-// what a plugin's client declares in ONE call: its copy, its error
-// translations and its locale catalogs. Everything else — the runtime error
-// registry, the declared-descriptor table the catalogs are checked against
-// and the PluginCatalogs the host aggregates — is derived.
-export interface PluginMessages<Messages extends Record<string, MessageDescriptor>> {
-  messages: Messages
-  errorMessages: ErrorMessageMap
-  catalogs: PluginCatalogs
-}
-
-export function definePluginMessages<
-  const Messages extends Record<string, MessageDescriptor>,
->(options: {
-  namespace: string
-  messages: Messages
-  errors?: ErrorTranslationSet
-  locales: PluginCatalogs['locales']
-}): PluginMessages<Messages> {
-  const declared: Record<string, MessageDescriptor> = {
-    ...options.messages,
-    ...options.errors?.descriptors,
-  }
-  const outside = Object.values(declared).filter(
-    (descriptor) => !descriptor.id.startsWith(`${options.namespace}/`),
-  )
-  if (outside.length > 0) {
-    throw new Error(
-      `plugin ${options.namespace} declares messages outside its namespace: ${outside
-        .map((descriptor) => descriptor.id)
-        .join(', ')}`,
-    )
-  }
-  return {
-    messages: options.messages,
-    errorMessages: options.errors?.registry ?? {},
-    catalogs: {
-      namespace: options.namespace,
-      messages: Object.values(declared),
-      locales: options.locales,
-    },
-  }
+  return { registry }
 }
 
 // codes owned by the runtime; a plugin localizes its own codes only

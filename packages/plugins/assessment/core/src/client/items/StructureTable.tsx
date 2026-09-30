@@ -10,7 +10,6 @@ import {
   PlusIcon,
   TriangleAlertIcon,
 } from 'lucide-react'
-import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { Button } from '@qualy/ui/button'
@@ -23,9 +22,10 @@ import {
 } from '@qualy/ui/dropdown-menu'
 import { Card, CardEmpty, CardHead, SearchField, Status } from '@qualy/ui/screen'
 import { Choice } from './Choice.tsx'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import { trimAmount } from '../entry/model.ts'
 import { shownRows, type StructureRow } from './structure.ts'
+import * as m from '#messages'
 
 // The whole paper, one row at a time, drawn the way every tree on an
 // administration screen is drawn: a white card, a strip of grey column
@@ -377,7 +377,6 @@ export function StructureTable({
   onRestore: (itemId: string) => void
   onDelete: (itemId: string) => void
 }) {
-  const { format } = useI18n()
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState<StatusFilter>('all')
   const foldKey = `qualy.assessment.structure-folded.${batchId}`
@@ -486,18 +485,18 @@ export function StructureTable({
             name="structure-search"
             value={search}
             onChange={setSearch}
-            label={format(m.structureSearch)}
+            label={m.items_structureSearch()}
             xstyle={styles.search}
           />
           <Choice
-            aria-label={format(m.structureColStatus)}
+            aria-label={m.items_structureColStatus()}
             xstyle={styles.statusChoice}
             value={status}
             options={[
-              { value: 'all', label: format(m.structureStatusAll) },
-              { value: 'draft', label: format(m.itemsStatusDraft) },
-              { value: 'active', label: format(m.structureStatusLive) },
-              { value: 'voided', label: format(m.itemsStatusVoided) },
+              { value: 'all', label: m.items_structureStatusAll() },
+              { value: 'draft', label: m.items_statusDraft() },
+              { value: 'active', label: m.items_structureStatusLive() },
+              { value: 'voided', label: m.items_statusVoided() },
             ]}
             onChange={(next) => setStatus(next as StatusFilter)}
           />
@@ -509,18 +508,18 @@ export function StructureTable({
             <DropdownMenuTrigger asChild>
               <Button>
                 <PlusIcon aria-hidden />
-                {format(m.structureNew)}
+                {m.items_structureNew()}
                 <ChevronDownIcon aria-hidden {...stylex.props(styles.chevronDim)} />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className={stylex.props(styles.menuColumn).className}>
               <DropdownMenuItem onSelect={() => onAddItem(null)}>
                 <FilePlusIcon aria-hidden />
-                {format(m.itemsNew)}
+                {m.items_new()}
               </DropdownMenuItem>
               <DropdownMenuItem onSelect={() => onAddGroup(null)}>
                 <FolderPlusIcon aria-hidden />
-                {format(m.itemsGroupNew)}
+                {m.items_groupNew()}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -529,19 +528,19 @@ export function StructureTable({
       {summary}
 
       <div {...stylex.props(styles.head)}>
-        <span {...stylex.props(styles.headWord)}>{format(m.structureColName)}</span>
-        <span {...stylex.props(styles.headWord, styles.end)}>{format(m.structureColEach)}</span>
-        <span {...stylex.props(styles.headWord, styles.end)}>{format(m.structureColMost)}</span>
+        <span {...stylex.props(styles.headWord)}>{m.items_structureColName()}</span>
+        <span {...stylex.props(styles.headWord, styles.end)}>{m.items_structureColEach()}</span>
+        <span {...stylex.props(styles.headWord, styles.end)}>{m.items_structureColMost()}</span>
         <span {...stylex.props(styles.headWord, styles.cellSource)}>
-          {format(m.structureColSource)}
+          {m.items_structureColSource()}
         </span>
-        <span {...stylex.props(styles.headWord)}>{format(m.structureColChain)}</span>
-        <span {...stylex.props(styles.headWord)}>{format(m.structureColStatus)}</span>
+        <span {...stylex.props(styles.headWord)}>{m.items_structureColChain()}</span>
+        <span {...stylex.props(styles.headWord)}>{m.items_structureColStatus()}</span>
         <span />
       </div>
 
       {shown.length === 0 ? (
-        <CardEmpty>{format(filtering ? m.structureNoMatch : m.structureEmpty)}</CardEmpty>
+        <CardEmpty>{(filtering ? m.items_structureNoMatch : m.items_structureEmpty)()}</CardEmpty>
       ) : (
         <div data-testid="structure-rows">
           {shown.map(({ row, context, folded: shut, holds }) =>
@@ -624,14 +623,13 @@ function GroupRow({
   onAddItem: () => void
   onOpen: () => void
 }) {
-  const { format } = useI18n()
-  const label = row.name.trim() === '' ? format(m.itemsGroupUnnamed) : row.name
+  const label = row.name.trim() === '' ? m.items_groupUnnamed() : row.name
   const facts = [
     row.cap === null || row.cap === undefined
-      ? format(m.structureUncapped)
-      : format(m.itemsCapChip, { value: trimAmount(row.cap) }),
-    row.subtotal === undefined ? null : format(m.structureSubtotal, { sum: row.subtotal }),
-    row.count === undefined ? null : format(m.itemsTreeSummaryNoCap, { count: row.count }),
+      ? m.items_structureUncapped()
+      : m.items_capChip({ value: trimAmount(row.cap) }),
+    row.subtotal === undefined ? null : m.items_structureSubtotal({ sum: row.subtotal }),
+    row.count === undefined ? null : m.items_treeSummaryNoCap({ count: row.count }),
   ].filter((fact): fact is string => fact !== null)
   return (
     <div
@@ -656,7 +654,7 @@ function GroupRow({
           <button
             type="button"
             aria-expanded={!folded}
-            aria-label={format(m.structureFold, { name: label })}
+            aria-label={m.items_structureFold({ name: label })}
             {...stylex.props(styles.twistie)}
             onClick={(event) => {
               onFold()
@@ -696,8 +694,8 @@ function GroupRow({
         <Button
           size="icon-xs"
           variant="ghost"
-          aria-label={format(m.structureAddItemIn, { name: label })}
-          title={format(m.itemsOutlineAddItem)}
+          aria-label={m.items_structureAddItemIn({ name: label })}
+          title={m.items_outlineAddItem()}
           className={stylex.props(styles.actWide, styles.quietButton).className}
           onClick={(event) => {
             onAddItem()
@@ -709,8 +707,8 @@ function GroupRow({
         <Button
           size="icon-xs"
           variant="ghost"
-          aria-label={format(m.structureAddGroupIn, { name: label })}
-          title={format(m.itemsOutlineAddGroup)}
+          aria-label={m.items_structureAddGroupIn({ name: label })}
+          title={m.items_outlineAddGroup()}
           className={stylex.props(styles.actWide, styles.quietButton).className}
           onClick={(event) => {
             onAddGroup()
@@ -720,11 +718,9 @@ function GroupRow({
           <FolderPlusIcon aria-hidden />
         </Button>
         <RowMenu name={label}>
-          <DropdownMenuItem onSelect={onOpen}>{format(m.structureOpen)}</DropdownMenuItem>
-          <DropdownMenuItem onSelect={onAddItem}>{format(m.itemsOutlineAddItem)}</DropdownMenuItem>
-          <DropdownMenuItem onSelect={onAddGroup}>
-            {format(m.itemsOutlineAddGroup)}
-          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={onOpen}>{m.items_structureOpen()}</DropdownMenuItem>
+          <DropdownMenuItem onSelect={onAddItem}>{m.items_outlineAddItem()}</DropdownMenuItem>
+          <DropdownMenuItem onSelect={onAddGroup}>{m.items_outlineAddGroup()}</DropdownMenuItem>
         </RowMenu>
       </span>
     </div>
@@ -787,54 +783,53 @@ function ItemRow({
   onRestore: () => void
   onDelete: () => void
 }) {
-  const { format } = useI18n()
   const composing = row.kind === 'draft'
-  const label = row.name.trim() === '' ? format(m.itemsUntitled) : row.name
+  const label = row.name.trim() === '' ? m.items_untitled() : row.name
   const each = composing
     ? ''
     : row.byRule === true
-      ? format(m.structureEachByRule)
+      ? m.items_structureEachByRule()
       : row.each === undefined
         ? ''
         : trimAmount(row.each)
-  const most = composing ? '' : row.most === undefined ? format(m.structureUnlimited) : row.most
+  const most = composing ? '' : row.most === undefined ? m.items_structureUnlimited() : row.most
   const source =
     row.channels === undefined || row.channels.length === 0
       ? ''
-      : format(
-          row.channels.includes('participant')
-            ? row.channels.includes('administrative')
-              ? m.itemsEntrySourceBoth
-              : m.itemsEntrySourceStudent
-            : m.itemsEntrySourceAdministrative,
-        )
+      : (row.channels.includes('participant')
+          ? row.channels.includes('administrative')
+            ? m.items_entrySourceBoth
+            : m.items_entrySourceStudent
+          : m.items_entrySourceAdministrative)()
   const review =
     row.review === undefined
       ? ''
       : row.review.kind === 'automatic'
-        ? format(m.itemsModeAutomatic)
+        ? m.items_modeAutomatic()
         : row.review.kind === 'direct'
-          ? format(m.itemsModeDirect)
+          ? m.items_modeDirect()
           : row.review.escalation > 0
-            ? format(m.structureStepsBoth, {
+            ? m.items_structureStepsBoth({
                 count: row.review.normal,
                 escalation: row.review.escalation,
               })
-            : format(m.structureSteps, { count: row.review.normal })
+            : m.items_structureSteps({ count: row.review.normal })
   const standing =
     row.status === 'active' ? (
-      <Status tone="ok">{format(m.structureStatusLive)}</Status>
+      <Status tone="ok">{m.items_structureStatusLive()}</Status>
     ) : row.status === 'draft' ? (
-      <Status tone="warn">{format(m.itemsStatusDraft)}</Status>
+      <Status tone="warn">{m.items_statusDraft()}</Status>
     ) : row.status === 'voided' ? (
-      <Status>{format(m.itemsStatusVoided)}</Status>
+      <Status>{m.items_statusVoided()}</Status>
     ) : row.status === 'composing' ? (
-      <Status>{format(m.itemsStatusComposing)}</Status>
+      <Status>{m.items_statusComposing()}</Status>
     ) : null
   const reachWords =
     reach === undefined
       ? null
-      : format(reach.route === 'normal' ? m.structureReachNormal : m.structureReachEscalation, {
+      : (reach.route === 'normal'
+          ? m.items_structureReachNormal
+          : m.items_structureReachEscalation)({
           count: reach.count,
         })
   const reachMark =
@@ -853,8 +848,8 @@ function ItemRow({
   // stacked, the way a question is filed stays out: it is the same on most
   // rows and the longest of the four, and it pushed the rest onto a third line
   const facts = [
-    each === '' ? '' : `${format(m.structureColEach)} ${each}`,
-    most === '' ? '' : `${format(m.structureColMost)} ${most}`,
+    each === '' ? '' : `${m.items_structureColEach()} ${each}`,
+    most === '' ? '' : `${m.items_structureColMost()} ${most}`,
     review,
   ].filter((fact) => fact !== '')
 
@@ -918,21 +913,21 @@ function ItemRow({
       <span {...stylex.props(styles.acts)}>
         {!composing && (
           <RowMenu name={label}>
-            <DropdownMenuItem onSelect={onOpen}>{format(m.structureOpen)}</DropdownMenuItem>
+            <DropdownMenuItem onSelect={onOpen}>{m.items_structureOpen()}</DropdownMenuItem>
             {row.status === 'draft' && (
-              <DropdownMenuItem onSelect={onPublish}>{format(m.itemsPublish)}</DropdownMenuItem>
+              <DropdownMenuItem onSelect={onPublish}>{m.items_publish()}</DropdownMenuItem>
             )}
             {row.status === 'active' && (
-              <DropdownMenuItem onSelect={onVoid}>{format(m.itemsVoid)}</DropdownMenuItem>
+              <DropdownMenuItem onSelect={onVoid}>{m.items_void()}</DropdownMenuItem>
             )}
             {row.status === 'voided' && (
-              <DropdownMenuItem onSelect={onRestore}>{format(m.itemsRestore)}</DropdownMenuItem>
+              <DropdownMenuItem onSelect={onRestore}>{m.items_restore()}</DropdownMenuItem>
             )}
             {row.status === 'draft' && (
               <>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem variant="destructive" onSelect={onDelete}>
-                  {format(m.itemsDelete)}
+                  {m.items_delete()}
                 </DropdownMenuItem>
               </>
             )}
@@ -944,14 +939,13 @@ function ItemRow({
 }
 
 function RowMenu({ name, children }: { name: string; children: ReactNode }) {
-  const { format } = useI18n()
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button
           variant="ghost"
           size="icon-xs"
-          aria-label={format(m.structureRowMenuOf, { name })}
+          aria-label={m.items_structureRowMenuOf({ name })}
           className={stylex.props(styles.quietButton).className}
         >
           <EllipsisIcon aria-hidden />

@@ -17,11 +17,12 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '
 import { Tabs, TabsList, TabsTrigger } from '@qualy/ui/tabs'
 import { EyeIcon, PencilLineIcon, Share2Icon } from 'lucide-react'
 import { formulaApi } from './api.ts'
-import { formulaMessages as m } from './i18n.ts'
+
 import { shortWhen } from './library-styles.ts'
 import { ReleaseInfoPopover, type ReleaseInfo } from './ReleaseInfoPopover.tsx'
 import type { WorkbenchView } from './workbench-view.ts'
 import { workbenchStyles as w } from './workbench-styles.ts'
+import * as m from '#messages'
 
 // A formula's versions, as a place to go rather than a record to read.
 //
@@ -243,7 +244,7 @@ export function VersionsDrawer({
   const api = useApi(formulaApi)
   const runApi = useRunApi()
   const query = useApiQuery(formulaApi)
-  const { format, locale } = useI18n()
+  const { locale } = useI18n()
   const loadFailure = useLoadFailure()
 
   // where this author holds the sharing permission, asked once for the list:
@@ -281,21 +282,21 @@ export function VersionsDrawer({
   const originWords = (item: (typeof revisionItems)[number]): string | null => {
     switch (item.origin) {
       case 'created':
-        return format(m.revisionCreated)
+        return m.history_revisionCreated()
       case 'copied-from-template':
-        return format(m.revisionCopied)
+        return m.history_revisionCopied()
       case 'migration':
-        return format(m.revisionMigration)
+        return m.history_revisionMigration()
       case 'restored-from-version':
-        return format(m.revisionRestoredRelease, {
+        return m.history_revisionRestoredRelease({
           name:
             item.sourceVersion === null
               ? ''
               : (item.sourceVersion.releaseName ??
-                format(m.releaseOrdinal, { number: item.sourceVersion.versionNo })),
+                m.history_releaseOrdinal({ number: item.sourceVersion.versionNo })),
         })
       case 'restored-from-draft':
-        return format(m.revisionRestoredRevision, { number: item.sourceDraftRevisionNo ?? 0 })
+        return m.history_revisionRestoredRevision({ number: item.sourceDraftRevisionNo ?? 0 })
       default:
         return null
     }
@@ -304,7 +305,7 @@ export function VersionsDrawer({
   const releaseList =
     releases.length === 0 ? (
       <div {...stylex.props(styles.fill)}>
-        <EmptyRow>{format(m.versionsEmpty)}</EmptyRow>
+        <EmptyRow>{m.editor_versionsEmpty()}</EmptyRow>
       </div>
     ) : (
       <ul data-testid="formula-versions" {...stylex.props(styles.list)}>
@@ -322,12 +323,10 @@ export function VersionsDrawer({
                       release.releaseName === null && styles.unnamed,
                     )}
                   >
-                    {release.releaseName ?? format(m.releaseUnnamed)}
+                    {release.releaseName ?? m.history_releaseUnnamed()}
                   </span>
                   {release.versionNo === latestVersionNo ? (
-                    <span {...stylex.props(w.standing, w.standingQuiet)}>
-                      {format(m.versionLatest)}
-                    </span>
+                    <span {...stylex.props(w.standing, w.standingQuiet)}>{m.version_latest()}</span>
                   ) : null}
                   {shared === 0 ? null : (
                     <span
@@ -335,14 +334,14 @@ export function VersionsDrawer({
                       data-count={shared}
                       {...stylex.props(styles.sharedWords)}
                     >
-                      {format(m.sharingUnits, { count: shared })}
+                      {m.sharing_units({ count: shared })}
                     </span>
                   )}
                 </div>
                 <div {...stylex.props(styles.meta)}>
-                  <span>{format(m.releaseOrdinal, { number: release.versionNo })}</span>
+                  <span>{m.history_releaseOrdinal({ number: release.versionNo })}</span>
                   <span aria-hidden {...stylex.props(styles.metaRule)} />
-                  <span>{shortWhen(release.publishedAt, format, locale)}</span>
+                  <span>{shortWhen(release.publishedAt, locale)}</span>
                   {release.publishedByName === null ? null : (
                     <>
                       <span aria-hidden {...stylex.props(styles.metaRule)} />
@@ -358,15 +357,9 @@ export function VersionsDrawer({
                   data-shared={shared}
                   data-version={release.versionNo}
                   aria-label={
-                    shared === 0
-                      ? format(m.sharingManage)
-                      : format(m.sharingUnits, { count: shared })
+                    shared === 0 ? m.sharing_manage() : m.sharing_units({ count: shared })
                   }
-                  title={
-                    shared === 0
-                      ? format(m.sharingManage)
-                      : format(m.sharingUnits, { count: shared })
-                  }
+                  title={shared === 0 ? m.sharing_manage() : m.sharing_units({ count: shared })}
                   onClick={() => onShare(release)}
                   {...stylex.props(styles.act, shared > 0 && styles.actShared)}
                 >
@@ -377,8 +370,8 @@ export function VersionsDrawer({
                 type="button"
                 data-testid="formula-release-rename"
                 data-version={release.versionNo}
-                aria-label={format(m.versionInfoEdit)}
-                title={format(m.versionInfoEdit)}
+                aria-label={m.release_infoEdit()}
+                title={m.release_infoEdit()}
                 onClick={() => onEditInfo(release)}
                 {...stylex.props(styles.act)}
               >
@@ -389,8 +382,8 @@ export function VersionsDrawer({
                 data-testid="formula-release"
                 data-version={release.versionNo}
                 aria-current={here ? 'true' : undefined}
-                aria-label={format(m.versionOpen)}
-                title={format(m.versionOpen)}
+                aria-label={m.history_versionOpen()}
+                title={m.history_versionOpen()}
                 onClick={() => {
                   onView({ kind: 'release', versionNo: release.versionNo })
                   onOpenChange(false)
@@ -407,7 +400,7 @@ export function VersionsDrawer({
 
   const revisionList = revisions.isPending ? (
     <div role="status" {...stylex.props(styles.fill)}>
-      <Spinner aria-label={format(m.editorLoading)} />
+      <Spinner aria-label={m.editor_loading()} />
     </div>
   ) : revisions.isError && revisionItems.length === 0 ? (
     // the saves could not be listed, which is not the same as there being none
@@ -421,7 +414,7 @@ export function VersionsDrawer({
     </div>
   ) : revisionItems.length === 0 ? (
     <div data-testid="formula-revisions-empty" {...stylex.props(styles.fill)}>
-      <EmptyRow>{format(m.revisionsEmpty)}</EmptyRow>
+      <EmptyRow>{m.history_revisionsEmpty()}</EmptyRow>
     </div>
   ) : (
     <ul data-testid="formula-revisions" {...stylex.props(styles.list)}>
@@ -433,16 +426,16 @@ export function VersionsDrawer({
             <div {...stylex.props(styles.body)}>
               <div {...stylex.props(styles.line)}>
                 <span {...stylex.props(styles.name, here && styles.nameHere)}>
-                  {format(m.revisionNumber, { number: item.revisionNo })}
+                  {m.history_revisionNumber({ number: item.revisionNo })}
                 </span>
                 {item.revisionNo === draftRevision ? (
                   <span {...stylex.props(w.standing, w.standingQuiet)}>
-                    {format(m.revisionCurrent)}
+                    {m.history_revisionCurrent()}
                   </span>
                 ) : null}
               </div>
               <div {...stylex.props(styles.meta)}>
-                <span>{shortWhen(item.savedAt, format, locale)}</span>
+                <span>{shortWhen(item.savedAt, locale)}</span>
                 {item.savedByName === null ? null : (
                   <>
                     <span aria-hidden {...stylex.props(styles.metaRule)} />
@@ -462,8 +455,8 @@ export function VersionsDrawer({
               data-testid="formula-revision"
               data-revision={item.revisionNo}
               aria-current={here ? 'true' : undefined}
-              aria-label={format(m.versionOpen)}
-              title={format(m.versionOpen)}
+              aria-label={m.history_versionOpen()}
+              title={m.history_versionOpen()}
               onClick={() => {
                 onView({ kind: 'revision', revisionNo: item.revisionNo })
                 onOpenChange(false)
@@ -483,7 +476,7 @@ export function VersionsDrawer({
             onClick={() => void revisions.fetchNextPage()}
             {...stylex.props(styles.more)}
           >
-            {format(m.loadMore)}
+            {m.list_loadMore()}
           </button>
         </li>
       ) : null}
@@ -498,7 +491,9 @@ export function VersionsDrawer({
     view.kind === 'draft' ? null : (
       <div {...stylex.props(styles.foot)}>
         <span {...stylex.props(styles.footWords)}>
-          {format(view.kind === 'release' ? m.releaseReadOnlyHint : m.revisionReadOnlyHint)}
+          {(view.kind === 'release'
+            ? m.history_releaseReadOnlyHint
+            : m.history_revisionReadOnlyHint)()}
         </span>
         <button
           type="button"
@@ -509,18 +504,18 @@ export function VersionsDrawer({
               onRestoreRelease({
                 versionNo: view.versionNo,
                 name:
-                  openRelease?.releaseName ?? format(m.releaseOrdinal, { number: view.versionNo }),
+                  openRelease?.releaseName ?? m.history_releaseOrdinal({ number: view.versionNo }),
               })
             else onRestoreRevision(view.revisionNo)
           }}
           {...stylex.props(styles.restore)}
         >
-          {format(m.releaseRestore)}
+          {m.release_restore()}
         </button>
         {openRelease === undefined ? null : (
           <ReleaseInfoPopover
             release={openRelease}
-            label={format(m.releaseDetails)}
+            label={m.release_details()}
             onEdit={() => onEditInfo(openRelease)}
           />
         )}
@@ -534,18 +529,18 @@ export function VersionsDrawer({
         xstyle={narrow ? styles.panelPhone : styles.panel}
       >
         <SheetHeader>
-          <SheetTitle>{format(m.historyTitle)}</SheetTitle>
-          <SheetDescription>{format(m.versionsHint)}</SheetDescription>
+          <SheetTitle>{m.history_title()}</SheetTitle>
+          <SheetDescription>{m.history_versionsHint()}</SheetDescription>
         </SheetHeader>
         <div {...stylex.props(styles.tabs)}>
           <Tabs value={list} onValueChange={(next) => onList(next as HistoryList)}>
-            <TabsList aria-label={format(m.historyTitle)} xstyle={styles.tabList}>
+            <TabsList aria-label={m.history_title()} xstyle={styles.tabList}>
               <TabsTrigger value="releases" xstyle={styles.tab}>
-                {format(m.historyReleases)}
+                {m.history_releases()}
                 <span {...stylex.props(styles.count)}>{releases.length}</span>
               </TabsTrigger>
               <TabsTrigger value="revisions" xstyle={styles.tab}>
-                {format(m.historyRevisions)}
+                {m.history_revisions()}
               </TabsTrigger>
             </TabsList>
           </Tabs>
@@ -560,7 +555,7 @@ export function VersionsDrawer({
               }}
               {...stylex.props(styles.back)}
             >
-              {format(m.backToDraft)}
+              {m.history_backToDraft()}
             </button>
           )}
         </div>

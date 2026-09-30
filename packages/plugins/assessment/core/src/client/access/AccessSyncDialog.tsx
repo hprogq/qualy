@@ -4,8 +4,7 @@ import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { useQuery } from '@tanstack/react-query'
 import { useApiQuery, useLoadFailure } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { AsyncSection } from '@qualy/ui/admin'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
@@ -24,9 +23,11 @@ import { MetaLine } from '@qualy/ui/screen'
 import { CircleCheckIcon } from 'lucide-react'
 import { assessmentApi } from '../api.ts'
 import { DialogBlank } from '../DialogBlank.tsx'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import { inCatalogOrder, permissionLabel } from './permissions.ts'
 import { whereOf, type AccessChange, type AccessSelection } from './model.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // Choosing what to take from the organization, one capability at a time.
 //
@@ -102,7 +103,7 @@ export function AccessSyncDialog({
   onClose: () => void
 }) {
   const query = useApiQuery(assessmentApi)
-  const { format } = useI18n()
+
   const failures = useLoadFailure()
 
   const [cursors, setCursors] = useState<readonly (string | undefined)[]>([undefined])
@@ -178,10 +179,10 @@ export function AccessSyncDialog({
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
       <DialogContent data-testid="access-sync" size="48rem">
         <DialogHeader>
-          <DialogTitle>{format(m.accessSyncTitle)}</DialogTitle>
+          <DialogTitle>{m.access_syncTitle()}</DialogTitle>
           {!quiet && (
             <DialogDescription>
-              {format(archived ? m.accessSyncArchivedHint : m.accessSyncHint)}
+              {(archived ? m.access_syncArchivedHint : m.access_syncHint)()}
             </DialogDescription>
           )}
         </DialogHeader>
@@ -189,8 +190,8 @@ export function AccessSyncDialog({
           <AsyncSection
             pending={changes.isPending}
             error={changes.isError ? failures.of(changes.error) : null}
-            loadingLabel={format(commonMessages.loading)}
-            retryLabel={format(commonMessages.retry)}
+            loadingLabel={commonMessages.state_loading()}
+            retryLabel={commonMessages.action_retry()}
             onRetry={() => void changes.refetch()}
             skeleton={
               <div {...stylex.props(styles.waiting)}>
@@ -205,8 +206,8 @@ export function AccessSyncDialog({
               <DialogBlank
                 testId="access-sync-quiet"
                 icon={<CircleCheckIcon />}
-                title={format(m.accessSyncQuietTitle)}
-                description={format(m.accessSyncQuietHint)}
+                title={m.access_syncQuietTitle()}
+                description={m.access_syncQuietHint()}
               />
             ) : (
               <ul {...stylex.props(styles.list)}>
@@ -227,7 +228,7 @@ export function AccessSyncDialog({
         {quiet && pageIndex === 0 ? (
           <DialogFooter>
             <Button variant="outline" onClick={onClose}>
-              {format(commonMessages.close)}
+              {commonMessages.action_close()}
             </Button>
           </DialogFooter>
         ) : (
@@ -239,7 +240,7 @@ export function AccessSyncDialog({
                 disabled={pageIndex === 0}
                 onClick={() => setPageIndex((at) => Math.max(0, at - 1))}
               >
-                {format(m.previousPage)}
+                {m.action_previousPage()}
               </Button>
               <Button
                 size="sm"
@@ -247,28 +248,28 @@ export function AccessSyncDialog({
                 disabled={nextCursor === null}
                 onClick={() => setPageIndex((at) => at + 1)}
               >
-                {format(m.nextPage)}
+                {m.action_nextPage()}
               </Button>
               {decidable.length > 0 && (
                 <Button size="sm" variant="ghost" onClick={takeWholePage}>
-                  {format(m.accessSyncSelectPage)}
+                  {m.access_syncSelectPage()}
                 </Button>
               )}
             </div>
             <div {...stylex.props(styles.footSide)}>
               {!onlyWithdrawals && (
                 <span {...stylex.props(styles.aside)}>
-                  {format(m.accessSyncSelected, { count: selectedCount })}
+                  {m.access_syncSelected({ count: selectedCount })}
                 </span>
               )}
               <Button variant="outline" onClick={onClose}>
-                {format(commonMessages.cancel)}
+                {commonMessages.action_cancel()}
               </Button>
               <Button
                 disabled={pending || (selectedCount === 0 && !onlyWithdrawals)}
                 onClick={merge}
               >
-                {format(onlyWithdrawals ? m.accessSyncClear : m.accessSyncApply)}
+                {(onlyWithdrawals ? m.access_syncClear : m.access_syncApply)()}
               </Button>
             </div>
           </DialogFooter>
@@ -279,9 +280,9 @@ export function AccessSyncDialog({
 }
 
 const KIND_LABELS = {
-  new: m.accessSyncNew,
-  widened: m.accessSyncWidened,
-  lapsed: m.accessSyncLapsed,
+  new: m.access_syncNew,
+  widened: m.access_syncWidened,
+  lapsed: m.access_syncLapsed,
 } as const
 
 function ChangeRow({
@@ -298,7 +299,6 @@ function ChangeRow({
   disabled: boolean
   onToggle: (code: string) => void
 }) {
-  const { format } = useI18n()
   const held = new Set(chosen)
   const settled = change.kind === 'lapsed'
   const where = whereOf(change)
@@ -307,9 +307,7 @@ function ChangeRow({
     <li {...stylex.props(styles.row)} data-testid="access-change" data-kind={change.kind}>
       <div {...stylex.props(styles.who)}>
         <span {...stylex.props(styles.name)}>{change.displayName}</span>
-        <Badge variant={settled ? 'outline' : 'secondary'}>
-          {format(KIND_LABELS[change.kind])}
-        </Badge>
+        <Badge variant={settled ? 'outline' : 'secondary'}>{KIND_LABELS[change.kind]()}</Badge>
       </div>
       {/* which appointment it is: the number, the role and where it is held,
           so two changes to one person in two classes do not read the same */}
@@ -317,10 +315,10 @@ function ChangeRow({
         <MetaLine
           items={[
             change.businessNo,
-            change.roleName === '' ? format(m.accessRoleUnknown) : change.roleName,
+            change.roleName === '' ? m.access_roleUnknown() : change.roleName,
             where.kind === 'unit'
               ? where.name
-              : format(where.kind === 'everywhere' ? m.accessUnitEverywhere : m.accessUnitBeyond),
+              : (where.kind === 'everywhere' ? m.access_unitEverywhere : m.access_unitBeyond)(),
           ]}
         />
       </span>
@@ -330,7 +328,7 @@ function ChangeRow({
             // a withdrawal already happened, and a closed round takes
             // nothing: either way there is nothing here to tick
             <span key={code} {...stylex.props(settled ? styles.struck : styles.aside)}>
-              {format(permissionLabel(code))}
+              {permissionLabel(code)()}
             </span>
           ) : (
             <label key={code} {...stylex.props(styles.choice)}>
@@ -340,7 +338,7 @@ function ChangeRow({
                 disabled={disabled}
                 onCheckedChange={() => onToggle(code)}
               />
-              {format(permissionLabel(code))}
+              {permissionLabel(code)()}
             </label>
           ),
         )}

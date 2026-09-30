@@ -1,6 +1,5 @@
 import * as stylex from '@stylexjs/stylex'
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
-import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { Button } from '@qualy/ui/button'
 import {
@@ -19,9 +18,10 @@ import {
   XIcon,
 } from 'lucide-react'
 import { Spinner } from '@qualy/ui/spinner'
-import { formulaMessages as m } from './i18n.ts'
+
 import { exampleStyles } from './example-grid.ts'
 import type { InputFact } from './report-words.ts'
+import * as m from '#messages'
 
 // One example, as a line of the table under the editor.
 //
@@ -245,7 +245,6 @@ export function ExampleRow({
    */
   readonly readOnly?: boolean
 }) {
-  const { format } = useI18n()
   // Removing a line takes two presses: the first arms the mark, the second
   // takes the line. A press elsewhere, or a moment's pause, disarms it, so a
   // dense table cannot lose a case to one stray click.
@@ -289,11 +288,11 @@ export function ExampleRow({
   const fresh = outcome !== undefined && !outcome.stale
   const actual = fresh ? outcome.actual : undefined
   const words = {
-    passed: m.resultPassed,
-    failed: m.reportFailed,
-    unexpected: m.conclusionNoExpectation,
-    fix: m.conclusionNeedsFix,
-    'not-run': m.conclusionNotRun,
+    passed: m.editor_resultPassed,
+    failed: m.report_failed,
+    unexpected: m.examples_noExpectation,
+    fix: m.examples_needsFix,
+    'not-run': m.examples_notRun,
   }[verdict]
   const verdictLook = {
     passed: [styles.verdictPassed, styles.dotPassed],
@@ -311,11 +310,11 @@ export function ExampleRow({
       data-passed={outcome !== undefined && fresh ? outcome.passed : undefined}
       data-verdict={outcome === undefined ? undefined : verdict}
       data-stale={outcome !== undefined && !fresh ? true : undefined}
-      title={outcome === undefined || fresh ? undefined : format(m.resultStale)}
+      title={outcome === undefined || fresh ? undefined : m.editor_resultStale()}
       {...stylex.props(styles.verdict, verdictLook[0])}
     >
       <span aria-hidden {...stylex.props(styles.dot, verdictLook[1])} />
-      {format(words)}
+      {words()}
     </span>
   )
 
@@ -326,14 +325,14 @@ export function ExampleRow({
           <Button
             variant="ghost"
             size="icon-xs"
-            aria-label={format(m.exampleMenu)}
+            aria-label={m.examples_menu()}
             data-testid="formula-test-menu"
           >
             <MoreVerticalIcon />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          <DropdownMenuItem onSelect={onLoadIntoTry}>{format(m.loadIntoTry)}</DropdownMenuItem>
+          <DropdownMenuItem onSelect={onLoadIntoTry}>{m.editor_loadIntoTry()}</DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
     </span>
@@ -343,8 +342,8 @@ export function ExampleRow({
         type="button"
         data-testid="formula-test-run"
         data-state={runningHere ? 'running' : (settled ?? 'idle')}
-        aria-label={format(m.runThisExample)}
-        title={format(m.runThisExample)}
+        aria-label={m.editor_runThisExample()}
+        title={m.editor_runThisExample()}
         disabled={locked || running}
         onClick={() => onRun?.()}
         {...stylex.props(
@@ -367,8 +366,8 @@ export function ExampleRow({
         type="button"
         data-testid="formula-test-remove"
         data-arming={arming ? true : undefined}
-        aria-label={format(arming ? m.removeConfirm : m.removeTest)}
-        title={format(arming ? m.removeConfirm : m.removeTest)}
+        aria-label={(arming ? m.editor_removeConfirm : m.editor_removeTest)()}
+        title={(arming ? m.editor_removeConfirm : m.editor_removeTest)()}
         disabled={locked}
         onClick={arm}
         onBlur={() => setArming(false)}
@@ -385,7 +384,7 @@ export function ExampleRow({
           <Button
             variant="ghost"
             size="icon-xs"
-            aria-label={format(m.exampleMenu)}
+            aria-label={m.examples_menu()}
             data-testid="formula-test-menu"
           >
             <MoreVerticalIcon />
@@ -393,17 +392,17 @@ export function ExampleRow({
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           <DropdownMenuItem disabled={locked || running} onSelect={() => onRun?.()}>
-            {format(m.run)}
+            {m.editor_run()}
           </DropdownMenuItem>
           <DropdownMenuItem disabled={locked} onSelect={onLoadIntoTry}>
-            {format(m.loadIntoTry)}
+            {m.editor_loadIntoTry()}
           </DropdownMenuItem>
           <DropdownMenuItem disabled={locked} onSelect={() => onDuplicate?.()}>
-            {format(m.copyTest)}
+            {m.editor_copyTest()}
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem variant="destructive" disabled={locked} onSelect={() => onRemove?.()}>
-            {format(m.removeTest)}
+            {m.editor_removeTest()}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -412,7 +411,7 @@ export function ExampleRow({
 
   const named = (
     <span {...stylex.props(narrow ? styles.cardName : styles.name, name === '' && styles.unnamed)}>
-      {name === '' ? format(m.exampleUnnamed) : name}
+      {name === '' ? m.examples_unnamed() : name}
     </span>
   )
 
@@ -449,15 +448,19 @@ export function ExampleRow({
             </span>
           ))}
           {rest > 0 ? (
-            <span {...stylex.props(styles.rest)}>{format(m.inputMore, { count: rest })}</span>
+            <span {...stylex.props(styles.rest)}>{m.examples_inputMore({ count: rest })}</span>
           ) : null}
         </span>
         <span {...stylex.props(styles.cardNumbers)}>
           <span>
-            {expected === '' ? format(m.expectedNone) : format(m.expectedIs, { value: expected })}
+            {expected === ''
+              ? m.examples_expectedNone()
+              : m.examples_expectedIs({ value: expected })}
           </span>
           <span {...stylex.props(outcome?.passed === false && fresh && styles.wrong)}>
-            {actual === undefined ? format(m.actualNone) : format(m.actualIs, { value: actual })}
+            {actual === undefined
+              ? m.examples_actualNone()
+              : m.examples_actualIs({ value: actual })}
           </span>
         </span>
       </div>
@@ -482,11 +485,11 @@ export function ExampleRow({
           </span>
         ))}
         {rest > 0 ? (
-          <span {...stylex.props(styles.rest)}>{format(m.inputMore, { count: rest })}</span>
+          <span {...stylex.props(styles.rest)}>{m.examples_inputMore({ count: rest })}</span>
         ) : null}
       </span>
       <span {...stylex.props(styles.number, styles.expected, expected === '' && styles.absent)}>
-        {expected === '' ? format(m.expectedNone) : expected}
+        {expected === '' ? m.examples_expectedNone() : expected}
       </span>
       <span
         {...stylex.props(
@@ -495,7 +498,7 @@ export function ExampleRow({
           outcome?.passed === false && fresh && styles.wrong,
         )}
       >
-        {actual ?? format(m.actualNone)}
+        {actual ?? m.examples_actualNone()}
       </span>
       <span {...stylex.props(styles.verdictCell)}>{verdictWords}</span>
       {actions}

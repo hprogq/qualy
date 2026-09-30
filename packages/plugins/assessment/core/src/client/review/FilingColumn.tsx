@@ -9,7 +9,7 @@ import { Kbd } from '@qualy/ui/kbd'
 import { Appear } from '@qualy/ui/reveal'
 import { useLingering } from '@qualy/ui/use-lingering'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import { AttachmentLink } from '../entry/AttachmentLink.tsx'
 import { answerOf, attachmentContentUrl, displayValueOf, fieldsOf } from '../entry/model.ts'
 import {
@@ -24,6 +24,7 @@ import {
 import { useBatchZone } from '../batch/zone.ts'
 import { useFinePointer } from './pointer.ts'
 import { PART_LABEL, Pane, type WorkbenchPart } from './Pane.tsx'
+import * as m from '#messages'
 
 const belowLg = '@media (max-width: 1023.98px)'
 const lg = '@media (min-width: 1024px)'
@@ -398,7 +399,7 @@ export const FilingColumn = memo(function FilingColumn({
   /** the way to another face of the pager, for the summary's links */
   onPart: (part: WorkbenchPart) => void
 }) {
-  const { format, locale } = useI18n()
+  const { locale } = useI18n()
   const zone = useBatchZone()
   const fine = useFinePointer()
   // every field the question asks, files included and in their own places:
@@ -407,7 +408,7 @@ export const FilingColumn = memo(function FilingColumn({
   const fields = fieldsOf(review.form.formConfig)
   const record = (review.revision.payload ?? {}) as Record<string, unknown>
   // read through the form's own words: a choice as its label, a yes as a yes
-  const words = { yes: format(m.recognitionYes), no: format(m.recognitionNo) }
+  const words = { yes: m.recognition_yes(), no: m.recognition_no() }
   const shown = (field: (typeof fields)[number], raw: unknown) =>
     displayValueOf(field, raw, words) || valueOf(raw)
   // The version being read against. The default - the one just before this -
@@ -462,31 +463,31 @@ export const FilingColumn = memo(function FilingColumn({
     review.context?.previous == null
       ? null
       : review.context.previous.kind === 'rejected'
-        ? m.reviewSummaryPrevRejected
+        ? m.review_summaryPrevRejected
         : review.context.previous.kind === 'revision-required'
-          ? m.reviewSummaryPrevRevision
+          ? m.review_summaryPrevRevision
           : null
   const summaryLines: string[] = []
   if (review.chain.route === 'escalation') {
     summaryLines.push(
-      `${format(m.reviewRouteEscalation)} 　 ${format(m.reviewSummaryRound, { round: review.roundNo })}`,
+      `${m.review_routeEscalation()} 　 ${m.review_summaryRound({ round: review.roundNo })}`,
     )
   } else if (review.roundNo > 1) {
-    summaryLines.push(format(m.reviewSummaryRound, { round: review.roundNo }))
+    summaryLines.push(m.review_summaryRound({ round: review.roundNo }))
   } else {
-    summaryLines.push(format(m.reviewSummaryFirstRound))
+    summaryLines.push(m.review_summaryFirstRound())
   }
   if (prevSaid !== null) {
-    summaryLines.push(format(prevSaid, { reason: review.context?.previous?.reason ?? 'none' }))
+    summaryLines.push(prevSaid({ reason: review.context?.previous?.reason ?? 'none' }))
   }
   if (review.supplements.length > 0) {
-    summaryLines.push(format(m.reviewSummarySupplemented, { count: review.supplements.length }))
+    summaryLines.push(m.review_summarySupplemented({ count: review.supplements.length }))
   }
   return (
     <Pane
       as="section"
       part="filing"
-      label={format(PART_LABEL.filing)}
+      label={PART_LABEL.filing()}
       xstyle={styles.frame}
       innerXstyle={styles.inner}
       footer={
@@ -498,11 +499,11 @@ export const FilingColumn = memo(function FilingColumn({
           <aside {...stylex.props(styles.insight)}>
             <div {...stylex.props(styles.insightHead)}>
               <SparklesIcon aria-hidden className={stylex.props(styles.insightIcon).className} />
-              <p {...stylex.props(styles.insightTitle)}>{format(m.reviewInsight)}</p>
+              <p {...stylex.props(styles.insightTitle)}>{m.review_insight()}</p>
               <span {...stylex.props(styles.spacer)} />
-              <p {...stylex.props(styles.insightCaveat)}>{format(m.reviewInsightCaveat)}</p>
+              <p {...stylex.props(styles.insightCaveat)}>{m.review_insightCaveat()}</p>
             </div>
-            <p {...stylex.props(styles.insightBody)}>{format(m.reviewInsightSoon)}</p>
+            <p {...stylex.props(styles.insightBody)}>{m.review_insightSoon()}</p>
           </aside>
         )
       }
@@ -534,9 +535,9 @@ export const FilingColumn = memo(function FilingColumn({
           <div {...stylex.props(styles.headRow)}>
             {/* stacked, the strip names the part; the version and the
                 compare key are what is left to say */}
-            <h3 {...stylex.props(styles.headTitle)}>{format(m.reviewPayloadTitle)}</h3>
+            <h3 {...stylex.props(styles.headTitle)}>{m.review_payloadTitle()}</h3>
             <p {...stylex.props(styles.filedVersion)}>
-              {format(m.reviewFiledVersion, {
+              {m.review_filedVersion({
                 no: review.revision.revisionNo,
                 at: timeLabel(review.submittedAt, locale, zone),
               })}
@@ -550,7 +551,7 @@ export const FilingColumn = memo(function FilingColumn({
                   className={stylex.props(styles.xs).className}
                   onClick={() => onCompare(comparing === null ? 'previous' : null)}
                 >
-                  {format(comparing === null ? m.reviewCompareOn : m.reviewCompareOff)}
+                  {(comparing === null ? m.review_compareOn : m.review_compareOff)()}
                   {fine && <Kbd>D</Kbd>}
                 </Button>
                 <Button
@@ -559,7 +560,7 @@ export const FilingColumn = memo(function FilingColumn({
                   className={stylex.props(styles.xs).className}
                   onClick={onVersions}
                 >
-                  {format(m.reviewPickVersion)}
+                  {m.review_pickVersion()}
                   {fine && <Kbd>⇧D</Kbd>}
                 </Button>
               </>
@@ -573,7 +574,7 @@ export const FilingColumn = memo(function FilingColumn({
               to stay whole while it is leaving. */}
           <Appear key={String(arrived)} show={against !== null} collapse>
             <p {...stylex.props(styles.compareCount)}>
-              {format(m.reviewCompareCount, {
+              {m.review_compareCount({
                 count: changes,
                 no: lingeringAgainst?.revisionNo ?? 0,
               })}
@@ -610,7 +611,7 @@ export const FilingColumn = memo(function FilingColumn({
                   {field.type === 'attachment' && cited.length > 0 && (
                     <>
                       <span {...stylex.props(styles.filesCount)}>
-                        {format(m.reviewFilesCount, { count: cited.length })}
+                        {m.review_filesCount({ count: cited.length })}
                       </span>
                       <span {...stylex.props(styles.spacer)} />
                       {/* this field's files in a run of saves: a zip would
@@ -624,7 +625,7 @@ export const FilingColumn = memo(function FilingColumn({
                           aria-hidden
                           className={stylex.props(styles.saveIcon).className}
                         />
-                        {format(m.reviewDownloadAll)}
+                        {m.review_downloadAll()}
                       </button>
                     </>
                   )}
@@ -672,7 +673,7 @@ export const FilingColumn = memo(function FilingColumn({
                           block that a hairline gap under it reads as part of
                           the row. */}
                       <span {...stylex.props(styles.goneBlock)}>
-                        <span {...stylex.props(styles.goneTag)}>{format(m.reviewFileGone)}</span>
+                        <span {...stylex.props(styles.goneTag)}>{m.review_fileGone()}</span>
                         {gone.map((attachmentId) => (
                           // struck through, or a reviewer scanning the column
                           // reads it as one more file that is there
@@ -685,11 +686,9 @@ export const FilingColumn = memo(function FilingColumn({
                   ) : (
                     <Appear key={String(arrived)} show={changed} collapse>
                       <span {...stylex.props(styles.wasLine)}>
-                        <span {...stylex.props(styles.wasTag)}>
-                          {format(m.reviewComparePrevious)}
-                        </span>
+                        <span {...stylex.props(styles.wasTag)}>{m.review_comparePrevious()}</span>
                         {before === '' ? (
-                          <span>{format(m.reviewCompareBlank)}</span>
+                          <span>{m.review_compareBlank()}</span>
                         ) : (
                           <span {...stylex.props(styles.struck)}>{before}</span>
                         )}
@@ -702,7 +701,7 @@ export const FilingColumn = memo(function FilingColumn({
           })}
           {review.revision.note !== null && (
             <div {...stylex.props(styles.fieldRow)}>
-              <dt {...stylex.props(styles.noteName)}>{format(m.entryNote)}</dt>
+              <dt {...stylex.props(styles.noteName)}>{m.entry_note()}</dt>
               <dd {...stylex.props(styles.proseValue)}>{review.revision.note}</dd>
             </div>
           )}
@@ -716,9 +715,9 @@ export const FilingColumn = memo(function FilingColumn({
       {review.supplements.length > 0 && (
         <section {...stylex.props(styles.supSection)}>
           <div {...stylex.props(styles.supHead)}>
-            <p {...stylex.props(styles.supTitle)}>{format(m.reviewSupplementSection)}</p>
+            <p {...stylex.props(styles.supTitle)}>{m.review_supplementSection()}</p>
             <span {...stylex.props(styles.spacer)} />
-            <p {...stylex.props(styles.supNote)}>{format(m.reviewSupplementSectionNote)}</p>
+            <p {...stylex.props(styles.supNote)}>{m.review_supplementSectionNote()}</p>
           </div>
           {review.supplements.map((one) => (
             <SupplementCard key={one.id} supplement={one} endedBy={review.outcome} />
@@ -738,27 +737,25 @@ function SupplementCard({
   /** how the round ended, which is why an unanswered ask closed */
   endedBy: string | null
 }) {
-  const { format, locale } = useI18n()
+  const { locale } = useI18n()
   const zone = useBatchZone()
   const answers = (supplement.response?.payload ?? {}) as Record<string, unknown>
   return (
     <div {...stylex.props(styles.card)}>
       <div {...stylex.props(styles.cardHead)}>
         <p {...stylex.props(styles.cardTitle)}>
-          {format(m.supplementRequestHeading, { no: supplement.requestNo })}
+          {m.supplement_requestHeading({ no: supplement.requestNo })}
         </p>
         <Badge variant={supplement.status === 'answered' ? 'default' : 'outline'}>
-          {format(
-            supplement.status === 'answered'
-              ? m.supplementStatusAnswered
-              : supplement.status === 'cancelled'
-                ? m.supplementStatusCancelled
-                : supplement.status === 'superseded'
-                  ? endedBy === 'subject-excluded'
-                    ? m.outcomeSubjectExcluded
-                    : m.entryTrailAskSuperseded
-                  : m.supplementStatusOpen,
-          )}
+          {(supplement.status === 'answered'
+            ? m.supplement_statusAnswered
+            : supplement.status === 'cancelled'
+              ? m.supplement_statusCancelled
+              : supplement.status === 'superseded'
+                ? endedBy === 'subject-excluded'
+                  ? m.outcome_subjectExcluded
+                  : m.entry_trailAskSuperseded
+                : m.supplement_statusOpen)()}
         </Badge>
         <span {...stylex.props(styles.spacer)} />
         <p {...stylex.props(styles.cardWhen)}>{timeLabel(supplement.requestedAt, locale, zone)}</p>

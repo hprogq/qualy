@@ -13,10 +13,11 @@ import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { useI18n, useList } from '@qualy/web-i18n'
 import { Button } from '@qualy/ui/button'
 import { Cell, Status, Tag, TableRow } from '@qualy/ui/screen'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import type { PlanRefusalLike } from '../refusals.ts'
 import type { PhaseDraft, PhaseDto, PlanShape } from './model.ts'
 import { inZone, useBatchZone } from '../batch/zone.ts'
+import * as m from '#messages'
 
 // One phase, as a table row on a desktop and as a stacked card on a phone.
 //
@@ -374,7 +375,7 @@ export interface PhaseRowProps {
 
 /** the parts a row and a card both show, so neither can drift from the other */
 function useParts(props: PhaseRowProps) {
-  const { format, locale } = useI18n()
+  const { locale } = useI18n()
   const listOf = useList()
   const zone = useBatchZone()
   const { draft, phase, index, shape, total, editing, readOnly } = props
@@ -397,7 +398,7 @@ function useParts(props: PhaseRowProps) {
   const isNew = draft.id === undefined
   /** past the scheduled prefix, where structure is still free */
   const structural = index >= shape.scheduled
-  const name = draft.displayName || format(m.unnamedSegment)
+  const name = draft.displayName || m.plan_unnamed()
   // on the batch's clock: a stage starts at the school's midnight, not the reader's
   const timeOf = (iso: string) =>
     new Date(iso).toLocaleString(locale, {
@@ -409,7 +410,7 @@ function useParts(props: PhaseRowProps) {
     const parts = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' })
     const delta = new Date(iso).getTime() - Date.now()
     const abs = Math.abs(delta)
-    if (abs < 60_000) return format(m.justNow)
+    if (abs < 60_000) return m.plan_justNow()
     const [unit, size]: [Intl.RelativeTimeFormatUnit, number] =
       abs < 3_600_000
         ? ['minute', 60_000]
@@ -435,8 +436,8 @@ function useParts(props: PhaseRowProps) {
       title={named}
       {...stylex.props(styles.tags)}
     >
-      {itemsLimited && <Tag>{format(m.scopeItemsTag, { count: draft.itemScope.length })}</Tag>}
-      {peopleLimited && <Tag>{format(m.scopePeopleTag)}</Tag>}
+      {itemsLimited && <Tag>{m.plan_scopeItemsTag({ count: draft.itemScope.length })}</Tag>}
+      {peopleLimited && <Tag>{m.plan_scopePeopleTag()}</Tag>}
       {/* the names a pointer reads by resting on the tags, for a reader
           with no pointer to rest; the panel the row opens lists them too.
           Hidden text is read into a description only when the description
@@ -490,7 +491,7 @@ function useParts(props: PhaseRowProps) {
 
   const opens = (
     <span data-slot="phase-opens" {...stylex.props(styles.opens)}>
-      {format(m.opensCount, { count: draft.permissionProfile.length })}
+      {m.phase_opensCount({ count: draft.permissionProfile.length })}
     </span>
   )
 
@@ -498,7 +499,7 @@ function useParts(props: PhaseRowProps) {
   // beside the time it cut the time short wherever the column was narrow
   const unschedule = !readOnly && !editing && index === shape.tail && (
     <button type="button" onClick={props.onUnschedule} {...stylex.props(styles.inlineAction)}>
-      {format(m.unschedule)}
+      {m.schedule_unschedule()}
     </button>
   )
 
@@ -555,7 +556,7 @@ function useParts(props: PhaseRowProps) {
         >
           <span {...stylex.props(styles.whenLine, styles.whenQuiet)}>
             <CircleDashedIcon aria-hidden {...stylex.props(styles.whenGlyph)} />
-            {format(m.notScheduled)}
+            {m.plan_notScheduled()}
           </span>
           {/* what participants are told it waits on, where its time will be;
               without one, what the administrator has to do first */}
@@ -566,7 +567,7 @@ function useParts(props: PhaseRowProps) {
           ) : (
             waiting && (
               <span {...stylex.props(styles.whenRelative, styles.whenNote)}>
-                {format(m.waitsForEarlier)}
+                {m.plan_waitsForEarlier()}
               </span>
             )
           )}
@@ -579,7 +580,7 @@ function useParts(props: PhaseRowProps) {
             className={stylex.props(styles.rowAction).className}
             onClick={props.onSchedule}
           >
-            {format(m.goSchedule)}
+            {m.schedule_go()}
           </Button>
         )}
       </span>
@@ -605,11 +606,11 @@ function useParts(props: PhaseRowProps) {
       {...stylex.props(styles.standing)}
     >
       {current ? (
-        <Status tone="ok">{format(m.flowStatusCurrent)}</Status>
+        <Status tone="ok">{m.flow_statusCurrent()}</Status>
       ) : (
-        <Status>{format(ended ? m.flowStatusEnded : m.flowStatusFuture)}</Status>
+        <Status>{(ended ? m.flow_statusEnded : m.flow_statusFuture)()}</Status>
       )}
-      {props.unsaved && <Status tone="warn">{format(m.newBadge)}</Status>}
+      {props.unsaved && <Status tone="warn">{m.plan_newBadge()}</Status>}
     </span>
   )
 
@@ -618,8 +619,8 @@ function useParts(props: PhaseRowProps) {
       <Button
         size="icon-sm"
         variant="ghost"
-        aria-label={format(m.moveUp)}
-        title={format(m.moveUp)}
+        aria-label={m.plan_moveUp()}
+        title={m.plan_moveUp()}
         className={stylex.props(styles.quietAction).className}
         disabled={index === shape.scheduled}
         onClick={() => props.onMove(-1)}
@@ -629,8 +630,8 @@ function useParts(props: PhaseRowProps) {
       <Button
         size="icon-sm"
         variant="ghost"
-        aria-label={format(m.moveDown)}
-        title={format(m.moveDown)}
+        aria-label={m.plan_moveDown()}
+        title={m.plan_moveDown()}
         className={stylex.props(styles.quietAction).className}
         disabled={index === total - 1}
         onClick={() => props.onMove(1)}
@@ -640,8 +641,8 @@ function useParts(props: PhaseRowProps) {
       <Button
         size="icon-sm"
         variant="ghost"
-        aria-label={format(m.removePhase)}
-        title={format(m.removePhase)}
+        aria-label={m.phase_remove()}
+        title={m.phase_remove()}
         className={stylex.props(styles.removeAction).className}
         onClick={props.onRemove}
       >
@@ -701,7 +702,6 @@ export function PhaseRow(props: PhaseRowProps) {
 
 /** the same row where there is no room for columns */
 export function PhaseCard(props: PhaseRowProps) {
-  const { format } = useI18n()
   const { ids, described, stage, refused, opens, when, status, actions, ended, wrong } =
     useParts(props)
   const line = (label: string, body: ReactNode) => (
@@ -728,8 +728,8 @@ export function PhaseCard(props: PhaseRowProps) {
       </button>
       {refused && <div {...stylex.props(styles.cardRefusals)}>{refused}</div>}
       <div {...stylex.props(styles.cardFacts)}>
-        {line(format(m.colPlannedStart), when)}
-        {line(format(m.colOpens), opens)}
+        {line(m.plan_colStart(), when)}
+        {line(m.plan_colOpens(), opens)}
       </div>
       <div {...stylex.props(styles.cardFoot)}>
         {status}

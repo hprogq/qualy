@@ -5,8 +5,7 @@ import { useQuery } from '@tanstack/react-query'
 import { CircleCheckIcon, TriangleAlertIcon } from 'lucide-react'
 import { useApiQuery, useLoadFailure } from '@qualy/web-runtime'
 import type { ApiResult } from '@qualy/web-runtime/api'
-import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { AsyncSection, Field } from '@qualy/ui/admin'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
@@ -24,8 +23,10 @@ import { Input } from '@qualy/ui/input'
 import { CursorPager } from '@qualy/ui/pager'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { assessmentApi } from '../api.ts'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import { DialogBlank } from '../DialogBlank.tsx'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // Deciding, person by person, whether the round follows the organization.
 //
@@ -52,15 +53,15 @@ export interface PlacementDecision {
 const PAGE_SIZE = 20
 
 const CHANGE_LABELS = {
-  placement: m.placementChangePlacement,
-  ancestry: m.placementChangeAncestry,
-  'user-type': m.placementChangeUserType,
+  placement: m.placement_changePlacement,
+  ancestry: m.placement_changeAncestry,
+  'user-type': m.placement_changeUserType,
 } as const
 
 const UNAVAILABLE_LABELS = {
-  gone: m.placementGone,
-  disabled: m.placementDisabled,
-  unplaced: m.placementUnplaced,
+  gone: m.placement_gone,
+  disabled: m.placement_disabled,
+  unplaced: m.placement_unplaced,
 } as const
 
 const styles = stylex.create({
@@ -199,7 +200,7 @@ export function PlacementDialog({
   onClose: () => void
 }) {
   const query = useApiQuery(assessmentApi)
-  const { format } = useI18n()
+
   const failures = useLoadFailure()
   const [cursors, setCursors] = useState<readonly (string | undefined)[]>([undefined])
   const [pageIndex, setPageIndex] = useState(0)
@@ -285,16 +286,16 @@ export function PlacementDialog({
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
       <DialogContent data-testid="placement-dialog" size="48rem" xstyle={styles.panel}>
         <DialogHeader>
-          <DialogTitle>{format(m.placementTitle)}</DialogTitle>
-          {!quiet && <DialogDescription>{format(m.placementHint)}</DialogDescription>}
+          <DialogTitle>{m.placement_title()}</DialogTitle>
+          {!quiet && <DialogDescription>{m.placement_hint()}</DialogDescription>}
         </DialogHeader>
         <DialogBody xstyle={styles.body}>
           <AsyncSection
             pending={differences.isPending}
             error={differences.isError ? failures.of(differences.error) : null}
             retrying={differences.isFetching}
-            loadingLabel={format(commonMessages.loading)}
-            retryLabel={format(commonMessages.retry)}
+            loadingLabel={commonMessages.state_loading()}
+            retryLabel={commonMessages.action_retry()}
             onRetry={() => void differences.refetch()}
             skeleton={
               <div {...stylex.props(styles.waiting)}>
@@ -307,19 +308,19 @@ export function PlacementDialog({
               <DialogBlank
                 testId="placement-quiet"
                 icon={<CircleCheckIcon />}
-                title={format(m.placementQuiet)}
-                description={format(m.placementQuietHint)}
+                title={m.placement_quiet()}
+                description={m.placement_quietHint()}
               />
             ) : (
               <>
                 {decidable.length > 0 && (
-                  <Field label={format(m.placementReason)}>
+                  <Field label={m.placement_reason()}>
                     {(id) => (
                       <Input
                         id={id}
                         value={reason}
                         maxLength={500}
-                        placeholder={format(m.placementReasonPlaceholder)}
+                        placeholder={m.placement_reasonPlaceholder()}
                         onChange={(event) => setReason(event.target.value)}
                       />
                     )}
@@ -331,21 +332,19 @@ export function PlacementDialog({
                       <Checkbox
                         checked={pageState}
                         disabled={pending}
-                        aria-label={format(m.placementSelectPage)}
+                        aria-label={m.placement_selectPage()}
                         data-testid="placement-page"
                         onCheckedChange={takePage}
                       />
-                      <span {...stylex.props(styles.pageBarWord)}>
-                        {format(m.placementSelectPage)}
-                      </span>
+                      <span {...stylex.props(styles.pageBarWord)}>{m.placement_selectPage()}</span>
                       <span {...stylex.props(styles.pageBarTotal)}>
-                        {format(m.placementTotal, { count: total })}
+                        {m.placement_total({ count: total })}
                       </span>
                     </label>
                   ) : (
                     <div {...stylex.props(styles.pageBar)}>
                       <span {...stylex.props(styles.pageBarTotal)}>
-                        {format(m.placementTotal, { count: total })}
+                        {m.placement_total({ count: total })}
                       </span>
                     </div>
                   )}
@@ -372,7 +371,7 @@ export function PlacementDialog({
                 data-testid="placement-selected"
                 data-count={selected.length}
               >
-                {format(m.placementSelected, { count: selected.length })}
+                {m.placement_selected({ count: selected.length })}
               </span>
               {selected.length > 0 && (
                 <Button
@@ -381,15 +380,15 @@ export function PlacementDialog({
                   className={stylex.props(styles.clear).className}
                   onClick={() => setChosen(new Map())}
                 >
-                  {format(m.placementClear)}
+                  {m.placement_clear()}
                 </Button>
               )}
               <span {...stylex.props(styles.pages)}>
                 <CursorPager
                   testId="placement-pager"
-                  label={format(m.rosterPagerLabel)}
-                  previousLabel={format(m.previousPage)}
-                  nextLabel={format(m.nextPage)}
+                  label={m.roster_pager()}
+                  previousLabel={m.action_previousPage()}
+                  nextLabel={m.action_nextPage()}
                   page={pageIndex + 1}
                   hasNext={nextCursor !== null}
                   disabled={differences.isFetching}
@@ -404,7 +403,7 @@ export function PlacementDialog({
           {quiet && pageIndex === 0 ? (
             // nothing to decide: the way out, not two choices about nobody
             <Button variant="outline" onClick={onClose}>
-              {format(commonMessages.close)}
+              {commonMessages.action_close()}
             </Button>
           ) : (
             <>
@@ -413,10 +412,10 @@ export function PlacementDialog({
                 disabled={pending || selected.length === 0}
                 onClick={() => decide(selected, 'keep')}
               >
-                {format(m.placementKeepSelected)}
+                {m.placement_keepSelected()}
               </Button>
               <Button disabled={pending || !syncable} onClick={() => decide(selected, 'sync')}>
-                {format(m.placementSyncSelected)}
+                {m.placement_syncSelected()}
               </Button>
             </>
           )}
@@ -446,7 +445,6 @@ function DifferenceRow({
   onToggle: () => void
   onDecide: (decision: 'sync' | 'keep') => void
 }) {
-  const { format } = useI18n()
   const typed = row.changes.includes('user-type')
   const decidable = row.observedFingerprint !== null
   // the way down to them, and their kind after it where the kind is what
@@ -479,7 +477,7 @@ function DifferenceRow({
           <Checkbox
             checked={chosen}
             disabled={disabled}
-            aria-label={format(m.placementSelectOne, { name: row.displayName })}
+            aria-label={m.placement_selectOne({ name: row.displayName })}
             onCheckedChange={onToggle}
           />
         )}
@@ -492,27 +490,27 @@ function DifferenceRow({
           )}
           {row.changes.map((change) => (
             <Badge key={change} variant="secondary">
-              {format(CHANGE_LABELS[change])}
+              {CHANGE_LABELS[change]()}
             </Badge>
           ))}
         </div>
         <dl {...stylex.props(styles.sides)}>
-          <dt {...stylex.props(styles.side)}>{format(m.placementRound)}</dt>
+          <dt {...stylex.props(styles.side)}>{m.placement_round()}</dt>
           <dd {...stylex.props(styles.where)}>{said(row.frozen)}</dd>
-          <dt {...stylex.props(styles.side)}>{format(m.placementCurrent)}</dt>
+          <dt {...stylex.props(styles.side)}>{m.placement_current()}</dt>
           <dd {...stylex.props(styles.where, styles.whereNow)}>
             {row.unavailable !== null
-              ? format(UNAVAILABLE_LABELS[row.unavailable])
+              ? UNAVAILABLE_LABELS[row.unavailable]()
               : row.current !== null
                 ? said(row.current)
-                : format(m.placementBeyond)}
+                : m.placement_beyond()}
           </dd>
         </dl>
         {row.unavailable !== null && (
-          <span {...stylex.props(styles.aside)}>{format(m.placementUnavailableHint)}</span>
+          <span {...stylex.props(styles.aside)}>{m.placement_unavailableHint()}</span>
         )}
         {row.currentBeyondReach && (
-          <span {...stylex.props(styles.aside)}>{format(m.placementBeyondHint)}</span>
+          <span {...stylex.props(styles.aside)}>{m.placement_beyondHint()}</span>
         )}
         {/* what syncing would cost them, said before anybody presses it */}
         {row.canSync && row.closedBySync !== null && row.closedBySync > 0 && (
@@ -522,7 +520,7 @@ function DifferenceRow({
             {...stylex.props(styles.cost)}
           >
             <TriangleAlertIcon aria-hidden {...stylex.props(styles.costMark)} />
-            {format(m.placementUnfileable, { count: row.closedBySync })}
+            {m.placement_unfileable({ count: row.closedBySync })}
           </span>
         )}
         {decidable && (
@@ -533,11 +531,11 @@ function DifferenceRow({
               disabled={disabled}
               onClick={() => onDecide('keep')}
             >
-              {format(m.placementKeep)}
+              {m.placement_keep()}
             </Button>
             {row.canSync && (
               <Button size="sm" disabled={disabled} onClick={() => onDecide('sync')}>
-                {format(m.placementSync)}
+                {m.placement_sync()}
               </Button>
             )}
           </div>

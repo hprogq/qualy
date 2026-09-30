@@ -9,7 +9,7 @@ import { Button } from '@qualy/ui/button'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@qualy/ui/tooltip'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentApi } from '../api.ts'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import { inZone, useBatchZone } from '../batch/zone.ts'
 import { EntryDetail } from './EntryDetail.tsx'
 import { ReasonDialog } from '../items/ReasonDialog.tsx'
@@ -18,6 +18,7 @@ import { entryRefusalReason } from './refusals.ts'
 import { RedetermineDialog, type RedetermineInput } from './RedetermineDialog.tsx'
 import type { EntryDto, ItemDto } from './model.ts'
 import type { EntryLine } from './workspace/model.ts'
+import * as m from '#messages'
 
 // The staff drawer: somebody else's claim, read in full, with the two acts
 // that correct it.
@@ -127,7 +128,6 @@ export function ManagedEntrySheet({
   /** how the claim reads in its list, heading the drawer */
   summary?: EntryLine
 }) {
-  const { format } = useI18n()
   const [asking, setAsking] = useState<'return-for-revision' | 'void' | null>(null)
   const [correcting, setCorrecting] = useState<'reopen' | 'redetermine' | null>(null)
   // a correction offered but not open now carries the server's reason; the
@@ -135,12 +135,10 @@ export function ManagedEntrySheet({
   // and points to re-determining only for a reader who can re-determine now
   const why = (reason: string | null) =>
     reason === 'no-appeal-route'
-      ? format(
-          corrections?.redetermine.state === 'available'
-            ? m.staffReopenNoRoute
-            : m.staffReopenNoRouteOnly,
-        )
-      : format(entryRefusalReason(reason ?? '') ?? m.refuseOther)
+      ? (corrections?.redetermine.state === 'available'
+          ? m.staff_reopenNoRoute
+          : m.staff_reopenNoRouteOnly)()
+      : (entryRefusalReason(reason ?? '') ?? m.entry_refuseOther)()
   // Which correction fits is a fact about where the claim came from. A
   // participant's own filing is theirs to change, so it goes back to them; an
   // administrative record has no author to return it to, so the fix is to
@@ -190,7 +188,7 @@ export function ManagedEntrySheet({
               {offersRedetermine && (
                 <CorrectionKey
                   act="redetermine"
-                  label={format(m.staffRedetermine)}
+                  label={m.staff_redetermine()}
                   blocked={
                     corrections.redetermine.state === 'blocked'
                       ? why(corrections.redetermine.reason)
@@ -203,7 +201,7 @@ export function ManagedEntrySheet({
               {offersReopen && (
                 <CorrectionKey
                   act="reopen"
-                  label={format(m.staffReopen)}
+                  label={m.staff_reopen()}
                   blocked={
                     corrections.reopen.state === 'blocked' ? why(corrections.reopen.reason) : null
                   }
@@ -219,14 +217,14 @@ export function ManagedEntrySheet({
                   className={stylex.props(styles.ghostInk).className}
                   onClick={() => setAsking('void')}
                 >
-                  {format(m.staffVoidEntry)}
+                  {m.staff_voidEntry()}
                 </Button>
               )}
               {returnable && (
                 <CorrectionKey
                   act="return"
                   variant="default"
-                  label={format(m.staffReturnEntry)}
+                  label={m.staff_returnEntry()}
                   blocked={returnBlocked}
                   busy={busy}
                   onPress={() => setAsking('return-for-revision')}
@@ -241,9 +239,9 @@ export function ManagedEntrySheet({
           acts are things somebody will have to account for later */}
       <ReasonDialog
         open={asking !== null}
-        title={format(asking === 'void' ? m.staffVoidTitle : m.staffReturnTitle)}
-        description={format(asking === 'void' ? m.staffVoidHint : m.staffReturnHint)}
-        confirmLabel={format(asking === 'void' ? m.staffVoidEntry : m.staffReturnEntry)}
+        title={(asking === 'void' ? m.staff_voidTitle : m.staff_returnTitle)()}
+        description={(asking === 'void' ? m.staff_voidHint : m.staff_returnHint)()}
+        confirmLabel={(asking === 'void' ? m.staff_voidEntry : m.staff_returnEntry)()}
         busy={busy}
         onConfirm={(reason) => {
           const act = asking
@@ -254,9 +252,9 @@ export function ManagedEntrySheet({
       />
       <ReasonDialog
         open={correcting === 'reopen'}
-        title={format(m.staffReopenTitle)}
-        description={format(m.staffReopenHint)}
-        confirmLabel={format(m.staffReopen)}
+        title={m.staff_reopenTitle()}
+        description={m.staff_reopenHint()}
+        confirmLabel={m.staff_reopen()}
         busy={busy}
         onConfirm={(reason) => {
           setCorrecting(null)
@@ -360,7 +358,7 @@ function Determination({
   itemId: string
 }) {
   const query = useApiQuery(assessmentApi)
-  const { format, locale } = useI18n()
+  const { locale } = useI18n()
   const zone = useBatchZone()
   const contract = useQuery({
     ...query.assessment.getRecognitionContract.queryOptions({ params: { itemId } }),
@@ -371,8 +369,8 @@ function Determination({
   if (recognition === null) {
     return (
       <div {...stylex.props(styles.card)} data-testid="entry-recognition" data-state="none">
-        <p {...stylex.props(styles.cardTitle)}>{format(m.recognitionTitle)}</p>
-        <p {...stylex.props(styles.quiet)}>{format(m.recognitionNone)}</p>
+        <p {...stylex.props(styles.cardTitle)}>{m.recognition_title()}</p>
+        <p {...stylex.props(styles.quiet)}>{m.recognition_none()}</p>
       </div>
     )
   }
@@ -394,7 +392,7 @@ function Determination({
           kindOf(schema) === 'choice'
             ? choiceLabel(schema as never, String(value), locale)
             : typeof value === 'boolean'
-              ? format(value ? m.recognitionYes : m.recognitionNo)
+              ? (value ? m.recognition_yes : m.recognition_no)()
               : String(value),
       },
     ]
@@ -422,14 +420,14 @@ function Determination({
       data-by-panel={recognition.byPanel}
     >
       <div {...stylex.props(styles.cardHead)}>
-        <p {...stylex.props(styles.cardTitle)}>{format(m.recognitionTitle)}</p>
-        <Badge variant="outline">{format(sourceLabelOf(recognition.source))}</Badge>
+        <p {...stylex.props(styles.cardTitle)}>{m.recognition_title()}</p>
+        <Badge variant="outline">{sourceLabelOf(recognition.source)()}</Badge>
         <span {...stylex.props(styles.spacer)} />
         <span {...stylex.props(styles.cardWhen)}>
           {recognition.byPanel
-            ? format(m.recognitionByPanel, { when })
-            : format(m.recognitionBy, {
-                who: recognition.createdByName ?? format(m.eventSomebody),
+            ? m.recognition_byPanel({ when })
+            : m.recognition_by({
+                who: recognition.createdByName ?? m.event_somebody(),
                 when,
               })}
         </span>
@@ -451,11 +449,11 @@ function Determination({
         // version accuses the round of something that never happened.
         !contract.isPending && (
           <p {...stylex.props(styles.quiet)}>
-            {format(Object.keys(values).length > 0 ? m.recognitionOpaque : m.recognitionNoValues)}
+            {(Object.keys(values).length > 0 ? m.recognition_opaque : m.recognition_noValues)()}
           </p>
         )
       )}
-      {stale && <p {...stylex.props(styles.stale)}>{format(m.recognitionStale)}</p>}
+      {stale && <p {...stylex.props(styles.stale)}>{m.recognition_stale()}</p>}
     </div>
   )
 }

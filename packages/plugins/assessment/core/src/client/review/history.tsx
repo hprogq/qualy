@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { useLoadFailure } from '@qualy/web-runtime'
 import { AsyncSection } from '@qualy/ui/admin'
 import { Badge } from '@qualy/ui/badge'
@@ -13,11 +13,13 @@ import { Skeleton } from '@qualy/ui/skeleton'
 import { useIsBelow } from '@qualy/ui/use-mobile'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import { reviewOutcomeMessage } from './events.ts'
 import { timeLabel, useEntryHistory, type HistoryRevision } from './model.ts'
 import { useBatchZone } from '../batch/zone.ts'
 import { useFinePointer } from './pointer.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // Choosing which version of a filing to read the judged one against.
 //
@@ -270,7 +272,7 @@ export function VersionPicker({
   onPick: (revisionId: string) => void
   onClose: () => void
 }) {
-  const { format, locale } = useI18n()
+  const { locale } = useI18n()
   const loadFailure = useLoadFailure()
   const zone = useBatchZone()
   // a phone gets the sheet where the thumb is; a keyboard gets the digits
@@ -362,10 +364,10 @@ export function VersionPicker({
       >
         <SheetHeader className={stylex.props(styles.head).className}>
           <SheetTitle className={stylex.props(styles.headTitle).className}>
-            {format(m.reviewVersionsTitle)}
+            {m.review_versionsTitle()}
           </SheetTitle>
           <p {...stylex.props(styles.subtitle)}>
-            {format(m.reviewVersionsSubtitle, {
+            {m.review_versionsSubtitle({
               name: participantName,
               item: itemTitle,
               count: revisions.length,
@@ -380,13 +382,13 @@ export function VersionPicker({
                 history.error ? loadFailure.of(history.error, { missing: [ENTRY_NOT_FOUND] }) : null
               }
               retrying={history.isFetching}
-              loadingLabel={format(commonMessages.loading)}
-              retryLabel={format(commonMessages.retry)}
+              loadingLabel={commonMessages.state_loading()}
+              retryLabel={commonMessages.action_retry()}
               onRetry={() => void history.refetch()}
               skeleton={<Skeleton className={stylex.props(styles.skeleton).className} />}
             >
               {revisions.length === 0 ? (
-                <p {...stylex.props(styles.blank)}>{format(m.reviewCompareBlank)}</p>
+                <p {...stylex.props(styles.blank)}>{m.review_compareBlank()}</p>
               ) : (
                 <ul {...stylex.props(styles.list)}>
                   {listed.map((revision) => {
@@ -428,7 +430,7 @@ export function VersionPicker({
                                 out of room rather than saying anything */}
                             <span {...stylex.props(styles.rowLine)}>
                               <span {...stylex.props(styles.versionName)}>
-                                {format(m.reviewVersionName, { no: revision.revisionNo })}
+                                {m.review_versionName({ no: revision.revisionNo })}
                               </span>
                               <span {...stylex.props(styles.versionWhen)}>
                                 {timeLabel(revision.createdAt, locale, zone)}
@@ -436,7 +438,7 @@ export function VersionPicker({
                             </span>
                             {revision.note !== null && (
                               <span {...stylex.props(styles.versionNote)}>
-                                {format(m.entriesNoteOwn, { text: revision.note })}
+                                {m.entries_noteOwn({ text: revision.note })}
                               </span>
                             )}
                           </span>
@@ -446,11 +448,11 @@ export function VersionPicker({
                                 variant="outline"
                                 className={stylex.props(styles.chipNowrap).className}
                               >
-                                {format(m.reviewVersionJudged)}
+                                {m.review_versionJudged()}
                               </Badge>
                             ) : revision.id === chosenId ? (
                               <Badge className={stylex.props(styles.chipNowrap).className}>
-                                {format(m.reviewVersionComparing)}
+                                {m.review_versionComparing()}
                               </Badge>
                             ) : (
                               ended !== null && (
@@ -459,7 +461,7 @@ export function VersionPicker({
                                   className={stylex.props(styles.outcomeChip).className}
                                 >
                                   <span {...stylex.props(styles.truncate)}>
-                                    {format(reviewOutcomeMessage(ended.outcome))}
+                                    {reviewOutcomeMessage(ended.outcome)()}
                                     {/* who decided is the second fact here, and
                                         the first one is what the reader came
                                         for: a phone keeps the verdict */}
@@ -483,14 +485,14 @@ export function VersionPicker({
             at 390px left the confirm button too narrow to say which version
             it would confirm */}
         <div {...stylex.props(styles.foot)}>
-          <p {...stylex.props(styles.footHint)}>{format(m.reviewVersionsFoot)}</p>
+          <p {...stylex.props(styles.footHint)}>{m.review_versionsFoot()}</p>
           <div {...stylex.props(styles.footActs)}>
             <Button
               variant="outline"
               className={stylex.props(styles.footButton).className}
               onClick={onClose}
             >
-              {format(commonMessages.close)}
+              {commonMessages.action_close()}
             </Button>
             <Button
               className={stylex.props(styles.footButton).className}
@@ -498,8 +500,8 @@ export function VersionPicker({
               onClick={() => picked !== undefined && onPick(picked.id)}
             >
               {picked === undefined
-                ? format(m.reviewVersionsConfirmNone)
-                : format(m.reviewVersionsConfirm, { no: picked.revisionNo })}
+                ? m.review_versionsConfirmNone()
+                : m.review_versionsConfirm({ no: picked.revisionNo })}
               {fine && picked !== undefined && <Kbd>⌘↵</Kbd>}
             </Button>
           </div>

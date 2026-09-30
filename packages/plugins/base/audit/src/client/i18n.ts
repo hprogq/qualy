@@ -1,102 +1,15 @@
-import { defineMessage, definePluginMessages } from '@qualy/i18n-contract'
+import type { Message } from '@qualy/i18n-contract'
+import * as m from '#messages'
 
-// The audit screen's own words, plus the labels the server sends by
-// reference: the permission this plugin declares and the navigation entry.
+// What this plugin's screens say is in messages/<locale>.json, called as
+// functions from #messages where it is said. What is left here is the
+// failures its api can answer with, each with its sentence.
 
-const copyValueMessage = defineMessage<{ label: string }>()({
-  id: 'audit/detail/copy',
-  defaultMessage: 'Copy {label}',
-})
-const i18n = definePluginMessages({
-  namespace: 'audit',
-  messages: {
-    'permission.audit.event.read': {
-      id: 'audit/permission/event-read',
-      defaultMessage: 'View the audit log',
-    },
-    permissionGroup: {
-      id: 'audit/permission-group/audit',
-      defaultMessage: 'Audit',
-    },
-    navGroup: { id: 'audit/nav-group/records', defaultMessage: 'Audit' },
-    anyActor: { id: 'audit/filter/any-actor', defaultMessage: 'Anybody' },
-    oneActor: { id: 'audit/filter/one-actor', defaultMessage: 'One person' },
-    pickActor: { id: 'audit/filter/pick-actor', defaultMessage: 'Whose operations' },
-    pickActorUnavailableTitle: {
-      id: 'audit/filter/pick-actor-unavailable-title',
-      defaultMessage: 'People cannot be looked up here',
-    },
-    pickActorUnavailable: {
-      id: 'audit/filter/pick-actor-unavailable',
-      defaultMessage: 'Open an event to read only its actor\u2019s operations',
-    },
-    onlyThisActor: { id: 'audit/detail/only-this-actor', defaultMessage: 'Only this person' },
-    copyValue: copyValueMessage,
-    navigation: {
-      id: 'audit/navigation/events',
-      defaultMessage: 'Audit log',
-    },
-    title: {
-      id: 'audit/events/title',
-      defaultMessage: 'Audit log',
-    },
-    hint: {
-      id: 'audit/events/hint',
-      defaultMessage: 'Administrative operations, newest first.',
-    },
-    anyAction: {
-      id: 'audit/events/any-action',
-      defaultMessage: 'Every action',
-    },
-    anyOutcome: {
-      id: 'audit/events/any-outcome',
-      defaultMessage: 'Every outcome',
-    },
-    columnTime: { id: 'audit/events/column-time', defaultMessage: 'Time' },
-    columnActor: { id: 'audit/events/column-actor', defaultMessage: 'Operator' },
-    columnAction: { id: 'audit/events/column-action', defaultMessage: 'Action' },
-    columnTarget: { id: 'audit/events/column-target', defaultMessage: 'Object' },
-    columnOutcome: { id: 'audit/events/column-outcome', defaultMessage: 'Outcome' },
-    columnIp: { id: 'audit/events/column-ip', defaultMessage: 'IP' },
-    outcomeSuccess: { id: 'audit/events/outcome-success', defaultMessage: 'Success' },
-    outcomeDenied: { id: 'audit/events/outcome-denied', defaultMessage: 'Denied' },
-    outcomeFailure: { id: 'audit/events/outcome-failure', defaultMessage: 'Failure' },
-    actorSystem: { id: 'audit/events/actor-system', defaultMessage: 'System' },
-    actorAnonymous: { id: 'audit/events/actor-anonymous', defaultMessage: 'Anonymous' },
-    empty: {
-      id: 'audit/events/empty',
-      defaultMessage: 'No events match the current filters.',
-    },
-    loadedCount: {
-      id: 'audit/events/loaded-count',
-      defaultMessage: '{count, plural, one {# event listed} other {# events listed}}',
-    },
-    loadMore: { id: 'audit/events/load-more', defaultMessage: 'Load more' },
-    // one person's part of the trail, as a section of their record
-    userEvents: { id: 'audit/user-events/title', defaultMessage: 'Audit events' },
-    userEventsAbout: { id: 'audit/user-events/about', defaultMessage: 'Done to them' },
-    userEventsBy: { id: 'audit/user-events/by', defaultMessage: 'Done by them' },
-    userEventsView: { id: 'audit/user-events/view', defaultMessage: 'Which events' },
-    userEventsEmptyAbout: {
-      id: 'audit/user-events/empty-about',
-      defaultMessage: 'Nothing has been done to this account yet',
-    },
-    userEventsEmptyBy: {
-      id: 'audit/user-events/empty-by',
-      defaultMessage: 'This user has not done anything recorded yet',
-    },
-    detailRequest: { id: 'audit/events/detail-request', defaultMessage: 'Request' },
-    detailTrace: { id: 'audit/events/detail-trace', defaultMessage: 'Trace' },
-    detailSource: { id: 'audit/events/detail-source', defaultMessage: 'Source' },
-    detailReason: { id: 'audit/events/detail-reason', defaultMessage: 'Reason' },
-    detailUserAgent: { id: 'audit/events/detail-user-agent', defaultMessage: 'Browser' },
-    detailDetails: { id: 'audit/events/detail-details', defaultMessage: 'Details' },
-  },
-  locales: {
-    'zh-CN': () => import('./locales/zh-CN.ts'),
-  },
-})
-
-export const auditMessages = i18n.messages
-export const catalogs = i18n.catalogs
-export const errorMessages = i18n.errorMessages
+// the messages the server names over the wire, by the id it sends
+export const wireMessages: Record<string, Message> = {
+  'audit/nav-group/records': m.navGroup_records,
+  'audit/navigation/events': m.navigation_events,
+  'audit/permission-group/audit': m.permissionGroup_audit,
+  'audit/permission/event-read': m.permission_eventRead,
+  'audit/user-events/title': m.userEvents_title,
+}

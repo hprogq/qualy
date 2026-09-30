@@ -12,8 +12,13 @@
     "./client/UserDetailShell": "./src/client/UserDetailShell.tsx",
     "./client/AccountShell": "./src/client/AccountShell.tsx",
     "./client/WorkspaceShell": "./src/client/WorkspaceShell.tsx",
-    "./client/i18n": "./src/client/i18n.ts",
     "./package.json": "./package.json"
+  },
+  "imports": {
+    "#messages": {
+      "types": "./.qualy/messages.d.ts",
+      "default": "./.qualy/messages.js"
+    }
   },
   "peerDependencies": {
     "react": "catalog:"

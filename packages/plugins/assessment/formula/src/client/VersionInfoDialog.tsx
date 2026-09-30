@@ -10,7 +10,7 @@ import { Textarea } from '@qualy/ui/textarea'
 import { Field, FormDialog } from '@qualy/ui/admin'
 import { toast } from '@qualy/ui/toast'
 import { formulaApi } from './api.ts'
-import { formulaMessages as m } from './i18n.ts'
+import * as m from '#messages'
 
 // What a publication is called, and why it was made - after the fact.
 //
@@ -53,7 +53,7 @@ export function VersionInfoDialog({
 }) {
   const api = useApi(formulaApi)
   const run = useRunApi()
-  const { format, formatError } = useI18n()
+  const { formatError } = useI18n()
   const [name, setName] = useState('')
   const [notes, setNotes] = useState('')
   const [failure, setFailure] = useState<string | null>(null)
@@ -82,7 +82,7 @@ export function VersionInfoDialog({
     },
     onMutate: () => setFailure(null),
     onSuccess: () => {
-      toast.success(format(m.versionInfoSaved))
+      toast.success(m.release_infoSaved())
       onSaved()
       onClose()
     },
@@ -92,25 +92,25 @@ export function VersionInfoDialog({
   return (
     <FormDialog
       open={open && version !== null}
-      title={format(m.versionInfoTitle)}
+      title={m.release_infoTitle()}
       onClose={onClose}
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>
-            {format(m.cancel)}
+            {m.common_cancel()}
           </Button>
           <Button
             data-testid="formula-version-info-save"
             disabled={save.isPending || name.trim() === ''}
             onClick={() => save.mutate()}
           >
-            {format(m.save)}
+            {m.editor_save()}
           </Button>
         </>
       }
     >
       <div data-testid="formula-version-info" {...stylex.props(styles.fields)}>
-        <Field label={format(m.releaseNameLabel)} required>
+        <Field label={m.publish_name()} required>
           {(id) => (
             <Input
               id={id}
@@ -121,7 +121,7 @@ export function VersionInfoDialog({
             />
           )}
         </Field>
-        <Field label={format(m.releaseNotesLabel)}>
+        <Field label={m.publish_notes()}>
           {(id) => (
             <Textarea
               id={id}
@@ -132,7 +132,7 @@ export function VersionInfoDialog({
             />
           )}
         </Field>
-        <p {...stylex.props(styles.says)}>{format(m.versionInfoScope)}</p>
+        <p {...stylex.props(styles.says)}>{m.release_infoScope()}</p>
         {failure === null ? null : (
           <p
             role="alert"

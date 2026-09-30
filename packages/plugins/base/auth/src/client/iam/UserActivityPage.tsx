@@ -1,14 +1,15 @@
 import { useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { useApiQuery, useLoadFailure, usePageRouteParams } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { AsyncSection } from '@qualy/ui/admin'
 import { ResourceState } from '@qualy/ui/resource-state'
 import { EditorSkeleton, SectionHead } from '@qualy/ui/screen'
-import { iamMessages as m } from '../i18n.ts'
+
 import { authApi } from '../api.ts'
 import { SessionsCard, SignInRecords } from '../account/security-records.tsx'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // How one person comes in, as whoever administers their account reads it:
 // where they are signed in now, with the way to end it, and every attempt to
@@ -25,7 +26,7 @@ const styles = stylex.create({
 export default function UserActivityPage() {
   const { userId } = usePageRouteParams('userId')
   const query = useApiQuery(authApi)
-  const { format } = useI18n()
+
   // a reading of this section that failed; the person not being there is the banner's to say
   const describe = useLoadFailure()
   const user = useQuery(query.identity.getUser.queryOptions({ params: { userId } }))
@@ -35,12 +36,12 @@ export default function UserActivityPage() {
 
   return (
     <div {...stylex.props(styles.page)} data-testid="user-activity">
-      <SectionHead title={format(m.activityTitle)} />
+      <SectionHead title={m.activity_title()} />
       <AsyncSection
         pending={user.isPending}
         error={user.isError ? describe.of(user.error) : null}
-        loadingLabel={format(commonMessages.loading)}
-        retryLabel={format(commonMessages.retry)}
+        loadingLabel={commonMessages.state_loading()}
+        retryLabel={commonMessages.action_retry()}
         onRetry={() => void user.refetch()}
         skeleton={<EditorSkeleton />}
       >
@@ -58,8 +59,8 @@ export default function UserActivityPage() {
               size="section"
               framed
               data-testid="user-activity-denied"
-              title={format(m.personActivityDenied)}
-              description={format(m.personActivityDeniedHint)}
+              title={m.person_activityDenied()}
+              description={m.person_activityDeniedHint()}
             />
           ))}
       </AsyncSection>

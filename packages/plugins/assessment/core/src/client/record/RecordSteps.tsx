@@ -14,7 +14,7 @@ import { Input } from '@qualy/ui/input'
 import { toast } from '@qualy/ui/toast'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentApi } from '../api.ts'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import { EvidenceForm, type EvidencePayload } from '../entry/EvidenceForm.tsx'
 import { fieldsOf, type ItemDto } from '../entry/model.ts'
 import { recognitionProblemText } from '../review/recognition.ts'
@@ -27,6 +27,7 @@ import {
   WizardRecapRow,
   WizardSection,
 } from './wizard.tsx'
+import * as m from '#messages'
 
 // The two moves after the question has been chosen: fill the finding in,
 // then read it back before it counts.
@@ -126,12 +127,12 @@ interface PreviewResult {
 /** the server's word for a person-level refusal, in the reader's */
 const blockerMessage = (reason: string) =>
   reason === 'self-record-refused'
-    ? m.recordBlockerSelf
+    ? m.record_blockerSelf
     : reason === 'max-entries-reached' || reason === 'entry-ceiling-reached'
-      ? m.recordBlockerQuota
+      ? m.record_blockerQuota
       : reason === 'account-ceiling-reached'
-        ? m.recordBlockerRoundQuota
-        : m.recordBlockerOther
+        ? m.record_blockerRoundQuota
+        : m.record_blockerOther
 
 /** the recognition contract as the wire serves it to this form */
 export interface RecognitionWire {
@@ -170,7 +171,7 @@ export function RecordSteps({
   const api = useApi(assessmentApi)
   const query = useApiQuery(assessmentApi)
   const run = useRunApi()
-  const { format, formatError, locale } = useI18n()
+  const { formatError, locale } = useI18n()
   const words = usePickerWords()
   const [target, setTarget] = useState<RecordTarget | null>(null)
   const [payload, setPayload] = useState<EvidencePayload>({})
@@ -303,26 +304,26 @@ export function RecordSteps({
   for (const issue of issues) {
     if (problems.has(issue.recognitionId)) continue
     const schema = fields.find((field) => field.id === issue.recognitionId)?.schema
-    problems.set(issue.recognitionId, recognitionProblemText(format, schema, issue.reason))
+    problems.set(issue.recognitionId, recognitionProblemText(schema, issue.reason))
   }
 
   // Named in the order the sheet is filled, so the state says the first
   // thing to go and do rather than all of them at once.
   const missing =
     target === null
-      ? m.recordNeedsTargets
+      ? m.record_needsTargets
       : uploading
-        ? m.recordNeedsUpload
+        ? m.record_needsUpload
         : !evidenceValid
-          ? m.recordNeedsMaterial
+          ? m.record_needsMaterial
           : !recognitionReady
-            ? m.recordNeedsResult
+            ? m.record_needsResult
             : issues.length > 0
-              ? m.recordNeedsCorrection
+              ? m.record_needsCorrection
               : basis.trim() === ''
-                ? m.recordNeedsBasis
+                ? m.record_needsBasis
                 : refused !== null
-                  ? m.recordNeedsFormula
+                  ? m.record_needsFormula
                   : null
 
   const check = useMutation({
@@ -363,7 +364,7 @@ export function RecordSteps({
         }),
       ),
     onSuccess: (done) => {
-      toast.success(format(m.recordDoneMany, { count: done.recordedCount }))
+      toast.success(m.record_doneMany({ count: done.recordedCount }))
       onRecorded()
     },
     onError: (error) => {
@@ -400,7 +401,7 @@ export function RecordSteps({
           kindOf(field.schema) === 'choice'
             ? choiceLabel(field.schema as never, String(value), locale)
             : typeof value === 'boolean'
-              ? format(value ? m.recognitionYes : m.recognitionNo)
+              ? (value ? m.recognition_yes : m.recognition_no)()
               : String(value),
       },
     ]
@@ -410,17 +411,17 @@ export function RecordSteps({
     return (
       <>
         <WizardBody>
-          <WizardNotice>{format(m.recordEffectNotice)}</WizardNotice>
-          <WizardSection title={format(m.recordCheckTitle)}>
+          <WizardNotice>{m.record_effectNotice()}</WizardNotice>
+          <WizardSection title={m.record_checkTitle()}>
             <WizardRecap>
-              <WizardRecapRow term={format(m.recordActItem)}>{item.title}</WizardRecapRow>
-              <WizardRecapRow term={format(m.recordTargets)}>
+              <WizardRecapRow term={m.record_actItem()}>{item.title}</WizardRecapRow>
+              <WizardRecapRow term={m.record_targets()}>
                 <span
                   {...stylex.props(styles.count)}
                   data-testid="record-preview"
                   data-eligible={seen.eligibleCount}
                 >
-                  {format(m.recordTargetsSummary, { count: seen.eligibleCount })}
+                  {m.record_targetsSummary({ count: seen.eligibleCount })}
                 </span>
               </WizardRecapRow>
               {determined.map((one) => (
@@ -428,20 +429,20 @@ export function RecordSteps({
                   {one.text}
                 </WizardRecapRow>
               ))}
-              <WizardRecapRow term={format(m.recordBasis)}>{basis.trim()}</WizardRecapRow>
+              <WizardRecapRow term={m.record_basis()}>{basis.trim()}</WizardRecapRow>
             </WizardRecap>
 
             {seen.blocked.length > 0 && (
               <div {...stylex.props(styles.blockedBox)}>
                 <span {...stylex.props(styles.blockedCount)} data-blocked={seen.blocked.length}>
-                  {format(m.recordTargetsBlocked, { count: seen.blocked.length })}
+                  {m.record_targetsBlocked({ count: seen.blocked.length })}
                 </span>
                 <ul {...stylex.props(styles.blockedList)}>
                   {seen.blocked.map((one) => (
                     <li key={one.participantId} {...stylex.props(styles.blockedRow)}>
                       <span {...stylex.props(styles.blockedWho)}>{one.displayName}</span>
                       <span {...stylex.props(styles.blockedWhy)}>
-                        {format(blockerMessage(one.reason))}
+                        {blockerMessage(one.reason)()}
                       </span>
                     </li>
                   ))}
@@ -460,29 +461,27 @@ export function RecordSteps({
                     }}
                     data-testid="record-drop-blocked"
                   >
-                    {format(m.recordDropBlockedMany, { count: seen.blocked.length })}
+                    {m.record_dropBlockedMany({ count: seen.blocked.length })}
                   </Button>
-                  <span {...stylex.props(styles.blockedHint)}>
-                    {format(m.recordDropBlockedHint)}
-                  </span>
+                  <span {...stylex.props(styles.blockedHint)}>{m.record_dropBlockedHint()}</span>
                 </span>
               </div>
             )}
           </WizardSection>
         </WizardBody>
         <WizardFoot
-          status={seen.blocked.length > 0 ? format(m.recordNeedsBlocked) : undefined}
+          status={seen.blocked.length > 0 ? m.record_needsBlocked() : undefined}
           blocked={seen.blocked.length > 0}
         >
           <Button variant="outline" onClick={() => onGo(1)} data-testid="record-step-back">
-            {format(m.recordStepBack)}
+            {m.record_stepBack()}
           </Button>
           <Button
             disabled={record.isPending || seen.eligibleCount === 0 || seen.blocked.length > 0}
             onClick={() => record.mutate()}
             data-testid="record-submit"
           >
-            {format(m.recordSubmitMany, { count: seen.eligibleCount })}
+            {m.record_submitMany({ count: seen.eligibleCount })}
           </Button>
         </WizardFoot>
       </>
@@ -492,14 +491,11 @@ export function RecordSteps({
   return (
     <>
       <WizardBody>
-        <WizardSection title={format(m.recordTargets)} note={format(m.recordTargetsNote)}>
+        <WizardSection title={m.record_targets()} note={m.record_targetsNote()}>
           <RecordTargets batchId={batchId} value={target} onChange={chooseTargets} />
         </WizardSection>
 
-        <WizardSection
-          title={format(m.recordSectionEvidence)}
-          note={format(m.recordSectionEvidenceNote)}
-        >
+        <WizardSection title={m.record_sectionEvidence()} note={m.record_sectionEvidenceNote()}>
           <EvidenceForm
             session={session}
             onValidityChange={setEvidenceValid}
@@ -518,10 +514,7 @@ export function RecordSteps({
         </WizardSection>
 
         {wire !== null && (
-          <WizardSection
-            title={format(m.recordRecognition)}
-            note={format(m.recordSectionResultNote)}
-          >
+          <WizardSection title={m.record_recognition()} note={m.record_sectionResultNote()}>
             <div data-testid="record-recognition">
               <ValueFieldsForm
                 words={words}
@@ -560,11 +553,11 @@ export function RecordSteps({
           </WizardSection>
         )}
 
-        <WizardSection title={format(m.recordBasis)}>
+        <WizardSection title={m.record_basis()}>
           {/* what it takes, and who ends up reading it, both belong under the
               box rather than in the label: a label is the control's name, and
               anything added to it is added to what the control is called */}
-          <Field label={format(m.recordBasis)} hideLabel hint={format(m.recordBasisHint)}>
+          <Field label={m.record_basis()} hideLabel hint={m.record_basisHint()}>
             {(id) => (
               <Input id={id} value={basis} onChange={(event) => setBasis(event.target.value)} />
             )}
@@ -572,16 +565,16 @@ export function RecordSteps({
           <Feedback message={problem} />
         </WizardSection>
       </WizardBody>
-      <WizardFoot status={format(missing ?? m.recordReadyToCheck)} blocked={missing !== null}>
+      <WizardFoot status={(missing ?? m.record_readyToCheck)()} blocked={missing !== null}>
         <Button variant="outline" onClick={() => onGo(0)} data-testid="record-step-back">
-          {format(m.recordStepBack)}
+          {m.record_stepBack()}
         </Button>
         <Button
           disabled={check.isPending || missing !== null}
           onClick={() => check.mutate(dropped)}
           data-testid="record-step-next"
         >
-          {format(m.recordStepNext)}
+          {m.record_stepNext()}
         </Button>
       </WizardFoot>
     </>
@@ -618,20 +611,19 @@ type ScoreState =
  * changes ground, because those are the states that also stop the act.
  */
 function RecordScore({ state }: { state: ScoreState }) {
-  const { format } = useI18n()
   const bad = state.kind === 'refused' || state.kind === 'issues'
   const words =
     state.kind === 'amount'
-      ? format(m.reviewPreviewStands)
+      ? m.review_previewStands()
       : state.kind === 'refused'
-        ? format(m.reviewPreviewRefused, { reason: state.reason })
+        ? m.review_previewRefused({ reason: state.reason })
         : state.kind === 'issues'
           ? state.words
           : state.kind === 'checking'
-            ? format(m.reviewPreviewChecking)
+            ? m.review_previewChecking()
             : state.kind === 'unavailable'
-              ? format(m.reviewPreviewUnavailable)
-              : format(m.reviewPreviewIncomplete)
+              ? m.review_previewUnavailable()
+              : m.review_previewIncomplete()
   return (
     <div
       {...stylex.props(styles.score, bad && styles.scoreBad)}
@@ -641,13 +633,13 @@ function RecordScore({ state }: { state: ScoreState }) {
       aria-live="polite"
     >
       <span {...stylex.props(styles.scoreText)}>
-        <span {...stylex.props(styles.scoreTitle)}>{format(m.reviewPreviewTitle)}</span>
+        <span {...stylex.props(styles.scoreTitle)}>{m.review_previewTitle()}</span>
         <span {...stylex.props(styles.scoreWords, bad && styles.scoreWordsBad)}>{words}</span>
       </span>
       {state.kind === 'amount' ? (
         <span {...stylex.props(styles.scoreFigure)}>
           <span {...stylex.props(styles.scoreAmount)}>{state.amount}</span>
-          <span {...stylex.props(styles.scoreUnit)}>{format(m.reviewPreviewUnit)}</span>
+          <span {...stylex.props(styles.scoreUnit)}>{m.review_previewUnit()}</span>
         </span>
       ) : (
         !bad && (

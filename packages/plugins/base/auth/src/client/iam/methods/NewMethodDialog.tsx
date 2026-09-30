@@ -7,9 +7,10 @@ import { Feedback, Field, FormDialog, useSettledCheck } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@qualy/ui/select'
-import { iamMessages as m } from '../../i18n.ts'
+
 import { authApi } from '../../api.ts'
 import type { EntranceKind } from './form-values.ts'
+import * as m from '#messages'
 
 // A new entrance: which kind, what it is called and where it answers. What
 // that kind needs to be told is filled in on the entrance itself, which opens
@@ -39,7 +40,7 @@ export function NewMethodDialog({
   const run = useRunApi()
   const query = useApiQuery(authApi)
   const queryClient = useQueryClient()
-  const { format, formatText, formatError } = useI18n()
+  const { formatText, formatError } = useI18n()
   const [type, setType] = useState('')
   const [name, setName] = useState('')
   const [code, setCode] = useState('')
@@ -47,7 +48,7 @@ export function NewMethodDialog({
   // an address another entrance answers at is the address's to fix
   const [taken, setTaken] = useState<string | null>(null)
   const shape = useSettledCheck(code, (typed) =>
-    ADDRESS.test(typed.trim()) ? null : format(m.methodCodeInvalid),
+    ADDRESS.test(typed.trim()) ? null : m.loginMethods_codeInvalid(),
   )
   const kind = kinds.find((one) => one.type === type) ?? (kinds.length === 1 ? kinds[0] : undefined)
 
@@ -88,15 +89,15 @@ export function NewMethodDialog({
   return (
     <FormDialog
       open={open}
-      title={format(m.methodNew)}
+      title={m.loginMethods_new()}
       onClose={onClose}
       footer={
         <>
           <Button variant="outline" onClick={onClose}>
-            {format(m.cancel)}
+            {m.action_cancel()}
           </Button>
           <Button type="submit" form="new-entrance" disabled={!ready || create.isPending}>
-            {format(m.create)}
+            {m.action_create()}
           </Button>
         </>
       }
@@ -112,11 +113,11 @@ export function NewMethodDialog({
       >
         <Feedback message={feedback} />
         {kinds.length > 1 && (
-          <Field label={format(m.providerKindLabel)} required>
+          <Field label={m.loginMethods_kind()} required>
             {(id, control) => (
               <Select value={type === '' ? undefined : type} onValueChange={setType}>
                 <SelectTrigger id={id} {...control}>
-                  <SelectValue placeholder={format(m.methodKindPick)} />
+                  <SelectValue placeholder={m.loginMethods_kindPick()} />
                 </SelectTrigger>
                 <SelectContent>
                   {kinds.map((one) => (
@@ -129,7 +130,7 @@ export function NewMethodDialog({
             )}
           </Field>
         )}
-        <Field label={format(m.nameLabel)} required hint={format(m.methodNameHint)}>
+        <Field label={m.field_name()} required hint={m.loginMethods_nameHint()}>
           {(id, control) => (
             <Input
               id={id}
@@ -140,9 +141,9 @@ export function NewMethodDialog({
           )}
         </Field>
         <Field
-          label={format(m.providerCodeLabel)}
+          label={m.loginMethods_code()}
           required
-          hint={format(m.methodCodeHint)}
+          hint={m.loginMethods_codeHintNew()}
           error={taken ?? shape.error}
         >
           {(id, control) => (

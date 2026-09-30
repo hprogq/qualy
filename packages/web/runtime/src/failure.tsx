@@ -1,11 +1,11 @@
 import { useState, type ReactNode } from 'react'
 import * as stylex from '@stylexjs/stylex'
-import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { Button } from '@qualy/ui/button'
 import { Spinner } from '@qualy/ui/spinner'
 import { ResourceState, type ResourceStateKind } from '@qualy/ui/resource-state'
 import { RotateCwIcon } from 'lucide-react'
+import * as commonMessages from '@qualy/web-i18n/messages'
 
 const nudge = stylex.keyframes({
   '0%, 100%': { transform: 'translateX(0)' },
@@ -51,7 +51,6 @@ export function Failure({
   /** further ways out, after the retry */
   actions?: readonly ReactNode[]
 }) {
-  const { format } = useI18n()
   // A retry either leaves - the page arrives - or comes back as this same
   // notice, freshly mounted in the same place, which looked like a press
   // that did nothing. So the press is shown before it is acted on, and a
@@ -78,7 +77,7 @@ export function Failure({
       >
         {/* the same seat before and during: the button does not grow */}
         {trying ? <Spinner aria-hidden /> : <RotateCwIcon aria-hidden />}
-        {format(commonMessages.retry)}
+        {commonMessages.action_retry()}
       </Button>
     )
   return (

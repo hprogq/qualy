@@ -3,14 +3,16 @@ import { CircleAlertIcon } from 'lucide-react'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { ConfirmDialog, Field, FormDialog, RadioGroup } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { DateTimePicker } from '@qualy/ui/date-time-picker'
 import { NativeSelect } from '@qualy/ui/native-select'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import { ZoneNote } from '../batch/BatchZone.tsx'
 import { inZone, useBatchZone } from '../batch/zone.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // The three decisions a plan asks for outside the table: give a phase a time,
 // enter it now, or take its time back. Each is short, focused and reversible
@@ -61,7 +63,7 @@ export function ScheduleDialog({
   onSchedule: () => void
   onStartNow: () => void
 }) {
-  const { format, locale } = useI18n()
+  const { locale } = useI18n()
   // the time is typed on the batch's clock: "00:00" is the school's midnight
   // whatever zone the device keeps
   const zone = useBatchZone()
@@ -81,31 +83,31 @@ export function ScheduleDialog({
   return (
     <FormDialog
       open={open}
-      title={format(m.scheduleTitle, { name: shown.name })}
-      description={format(m.scheduleBody)}
+      title={m.schedule_title({ name: shown.name })}
+      description={m.schedule_body()}
       onClose={onCancel}
       footer={
         <>
           <Button variant="outline" onClick={onCancel}>
-            {format(m.cancel)}
+            {m.action_cancel()}
           </Button>
           <Button
             disabled={pending || (start === 'later' && value === null)}
             onClick={start === 'now' ? onStartNow : onSchedule}
           >
-            {format(start === 'now' ? m.startNow : m.scheduleConfirm)}
+            {(start === 'now' ? m.schedule_startNow : m.schedule_confirm)()}
           </Button>
         </>
       }
     >
       {shown.canStartNow && (
         <RadioGroup
-          legend={format(m.startModeLegend)}
+          legend={m.schedule_mode()}
           name="start-mode"
           variant="cards"
           options={[
-            { value: 'later', label: format(m.startModeLater), hint: format(m.startModeLaterHint) },
-            { value: 'now', label: format(m.startNow), hint: format(m.startNowBody) },
+            { value: 'later', label: m.schedule_modeLater(), hint: m.schedule_modeLaterHint() },
+            { value: 'now', label: m.schedule_startNow(), hint: m.schedule_startNowBody() },
           ]}
           selected={start}
           onChange={(next) => setMode(next === 'now' ? 'now' : 'later')}
@@ -113,7 +115,7 @@ export function ScheduleDialog({
       )}
       {start === 'later' && (
         <Field
-          label={format(m.plannedStartLabel)}
+          label={m.schedule_plannedAt()}
           hint={
             <>
               <ZoneNote purpose="enter" at={value} />
@@ -123,7 +125,7 @@ export function ScheduleDialog({
                   data-moved-to={moved}
                   {...stylex.props(styles.skipped)}
                 >
-                  {format(m.zoneSkipped, {
+                  {m.zone_skipped({
                     time: new Date(moved).toLocaleString(locale, {
                       dateStyle: 'medium',
                       timeStyle: 'short',
@@ -142,14 +144,14 @@ export function ScheduleDialog({
               onChange={onChange}
               onSkippedTime={setMovedTo}
               timeZone={zone}
-              placeholder={format(m.pickDateTime)}
-              clearLabel={format(m.clearTime)}
-              hourLabel={format(commonMessages.clockHour)}
-              minuteLabel={format(commonMessages.clockMinute)}
-              secondLabel={format(commonMessages.clockSecond)}
+              placeholder={m.phase_pickDatetime()}
+              clearLabel={m.phase_clearTime()}
+              hourLabel={commonMessages.clock_hour()}
+              minuteLabel={commonMessages.clock_minute()}
+              secondLabel={commonMessages.clock_second()}
               localeTag={locale}
-              monthLabel={format(commonMessages.calendarMonth)}
-              yearLabel={format(commonMessages.calendarYear)}
+              monthLabel={commonMessages.calendar_month()}
+              yearLabel={commonMessages.calendar_year()}
             />
           )}
         </Field>
@@ -171,13 +173,12 @@ export function UnscheduleDialog({
   onCancel: () => void
   onConfirm: () => void
 }) {
-  const { format } = useI18n()
   return (
     <ConfirmDialog
       open={open}
-      title={format(m.unscheduleTitle, { name })}
-      confirmLabel={format(m.unschedule)}
-      cancelLabel={format(m.cancel)}
+      title={m.schedule_unscheduleTitle({ name })}
+      confirmLabel={m.schedule_unschedule()}
+      cancelLabel={m.action_cancel()}
       pending={pending}
       onConfirm={onConfirm}
       onCancel={onCancel}
@@ -218,7 +219,6 @@ export function TemplateDialog({
   /** saves the plan as edited, then adds the template after it */
   onSaveAndAdd: () => void
 }) {
-  const { format } = useI18n()
   // the count the question was asked with: saving on the way zeroes it
   // while the dialog is still open, and the buttons must not change under
   // the press that is being carried out
@@ -228,35 +228,35 @@ export function TemplateDialog({
   return (
     <FormDialog
       open={open}
-      title={format(m.templateAdd)}
-      description={format(m.templateAddBody)}
+      title={m.template_add()}
+      description={m.template_addBody()}
       onClose={onCancel}
       footer={
         <>
           <Button variant="outline" onClick={onCancel}>
-            {format(m.cancel)}
+            {m.action_cancel()}
           </Button>
           {asked > 0 ? (
             <>
               <Button variant="outline" disabled={choosing} onClick={onAdd}>
-                {format(m.templateDiscardAndAdd)}
+                {m.template_discardAndAdd()}
               </Button>
               <Button disabled={choosing} onClick={onSaveAndAdd}>
-                {format(m.templateSaveAndAdd)}
+                {m.template_saveAndAdd()}
               </Button>
             </>
           ) : (
             <Button disabled={choosing} onClick={onAdd}>
-              {format(m.templateAdd)}
+              {m.template_add()}
             </Button>
           )}
         </>
       }
     >
-      <Field label={format(m.timelineTemplateLabel)}>
+      <Field label={m.template_timelineLabel()}>
         {(id) => (
           <NativeSelect id={id} value={value} onChange={(event) => onChange(event.target.value)}>
-            <option value="">{format(m.timelineTemplateChoose)}</option>
+            <option value="">{m.template_timelineChoose()}</option>
             {templates.map((row) => (
               <option key={row.id} value={row.id}>
                 {row.name}
@@ -272,7 +272,7 @@ export function TemplateDialog({
           {...stylex.props(styles.unsaved)}
         >
           <CircleAlertIcon aria-hidden {...stylex.props(styles.unsavedGlyph)} />
-          {format(m.templateUnsaved, { count: asked })}
+          {m.template_unsaved({ count: asked })}
         </p>
       )}
     </FormDialog>

@@ -11,12 +11,12 @@ import {
   ShieldCheckIcon,
   type LucideIcon,
 } from 'lucide-react'
-import { useI18n } from '@qualy/web-i18n'
 import { useIconSurface, type IconSurface } from './surface.ts'
 import type { BuiltinLoginIcon } from '@qualy/auth-contract/login-icons'
 import type { LoginMethodIcon } from '@qualy/auth-contract/login'
 import { authUrls } from '../api.ts'
-import { authMessages as m } from '../i18n.ts'
+import type { Message } from '@qualy/i18n-contract'
+import * as m from '#messages'
 
 // How a way in is drawn wherever it appears: on the sign-in page, and on the
 // screens that set it up. One drawing per key, owned by the browser; an
@@ -47,10 +47,8 @@ const OUTLINED: Partial<Record<BuiltinLoginIcon, LucideIcon>> = {
  * fifty pixels without pretending to be it.
  */
 /** a message this module formats, whichever one */
-type Said = Parameters<ReturnType<typeof useI18n>['format']>[0]
-
 interface Lettered {
-  readonly letter: Said
+  readonly letter: Message
   /** the tile and the letter on a light surface */
   readonly onLight: { readonly tile: string; readonly ink: string }
   /** and on a dark one, where the brand's colour would sink into it */
@@ -61,18 +59,18 @@ interface Lettered {
 const both = (tile: string) => ({ onLight: { tile, ink: '#fff' }, onDark: { tile, ink: '#fff' } })
 
 const LETTERED: Partial<Record<BuiltinLoginIcon, Lettered>> = {
-  google: { letter: m.iconLetterGoogle, ...both('#4285F4') },
+  google: { letter: m.login_iconGoogle, ...both('#4285F4') },
   // near-black on light; on dark the mark turns over, as Apple's own does
   apple: {
-    letter: m.iconLetterApple,
+    letter: m.login_iconApple,
     onLight: { tile: '#1d1d1f', ink: '#fff' },
     onDark: { tile: '#f5f5f7', ink: '#1d1d1f' },
   },
-  wechat: { letter: m.iconLetterWechat, ...both('#07C160') },
-  wecom: { letter: m.iconLetterWecom, ...both('#0082EF') },
-  dingtalk: { letter: m.iconLetterDingtalk, ...both('#3296FA') },
-  feishu: { letter: m.iconLetterFeishu, ...both('#3370FF') },
-  qq: { letter: m.iconLetterQq, ...both('#12B7F5') },
+  wechat: { letter: m.login_iconWechat, ...both('#07C160') },
+  wecom: { letter: m.login_iconWecom, ...both('#0082EF') },
+  dingtalk: { letter: m.login_iconDingtalk, ...both('#3296FA') },
+  feishu: { letter: m.login_iconFeishu, ...both('#3370FF') },
+  qq: { letter: m.login_iconQq, ...both('#12B7F5') },
 }
 
 const styles = stylex.create({
@@ -127,7 +125,6 @@ export function LoginMethodGlyph({
   /** the ground, when the caller draws it itself - a preview of either */
   surface?: IconSurface
 }) {
-  const { format } = useI18n()
   const derived = useIconSurface(tone)
   const surface = given ?? derived
   // an image that will not load is drawn by its initial instead
@@ -164,7 +161,7 @@ export function LoginMethodGlyph({
     if (icon.key === 'microsoft') return <Squares size={size} />
     const lettered = LETTERED[icon.key]
     if (lettered === undefined) return initial
-    const said = format(lettered.letter)
+    const said = lettered.letter()
     const paint = surface === 'dark' ? lettered.onDark : lettered.onLight
     return (
       <span

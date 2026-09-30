@@ -62,7 +62,7 @@ import {
 import type { AtomicSchema } from '@qualy/value-schema'
 import { validateValue } from '@qualy/value-schema/validate'
 import { formulaApi } from './api.ts'
-import { formulaMessages as m } from './i18n.ts'
+
 import { isBlankSource, useDraftPreview, type DraftContract } from './use-draft-preview.ts'
 import { ContractTable } from './ContractTable.tsx'
 import { contractWordsIssues } from '../contract-words.ts'
@@ -118,6 +118,7 @@ import {
   materializeInput,
   type FieldDraft,
 } from '@qualy/web-value-form/model'
+import * as m from '#messages'
 
 // One formula, laid out like the tool it is.
 //
@@ -742,13 +743,13 @@ export default function FormulaEditorPage() {
   const run = useRunApi()
   const query = useApiQuery(formulaApi)
   const queryClient = useQueryClient()
-  const { format, formatError, locale } = useI18n()
+  const { formatError, locale } = useI18n()
   const words = usePickerWords()
   // the live check is the form's; the words for what it finds are this
   // screen's, and they are the same ones a run reports
   const explain = useCallback(
-    (schema: AtomicSchema, _id: string, reason: string) => fieldIssueWords(format, schema, reason),
-    [format],
+    (schema: AtomicSchema, _id: string, reason: string) => fieldIssueWords(schema, reason),
+    [],
   )
 
   // an address that cannot name a formula is not asked about
@@ -762,7 +763,7 @@ export default function FormulaEditorPage() {
   // in place of the workbench. Somebody else's formula answers exactly as a
   // missing one does, so the words do not tell the two apart either.
   const loadFailure = useLoadFailure()
-  const gone = { title: format(m.formulaGoneTitle), description: format(m.formulaGoneHint) }
+  const gone = { title: m.editor_goneTitle(), description: m.editor_goneHint() }
   const absent = shaped
     ? loadFailure.subject(detail, {
         missing: ['ASSESSMENT_FORMULA_FUNCTION_NOT_FOUND'],
@@ -788,7 +789,7 @@ export default function FormulaEditorPage() {
   // no following the source, and no version of it to be behind.
   const copiedFrom = detail.data?.copiedFrom ?? null
   // the shell repeats the formula's name once the bar has scrolled away
-  const titleRef = usePageTitle(fn?.name ?? format(m.listTitle))
+  const titleRef = usePageTitle(fn?.name ?? m.list_title())
   // where somebody else's formula can be started from, when this viewer may go there
   const templatesHref = usePageHref('assessment-formula/templates')
   const goto = usePageNavigate()
@@ -964,12 +965,12 @@ export default function FormulaEditorPage() {
   }, [contract?.contractSha256])
 
   const fieldIssueText = (schema: AtomicSchema | undefined, reason: string): string =>
-    fieldIssueWords(format, schema, reason)
+    fieldIssueWords(schema, reason)
 
   const translateIssues = (
     schema: DraftContract['inputSchema'],
     issues: ReadonlyMap<string, string>,
-  ): ReadonlyMap<string, string> => inputIssueWords(format, schema, issues)
+  ): ReadonlyMap<string, string> => inputIssueWords(schema, issues)
 
   const rowByKey = (key: string): DraftTest | undefined => tests.find((one) => one.key === key)
 
@@ -1046,7 +1047,7 @@ export default function FormulaEditorPage() {
     const fresh = await preview.ensureFresh()
     if (fresh.status !== 'ready') {
       // a press that cannot run says why: silence reads as a broken button
-      toast.info(format(isBlankSource(source) ? m.runNeedsSource : m.runNeedsCompile))
+      toast.info((isBlankSource(source) ? m.editor_runNeedsSource : m.editor_runNeedsCompile)())
       return null
     }
     return { sourceTs: fresh.source, contract: fresh.contract }
@@ -1141,7 +1142,7 @@ export default function FormulaEditorPage() {
         const words = translateIssues(snapshot.contract.inputSchema, materialized.issues)
         setTryIssues(words)
         setTryVerdict({ at: Date.now(), kind: 'refused' })
-        toast.error(format(m.runNeedsFields, { count: words.size }))
+        toast.error(m.editor_runNeedsFields({ count: words.size }))
         return
       }
       const answers = await evaluate(snapshot.sourceTs, [
@@ -1196,7 +1197,7 @@ export default function FormulaEditorPage() {
     setTryResult(null)
     setSheetOpen(false)
     setPhoneTab('try')
-    toast.success(format(m.loadedIntoTry))
+    toast.success(m.editor_loadedIntoTry())
   }
 
   const seededTests = (loaded: NonNullable<typeof fn>) =>
@@ -1410,7 +1411,7 @@ export default function FormulaEditorPage() {
       // so the refetch below adopts nothing over what was typed meanwhile
       baseFingerprint.current = serverFingerprint(result.function)
       setBaseRevision(result.function.draftRevision)
-      toast.success(format(m.saved))
+      toast.success(m.editor_saved())
       await refresh()
     },
     onError: (error: unknown) => setFailure(formatError(error)),
@@ -1426,19 +1427,19 @@ export default function FormulaEditorPage() {
     // the draft moved under these edits: saving waits for the choice the
     // notice above offers, rather than writing over it unasked
     if (remoteMoved) {
-      setFailure(format(m.remoteMovedSaveHeld))
+      setFailure(m.editor_remoteMovedSaveHeld())
       return
     }
     const wantTests = testsDirty()
     const canTests = wantTests && testsSaveable()
     const patchSource = sourceChanged() ? source : null
-    if (wantTests && !canTests) toast.info(format(m.testsHeldBack))
+    if (wantTests && !canTests) toast.info(m.editor_testsHeldBack())
     if (patchSource === null && !canTests) return
     let collected: SavePatch['tests'] = null
     if (canTests) {
       const parsed = parsedTests()
       if ('invalidLabel' in parsed) {
-        setFailure(format(m.testInputInvalid, { label: parsed.invalidLabel }))
+        setFailure(m.editor_testInputInvalid({ label: parsed.invalidLabel }))
         return
       }
       collected = parsed.tests
@@ -1535,15 +1536,15 @@ export default function FormulaEditorPage() {
       publishedSource.current = source
       let revision = baseRevision ?? fn!.draftRevision
       if (dirty()) {
-        if (remoteMoved) return Promise.reject(new LocalFinding(format(m.remoteMovedSaveHeld)))
+        if (remoteMoved) return Promise.reject(new LocalFinding(m.editor_remoteMovedSaveHeld()))
         // publication needs the whole draft coherent: tests that changed
         // must be checkable against the CURRENT buffer's contract
         if (testsDirty() && !testsSaveable())
-          return Promise.reject(new LocalFinding(format(m.testsHeldBack)))
+          return Promise.reject(new LocalFinding(m.editor_testsHeldBack()))
         const parsed = parsedTests()
         if ('invalidLabel' in parsed)
           return Promise.reject(
-            new LocalFinding(format(m.testInputInvalid, { label: parsed.invalidLabel })),
+            new LocalFinding(m.editor_testInputInvalid({ label: parsed.invalidLabel })),
           )
         const savedNow = (await saveEffect({
           source: sourceChanged() ? source : null,
@@ -1573,7 +1574,7 @@ export default function FormulaEditorPage() {
     onSuccess: async (result: { version: { versionNo: number; releaseName: string | null } }) => {
       setPublishOpen(false)
       setHistoryList('releases')
-      toast.success(format(m.publishedAs, { name: result.version.releaseName ?? '' }))
+      toast.success(m.editor_publishedAs({ name: result.version.releaseName ?? '' }))
       await refresh()
     },
     onError: async (error: unknown) => {
@@ -1647,7 +1648,7 @@ export default function FormulaEditorPage() {
       adopt(result.function)
       showView({ kind: 'draft' })
       setPhoneTab('source')
-      toast.success(format(m.restored))
+      toast.success(m.editor_restored())
       await refresh()
     },
     // restoring is pressed from a piece of history, which has no notice
@@ -1666,9 +1667,9 @@ export default function FormulaEditorPage() {
       return
     }
     ask({
-      title: format(m.replaceDraftTitle),
-      description: format(m.replaceDraftDescription, { name: fromWords }),
-      confirmLabel: format(m.replaceDraftConfirm),
+      title: m.editor_replaceDraftTitle(),
+      description: m.editor_replaceDraftDescription({ name: fromWords }),
+      confirmLabel: m.editor_replaceDraftConfirm(),
       act: () => restore.mutate(from),
     })
   }
@@ -1686,9 +1687,9 @@ export default function FormulaEditorPage() {
       return
     }
     ask({
-      title: format(m.loadExampleTitle),
-      description: format(m.loadExampleDescription),
-      confirmLabel: format(m.loadExampleConfirm),
+      title: m.editor_loadExampleTitle(),
+      description: m.editor_loadExampleDescription(),
+      confirmLabel: m.editor_loadExampleConfirm(),
       act: put,
     })
   }
@@ -1696,7 +1697,7 @@ export default function FormulaEditorPage() {
   const downloadCurrent = () => {
     const filename = fileNameOf([fn?.name], '.ts')
     downloadText({ filename, text: source, type: 'text/typescript;charset=utf-8' })
-    toast.success(format(m.downloaded, { file: filename }))
+    toast.success(m.editor_downloaded({ file: filename }))
   }
 
   const setStatus = useMutation({
@@ -1708,7 +1709,7 @@ export default function FormulaEditorPage() {
         }),
       ),
     onSuccess: async (_result: unknown, status: 'active' | 'archived') => {
-      toast.success(format(status === 'archived' ? m.archived : m.unarchived))
+      toast.success((status === 'archived' ? m.editor_archived : m.editor_unarchived)())
       await refresh()
     },
     onError: (error: unknown) => setFailure(formatError(error)),
@@ -1729,7 +1730,7 @@ export default function FormulaEditorPage() {
         }),
       ),
     onSuccess: async () => {
-      toast.success(format(m.deleted))
+      toast.success(m.editor_deleted())
       // the formula is gone for good, so what this browser kept for it goes
       // too: a kept source and the inputs somebody tried are work on this
       // device that nothing can reach any more. After the server agreed,
@@ -1746,18 +1747,18 @@ export default function FormulaEditorPage() {
 
   const deleteFormula = () =>
     ask({
-      title: format(m.deleteTitle),
-      description: format(m.deleteDescription),
-      confirmLabel: format(m.deleteConfirm),
+      title: m.editor_deleteTitle(),
+      description: m.editor_deleteDescription(),
+      confirmLabel: m.editor_deleteConfirm(),
       act: () => remove.mutate(),
     })
 
   /** archiving takes the formula out of new bindings and out of editing, so it asks first */
   const archiveFormula = () =>
     ask({
-      title: format(m.archiveTitle),
-      description: format(m.archiveDescription),
-      confirmLabel: format(m.archiveConfirm),
+      title: m.editor_archiveTitle(),
+      description: m.editor_archiveDescription(),
+      confirmLabel: m.editor_archiveConfirm(),
       act: () => setStatus.mutate('archived'),
     })
 
@@ -1791,7 +1792,7 @@ export default function FormulaEditorPage() {
     return (
       <LoadFailure
         failure={absent}
-        back={{ page: 'assessment-formula/list', label: format(m.formulaGoneBack) }}
+        back={{ page: 'assessment-formula/list', label: m.editor_goneBack() }}
         onRetry={() => void detail.refetch()}
         retrying={detail.isFetching}
       />
@@ -1803,7 +1804,7 @@ export default function FormulaEditorPage() {
   const busy = save.isPending || publish.isPending || restore.isPending
   const releases = [...versions].sort((a, b) => b.versionNo - a.versionNo)
   const releaseWords = (release: { versionNo: number; releaseName: string | null }): string =>
-    release.releaseName ?? format(m.releaseOrdinal, { number: release.versionNo })
+    release.releaseName ?? m.history_releaseOrdinal({ number: release.versionNo })
 
   /** relabelling one publication, from wherever it is offered */
   const editVersionInfo = (release: {
@@ -1843,7 +1844,7 @@ export default function FormulaEditorPage() {
       onRestoreRevision={(revisionNo) =>
         restoreFrom(
           { kind: 'draft-revision', revisionNo },
-          format(m.revisionNumber, { number: revisionNo }),
+          m.history_revisionNumber({ number: revisionNo }),
         )
       }
       onShare={(release) => {
@@ -1897,7 +1898,7 @@ export default function FormulaEditorPage() {
       onClick={() => setVersionsOpen(true)}
     >
       <HistoryIcon aria-hidden />
-      {format(m.historyTitle)}
+      {m.history_title()}
       {releases.length === 0 ? null : (
         <span {...stylex.props(styles.actionCount)}>{releases.length}</span>
       )}
@@ -1910,7 +1911,7 @@ export default function FormulaEditorPage() {
       title={confirming?.title ?? ''}
       {...(confirming === null ? {} : { description: confirming.description })}
       confirmLabel={confirming?.confirmLabel ?? ''}
-      cancelLabel={format(m.cancel)}
+      cancelLabel={m.common_cancel()}
       onConfirm={() => {
         setConfirmOpen(false)
         confirming?.act()
@@ -1980,7 +1981,7 @@ export default function FormulaEditorPage() {
           onRestore={(revisionNo) =>
             restoreFrom(
               { kind: 'draft-revision', revisionNo },
-              format(m.revisionNumber, { number: revisionNo }),
+              m.history_revisionNumber({ number: revisionNo }),
             )
           }
           restoring={restore.isPending}
@@ -2021,23 +2022,21 @@ export default function FormulaEditorPage() {
         : contract === null
           ? 'loading'
           : 'stale'
-  const structureWords = format(
-    {
-      blank: m.compileBlank,
-      synced: m.structureSynced,
-      // a form drawn from the last structure that compiled says so, and says
-      // which of the two checks refused the one on screen
-      refused: contractRefused
-        ? contract === null
-          ? m.structureContractRefused
-          : m.structureContractKept
-        : contract === null
-          ? m.structureRefused
-          : m.structureKept,
-      loading: m.structureLoading,
-      stale: m.structureStale,
-    }[structure],
-  )
+  const structureWords = {
+    blank: m.editor_compileBlank,
+    synced: m.editor_structureSynced,
+    // a form drawn from the last structure that compiled says so, and says
+    // which of the two checks refused the one on screen
+    refused: contractRefused
+      ? contract === null
+        ? m.editor_structureContractRefused
+        : m.editor_structureContractKept
+      : contract === null
+        ? m.editor_structureRefused
+        : m.editor_structureKept,
+    loading: m.editor_structureLoading,
+    stale: m.editor_structureStale,
+  }[structure]()
   const refusalWords = preview.current.status === 'refused' ? preview.current.refusal : null
 
   const compileState: 'blank' | 'passed' | 'failed' | 'working' = blank
@@ -2123,18 +2122,18 @@ export default function FormulaEditorPage() {
         : null
   const summary =
     cases.length === 0
-      ? format(m.examplesEmpty)
+      ? m.examples_empty()
       : failed !== undefined
         ? failed.outcome?.actual !== undefined
-          ? format(m.exampleFailedActual, { name: failed.label, actual: failed.outcome.actual })
-          : format(m.exampleFailed, { name: failed.label })
+          ? m.examples_failedActual({ name: failed.label, actual: failed.outcome.actual })
+          : m.examples_failed({ name: failed.label })
         : toFix !== undefined
-          ? format(m.exampleNeedsFixing, { name: toFix.label })
+          ? m.examples_needsFixing({ name: toFix.label })
           : unexpected !== undefined
-            ? format(m.exampleNoExpectation, { name: unexpected.label })
+            ? m.examples_noExpectationSummary({ name: unexpected.label })
             : notRun > 0
-              ? format(m.examplesNotRun, { count: notRun })
-              : format(m.examplesAllPassed)
+              ? m.examples_notRunCount({ count: notRun })
+              : m.examples_allPassed()
 
   // Whether the SAVED draft is exactly what was last published - source and
   // examples both. Said beside the draft's own state, and apart from the
@@ -2185,23 +2184,23 @@ export default function FormulaEditorPage() {
     return (
       <>
         {casePart(
-          format(m.testName),
-          <Field label={format(m.testName)} hideLabel>
+          m.editor_testName(),
+          <Field label={m.editor_testName()} hideLabel>
             {(id) => (
               <Input
                 id={id}
                 value={test.name}
                 disabled={archived}
-                placeholder={format(m.exampleNamePlaceholder)}
+                placeholder={m.examples_namePlaceholder()}
                 onChange={(event) => editCase(test.key, { name: event.target.value })}
               />
             )}
           </Field>,
         )}
         {casePart(
-          format(m.testInput),
+          m.editor_testInput(),
           contract === null ? (
-            <Field label={format(m.testInput)} hideLabel>
+            <Field label={m.editor_testInput()} hideLabel>
               {(id) => (
                 <Input
                   id={id}
@@ -2224,20 +2223,20 @@ export default function FormulaEditorPage() {
               problems={rowIssues[test.key]}
               scope={`case-${test.key}`}
               authoring={{
-                unnamedLabel: format(m.fieldUnnamed),
-                noteOf: (field) => constraintNote(field, format, locale),
+                unnamedLabel: m.editor_fieldUnnamed(),
+                noteOf: (field) => constraintNote(field, locale),
               }}
             />
           ),
         )}
         {casePart(
-          format(m.expectedLabel),
+          m.editor_expectedLabel(),
           contract === null ? (
-            <Field label={format(m.expectedLabel)} hideLabel>
+            <Field label={m.editor_expectedLabel()} hideLabel>
               {(id) => (
                 <Input
                   id={id}
-                  placeholder={format(m.expectedLabel)}
+                  placeholder={m.editor_expectedLabel()}
                   value={test.expected}
                   disabled={archived}
                   onChange={(event) => editCase(test.key, { expected: event.target.value })}
@@ -2252,7 +2251,7 @@ export default function FormulaEditorPage() {
               words={words}
               schema={contract.outputSchema}
               name={`expected-${test.key}`}
-              label={format(m.expectedLabel)}
+              label={m.editor_expectedLabel()}
               draft={test.expected}
               onDraft={(draft) =>
                 editCase(test.key, { expected: typeof draft === 'string' ? draft : String(draft) })
@@ -2265,7 +2264,7 @@ export default function FormulaEditorPage() {
         )}
         {legal ? null : (
           <p {...stylex.props(styles.problemLine)} role="alert">
-            {format(m.testRowInvalid)}
+            {m.editor_testRowInvalid()}
           </p>
         )}
       </>
@@ -2283,20 +2282,20 @@ export default function FormulaEditorPage() {
           variant="ghost"
           size="icon-sm"
           data-testid="formula-more"
-          aria-label={format(m.moreActions)}
+          aria-label={m.editor_moreActions()}
         >
           <MoreHorizontalIcon />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <DropdownMenuItem disabled={archived} onSelect={() => setEditingDetails(true)}>
-          {format(m.detailsOpen)}
+          {m.editor_detailsOpen()}
         </DropdownMenuItem>
         <DropdownMenuItem disabled={archived} onSelect={loadExample}>
-          {format(m.loadExampleMenu)}
+          {m.editor_loadExampleMenu()}
         </DropdownMenuItem>
         <DropdownMenuItem disabled={blank} onSelect={downloadCurrent}>
-          {format(m.downloadCurrent)}
+          {m.editor_downloadCurrent()}
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         {fn.latestVersionNo === null ? (
@@ -2306,14 +2305,14 @@ export default function FormulaEditorPage() {
             disabled={remove.isPending}
             onSelect={deleteFormula}
           >
-            {format(m.deleteFormula)}
+            {m.editor_deleteFormula()}
           </DropdownMenuItem>
         ) : (
           <DropdownMenuItem
             disabled={setStatus.isPending}
             onSelect={() => (archived ? setStatus.mutate('active') : archiveFormula())}
           >
-            {format(archived ? m.restoreFormula : m.archiveFormula)}
+            {(archived ? m.editor_restoreFormula : m.editor_archiveFormula)()}
           </DropdownMenuItem>
         )}
       </DropdownMenuContent>
@@ -2321,12 +2320,12 @@ export default function FormulaEditorPage() {
   )
 
   const saveHint = archived
-    ? format(m.saveArchivedHint)
+    ? m.editor_saveArchivedHint()
     : busy
       ? null
       : dirty()
-        ? format(m.saveShortcutHint)
-        : format(m.saveCleanHint)
+        ? m.editor_saveShortcutHint()
+        : m.editor_saveCleanHint()
   const saveButton = (
     <Hinted hint={saveHint} wide={narrow}>
       <Button
@@ -2338,16 +2337,16 @@ export default function FormulaEditorPage() {
         className={narrow ? stylex.props(styles.wide).className : undefined}
       >
         {narrow ? null : <SaveIcon aria-hidden />}
-        {format(m.save)}
+        {m.editor_save()}
       </Button>
     </Hinted>
   )
 
   const publishHint = archived
-    ? format(m.saveArchivedHint)
+    ? m.editor_saveArchivedHint()
     : blank
-      ? format(m.publishBlankHint)
-      : format(m.publishHint)
+      ? m.publish_blankHint()
+      : m.publish_hint()
   // publishing is what the page is for, so it stands in the bar rather than
   // in a menu, and on a phone beside saving at the foot
   const publishButton = (
@@ -2360,7 +2359,7 @@ export default function FormulaEditorPage() {
         className={narrow ? stylex.props(styles.wide).className : undefined}
       >
         {narrow ? null : <UploadIcon aria-hidden />}
-        {format(m.publishOpen)}
+        {m.editor_publishOpen()}
       </Button>
     </Hinted>
   )
@@ -2368,7 +2367,7 @@ export default function FormulaEditorPage() {
   const bar = (
     <WorkbenchBar
       narrow={narrow}
-      backLabel={format(m.listTitle)}
+      backLabel={m.list_title()}
       titleRef={titleRef}
       title={
         <span {...stylex.props(styles.nameLine)}>
@@ -2377,8 +2376,8 @@ export default function FormulaEditorPage() {
             <button
               type="button"
               data-testid="formula-details-open"
-              aria-label={format(m.detailsOpen)}
-              title={format(m.detailsOpen)}
+              aria-label={m.editor_detailsOpen()}
+              title={m.editor_detailsOpen()}
               onClick={() => setEditingDetails(true)}
               {...stylex.props(styles.nameEdit)}
             >
@@ -2400,10 +2399,10 @@ export default function FormulaEditorPage() {
           )}
         >
           {archived
-            ? format(m.statusArchived)
+            ? m.status_archived()
             : fn.latestVersionNo === null
-              ? format(m.versionNone)
-              : format(m.headerPublished)}
+              ? m.list_versionNone()
+              : m.editor_headerPublished()}
         </span>
       }
       status={
@@ -2415,14 +2414,12 @@ export default function FormulaEditorPage() {
             {...stylex.props(styles.statusGroup, saveState === 'dirty' && styles.statusDirty)}
           >
             {saveState === 'clean' ? <CheckIcon size={12} aria-hidden /> : null}
-            {format(
-              {
-                publishing: m.draftPublishing,
-                saving: m.draftSaving,
-                dirty: m.draftDirty,
-                clean: m.draftClean,
-              }[saveState],
-            )}
+            {{
+              publishing: m.editor_draftPublishing,
+              saving: m.editor_draftSaving,
+              dirty: m.editor_draftDirty,
+              clean: m.editor_draftClean,
+            }[saveState]()}
           </span>
           {/* what the saved draft is to the latest publication, said apart
               from whether it is saved at all */}
@@ -2437,7 +2434,9 @@ export default function FormulaEditorPage() {
                   releaseRelation === 'ahead' && styles.statusAhead,
                 )}
               >
-                {format(releaseRelation === 'same' ? m.draftMatchesRelease : m.draftUnpublished)}
+                {(releaseRelation === 'same'
+                  ? m.editor_draftMatchesRelease
+                  : m.editor_draftUnpublished)()}
               </span>
             </>
           )}
@@ -2447,12 +2446,12 @@ export default function FormulaEditorPage() {
               <button
                 type="button"
                 data-testid="formula-latest-release"
-                title={format(m.openRelease)}
+                title={m.editor_openRelease()}
                 onClick={() => showView({ kind: 'release', versionNo: fn.latestVersionNo! })}
                 {...stylex.props(styles.statusGroup, styles.statusLink)}
               >
                 <span {...stylex.props(styles.statusClip)}>
-                  {format(m.latestReleaseIs, {
+                  {m.editor_latestReleaseIs({
                     name: releaseWords({
                       versionNo: fn.latestVersionNo,
                       releaseName: fn.latestReleaseName,
@@ -2466,7 +2465,7 @@ export default function FormulaEditorPage() {
             <>
               <span aria-hidden {...stylex.props(styles.statusRule)} />
               <span {...stylex.props(styles.statusGroup)}>
-                <span {...stylex.props(styles.statusLabel)}>{format(m.templatesCopiedFrom)}</span>
+                <span {...stylex.props(styles.statusLabel)}>{m.templates_copiedFrom()}</span>
                 <span {...stylex.props(styles.chip, styles.chipStill)}>
                   <span {...stylex.props(styles.chipWords)}>{copiedFrom.functionName}</span>
                   <span {...stylex.props(styles.chipWords, styles.chipQuiet)}>
@@ -2500,15 +2499,15 @@ export default function FormulaEditorPage() {
           {...stylex.props(styles.notice, styles.noticeWarning, styles.noticeWrapping)}
         >
           <span {...stylex.props(styles.noticeWords, styles.noticeWordsWhole)}>
-            <span {...stylex.props(styles.noticeTitle)}>{format(m.formulaGoneTitle)}</span>
-            {format(m.formulaGoneEditsKept)}
+            <span {...stylex.props(styles.noticeTitle)}>{m.editor_goneTitle()}</span>
+            {m.editor_goneEditsKept()}
           </span>
           <span {...stylex.props(w.spring)} />
           <Button variant="outline" size="xs" onClick={downloadCurrent}>
-            {format(m.downloadCurrent)}
+            {m.editor_downloadCurrent()}
           </Button>
           <Button variant="outline" size="xs" onClick={() => goto('assessment-formula/list')}>
-            {format(m.formulaGoneBack)}
+            {m.editor_goneBack()}
           </Button>
         </div>
       ) : null}
@@ -2527,18 +2526,18 @@ export default function FormulaEditorPage() {
           {...stylex.props(styles.notice, styles.noticeWarning)}
         >
           <span {...stylex.props(styles.noticeWords)}>
-            <span {...stylex.props(styles.noticeTitle)}>{format(m.remoteMovedTitle)}</span>
-            {format(m.remoteMovedHint)}
+            <span {...stylex.props(styles.noticeTitle)}>{m.editor_remoteMoved()}</span>
+            {m.editor_remoteMovedHint()}
           </span>
           <span {...stylex.props(w.spring)} />
           {/* the destructive way out is not the only way out: what is
               written here can be kept and saved over the draft as it now
               stands, which is the decision the revision token exists for */}
           <Button variant="outline" size="xs" onClick={rebaseOnRemote}>
-            {format(m.keepMineAnyway)}
+            {m.editor_keepMineAnyway()}
           </Button>
           <Button variant="outline" size="xs" onClick={discardLocal}>
-            {format(m.discardLocal)}
+            {m.editor_discardLocal()}
           </Button>
         </div>
       ) : null}
@@ -2555,17 +2554,17 @@ export default function FormulaEditorPage() {
         {...stylex.props(styles.floating)}
       >
         <span {...stylex.props(styles.floatingWords)}>
-          <span {...stylex.props(styles.noticeTitle)}>{format(m.localDraftTitle)}</span>
+          <span {...stylex.props(styles.noticeTitle)}>{m.editor_localDraftTitle()}</span>
           <span {...stylex.props(styles.chipQuiet)}>
-            {format(m.localDraftHint, {
-              when: shortWhen(new Date(localDraft.keptAt).toISOString(), format, locale),
+            {m.editor_localDraftHint({
+              when: shortWhen(new Date(localDraft.keptAt).toISOString(), locale),
             })}
           </span>
         </span>
         <span {...stylex.props(styles.floatingActions)}>
           <span {...stylex.props(w.spring)} />
           <Button variant="ghost" size="xs" onClick={dropLocalDraft}>
-            {format(m.localDraftDrop)}
+            {m.editor_localDraftDrop()}
           </Button>
           <Button
             variant="outline"
@@ -2573,7 +2572,7 @@ export default function FormulaEditorPage() {
             data-testid="formula-local-draft-take"
             onClick={takeLocalDraft}
           >
-            {format(m.localDraftTake)}
+            {m.editor_localDraftTake()}
           </Button>
         </span>
       </div>
@@ -2585,8 +2584,8 @@ export default function FormulaEditorPage() {
     <Suspense
       fallback={
         <div {...stylex.props(styles.editorLoading)} role="status">
-          <Spinner aria-label={format(m.editorLoading)} />
-          <span>{format(m.editorLoading)}</span>
+          <Spinner aria-label={m.editor_loading()} />
+          <span>{m.editor_loading()}</span>
         </div>
       }
     >
@@ -2597,7 +2596,7 @@ export default function FormulaEditorPage() {
         onChange={setSource}
         seed={editorSeed}
         readOnly={archived}
-        ariaLabel={format(m.sourceLabel)}
+        ariaLabel={m.editor_source()}
       />
     </Suspense>
   )
@@ -2610,9 +2609,9 @@ export default function FormulaEditorPage() {
       return
     }
     ask({
-      title: format(m.leaveForTemplatesTitle),
-      description: format(m.leaveForTemplatesDescription),
-      confirmLabel: format(m.leaveForTemplatesConfirm),
+      title: m.editor_leaveForTemplatesTitle(),
+      description: m.editor_leaveForTemplatesDescription(),
+      confirmLabel: m.editor_leaveForTemplatesConfirm(),
       act: go,
     })
   }
@@ -2624,19 +2623,19 @@ export default function FormulaEditorPage() {
     <div data-testid="formula-empty-source" {...stylex.props(styles.emptyFill)}>
       <div {...stylex.props(styles.emptyCard)}>
         <SigmaIcon size={22} aria-hidden {...stylex.props(styles.emptyGlyph)} />
-        <p {...stylex.props(styles.emptyTitle)}>{format(m.emptySourceTitle)}</p>
-        <p {...stylex.props(styles.emptyHint)}>{format(m.emptySourceHint)}</p>
+        <p {...stylex.props(styles.emptyTitle)}>{m.editor_emptySourceTitle()}</p>
+        <p {...stylex.props(styles.emptyHint)}>{m.editor_emptySourceHint()}</p>
         <div {...stylex.props(styles.emptyActions)}>
           <Button size="sm" onClick={loadExample}>
             <FileCodeIcon aria-hidden />
-            {format(m.loadExample)}
+            {m.editor_loadExample()}
           </Button>
           <Button size="sm" variant="outline" onClick={() => setStarted(true)}>
-            {format(m.startBlank)}
+            {m.editor_startBlank()}
           </Button>
           {templatesHref === undefined ? null : (
             <Button size="sm" variant="ghost" onClick={browseTemplates}>
-              {format(m.browseTemplates)}
+              {m.editor_browseTemplates()}
             </Button>
           )}
         </div>
@@ -2648,8 +2647,8 @@ export default function FormulaEditorPage() {
   const copyWords = (text: string) => {
     void navigator.clipboard
       ?.writeText(text)
-      .then(() => toast.success(format(m.copied)))
-      .catch(() => toast.error(format(m.copyFailed)))
+      .then(() => toast.success(m.release_copied()))
+      .catch(() => toast.error(m.release_copyFailed()))
   }
   const diagnosticWords = (row: { line: number; column: number; code: string; message: string }) =>
     `${String(row.line)}:${String(row.column)} ${row.code} ${row.message}`
@@ -2684,7 +2683,7 @@ export default function FormulaEditorPage() {
               <tr
                 key={index}
                 data-testid="formula-diagnostic"
-                title={format(m.jumpToLine)}
+                title={m.editor_jumpToLine()}
                 onClick={() => jumpTo(row.line, row.column)}
                 {...stylex.props(styles.diagnosticRow)}
               >
@@ -2697,8 +2696,8 @@ export default function FormulaEditorPage() {
                   <button
                     type="button"
                     data-testid="formula-diagnostic-copy"
-                    aria-label={format(m.copyValue)}
-                    title={format(m.copyValue)}
+                    aria-label={m.release_copyValue()}
+                    title={m.release_copyValue()}
                     onClick={(event) => {
                       event.stopPropagation()
                       copyWords(diagnosticWords(row))
@@ -2719,8 +2718,8 @@ export default function FormulaEditorPage() {
           <button
             type="button"
             data-testid="formula-packager-copy"
-            aria-label={format(m.copyTechnicalDetail)}
-            title={format(m.copyTechnicalDetail)}
+            aria-label={m.editor_copyTechnicalDetail()}
+            title={m.editor_copyTechnicalDetail()}
             onClick={() => copyWords(packagerWords)}
             {...stylex.props(styles.iconAction)}
           >
@@ -2739,12 +2738,12 @@ export default function FormulaEditorPage() {
     >
       {compileState === 'blank' ? (
         <div {...stylex.props(w.verdictBlock)}>
-          <span {...stylex.props(w.verdictQuiet)}>{format(m.compileBlank)}</span>
+          <span {...stylex.props(w.verdictQuiet)}>{m.editor_compileBlank()}</span>
         </div>
       ) : compileState === 'passed' ? (
         <div {...stylex.props(w.verdictBlock)}>
           <CircleCheckIcon size={30} aria-hidden {...stylex.props(w.verdictGood)} />
-          <span {...stylex.props(w.verdictWords)}>{format(m.compileReady)}</span>
+          <span {...stylex.props(w.verdictWords)}>{m.editor_compileReady()}</span>
         </div>
       ) : compileState === 'working' ? (
         <div role="status" {...stylex.props(w.verdictBlock)}>
@@ -2755,10 +2754,10 @@ export default function FormulaEditorPage() {
         <>
           <p {...stylex.props(styles.stateLine)}>
             <ToneDot tone="bad" />
-            <span {...stylex.props(styles.failTitle)}>{format(m.compileFailed)}</span>
+            <span {...stylex.props(styles.failTitle)}>{m.editor_compileFailed()}</span>
             {diagnostics.length === 0 ? null : (
               <span {...stylex.props(styles.failCount)}>
-                {format(m.compileFindings, { count: diagnostics.length })}
+                {m.editor_compileFindings({ count: diagnostics.length })}
               </span>
             )}
           </p>
@@ -2779,7 +2778,7 @@ export default function FormulaEditorPage() {
     >
       <span {...stylex.props(styles.stripBad)}>
         <ToneDot tone="bad" />
-        {format(m.compileFindings, { count: diagnostics.length })}
+        {m.editor_compileFindings({ count: diagnostics.length })}
       </span>
       <span {...stylex.props(w.spring)} />
       <button
@@ -2788,7 +2787,7 @@ export default function FormulaEditorPage() {
         onClick={() => setPhoneTab('compile')}
         {...stylex.props(styles.quietAction)}
       >
-        {format(m.seeCompile)}
+        {m.editor_seeCompile()}
       </button>
     </div>
   )
@@ -2822,13 +2821,13 @@ export default function FormulaEditorPage() {
         }}
         {...stylex.props(styles.quietAction)}
       >
-        {format(m.seeProblems)}
+        {m.editor_seeProblems()}
       </button>
     ) : undefined
 
   const trySection = (phone: boolean) => (
     <TryRunPanel
-      title={format(m.tryTitle)}
+      title={m.editor_tryTitle()}
       narrow={phone}
       status={{
         testId: 'formula-structure',
@@ -2847,7 +2846,7 @@ export default function FormulaEditorPage() {
       schema={contract?.inputSchema ?? null}
       pending={{
         state: structure,
-        words: structure === 'blank' ? format(m.tryBlank) : structureWords,
+        words: structure === 'blank' ? m.editor_tryBlank() : structureWords,
         working: structure !== 'refused' && structure !== 'blank',
         off: structure === 'refused',
       }}
@@ -2883,8 +2882,8 @@ export default function FormulaEditorPage() {
           <table {...stylex.props(w.reportTable)} data-testid="formula-contract-issues">
             <thead>
               <tr>
-                <th {...stylex.props(w.reportHead, w.fit)}>{format(m.parametersLabel)}</th>
-                <th {...stylex.props(w.reportHead)}>{format(m.contractIssueColumn)}</th>
+                <th {...stylex.props(w.reportHead, w.fit)}>{m.parameters_label()}</th>
+                <th {...stylex.props(w.reportHead)}>{m.contract_issueColumn()}</th>
                 <th {...stylex.props(w.reportHead, w.fit)}>
                   {/* the guest's own words are about the whole refusal, so the
                       one press that keeps them belongs to the head */}
@@ -2896,7 +2895,7 @@ export default function FormulaEditorPage() {
                       {...stylex.props(styles.quietAction, styles.headAction)}
                     >
                       <CopyIcon size={13} aria-hidden />
-                      {format(m.copyTechnicalDetail)}
+                      {m.editor_copyTechnicalDetail()}
                     </button>
                   )}
                 </th>
@@ -2910,7 +2909,7 @@ export default function FormulaEditorPage() {
                       <button
                         type="button"
                         data-testid="formula-issue-jump"
-                        title={format(m.findInSource)}
+                        title={m.editor_findInSource()}
                         onClick={() => jumpToWord(sourceWordOf(row.path)!)}
                         {...stylex.props(styles.quietAction, styles.monoAction)}
                       >
@@ -2919,7 +2918,7 @@ export default function FormulaEditorPage() {
                     )}
                   </td>
                   <td {...stylex.props(w.reportCell, styles.middle)}>
-                    {contractReasonWords(format, row.reason)}
+                    {contractReasonWords(row.reason)}
                   </td>
                   <td {...stylex.props(w.reportCell, w.fit, styles.middle)} />
                 </tr>
@@ -2950,7 +2949,7 @@ export default function FormulaEditorPage() {
         onClick={() => copyWords(diagnostics.map(diagnosticWords).join('\n'))}
       >
         <CopyIcon aria-hidden />
-        {format(m.copyAll)}
+        {m.editor_copyAll()}
       </Button>
     )
 
@@ -2966,11 +2965,11 @@ export default function FormulaEditorPage() {
         }}
       >
         <ListChecksIcon aria-hidden />
-        {format(running ? m.running : m.runAll)}
+        {(running ? m.editor_running : m.editor_runAll)()}
       </Button>
       <Button variant="ghost" size="xs" disabled={archived} onClick={addCase}>
         <PlusIcon aria-hidden />
-        {format(m.addTest)}
+        {m.editor_addTest()}
       </Button>
     </>
   )
@@ -2978,7 +2977,7 @@ export default function FormulaEditorPage() {
   const exampleRows = (phone: boolean) =>
     cases.length === 0 ? (
       <div {...stylex.props(w.emptyFill)}>
-        <EmptyRow>{format(m.examplesEmpty)}</EmptyRow>
+        <EmptyRow>{m.examples_empty()}</EmptyRow>
       </div>
     ) : (
       cases.map((one) => (
@@ -2987,7 +2986,7 @@ export default function FormulaEditorPage() {
           index={one.index}
           name={one.test.name}
           narrow={phone}
-          facts={inputFactsOf(format, locale, contract?.inputSchema ?? null, storedInput(one.test))}
+          facts={inputFactsOf(locale, contract?.inputSchema ?? null, storedInput(one.test))}
           expected={one.test.expected}
           outcome={
             one.outcome === undefined
@@ -3019,11 +3018,11 @@ export default function FormulaEditorPage() {
   const examplesBody = (
     <>
       <div {...stylex.props(exampleStyles.columns, exampleStyles.head)}>
-        <span>{format(m.testName)}</span>
-        <span>{format(m.examplesInputColumn)}</span>
-        <span {...stylex.props(exampleStyles.end)}>{format(m.examplesExpectedColumn)}</span>
-        <span {...stylex.props(exampleStyles.end)}>{format(m.reportActualColumn)}</span>
-        <span>{format(m.reportOutcome)}</span>
+        <span>{m.editor_testName()}</span>
+        <span>{m.examples_inputColumn()}</span>
+        <span {...stylex.props(exampleStyles.end)}>{m.examples_expectedColumn()}</span>
+        <span {...stylex.props(exampleStyles.end)}>{m.report_actualColumn()}</span>
+        <span>{m.report_outcome()}</span>
         <span />
       </div>
       <div {...stylex.props(w.panelScroll)}>{exampleRows(false)}</div>
@@ -3048,7 +3047,7 @@ export default function FormulaEditorPage() {
     {
       key: 'saved',
       tone: dirty() ? 'quiet' : 'good',
-      words: format(dirty() ? m.publishCheckUnsaved : m.draftClean),
+      words: (dirty() ? m.publish_checkUnsaved : m.editor_draftClean)(),
     },
     { key: 'examples', tone: examplesTone, words: summary },
     {
@@ -3056,9 +3055,9 @@ export default function FormulaEditorPage() {
       tone: compileTone,
       words:
         compileState === 'failed'
-          ? format(m.compileFailed)
+          ? m.editor_compileFailed()
           : compileState === 'passed'
-            ? format(m.compileReady)
+            ? m.editor_compileReady()
             : structureWords,
     },
     {
@@ -3066,9 +3065,9 @@ export default function FormulaEditorPage() {
       tone: contractTone,
       words:
         issues.length > 0
-          ? format(m.contractFailed)
+          ? m.editor_contractFailed()
           : structure === 'synced'
-            ? format(m.contractReady)
+            ? m.editor_contractReady()
             : structureWords,
     },
     {
@@ -3076,8 +3075,8 @@ export default function FormulaEditorPage() {
       tone: unworded.length > 0 ? 'bad' : contract === null ? 'quiet' : 'good',
       words:
         unworded.length > 0
-          ? format(m.publishCheckUnworded, { count: unworded.length })
-          : format(m.publishCheckWorded),
+          ? m.publish_checkUnworded({ count: unworded.length })
+          : m.publish_checkWorded(),
     },
   ]
 
@@ -3086,16 +3085,16 @@ export default function FormulaEditorPage() {
   const gate: WorkbenchGate =
     compileState === 'blank' || compileState === 'failed' || compileState === 'working'
       ? {
-          label: format(m.panelLabel),
+          label: m.editor_panel(),
           testId: 'formula-gate',
           tone: compileTone,
           words:
             compileState === 'failed'
               ? diagnostics.length === 0
-                ? format(m.compileFailed)
-                : format(m.compileFailedCount, { count: diagnostics.length })
+                ? m.editor_compileFailed()
+                : m.editor_compileFailedCount({ count: diagnostics.length })
               : compileState === 'blank'
-                ? format(m.compileBlank)
+                ? m.editor_compileBlank()
                 : structureWords,
           ...(compileState === 'failed'
             ? {
@@ -3109,7 +3108,7 @@ export default function FormulaEditorPage() {
                     }}
                     {...stylex.props(styles.quietAction)}
                   >
-                    {format(m.seeProblems)}
+                    {m.editor_seeProblems()}
                   </button>
                 ),
               }
@@ -3117,10 +3116,10 @@ export default function FormulaEditorPage() {
         }
       : issues.length > 0
         ? {
-            label: format(m.panelLabel),
+            label: m.editor_panel(),
             testId: 'formula-gate',
             tone: 'bad',
-            words: format(m.contractFailed),
+            words: m.editor_contractFailed(),
             action: (
               <button
                 type="button"
@@ -3131,12 +3130,12 @@ export default function FormulaEditorPage() {
                 }}
                 {...stylex.props(styles.quietAction)}
               >
-                {format(m.seeProblems)}
+                {m.editor_seeProblems()}
               </button>
             ),
           }
         : {
-            label: format(m.panelLabel),
+            label: m.editor_panel(),
             testId: 'formula-gate',
             tone: examplesTone,
             words: summary,
@@ -3149,7 +3148,7 @@ export default function FormulaEditorPage() {
                       onClick={() => editCase(adoptable.key, { expected: adoptable.actual })}
                       {...stylex.props(styles.quietAction)}
                     >
-                      {format(m.adoptActual, { value: adoptable.actual })}
+                      {m.editor_adoptActual({ value: adoptable.actual })}
                     </button>
                   ),
                 }
@@ -3170,7 +3169,7 @@ export default function FormulaEditorPage() {
                         }}
                         {...stylex.props(styles.quietAction)}
                       >
-                        {format(running ? m.running : m.runAll)}
+                        {(running ? m.editor_running : m.editor_runAll)()}
                       </button>
                     ),
                   }
@@ -3186,7 +3185,7 @@ export default function FormulaEditorPage() {
                           }}
                           {...stylex.props(styles.quietAction)}
                         >
-                          {format(m.goExamples)}
+                          {m.editor_goExamples()}
                         </button>
                       ),
                     }
@@ -3212,25 +3211,25 @@ export default function FormulaEditorPage() {
         )
       }
       tryRun={trySection(false)}
-      tryLabel={format(m.tryTitle)}
+      tryLabel={m.editor_tryTitle()}
       panelTabs={[
         {
           value: 'examples',
-          label: format(m.testsTitle),
+          label: m.editor_tests(),
           tone: examplesTone,
           count: tests.length,
           content: examplesBody,
         },
         {
           value: 'compile',
-          label: format(m.diagnosticsTitle),
+          label: m.report_diagnostics(),
           tone: compileTone,
           ...(diagnostics.length === 0 ? {} : { count: diagnostics.length }),
           content: compileBody,
         },
         {
           value: 'contract',
-          label: format(m.contractIssuesTitle),
+          label: m.report_contract(),
           tone: contractTone,
           ...(issues.length === 0 ? {} : { count: issues.length }),
           content: <div {...stylex.props(w.panelScroll)}>{contractBody}</div>,
@@ -3241,11 +3240,11 @@ export default function FormulaEditorPage() {
       panelActions={
         tab === 'compile' ? compileActions : tab === 'examples' ? examplesActions : null
       }
-      panelLabel={format(m.checksTitle)}
+      panelLabel={m.editor_checks()}
       phoneTabs={[
         {
           value: 'source',
-          label: format(m.phoneSourceTab),
+          label: m.editor_phoneSourceTab(),
           content: (
             <div {...stylex.props(styles.phoneSource)}>
               {beginning ? null : compileState === 'failed' ? compileStrip : null}
@@ -3262,16 +3261,16 @@ export default function FormulaEditorPage() {
             </div>
           ),
         },
-        { value: 'try', label: format(m.tryTitle), content: trySection(true) },
+        { value: 'try', label: m.editor_tryTitle(), content: trySection(true) },
         {
           value: 'examples',
-          label: format(m.testsTitle),
+          label: m.editor_tests(),
           tone: examplesTone,
           count: tests.length,
           content: (
             <div {...stylex.props(styles.phoneExamples)}>
               <div {...stylex.props(styles.phoneStrip)}>
-                <span>{format(m.examplesCount, { count: cases.length })}</span>
+                <span>{m.examples_count({ count: cases.length })}</span>
                 <span {...stylex.props(w.spring)} />
                 {examplesActions}
               </div>
@@ -3281,14 +3280,14 @@ export default function FormulaEditorPage() {
         },
         {
           value: 'compile',
-          label: format(m.diagnosticsTitle),
+          label: m.report_diagnostics(),
           tone: compileTone,
           ...(diagnostics.length === 0 ? {} : { count: diagnostics.length }),
           content: compileBody,
         },
         {
           value: 'contract',
-          label: format(m.contractIssuesTitle),
+          label: m.report_contract(),
           tone: contractTone,
           ...(issues.length === 0 ? {} : { count: issues.length }),
           content: <div {...stylex.props(w.panelScroll)}>{contractBody}</div>,
@@ -3312,8 +3311,8 @@ export default function FormulaEditorPage() {
       >
         <SheetContent side={narrow ? 'bottom' : 'right'} xstyle={styles.caseSheet}>
           <SheetHeader>
-            <SheetTitle>{format(m.exampleEditTitle)}</SheetTitle>
-            <SheetDescription>{format(m.exampleEditHint)}</SheetDescription>
+            <SheetTitle>{m.examples_editTitle()}</SheetTitle>
+            <SheetDescription>{m.examples_editHint()}</SheetDescription>
           </SheetHeader>
           {editingCase === undefined ? null : (
             <div
@@ -3342,11 +3341,13 @@ export default function FormulaEditorPage() {
                 )}
                 <span {...stylex.props(styles.caseVerdictWords)}>
                   {editingCase.outcome === undefined || editingCase.stale
-                    ? format(editingCase.outcome === undefined ? m.conclusionNotRun : m.resultStale)
-                    : (outcomeWords(format, editingCase.outcome) ??
+                    ? (editingCase.outcome === undefined
+                        ? m.examples_notRun
+                        : m.editor_resultStale)()
+                    : (outcomeWords(editingCase.outcome) ??
                       (editingCase.outcome.actual === undefined
-                        ? format(m.resultPassed)
-                        : format(m.resultActual, { value: editingCase.outcome.actual })))}
+                        ? m.editor_resultPassed()
+                        : m.editor_resultActual({ value: editingCase.outcome.actual })))}
                 </span>
               </p>
             </div>
@@ -3360,7 +3361,7 @@ export default function FormulaEditorPage() {
                 onClick={() => void runRows([editingCase.test.key])}
               >
                 <PlayIcon aria-hidden />
-                {format(running ? m.running : m.run)}
+                {(running ? m.editor_running : m.editor_run)()}
               </Button>
               <Button
                 variant="ghost"
@@ -3368,7 +3369,7 @@ export default function FormulaEditorPage() {
                 disabled={archived}
                 onClick={() => loadIntoTry(editingCase.test)}
               >
-                {format(m.loadIntoTry)}
+                {m.editor_loadIntoTry()}
               </Button>
               <span {...stylex.props(w.spring)} />
               <Button
@@ -3380,10 +3381,10 @@ export default function FormulaEditorPage() {
                   setTests(tests.filter((one) => one.key !== editingCase.test.key))
                 }}
               >
-                {format(m.removeTest)}
+                {m.editor_removeTest()}
               </Button>
               <Button size="sm" onClick={() => setSheetOpen(false)}>
-                {format(m.exampleDone)}
+                {m.examples_done()}
               </Button>
             </SheetFooter>
           )}

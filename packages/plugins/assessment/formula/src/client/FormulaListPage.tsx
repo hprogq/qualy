@@ -12,7 +12,7 @@ import {
   useRunApi,
 } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { Button } from '@qualy/ui/button'
@@ -30,9 +30,11 @@ import {
 import { AsyncSection, Feedback, Field, FormDialog } from '@qualy/ui/admin'
 import { ChevronRightIcon, PlusIcon, SigmaIcon } from 'lucide-react'
 import { formulaApi } from './api.ts'
-import { formulaMessages as m } from './i18n.ts'
+
 import { LibrarySkeleton } from './library.tsx'
 import { libraryStyles as l, shortWhen } from './library-styles.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // Every formula this author has, and the way into one.
 //
@@ -95,7 +97,7 @@ function NewFormulaDialog({
   const run = useRunApi()
   const query = useApiQuery(formulaApi)
   const queryClient = useQueryClient()
-  const { format, formatError } = useI18n()
+  const { formatError } = useI18n()
 
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
@@ -136,23 +138,23 @@ function NewFormulaDialog({
   return (
     <FormDialog
       open={open}
-      title={format(m.newFormula)}
+      title={m.list_new()}
       onClose={close}
       footer={
         <>
           <Button variant="ghost" onClick={close}>
-            {format(m.cancel)}
+            {m.common_cancel()}
           </Button>
           <Button disabled={!ready || create.isPending} onClick={() => create.mutate()}>
-            {format(m.createConfirm)}
+            {m.create_confirm()}
           </Button>
         </>
       }
     >
-      <Field label={format(m.nameLabel)} required>
+      <Field label={m.field_name()} required>
         {(id) => <Input id={id} value={name} onChange={(event) => setName(event.target.value)} />}
       </Field>
-      <Field label={format(m.descriptionLabel)}>
+      <Field label={m.field_description()}>
         {(id) => (
           <Textarea
             id={id}
@@ -171,9 +173,9 @@ export default function FormulaListPage() {
   const api = useApi(formulaApi)
   const runApi = useRunApi()
   const query = useApiQuery(formulaApi)
-  const { format, locale } = useI18n()
+  const { locale } = useI18n()
   const failure = useLoadFailure()
-  const titleRef = usePageTitle(format(m.listTitle))
+  const titleRef = usePageTitle(m.list_title())
   const navigate = usePageNavigate()
   const [creating, setCreating] = useState(false)
 
@@ -202,32 +204,32 @@ export default function FormulaListPage() {
   const newButton = (
     <Button
       onClick={() => setCreating(true)}
-      aria-label={format(m.newFormula)}
+      aria-label={m.list_new()}
       className={stylex.props(styles.newButton).className}
     >
       <PlusIcon />
-      <span {...stylex.props(styles.newWord)}>{format(m.newFormula)}</span>
+      <span {...stylex.props(styles.newWord)}>{m.list_new()}</span>
     </Button>
   )
 
   return (
     <Screen
-      title={format(m.listTitle)}
-      description={format(m.listHint)}
+      title={m.list_title()}
+      description={m.list_hint()}
       titleRef={titleRef}
       actions={newButton}
     >
       <div {...stylex.props(l.page)}>
         <section {...stylex.props(l.section)}>
           <div {...stylex.props(l.sectionHead)}>
-            <span {...stylex.props(l.sectionLabel)}>{format(m.listAll)}</span>
+            <span {...stylex.props(l.sectionLabel)}>{m.list_all()}</span>
             <span {...stylex.props(l.spring)} />
             <PageLink
               page="assessment-formula/templates"
               unavailable={null}
               className={stylex.props(l.elsewhere).className}
             >
-              {format(m.navigationTemplates)}
+              {m.navigation_templates()}
               <ChevronRightIcon size={14} aria-hidden />
             </PageLink>
           </div>
@@ -241,8 +243,8 @@ export default function FormulaListPage() {
             }
             framed
             retrying={functions.isFetching}
-            loadingLabel={format(commonMessages.loading)}
-            retryLabel={format(commonMessages.retry)}
+            loadingLabel={commonMessages.state_loading()}
+            retryLabel={commonMessages.action_retry()}
             onRetry={() => void functions.refetch()}
             skeleton={<LibrarySkeleton columns={styles.columns} />}
           >
@@ -253,22 +255,22 @@ export default function FormulaListPage() {
                     <EmptyMedia variant="icon">
                       <SigmaIcon />
                     </EmptyMedia>
-                    <EmptyTitle>{format(m.emptyList)}</EmptyTitle>
-                    <EmptyDescription>{format(m.emptyListHint)}</EmptyDescription>
+                    <EmptyTitle>{m.list_empty()}</EmptyTitle>
+                    <EmptyDescription>{m.list_emptyHint()}</EmptyDescription>
                   </EmptyHeader>
                   <EmptyContent>
                     <Button variant="outline" onClick={() => setCreating(true)}>
                       <PlusIcon />
-                      {format(m.newFormula)}
+                      {m.list_new()}
                     </Button>
                   </EmptyContent>
                 </Empty>
               ) : (
                 <>
                   <div {...stylex.props(l.grid, l.headRow, styles.columns)}>
-                    <span>{format(m.listNameColumn)}</span>
-                    <span>{format(m.versionColumn)}</span>
-                    <span {...stylex.props(l.end)}>{format(m.updatedColumn)}</span>
+                    <span>{m.list_nameColumn()}</span>
+                    <span>{m.list_versionColumn()}</span>
+                    <span {...stylex.props(l.end)}>{m.list_updatedColumn()}</span>
                     <span />
                   </div>
                   {items.map((row, index) => {
@@ -277,18 +279,18 @@ export default function FormulaListPage() {
                       row.latestVersionNo === null ? (
                         <span {...stylex.props(styles.standing, styles.draftOnly)}>
                           <span aria-hidden {...stylex.props(styles.dot, styles.dotQuiet)} />
-                          {format(m.versionNone)}
+                          {m.list_versionNone()}
                         </span>
                       ) : (
                         <span {...stylex.props(styles.standing)}>
                           <span aria-hidden {...stylex.props(styles.dot)} />
                           <span {...stylex.props(styles.releaseName)}>
                             {row.latestReleaseName ??
-                              format(m.releaseOrdinal, { number: row.latestVersionNo })}
+                              m.history_releaseOrdinal({ number: row.latestVersionNo })}
                           </span>
                         </span>
                       )
-                    const updated = shortWhen(row.updatedAt, format, locale)
+                    const updated = shortWhen(row.updatedAt, locale)
                     return (
                       <div
                         key={row.id}
@@ -318,7 +320,7 @@ export default function FormulaListPage() {
                               {row.name}
                             </PageLink>
                             {archived && (
-                              <span {...stylex.props(l.tag)}>{format(m.statusArchived)}</span>
+                              <span {...stylex.props(l.tag)}>{m.status_archived()}</span>
                             )}
                           </span>
                           <span
@@ -328,7 +330,7 @@ export default function FormulaListPage() {
                             )}
                           >
                             {row.description === null || row.description === ''
-                              ? format(m.descriptionNone)
+                              ? m.editor_descriptionNone()
                               : row.description}
                           </span>
                           <span {...stylex.props(l.phoneMeta)}>
@@ -349,7 +351,7 @@ export default function FormulaListPage() {
                       onClick={() => void functions.fetchNextPage()}
                       {...stylex.props(l.more)}
                     >
-                      {format(m.loadMore)}
+                      {m.list_loadMore()}
                     </button>
                   )}
                 </>

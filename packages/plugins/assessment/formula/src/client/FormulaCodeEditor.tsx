@@ -18,7 +18,6 @@
 
 import { useEffect, useRef, useState, useSyncExternalStore, type RefObject } from 'react'
 import * as stylex from '@stylexjs/stylex'
-import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { Button } from '@qualy/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@qualy/ui/tooltip'
@@ -27,7 +26,7 @@ import { monaco } from './monaco-setup.ts'
 import { holdEditorLease } from './editor-lease.ts'
 import { editorSession, type EditorSession, type SessionState } from './editor-session.ts'
 import { FORMULA_URI } from './formula-lsp/protocol.ts'
-import { formulaMessages as m } from './i18n.ts'
+import * as m from '#messages'
 
 // A pane rather than a boxed field: a head naming what is below it and how
 // the language connection stands, and the editor taking every pixel the
@@ -126,18 +125,17 @@ const connecting = (): SessionState => 'connecting'
 
 /** how the language connection stands, in the head of either pane */
 function LanguageStatus({ session }: { readonly session: EditorSession | null }) {
-  const { format } = useI18n()
   const raw = useSyncExternalStore(session?.subscribe ?? silent, session?.state ?? connecting)
   // no session asked for yet reads as about to connect
   const state = raw === 'idle' ? 'connecting' : raw
   const words =
     state === 'ready'
-      ? format(m.lspReady)
+      ? m.editor_lspReady()
       : state === 'connecting'
-        ? format(m.lspConnecting)
+        ? m.editor_lspConnecting()
         : state === 'limited'
-          ? format(m.lspLimited)
-          : format(m.lspUnavailable)
+          ? m.editor_lspLimited()
+          : m.editor_lspUnavailable()
   return (
     <p
       {...stylex.props(styles.status)}
@@ -174,7 +172,6 @@ function FormatButton({
   readonly ready: boolean
   readonly onFormat: () => Promise<void> | void
 }) {
-  const { format } = useI18n()
   const [done, setDone] = useState(false)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(
@@ -202,11 +199,13 @@ function FormatButton({
             }}
           >
             {done ? <CheckIcon aria-hidden /> : <WandSparklesIcon aria-hidden />}
-            {format(m.formatCode)}
+            {m.editor_formatCode()}
           </Button>
         </span>
       </TooltipTrigger>
-      <TooltipContent>{format(ready ? m.formatCodeHint : m.formatCodeWaiting)}</TooltipContent>
+      <TooltipContent>
+        {(ready ? m.editor_formatCodeHint : m.editor_formatCodeWaiting)()}
+      </TooltipContent>
     </Tooltip>
   )
 }

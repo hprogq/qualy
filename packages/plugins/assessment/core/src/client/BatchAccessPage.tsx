@@ -1,7 +1,6 @@
-import { useI18n } from '@qualy/web-i18n'
 import { BatchScreen } from './batch/BatchScreen.tsx'
 import { AccessPanel } from './access/AccessPanel.tsx'
-import { assessmentMessages as m } from './i18n.ts'
+import * as m from '#messages'
 
 /**
  * Who may work on one batch, and what it accepted of their authority.
@@ -10,14 +9,8 @@ import { assessmentMessages as m } from './i18n.ts'
  * share one row, and a reading column left the roles a quarter of it.
  */
 export default function BatchAccessPage() {
-  const { format } = useI18n()
   return (
-    <BatchScreen
-      title={format(m.tabAccess)}
-      description={format(m.accessHint)}
-      size="wide"
-      requires="manage"
-    >
+    <BatchScreen title={m.access_tab()} description={m.access_hint()} size="wide" requires="manage">
       {(batch) => <AccessPanel batchId={batch.id} archived={batch.status === 'archived'} />}
     </BatchScreen>
   )

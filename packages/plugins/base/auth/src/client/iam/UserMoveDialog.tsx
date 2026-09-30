@@ -3,14 +3,16 @@ import { useEffect, useMemo, useState } from 'react'
 import { orgNodePicker, type OrgNodePickerContext } from '@qualy/ui-contract'
 import { UiSlot, useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { ConfirmDialog, FormDialog } from '@qualy/ui/admin'
 import { CardEmpty } from '@qualy/ui/screen'
 import { Button } from '@qualy/ui/button'
-import { iamMessages as m } from '../i18n.ts'
+
 import { authApi } from '../api.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // Moving somebody to another unit, from wherever their record is open: the
 // organization section and the band above every section open the same
@@ -58,7 +60,7 @@ export function UserMoveDialog({
   const runApi = useRunApi()
   const query = useApiQuery(authApi)
   const queryClient = useQueryClient()
-  const { format, formatError } = useI18n()
+  const { formatError } = useI18n()
   const [destination, setDestination] = useState('')
   const [confirming, setConfirming] = useState('')
 
@@ -90,12 +92,12 @@ export function UserMoveDialog({
         (rule.mode === 'tenant-root'
           ? node.parentId === null
           : rule.orgTypeIds.includes(node.orgTypeId))
-      if (!fits) out[node.orgNodeId] = format(m.moveTypeRefused)
-      else if (!node.manageable) out[node.orgNodeId] = format(m.moveNotManageable)
+      if (!fits) out[node.orgNodeId] = m.users_moveTypeRefused()
+      else if (!node.manageable) out[node.orgNodeId] = m.users_moveNotManageable()
     }
-    if (here !== undefined) out[here] = format(m.moveAlreadyHere)
+    if (here !== undefined) out[here] = m.users_moveAlreadyHere()
     return out
-  }, [options.data, rule, here, format])
+  }, [options.data, rule, here])
 
   const named = useMemo(
     () => new Map((options.data?.nodes ?? []).map((node) => [node.orgNodeId, node.name])),
@@ -131,8 +133,8 @@ export function UserMoveDialog({
     <>
       <FormDialog
         open={open}
-        title={format(m.moveLabel)}
-        description={format(m.movePick)}
+        title={m.users_move()}
+        description={m.users_movePick()}
         onClose={() => {
           setDestination('')
           onClose()
@@ -141,7 +143,7 @@ export function UserMoveDialog({
           <>
             {destination !== '' && (
               <span {...stylex.props(styles.chosen)}>
-                {format(m.moveTarget)}{' '}
+                {m.users_moveTarget()}{' '}
                 <span {...stylex.props(styles.chosenName)}>
                   {named.get(destination) ?? destination}
                 </span>
@@ -155,7 +157,7 @@ export function UserMoveDialog({
                 onClose()
               }}
             >
-              {format(commonMessages.cancel)}
+              {commonMessages.action_cancel()}
             </Button>
             <Button
               size="sm"
@@ -166,7 +168,7 @@ export function UserMoveDialog({
                 setConfirming(destination)
               }}
             >
-              {format(m.moveAction)}
+              {m.users_moveAction()}
             </Button>
           </>
         }
@@ -175,21 +177,21 @@ export function UserMoveDialog({
           <UiSlot
             token={orgNodePicker}
             context={picker}
-            fallback={<CardEmpty>{format(m.movePickerUnavailable)}</CardEmpty>}
+            fallback={<CardEmpty>{m.users_movePickerUnavailable()}</CardEmpty>}
           />
         </div>
       </FormDialog>
 
       <ConfirmDialog
         open={confirming !== ''}
-        title={format(m.moveConfirmTitle)}
-        description={format(m.moveConfirmBody, {
+        title={m.users_moveConfirm()}
+        description={m.users_moveConfirmBody({
           name: record?.displayName ?? '',
-          from: record?.primaryOrgNode?.name ?? format(m.noneWord),
+          from: record?.primaryOrgNode?.name ?? m.word_none(),
           to: target,
         })}
-        confirmLabel={format(m.moveAction)}
-        cancelLabel={format(commonMessages.cancel)}
+        confirmLabel={m.users_moveAction()}
+        cancelLabel={commonMessages.action_cancel()}
         pending={move.isPending}
         onConfirm={() => {
           const to = confirming

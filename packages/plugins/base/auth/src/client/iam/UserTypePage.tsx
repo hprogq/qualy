@@ -6,12 +6,13 @@ import {
   useLoadFailure,
   usePageRouteParams,
 } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { BandBack, EditorSkeleton, Screen } from '@qualy/ui/screen'
-import { iamMessages as m } from '../i18n.ts'
+
 import { UserTypeConfig } from './types/UserTypeConfig.tsx'
 import { authApi } from '../api.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // One user type's own page, reached from its row in the list.
 //
@@ -26,7 +27,7 @@ import { authApi } from '../api.ts'
 export default function UserTypePage() {
   const { typeId } = usePageRouteParams('typeId')
   const query = useApiQuery(authApi)
-  const { format } = useI18n()
+
   const describe = useLoadFailure()
   const types = useQuery(query.identity.listUserTypes.queryOptions({}))
   const userType = types.data?.userTypes.find((candidate) => candidate.id === typeId)
@@ -45,12 +46,12 @@ export default function UserTypePage() {
       <LoadFailure
         failure={
           types.data !== undefined
-            ? describe.missing({ copy: { missing: { title: format(m.userTypeGone) } } })
+            ? describe.missing({ copy: { missing: { title: m.userTypes_gone() } } })
             : describe.of(types.error)
         }
         onRetry={() => void types.refetch()}
         retrying={types.isFetching}
-        back={{ page: 'auth/user-types', label: format(m.backToUserTypes) }}
+        back={{ page: 'auth/user-types', label: m.userTypes_back() }}
       />
     )
   }
@@ -58,12 +59,12 @@ export default function UserTypePage() {
     <Screen
       back={
         <BandBack as={PageLink} page="auth/user-types">
-          {format(m.backToUserTypes)}
+          {m.userTypes_back()}
         </BandBack>
       }
-      title={format(m.editUserType)}
+      title={m.userTypes_edit()}
     >
-      <div role="status" aria-label={format(commonMessages.loading)}>
+      <div role="status" aria-label={commonMessages.state_loading()}>
         <EditorSkeleton />
       </div>
     </Screen>

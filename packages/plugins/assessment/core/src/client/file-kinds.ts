@@ -1,5 +1,5 @@
-import type { MessageDescriptor } from '@qualy/i18n-contract'
-import { assessmentMessages as m } from './i18n.ts'
+import type { Message } from '@qualy/i18n-contract'
+import * as m from '#messages'
 
 // What a file field will take, in kinds people recognise.
 //
@@ -22,7 +22,7 @@ import { assessmentMessages as m } from './i18n.ts'
 
 export interface FileKind {
   readonly id: string
-  readonly name: MessageDescriptor
+  readonly name: Message
   /** what the field actually stores when this kind is picked */
   readonly tokens: readonly string[]
 }
@@ -33,12 +33,12 @@ export interface FileKind {
  * own check matches a leading dot against the filename.
  */
 export const FILE_KINDS: readonly FileKind[] = [
-  { id: 'pdf', name: m.fileKindPdf, tokens: ['application/pdf', '.pdf'] },
-  { id: 'image', name: m.fileKindImage, tokens: ['image/*'] },
-  { id: 'word', name: m.fileKindWord, tokens: ['.doc', '.docx'] },
-  { id: 'sheet', name: m.fileKindSheet, tokens: ['.xls', '.xlsx', '.csv'] },
-  { id: 'slides', name: m.fileKindSlides, tokens: ['.ppt', '.pptx'] },
-  { id: 'archive', name: m.fileKindArchive, tokens: ['.zip', '.rar', '.7z'] },
+  { id: 'pdf', name: m.files_kindPdf, tokens: ['application/pdf', '.pdf'] },
+  { id: 'image', name: m.files_kindImage, tokens: ['image/*'] },
+  { id: 'word', name: m.files_kindWord, tokens: ['.doc', '.docx'] },
+  { id: 'sheet', name: m.files_kindSheet, tokens: ['.xls', '.xlsx', '.csv'] },
+  { id: 'slides', name: m.files_kindSlides, tokens: ['.ppt', '.pptx'] },
+  { id: 'archive', name: m.files_kindArchive, tokens: ['.zip', '.rar', '.7z'] },
 ]
 
 /**

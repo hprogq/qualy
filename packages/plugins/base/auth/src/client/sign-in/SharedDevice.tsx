@@ -1,5 +1,4 @@
 import { useId, useState } from 'react'
-import { useI18n } from '@qualy/web-i18n'
 import { Checkbox } from '@qualy/ui/checkbox'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
@@ -8,7 +7,7 @@ import {
   SIGN_IN_DEVICE_COOKIE,
   SIGN_IN_DEVICE_MAX_AGE_SECONDS,
 } from '@qualy/auth-contract/device'
-import { authMessages as m } from '../i18n.ts'
+import * as m from '#messages'
 
 // Whether this is a computer others use, asked once for every way in.
 //
@@ -56,7 +55,6 @@ const styles = stylex.create({
 })
 
 export function SharedDeviceChoice() {
-  const { format } = useI18n()
   const id = useId()
   const [shared, setShared] = useState(remembered)
   return (
@@ -74,9 +72,9 @@ export function SharedDeviceChoice() {
         />
         <div {...stylex.props(styles.words)}>
           <label htmlFor={id} {...stylex.props(styles.label)}>
-            {format(m.sharedDevice)}
+            {m.login_sharedDevice()}
           </label>
-          <p {...stylex.props(styles.hint)}>{format(m.sharedDeviceHint)}</p>
+          <p {...stylex.props(styles.hint)}>{m.login_sharedDeviceHint()}</p>
         </div>
       </div>
     </div>

@@ -15,19 +15,21 @@ import {
 import { useI18n } from '@qualy/web-i18n'
 import { useTerm } from '@qualy/plugin-settings/client/terms'
 import { authTerms } from '@qualy/auth-contract/terms'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { AsyncSection } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { toast } from '@qualy/ui/toast'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentApi, assessmentUrls } from '../../api.ts'
-import { assessmentMessages as m } from '../../i18n.ts'
+
 import { inZone, useBatchZone } from '../../batch/zone.ts'
 import { EntryStanding } from '../../entry/EntryStanding.tsx'
 import { ReasonDialog } from '../../items/ReasonDialog.tsx'
 import { sizeLabel } from '../../entry/model.ts'
 import { sayEntryFailure } from '../../entry/refusals.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // One import, looked back on.
 //
@@ -179,7 +181,7 @@ export function AdministrativeImportDetail({
   const run = useRunApi()
   const query = useApiQuery(assessmentApi)
   const queryClient = useQueryClient()
-  const { format, formatError, locale } = useI18n()
+  const { formatError, locale } = useI18n()
   const zone = useBatchZone()
   const businessNo = useTerm(authTerms.businessNumber)
   const [asking, setAsking] = useState(false)
@@ -237,7 +239,7 @@ export function AdministrativeImportDetail({
         }),
       ),
     onSuccess: (done) => {
-      toast.success(format(m.importReversed, { count: done.affectedCount }))
+      toast.success(m.record_import_reversed({ count: done.affectedCount }))
       // what the score is made of just changed: the import, its rows, the
       // history's standing and the record book are all asked again
       void queryClient.invalidateQueries({
@@ -266,8 +268,8 @@ export function AdministrativeImportDetail({
       const refused = error as { _tag?: string; issues?: readonly unknown[] }
       toast.error(
         refused._tag === 'ASSESSMENT_ADMINISTRATIVE_IMPORT_INVALID' && refused.issues !== undefined
-          ? format(m.importReverseRefused, { count: refused.issues.length })
-          : sayEntryFailure(error, { format, formatError }),
+          ? m.record_import_reverseRefused({ count: refused.issues.length })
+          : sayEntryFailure(error, { formatError }),
       )
     },
   })
@@ -298,7 +300,7 @@ export function AdministrativeImportDetail({
         kindOf(schema) === 'choice'
           ? choiceLabel(schema as never, String(value), locale)
           : typeof value === 'boolean'
-            ? format(value ? m.recognitionYes : m.recognitionNo)
+            ? (value ? m.recognition_yes : m.recognition_no)()
             : String(value)
       return [`${displayTitle(schema, field.id, locale)} ${text}`]
     })
@@ -310,7 +312,7 @@ export function AdministrativeImportDetail({
   // it; only one that turned out not to be there, or not the reader's,
   // takes its place.
   const copy = {
-    missing: { title: format(m.importMissing), description: format(m.recordMissingHint) },
+    missing: { title: m.record_import_missing(), description: m.record_missingHint() },
   }
   const failure = named
     ? words.subject(detail, { missing: [IMPORT_NOT_FOUND], copy })
@@ -327,7 +329,7 @@ export function AdministrativeImportDetail({
             page: 'assessment/batch-record',
             params: { batchId },
             search: { tab: 'imports' },
-            label: format(m.importBack),
+            label: m.record_import_back(),
           }}
         />
       </div>
@@ -337,8 +339,8 @@ export function AdministrativeImportDetail({
   return (
     <AsyncSection
       pending={detail.isPending}
-      loadingLabel={format(commonMessages.loading)}
-      retryLabel={format(commonMessages.retry)}
+      loadingLabel={commonMessages.state_loading()}
+      retryLabel={commonMessages.action_retry()}
       onRetry={() => void detail.refetch()}
       skeleton={
         <div {...stylex.props(styles.waiting)}>
@@ -367,12 +369,12 @@ export function AdministrativeImportDetail({
           <div {...stylex.props(styles.sheet)}>
             <div {...stylex.props(styles.titleRow)}>
               <h2 {...stylex.props(styles.title)}>
-                {found.source.available ? found.source.filename : format(m.importDetailTitle)}
+                {found.source.available ? found.source.filename : m.record_import_detailTitle()}
               </h2>
               <span {...stylex.props(styles.by)}>
-                {format(m.importDetailBy, {
+                {m.record_import_detailBy({
                   when: when(found.createdAt),
-                  actor: found.actor?.name ?? format(m.eventSomebody),
+                  actor: found.actor?.name ?? m.event_somebody(),
                 })}
               </span>
               <span {...stylex.props(styles.spacer)} />
@@ -384,19 +386,19 @@ export function AdministrativeImportDetail({
                   onClick={() => setAsking(true)}
                   data-testid="import-reverse"
                 >
-                  {format(m.importReverse)}
+                  {m.record_import_reverse()}
                 </Button>
               )}
             </div>
 
             <dl {...stylex.props(styles.facts)}>
-              <dt {...stylex.props(styles.term)}>{format(m.recordItem)}</dt>
+              <dt {...stylex.props(styles.term)}>{m.record_item()}</dt>
               <dd {...stylex.props(styles.value)}>{found.item.title}</dd>
-              <dt {...stylex.props(styles.term)}>{format(m.importDetailRevision)}</dt>
+              <dt {...stylex.props(styles.term)}>{m.record_import_detailRevision()}</dt>
               <dd {...stylex.props(styles.value)}>
-                {format(m.importDetailRevisionNo, { no: found.itemRevision.revisionNo })}
+                {m.record_import_detailRevisionNo({ no: found.itemRevision.revisionNo })}
               </dd>
-              <dt {...stylex.props(styles.term)}>{format(m.importDefaultBasis)}</dt>
+              <dt {...stylex.props(styles.term)}>{m.record_import_defaultBasis()}</dt>
               <dd
                 {...stylex.props(styles.value)}
                 data-testid="import-basis"
@@ -411,11 +413,11 @@ export function AdministrativeImportDetail({
                 {/* free text an office often writes names into, so it waits
                     for the same reach the file does */}
                 {found.defaultBasis ??
-                  format(
-                    found.source.available ? m.importDetailBasisNone : m.importDetailSourceWithheld,
-                  )}
+                  (found.source.available
+                    ? m.record_import_detailBasisNone
+                    : m.record_import_detailSourceWithheld)()}
               </dd>
-              <dt {...stylex.props(styles.term)}>{format(m.importDetailSource)}</dt>
+              <dt {...stylex.props(styles.term)}>{m.record_import_detailSource()}</dt>
               <dd {...stylex.props(styles.value)}>
                 {found.source.available ? (
                   <span {...stylex.props(styles.sourceRow)}>
@@ -430,7 +432,7 @@ export function AdministrativeImportDetail({
                       {...stylex.props(styles.sourceLink)}
                     >
                       <DownloadIcon aria-hidden {...stylex.props(styles.icon)} />
-                      {format(m.importDetailDownload)}
+                      {m.record_import_detailDownload()}
                     </button>
                     <span {...stylex.props(styles.sourceSize)}>
                       {sizeLabel(Number(found.source.size))}
@@ -440,15 +442,15 @@ export function AdministrativeImportDetail({
                   // the file's own name says who is in it, so it waits for
                   // the same reach its rows do
                   <span data-testid="import-source-withheld">
-                    {format(m.importDetailSourceWithheld)}
+                    {m.record_import_detailSourceWithheld()}
                   </span>
                 )}
               </dd>
-              <dt {...stylex.props(styles.term)}>{format(m.importDetailCount)}</dt>
+              <dt {...stylex.props(styles.term)}>{m.record_import_detailCount()}</dt>
               <dd {...stylex.props(styles.value)}>
-                {format(m.importStandingCount, { count: found.importedCount })}
+                {m.record_import_standingCount({ count: found.importedCount })}
               </dd>
-              <dt {...stylex.props(styles.term)}>{format(m.importDetailNow)}</dt>
+              <dt {...stylex.props(styles.term)}>{m.record_import_detailNow()}</dt>
               <dd
                 {...stylex.props(styles.value, styles.now)}
                 data-testid="import-standing"
@@ -458,21 +460,21 @@ export function AdministrativeImportDetail({
                 data-voided={found.standing.voided}
               >
                 {found.standing.approved > 0 && (
-                  <span>{format(m.importNowApproved, { count: found.standing.approved })}</span>
+                  <span>{m.record_import_nowApproved({ count: found.standing.approved })}</span>
                 )}
                 {found.standing.inReview > 0 && (
-                  <span>{format(m.importNowInReview, { count: found.standing.inReview })}</span>
+                  <span>{m.record_import_nowInReview({ count: found.standing.inReview })}</span>
                 )}
                 {found.standing.rejected > 0 && (
-                  <span>{format(m.importNowRejected, { count: found.standing.rejected })}</span>
+                  <span>{m.record_import_nowRejected({ count: found.standing.rejected })}</span>
                 )}
                 {found.standing.voided > 0 && (
-                  <span>{format(m.importNowVoided, { count: found.standing.voided })}</span>
+                  <span>{m.record_import_nowVoided({ count: found.standing.voided })}</span>
                 )}
               </dd>
               {found.reversals.length > 0 && (
                 <>
-                  <dt {...stylex.props(styles.term)}>{format(m.importReversals)}</dt>
+                  <dt {...stylex.props(styles.term)}>{m.record_import_reversals()}</dt>
                   <dd {...stylex.props(styles.value, styles.reversals)}>
                     {found.reversals.map((one) => (
                       <span
@@ -481,14 +483,14 @@ export function AdministrativeImportDetail({
                         data-reason={one.reason === null || one.reason === '' ? 'none' : 'written'}
                       >
                         {one.reason === null || one.reason === ''
-                          ? format(m.importReversalLineBare, {
+                          ? m.record_import_reversalLineBare({
                               when: when(one.createdAt),
-                              actor: one.actor?.name ?? format(m.eventSomebody),
+                              actor: one.actor?.name ?? m.event_somebody(),
                               count: one.affectedCount,
                             })
-                          : format(m.importReversalLine, {
+                          : m.record_import_reversalLine({
                               when: when(one.createdAt),
-                              actor: one.actor?.name ?? format(m.eventSomebody),
+                              actor: one.actor?.name ?? m.event_somebody(),
                               count: one.affectedCount,
                               reason: one.reason,
                             })}
@@ -500,12 +502,12 @@ export function AdministrativeImportDetail({
             </dl>
           </div>
 
-          <p {...stylex.props(styles.section)}>{format(m.importRows)}</p>
+          <p {...stylex.props(styles.section)}>{m.record_import_rows()}</p>
           <AsyncSection
             pending={rows.isPending}
             error={rows.isError ? words.of(rows.error) : null}
-            loadingLabel={format(commonMessages.loading)}
-            retryLabel={format(commonMessages.retry)}
+            loadingLabel={commonMessages.state_loading()}
+            retryLabel={commonMessages.action_retry()}
             onRetry={() => void rows.refetch()}
             skeleton={
               <div {...stylex.props(styles.waiting)}>
@@ -534,11 +536,11 @@ export function AdministrativeImportDetail({
           >
             <div {...stylex.props(styles.card)} role="table" data-testid="import-rows">
               <div role="row" {...stylex.props(styles.row, styles.headRow)}>
-                <span role="columnheader">{format(m.importColumnRow)}</span>
+                <span role="columnheader">{m.record_import_columnRow()}</span>
                 <span role="columnheader">{businessNo}</span>
-                <span role="columnheader">{format(m.importColumnName)}</span>
-                <span role="columnheader">{format(m.importColumnStatus)}</span>
-                <span role="columnheader">{format(m.importColumnDetermination)}</span>
+                <span role="columnheader">{m.record_import_columnName()}</span>
+                <span role="columnheader">{m.record_import_columnStatus()}</span>
+                <span role="columnheader">{m.record_import_columnDetermination()}</span>
                 <span />
               </div>
               {lines.map((line) => (
@@ -563,7 +565,7 @@ export function AdministrativeImportDetail({
                   >
                     {line.businessNoSnapshot ??
                       line.participant.businessNo ??
-                      format(m.noBusinessNoShort, { businessNo })}
+                      m.roster_noBusinessNo({ businessNo })}
                   </span>
                   <span role="cell" {...stylex.props(styles.cell)}>
                     {line.participant.displayName}
@@ -581,7 +583,7 @@ export function AdministrativeImportDetail({
                         parts.map((part) => <span key={part}>{part}</span>)
                       ) : (
                         <span {...stylex.props(styles.determinedNone)}>
-                          {format(m.recognitionNoValuesShort)}
+                          {m.recognition_noValuesShort()}
                         </span>
                       )
                     })()}
@@ -598,7 +600,7 @@ export function AdministrativeImportDetail({
                   disabled={rows.isFetchingNextPage}
                   onClick={() => void rows.fetchNextPage()}
                 >
-                  {format(m.recordMoreWho)}
+                  {m.record_moreWho()}
                 </Button>
               </div>
             )}
@@ -608,9 +610,9 @@ export function AdministrativeImportDetail({
               reconstructs why a round's scores moved */}
           <ReasonDialog
             open={asking}
-            title={format(m.importReverseTitle)}
-            description={format(m.importReverseHint)}
-            confirmLabel={format(m.importReverse)}
+            title={m.record_import_reverseTitle()}
+            description={m.record_import_reverseHint()}
+            confirmLabel={m.record_import_reverse()}
             busy={reverse.isPending}
             onConfirm={(reason) => {
               setAsking(false)

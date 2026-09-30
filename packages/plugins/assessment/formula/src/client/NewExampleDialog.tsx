@@ -13,8 +13,9 @@ import type {
 import { AtomicValueField, InputValueForm } from '@qualy/web-value-form/InputValueForm'
 import { usePickerWords } from '@qualy/web-i18n/picker-words'
 import { materializeInput, type FieldDraft } from '@qualy/web-value-form/model'
-import { formulaMessages as m } from './i18n.ts'
+
 import { inputIssueWords, fieldIssueWords } from './report-words.ts'
+import * as m from '#messages'
 
 // A new example, written out before it joins the list: its name, what goes
 // in, and what should come out. Nothing is added until it is confirmed, so a
@@ -55,13 +56,13 @@ export function NewExampleDialog({
   readonly onClose: () => void
   readonly onAdd: (example: NewExample) => void
 }) {
-  const { format, locale } = useI18n()
+  const { locale } = useI18n()
   const words = usePickerWords()
   // the live check is the form's; the words for what it finds are this
   // screen's, and they are the same ones a run reports
   const explain = useCallback(
-    (schema: AtomicSchema, _id: string, reason: string) => fieldIssueWords(format, schema, reason),
-    [format],
+    (schema: AtomicSchema, _id: string, reason: string) => fieldIssueWords(schema, reason),
+    [],
   )
   const [name, setName] = useState('')
   const [drafts, setDrafts] = useState<Record<string, FieldDraft>>({})
@@ -92,7 +93,7 @@ export function NewExampleDialog({
     if (contract !== null) {
       const materialized = materializeInput(contract.inputSchema, drafts)
       if (materialized.value === null) {
-        setIssues(inputIssueWords(format, contract.inputSchema, materialized.issues))
+        setIssues(inputIssueWords(contract.inputSchema, materialized.issues))
         return
       }
       setIssues(undefined)
@@ -102,7 +103,7 @@ export function NewExampleDialog({
         stored = JSON.stringify(JSON.parse(inputText === '' ? '{}' : inputText))
         setInputProblem(null)
       } catch {
-        setInputProblem(format(m.testInputInvalid, { label: name === '' ? '#' : name }))
+        setInputProblem(m.editor_testInputInvalid({ label: name === '' ? '#' : name }))
         return
       }
     }
@@ -113,33 +114,33 @@ export function NewExampleDialog({
   return (
     <FormDialog
       open={open}
-      title={format(m.exampleNewTitle)}
+      title={m.examples_newTitle()}
       onClose={onClose}
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>
-            {format(m.cancel)}
+            {m.common_cancel()}
           </Button>
           <Button data-testid="formula-example-add-confirm" onClick={add}>
-            {format(m.exampleAddConfirm)}
+            {m.examples_addConfirm()}
           </Button>
         </>
       }
     >
       <div data-testid="formula-example-new" {...stylex.props(styles.fields)}>
-        <Field label={format(m.testName)}>
+        <Field label={m.editor_testName()}>
           {(id) => (
             <Input
               id={id}
               value={name}
               maxLength={100}
-              placeholder={format(m.exampleNamePlaceholder)}
+              placeholder={m.examples_namePlaceholder()}
               onChange={(event) => setName(event.target.value)}
             />
           )}
         </Field>
         {contract === null ? (
-          <Field label={format(m.testInput)}>
+          <Field label={m.editor_testInput()}>
             {(id) => (
               <Input
                 id={id}
@@ -160,7 +161,7 @@ export function NewExampleDialog({
             locale={locale}
             problems={issues}
             scope="new-example"
-            authoring={{ unnamedLabel: format(m.fieldUnnamed) }}
+            authoring={{ unnamedLabel: m.editor_fieldUnnamed() }}
           />
         )}
         {inputProblem === null ? null : (
@@ -169,11 +170,11 @@ export function NewExampleDialog({
           </p>
         )}
         {contract === null ? (
-          <Field label={format(m.testExpected)}>
+          <Field label={m.editor_testExpected()}>
             {(id) => (
               <Input
                 id={id}
-                placeholder={format(m.expectedLabel)}
+                placeholder={m.editor_expectedLabel()}
                 value={expected}
                 onChange={(event) => setExpected(event.target.value)}
               />
@@ -185,7 +186,7 @@ export function NewExampleDialog({
             words={words}
             schema={contract.outputSchema}
             name="expected"
-            label={format(m.expectedLabel)}
+            label={m.editor_expectedLabel()}
             draft={expected}
             onDraft={(draft) => setExpected(typeof draft === 'string' ? draft : String(draft))}
             locale={locale}

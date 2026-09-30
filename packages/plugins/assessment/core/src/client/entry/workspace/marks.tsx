@@ -1,11 +1,11 @@
 import * as stylex from '@stylexjs/stylex'
 import { motion, useReducedMotion } from 'motion/react'
-import { useI18n } from '@qualy/web-i18n'
 import { VisuallyHidden } from '@qualy/ui/visually-hidden'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { assessmentMessages as m } from '../../i18n.ts'
+
 import { trimAmount } from '../model.ts'
 import { two } from './model.ts'
+import * as m from '#messages'
 
 // The small marks the workspace sets beside a row's name.
 //
@@ -83,11 +83,10 @@ const styles = stylex.create({
 
 /** how many claims under a question, or a folded section, hold news their owner has not read */
 export function UnreadCount({ count }: { count: number }) {
-  const { format } = useI18n()
   return (
     <span data-testid="unread-mark" data-count={count} {...stylex.props(styles.count)}>
       <span aria-hidden>{count > 99 ? '99+' : count}</span>
-      <VisuallyHidden>{format(m.rowUnreadCount, { count })}</VisuallyHidden>
+      <VisuallyHidden>{m.entry_rowUnreadCount({ count })}</VisuallyHidden>
     </span>
   )
 }
@@ -118,12 +117,11 @@ export function SectionFigure({
   /** false while the score could not be read: the figure is unknown, not zero */
   scored: boolean
 }) {
-  const { format } = useI18n()
   const value = got === '' ? 0 : Number(got)
   const said = scored
     ? cap === null
-      ? format(m.entriesSectionSaidUncapped, { got: two(value) })
-      : format(m.entriesSectionSaid, { got: two(value), cap: trimAmount(String(cap)) })
+      ? m.entries_sectionSaidUncapped({ got: two(value) })
+      : m.entries_sectionSaid({ got: two(value), cap: trimAmount(String(cap)) })
     : null
   return (
     <span

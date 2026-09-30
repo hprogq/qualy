@@ -1,41 +1,37 @@
 import { Effect } from 'effect'
 import { renderScreen as render } from '@qualy/testkit/browser'
 import {
-  catalogs as assessmentCatalogs,
+  wireMessages as assessmentWire,
   errorMessages as assessmentErrors,
 } from '../../src/client/i18n.ts'
 import {
-  catalogs as formulaCatalogs,
+  wireMessages as formulaWire,
   errorMessages as formulaErrors,
 } from '@qualy/plugin-assessment-formula/client/i18n'
 import {
-  catalogs as authCatalogs,
+  wireMessages as authWire,
   errorMessages as authErrors,
 } from '@qualy/plugin-auth/client/i18n'
-import {
-  catalogs as layoutCatalogs,
-  errorMessages as layoutErrors,
-} from '@qualy/plugin-layout-default/client/i18n'
 // the host's stylesheet, because a screen asserted unstyled is a screen
 // nobody sees; it is the product's one stylesheet wherever a screen renders
 import '../../../../../../apps/web/src/app.css'
 
 // This package's own use of the testkit.
 //
-// The catalogs are named here rather than taken from the generated
-// aggregate: these tests render this plugin's screens, and the copy they
-// assert is this plugin's own - plus, where one of its screens renders a
-// neighbour's contribution, that neighbour's. Reaching for
+// What is said by code - api failures by code, server texts by id - is
+// named here rather than taken from the generated aggregate: these tests
+// render this plugin's screens, and what they meet is this plugin's own -
+// plus, where one of its screens renders a neighbour's contribution, that
+// neighbour's. Reaching for
 // `virtual:qualy/plugins` instead would make every one of these a
 // whole-composition test, and a plugin outside this repository could not
 // write one at all.
 
-export const catalogs = [assessmentCatalogs, formulaCatalogs, authCatalogs, layoutCatalogs]
+export const wireMessages = { ...assessmentWire, ...formulaWire, ...authWire }
 export const errorMessages = {
   ...assessmentErrors,
   ...formulaErrors,
   ...authErrors,
-  ...layoutErrors,
 }
 
 export {
@@ -67,7 +63,7 @@ const signedIn = {
 }
 
 export const renderScreen = (
-  options: Omit<Parameters<typeof render>[0], 'catalogs' | 'errorMessages'>,
+  options: Omit<Parameters<typeof render>[0], 'wireMessages' | 'errorMessages'>,
 ) =>
   render({
     ...options,
@@ -76,6 +72,6 @@ export const renderScreen = (
       ...options.client,
       auth: { getSession: () => Effect.succeed(signedIn), ...options.client['auth'] },
     },
-    catalogs,
+    wireMessages,
     errorMessages,
   })

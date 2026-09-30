@@ -16,7 +16,7 @@ import type { ApiResult } from '@qualy/web-runtime/api'
 import { isApiErrorCode, useI18n } from '@qualy/web-i18n'
 import { useTerm } from '@qualy/plugin-settings/client/terms'
 import { authTerms } from '@qualy/auth-contract/terms'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { AsyncSection, ConfirmDialog } from '@qualy/ui/admin'
 import { toast } from '@qualy/ui/toast'
 import { Button } from '@qualy/ui/button'
@@ -30,7 +30,7 @@ import { a11yStyles } from '@qualy/ui/visually-hidden'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { assessmentApi } from '../api.ts'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import { ZoneAwayNotice } from '../batch/BatchZone.tsx'
 import { inZone, useBatchZone } from '../batch/zone.ts'
 import { useBatchLive } from '../live.ts'
@@ -42,6 +42,8 @@ import { WorkspaceSkeleton } from '../entry/workspace/WorkspaceSkeleton.tsx'
 import { useParticipantEntries } from './participant-entries.ts'
 import { unitChainOf, unitPathOf } from '../roster/unit-path.ts'
 import { ROSTER_MAX_WAIT, ROSTER_SETTLE, settler, SYNC_FRESH } from '../roster/live-settle.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // One participant's whole account, in the page the list came from.
 //
@@ -460,7 +462,7 @@ export function ParticipantResultDetail({
   if (excluding !== null && excluding !== participantId) setExcluding(null)
   if (unfoldedFor !== null && unfoldedFor !== participantId) setUnfoldedFor(null)
   const unfolded = unfoldedFor === participantId
-  const { format, formatError, locale } = useI18n()
+  const { formatError, locale } = useI18n()
   const zone = useBatchZone()
   const phone = useIsMobile()
   // beside the work, where the shell lends its column; over it otherwise
@@ -574,12 +576,12 @@ export function ParticipantResultDetail({
   const failures = useLoadFailure()
   const absentWords = {
     missing: {
-      title: format(m.participantMissingTitle),
-      description: format(m.participantMissingHint),
+      title: m.participantResults_missingTitle(),
+      description: m.participantResults_missingHint(),
     },
     denied: {
-      title: format(m.participantDeniedTitle),
-      description: format(m.participantDeniedHint),
+      title: m.participantResults_deniedTitle(),
+      description: m.participantResults_deniedHint(),
     },
   }
   const absent = shaped
@@ -659,7 +661,7 @@ export function ParticipantResultDetail({
       ).then((answer) => ({ ...answer, status })),
     onSuccess: (answer: { status: 'active' | 'excluded' }) => {
       setExcluding(null)
-      toast.success(format(answer.status === 'excluded' ? m.toastExcluded : m.toastRestored))
+      toast.success((answer.status === 'excluded' ? m.toast_excluded : m.toast_restored)())
       void queryClient.invalidateQueries({ queryKey: query.assessment.key() })
     },
     onError: (error) => toast.error(formatError(error)),
@@ -682,7 +684,7 @@ export function ParticipantResultDetail({
               setExcluding(participantId)
         }
       >
-        {format(excluded ? m.restore : m.exclude)}
+        {(excluded ? m.roster_restore : m.roster_exclude)()}
       </Button>
     ) : null
 
@@ -690,13 +692,13 @@ export function ParticipantResultDetail({
     <button
       type="button"
       // the words on it are the list's name; what it is called says where it goes
-      aria-label={format(m.participantResultsBack)}
+      aria-label={m.participantResults_back()}
       {...stylex.props(styles.back)}
       onClick={onBack}
     >
       <ArrowLeftIcon aria-hidden {...stylex.props(styles.backIcon)} />
       {/* the list's own name: where pressing it lands, in the fewest words */}
-      <span {...stylex.props(styles.backWords)}>{format(m.participantResultsTab)}</span>
+      <span {...stylex.props(styles.backWords)}>{m.participantResults_tab()}</span>
     </button>
   )
 
@@ -708,7 +710,7 @@ export function ParticipantResultDetail({
           data-status={participant.status}
           {...stylex.props(styles.chip, excluded ? styles.chipExcluded : styles.chipActive)}
         >
-          {format(excluded ? m.excludedBadge : m.participantActive)}
+          {(excluded ? m.roster_excluded : m.roster_active)()}
         </span>
         {participant.placement !== 'current' && (
           <span
@@ -716,11 +718,9 @@ export function ParticipantResultDetail({
             data-placement={participant.placement}
             {...stylex.props(styles.chip, styles.chipMoved)}
           >
-            {format(
-              participant.placement === 'changed'
-                ? m.participantPlacementChanged
-                : m.participantPlacementGone,
-            )}
+            {(participant.placement === 'changed'
+              ? m.participant_placementChanged
+              : m.participant_placementGone)()}
           </span>
         )}
       </span>
@@ -741,13 +741,13 @@ export function ParticipantResultDetail({
       <UnitPath
         steps={where.steps}
         chain={{
-          label: format(m.rosterUnits),
-          closeLabel: format(commonMessages.close),
+          label: m.roster_units(),
+          closeLabel: commonMessages.action_close(),
           levels: chain,
         }}
       />
     )
-  const number = participant?.businessNo ?? format(m.noBusinessNoShort, { businessNo })
+  const number = participant?.businessNo ?? m.roster_noBusinessNo({ businessNo })
   const included =
     participant === undefined
       ? ''
@@ -768,16 +768,16 @@ export function ParticipantResultDetail({
       : [
           {
             key: 'entries',
-            label: m.participantResultsEntriesTab,
+            label: m.participantResults_entriesTab,
             count: counted,
             total: false,
           } as const,
         ]),
-    { key: 'score', label: m.participantResultsScoreTab, count: null, total: true } as const,
+    { key: 'score', label: m.participantResults_scoreTab, count: null, total: true } as const,
   ]
 
   const halvesNav = (
-    <nav aria-label={format(m.participantResultsViews)} {...stylex.props(styles.halves)}>
+    <nav aria-label={m.participantResults_views()} {...stylex.props(styles.halves)}>
       {halves.map(({ key, label, count, total }) => (
         <button
           key={key}
@@ -788,7 +788,7 @@ export function ParticipantResultDetail({
           onClick={() => onView(key)}
           {...stylex.props(styles.half, view === key && styles.halfOn)}
         >
-          <span {...stylex.props(styles.halfWord)}>{format(label)}</span>
+          <span {...stylex.props(styles.halfWord)}>{label()}</span>
           {count !== null && <Count>{String(count)}</Count>}
           {total && result.data !== undefined && (
             <span data-testid="participant-total" {...stylex.props(styles.halfFigure)}>
@@ -829,7 +829,7 @@ export function ParticipantResultDetail({
           </div>
           {unit !== null && (
             <div {...stylex.props(styles.fact, styles.factWide)}>
-              <dt {...stylex.props(styles.factName)}>{format(m.rosterUnits)}</dt>
+              <dt {...stylex.props(styles.factName)}>{m.roster_units()}</dt>
               <dd
                 data-fact="unit"
                 data-path={where.path}
@@ -842,7 +842,7 @@ export function ParticipantResultDetail({
           )}
           {kind !== undefined && (
             <div {...stylex.props(styles.fact)}>
-              <dt {...stylex.props(styles.factName)}>{format(m.participantFactKind)}</dt>
+              <dt {...stylex.props(styles.factName)}>{m.participant_factKind()}</dt>
               <dd data-fact="kind" {...stylex.props(styles.factValue)}>
                 {kind.name}
               </dd>
@@ -850,7 +850,7 @@ export function ParticipantResultDetail({
           )}
           <div {...stylex.props(styles.fact)}>
             <dt {...stylex.props(styles.factName)}>
-              {format(excluded ? m.participantFactExcluded : m.participantFactIncluded)}
+              {(excluded ? m.participant_factExcluded : m.participant_factIncluded)()}
             </dt>
             <dd data-fact="roster" {...stylex.props(styles.factValue)}>
               {included}
@@ -879,7 +879,7 @@ export function ParticipantResultDetail({
             <Button
               size="icon-sm"
               variant="ghost"
-              aria-label={format(m.participantDetails)}
+              aria-label={m.participant_details()}
               aria-expanded={unfolded}
               data-testid="participant-fold"
               onClick={() => setUnfoldedFor(unfolded ? null : participantId)}
@@ -921,7 +921,7 @@ export function ParticipantResultDetail({
             {!folded && (
               <span data-fact="roster" {...stylex.props(styles.lineFact)}>
                 <span aria-hidden {...stylex.props(styles.lineRule)} />
-                {format(excluded ? m.participantExcludedOn : m.participantIncludedOn, {
+                {(excluded ? m.participant_excludedOn : m.participant_includedOn)({
                   date: included,
                 })}
               </span>
@@ -930,7 +930,7 @@ export function ParticipantResultDetail({
         </div>
       )}
       <ZoneAwayNotice xstyle={styles.zone} />
-      <nav aria-label={format(m.participantResultsViews)} {...stylex.props(styles.tabs)}>
+      <nav aria-label={m.participantResults_views()} {...stylex.props(styles.tabs)}>
         {halves.map(({ key, label, count }) => (
           <button
             key={key}
@@ -941,7 +941,7 @@ export function ParticipantResultDetail({
             onClick={() => onView(key)}
             {...stylex.props(styles.tab, view === key && styles.tabOn)}
           >
-            {format(label)}
+            {label()}
             {count !== null && <Count>{String(count)}</Count>}
             {view === key && <span aria-hidden {...stylex.props(styles.tabInk)} />}
           </button>
@@ -974,11 +974,11 @@ export function ParticipantResultDetail({
           moving by headings through the main part of the page. */}
       {beside && participant !== undefined && absent === null && (
         <h2 {...stylex.props(a11yStyles.visuallyHidden)}>
-          {format(m.participantAccountHeading, {
+          {m.participantResults_accountHeading({
             name: participant.displayName,
-            half: format(
-              view === 'score' ? m.participantResultsScoreTab : m.participantResultsEntriesTab,
-            ),
+            half: (view === 'score'
+              ? m.participantResults_scoreTab
+              : m.participantResults_entriesTab)(),
           })}
         </h2>
       )}
@@ -1008,7 +1008,7 @@ export function ParticipantResultDetail({
               retrying={who.isFetching}
               extra={
                 <Button variant={absent.retryable ? 'outline' : 'default'} onClick={onBack}>
-                  {format(m.participantResultsBack)}
+                  {m.participantResults_back()}
                 </Button>
               }
             />
@@ -1057,8 +1057,8 @@ export function ParticipantResultDetail({
                         )
                         .find((said) => said !== null) ?? null
                     }
-                    loadingLabel={format(commonMessages.loading)}
-                    retryLabel={format(commonMessages.retry)}
+                    loadingLabel={commonMessages.state_loading()}
+                    retryLabel={commonMessages.action_retry()}
                     onRetry={() => {
                       void result.refetch()
                       void items.refetch()
@@ -1144,10 +1144,10 @@ export function ParticipantResultDetail({
       </Drill>
       <ConfirmDialog
         open={excluding !== null && excluding === participantId}
-        title={format(m.excludeTitle, { name: participant?.displayName ?? '' })}
-        description={format(m.excludeBody)}
-        confirmLabel={format(m.exclude)}
-        cancelLabel={format(commonMessages.cancel)}
+        title={m.roster_excludeTitle({ name: participant?.displayName ?? '' })}
+        description={m.roster_excludeBody()}
+        confirmLabel={m.roster_exclude()}
+        cancelLabel={commonMessages.action_cancel()}
         pending={changing}
         tone="destructive"
         onConfirm={() => {

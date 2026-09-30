@@ -3,16 +3,16 @@ import { useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { isRecordId, useApiQuery, usePageRouteParams } from '@qualy/web-runtime'
 import type { NavigationBadgeContext } from '@qualy/ui-contract'
-import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentApi } from '../api.ts'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import {
   ALERTED_ENTRIES,
   entryAlerted,
   owesAdministration,
   useAdminAlerts,
 } from './admin-alerts.ts'
+import * as m from '#messages'
 
 // A dot beside the administration entries that have something waiting
 // behind them: questions whose review cannot go on, a roster the
@@ -62,7 +62,7 @@ export default function AdminAlertBadge({ context }: { context?: NavigationBadge
 function Dot({ navigationId }: { navigationId: string }) {
   const { batchId } = usePageRouteParams('batchId')
   const query = useApiQuery(assessmentApi)
-  const { format } = useI18n()
+
   // the bar above the rail has read the batch already; this is its answer
   const detail = useQuery({
     ...query.assessment.getBatch.queryOptions({ params: { batchId } }),
@@ -80,7 +80,7 @@ function Dot({ navigationId }: { navigationId: string }) {
   return (
     <span
       role="img"
-      aria-label={format(m.railAlert)}
+      aria-label={m.batch_railAlert()}
       data-testid="rail-alert"
       data-navigation={navigationId}
       {...stylex.props(styles.dot, waited && styles.arriving)}

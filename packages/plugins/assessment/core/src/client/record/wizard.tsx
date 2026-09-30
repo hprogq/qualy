@@ -1,10 +1,9 @@
 import { Fragment, type ReactNode } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { CheckIcon, StampIcon, TriangleAlertIcon } from 'lucide-react'
-import { useI18n } from '@qualy/web-i18n'
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@qualy/ui/empty'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { assessmentMessages as m } from '../i18n.ts'
+import * as m from '#messages'
 
 // An errand in three moves: choose, fill in, confirm.
 //
@@ -422,15 +421,14 @@ export function WizardNotice({ children, bad }: { children: ReactNode; bad?: boo
  * offering a button this screen has no business owning.
  */
 export function NoAdministrativeItems() {
-  const { format } = useI18n()
   return (
     <Empty xstyle={styles.empty} data-testid="record-no-items">
       <EmptyHeader>
         <EmptyMedia variant="icon">
           <StampIcon />
         </EmptyMedia>
-        <EmptyTitle>{format(m.recordEmpty)}</EmptyTitle>
-        <EmptyDescription>{format(m.recordEmptyHint)}</EmptyDescription>
+        <EmptyTitle>{m.record_empty()}</EmptyTitle>
+        <EmptyDescription>{m.record_emptyHint()}</EmptyDescription>
       </EmptyHeader>
     </Empty>
   )

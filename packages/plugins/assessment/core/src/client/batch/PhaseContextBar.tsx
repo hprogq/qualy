@@ -1,17 +1,17 @@
 import { useEffect, useRef, useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { ClockIcon, RouteIcon } from 'lucide-react'
-import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { Button } from '@qualy/ui/button'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@qualy/ui/sheet'
 import { useIsBelow } from '@qualy/ui/use-mobile'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import { BatchFlow } from './BatchFlow.tsx'
 import { BatchProgress } from './BatchProgress.tsx'
 import { currentOf, stagesOf, type FlowEntry } from './flow.ts'
 import { useWhen } from './when.ts'
+import * as m from '#messages'
 
 // One line at the top of a working screen: which stage the round is in, when
 // it gives way to the next, and the way to the whole flow.
@@ -121,7 +121,6 @@ export function PhaseContextBar({
   timeline: readonly FlowEntry[]
   xstyle?: stylex.StyleXStyles
 }) {
-  const { format } = useI18n()
   const when = useWhen()
   const [open, setOpen] = useState(false)
   const narrow = useIsBelow(640)
@@ -172,9 +171,9 @@ export function PhaseContextBar({
             the hour belongs to the name beside it, not to the clock at the
             far end of the row */}
         <div {...stylex.props(styles.head)}>
-          <span {...stylex.props(styles.label)}>{format(m.currentStage)}</span>
+          <span {...stylex.props(styles.label)}>{m.batch_currentStage()}</span>
           <span ref={name} {...stylex.props(styles.name)}>
-            {stage?.name ?? format(m.notStartedYet)}
+            {stage?.name ?? m.batch_notStarted()}
           </span>
           {stage !== undefined && showDeadline && (
             // an hour with a clock beside it: the word "until" is what a
@@ -182,7 +181,7 @@ export function PhaseContextBar({
             <span {...stylex.props(styles.deadline)}>
               <ClockIcon aria-hidden className={stylex.props(styles.clockIcon).className} />
               <span {...stylex.props(styles.hour)}>
-                {stage.until === null ? format(m.flowEndPending) : when.moment(stage.until)}
+                {stage.until === null ? m.flow_endPending() : when.moment(stage.until)}
               </span>
             </span>
           )}
@@ -194,14 +193,14 @@ export function PhaseContextBar({
           <Button
             variant="ghost"
             size="sm"
-            aria-label={format(m.viewFullFlow)}
+            aria-label={m.flow_view()}
             className={
               stylex.props(styles.flowButton, !showLabel && styles.flowButtonBare).className
             }
             onClick={() => setOpen(true)}
           >
             <RouteIcon aria-hidden />
-            {showLabel ? format(m.viewFullFlow) : null}
+            {showLabel ? m.flow_view() : null}
           </Button>
         </div>
       </div>
@@ -211,7 +210,7 @@ export function PhaseContextBar({
             thumb is: the same panel, reached the way each screen expects */}
         <SheetContent side={narrow ? 'bottom' : 'right'} xstyle={styles.panel}>
           <SheetHeader>
-            <SheetTitle>{format(m.flowTitle)}</SheetTitle>
+            <SheetTitle>{m.flow_title()}</SheetTitle>
           </SheetHeader>
           <div {...stylex.props(styles.sheetBody)}>
             <BatchFlow timeline={timeline} />

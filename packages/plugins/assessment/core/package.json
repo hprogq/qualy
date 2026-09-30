@@ -43,6 +43,12 @@
     "./surfaces": "./src/surfaces.ts",
     "./testkit": "./src/testkit.ts"
   },
+  "imports": {
+    "#messages": {
+      "types": "./.qualy/messages.d.ts",
+      "default": "./.qualy/messages.js"
+    }
+  },
   "dependencies": {
     "@mikro-orm/core": "catalog:",
     "@qualy/api-kit": "workspace:*",

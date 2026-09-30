@@ -15,12 +15,13 @@ import {
   type CaptchaProof,
 } from '@qualy/plugin-captcha/contract'
 import { CaptchaChallenge, useCaptchaGate } from '@qualy/plugin-captcha/client'
-import { authMessages as m } from '../i18n.ts'
+
 import { authApi } from '../api.ts'
 import { AuthShell } from '../sign-in/AuthShell.tsx'
 import { PasswordChecklist } from '../password/PasswordChecklist.tsx'
 import { usePasswordChecks } from '../password/checks.ts'
 import { clock, PAUSE_MS, useHold } from '../sign-in/hold.ts'
+import * as m from '#messages'
 
 // A forgotten password, in two visits. Without a token the page asks for the
 // email and says the same thing whatever comes of it; the mail's link brings
@@ -281,11 +282,10 @@ function ToSignIn({ className, children }: { className: string | undefined; chil
 }
 
 function BackToSignIn() {
-  const { format } = useI18n()
   return (
     <ToSignIn className={stylex.props(styles.back).className}>
       <ArrowLeftIcon size={15} aria-hidden />
-      {format(m.backToSignIn)}
+      {m.reset_back()}
     </ToSignIn>
   )
 }
@@ -293,12 +293,12 @@ function BackToSignIn() {
 function Ask() {
   const api = useApi(authApi)
   const run = useRunApi()
-  const { format, formatError } = useI18n()
+  const { formatError } = useI18n()
   const [email, setEmail] = useState('')
   // judged once it has been left or the form sent, never while it is typed
   const [checked, setChecked] = useState(false)
   const address = normalizeEmail(email)
-  const emailSaid = checked && address === null ? format(m.resetEmailInvalid) : null
+  const emailSaid = checked && address === null ? m.reset_emailInvalid() : null
   const [sentTo, setSentTo] = useState<string | null>(null)
   // a second press before the first has rendered is still a second press
   const sending = useRef(false)
@@ -358,10 +358,10 @@ function Ask() {
           <Badge>
             <MailCheckIcon size={22} strokeWidth={1.8} />
           </Badge>
-          <h1 {...stylex.props(styles.title)}>{format(m.resetSentTitle)}</h1>
+          <h1 {...stylex.props(styles.title)}>{m.reset_sentTitle()}</h1>
           {/* the same sentence whatever is behind the address, and only
               the address the person typed themselves */}
-          <p {...stylex.props(styles.hint)}>{format(m.resetSentBody, { email: sentTo })}</p>
+          <p {...stylex.props(styles.hint)}>{m.reset_sentBody({ email: sentTo })}</p>
           <div {...stylex.props(styles.pair)}>
             <button
               type="button"
@@ -371,10 +371,10 @@ function Ask() {
                 setSentTo(null)
               }}
             >
-              {format(m.resetOtherEmail)}
+              {m.reset_otherEmail()}
             </button>
             <ToSignIn className={stylex.props(styles.secondary).className}>
-              {format(m.backToSignIn)}
+              {m.reset_back()}
             </ToSignIn>
           </div>
         </div>
@@ -385,8 +385,8 @@ function Ask() {
     <Slide id="ask">
       <div {...stylex.props(styles.panel)}>
         <BackToSignIn />
-        <h1 {...stylex.props(styles.title)}>{format(m.resetTitle)}</h1>
-        <p {...stylex.props(styles.hint)}>{format(m.resetAskHint)}</p>
+        <h1 {...stylex.props(styles.title)}>{m.reset_title()}</h1>
+        <p {...stylex.props(styles.hint)}>{m.reset_askHint()}</p>
         <form
           {...stylex.props(styles.form)}
           noValidate
@@ -399,7 +399,7 @@ function Ask() {
         >
           <div {...stylex.props(styles.field)}>
             <label htmlFor="reset-email" {...stylex.props(styles.label)}>
-              {format(m.emailLabel)}
+              {m.users_email()}
             </label>
             <input
               id="reset-email"
@@ -429,20 +429,20 @@ function Ask() {
             {...stylex.props(styles.primary)}
           >
             {gate.state === 'loading-provider'
-              ? format(m.resetPreparingCheck)
+              ? m.reset_preparingCheck()
               : gate.state === 'working'
-                ? format(m.resetChecking)
+                ? m.reset_checking()
                 : // the check is waiting on the person now, not on the page
                   gate.state === 'interaction'
-                  ? format(m.resetFinishCheck)
+                  ? m.reset_finishCheck()
                   : ask.isPending
-                    ? format(m.resetSending)
+                    ? m.reset_sending()
                     : limited
-                      ? format(m.resetWait, { time: clock(secondsLeft) })
-                      : format(m.resetAskSubmit)}
+                      ? m.reset_wait({ time: clock(secondsLeft) })
+                      : m.reset_askSubmit()}
           </button>
         </form>
-        <p {...stylex.props(styles.footnote)}>{format(m.signInElsewhere)}</p>
+        <p {...stylex.props(styles.footnote)}>{m.login_elsewhere()}</p>
       </div>
     </Slide>
   )
@@ -452,7 +452,7 @@ function SetNew({ token, onAskAgain }: { token: string; onAskAgain: () => void }
   const api = useApi(authApi)
   const query = useApiQuery(authApi)
   const run = useRunApi()
-  const { format, formatError } = useI18n()
+  const { formatError } = useI18n()
   // what a password here has to be, said while it is typed
   const rule = useQuery(query.auth.listLoginMethods.queryOptions()).data?.passwordRule ?? null
   // whether the link still works, asked as the page opens rather than after
@@ -506,14 +506,14 @@ function SetNew({ token, onAskAgain }: { token: string; onAskAgain: () => void }
           <Badge>
             <CheckIcon size={22} strokeWidth={2.2} />
           </Badge>
-          <h1 {...stylex.props(styles.title)}>{format(m.resetDoneTitle)}</h1>
-          <p {...stylex.props(styles.hint)}>{format(m.resetDoneBody)}</p>
+          <h1 {...stylex.props(styles.title)}>{m.reset_doneTitle()}</h1>
+          <p {...stylex.props(styles.hint)}>{m.reset_doneBody()}</p>
           <PageLink
             page="auth/login"
             className={stylex.props(styles.primary).className}
             style={{ marginTop: 28 }}
           >
-            {format(m.toSignIn)}
+            {m.reset_toSignIn()}
           </PageLink>
         </div>
       </Slide>
@@ -526,7 +526,7 @@ function SetNew({ token, onAskAgain }: { token: string; onAskAgain: () => void }
           <Badge tone="danger">
             <CircleAlertIcon size={22} strokeWidth={1.9} />
           </Badge>
-          <h1 {...stylex.props(styles.title)}>{format(m.resetExpiredTitle)}</h1>
+          <h1 {...stylex.props(styles.title)}>{m.reset_expiredTitle()}</h1>
           <p {...stylex.props(styles.hint)}>{formatError(lapsed)}</p>
           <div {...stylex.props(styles.pair)}>
             <button
@@ -535,13 +535,13 @@ function SetNew({ token, onAskAgain }: { token: string; onAskAgain: () => void }
               style={{ flex: 1, marginTop: 0 }}
               onClick={onAskAgain}
             >
-              {format(m.resetAgain)}
+              {m.reset_again()}
             </button>
             <PageLink
               page="auth/login"
               className={stylex.props(styles.secondary, styles.plain).className}
             >
-              {format(m.backToSignIn)}
+              {m.reset_back()}
             </PageLink>
           </div>
         </div>
@@ -553,8 +553,8 @@ function SetNew({ token, onAskAgain }: { token: string; onAskAgain: () => void }
   return (
     <Slide id="set">
       <div {...stylex.props(styles.panel)}>
-        <h1 {...stylex.props(styles.title)}>{format(m.resetSetTitle)}</h1>
-        <p {...stylex.props(styles.hint)}>{format(m.resetSetHint)}</p>
+        <h1 {...stylex.props(styles.title)}>{m.reset_setTitle()}</h1>
+        <p {...stylex.props(styles.hint)}>{m.reset_setHint()}</p>
         <form
           {...stylex.props(styles.form)}
           noValidate
@@ -576,7 +576,7 @@ function SetNew({ token, onAskAgain }: { token: string; onAskAgain: () => void }
         >
           <div {...stylex.props(styles.field)}>
             <label htmlFor="reset-password" {...stylex.props(styles.label)}>
-              {format(m.resetNewPassword)}
+              {m.reset_newPassword()}
             </label>
             <span {...stylex.props(styles.seat)}>
               <input
@@ -593,7 +593,7 @@ function SetNew({ token, onAskAgain }: { token: string; onAskAgain: () => void }
               />
               <button
                 type="button"
-                aria-label={format(m.resetShowPassword)}
+                aria-label={m.reset_show()}
                 aria-pressed={shown}
                 {...stylex.props(styles.eye, shown && styles.eyeOn)}
                 onClick={() => setShown((was) => !was)}
@@ -607,7 +607,7 @@ function SetNew({ token, onAskAgain }: { token: string; onAskAgain: () => void }
           </div>
           <div {...stylex.props(styles.field)}>
             <label htmlFor="reset-again" {...stylex.props(styles.label)}>
-              {format(m.resetConfirmPassword)}
+              {m.reset_confirmPassword()}
             </label>
             <input
               id="reset-again"
@@ -626,7 +626,7 @@ function SetNew({ token, onAskAgain }: { token: string; onAskAgain: () => void }
                 data-testid={matches ? undefined : 'password-mismatch'}
                 {...stylex.props(styles.said, !matches && styles.saidBad)}
               >
-                {format(matches ? m.resetMatch : m.passwordMismatch)}
+                {(matches ? m.reset_match : m.reset_mismatch)()}
               </span>
             )}
           </div>
@@ -635,7 +635,7 @@ function SetNew({ token, onAskAgain }: { token: string; onAskAgain: () => void }
             <p {...stylex.props(styles.refusal)}>{formatError(set.error)}</p>
           )}
           <button type="submit" disabled={set.isPending || held} {...stylex.props(styles.primary)}>
-            {format(set.isPending ? m.resetSetting : m.resetSubmit)}
+            {(set.isPending ? m.reset_setting : m.reset_submit)()}
           </button>
         </form>
       </div>

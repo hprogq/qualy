@@ -14,7 +14,7 @@ import { getApiErrorCode, useI18n, useList } from '@qualy/web-i18n'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { AsyncSection, ConfirmDialog, Feedback, Field, FormDialog } from '@qualy/ui/admin'
 import {
   BandBack,
@@ -36,10 +36,12 @@ import {
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
 import { Tabs, TabsList, TabsTrigger } from '@qualy/ui/tabs'
-import { rbacMessages as m } from './i18n.ts'
+
 import { accessApi } from './api.ts'
 import { ModeCards } from './ModeCards.tsx'
 import { RoleHolders } from './RoleHolders.tsx'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // One role, on a page of its own.
 //
@@ -166,7 +168,7 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
   const runApi = useRunApi()
   const query = useApiQuery(accessApi)
   const queryClient = useQueryClient()
-  const { format, formatError, formatText } = useI18n()
+  const { formatError, formatText } = useI18n()
   const describe = useLoadFailure()
   const listJoin = useList()
   const navigate = usePageNavigate()
@@ -411,7 +413,7 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
         if (!permission.code.toLowerCase().includes(needle)) continue
       }
       const key = permission.groupKey ?? permission.plugin
-      const title = permission.group === null ? format(m.groupOther) : formatText(permission.group)
+      const title = permission.group === null ? m.roles_groupOther() : formatText(permission.group)
       const bucket = buckets.get(key) ?? { title, items: [] }
       // what the duty amounts to, where its owner wrote that down: a code says
       // nothing to whoever is deciding whether a counsellor should have it
@@ -423,27 +425,27 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
       buckets.set(key, bucket)
     }
     return [...buckets.values()].sort((a, b) => a.title.localeCompare(b.title))
-  }, [catalog.data, search, format, formatText])
+  }, [catalog.data, search, formatText])
 
   const holder = role.holderPolicy
   // the canonical administrator is the one role eligibility does not apply
   // to, so its empty list is an exemption rather than something left unsaid
   const holderWord = locked
-    ? format(m.exemptWord)
+    ? m.roles_exempt()
     : holder.mode === 'unrestricted'
-      ? format(m.anyoneWord)
+      ? m.roles_anyone()
       : listJoin(
           (options.data?.userTypes ?? [])
             .filter((type) => holder.userTypeIds.includes(type.id))
             .map((type) => type.name),
         )
-  const kindWord = format(role.kind === 'tenant' ? m.tenantGroup : m.orgGroup)
+  const kindWord = (role.kind === 'tenant' ? m.roles_tenantGroup : m.roles_orgGroup)()
 
   const orgWord =
     role.anchorPolicy === null
-      ? format(m.notApplicable)
+      ? m.roles_notApplicable()
       : role.anchorPolicy.mode === 'unrestricted'
-        ? format(m.anywhereWord)
+        ? m.roles_anywhere()
         : listJoin(
             (options.data?.orgTypes ?? [])
               .filter(
@@ -467,23 +469,25 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
     <Screen
       back={
         <BandBack as={PageLink} page="rbac/roles">
-          {format(m.backToRoles)}
+          {m.roles_back()}
         </BandBack>
       }
       title={role.name}
       titleAside={
         <>
           <Tag>{kindWord}</Tag>
-          {locked && <Tag>{format(m.systemBadge)}</Tag>}
+          {locked && <Tag>{m.badge_system()}</Tag>}
         </>
       }
-      description={format(
-        locked ? m.systemRoleHint : role.kind === 'tenant' ? m.tenantGroupHint : m.orgGroupHint,
-      )}
+      description={(locked
+        ? m.roles_systemHint
+        : role.kind === 'tenant'
+          ? m.roles_tenantGroupHint
+          : m.roles_orgGroupHint)()}
       actions={
         editable && (
           <Button variant="outline" size="sm" onClick={() => setRenaming(true)}>
-            {format(m.rename)}
+            {m.action_rename()}
           </Button>
         )
       }
@@ -493,10 +497,10 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
       <Card data-testid="role-standing" data-status={role.status} data-assignable={role.assignable}>
         <div {...stylex.props(styles.statusBar)}>
           <span {...stylex.props(styles.switch)}>
-            <span {...stylex.props(styles.switchLabel)}>{format(m.statusLegend)}</span>
+            <span {...stylex.props(styles.switchLabel)}>{m.roles_statusLegend()}</span>
             {editable ? (
               <Segmented
-                label={format(m.statusLegend)}
+                label={m.roles_statusLegend()}
                 value={role.status === 'active' ? 'on' : 'off'}
                 onChange={(next) => {
                   if (setStatus.isPending) return
@@ -507,32 +511,30 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
                     setStanding({ status: 'disabled' })
                 }}
                 options={[
-                  { value: 'on', label: format(m.statusOn) },
+                  { value: 'on', label: m.roles_statusOn() },
                   {
                     value: 'off',
                     // a draft has never been in force, which is not the same as switched off
-                    label: format(role.status === 'draft' ? m.draftBadge : m.statusOff),
+                    label: (role.status === 'draft' ? m.badge_draft : m.roles_statusOff)(),
                   },
                 ]}
               />
             ) : (
               <Tag>
-                {format(
-                  role.status === 'active'
-                    ? m.statusOn
-                    : role.status === 'draft'
-                      ? m.draftBadge
-                      : m.disabledBadge,
-                )}
+                {(role.status === 'active'
+                  ? m.roles_statusOn
+                  : role.status === 'draft'
+                    ? m.badge_draft
+                    : m.badge_disabled)()}
               </Tag>
             )}
           </span>
           <span aria-hidden {...stylex.props(styles.rule)} />
           <span {...stylex.props(styles.switch)}>
-            <span {...stylex.props(styles.switchLabel)}>{format(m.assignableLegend)}</span>
+            <span {...stylex.props(styles.switchLabel)}>{m.roles_assignableLegend()}</span>
             {editable ? (
               <Segmented
-                label={format(m.assignableLegend)}
+                label={m.roles_assignableLegend()}
                 value={role.assignable ? 'yes' : 'no'}
                 onChange={(next) => {
                   if (setAssignable.isPending) return
@@ -540,15 +542,15 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
                     setStanding({ assignable: next === 'yes' })
                 }}
                 options={[
-                  { value: 'yes', label: format(m.assignableOn) },
-                  { value: 'no', label: format(m.assignableOff) },
+                  { value: 'yes', label: m.roles_assignableOn() },
+                  { value: 'no', label: m.roles_assignableOff() },
                 ]}
               />
             ) : (
-              <Tag>{format(role.assignable ? m.assignableOn : m.assignableOff)}</Tag>
+              <Tag>{(role.assignable ? m.roles_assignableOn : m.roles_assignableOff)()}</Tag>
             )}
           </span>
-          <span {...stylex.props(styles.meaning)}>{format(m.standingMeaning)}</span>
+          <span {...stylex.props(styles.meaning)}>{m.roles_standingMeaning()}</span>
           {editable && (
             <span
               data-testid="role-removal"
@@ -564,9 +566,9 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
                   data-suggests={role.status === 'disabled' ? 'nothing' : 'disable'}
                   {...stylex.props(styles.removalWhy)}
                 >
-                  {format(
-                    role.status === 'disabled' ? m.roleGrantedBeforeDisabled : m.roleGrantedBefore,
-                  )}
+                  {(role.status === 'disabled'
+                    ? m.roles_grantedBeforeDisabled
+                    : m.roles_grantedBefore)()}
                 </span>
               )}
               <Button
@@ -575,7 +577,7 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
                 disabled={role.everGranted}
                 onClick={() => setConfirmingDelete(true)}
               >
-                {format(m.deleteRole)}
+                {m.roles_delete()}
               </Button>
             </span>
           )}
@@ -587,33 +589,33 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
         columns={role.kind === 'org' ? 5 : 4}
         items={[
           {
-            label: format(m.factHolders),
+            label: m.roles_factHolders(),
             value:
               role.grantCount === 0
-                ? format(m.nobodyWord)
-                : format(m.holderCount, { count: role.grantCount }),
+                ? m.roles_nobody()
+                : m.roles_holderCount({ count: role.grantCount }),
           },
           {
-            label: format(m.columnHolders),
-            value: holderWord === '' ? format(m.unsetWord) : holderWord,
+            label: m.roles_columnHolders(),
+            value: holderWord === '' ? m.roles_unset() : holderWord,
           },
           ...(role.kind === 'org'
             ? [
                 {
-                  label: format(m.columnAnchors),
-                  value: orgWord === '' ? format(m.unsetWord) : orgWord,
+                  label: m.roles_columnAnchors(),
+                  value: orgWord === '' ? m.roles_unset() : orgWord,
                 },
               ]
             : []),
           {
-            label: format(m.tabAppointment),
-            value: locked ? format(m.everyWord) : appoints === '' ? format(m.nobodyWord) : appoints,
+            label: m.roles_tabAppointment(),
+            value: locked ? m.roles_every() : appoints === '' ? m.roles_nobody() : appoints,
           },
           {
-            label: format(m.tabPermissions),
+            label: m.roles_tabPermissions(),
             value: role.holdsEveryPermission
-              ? format(m.everyWord)
-              : format(m.countItems, { count: role.permissions.length }),
+              ? m.roles_every()
+              : m.roles_countItems({ count: role.permissions.length }),
           },
         ]}
       />
@@ -631,23 +633,23 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
           >
             <TabsList xstyle={styles.tabList}>
               <TabsTrigger value="permissions" xstyle={styles.tab}>
-                {format(m.tabPermissions)}
+                {m.roles_tabPermissions()}
                 {!role.holdsEveryPermission && (
                   <span {...stylex.props(styles.tabCount)}>
-                    {format(m.pickedOf, { picked: permissions.length, total: catalogTotal })}
+                    {m.roles_pickedOf({ picked: permissions.length, total: catalogTotal })}
                   </span>
                 )}
               </TabsTrigger>
               <TabsTrigger value="eligibility" xstyle={styles.tab}>
-                {format(m.tabEligibility)}
+                {m.roles_tabEligibility()}
               </TabsTrigger>
               {!locked && (
                 <TabsTrigger value="appointment" xstyle={styles.tab}>
-                  {format(m.tabAppointment)}
+                  {m.roles_tabAppointment()}
                 </TabsTrigger>
               )}
               <TabsTrigger value="holders" xstyle={styles.tab}>
-                {format(m.factHolders)}
+                {m.roles_factHolders()}
               </TabsTrigger>
             </TabsList>
           </Tabs>
@@ -655,21 +657,21 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
 
         {tab === 'permissions' &&
           (role.holdsEveryPermission ? (
-            <CardEmpty>{format(m.everyPermission)}</CardEmpty>
+            <CardEmpty>{m.roles_everyPermission()}</CardEmpty>
           ) : (
             <AsyncSection
               pending={catalog.isPending}
               error={catalog.isError ? describe.of(catalog.error) : null}
               retrying={catalog.isFetching}
-              loadingLabel={format(commonMessages.loading)}
-              retryLabel={format(commonMessages.retry)}
+              loadingLabel={commonMessages.state_loading()}
+              retryLabel={commonMessages.action_retry()}
               onRetry={() => void catalog.refetch()}
             >
               <div {...stylex.props(styles.toolbar)}>
                 <SearchField
                   value={search}
                   onChange={setSearch}
-                  label={format(m.searchPermissions)}
+                  label={m.roles_searchPermissions()}
                   xstyle={styles.search}
                 />
                 {editable && shownCodes.length > 0 && (
@@ -684,16 +686,16 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
                       )
                     }
                   >
-                    {format(allShownPicked ? m.selectNone : m.selectAll)}
+                    {(allShownPicked ? m.action_selectNone : m.action_selectAll)()}
                   </button>
                 )}
                 <span {...stylex.props(styles.spacer)} />
                 <span {...stylex.props(styles.toolbarNote)}>
-                  {format(role.kind === 'org' ? m.catalogOrgOnly : m.catalogTenantOnly)}
+                  {(role.kind === 'org' ? m.roles_catalogOrgOnly : m.roles_catalogTenantOnly)()}
                 </span>
               </div>
               {groups.length === 0 ? (
-                <CardEmpty>{format(m.searchEmpty)}</CardEmpty>
+                <CardEmpty>{m.roles_searchEmpty()}</CardEmpty>
               ) : (
                 groups.map((group) => (
                   <div
@@ -704,7 +706,7 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
                     <span {...stylex.props(styles.groupHead)}>
                       <span {...stylex.props(styles.groupTitle)}>{group.title}</span>
                       <span {...stylex.props(styles.groupCount)}>
-                        {format(m.pickedOf, {
+                        {m.roles_pickedOf({
                           picked: group.items.filter((item) => permissions.includes(item.code))
                             .length,
                           total: group.items.length,
@@ -736,7 +738,7 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
               {editable && (
                 <CardFoot inset>
                   <FootNote>
-                    {format(m.memberLine, {
+                    {m.roles_memberLine({
                       holders: role.grantCount,
                       appointers: grantable.data?.appointedBy.length ?? 0,
                     })}
@@ -748,7 +750,7 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
                     disabled={!permissionsDirty}
                     onClick={() => setPermissions([...role.permissions])}
                   >
-                    {format(m.discard)}
+                    {m.action_discard()}
                   </Button>
                   <Button
                     size="sm"
@@ -766,21 +768,21 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
                       savePermissions.mutate(undefined)
                     }}
                   >
-                    {format(m.savePermissions)}
+                    {m.roles_savePermissions()}
                   </Button>
                 </CardFoot>
               )}
             </AsyncSection>
           ))}
 
-        {tab === 'eligibility' && locked && <CardEmpty>{format(m.exemptHint)}</CardEmpty>}
+        {tab === 'eligibility' && locked && <CardEmpty>{m.roles_exemptHint()}</CardEmpty>}
         {tab === 'eligibility' && !locked && (
           <AsyncSection
             pending={options.isPending}
             error={options.isError ? describe.of(options.error) : null}
             retrying={options.isFetching}
-            loadingLabel={format(commonMessages.loading)}
-            retryLabel={format(commonMessages.retry)}
+            loadingLabel={commonMessages.state_loading()}
+            retryLabel={commonMessages.action_retry()}
             onRetry={() => void options.refetch()}
           >
             {/* the mode first, and the list only when it is the mode: an
@@ -788,30 +790,30 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
                 anybody */}
             <div {...stylex.props(styles.part)}>
               <div {...stylex.props(styles.partHead)}>
-                <span {...stylex.props(styles.partTitle)}>{format(m.userTypesLegend)}</span>
+                <span {...stylex.props(styles.partTitle)}>{m.field_allowedUserTypes()}</span>
               </div>
               <div {...stylex.props(styles.partBody)}>
                 <ModeCards
-                  label={format(m.userTypesLegend)}
+                  label={m.field_allowedUserTypes()}
                   value={holderMode}
                   disabled={!editable}
                   onChange={setHolderMode}
                   options={[
                     {
                       value: 'unrestricted',
-                      title: format(m.eligibilityAnyone),
-                      body: format(m.eligibilityAnyoneBody),
+                      title: m.roles_eligibilityAnyone(),
+                      body: m.field_eligibilityAnyoneBody(),
                     },
                     {
                       value: 'allow-list',
-                      title: format(m.eligibilityListed),
-                      body: format(m.eligibilityListedBody),
+                      title: m.roles_eligibilityListed(),
+                      body: m.field_eligibilityListedBody(),
                     },
                   ]}
                 />
               </div>
               {holderMode === 'allow-list' ? (
-                <TickGrid columns={3} label={format(m.userTypesLegend)}>
+                <TickGrid columns={3} label={m.field_allowedUserTypes()}>
                   {(options.data?.userTypes ?? []).map((type) => (
                     <Tick
                       key={type.id}
@@ -834,30 +836,30 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
             {role.kind === 'org' && (
               <div {...stylex.props(styles.part)}>
                 <div {...stylex.props(styles.partHead)}>
-                  <span {...stylex.props(styles.partTitle)}>{format(m.orgTypesLegend)}</span>
+                  <span {...stylex.props(styles.partTitle)}>{m.field_allowedOrgTypes()}</span>
                 </div>
                 <div {...stylex.props(styles.partBody)}>
                   <ModeCards
-                    label={format(m.orgTypesLegend)}
+                    label={m.field_allowedOrgTypes()}
                     value={anchorMode}
                     disabled={!editable}
                     onChange={setAnchorMode}
                     options={[
                       {
                         value: 'unrestricted',
-                        title: format(m.anchorAnywhere),
-                        body: format(m.anchorAnywhereBody),
+                        title: m.roles_anchorAnywhere(),
+                        body: m.field_anchorAnywhereBody(),
                       },
                       {
                         value: 'allow-list',
-                        title: format(m.anchorListed),
-                        body: format(m.anchorListedBody),
+                        title: m.roles_anchorListed(),
+                        body: m.field_anchorListedBody(),
                       },
                     ]}
                   />
                 </div>
                 {anchorMode === 'allow-list' ? (
-                  <TickGrid columns={3} label={format(m.orgTypesLegend)}>
+                  <TickGrid columns={3} label={m.field_allowedOrgTypes()}>
                     {(options.data?.orgTypes ?? []).map((type) => (
                       <Tick
                         key={type.id}
@@ -880,17 +882,17 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
 
             {editable && (
               <CardFoot inset>
-                {eligibilityDirty && <UnsavedMark>{format(m.unsaved)}</UnsavedMark>}
+                {eligibilityDirty && <UnsavedMark>{m.state_unsaved()}</UnsavedMark>}
                 <Spacer />
                 <Button variant="ghost" size="sm" disabled={!eligibilityDirty} onClick={seed}>
-                  {format(m.discard)}
+                  {m.action_discard()}
                 </Button>
                 <Button
                   size="sm"
                   disabled={!eligibilityDirty || saveEligibility.isPending}
                   onClick={() => saveEligibility.mutate(undefined)}
                 >
-                  {format(m.save)}
+                  {m.action_save()}
                 </Button>
               </CardFoot>
             )}
@@ -911,8 +913,8 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
                   : null
             }
             retrying={allRoles.isFetching || grantable.isFetching}
-            loadingLabel={format(commonMessages.loading)}
-            retryLabel={format(commonMessages.retry)}
+            loadingLabel={commonMessages.state_loading()}
+            retryLabel={commonMessages.action_retry()}
             onRetry={() => {
               void allRoles.refetch()
               void grantable.refetch()
@@ -922,7 +924,7 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
               role.kind === 'tenant' ? 'iam.tenant-grant.manage' : 'iam.grant.manage',
             ) ? (
               <>
-                <TickGrid columns={3} label={format(m.grantableLegend)}>
+                <TickGrid columns={3} label={m.roles_grantableLegend()}>
                   {(allRoles.data?.roles ?? [])
                     .filter(
                       (candidate) =>
@@ -946,10 +948,10 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
                       />
                     ))}
                 </TickGrid>
-                <CardHint>{format(m.grantableHint)}</CardHint>
+                <CardHint>{m.roles_grantableHint()}</CardHint>
                 {editable && (
                   <CardFoot inset>
-                    {grantableDirty && <UnsavedMark>{format(m.unsaved)}</UnsavedMark>}
+                    {grantableDirty && <UnsavedMark>{m.state_unsaved()}</UnsavedMark>}
                     <Spacer />
                     <Button
                       variant="ghost"
@@ -957,20 +959,20 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
                       disabled={!grantableDirty}
                       onClick={() => setGrantableIds([...(grantable.data?.roleIds ?? [])])}
                     >
-                      {format(m.discard)}
+                      {m.action_discard()}
                     </Button>
                     <Button
                       size="sm"
                       disabled={!grantableDirty || saveGrantable.isPending}
                       onClick={() => saveGrantable.mutate(undefined)}
                     >
-                      {format(m.save)}
+                      {m.action_save()}
                     </Button>
                   </CardFoot>
                 )}
               </>
             ) : (
-              <CardEmpty>{format(m.grantableNeedsManage)}</CardEmpty>
+              <CardEmpty>{m.roles_grantableNeedsManage()}</CardEmpty>
             )}
           </AsyncSection>
         )}
@@ -978,19 +980,19 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
 
       <FormDialog
         open={renaming}
-        title={format(m.rename)}
+        title={m.action_rename()}
         onClose={closeRename}
         footer={
           <>
             <Button variant="outline" onClick={closeRename}>
-              {format(m.cancel)}
+              {m.action_cancel()}
             </Button>
             <Button
               type="submit"
               form="rename-role"
               disabled={saveProfile.isPending || name.trim() === ''}
             >
-              {format(m.save)}
+              {m.action_save()}
             </Button>
           </>
         }
@@ -1005,7 +1007,7 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
           }}
         >
           <Field
-            label={format(m.nameLabel)}
+            label={m.field_name()}
             required
             error={renameRefusal?.taken === true ? renameRefusal.said : null}
           >
@@ -1021,7 +1023,7 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
               />
             )}
           </Field>
-          <Field label={format(m.descriptionLabel)}>
+          <Field label={m.field_description()}>
             {(id) => (
               <Input
                 id={id}
@@ -1035,13 +1037,13 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
 
       <ConfirmDialog
         open={confirmingPermissions}
-        title={format(m.confirmPermissionsTitle)}
-        description={format(m.confirmPermissionsBody, {
+        title={m.roles_confirmPermissionsTitle()}
+        description={m.roles_confirmPermissionsBody({
           holders: role.grantCount,
           appointers: grantable.data?.appointedBy.length ?? 0,
         })}
-        confirmLabel={format(m.save)}
-        cancelLabel={format(m.cancel)}
+        confirmLabel={m.action_save()}
+        cancelLabel={m.action_cancel()}
         pending={savePermissions.isPending}
         onConfirm={() => savePermissions.mutate(undefined)}
         onCancel={() => setConfirmingPermissions(false)}
@@ -1049,10 +1051,10 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
 
       <ConfirmDialog
         open={confirmingDelete}
-        title={format(m.confirmDeleteTitle)}
-        description={format(m.confirmDeleteBody)}
-        confirmLabel={format(m.delete)}
-        cancelLabel={format(m.cancel)}
+        title={m.confirm_deleteTitle()}
+        description={m.confirm_deleteBody()}
+        confirmLabel={m.action_delete()}
+        cancelLabel={m.action_cancel()}
         pending={remove.isPending}
         onConfirm={() => remove.mutate(undefined)}
         onCancel={() => setConfirmingDelete(false)}
@@ -1062,26 +1064,22 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
         {...(standing !== null && 'status' in standing && standing.status === 'disabled'
           ? { tone: 'destructive' as const }
           : {})}
-        title={format(
-          standing === null
-            ? m.standingAskOn
-            : 'status' in standing
-              ? standing.status === 'active'
-                ? m.standingAskOn
-                : m.standingAskOff
-              : standing.assignable
-                ? m.standingAskGrantable
-                : m.standingAskNotGrantable,
-          { name: role.name },
-        )}
-        description={format(
+        title={(standing === null
+          ? m.roles_askOn
+          : 'status' in standing
+            ? standing.status === 'active'
+              ? m.roles_askOn
+              : m.roles_askOff
+            : standing.assignable
+              ? m.roles_askGrantable
+              : m.roles_askNotGrantable)({ name: role.name })}
+        description={
           standing !== null && 'status' in standing
-            ? m.standingAskStatusBody
-            : m.standingAskGrantBody,
-          { count: role.grantCount },
-        )}
-        confirmLabel={format(m.confirm)}
-        cancelLabel={format(m.cancel)}
+            ? m.roles_askStatusBody({ count: role.grantCount })
+            : m.roles_askGrantBody()
+        }
+        confirmLabel={m.action_confirm()}
+        cancelLabel={m.action_cancel()}
         pending={setStatus.isPending || setAssignable.isPending}
         onCancel={() => setStanding(null)}
         onConfirm={() => {
@@ -1095,13 +1093,13 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
 
       <FormDialog
         open={leaving !== null}
-        title={format(m.leaveTabTitle)}
-        description={format(m.leaveTabBody)}
+        title={m.roles_leaveTabTitle()}
+        description={m.roles_leaveTabBody()}
         onClose={() => setLeaving(null)}
         footer={
           <>
             <Button variant="outline" onClick={() => setLeaving(null)}>
-              {format(m.cancel)}
+              {m.action_cancel()}
             </Button>
             <Button
               variant="outline"
@@ -1113,7 +1111,7 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
                 if (next !== null) setTab(next)
               }}
             >
-              {format(m.discard)}
+              {m.action_discard()}
             </Button>
             <Button
               data-testid="leave-save"
@@ -1123,7 +1121,7 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
                 if (next !== null) saveTabThen(next)
               }}
             >
-              {format(m.save)}
+              {m.action_save()}
             </Button>
           </>
         }

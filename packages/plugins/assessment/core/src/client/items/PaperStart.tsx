@@ -3,7 +3,7 @@ import { useMutation } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { useApi, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { Field, FormDialog } from '@qualy/ui/admin'
 import { Badge } from '@qualy/ui/badge'
@@ -12,7 +12,8 @@ import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
 import { toast } from '@qualy/ui/toast'
 import { assessmentApi } from '../api.ts'
-import { assessmentMessages as m } from '../i18n.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // A round with no paper yet.
 //
@@ -119,7 +120,6 @@ export function PaperStart({
   version: number
   onCreated: () => void
 }) {
-  const { format } = useI18n()
   const [wizard, setWizard] = useState(false)
   const [blank, setBlank] = useState(false)
   const opened = useLingering(wizard ? 'guided' : blank ? 'blank' : null)
@@ -127,8 +127,8 @@ export function PaperStart({
   return (
     <div {...stylex.props(styles.screen)}>
       <div {...stylex.props(styles.words)}>
-        <h3 {...stylex.props(styles.title)}>{format(m.paperStartTitle)}</h3>
-        <p {...stylex.props(styles.hint)}>{format(m.paperStartHint)}</p>
+        <h3 {...stylex.props(styles.title)}>{m.items_paperStartTitle()}</h3>
+        <p {...stylex.props(styles.hint)}>{m.items_paperStartHint()}</p>
       </div>
 
       <div {...stylex.props(styles.cardRow)}>
@@ -137,27 +137,27 @@ export function PaperStart({
             either one does */}
         <div {...stylex.props(styles.card, styles.cardSuggested)}>
           <p {...stylex.props(styles.cardTitleRow)}>
-            <span {...stylex.props(styles.cardTitle)}>{format(m.paperStartGuided)}</span>
-            <Badge>{format(m.paperStartSuggested)}</Badge>
+            <span {...stylex.props(styles.cardTitle)}>{m.items_paperStartGuided()}</span>
+            <Badge>{m.items_paperStartSuggested()}</Badge>
           </p>
-          <p {...stylex.props(styles.cardHint)}>{format(m.paperStartGuidedHint)}</p>
+          <p {...stylex.props(styles.cardHint)}>{m.items_paperStartGuidedHint()}</p>
           <Button
             className={stylex.props(styles.fullWidth).className}
             onClick={() => setWizard(true)}
           >
-            {format(m.paperStartAction)}
+            {m.items_paperStartAction()}
           </Button>
         </div>
 
         <div {...stylex.props(styles.card)}>
-          <p {...stylex.props(styles.cardTitle)}>{format(m.paperStartBlank)}</p>
-          <p {...stylex.props(styles.cardHint)}>{format(m.paperStartBlankHint)}</p>
+          <p {...stylex.props(styles.cardTitle)}>{m.items_paperStartBlank()}</p>
+          <p {...stylex.props(styles.cardHint)}>{m.items_paperStartBlankHint()}</p>
           <Button
             variant="outline"
             className={stylex.props(styles.fullWidth).className}
             onClick={() => setBlank(true)}
           >
-            {format(m.itemsGroupNew)}
+            {m.items_groupNew()}
           </Button>
         </div>
       </div>
@@ -201,8 +201,8 @@ function PaperWizard({
 }) {
   const api = useApi(assessmentApi)
   const run = useRunApi()
-  const { format, formatError } = useI18n()
-  const [name, setName] = useState(format(m.paperDefaultName))
+  const { formatError } = useI18n()
+  const [name, setName] = useState(m.items_paperDefaultName())
   const [cap, setCap] = useState(capped ? '100.00' : '')
 
   const create = useMutation({
@@ -233,22 +233,22 @@ function PaperWizard({
   return (
     <FormDialog
       open={open}
-      title={format(m.paperCreateTitle)}
-      description={format(m.paperCreateHint)}
+      title={m.items_paperCreateTitle()}
+      description={m.items_paperCreateHint()}
       onClose={onClose}
       footer={
         <div {...stylex.props(styles.footer)}>
           <Button variant="outline" onClick={onClose}>
-            {format(commonMessages.cancel)}
+            {commonMessages.action_cancel()}
           </Button>
           <Button disabled={create.isPending || name.trim() === ''} onClick={() => create.mutate()}>
-            {format(m.paperCreate)}
+            {m.items_paperCreate()}
           </Button>
         </div>
       }
     >
       <div {...stylex.props(styles.wizardFields)}>
-        <Field label={format(m.itemsGroupName)} required>
+        <Field label={m.items_groupName()} required>
           {(id, control) => (
             <Input
               id={id}
@@ -259,7 +259,7 @@ function PaperWizard({
             />
           )}
         </Field>
-        <Field label={format(m.paperTotal)} hint={format(m.paperTotalHint)}>
+        <Field label={m.items_paperTotal()} hint={m.items_paperTotalHint()}>
           {(id) => <Input id={id} value={cap} onChange={(event) => setCap(event.target.value)} />}
         </Field>
       </div>

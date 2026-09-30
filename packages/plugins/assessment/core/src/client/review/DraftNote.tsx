@@ -1,9 +1,10 @@
 import * as stylex from '@stylexjs/stylex'
 import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import { inZone, useBatchZone } from '../batch/zone.ts'
 import type { DraftKeeper } from './use-draft.ts'
+import * as m from '#messages'
 
 // Said where a panel opened with words already in it: whose they are, when
 // they were written, and the way to be rid of them. Without this line the
@@ -40,7 +41,7 @@ const styles = stylex.create({
 })
 
 export function DraftNote({ draft, onDiscard }: { draft: DraftKeeper; onDiscard: () => void }) {
-  const { format, locale } = useI18n()
+  const { locale } = useI18n()
   const zone = useBatchZone()
   if (!draft.restored) return null
   const when =
@@ -56,7 +57,7 @@ export function DraftNote({ draft, onDiscard }: { draft: DraftKeeper; onDiscard:
         }).format(new Date(draft.at))
   return (
     <div {...stylex.props(styles.bar)} data-testid="draft-note">
-      <span {...stylex.props(styles.words)}>{format(m.reviewDraftRestored, { when })}</span>
+      <span {...stylex.props(styles.words)}>{m.review_draftRestored({ when })}</span>
       <button
         type="button"
         data-testid="draft-discard"
@@ -66,7 +67,7 @@ export function DraftNote({ draft, onDiscard }: { draft: DraftKeeper; onDiscard:
           onDiscard()
         }}
       >
-        {format(m.reviewDraftDiscard)}
+        {m.review_draftDiscard()}
       </button>
     </div>
   )

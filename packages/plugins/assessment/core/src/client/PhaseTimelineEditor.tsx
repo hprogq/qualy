@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { PencilLineIcon, PlusIcon } from 'lucide-react'
 import { useApi, useApiQuery, useLeaveGuard, useLoadFailure, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { AsyncSection, ConfirmDialog, Feedback } from '@qualy/ui/admin'
 import { Card, Table, TableHead, TableSkeleton, UnsavedMark } from '@qualy/ui/screen'
 import { useIsMobile } from '@qualy/ui/use-mobile'
@@ -13,7 +13,7 @@ import * as stylex from '@stylexjs/stylex'
 import { Appear } from '@qualy/ui/reveal'
 import { Ticker } from '@qualy/ui/ticker'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { assessmentMessages as m } from './i18n.ts'
+
 import { useBatchLive } from './live.ts'
 import { assessmentApi } from './api.ts'
 import { planRefusalWords, refusalsOf, type PlanRefusalLike } from './refusals.ts'
@@ -33,6 +33,8 @@ import { PhaseCard, PhaseRow, type PhaseRowProps } from './phase/PhaseRow.tsx'
 import { PhaseDetailsPanel } from './phase/PhaseDetailsPanel.tsx'
 import { ScheduleDialog, TemplateDialog, UnscheduleDialog } from './phase/PhaseDialogs.tsx'
 import { ZoneNote } from './batch/BatchZone.tsx'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // The stage plan: the ordered list of business states a batch passes through,
 // and the two commands that change it.
@@ -255,7 +257,7 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
   const run = useRunApi()
   const query = useApiQuery(assessmentApi)
   const queryClient = useQueryClient()
-  const { format, formatError } = useI18n()
+  const { formatError } = useI18n()
   const loadFailure = useLoadFailure()
 
   const phases = useQuery(
@@ -357,7 +359,7 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
     setPlanRefusals(refusals)
     setFailure(refusals.length > 0 ? null : formatError(error))
   }
-  const sentenceOf = (refusal: PlanRefusalLike) => planRefusalWords(format, refusal.reason)
+  const sentenceOf = (refusal: PlanRefusalLike) => planRefusalWords(refusal.reason)
 
   const savePlan = useMutation({
     mutationFn: ({
@@ -388,7 +390,7 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
       ),
     onMutate: clear,
     onSuccess: async (_, { keepEditing }) => {
-      toast.success(format(m.toastPlanSaved))
+      toast.success(m.toast_planSaved())
       await settle()
       dropDraft()
       if (keepEditing !== true) setEditing(false)
@@ -406,7 +408,7 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
       ),
     onMutate: clear,
     onSuccess: async () => {
-      toast.success(format(m.toastTemplateAdded))
+      toast.success(m.toast_templateAdded())
       await settle()
       // the template was added over the plan as stored: whatever the draft
       // still held was let go on purpose, by the press that got here
@@ -433,7 +435,7 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
       ),
     onMutate: clear,
     onSuccess: async () => {
-      toast.success(format(m.toastPhaseScheduled))
+      toast.success(m.toast_phaseScheduled())
       await settle()
       setScheduling(null)
       setUnscheduling(null)
@@ -456,7 +458,7 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
       ),
     onMutate: clear,
     onSuccess: async () => {
-      toast.success(format(m.toastPhaseAdvanced))
+      toast.success(m.toast_phaseAdvanced())
       await settle()
       setScheduling(null)
     },
@@ -560,7 +562,7 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
       (refusal.phaseId == null && refusal.index === undefined) ||
       (refusal.phaseId != null && !shownIds.has(refusal.phaseId)),
   )
-  const named = (row: PhaseDraft) => row.displayName || format(m.unnamedSegment)
+  const named = (row: PhaseDraft) => row.displayName || m.plan_unnamed()
 
   /** the stage whose details are open, if any */
   const opened = actionsAt !== null ? drafts[actionsAt] : undefined
@@ -615,14 +617,14 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
               what ticks, and the words beside it stay still */}
           <Appear show={editing && dirty > 0}>
             <UnsavedMark>
-              <Ticker value={format(m.pendingShort, { count: dirty })} />
+              <Ticker value={m.plan_pendingShort({ count: dirty })} />
             </UnsavedMark>
           </Appear>
           {!readOnly && editing && (
             <>
               {hasTimelines && (
                 <Button size="sm" variant="ghost" onClick={() => setTemplateOpen(true)}>
-                  {format(m.templateAdd)}
+                  {m.template_add()}
                 </Button>
               )}
               <Button
@@ -634,10 +636,10 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
                 // rather than carried out of editing
                 onClick={() => (dirty > 0 ? setDiscarding(true) : stopEditing())}
               >
-                {format(m.cancel)}
+                {m.action_cancel()}
               </Button>
               <Button size="sm" disabled={savePlan.isPending} onClick={() => void saveAll()}>
-                {format(m.saveShort)}
+                {m.plan_saveShort()}
               </Button>
             </>
           )}
@@ -651,7 +653,7 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
               }}
             >
               <PencilLineIcon aria-hidden />
-              {format(m.enterEditing)}
+              {m.plan_enterEditing()}
             </Button>
           )}
         </div>
@@ -660,7 +662,7 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
       <Feedback message={failure} />
       {generalRefusals.length > 0 && (
         <Feedback
-          message={`${format(m.planRefusedIntro)} ${generalRefusals.map(sentenceOf).join(' ')}`}
+          message={`${m.phase_planRefused()} ${generalRefusals.map(sentenceOf).join(' ')}`}
         />
       )}
 
@@ -668,8 +670,8 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
         pending={phases.isPending}
         error={phases.isError ? loadFailure.of(phases.error) : null}
         framed
-        loadingLabel={format(commonMessages.loading)}
-        retryLabel={format(commonMessages.retry)}
+        loadingLabel={commonMessages.state_loading()}
+        retryLabel={commonMessages.action_retry()}
         onRetry={() => void phases.refetch()}
         skeleton={
           <Card>
@@ -681,16 +683,16 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
           <Card data-testid="phase-plan-empty">
             <div {...stylex.props(styles.emptyPlan)}>
               <p {...stylex.props(styles.emptyNote)}>
-                {format(hasTimelines ? m.phasesEmpty : m.phasesEmptyPlain)}
+                {(hasTimelines ? m.phase_empty : m.phase_emptyPlain)()}
               </p>
               {!readOnly && (
                 <div {...stylex.props(styles.emptyActions)}>
                   <Button size="sm" onClick={addPhase}>
-                    {format(m.addPhase)}
+                    {m.phase_add()}
                   </Button>
                   {hasTimelines && (
                     <Button size="sm" variant="outline" onClick={() => setTemplateOpen(true)}>
-                      {format(m.templateAdd)}
+                      {m.template_add()}
                     </Button>
                   )}
                 </div>
@@ -703,22 +705,22 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
           <Card data-testid="phase-plan">
             <Table columns={editing && !readOnly ? EDITING_COLUMNS : COLUMNS} openable>
               <TableHead>
-                <span>{format(m.colStage)}</span>
-                <span>{format(m.colOpens)}</span>
-                <span>{format(m.colPlannedStart)}</span>
-                <span>{format(m.colStatus)}</span>
+                <span>{m.plan_colStage()}</span>
+                <span>{m.plan_colOpens()}</span>
+                <span>{m.plan_colStart()}</span>
+                <span>{m.plan_colStatus()}</span>
                 {editing && !readOnly && <span />}
               </TableHead>
               {drafts.map((row, index) => (
                 <Fragment key={row.id ?? `new-${row.phaseKey}`}>
                   {index === shape.scheduled && index > 0 && (
                     <div data-testid="phase-boundary" {...stylex.props(styles.boundary)}>
-                      {format(m.unscheduledFrom)}
+                      {m.plan_unscheduledFrom()}
                     </div>
                   )}
                   {editing && !readOnly && index > shape.scheduled && (
                     <Seam
-                      label={format(m.insertHere)}
+                      label={m.plan_insertHere()}
                       shown={seamAt === index}
                       onPoint={(over) => setSeamAt(over ? index : null)}
                       onInsert={() => {
@@ -739,7 +741,7 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
                     onClick={addPhase}
                   >
                     <PlusIcon aria-hidden />
-                    {format(m.addPhase)}
+                    {m.phase_add()}
                   </Button>
                 </div>
               )}
@@ -752,7 +754,7 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
                 {index === shape.scheduled && index > 0 && (
                   <li data-testid="phase-boundary" {...stylex.props(styles.cardBoundary)}>
                     <span aria-hidden {...stylex.props(styles.seamLine)} />
-                    {format(m.unscheduledFrom)}
+                    {m.plan_unscheduledFrom()}
                     <span aria-hidden {...stylex.props(styles.seamLine)} />
                   </li>
                 )}
@@ -766,7 +768,7 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
                       onClick={() => insertAt(index + 1)}
                     >
                       <PlusIcon aria-hidden className={stylex.props(styles.seamGlyph).className} />
-                      {format(m.insertHere)}
+                      {m.plan_insertHere()}
                     </Button>
                   </li>
                 )}
@@ -781,7 +783,7 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
                   onClick={addPhase}
                 >
                   <PlusIcon aria-hidden />
-                  {format(m.addPhase)}
+                  {m.phase_add()}
                 </Button>
               </li>
             )}
@@ -853,9 +855,9 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
 
       <ConfirmDialog
         open={discarding}
-        title={format(m.discardTitle, { count: dirty })}
-        confirmLabel={format(m.discardEdits)}
-        cancelLabel={format(m.cancel)}
+        title={m.plan_discardTitle({ count: dirty })}
+        confirmLabel={m.plan_discard()}
+        cancelLabel={m.action_cancel()}
         tone="destructive"
         onConfirm={() => {
           stopEditing()

@@ -3,8 +3,7 @@ import { useInfiniteQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { ChevronRightIcon, DownloadIcon, FileSpreadsheetIcon } from 'lucide-react'
 import { cursorPages, useApi, useApiQuery, useLoadFailure, useRunApi } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { AsyncSection } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
@@ -12,8 +11,10 @@ import { ListEmpty } from '../ListEmpty.tsx'
 import { ListSkeleton } from '../ListSkeleton.tsx'
 import { recordColumns } from '../columns.stylex.ts'
 import { assessmentApi } from '../../api.ts'
-import { assessmentMessages as m } from '../../i18n.ts'
+
 import { useWhen } from '../when.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // The imports this reader made in this round and may still look back on,
 // newest first.
@@ -180,7 +181,7 @@ export function AdministrativeImportHistory({
   const api = useApi(assessmentApi)
   const run = useRunApi()
   const query = useApiQuery(assessmentApi)
-  const { format } = useI18n()
+
   const failures = useLoadFailure()
   const whenOf = useWhen()
 
@@ -212,21 +213,21 @@ export function AdministrativeImportHistory({
       pending={history.isPending}
       error={history.isError ? failures.of(history.error) : null}
       framed
-      loadingLabel={format(commonMessages.loading)}
-      retryLabel={format(commonMessages.retry)}
+      loadingLabel={commonMessages.state_loading()}
+      retryLabel={commonMessages.action_retry()}
       onRetry={() => void history.refetch()}
       skeleton={<ListSkeleton kind="imports" />}
     >
       {rows.length === 0 ? (
         <ListEmpty
-          title={format(m.importHistoryEmpty)}
-          said={format(m.importHistoryEmptyHint)}
+          title={m.record_import_historyEmpty()}
+          said={m.record_import_historyEmptyHint()}
           testId="administrative-imports-empty"
         >
           {onImport !== undefined && (
             <Button variant="outline" onClick={onImport}>
               <DownloadIcon aria-hidden {...stylex.props(styles.actionIcon)} />
-              {format(m.importAction)}
+              {m.record_import_action()}
             </Button>
           )}
         </ListEmpty>
@@ -234,11 +235,11 @@ export function AdministrativeImportHistory({
         <>
           <div {...stylex.props(styles.card)} data-testid="administrative-imports">
             <div {...stylex.props(styles.head)} aria-hidden>
-              <span>{format(m.importColumnFile)}</span>
-              <span>{format(m.recordColumnItem)}</span>
-              <span>{format(m.importColumnStanding)}</span>
-              <span>{format(m.recordColumnActor)}</span>
-              <span {...stylex.props(styles.headEnd)}>{format(m.recordColumnWhen)}</span>
+              <span>{m.record_import_columnFile()}</span>
+              <span>{m.record_columnItem()}</span>
+              <span>{m.record_import_columnStanding()}</span>
+              <span>{m.record_columnActor()}</span>
+              <span {...stylex.props(styles.headEnd)}>{m.record_columnWhen()}</span>
               <span />
             </div>
             {rows.map((row) => {
@@ -259,17 +260,17 @@ export function AdministrativeImportHistory({
                   <span {...stylex.props(styles.file)}>
                     <FileSpreadsheetIcon aria-hidden {...stylex.props(styles.fileIcon)} />
                     <span {...stylex.props(styles.fileName)}>
-                      {row.source.available ? row.source.filename : format(m.importDetailTitle)}
+                      {row.source.available ? row.source.filename : m.record_import_detailTitle()}
                     </span>
                   </span>
                   <span {...stylex.props(styles.itemCell)}>{row.item.title}</span>
                   <span {...stylex.props(styles.standing)}>
-                    <span>{format(m.importStandingCount, { count: row.importedCount })}</span>
+                    <span>{m.record_import_standingCount({ count: row.importedCount })}</span>
                     {row.standing.voided > 0 && (
                       <>
                         <span aria-hidden {...stylex.props(styles.tick)} />
                         <span>
-                          {format(m.importStandingVoided, { count: row.standing.voided })}
+                          {m.record_import_standingVoided({ count: row.standing.voided })}
                         </span>
                       </>
                     )}
@@ -277,7 +278,7 @@ export function AdministrativeImportHistory({
                     <span {...stylex.props(styles.phoneOnly)}>{when}</span>
                   </span>
                   <span {...stylex.props(styles.fact)}>
-                    {row.actor?.name ?? format(m.recordActorUnknown)}
+                    {row.actor?.name ?? m.record_actorUnknown()}
                   </span>
                   <span {...stylex.props(styles.fact, styles.when)}>{when}</span>
                   <ChevronRightIcon aria-hidden {...stylex.props(styles.chevron)} />
@@ -293,7 +294,7 @@ export function AdministrativeImportHistory({
                 disabled={history.isFetchingNextPage}
                 onClick={() => void history.fetchNextPage()}
               >
-                {format(m.recordMoreWho)}
+                {m.record_moreWho()}
               </Button>
             </div>
           )}

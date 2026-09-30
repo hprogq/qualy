@@ -3,13 +3,14 @@ import * as stylex from '@stylexjs/stylex'
 import { XIcon } from 'lucide-react'
 import { UiSlot } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import type { UiText } from '@qualy/i18n-contract'
 import { Button } from '@qualy/ui/button'
 import { Dialog, DialogContent, DialogTitle } from '@qualy/ui/dialog'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { calculatorEditorSlot } from '../../../surfaces.ts'
-import { assessmentMessages as m } from '../../i18n.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // Choosing what does the arithmetic, behind one dialog: the question keeps
 // its current method until a choice is finished, so looking around disturbs
@@ -105,7 +106,7 @@ export function ScoringMethodDialog({
   onApply: (next: { ref: string; config: unknown }) => void
   onClose: () => void
 }) {
-  const { format, formatText } = useI18n()
+  const { formatText } = useI18n()
   const [candidate, setCandidate] = useState(chosen)
   const finishesItself = calculators.find((one) => one.ref === candidate.ref)?.confirms === 'itself'
   return (
@@ -122,12 +123,12 @@ export function ScoringMethodDialog({
         data-testid="scoring-method-dialog"
       >
         <div {...stylex.props(styles.head)}>
-          <DialogTitle {...stylex.props(styles.title)}>{format(m.itemsScoringPick)}</DialogTitle>
+          <DialogTitle {...stylex.props(styles.title)}>{m.items_scoringPick()}</DialogTitle>
           <span {...stylex.props(styles.spacer)} />
           {calculators.length > 1 && (
             <div
               role="radiogroup"
-              aria-label={format(m.itemsScoringMethod)}
+              aria-label={m.items_scoringMethod()}
               {...stylex.props(styles.methods)}
             >
               {calculators.map((option) => {
@@ -160,7 +161,7 @@ export function ScoringMethodDialog({
             size="icon-sm"
             className={stylex.props(styles.close).className}
             onClick={onClose}
-            aria-label={format(commonMessages.close)}
+            aria-label={commonMessages.action_close()}
           >
             <XIcon aria-hidden />
           </Button>
@@ -182,9 +183,9 @@ export function ScoringMethodDialog({
         {!finishesItself && (
           <div {...stylex.props(styles.foot)}>
             <Button variant="outline" onClick={onClose}>
-              {format(commonMessages.cancel)}
+              {commonMessages.action_cancel()}
             </Button>
-            <Button onClick={() => onApply(candidate)}>{format(m.itemsScoringUse)}</Button>
+            <Button onClick={() => onApply(candidate)}>{m.items_scoringUse()}</Button>
           </div>
         )}
       </DialogContent>

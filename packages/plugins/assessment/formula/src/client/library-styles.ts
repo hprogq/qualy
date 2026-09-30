@@ -1,8 +1,7 @@
 import * as stylex from '@stylexjs/stylex'
-import type { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
-import { formulaMessages as m } from './i18n.ts'
+import * as m from '#messages'
 
 // The furniture the two library lists share: a masthead, a label over one
 // white sheet, a header row and rows on one grid, and a foot that asks for
@@ -203,8 +202,6 @@ export const libraryStyles = stylex.create({
   skeletonRow: { display: 'flex', flexDirection: 'column', gap: 8, paddingBlock: 16 },
 })
 
-type Format = ReturnType<typeof useI18n>['format']
-
 const clock = (locale: string) =>
   new Intl.DateTimeFormat(locale, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
 
@@ -215,18 +212,13 @@ const clock = (locale: string) =>
  * ("8月29日 14:30", "Aug 29, 14:30") rather than as digits between dots, which
  * in a column of numbers read as one more number.
  */
-export function shortWhen(
-  at: string,
-  format: Format,
-  locale: string,
-  now: Date = new Date(),
-): string {
+export function shortWhen(at: string, locale: string, now: Date = new Date()): string {
   const date = new Date(at)
   const startOf = (day: Date) =>
     new Date(day.getFullYear(), day.getMonth(), day.getDate()).getTime()
   const days = Math.round((startOf(now) - startOf(date)) / 86_400_000)
-  if (days === 0) return format(m.whenToday, { time: clock(locale).format(date) })
-  if (days === 1) return format(m.whenYesterday, { time: clock(locale).format(date) })
+  if (days === 0) return m.when_today({ time: clock(locale).format(date) })
+  if (days === 1) return m.when_yesterday({ time: clock(locale).format(date) })
   return date.getFullYear() === now.getFullYear()
     ? new Intl.DateTimeFormat(locale, {
         month: 'short',

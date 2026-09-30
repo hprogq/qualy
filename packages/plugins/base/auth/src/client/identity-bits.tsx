@@ -2,10 +2,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { ToggleGroup, ToggleGroupItem } from '@qualy/ui/toggle-group'
 import { MonitorIcon, MoonIcon, SunIcon } from 'lucide-react'
 import { useTheme, type ThemeChoice } from '@qualy/web-runtime'
-import { localeNames, useI18n, useLocale } from '@qualy/web-i18n'
+import { localeNames, useLocale } from '@qualy/web-i18n'
 import { useChooseLocale } from './locale-choice.ts'
 import { supportedLocales, type SupportedLocale } from '@qualy/i18n-contract'
-import { authMessages as m } from './i18n.ts'
+import * as m from '#messages'
 
 // The theme control the account surfaces share, wherever one is standing -
 // the top bar's menu on a desktop, the navigation drawer on a phone. A
@@ -14,16 +14,16 @@ import { authMessages as m } from './i18n.ts'
 /** the three appearances, chosen in place; held by the browser alone */
 export function ThemeChoicePicker() {
   const { choice, setChoice } = useTheme()
-  const { format } = useI18n()
+
   const options: { value: ThemeChoice; label: string; icon: typeof SunIcon }[] = [
-    { value: 'light', label: format(m.themeLight), icon: SunIcon },
-    { value: 'dark', label: format(m.themeDark), icon: MoonIcon },
-    { value: 'system', label: format(m.themeSystem), icon: MonitorIcon },
+    { value: 'light', label: m.preference_themeLight(), icon: SunIcon },
+    { value: 'dark', label: m.preference_themeDark(), icon: MoonIcon },
+    { value: 'system', label: m.preference_themeSystem(), icon: MonitorIcon },
   ]
   return (
     <ToggleGroup
       value={choice}
-      aria-label={format(m.appearance)}
+      aria-label={m.preference_appearance()}
       onValueChange={(next) => next !== '' && setChoice(next as ThemeChoice)}
     >
       {options.map((option) => (
@@ -45,10 +45,10 @@ export function ThemeChoicePicker() {
 export function LocaleChoicePicker() {
   const locale = useLocale()
   const setLocale = useChooseLocale()
-  const { format } = useI18n()
+
   return (
     <Select value={locale} onValueChange={(next) => setLocale(next as SupportedLocale)}>
-      <SelectTrigger size="sm" aria-label={format(m.language)}>
+      <SelectTrigger size="sm" aria-label={m.preference_language()}>
         <SelectValue />
       </SelectTrigger>
       <SelectContent>

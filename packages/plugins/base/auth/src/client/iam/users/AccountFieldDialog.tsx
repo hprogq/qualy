@@ -9,10 +9,11 @@ import { Feedback, Field, FormDialog, useSettledCheck } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
 import { toast } from '@qualy/ui/toast'
-import { iamMessages as m } from '../../i18n.ts'
+
 import { authApi } from '../../api.ts'
 import { needsReauthentication, useReauthentication } from '../../account/Reauthentication.tsx'
 import { emailShaped, refusedField } from './field-refusals.ts'
+import * as m from '#messages'
 
 // One field of a person's account, set where it is found missing: the
 // profile's address line, a way in that finds them by it. The banner's
@@ -42,7 +43,7 @@ export function AccountFieldDialog({
   const run = useRunApi()
   const query = useApiQuery(authApi)
   const queryClient = useQueryClient()
-  const { format, formatError } = useI18n()
+  const { formatError } = useI18n()
   const businessNoWord = useTerm(authTerms.businessNumber)
   const formId = useId()
   const [value, setValue] = useState(current ?? '')
@@ -54,7 +55,7 @@ export function AccountFieldDialog({
   const reauthentication = useReauthentication(undefined)
   const typed = value.trim()
   const shape = useSettledCheck(value, (next) =>
-    field === 'email' && !emailShaped(next) ? format(m.emailInvalid) : null,
+    field === 'email' && !emailShaped(next) ? m.person_emailInvalid() : null,
   )
   const writable = typed !== '' && typed !== current && (field !== 'email' || emailShaped(typed))
 
@@ -72,7 +73,7 @@ export function AccountFieldDialog({
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: query.identity.key() })
-      toast.success(format(m.saved))
+      toast.success(m.feedback_saved())
       onClose()
     },
     onError: (error: unknown) => {
@@ -85,16 +86,16 @@ export function AccountFieldDialog({
   const setting = current === null
   const title =
     field === 'email'
-      ? format(setting ? m.emailSetTitle : m.emailChangeTitle)
-      : format(setting ? m.businessNoSetTitle : m.businessNoChangeTitle, {
+      ? (setting ? m.account_emailSetTitle : m.account_emailChangeTitle)()
+      : (setting ? m.person_businessNoSetTitle : m.person_businessNoChangeTitle)({
           businessNo: businessNoWord,
         })
   const hint =
     field === 'email'
-      ? format(setting ? m.emailPurpose : m.emailChangeConsequence)
+      ? (setting ? m.person_emailPurpose : m.person_emailChangeConsequence)()
       : setting
         ? undefined
-        : format(m.businessNoChangeConsequence, { businessNo: businessNoWord })
+        : m.person_businessNoChangeConsequence({ businessNo: businessNoWord })
 
   return (
     <>
@@ -105,10 +106,10 @@ export function AccountFieldDialog({
         footer={
           <>
             <Button variant="outline" onClick={onClose}>
-              {format(m.cancel)}
+              {m.action_cancel()}
             </Button>
             <Button type="submit" form={formId} disabled={save.isPending || !writable}>
-              {format(m.save)}
+              {m.action_save()}
             </Button>
           </>
         }
@@ -125,7 +126,7 @@ export function AccountFieldDialog({
         >
           <Feedback message={feedback} />
           <Field
-            label={field === 'email' ? format(m.emailLabel) : businessNoWord}
+            label={field === 'email' ? m.users_email() : businessNoWord}
             required
             error={taken ?? shape.error}
             {...(hint === undefined ? {} : { hint })}

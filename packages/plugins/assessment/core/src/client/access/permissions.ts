@@ -1,6 +1,6 @@
-import type { MessageDescriptor } from '@qualy/i18n-contract'
+import type { Message } from '@qualy/i18n-contract'
 import { BATCH_STAFF_CODES } from '../../permissions.ts'
-import { assessmentMessages as m } from '../i18n.ts'
+import * as m from '#messages'
 
 // The words for the capabilities a round can hand out.
 //
@@ -12,35 +12,35 @@ import { assessmentMessages as m } from '../i18n.ts'
 export type StaffCode = (typeof BATCH_STAFF_CODES)[number]
 
 const LABELS = {
-  'assessment.entry.record': m['permission.assessment.entry.record'],
-  'assessment.entry.read-all': m['permission.assessment.entry.read-all'],
-  'assessment.entry.redetermine': m['permission.assessment.entry.redetermine'],
-  'assessment.review.process': m['permission.assessment.review.process'],
-  'assessment.review.reopen': m['permission.assessment.review.reopen'],
-  'assessment.result.view-peers': m['permission.assessment.result.view-peers'],
-  'assessment.ranking.view': m['permission.assessment.ranking.view'],
-} as const satisfies Record<StaffCode, MessageDescriptor>
+  'assessment.entry.record': m.permission_entryRecord,
+  'assessment.entry.read-all': m.permission_entryReadAll,
+  'assessment.entry.redetermine': m.permission_entryRedetermine,
+  'assessment.review.process': m.permission_reviewProcess,
+  'assessment.review.reopen': m.permission_reviewReopen,
+  'assessment.result.view-peers': m.permission_resultViewPeers,
+  'assessment.ranking.view': m.permission_rankingView,
+} as const satisfies Record<StaffCode, Message>
 
 const HINTS = {
-  'assessment.entry.record': m['permission-hint.assessment.entry.record'],
-  'assessment.entry.read-all': m['permission-hint.assessment.entry.read-all'],
-  'assessment.entry.redetermine': m['permission-hint.assessment.entry.redetermine'],
-  'assessment.review.process': m['permission-hint.assessment.review.process'],
-  'assessment.review.reopen': m['permission-hint.assessment.review.reopen'],
-  'assessment.result.view-peers': m['permission-hint.assessment.result.view-peers'],
-  'assessment.ranking.view': m['permission-hint.assessment.ranking.view'],
-} as const satisfies Record<StaffCode, MessageDescriptor>
+  'assessment.entry.record': m.permissionHint_entryRecord,
+  'assessment.entry.read-all': m.permissionHint_entryReadAll,
+  'assessment.entry.redetermine': m.permissionHint_entryRedetermine,
+  'assessment.review.process': m.permissionHint_reviewProcess,
+  'assessment.review.reopen': m.permissionHint_reviewReopen,
+  'assessment.result.view-peers': m.permissionHint_resultViewPeers,
+  'assessment.ranking.view': m.permissionHint_rankingView,
+} as const satisfies Record<StaffCode, Message>
 
 // the same seven, short enough to head a column of their own
 const SHORT = {
-  'assessment.entry.record': m['permission-short.assessment.entry.record'],
-  'assessment.entry.read-all': m['permission-short.assessment.entry.read-all'],
-  'assessment.entry.redetermine': m['permission-short.assessment.entry.redetermine'],
-  'assessment.review.process': m['permission-short.assessment.review.process'],
-  'assessment.review.reopen': m['permission-short.assessment.review.reopen'],
-  'assessment.result.view-peers': m['permission-short.assessment.result.view-peers'],
-  'assessment.ranking.view': m['permission-short.assessment.ranking.view'],
-} as const satisfies Record<StaffCode, MessageDescriptor>
+  'assessment.entry.record': m.permissionShort_entryRecord,
+  'assessment.entry.read-all': m.permissionShort_entryReadAll,
+  'assessment.entry.redetermine': m.permissionShort_entryRedetermine,
+  'assessment.review.process': m.permissionShort_reviewProcess,
+  'assessment.review.reopen': m.permissionShort_reviewReopen,
+  'assessment.result.view-peers': m.permissionShort_resultViewPeers,
+  'assessment.ranking.view': m.permissionShort_rankingView,
+} as const satisfies Record<StaffCode, Message>
 
 export const permissionLabel = (code: StaffCode) => LABELS[code]
 

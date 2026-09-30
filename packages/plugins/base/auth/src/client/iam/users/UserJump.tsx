@@ -3,15 +3,15 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { CornerDownLeftIcon, SearchIcon } from 'lucide-react'
 import { useApiQuery, usePageNavigate } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { FormDialog } from '@qualy/ui/admin'
 import { BandAction } from '@qualy/ui/screen'
 import { Input } from '@qualy/ui/input'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { Spinner } from '@qualy/ui/spinner'
-import { iamMessages as m } from '../../i18n.ts'
+
 import { authApi } from '../../api.ts'
+import * as m from '#messages'
 
 // Straight to one person, from anywhere on the roster.
 //
@@ -106,7 +106,7 @@ export function UserJump({
 }) {
   const query = useApiQuery(authApi)
   const navigate = usePageNavigate()
-  const { format } = useI18n()
+
   const [open, setOpen] = useState(false)
   const [typed, setTyped] = useState('')
   const [asked, setAsked] = useState('')
@@ -150,12 +150,12 @@ export function UserJump({
         icon={<SearchIcon aria-hidden />}
         onSelect={() => setOpen(true)}
       >
-        {format(m.jumpOpen)}
+        {m.users_jumpOpen()}
       </BandAction>
       <FormDialog
         open={open}
         size="medium"
-        title={format(m.jumpOpen)}
+        title={m.users_jumpOpen()}
         onClose={() => setOpen(false)}
       >
         <div {...stylex.props(styles.box)} data-testid="user-jump">
@@ -178,8 +178,8 @@ export function UserJump({
             aria-activedescendant={
               people[lit] === undefined ? undefined : `user-jump-${people[lit].id}`
             }
-            aria-label={format(m.jumpLabel, { businessNo })}
-            placeholder={format(m.jumpLabel, { businessNo })}
+            aria-label={m.users_jump({ businessNo })}
+            placeholder={m.users_jump({ businessNo })}
             lead={<SearchIcon aria-hidden {...stylex.props(styles.glass)} />}
             tail={found.isFetching ? <Spinner /> : undefined}
             value={typed}
@@ -202,8 +202,8 @@ export function UserJump({
           <ul ref={listRef} id="user-jump-found" role="listbox" {...stylex.props(styles.list)}>
             <li role="presentation" {...stylex.props(styles.caption)}>
               {asked === ''
-                ? format(m.jumpHint, { businessNo })
-                : format(m.jumpFound, { count: found.data?.total ?? people.length })}
+                ? m.users_jumpHint({ businessNo })
+                : m.users_jumpFound({ count: found.data?.total ?? people.length })}
             </li>
             {people.length === 0 && found.isPending ? (
               Array.from({ length: 6 }, (_, index) => (
@@ -221,7 +221,7 @@ export function UserJump({
               ))
             ) : people.length === 0 && !found.isFetching ? (
               <li role="presentation" {...stylex.props(styles.note)} data-testid="user-jump-none">
-                {format(m.jumpNone)}
+                {m.users_jumpNone()}
               </li>
             ) : (
               people.map((person, index) => (
@@ -242,7 +242,7 @@ export function UserJump({
                     <span {...stylex.props(styles.name)}>
                       <span>{person.displayName}</span>
                       <span {...stylex.props(styles.number)}>
-                        {person.businessNo ?? format(m.personNoBusinessNo, { businessNo })}
+                        {person.businessNo ?? m.person_noBusinessNo({ businessNo })}
                       </span>
                     </span>
                     <span {...stylex.props(styles.where)}>

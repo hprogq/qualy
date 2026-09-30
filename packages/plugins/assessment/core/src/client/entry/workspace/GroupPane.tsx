@@ -1,8 +1,7 @@
 import * as stylex from '@stylexjs/stylex'
 import { ChevronRightIcon } from 'lucide-react'
-import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { assessmentMessages as m } from '../../i18n.ts'
+
 import { trimAmount, type EntryDto } from '../model.ts'
 import type { StructureRow } from '../standing.ts'
 import { useCalcLine } from './calc.ts'
@@ -17,6 +16,7 @@ import {
   type Outline,
   type Viewer,
 } from './model.ts'
+import * as m from '#messages'
 
 // One section, opened: how far it has got against its limit, and every
 // question and section inside it, a row each - the way into any of them.
@@ -245,7 +245,6 @@ export function GroupPane({
   isTodo: (row: StructureRow) => boolean
   onGoto: (id: string) => void
 }) {
-  const { format } = useI18n()
   const calc = useCalcLine()
   const chain = chainOf(outline, row)
   const inside = insideOf(outline, row)
@@ -264,32 +263,32 @@ export function GroupPane({
       key: 'cap',
       text:
         row.depth === 0 && cap !== null && totalCap !== null && totalCap > 0
-          ? format(m.paperBandShare, { pct: Math.round((cap / totalCap) * 100) })
+          ? m.paper_bandShare({ pct: Math.round((cap / totalCap) * 100) })
           : cap !== null
-            ? format(m.entriesSectionCap, { value: trimAmount(String(cap)) })
-            : format(m.entriesSectionUncapped),
+            ? m.entries_sectionCap({ value: trimAmount(String(cap)) })
+            : m.entries_sectionUncapped(),
     },
-    { key: 'items', text: format(m.myEntriesQuestions, { count: items.length }) },
-    { key: 'filed', text: format(m.entriesFiledCount, { count: filed }) },
+    { key: 'items', text: m.entry_questions({ count: items.length }) },
+    { key: 'filed', text: m.entries_filedCount({ count: filed }) },
     ...(todo > 0
       ? [
           {
             key: 'todo',
-            text: format(viewer === 'owner' ? m.entriesTodoCount : m.entriesMovingCount, {
+            text: (viewer === 'owner' ? m.entries_todoCount : m.entries_movingCount)({
               count: todo,
             }),
             waits: viewer === 'owner',
           },
         ]
       : []),
-    ...(full ? [{ key: 'full', text: format(m.entriesSectionFull) }] : []),
+    ...(full ? [{ key: 'full', text: m.entries_sectionFull() }] : []),
   ]
 
   return (
     <div {...stylex.props(styles.root)} data-testid="group-pane" data-group={row.id}>
       <div {...stylex.props(styles.head)}>
         {chain.length > 0 && (
-          <ol aria-label={format(m.entriesWhereLabel)} {...stylex.props(styles.crumbs)}>
+          <ol aria-label={m.entries_whereLabel()} {...stylex.props(styles.crumbs)}>
             {chain.map((section) => (
               <li key={section.id} {...stylex.props(styles.crumbItem)}>
                 <button
@@ -330,8 +329,8 @@ export function GroupPane({
               </span>
               <span {...stylex.props(styles.ledgerCap)}>
                 {cap === null
-                  ? format(m.myEntriesPaperUnit)
-                  : `/ ${format(m.entriesPoints, { value: trimAmount(String(cap)) })}`}
+                  ? m.myEntries_paperUnit()
+                  : `/ ${m.entries_points({ value: trimAmount(String(cap)) })}`}
               </span>
             </span>
           </span>
@@ -405,13 +404,13 @@ export function GroupPane({
                   <span {...stylex.props(styles.itemFacts)}>
                     {word !== null && (
                       <span {...stylex.props(styles.keep, urgentTag(one) && styles.wordUrgent)}>
-                        {format(word)}
+                        {word()}
                       </span>
                     )}
                     <span {...stylex.props(styles.keep)}>
                       {item !== undefined && item.maxEntries !== null && entries.length > 0
-                        ? format(m.entriesUsedOf, { used: entries.length, most: item.maxEntries })
-                        : format(m.entriesFiledCount, { count: entries.length })}
+                        ? m.entries_usedOf({ used: entries.length, most: item.maxEntries })
+                        : m.entries_filedCount({ count: entries.length })}
                     </span>
                     {item !== undefined && <span {...stylex.props(styles.clip)}>{calc(item)}</span>}
                   </span>

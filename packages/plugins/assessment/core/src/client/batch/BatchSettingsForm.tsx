@@ -5,7 +5,7 @@ import { Appear } from '@qualy/ui/reveal'
 import { GripVerticalIcon, PlusIcon, RotateCcwIcon, Trash2Icon, XIcon } from 'lucide-react'
 import { useApi, useApiQuery, useLeaveGuard, usePageNavigate, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { VisuallyHidden } from '@qualy/ui/visually-hidden'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
@@ -19,11 +19,13 @@ import { Textarea } from '@qualy/ui/textarea'
 import { toast } from '@qualy/ui/toast'
 import { assessmentApi } from '../api.ts'
 import { DEFAULT_REVIEW_REASONS } from '../../review/reasons.ts'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import { planRefusalWords, refusalsOf } from '../refusals.ts'
 import { ReopenDialog } from './ReopenDialog.tsx'
 import type { BatchDto } from '../phase/model.ts'
 import { dayAfter, lastDay } from '../entry/model.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // What the batch is, and what may happen to the batch as a whole.
 //
@@ -278,7 +280,6 @@ function ReasonList({
   onChange: (next: readonly string[]) => void
   onTyped: (next: string) => void
 }) {
-  const { format } = useI18n()
   // where a dragged label would land, marked while it hovers
   const [drop, setDrop] = useState<{ reason: string; edge: 'before' | 'after' } | null>(null)
   const add = () => {
@@ -367,7 +368,7 @@ function ReasonList({
           value={typed}
           maxLength={REASON_MAX}
           disabled={disabled}
-          placeholder={format(m.settingsReasonPlaceholder)}
+          placeholder={m.settings_reasonPlaceholder()}
           onChange={(event) => onTyped(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === 'Enter') {
@@ -384,13 +385,13 @@ function ReasonList({
           onClick={add}
         >
           <PlusIcon aria-hidden />
-          {format(m.settingsReasonAdd)}
+          {m.settings_reasonAdd()}
         </Button>
         {/* the way back to the shipped list, only while this one differs;
             it changes the draft like any edit, so saving is still the act */}
         {!disabled && JSON.stringify(reasons) !== JSON.stringify(defaults) && (
           <Button type="button" variant="ghost" size="sm" onClick={() => onChange(defaults)}>
-            {format(m.settingsReasonRestore)}
+            {m.settings_reasonRestore()}
           </Button>
         )}
       </div>
@@ -412,7 +413,7 @@ export function BatchSettingsForm({ batch }: { batch: BatchDto }) {
   const run = useRunApi()
   const query = useApiQuery(assessmentApi)
   const queryClient = useQueryClient()
-  const { format, formatError, locale } = useI18n()
+  const { formatError, locale } = useI18n()
   const navigate = usePageNavigate()
 
   const [name, setName] = useState(batch.name)
@@ -449,7 +450,7 @@ export function BatchSettingsForm({ batch }: { batch: BatchDto }) {
   const said = (error: unknown) => {
     const refusals = refusalsOf(error)
     return refusals.length > 0
-      ? refusals.map((refusal) => planRefusalWords(format, refusal.reason)).join(' ')
+      ? refusals.map((refusal) => planRefusalWords(refusal.reason)).join(' ')
       : formatError(error)
   }
 
@@ -470,7 +471,7 @@ export function BatchSettingsForm({ batch }: { batch: BatchDto }) {
       ),
     onMutate: () => setFailure(null),
     onSuccess: async () => {
-      toast.success(format(m.toastBatchSaved))
+      toast.success(m.toast_batchSaved())
       await settle()
     },
     onError: (error: unknown) => setFailure(said(error)),
@@ -518,7 +519,7 @@ export function BatchSettingsForm({ batch }: { batch: BatchDto }) {
       ),
     onMutate: () => setFailure(null),
     onSuccess: async () => {
-      toast.success(format(m.toastBatchArchived))
+      toast.success(m.toast_batchArchived())
       await settle()
       setConfirming(null)
     },
@@ -545,7 +546,7 @@ export function BatchSettingsForm({ batch }: { batch: BatchDto }) {
       ),
     onMutate: () => setFailure(null),
     onSuccess: async () => {
-      toast.success(format(m.toastBatchReopened))
+      toast.success(m.toast_batchReopened())
       await settle()
       setReopening(false)
     },
@@ -559,7 +560,7 @@ export function BatchSettingsForm({ batch }: { batch: BatchDto }) {
     mutationFn: () => run(api.assessment.deleteBatch({ params: { batchId: batch.id } })),
     onMutate: () => setFailure(null),
     onSuccess: () => {
-      toast.success(format(m.toastBatchDeleted))
+      toast.success(m.toast_batchDeleted())
       setConfirming(null)
       // the batch this workspace is about no longer exists, and neither do
       // any edits to it: the way out is not a page being left with changes
@@ -576,7 +577,7 @@ export function BatchSettingsForm({ batch }: { batch: BatchDto }) {
     <div {...stylex.props(styles.column)}>
       <Feedback message={failure} />
 
-      <Section title={format(m.settingsBasics)} description={format(m.settingsBasicsHint)}>
+      <Section title={m.settings_basics()} description={m.settings_basicsHint()}>
         <form
           onSubmit={(event) => {
             event.preventDefault()
@@ -584,33 +585,33 @@ export function BatchSettingsForm({ batch }: { batch: BatchDto }) {
           }}
         >
           <FieldGroup xstyle={styles.formGaps}>
-            <Field label={format(m.nameLabel)} required>
+            <Field label={m.batch_name()} required>
               {(id, control) => (
                 <Input
                   id={id}
                   {...control}
                   value={name}
                   disabled={!editable}
-                  placeholder={format(m.namePlaceholder)}
+                  placeholder={m.batch_namePlaceholder()}
                   onChange={(event) => setName(event.target.value)}
                 />
               )}
             </Field>
-            <Field label={format(m.materialRange)} required>
+            <Field label={m.batch_materialRange()} required>
               {(id) => (
                 <DateRangePicker
                   id={id}
                   value={range}
                   disabled={!editable}
                   onChange={setRange}
-                  placeholder={format(m.pickDateRange)}
+                  placeholder={m.action_pickDateRange()}
                   localeTag={locale}
-                  monthLabel={format(commonMessages.calendarMonth)}
-                  yearLabel={format(commonMessages.calendarYear)}
+                  monthLabel={commonMessages.calendar_month()}
+                  yearLabel={commonMessages.calendar_year()}
                 />
               )}
             </Field>
-            <Field label={format(m.settingsNote)} hint={format(m.settingsNoteHint)}>
+            <Field label={m.settings_note()} hint={m.settings_noteHint()}>
               {(id) => (
                 <Textarea
                   id={id}
@@ -621,28 +622,28 @@ export function BatchSettingsForm({ batch }: { batch: BatchDto }) {
                 />
               )}
             </Field>
-            <Field label={format(m.settingsRejectReasons)} hint={format(m.settingsReasonsHint)}>
+            <Field label={m.settings_rejectReasons()} hint={m.settings_reasonsHint()}>
               {(id) => (
                 <ReasonList
                   id={id}
                   reasons={rejectReasons}
                   typed={rejectTyped}
                   disabled={!editable}
-                  emptyNote={format(m.settingsRejectReasonsNone)}
+                  emptyNote={m.settings_rejectReasonsNone()}
                   defaults={DEFAULT_REVIEW_REASONS.reject}
                   onChange={setRejectReasons}
                   onTyped={setRejectTyped}
                 />
               )}
             </Field>
-            <Field label={format(m.settingsEscalateReasons)} hint={format(m.settingsEscalateHint)}>
+            <Field label={m.settings_escalateReasons()} hint={m.settings_escalateHint()}>
               {(id) => (
                 <ReasonList
                   id={id}
                   reasons={escalateReasons}
                   typed={escalateTyped}
                   disabled={!editable}
-                  emptyNote={format(m.settingsEscalateReasonsNone)}
+                  emptyNote={m.settings_escalateReasonsNone()}
                   defaults={DEFAULT_REVIEW_REASONS.escalate}
                   onChange={setEscalateReasons}
                   onTyped={setEscalateTyped}
@@ -656,42 +657,42 @@ export function BatchSettingsForm({ batch }: { batch: BatchDto }) {
                 instant a field returns to what it was, which reads as the
                 page glitching rather than as the change being undone */}
             <Appear show={!unchanged}>
-              <span {...stylex.props(styles.unsavedNote)}>{format(m.settingsUnsaved)}</span>
+              <span {...stylex.props(styles.unsavedNote)}>{m.settings_unsaved()}</span>
             </Appear>
             <Button
               type="submit"
               disabled={!editable || unchanged || rangeIncomplete || save.isPending}
             >
-              {format(m.saveShort)}
+              {m.plan_saveShort()}
             </Button>
           </div>
         </form>
       </Section>
 
       {batch.manageable && (
-        <Section title={format(m.settingsLifecycle)} description={format(m.settingsLifecycleHint)}>
+        <Section title={m.settings_lifecycle()} description={m.settings_lifecycleHint()}>
           {/* one row at a time: the batch is in exactly one status, so only
               the action that status allows is on the page */}
           <div>
             {batch.status === 'active' && (
               <LifecycleRow
-                title={format(m.archive)}
-                description={format(m.archiveConfirmBody)}
+                title={m.action_archive()}
+                description={m.action_archiveConfirmBody()}
                 action={
                   <Button
                     variant="outline"
                     disabled={archive.isPending}
                     onClick={() => setConfirming('archive')}
                   >
-                    {format(m.archive)}
+                    {m.action_archive()}
                   </Button>
                 }
               />
             )}
             {batch.status === 'archived' && (
               <LifecycleRow
-                title={format(m.reopen)}
-                description={format(m.reopenBody)}
+                title={m.action_reopen()}
+                description={m.action_reopenBody()}
                 action={
                   <Button
                     variant="outline"
@@ -699,15 +700,15 @@ export function BatchSettingsForm({ batch }: { batch: BatchDto }) {
                     onClick={() => setReopening(true)}
                   >
                     <RotateCcwIcon />
-                    {format(m.reopen)}
+                    {m.action_reopen()}
                   </Button>
                 }
               />
             )}
             {batch.status === 'draft' && (
               <LifecycleRow
-                title={format(m.deleteBatch)}
-                description={format(m.deleteConfirmBody)}
+                title={m.action_delete()}
+                description={m.action_deleteConfirmBody()}
                 action={
                   <Button
                     variant="outline"
@@ -716,7 +717,7 @@ export function BatchSettingsForm({ batch }: { batch: BatchDto }) {
                     onClick={() => setConfirming('delete')}
                   >
                     <Trash2Icon />
-                    {format(m.deleteBatch)}
+                    {m.action_delete()}
                   </Button>
                 }
               />
@@ -727,10 +728,10 @@ export function BatchSettingsForm({ batch }: { batch: BatchDto }) {
 
       <ConfirmDialog
         open={confirming === 'archive'}
-        title={format(m.archiveConfirmTitle)}
-        description={format(m.archiveConfirmBody)}
-        confirmLabel={format(m.archive)}
-        cancelLabel={format(m.cancel)}
+        title={m.action_archiveConfirmTitle()}
+        description={m.action_archiveConfirmBody()}
+        confirmLabel={m.action_archive()}
+        cancelLabel={m.action_cancel()}
         pending={archive.isPending}
         tone="destructive"
         onConfirm={() => archive.mutate()}
@@ -738,10 +739,10 @@ export function BatchSettingsForm({ batch }: { batch: BatchDto }) {
       />
       <ConfirmDialog
         open={confirming === 'delete'}
-        title={format(m.deleteConfirmTitle)}
-        description={format(m.deleteConfirmBody)}
-        confirmLabel={format(m.deleteBatch)}
-        cancelLabel={format(m.cancel)}
+        title={m.action_deleteConfirmTitle()}
+        description={m.action_deleteConfirmBody()}
+        confirmLabel={m.action_delete()}
+        cancelLabel={m.action_cancel()}
         pending={remove.isPending}
         tone="destructive"
         onConfirm={() => remove.mutate()}

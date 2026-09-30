@@ -10,9 +10,10 @@ import { Avatar, AvatarFallback } from '@qualy/ui/avatar'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
 import { Skeleton } from '@qualy/ui/skeleton'
-import { authMessages as m } from './i18n.ts'
+
 import { useIdentity } from './identity.ts'
 import { initialsOf } from './initials.ts'
+import * as m from '#messages'
 
 // Who is signed in, at the head of the narrow shell's navigation drawer -
 // the same account the top bar's corner shows a desktop: the name, the
@@ -158,7 +159,7 @@ const styles = stylex.create({
 })
 
 export default function DrawerIdentity() {
-  const { format, formatError } = useI18n()
+  const { formatError } = useI18n()
   const businessNo = useTerm(authTerms.businessNumber)
   const [lineageOpen, setLineageOpen] = useState(false)
   const me = useIdentity()
@@ -181,7 +182,7 @@ export default function DrawerIdentity() {
       return (
         <div {...stylex.props(styles.row)}>
           <Button variant="outline" size="sm" asChild>
-            <PageLink page="auth/login">{format(m.signIn)}</PageLink>
+            <PageLink page="auth/login">{m.action_signIn()}</PageLink>
           </Button>
         </div>
       )
@@ -214,7 +215,7 @@ export default function DrawerIdentity() {
             <span {...stylex.props(styles.number)}>{user.businessNo}</span>
           ) : (
             <span {...stylex.props(styles.number, styles.numberAbsent)}>
-              {format(m.noBusinessNo, { businessNo })}
+              {m.session_noBusinessNo({ businessNo })}
             </span>
           )}
           <span {...stylex.props(styles.spacer)} />

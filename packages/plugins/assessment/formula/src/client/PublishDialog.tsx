@@ -1,13 +1,13 @@
 import * as stylex from '@stylexjs/stylex'
 import { useEffect, useState } from 'react'
-import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
 import { Textarea } from '@qualy/ui/textarea'
 import { Field, FormDialog } from '@qualy/ui/admin'
-import { formulaMessages as m } from './i18n.ts'
+
 import { ToneDot, type Tone } from './WorkbenchLayout.tsx'
+import * as m from '#messages'
 
 // Publishing the draft: naming what is about to be frozen, and seeing what it
 // stands on before pressing the one button that cannot be taken back.
@@ -62,7 +62,6 @@ export function PublishDialog({
   readonly onClose: () => void
   readonly onPublish: (release: { name: string; notes: string }) => void
 }) {
-  const { format } = useI18n()
   const [name, setName] = useState('')
   const [notes, setNotes] = useState('')
   // every opening starts a new publication; a name typed for the last one is
@@ -77,38 +76,40 @@ export function PublishDialog({
   return (
     <FormDialog
       open={open}
-      title={format(m.publishTitle)}
+      title={m.publish_title()}
       onClose={onClose}
       footer={
         <>
           <Button variant="ghost" onClick={onClose} disabled={pending}>
-            {format(m.cancel)}
+            {m.common_cancel()}
           </Button>
           <Button
             data-testid="formula-publish-confirm"
             disabled={!ready}
             onClick={() => onPublish({ name: name.trim(), notes: notes.trim() })}
           >
-            {format(
-              pending ? m.draftPublishing : dirty ? m.publishSaveAndConfirm : m.publishConfirm,
-            )}
+            {(pending
+              ? m.editor_draftPublishing
+              : dirty
+                ? m.publish_saveAndConfirm
+                : m.publish_confirm)()}
           </Button>
         </>
       }
     >
-      <Field label={format(m.releaseNameLabel)} required error={nameProblem}>
+      <Field label={m.publish_name()} required error={nameProblem}>
         {(id, control) => (
           <Input
             id={id}
             {...control}
             value={name}
             maxLength={RELEASE_NAME_LIMIT}
-            placeholder={format(m.releaseNamePlaceholder)}
+            placeholder={m.publish_namePlaceholder()}
             onChange={(event) => setName(event.target.value)}
           />
         )}
       </Field>
-      <Field label={format(m.releaseNotesLabel)}>
+      <Field label={m.publish_notes()}>
         {(id) => (
           <Textarea
             id={id}
@@ -132,7 +133,7 @@ export function PublishDialog({
           </li>
         ))}
       </ul>
-      <p {...stylex.props(styles.lasting)}>{format(m.publishLasting)}</p>
+      <p {...stylex.props(styles.lasting)}>{m.publish_lasting()}</p>
       {failure === null ? null : (
         <p role="alert" {...stylex.props(styles.failure)}>
           {failure}

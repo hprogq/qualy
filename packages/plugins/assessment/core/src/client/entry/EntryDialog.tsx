@@ -3,7 +3,7 @@ import { useMutation } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { useApi, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { ConfirmDialog, Feedback, Field, FormDialog } from '@qualy/ui/admin'
 import { ClockIcon, RefreshCwIcon } from 'lucide-react'
 import { Button } from '@qualy/ui/button'
@@ -15,7 +15,7 @@ import { sayBlocked, sayOwnRefusal } from './refusals.ts'
 import { useRound } from './own-acts.ts'
 import { issueSentence } from './issues.ts'
 import { toast } from '@qualy/ui/toast'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import { Basis } from './Basis.tsx'
 import { EntryStanding } from './EntryStanding.tsx'
 import { EvidenceForm, type EvidencePayload } from './EvidenceForm.tsx'
@@ -29,6 +29,8 @@ import {
   type EntryDto,
   type ItemDto,
 } from './model.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // Filing or revising one claim, without leaving the question it belongs to.
 //
@@ -376,7 +378,7 @@ function EntryDialogBody({
 }: EntryDialogProps) {
   const api = useApi(assessmentApi)
   const run = useRunApi()
-  const { format, formatError, locale } = useI18n()
+  const { formatError, locale } = useI18n()
   // the stage the round is in, for saying which one holds handing it on
   const round = useRound(batchId)
   const [payload, setPayload] = useState<EvidencePayload>(
@@ -432,18 +434,16 @@ function EntryDialogBody({
       const proposed = answerOf(proposal, field.key)
       if (String(proposed ?? '') === String(answerOf(filedPayload, field.key) ?? '')) continue
       const said = displayValueOf(field, proposed, {
-        yes: format(m.recognitionYes),
-        no: format(m.recognitionNo),
+        yes: m.recognition_yes(),
+        no: m.recognition_no(),
       })
-      if (said !== '') advice[field.key] = format(m.entriesAdvice, { value: said })
+      if (said !== '') advice[field.key] = m.entries_advice({ value: said })
     }
   }
 
   // an absent word from the server is not a shut gate; only a spoken refusal is
   const submitShut = submitGate !== undefined && submitGate.state !== 'available'
-  const submitWhy = submitShut
-    ? sayBlocked('submit', submitGate.reason, round, { format, locale })
-    : null
+  const submitWhy = submitShut ? sayBlocked('submit', submitGate.reason, round, { locale }) : null
 
   const doors = {
     prepare: (input: {
@@ -532,7 +532,7 @@ function EntryDialogBody({
     },
     // which of its two jobs the press did: kept a draft, or handed it on
     onSuccess: (_result, andSubmit) => {
-      toast.success(format(andSubmit ? m.entrySubmittedToast : m.entryDraftSavedToast))
+      toast.success((andSubmit ? m.entry_submittedToast : m.entry_draftSavedToast)())
       onSaved()
     },
     onError: (error: unknown) => {
@@ -559,11 +559,11 @@ function EntryDialogBody({
         onChangedElsewhere?.()
       }
       // a stage holding the act says which act and which stage
-      const said = sayOwnRefusal(error, round, { format, locale }) ?? formatError(error)
+      const said = sayOwnRefusal(error, round, { locale }) ?? formatError(error)
       // the write went through and the handing on did not: say so, or the
       // screen reads as though nothing was kept
       setProblem(
-        entry === null && created !== null ? format(m.entrySubmitFailedDraftKept, { said }) : said,
+        entry === null && created !== null ? m.entry_submitFailedDraftKept({ said }) : said,
       )
     },
   })
@@ -574,7 +574,7 @@ function EntryDialogBody({
     setAsked(fresh)
     setStale(false)
     setAwaiting(false)
-    toast.info(format(m.entryRulesRefreshed))
+    toast.info(m.entry_rulesRefreshed())
   }
 
   // the page answered the refetch: if it brought a different question, and
@@ -609,7 +609,7 @@ function EntryDialogBody({
       open={open}
       whole
       size="wide"
-      title={format(entry === null ? m.entriesNewTitle : m.entriesEditTitle)}
+      title={(entry === null ? m.entries_newTitle : m.entries_editTitle)()}
       description={[...trail, asked.title].join(' › ')}
       onClose={onClose}
       footer={
@@ -629,7 +629,7 @@ function EntryDialogBody({
               {...stylex.props(styles.quietNote, !uploading && styles.quietIdle)}
               data-uploading={uploading || undefined}
             >
-              {format(uploading ? m.entrySaveAfterUpload : m.entryDraftKept)}
+              {(uploading ? m.entry_saveAfterUpload : m.entry_draftKept)()}
             </p>
           )}
           <span {...stylex.props(styles.spacer)} />
@@ -640,7 +640,7 @@ function EntryDialogBody({
             disabled={save.isPending || stale || !evidenceValid || uploading}
             onClick={() => save.mutate(false)}
           >
-            {format(m.entrySaveDraft)}
+            {m.entry_saveDraft()}
           </Button>
           {/* a phase may take drafts without taking submissions; then this
               half is shut with its reason beside it and on hover, and the
@@ -656,7 +656,7 @@ function EntryDialogBody({
                       disabled
                       className={stylex.props(styles.noPointer).className}
                     >
-                      {format(resubmitting ? m.entryResubmit : m.entrySaveAndSubmit)}
+                      {(resubmitting ? m.entry_resubmit : m.entry_saveAndSubmit)()}
                     </Button>
                   </span>
                 </TooltipTrigger>
@@ -669,7 +669,7 @@ function EntryDialogBody({
               disabled={save.isPending || stale || !evidenceValid || uploading}
               onClick={() => setAsking(true)}
             >
-              {format(resubmitting ? m.entryResubmit : m.entrySaveAndSubmit)}
+              {(resubmitting ? m.entry_resubmit : m.entry_saveAndSubmit)()}
             </Button>
           )}
         </div>
@@ -681,8 +681,8 @@ function EntryDialogBody({
       {stale && (
         <div ref={notice} data-testid="rules-changed" {...stylex.props(styles.notice)}>
           <div {...stylex.props(styles.noticeWords)}>
-            <p {...stylex.props(styles.noticeTitle)}>{format(m.entryRulesChangedTitle)}</p>
-            <p {...stylex.props(styles.noticeBody)}>{format(m.entryRulesChangedBody)}</p>
+            <p {...stylex.props(styles.noticeTitle)}>{m.entry_rulesChangedTitle()}</p>
+            <p {...stylex.props(styles.noticeBody)}>{m.entry_rulesChangedBody()}</p>
           </div>
           <span {...stylex.props(styles.spacer)} />
           <Button
@@ -702,7 +702,7 @@ function EntryDialogBody({
               aria-hidden
               className={stylex.props(awaiting && styles.spinning).className}
             />
-            {format(m.entryRulesChangedAction)}
+            {m.entry_rulesChangedAction()}
           </Button>
         </div>
       )}
@@ -714,11 +714,9 @@ function EntryDialogBody({
               <div data-testid="form-returned" {...stylex.props(styles.returned)}>
                 <div {...stylex.props(styles.returnedHead)}>
                   <p {...stylex.props(styles.returnedTitle)}>
-                    {format(
-                      entry.refusal.kind === 'rejected'
-                        ? m.entryRefusedTitle
-                        : m.entryReturnedTitle,
-                    )}
+                    {(entry.refusal.kind === 'rejected'
+                      ? m.entry_refusedTitle
+                      : m.entry_returnedTitle)()}
                   </p>
                   {entry.refusal.reason !== null && (
                     <span {...stylex.props(styles.returnedReason)}>{entry.refusal.reason}</span>
@@ -731,7 +729,7 @@ function EntryDialogBody({
             )}
           {entry !== null && entry.status !== 'draft' && entry.currentRevision !== null && (
             <p {...stylex.props(styles.versionNote)} data-testid="form-version">
-              {format(m.entriesVersionNote, {
+              {m.entries_versionNote({
                 now: entry.currentRevision.revisionNo,
                 next: entry.currentRevision.revisionNo + 1,
               })}
@@ -749,7 +747,7 @@ function EntryDialogBody({
             where={{ batchId, itemId: asked.id }}
             materialRange={materialRange}
           />
-          <Field label={format(m.entryNote)}>
+          <Field label={m.entry_note()}>
             {(id) => (
               <Textarea id={id} value={note} onChange={(event) => setNote(event.target.value)} />
             )}
@@ -760,13 +758,11 @@ function EntryDialogBody({
               {issues.map((issue, index) => (
                 <li key={index}>
                   {labelOf(issue.field)}{' '}
-                  {format(
-                    issueSentence(
-                      issue.reason,
-                      fields.find((field) => field.key === issue.field),
-                      { value: answerOf(refusedOver, issue.field), materialRange },
-                    ),
-                  )}
+                  {issueSentence(
+                    issue.reason,
+                    fields.find((field) => field.key === issue.field),
+                    { value: answerOf(refusedOver, issue.field), materialRange },
+                  )()}
                 </li>
               ))}
             </ul>
@@ -776,12 +772,12 @@ function EntryDialogBody({
         <aside {...stylex.props(styles.aside)} data-testid="form-aside">
           <Basis compact />
           <div {...stylex.props(styles.asideBlock)}>
-            <p {...stylex.props(styles.asideLabel)}>{format(m.entriesScoring)}</p>
+            <p {...stylex.props(styles.asideLabel)}>{m.entries_scoring()}</p>
             <p {...stylex.props(styles.asideStrong)}>{calc(asked)}</p>
             {asked.maxEntries !== null && (
               <>
                 <div {...stylex.props(styles.quotaLine)} data-testid="form-quota" data-used={used}>
-                  <span {...stylex.props(styles.quotaWord)}>{format(m.myEntriesQuota)}</span>
+                  <span {...stylex.props(styles.quotaWord)}>{m.myEntries_quota()}</span>
                   <span {...stylex.props(styles.quotaValue)}>
                     {used} / {asked.maxEntries}
                   </span>
@@ -797,7 +793,7 @@ function EntryDialogBody({
                 {/* what is left once this one is kept, for a new claim */}
                 {entry === null && (
                   <p {...stylex.props(styles.asideFoot)} data-testid="form-room">
-                    {format(m.entriesRoomAfter, {
+                    {m.entries_roomAfter({
                       count: Math.max(0, asked.maxEntries - used - 1),
                     })}
                   </p>
@@ -808,13 +804,13 @@ function EntryDialogBody({
 
           <div {...stylex.props(styles.asideBlock, styles.asideRuled)}>
             <p {...stylex.props(styles.asideLabel)}>
-              {format(m.entryAlreadyFiled)}
+              {m.entry_alreadyFiled()}
               <span {...stylex.props(styles.asideCount)}>
-                {format(m.entriesFiledShort, { count: filed.length })}
+                {m.entries_filedShort({ count: filed.length })}
               </span>
             </p>
             {filed.length === 0 ? (
-              <p {...stylex.props(styles.asideFoot)}>{format(m.entriesNoneFiled)}</p>
+              <p {...stylex.props(styles.asideFoot)}>{m.entries_noneFiled()}</p>
             ) : (
               <ul {...stylex.props(styles.filed)}>
                 {filed.map((one) => (
@@ -831,12 +827,12 @@ function EntryDialogBody({
                 ))}
               </ul>
             )}
-            <p {...stylex.props(styles.asideFoot)}>{format(m.entryNoDuplicates)}</p>
+            <p {...stylex.props(styles.asideFoot)}>{m.entry_noDuplicates()}</p>
           </div>
 
           {chain.normal.length > 0 && (
             <div {...stylex.props(styles.asideBlock, styles.asideRuled)}>
-              <p {...stylex.props(styles.asideLabel)}>{format(m.entriesAfterSubmit)}</p>
+              <p {...stylex.props(styles.asideLabel)}>{m.entries_afterSubmit()}</p>
               {/* Steps by the names the administrator gave them, and only
                   the names: who each step lands on is the round's business
                   and not this reader's to be told. */}
@@ -847,22 +843,22 @@ function EntryDialogBody({
                       {index + 1}
                     </span>
                     <span {...stylex.props(styles.stepName)}>
-                      {label ?? format(m.entryFlowStep, { n: index + 1 })}
+                      {label ?? m.entry_flowStep({ n: index + 1 })}
                     </span>
                   </li>
                 ))}
               </ol>
               {chain.escalation.length > 0 && (
                 <p {...stylex.props(styles.escalationLine)}>
-                  <span {...stylex.props(styles.keepShort)}>{format(m.reviewRouteEscalation)}</span>
+                  <span {...stylex.props(styles.keepShort)}>{m.review_routeEscalation()}</span>
                   <span {...stylex.props(styles.escalationSteps)}>
                     {chain.escalation
-                      .map((label, index) => label ?? format(m.entryFlowStep, { n: index + 1 }))
+                      .map((label, index) => label ?? m.entry_flowStep({ n: index + 1 }))
                       .join(' → ')}
                   </span>
                 </p>
               )}
-              <p {...stylex.props(styles.asideFoot)}>{format(m.entriesCountsAfterAll)}</p>
+              <p {...stylex.props(styles.asideFoot)}>{m.entries_countsAfterAll()}</p>
             </div>
           )}
         </aside>
@@ -875,11 +871,11 @@ function EntryDialogBody({
           the form to find it. */}
       <ConfirmDialog
         open={asking}
-        title={format(m.entrySubmitConfirm)}
-        description={format(m.entrySubmitConfirmHint)}
-        confirmLabel={format(m.entrySaveThenSubmit)}
-        otherLabel={format(m.entrySaveOnly)}
-        cancelLabel={format(commonMessages.cancel)}
+        title={m.entry_submitConfirm()}
+        description={m.entry_submitConfirmHint()}
+        confirmLabel={m.entry_saveThenSubmit()}
+        otherLabel={m.entry_saveOnly()}
+        cancelLabel={commonMessages.action_cancel()}
         pending={save.isPending || uploading}
         onCancel={() => setAsking(false)}
         onOther={() => {

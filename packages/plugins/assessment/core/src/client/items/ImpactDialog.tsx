@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
-import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { FormDialog, RadioGroup } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
-import { assessmentMessages as m } from '../i18n.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // What this save would do to work already under way, and the two questions
 // an administrator answers about it.
@@ -141,7 +141,6 @@ export function ImpactDialog({
   onConfirm: (effects: ChangeEffects) => void
   onClose: () => void
 }) {
-  const { format } = useI18n()
   const [inReview, setInReview] = useState<'keep' | 'return'>('keep')
   const [approved, setApproved] = useState<'keep' | 'return'>('keep')
   const [rounds, setRounds] = useState<'keep' | 'reroute-blocked' | 'reroute-all'>(
@@ -161,13 +160,13 @@ export function ImpactDialog({
     <FormDialog
       open={open}
       size="wide"
-      title={format(m.itemsImpactTitle)}
-      description={format(m.itemsImpactHint)}
+      title={m.items_impactTitle()}
+      description={m.items_impactHint()}
       onClose={onClose}
       footer={
         <div {...stylex.props(styles.footer)}>
           <Button variant="outline" onClick={onClose}>
-            {format(commonMessages.cancel)}
+            {commonMessages.action_cancel()}
           </Button>
           <Button
             disabled={busy}
@@ -187,7 +186,7 @@ export function ImpactDialog({
               })
             }
           >
-            {format(m.entrySave)}
+            {m.entry_save()}
           </Button>
         </div>
       }
@@ -203,30 +202,30 @@ export function ImpactDialog({
             data-derived-changed={impact.scoring.derived?.amountChanged === true ? 'true' : 'false'}
             data-baseline-failed={impact.scoring.approved.baselineFailed}
           >
-            <p {...stylex.props(styles.scoringTitle)}>{format(m.itemsImpactScoringTitle)}</p>
+            <p {...stylex.props(styles.scoringTitle)}>{m.items_impactScoringTitle()}</p>
             {impact.scoring.approved.total > 0 && (
               <dl {...stylex.props(styles.scoringRows)}>
-                <dt>{format(m.itemsImpactScoringApproved)}</dt>
+                <dt>{m.items_impactScoringApproved()}</dt>
                 <dd {...stylex.props(styles.scoringCount)}>{impact.scoring.approved.total}</dd>
-                <dt>{format(m.itemsImpactScoringComparable)}</dt>
+                <dt>{m.items_impactScoringComparable()}</dt>
                 <dd {...stylex.props(styles.scoringCount)}>{impact.scoring.approved.comparable}</dd>
-                <dt>{format(m.itemsImpactScoringAmountChanged)}</dt>
+                <dt>{m.items_impactScoringAmountChanged()}</dt>
                 <dd {...stylex.props(styles.scoringCount)}>
                   {impact.scoring.approved.amountChanged}
                 </dd>
               </dl>
             )}
             {impact.scoring.derived?.amountChanged === true && (
-              <p {...stylex.props(styles.pastChangedNote)}>{format(m.itemsImpactScoringDerived)}</p>
+              <p {...stylex.props(styles.pastChangedNote)}>{m.items_impactScoringDerived()}</p>
             )}
             {impact.scoring.approved.baselineFailed > 0 && (
               <p {...stylex.props(styles.pastChangedNote)} data-testid="impact-scoring-stuck">
-                {format(m.itemsImpactScoringStuck, {
+                {m.items_impactScoringStuck({
                   count: impact.scoring.approved.baselineFailed,
                 })}
               </p>
             )}
-            <p {...stylex.props(styles.pastChangedNote)}>{format(m.itemsImpactScoringNote)}</p>
+            <p {...stylex.props(styles.pastChangedNote)}>{m.items_impactScoringNote()}</p>
           </section>
         )}
         {asked.form && (
@@ -235,15 +234,15 @@ export function ImpactDialog({
               <RadioGroup
                 name="in-review"
                 variant="cards"
-                legend={format(m.itemsImpactInReview, {
+                legend={m.items_impactInReview({
                   count: impact.form.inReview.incompatible,
                   total: impact.form.inReview.total,
                 })}
                 selected={inReview}
                 onChange={(next) => setInReview(next as 'keep' | 'return')}
                 options={[
-                  { value: 'keep', label: format(m.itemsImpactKeepEntries) },
-                  { value: 'return', label: format(m.itemsImpactReturnEntries) },
+                  { value: 'keep', label: m.items_impactKeepEntries() },
+                  { value: 'return', label: m.items_impactReturnEntries() },
                 ]}
               />
             )}
@@ -251,15 +250,15 @@ export function ImpactDialog({
               <RadioGroup
                 name="approved"
                 variant="cards"
-                legend={format(m.itemsImpactApproved, {
+                legend={m.items_impactApproved({
                   count: impact.form.approved.incompatible,
                   total: impact.form.approved.total,
                 })}
                 selected={approved}
                 onChange={(next) => setApproved(next as 'keep' | 'return')}
                 options={[
-                  { value: 'keep', label: format(m.itemsImpactKeepApproved) },
-                  { value: 'return', label: format(m.itemsImpactReturnEntries) },
+                  { value: 'keep', label: m.items_impactKeepApproved() },
+                  { value: 'return', label: m.items_impactReturnEntries() },
                 ]}
               />
             )}
@@ -271,28 +270,28 @@ export function ImpactDialog({
             <RadioGroup
               name="rounds"
               variant="cards"
-              legend={format(m.itemsImpactRounds, {
+              legend={m.items_impactRounds({
                 open: impact.review.open,
                 blocked: impact.review.blocked,
               })}
               selected={rounds}
               onChange={(next) => setRounds(next as 'keep' | 'reroute-blocked' | 'reroute-all')}
               options={[
-                { value: 'keep', label: format(m.itemsImpactRoundsKeep) },
-                { value: 'reroute-blocked', label: format(m.itemsImpactRoundsBlocked) },
-                { value: 'reroute-all', label: format(m.itemsImpactRoundsAll) },
+                { value: 'keep', label: m.items_impactRoundsKeep() },
+                { value: 'reroute-blocked', label: m.items_impactRoundsBlocked() },
+                { value: 'reroute-all', label: m.items_impactRoundsAll() },
               ]}
             />
             {rounds !== 'keep' && (
               <RadioGroup
                 name="landing"
                 variant="cards"
-                legend={format(m.itemsImpactLanding)}
+                legend={m.items_impactLanding()}
                 selected={landing}
                 onChange={(next) => setLanding(next as 'current-stage' | 'route-start')}
                 options={[
-                  { value: 'current-stage', label: format(m.itemsImpactLandingContinue) },
-                  { value: 'route-start', label: format(m.itemsImpactLandingRestart) },
+                  { value: 'current-stage', label: m.items_impactLandingContinue() },
+                  { value: 'route-start', label: m.items_impactLandingRestart() },
                 ]}
               />
             )}
@@ -300,19 +299,19 @@ export function ImpactDialog({
                 exactly when the new process disagrees about what they were */}
             {rounds !== 'keep' && landing === 'current-stage' && impact.review.pastChanged > 0 && (
               <p {...stylex.props(styles.pastChangedNote)}>
-                {format(m.itemsImpactPastChanged, { count: impact.review.pastChanged })}
+                {m.items_impactPastChanged({ count: impact.review.pastChanged })}
               </p>
             )}
             {rounds !== 'keep' && landing === 'current-stage' && impact.review.stageRemoved > 0 && (
               <RadioGroup
                 name="orphans"
                 variant="cards"
-                legend={format(m.itemsImpactStageGone, { count: impact.review.stageRemoved })}
+                legend={m.items_impactStageGone({ count: impact.review.stageRemoved })}
                 selected={orphans}
                 onChange={(next) => setOrphans(next as 'refuse' | 'restart-route')}
                 options={[
-                  { value: 'refuse', label: format(m.itemsImpactOrphanKeep) },
-                  { value: 'restart-route', label: format(m.itemsImpactOrphanRestart) },
+                  { value: 'refuse', label: m.items_impactOrphanKeep() },
+                  { value: 'restart-route', label: m.items_impactOrphanRestart() },
                 ]}
               />
             )}

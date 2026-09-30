@@ -20,7 +20,7 @@ import { draftsFromStored, materializeInput, type FieldDraft } from '@qualy/web-
 import { useTryRecords } from './try-records.ts'
 import { CopyIcon, DownloadIcon, FilePenLineIcon, LockIcon, MoreHorizontalIcon } from 'lucide-react'
 import { formulaApi } from './api.ts'
-import { formulaMessages as m } from './i18n.ts'
+
 import { ReleaseInfoPopover } from './ReleaseInfoPopover.tsx'
 import { LazyFormulaSourceViewer } from './lazy-editors.ts'
 import { inputFactsOf, inputIssueWords, outcomeWords, type OutcomeLike } from './report-words.ts'
@@ -42,6 +42,7 @@ import { TryRunPanel, type TryOutcome } from './TryRunPanel.tsx'
 import { TryRecordsDrawer } from './TryRecordsDrawer.tsx'
 import { WorkbenchBar, WorkbenchLayout, type WorkbenchTab } from './WorkbenchLayout.tsx'
 import { workbenchStyles as w } from './workbench-styles.ts'
+import * as m from '#messages'
 
 // One publication of a formula, as it was frozen.
 //
@@ -176,7 +177,7 @@ export function ReleaseView({
   const api = useApi(formulaApi)
   const run = useRunApi()
   const query = useApiQuery(formulaApi)
-  const { format, formatError, locale } = useI18n()
+  const { formatError, locale } = useI18n()
   const words = usePickerWords()
   const [panelTab, setPanelTab] = useState('report')
   const [phoneTab, setPhoneTab] = useState('source')
@@ -204,7 +205,7 @@ export function ReleaseView({
   const displayName =
     version === undefined
       ? ''
-      : (version.releaseName ?? format(m.releaseOrdinal, { number: version.versionNo }))
+      : (version.releaseName ?? m.history_releaseOrdinal({ number: version.versionNo }))
   const inputSchema = (version?.inputSchema ?? null) as NormalizedInputSchema | null
   // what this publication IS, for the card beside its name: the label, who
   // published it and when, and who last rewrote the label
@@ -226,7 +227,7 @@ export function ReleaseView({
     if (version === undefined) return
     const filename = fileNameOf([functionName, displayName], '.ts')
     downloadText({ filename, text: version.sourceTs, type: 'text/typescript;charset=utf-8' })
-    toast.success(format(m.downloaded, { file: filename }))
+    toast.success(m.editor_downloaded({ file: filename }))
   }
   const restore = () => onRestore({ versionNo, name: displayName })
 
@@ -238,10 +239,10 @@ export function ReleaseView({
     if (materialized.value === null) {
       // the fields mark themselves, but on a long contract they do it
       // somewhere the reader is not looking
-      const words = inputIssueWords(format, inputSchema, materialized.issues)
+      const words = inputIssueWords(inputSchema, materialized.issues)
       setIssues(words)
       setVerdict({ at: Date.now(), kind: 'refused' })
-      toast.error(format(m.runNeedsFields, { count: words.size }))
+      toast.error(m.editor_runNeedsFields({ count: words.size }))
       return
     }
     setIssues(undefined)
@@ -286,14 +287,14 @@ export function ReleaseView({
         retrying={detail.isFetching}
         extra={
           <Button size="sm" variant={retryable ? 'outline' : 'default'} onClick={onBack}>
-            {format(m.backToDraft)}
+            {m.history_backToDraft()}
           </Button>
         }
       />
     </div>
   ) : (
     <div role="status" {...stylex.props(styles.loading)}>
-      <Spinner aria-label={format(m.editorLoading)} />
+      <Spinner aria-label={m.editor_loading()} />
     </div>
   )
 
@@ -308,8 +309,8 @@ export function ReleaseView({
             lease={lease}
             name={`release-${String(versionNo)}`}
             source={version.sourceTs}
-            label={format(m.releaseSource)}
-            readOnlyLabel={format(m.readOnly)}
+            label={m.release_source()}
+            readOnlyLabel={m.history_readOnly()}
             data-testid="formula-release-source"
           />
         </Suspense>
@@ -318,13 +319,13 @@ export function ReleaseView({
 
   const tryRun = (phone: boolean) => (
     <TryRunPanel
-      title={format(m.tryTitle)}
+      title={m.editor_tryTitle()}
       narrow={phone}
       status={{ state: 'frozen', tone: 'quiet', words: '' }}
       schema={inputSchema}
       pending={{
         state: detail.isError ? 'refused' : 'loading',
-        words: detail.isError ? unreadable(detail.error).title : format(m.editorLoading),
+        words: detail.isError ? unreadable(detail.error).title : m.editor_loading(),
         working: !detail.isError,
         off: detail.isError,
       }}
@@ -359,16 +360,16 @@ export function ReleaseView({
   const reportTable =
     version === undefined ? null : report.length === 0 ? (
       <div {...stylex.props(w.emptyFill)}>
-        <EmptyRow>{format(m.releaseNoReport)}</EmptyRow>
+        <EmptyRow>{m.release_noReport()}</EmptyRow>
       </div>
     ) : (
       <>
         <div {...stylex.props(exampleStyles.columns, exampleStyles.head)}>
-          <span>{format(m.testName)}</span>
-          <span>{format(m.examplesInputColumn)}</span>
-          <span {...stylex.props(exampleStyles.end)}>{format(m.examplesExpectedColumn)}</span>
-          <span {...stylex.props(exampleStyles.end)}>{format(m.reportActualColumn)}</span>
-          <span>{format(m.reportOutcome)}</span>
+          <span>{m.editor_testName()}</span>
+          <span>{m.examples_inputColumn()}</span>
+          <span {...stylex.props(exampleStyles.end)}>{m.examples_expectedColumn()}</span>
+          <span {...stylex.props(exampleStyles.end)}>{m.report_actualColumn()}</span>
+          <span>{m.report_outcome()}</span>
           <span />
         </div>
         <div {...stylex.props(w.panelScroll)} data-testid="formula-release-report">
@@ -379,7 +380,7 @@ export function ReleaseView({
               index={index}
               name={row.name}
               narrow={narrow}
-              facts={inputFactsOf(format, locale, inputSchema, tests[index]?.input)}
+              facts={inputFactsOf(locale, inputSchema, tests[index]?.input)}
               expected={row.expected}
               outcome={{
                 ...(row.actual === undefined ? {} : { actual: row.actual }),
@@ -396,7 +397,7 @@ export function ReleaseView({
                 setDrafts(draftsFromStored(inputSchema, tests[index]?.input))
                 setIssues(undefined)
                 setResult(null)
-                toast.success(format(m.loadedIntoTry))
+                toast.success(m.editor_loadedIntoTry())
                 setOpenCase(null)
               }}
             />
@@ -421,12 +422,12 @@ export function ReleaseView({
       <button
         type="button"
         data-testid="formula-copy-digest"
-        aria-label={format(m.copyValue)}
+        aria-label={m.release_copyValue()}
         onClick={() => {
           void navigator.clipboard
             ?.writeText(value)
-            .then(() => toast.success(format(m.copied)))
-            .catch(() => toast.error(format(m.copyFailed)))
+            .then(() => toast.success(m.release_copied()))
+            .catch(() => toast.error(m.release_copyFailed()))
         }}
         {...stylex.props(styles.copy)}
       >
@@ -440,28 +441,28 @@ export function ReleaseView({
       <dl data-testid="formula-release-environment" {...stylex.props(w.facts)}>
         {(
           [
-            [m.envTypescript, version.typescriptVersion, false],
-            [m.envEsbuild, version.esbuildVersion, false],
-            [m.envQuickjs, version.quickjsEngineVersion, false],
-            [m.envFormulaAbi, String(version.formulaAbiVersion), false],
-            [m.envSandboxAbi, String(version.sandboxAbiVersion), false],
-            [m.envValueSchema, String(version.valueSchemaProfileVersion), false],
-            [m.envRegex, String(version.regexProfileVersion), false],
+            [m.release_envTypescript, version.typescriptVersion, false],
+            [m.release_envEsbuild, version.esbuildVersion, false],
+            [m.release_envQuickjs, version.quickjsEngineVersion, false],
+            [m.release_envFormulaAbi, String(version.formulaAbiVersion), false],
+            [m.release_envSandboxAbi, String(version.sandboxAbiVersion), false],
+            [m.release_envValueSchema, String(version.valueSchemaProfileVersion), false],
+            [m.release_envRegex, String(version.regexProfileVersion), false],
             [
-              m.envSourcePolicy,
+              m.release_envSourcePolicy,
               `${String(version.sourcePolicyVersion)} (${version.sourcePolicyParserVersion})`,
               false,
             ],
-            [m.envAuthoringBuild, version.authoringBuildId, true],
-            [m.envRuntimeBuild, version.sandboxRuntimeBuildId, true],
-            [m.envSourceSha, version.sourceSha256, true],
-            [m.envRuntimeSha, version.runtimeSha256, true],
-            [m.envContractSha, version.contractSha256, true],
-            [m.envFormulaRuntimeSha, version.formulaRuntimeSha256, true],
+            [m.release_envAuthoringBuild, version.authoringBuildId, true],
+            [m.release_envRuntimeBuild, version.sandboxRuntimeBuildId, true],
+            [m.release_envSourceSha, version.sourceSha256, true],
+            [m.release_envRuntimeSha, version.runtimeSha256, true],
+            [m.release_envContractSha, version.contractSha256, true],
+            [m.release_envFormulaRuntimeSha, version.formulaRuntimeSha256, true],
           ] as const
         ).map(([label, value, long]) => (
-          <div key={label.id} {...stylex.props(w.fact)}>
-            <dt {...stylex.props(w.factLabel)}>{format(label)}</dt>
+          <div key={label()} {...stylex.props(w.fact)}>
+            <dt {...stylex.props(w.factLabel)}>{label()}</dt>
             <dd {...stylex.props(w.factValue)}>{long ? digest(value) : value}</dd>
           </div>
         ))}
@@ -479,14 +480,14 @@ export function ReleaseView({
       className={narrow ? stylex.props(styles.wide).className : undefined}
     >
       <FilePenLineIcon aria-hidden />
-      {format(m.releaseRestore)}
+      {m.release_restore()}
     </Button>
   )
 
   const panelTabs: WorkbenchTab[] = [
     {
       value: 'report',
-      label: format(m.releaseReportTab),
+      label: m.release_reportTab(),
       tone:
         report.length > 0 && passed === report.length
           ? 'good'
@@ -496,8 +497,8 @@ export function ReleaseView({
       count: report.length,
       content: scroll(reportTable),
     },
-    { value: 'contract', label: format(m.releaseContractTab), content: scroll(contract) },
-    { value: 'environment', label: format(m.releaseEnvironmentTab), content: scroll(environment) },
+    { value: 'contract', label: m.release_contractTab(), content: scroll(contract) },
+    { value: 'environment', label: m.release_environmentTab(), content: scroll(environment) },
   ]
 
   return (
@@ -510,7 +511,7 @@ export function ReleaseView({
         <WorkbenchBar
           narrow={narrow}
           frozen
-          backLabel={format(m.backToDraft)}
+          backLabel={m.history_backToDraft()}
           onBack={onBack}
           titleRef={titleRef}
           title={<span {...stylex.props(w.title)}>{displayName}</span>}
@@ -518,12 +519,10 @@ export function ReleaseView({
             <>
               <span {...stylex.props(w.standing, w.standingOutline)}>
                 <LockIcon size={11} aria-hidden />
-                {format(m.readOnly)}
+                {m.history_readOnly()}
               </span>
               {versionNo === latestVersionNo ? (
-                <span {...stylex.props(w.standing, w.standingQuiet)}>
-                  {format(m.versionLatest)}
-                </span>
+                <span {...stylex.props(w.standing, w.standingQuiet)}>{m.version_latest()}</span>
               ) : null}
             </>
           }
@@ -531,7 +530,7 @@ export function ReleaseView({
             <>
               <span {...stylex.props(styles.statusName)}>{functionName}</span>
               <span aria-hidden {...stylex.props(styles.statusRule)} />
-              <span>{format(m.releaseOrdinal, { number: versionNo })}</span>
+              <span>{m.history_releaseOrdinal({ number: versionNo })}</span>
             </>
           }
           actions={
@@ -551,7 +550,7 @@ export function ReleaseView({
                 onClick={download}
               >
                 <DownloadIcon aria-hidden />
-                {format(m.downloadCode)}
+                {m.history_downloadCode()}
               </Button>
               {restoreButton}
             </>
@@ -560,18 +559,18 @@ export function ReleaseView({
           phoneMenu={
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon-sm" aria-label={format(m.moreActions)}>
+                <Button variant="ghost" size="icon-sm" aria-label={m.editor_moreActions()}>
                   <MoreHorizontalIcon />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onSelect={onBack}>{format(m.backToDraft)}</DropdownMenuItem>
+                <DropdownMenuItem onSelect={onBack}>{m.history_backToDraft()}</DropdownMenuItem>
                 <DropdownMenuItem disabled={version === undefined} onSelect={download}>
-                  {format(m.downloadCode)}
+                  {m.history_downloadCode()}
                 </DropdownMenuItem>
                 {info === null ? null : (
                   <DropdownMenuItem onSelect={() => onEditInfo(info)}>
-                    {format(m.versionInfoEdit)}
+                    {m.release_infoEdit()}
                   </DropdownMenuItem>
                 )}
               </DropdownMenuContent>
@@ -581,20 +580,20 @@ export function ReleaseView({
       }
       source={source}
       tryRun={tryRun(false)}
-      tryLabel={format(m.tryTitle)}
+      tryLabel={m.editor_tryTitle()}
       panelTabs={panelTabs}
       panelTab={panelTab}
       onPanelTab={setPanelTab}
-      panelLabel={format(m.releaseDetails)}
+      panelLabel={m.release_details()}
       phoneTabs={[
-        { value: 'source', label: format(m.phoneSourceTab), content: source },
-        { value: 'try', label: format(m.tryTitle), content: tryRun(true) },
+        { value: 'source', label: m.editor_phoneSourceTab(), content: source },
+        { value: 'try', label: m.editor_tryTitle(), content: tryRun(true) },
         ...panelTabs,
       ]}
       phoneTab={phoneTab}
       onPhoneTab={setPhoneTab}
       gate={{
-        label: format(m.historyTitle),
+        label: m.history_title(),
         tone: report.length > 0 && passed === report.length ? 'good' : 'quiet',
         words: displayName,
       }}
@@ -608,21 +607,21 @@ export function ReleaseView({
       <Sheet open={caseAt !== undefined} onOpenChange={(open) => !open && setOpenCase(null)}>
         <SheetContent side={narrow ? 'bottom' : 'right'} xstyle={styles.caseSheet}>
           <SheetHeader>
-            <SheetTitle>{format(m.releaseCaseTitle)}</SheetTitle>
-            <SheetDescription>{format(m.releaseCaseHint)}</SheetDescription>
+            <SheetTitle>{m.editor_releaseCaseTitle()}</SheetTitle>
+            <SheetDescription>{m.editor_releaseCaseHint()}</SheetDescription>
           </SheetHeader>
           {caseAt === undefined || openCase === null ? null : (
             <div data-testid="formula-release-case" {...stylex.props(styles.caseBody)}>
               <section {...stylex.props(styles.casePart)}>
-                <h3 {...stylex.props(styles.casePartTitle)}>{format(m.testName)}</h3>
+                <h3 {...stylex.props(styles.casePartTitle)}>{m.editor_testName()}</h3>
                 <div {...stylex.props(styles.casePartBody)}>
                   <p {...stylex.props(styles.caseValue)}>
-                    {caseAt.name === '' ? format(m.exampleUnnamed) : caseAt.name}
+                    {caseAt.name === '' ? m.examples_unnamed() : caseAt.name}
                   </p>
                 </div>
               </section>
               <section {...stylex.props(styles.casePart)}>
-                <h3 {...stylex.props(styles.casePartTitle)}>{format(m.testInput)}</h3>
+                <h3 {...stylex.props(styles.casePartTitle)}>{m.editor_testInput()}</h3>
                 <div {...stylex.props(styles.casePartBody)}>
                   {inputSchema === null ? (
                     <p {...stylex.props(styles.caseValue)}>
@@ -642,16 +641,16 @@ export function ReleaseView({
                 </div>
               </section>
               <section {...stylex.props(styles.casePart)}>
-                <h3 {...stylex.props(styles.casePartTitle)}>{format(m.reportOutcome)}</h3>
+                <h3 {...stylex.props(styles.casePartTitle)}>{m.report_outcome()}</h3>
                 <div {...stylex.props(styles.casePartBody)}>
                   <p {...stylex.props(styles.caseLine)}>
-                    <span>{format(m.examplesExpectedColumn)}</span>
+                    <span>{m.examples_expectedColumn()}</span>
                     <span {...stylex.props(styles.caseValue)}>{caseAt.expected}</span>
                   </p>
                   <p {...stylex.props(styles.caseLine)}>
-                    <span>{format(m.reportActualColumn)}</span>
+                    <span>{m.report_actualColumn()}</span>
                     <span {...stylex.props(styles.caseValue)}>
-                      {caseAt.actual ?? format(m.actualNone)}
+                      {caseAt.actual ?? m.examples_actualNone()}
                     </span>
                   </p>
                   <p
@@ -662,10 +661,10 @@ export function ReleaseView({
                       caseAt.passed === true ? styles.caseGood : styles.caseBad,
                     )}
                   >
-                    {format(caseAt.passed === true ? m.resultPassed : m.reportFailed)}
+                    {(caseAt.passed === true ? m.editor_resultPassed : m.report_failed)()}
                   </p>
-                  {outcomeWords(format, caseAt) === null ? null : (
-                    <p {...stylex.props(styles.caseLine)}>{outcomeWords(format, caseAt)}</p>
+                  {outcomeWords(caseAt) === null ? null : (
+                    <p {...stylex.props(styles.caseLine)}>{outcomeWords(caseAt)}</p>
                   )}
                 </div>
               </section>
@@ -683,11 +682,11 @@ export function ReleaseView({
                   setDrafts(draftsFromStored(inputSchema, tests[openCase]?.input))
                   setIssues(undefined)
                   setResult(null)
-                  toast.success(format(m.loadedIntoTry))
+                  toast.success(m.editor_loadedIntoTry())
                   setOpenCase(null)
                 }}
               >
-                {format(m.loadIntoTry)}
+                {m.editor_loadIntoTry()}
               </Button>
             </SheetFooter>
           )}

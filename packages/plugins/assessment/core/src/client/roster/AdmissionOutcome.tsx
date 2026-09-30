@@ -1,9 +1,8 @@
 import * as stylex from '@stylexjs/stylex'
 import { CircleCheckIcon, TriangleAlertIcon } from 'lucide-react'
-import { useI18n } from '@qualy/web-i18n'
 import { Button } from '@qualy/ui/button'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { assessmentMessages as m } from '../i18n.ts'
+import * as m from '#messages'
 
 // What putting people on the roster left it with, where there is something
 // to say: how many went on, and of them how many some question's review
@@ -59,7 +58,6 @@ export function AdmissionOutcome({
   /** open the questions some of them cannot file, and who */
   onReview?: () => void
 }) {
-  const { format } = useI18n()
   const cannotSubmit = facts.cannotSubmit ?? 0
   const systemAccounts = facts.systemAccounts ?? 0
   return (
@@ -72,18 +70,18 @@ export function AdmissionOutcome({
     >
       <div {...stylex.props(styles.head)}>
         <CircleCheckIcon aria-hidden {...stylex.props(styles.done)} />
-        <p {...stylex.props(styles.title)}>{format(m.admittedTitle, { count: facts.added })}</p>
+        <p {...stylex.props(styles.title)}>{m.roster_admittedTitle({ count: facts.added })}</p>
       </div>
       <ul {...stylex.props(styles.warnings)}>
         {cannotSubmit > 0 && (
           <li data-warning="cannot-submit" {...stylex.props(styles.warning)}>
             <TriangleAlertIcon aria-hidden {...stylex.props(styles.mark)} />
             <span {...stylex.props(styles.words)}>
-              {format(m.admittedCannotSubmit, { count: cannotSubmit })}
+              {m.roster_admittedCannotSubmit({ count: cannotSubmit })}
             </span>
             {onReview !== undefined && (
               <Button size="xs" variant="outline" onClick={onReview}>
-                {format(m.rosterUnreachableOpen)}
+                {m.roster_unreachableOpen()}
               </Button>
             )}
           </li>
@@ -92,7 +90,7 @@ export function AdmissionOutcome({
           <li data-warning="system-accounts" {...stylex.props(styles.warning)}>
             <TriangleAlertIcon aria-hidden {...stylex.props(styles.mark)} />
             <span {...stylex.props(styles.words)}>
-              {format(m.admittedSystem, { count: systemAccounts })}
+              {m.roster_admittedSystem({ count: systemAccounts })}
             </span>
           </li>
         )}

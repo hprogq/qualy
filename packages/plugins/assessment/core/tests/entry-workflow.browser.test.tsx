@@ -9,7 +9,7 @@ import { Effect } from 'effect'
 import type { ApiResult, ClientOf } from '@qualy/web-runtime/api'
 import type { assessmentApi } from '@qualy/plugin-assessment/client/api'
 import { addressNow, apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
-import zhCN from '../src/client/locales/zh-CN.ts'
+import zhCN from '../messages/zh-CN.json' with { type: 'json' }
 
 // The entry workflow as a person drives it: filing a claim on a question,
 // following what a reviewer did to it, judging one from the queue, and
@@ -501,8 +501,8 @@ describe('filing a claim', () => {
   // material window, and a value past the field's own bounds - a number
   // whose limits changed after the draft was kept, say. Each gets its own
   // sentence, and neither the other's.
-  const WINDOW = 'assessment/entry/issue-out-of-material-range'
-  const BOUNDS = 'assessment/entry/issue-out-of-range'
+  const WINDOW = 'entry_issueOutOfMaterialRange'
+  const BOUNDS = 'entry_issueOutOfRange'
   it.each([
     ['out-of-material-range', WINDOW, BOUNDS],
     ['out-of-range', BOUNDS, WINDOW],
@@ -547,7 +547,7 @@ describe('filing a claim', () => {
       const said = document.querySelector('[data-sonner-toast]')?.textContent ?? ''
       expect(said).toContain(zhCN[sentence])
       expect(said).not.toContain(zhCN[other])
-      expect(said).not.toContain(zhCN['assessment/error/entry-payload-invalid'])
+      expect(said).not.toContain(zhCN['error_entryPayloadInvalid'])
     },
   )
 
@@ -1642,10 +1642,7 @@ describe('filing a claim', () => {
         one.textContent?.trim(),
       )
     expect(steps('normal')).toEqual(['班委初审', '专业复审'])
-    expect(steps('escalation')).toEqual([
-      '年级合议',
-      zhCN['assessment/entry/flow-step'].replace('{n}', '2'),
-    ])
+    expect(steps('escalation')).toEqual(['年级合议', zhCN['entry_flowStep'].replace('{n}', '2')])
   })
 
   it('tells each round as its own section, its end and beginning said out loud', async () => {
@@ -3137,7 +3134,7 @@ describe('the phase gate on the paper', () => {
     await vi.waitFor(() => expect(refused).toHaveBeenCalledOnce())
     const toast = () => document.querySelector('[data-sonner-toast]')?.textContent ?? ''
     await expect.poll(toast).toContain(phase)
-    expect(toast()).not.toContain(zhCN['assessment/entry/refuse-phase-closed'])
+    expect(toast()).not.toContain(zhCN['entry_refusePhaseClosed'])
   })
 
   // the account opens the same drawer, and a stage holds the same acts there

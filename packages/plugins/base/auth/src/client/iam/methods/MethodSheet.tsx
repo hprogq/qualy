@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { useApi, useRunApi, useApiQuery } from '@qualy/web-runtime'
 import { useI18n, useList } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { ConfirmDialog, Feedback, Field } from '@qualy/ui/admin'
 import {
   Card,
@@ -26,7 +26,7 @@ import {
 } from '@qualy/ui/screen'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
-import { iamMessages as m } from '../../i18n.ts'
+
 import { authApi } from '../../api.ts'
 import { MethodFields } from './MethodFields.tsx'
 import { ShownCard } from './ShownCard.tsx'
@@ -35,6 +35,8 @@ import { CheckIcon, CopyIcon, TriangleAlertIcon } from 'lucide-react'
 import { toast } from '@qualy/ui/toast'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@qualy/ui/tooltip'
 import { Alert, AlertDescription, AlertTitle } from '@qualy/ui/alert'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // One entrance, opened beside the table.
 //
@@ -121,7 +123,7 @@ export function MethodSheet({
   const runApi = useRunApi()
   const query = useApiQuery(authApi)
   const queryClient = useQueryClient()
-  const { format, formatText, formatError, locale } = useI18n()
+  const { formatText, formatError, locale } = useI18n()
   const listJoin = useList()
   const figure = new Intl.NumberFormat(locale)
   // the kind as its driver names it; its code only where no driver claims it
@@ -194,8 +196,8 @@ export function MethodSheet({
     return field === undefined ? key : formatText(field.label)
   }
   const missingWords = gaps.flatMap((gap) => {
-    if (gap.kind === 'driver') return [format(m.methodDriverMissing)]
-    if (gap.kind === 'public-origin') return [format(m.methodOriginMissing)]
+    if (gap.kind === 'driver') return [m.loginMethods_driverMissing()]
+    if (gap.kind === 'public-origin') return [m.loginMethods_originMissing()]
     if (gap.kind === 'secret-unreadable') return []
     return [labelOf(gap.key)]
   })
@@ -292,9 +294,9 @@ export function MethodSheet({
   })
   const nameDirty = name !== null && name.trim() !== '' && name.trim() !== provider.name
   const detailsDirty = nameDirty || valuesDirty
-  const statusWord = format(
-    inService ? m.typeEnabled : complete ? m.statusDisabled : m.methodSetupShort,
-  )
+  const statusWord = (
+    inService ? m.state_enabled : complete ? m.state_disabled : m.loginMethods_setupShort
+  )()
 
   return (
     <DetailSheet
@@ -305,11 +307,10 @@ export function MethodSheet({
       meta={
         <MetaLine
           items={[
-            format(m.loginMethodsTitle),
-            format(
-              provider.prominence === 'primary' ? m.methodShownPrimary : m.methodShownSecondary,
-              { position },
-            ),
+            m.loginMethods_title(),
+            (provider.prominence === 'primary'
+              ? m.loginMethods_shownPrimary
+              : m.loginMethods_shownSecondary)({ position }),
           ]}
         />
       }
@@ -318,14 +319,14 @@ export function MethodSheet({
           // always there for whoever manages the ways in, so a door that may
           // not go says why rather than simply having no way to try
           <DeleteAction
-            refusal={provider.isSystem ? format(m.methodDeleteSystem) : null}
+            refusal={provider.isSystem ? m.loginMethods_deleteSystem() : null}
             busy={remove.isPending || detail.data === undefined}
-            label={format(m.methodDelete)}
+            label={m.loginMethods_delete()}
             onPress={() => setDeleting(true)}
           />
         ) : undefined
       }
-      closeLabel={format(commonMessages.close)}
+      closeLabel={commonMessages.action_close()}
       testId="method-sheet"
     >
       <Feedback message={feedback} />
@@ -336,33 +337,35 @@ export function MethodSheet({
         data-count={userTypeIds.length}
         data-ending={ending ?? 'unknown'}
       >
-        <CardHead title={format(m.audienceLegend)}>
+        <CardHead title={m.loginMethods_audience()}>
           {canManage ? (
             <Segmented
-              label={format(m.audienceLegend)}
+              label={m.loginMethods_audience()}
               value={mode}
               onChange={(next) => setDraft({ mode: next, userTypeIds })}
               options={[
-                { value: 'unrestricted', label: format(m.audienceAnyone) },
-                { value: 'allow-list', label: format(m.audienceListed) },
+                { value: 'unrestricted', label: m.loginMethods_audienceAnyone() },
+                { value: 'allow-list', label: m.loginMethods_audienceListed() },
               ]}
             />
           ) : (
             <span {...stylex.props(styles.modeWord)}>
-              {format(mode === 'unrestricted' ? m.audienceAnyone : m.audienceListed)}
+              {(mode === 'unrestricted'
+                ? m.loginMethods_audienceAnyone
+                : m.loginMethods_audienceListed)()}
             </span>
           )}
         </CardHead>
         {mode === 'allow-list' &&
           (userTypes.length === 0 ? (
-            <CardEmpty>{format(m.noOptions)}</CardEmpty>
+            <CardEmpty>{m.field_noOptions()}</CardEmpty>
           ) : (
-            <TickGrid columns={1} label={format(m.audienceLegend)}>
+            <TickGrid columns={1} label={m.loginMethods_audience()}>
               {userTypes.map((type) => (
                 <Tick
                   key={type.id}
                   label={type.name}
-                  tally={format(m.peopleTally, { count: figure.format(type.userCount) })}
+                  tally={m.loginMethods_peopleTally({ count: figure.format(type.userCount) })}
                   checked={userTypeIds.includes(type.id)}
                   disabled={!canManage}
                   onChange={(next) =>
@@ -382,15 +385,17 @@ export function MethodSheet({
         <CardHint top={mode !== 'allow-list'}>
           {mode === 'allow-list' && userTypeIds.length === 0 ? (
             <span data-audience="empty" {...stylex.props(styles.warn)}>
-              {format(m.audienceNobody)}
+              {m.loginMethods_audienceNobody()}
             </span>
           ) : (
-            format(mode === 'allow-list' ? m.audienceListedHint : m.audienceEveryone)
+            (mode === 'allow-list'
+              ? m.loginMethods_audienceListedHint
+              : m.loginMethods_audienceEveryone)()
           )}
         </CardHint>
         {canManage && (
           <CardFoot inset>
-            {dirty && <UnsavedMark>{format(m.unsaved)}</UnsavedMark>}
+            {dirty && <UnsavedMark>{m.state_unsaved()}</UnsavedMark>}
             <Spacer />
             <Button
               size="sm"
@@ -398,7 +403,7 @@ export function MethodSheet({
               disabled={!dirty || save.isPending}
               onClick={() => setDraft(null)}
             >
-              {format(m.discard)}
+              {m.action_discard()}
             </Button>
             <Button
               size="sm"
@@ -409,7 +414,7 @@ export function MethodSheet({
                 else save.mutate()
               }}
             >
-              {format(m.save)}
+              {m.action_save()}
             </Button>
           </CardFoot>
         )}
@@ -421,14 +426,14 @@ export function MethodSheet({
         data-setup={provider.setup}
         data-sessions={detail.data?.usage.sessions ?? 0}
       >
-        <CardHead title={format(m.methodDetails)}>
+        <CardHead title={m.loginMethods_details()}>
           {/* only a finished entrance can be put in service; an unfinished
               one that is out of service says so instead of offering it. One
               in service is offered for taking out only once its details say
               how many sessions that ends */}
           {canManage && (inService ? detail.data !== undefined : complete) ? (
             <Segmented
-              label={format(m.columnStatus)}
+              label={m.users_columnStatus()}
               value={provider.status}
               // asked about first: taking a way in out of service locks out
               // everybody who has no other, the moment it lands
@@ -436,8 +441,8 @@ export function MethodSheet({
                 if (next !== provider.status && !setStatus.isPending) setAsking(next)
               }}
               options={[
-                { value: 'active', label: format(m.typeEnabled) },
-                { value: 'disabled', label: format(m.statusDisabled) },
+                { value: 'active', label: m.state_enabled() },
+                { value: 'disabled', label: m.state_disabled() },
               ]}
             />
           ) : (
@@ -460,9 +465,9 @@ export function MethodSheet({
                   )
                   .join(',')}
               >
-                {format(m.methodMissing, { fields: listJoin(missingWords) })}
+                {m.loginMethods_missing({ fields: listJoin(missingWords) })}
               </AlertTitle>
-              {!inService && <AlertDescription>{format(m.methodEnableBlocked)}</AlertDescription>}
+              {!inService && <AlertDescription>{m.loginMethods_enableBlocked()}</AlertDescription>}
             </Alert>
           </div>
         )}
@@ -471,13 +476,13 @@ export function MethodSheet({
             <Alert xstyle={styles.missing}>
               <TriangleAlertIcon aria-hidden />
               <AlertTitle data-testid="method-unreadable" data-keys={unreadableKeys.join(',')}>
-                {format(m.methodUnreadable, { fields: listJoin(unreadableKeys.map(labelOf)) })}
+                {m.loginMethods_unreadable({ fields: listJoin(unreadableKeys.map(labelOf)) })}
               </AlertTitle>
             </Alert>
           </div>
         )}
         <div {...stylex.props(styles.fields)}>
-          <Field label={format(m.nameLabel)} required>
+          <Field label={m.field_name()} required>
             {(id, control) => (
               <Input
                 id={id}
@@ -506,13 +511,13 @@ export function MethodSheet({
           )}
         </div>
         <DefList>
-          <DefLine label={format(m.providerKindLabel)}>{kindWord}</DefLine>
-          <DefLine label={format(m.providerCodeLabel)}>
+          <DefLine label={m.loginMethods_kind()}>{kindWord}</DefLine>
+          <DefLine label={m.loginMethods_code()}>
             <span {...stylex.props(styles.code)}>{provider.code}</span>
-            <span {...stylex.props(styles.aside)}>{format(m.providerCodeHint)}</span>
+            <span {...stylex.props(styles.aside)}>{m.loginMethods_codeHint()}</span>
           </DefLine>
           {detail.data?.callbackUrl != null && (
-            <DefLine label={format(m.methodCallback)}>
+            <DefLine label={m.loginMethods_callback()}>
               {/* an address is one long word: it breaks wherever it has to
                   rather than running out of the sheet, and is copied whole */}
               <span {...stylex.props(styles.callback)}>
@@ -522,15 +527,15 @@ export function MethodSheet({
                 >
                   {detail.data.callbackUrl}
                 </span>
-                <CopyButton value={detail.data.callbackUrl} label={format(m.methodCallbackCopy)} />
+                <CopyButton value={detail.data.callbackUrl} label={m.loginMethods_callbackCopy()} />
               </span>
-              <span {...stylex.props(styles.aside)}>{format(m.methodCallbackHint)}</span>
+              <span {...stylex.props(styles.aside)}>{m.loginMethods_callbackHint()}</span>
             </DefLine>
           )}
         </DefList>
         {(canManage || canManageTrust) && (
           <CardFoot inset>
-            {detailsDirty && <UnsavedMark>{format(m.unsaved)}</UnsavedMark>}
+            {detailsDirty && <UnsavedMark>{m.state_unsaved()}</UnsavedMark>}
             <Spacer />
             <Button
               size="sm"
@@ -541,14 +546,14 @@ export function MethodSheet({
                 setValues({})
               }}
             >
-              {format(m.discard)}
+              {m.action_discard()}
             </Button>
             <Button
               size="sm"
               disabled={!detailsDirty || wouldEmpty || saveDetails.isPending}
               onClick={() => saveDetails.mutate()}
             >
-              {format(m.save)}
+              {m.action_save()}
             </Button>
           </CardFoot>
         )}
@@ -558,16 +563,16 @@ export function MethodSheet({
       <ConfirmDialog
         open={asking !== null}
         {...(asking === 'disabled' ? { tone: 'destructive' as const } : {})}
-        title={format(asking === 'disabled' ? m.methodDisableTitle : m.methodEnableTitle, {
+        title={(asking === 'disabled' ? m.loginMethods_disableTitle : m.loginMethods_enableTitle)({
           name: provider.name,
         })}
         description={
           asking === 'disabled'
-            ? format(m.methodDisableBody, { sessions: detail.data?.usage.sessions ?? 0 })
-            : format(m.methodEnableBody)
+            ? m.loginMethods_disableBody({ sessions: detail.data?.usage.sessions ?? 0 })
+            : m.loginMethods_enableBody()
         }
-        confirmLabel={format(asking === 'disabled' ? m.disable : m.enable)}
-        cancelLabel={format(m.cancel)}
+        confirmLabel={(asking === 'disabled' ? m.action_disable : m.action_enable)()}
+        cancelLabel={m.action_cancel()}
         pending={setStatus.isPending}
         onCancel={() => setAsking(null)}
         onConfirm={() => {
@@ -579,10 +584,10 @@ export function MethodSheet({
       <ConfirmDialog
         open={narrowing}
         tone="destructive"
-        title={format(m.audienceNarrowTitle)}
-        description={format(m.audienceNarrowBody, { sessions: ending ?? 0 })}
-        confirmLabel={format(m.save)}
-        cancelLabel={format(m.cancel)}
+        title={m.loginMethods_audienceNarrowTitle()}
+        description={m.loginMethods_audienceNarrowBody({ sessions: ending ?? 0 })}
+        confirmLabel={m.action_save()}
+        cancelLabel={m.action_cancel()}
         pending={save.isPending}
         onCancel={() => setNarrowing(false)}
         onConfirm={() => {
@@ -593,13 +598,13 @@ export function MethodSheet({
       <ConfirmDialog
         open={deleting}
         tone="destructive"
-        title={format(m.methodDeleteTitle, { name: provider.name })}
-        description={format(m.methodDeleteBody, {
+        title={m.loginMethods_deleteTitle({ name: provider.name })}
+        description={m.loginMethods_deleteBody({
           bindings: detail.data?.usage.bindings ?? 0,
           sessions: detail.data?.usage.sessions ?? 0,
         })}
-        confirmLabel={format(m.methodDelete)}
-        cancelLabel={format(m.cancel)}
+        confirmLabel={m.loginMethods_delete()}
+        cancelLabel={m.action_cancel()}
         pending={remove.isPending}
         onCancel={() => setDeleting(false)}
         onConfirm={() => remove.mutate()}
@@ -649,7 +654,6 @@ function DeleteAction({
 
 /** a value copied whole with one press, and saying so */
 function CopyButton({ value, label }: { value: string; label: string }) {
-  const { format } = useI18n()
   const [copied, setCopied] = useState(false)
   useEffect(() => {
     if (!copied) return
@@ -668,9 +672,9 @@ function CopyButton({ value, label }: { value: string; label: string }) {
         void navigator.clipboard.writeText(value).then(
           () => {
             setCopied(true)
-            toast.success(format(m.copied))
+            toast.success(m.common_copied())
           },
-          () => toast.error(format(m.copyFailed)),
+          () => toast.error(m.common_copyFailed()),
         )
       }}
     >

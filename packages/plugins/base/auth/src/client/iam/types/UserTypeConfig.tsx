@@ -15,7 +15,7 @@ import {
   usePageNavigate,
 } from '@qualy/web-runtime'
 import { getApiErrorCode, useI18n, useList } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { AsyncSection, ConfirmDialog, Feedback, Field, FormDialog } from '@qualy/ui/admin'
 import {
   BandBack,
@@ -39,10 +39,12 @@ import {
 import { ArrowUpRightIcon } from 'lucide-react'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
-import { iamMessages as m } from '../../i18n.ts'
+
 import { authApi } from '../../api.ts'
 import { useUserTypeFacts } from './facts.ts'
 import { TypeMembers } from './TypeMembers.tsx'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // One user type's own page.
 //
@@ -127,7 +129,7 @@ export function UserTypeConfig({
   const navigate = usePageNavigate()
   // the way to the entrances is offered only to a reader who may go there
   const entrancesHref = usePageHref('auth/login-methods')
-  const { format, formatError } = useI18n()
+  const { formatError } = useI18n()
   const describe = useLoadFailure()
   const listJoin = useList()
   const facts = useUserTypeFacts()
@@ -253,21 +255,21 @@ export function UserTypeConfig({
   const belongsWord =
     userType.placementPolicy.mode === 'allow-list'
       ? listJoin(facts.allowedKinds(userType))
-      : format(fixed ? m.placementTenantRoot : m.placementAnywhere)
+      : (fixed ? m.field_placementTenantRoot : m.userTypes_placementAnywhere)()
   const active = userType.status === 'active'
 
   return (
     <Screen
       back={
         <BandBack as={PageLink} page="auth/user-types">
-          {format(m.backToUserTypes)}
+          {m.userTypes_back()}
         </BandBack>
       }
       title={userType.name}
       titleAside={
         <>
-          {userType.isSystem && <Tag>{format(m.systemBadge)}</Tag>}
-          <Tag>{format(active ? m.typeEnabled : m.statusDisabled)}</Tag>
+          {userType.isSystem && <Tag>{m.badge_system()}</Tag>}
+          <Tag>{(active ? m.state_enabled : m.state_disabled)()}</Tag>
         </>
       }
       {...(userType.description !== null && userType.description !== ''
@@ -276,46 +278,46 @@ export function UserTypeConfig({
       actions={
         canManage && (
           <Button variant="outline" size="sm" onClick={() => setRenaming(true)}>
-            {format(m.rename)}
+            {m.action_rename()}
           </Button>
         )
       }
     >
       <Feedback message={feedback} />
-      {saved && feedback === null && <Feedback message={format(m.saved)} tone="success" />}
+      {saved && feedback === null && <Feedback message={m.feedback_saved()} tone="success" />}
 
       <FactStrip
         testId="type-facts"
         columns={5}
         items={[
           {
-            label: format(m.columnUsers),
-            value: format(m.userCount, { count: userType.userCount }),
+            label: m.userTypes_columnUsers(),
+            value: m.userTypes_userCount({ count: userType.userCount }),
           },
-          { label: format(m.placementLegend), value: belongsWord },
+          { label: m.userTypes_placementLegend(), value: belongsWord },
           {
-            label: format(m.signInLabel),
+            label: m.userTypes_signIn(),
             value:
               admitting === undefined ? (
-                format(m.unknownWord)
+                m.word_unknown()
               ) : admitting.length === 0 ? (
-                <Status tone="warn">{format(m.noneWord)}</Status>
+                <Status tone="warn">{m.word_none()}</Status>
               ) : (
                 listJoin(admitting.map((entrance) => entrance.name))
               ),
           },
           {
-            label: format(m.openRolesLabel),
+            label: m.userTypes_openRoles(),
             value:
               openRoles === undefined
-                ? format(m.unknownWord)
-                : format(m.roleCount, { count: openRoles.length }),
+                ? m.word_unknown()
+                : m.userTypes_roleCount({ count: openRoles.length }),
           },
           {
-            label: format(m.columnStatus),
+            label: m.users_columnStatus(),
             value: (
               <Status tone={active ? 'plain' : 'bad'}>
-                {format(active ? m.typeEnabled : m.statusDisabled)}
+                {(active ? m.state_enabled : m.state_disabled)()}
               </Status>
             ),
           },
@@ -325,40 +327,42 @@ export function UserTypeConfig({
       <div {...stylex.props(styles.frame)}>
         <div {...stylex.props(styles.column)}>
           <Card data-testid="placement-panel" data-mode={mode} data-dirty={dirty}>
-            <CardHead title={format(m.placementLegend)}>
+            <CardHead title={m.userTypes_placementLegend()}>
               {!fixed &&
                 (editable ? (
                   <Segmented
-                    label={format(m.placementLegend)}
+                    label={m.userTypes_placementLegend()}
                     value={mode}
                     onChange={setMode}
                     options={[
-                      { value: 'unrestricted', label: format(m.placementAnywhere) },
-                      { value: 'allow-list', label: format(m.placementListed) },
+                      { value: 'unrestricted', label: m.userTypes_placementAnywhere() },
+                      { value: 'allow-list', label: m.userTypes_placementListed() },
                     ]}
                   />
                 ) : (
                   <span {...stylex.props(styles.modeWord)}>
-                    {format(mode === 'unrestricted' ? m.placementAnywhere : m.placementListed)}
+                    {(mode === 'unrestricted'
+                      ? m.userTypes_placementAnywhere
+                      : m.userTypes_placementListed)()}
                   </span>
                 ))}
             </CardHead>
             {fixed ? (
-              <p {...stylex.props(styles.fixed)}>{format(m.placementTenantRoot)}</p>
+              <p {...stylex.props(styles.fixed)}>{m.field_placementTenantRoot()}</p>
             ) : (
               <AsyncSection
                 pending={facts.catalog.isPending}
                 error={facts.catalog.isError ? describe.of(facts.catalog.error) : null}
                 retrying={facts.catalog.isFetching}
-                loadingLabel={format(commonMessages.loading)}
-                retryLabel={format(commonMessages.retry)}
+                loadingLabel={commonMessages.state_loading()}
+                retryLabel={commonMessages.action_retry()}
                 onRetry={() => void facts.catalog.refetch()}
               >
                 {mode === 'allow-list' &&
                   (facts.orgTypes.length === 0 ? (
-                    <CardEmpty>{format(m.noOptions)}</CardEmpty>
+                    <CardEmpty>{m.field_noOptions()}</CardEmpty>
                   ) : (
-                    <TickGrid columns={3} label={format(m.allowedOrgTypesLegend)}>
+                    <TickGrid columns={3} label={m.field_allowedOrgTypes()}>
                       {facts.orgTypes.map((orgType) => (
                         <Tick
                           key={orgType.id}
@@ -376,15 +380,15 @@ export function UserTypeConfig({
                       ))}
                     </TickGrid>
                   ))}
-                <CardHint top={mode !== 'allow-list'}>{format(m.placementHint)}</CardHint>
+                <CardHint top={mode !== 'allow-list'}>{m.field_placementHint()}</CardHint>
               </AsyncSection>
             )}
             {editable && (
               <CardFoot inset>
-                {dirty && <UnsavedMark>{format(m.unsaved)}</UnsavedMark>}
+                {dirty && <UnsavedMark>{m.state_unsaved()}</UnsavedMark>}
                 <Spacer />
                 <Button variant="ghost" size="sm" disabled={!dirty} onClick={revert}>
-                  {format(m.discard)}
+                  {m.action_discard()}
                 </Button>
                 <Button
                   size="sm"
@@ -397,7 +401,7 @@ export function UserTypeConfig({
                   }
                   onClick={() => savePlacement.mutate(undefined)}
                 >
-                  {format(m.save)}
+                  {m.action_save()}
                 </Button>
               </CardFoot>
             )}
@@ -406,13 +410,13 @@ export function UserTypeConfig({
           <TypeMembers userTypeId={userType.id} />
 
           <Card data-testid="type-lifecycle" data-populated={populated}>
-            <CardHead title={format(m.lifecycleLabel)} />
+            <CardHead title={m.userTypes_lifecycle()} />
             <div {...stylex.props(styles.lifecycle)}>
               <span {...stylex.props(styles.reason)}>
                 {[
-                  ...(populated ? [format(m.blockerInUse, { count: userType.userCount })] : []),
-                  ...(userType.isSystem ? [format(m.blockerSystem)] : []),
-                  ...(!populated && !userType.isSystem ? [format(m.blockerClear)] : []),
+                  ...(populated ? [m.userTypes_blockerInUse({ count: userType.userCount })] : []),
+                  ...(userType.isSystem ? [m.userTypes_blockerSystem()] : []),
+                  ...(!populated && !userType.isSystem ? [m.userTypes_blockerClear()] : []),
                 ].join(' ')}
               </span>
               {canManage && (
@@ -426,7 +430,7 @@ export function UserTypeConfig({
                     disabled={setStatus.isPending || (active && populated)}
                     onClick={() => setStatus.mutate(active ? 'disabled' : 'active')}
                   >
-                    {format(active ? m.disable : m.enable)}
+                    {(active ? m.action_disable : m.action_enable)()}
                   </Button>
                   {!userType.isSystem && (
                     <Button
@@ -435,7 +439,7 @@ export function UserTypeConfig({
                       disabled={populated}
                       onClick={() => setConfirmingDelete(true)}
                     >
-                      {format(m.delete)}
+                      {m.action_delete()}
                     </Button>
                   )}
                 </span>
@@ -447,51 +451,53 @@ export function UserTypeConfig({
         <div {...stylex.props(styles.column)}>
           {entrances !== undefined && (
             <Card data-testid="type-entrances" data-count={admitting?.length ?? 0}>
-              <CardHead title={format(m.signInLabel)}>
+              <CardHead title={m.userTypes_signIn()}>
                 {entrancesHref !== undefined && (
                   <PageLink
                     page="auth/login-methods"
                     className={stylex.props(styles.link).className}
                   >
                     <ArrowUpRightIcon aria-hidden {...stylex.props(styles.linkIcon)} />
-                    {format(m.signInSettings)}
+                    {m.userTypes_signInSettings()}
                   </PageLink>
                 )}
               </CardHead>
               {admitting === undefined || admitting.length === 0 ? (
-                <CardEmpty>{format(m.signInNone)}</CardEmpty>
+                <CardEmpty>{m.userTypes_signInNone()}</CardEmpty>
               ) : (
                 <DefList>
                   {admitting.map((entrance) => (
                     <DefLine key={entrance.id} label={entrance.name}>
                       {entrance.audience.mode === 'unrestricted'
-                        ? format(m.audienceEveryone)
-                        : format(m.audienceSummary, {
+                        ? m.loginMethods_audienceEveryone()
+                        : m.loginMethods_audienceSummary({
                             count: entrance.audience.userTypeIds.length,
                           })}
                     </DefLine>
                   ))}
                 </DefList>
               )}
-              <CardHint>{format(m.signInOwnerHint)}</CardHint>
+              <CardHint>{m.userTypes_signInOwnerHint()}</CardHint>
             </Card>
           )}
 
           {openRoles !== undefined && (
             <Card data-testid="type-roles" data-count={openRoles.length}>
-              <CardHead title={format(m.openRolesLabel)} />
+              <CardHead title={m.userTypes_openRoles()} />
               {openRoles.length === 0 ? (
-                <CardEmpty>{format(m.openRolesNone)}</CardEmpty>
+                <CardEmpty>{m.userTypes_openRolesNone()}</CardEmpty>
               ) : (
                 <DefList>
                   {openRoles.map((role) => (
                     <DefLine key={role.id} label={role.name}>
-                      {format(role.kind === 'tenant' ? m.roleKindTenant : m.roleKindOrg)}
+                      {(role.kind === 'tenant'
+                        ? m.userTypes_roleKindTenant
+                        : m.userTypes_roleKindOrg)()}
                     </DefLine>
                   ))}
                 </DefList>
               )}
-              <CardHint>{format(m.openRolesOwnerHint)}</CardHint>
+              <CardHint>{m.userTypes_openRolesOwnerHint()}</CardHint>
             </Card>
           )}
         </div>
@@ -499,19 +505,19 @@ export function UserTypeConfig({
 
       <FormDialog
         open={renaming}
-        title={format(m.rename)}
+        title={m.action_rename()}
         onClose={closeRename}
         footer={
           <>
             <Button variant="outline" onClick={closeRename}>
-              {format(m.cancel)}
+              {m.action_cancel()}
             </Button>
             <Button
               type="submit"
               form="rename-user-type"
               disabled={saveProfile.isPending || name.trim() === ''}
             >
-              {format(m.save)}
+              {m.action_save()}
             </Button>
           </>
         }
@@ -526,7 +532,7 @@ export function UserTypeConfig({
           }}
         >
           <Field
-            label={format(m.nameLabel)}
+            label={m.field_name()}
             required
             error={renameRefusal?.taken === true ? renameRefusal.said : null}
           >
@@ -542,7 +548,7 @@ export function UserTypeConfig({
               />
             )}
           </Field>
-          <Field label={format(m.descriptionLabel)}>
+          <Field label={m.field_description()}>
             {(id) => (
               <Input
                 id={id}
@@ -556,10 +562,10 @@ export function UserTypeConfig({
 
       <ConfirmDialog
         open={confirmingDelete}
-        title={format(m.confirmDeleteTitle)}
-        description={format(m.confirmDeleteBody)}
-        confirmLabel={format(m.delete)}
-        cancelLabel={format(m.cancel)}
+        title={m.confirm_deleteTitle()}
+        description={m.confirm_deleteBody()}
+        confirmLabel={m.action_delete()}
+        cancelLabel={m.action_cancel()}
         pending={remove.isPending}
         onConfirm={() => remove.mutate(undefined)}
         onCancel={() => setConfirmingDelete(false)}

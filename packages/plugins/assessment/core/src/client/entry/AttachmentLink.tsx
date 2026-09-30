@@ -2,13 +2,12 @@ import { useState, type ReactNode } from 'react'
 import type * as React from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { DownloadIcon, FileTextIcon, PaperclipIcon } from 'lucide-react'
-import { useI18n } from '@qualy/web-i18n'
 import { VisuallyHidden } from '@qualy/ui/visually-hidden'
 import { Button } from '@qualy/ui/button'
 import { FileTile } from '@qualy/ui/dropzone'
 import { PhotoProvider, PhotoView } from '@qualy/ui/photo-view'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import { DocumentLightbox } from './DocumentLightbox.tsx'
 import { useAttachmentDescriptor } from './use-attachment-descriptor.ts'
 import {
@@ -17,6 +16,7 @@ import {
   LOOKS_LIKE_A_PHOTOGRAPH,
   sizeLabel,
 } from './model.ts'
+import * as m from '#messages'
 
 // A cited file, by its own name, and - when it is a picture - as a picture.
 //
@@ -325,12 +325,11 @@ export function AttachmentLink({
    */
   mark?: 'added' | 'supplement' | undefined
 }) {
-  const { format } = useI18n()
   const descriptor = useAttachmentDescriptor(attachmentId)
   const data = descriptor.data ?? undefined
   const href =
     data?.delivery.kind === 'redirect' ? data.delivery.url : attachmentContentUrl(attachmentId)
-  const name = data?.filename ?? format(m.entryFileUnnamed)
+  const name = data?.filename ?? m.entry_fileUnnamed()
   const isImage = data !== undefined && LOOKS_LIKE_A_PHOTOGRAPH.has(data.declaredMime)
   const isDocument = data !== undefined && LOOKS_LIKE_A_DOCUMENT.has(data.declaredMime)
   const [reading, setReading] = useState(false)
@@ -437,7 +436,7 @@ export function AttachmentLink({
             {slot !== undefined && <span {...stylex.props(styles.slotBadge)}>{slot}</span>}
             {mark !== undefined && (
               <span {...stylex.props(styles.markBadge)}>
-                {format(mark === 'added' ? m.reviewFileAdded : m.reviewFileSupplement)}
+                {(mark === 'added' ? m.review_fileAdded : m.review_fileSupplement)()}
               </span>
             )}
             {/* Taking a copy is a second thought, not the reason the tile is

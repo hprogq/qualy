@@ -3,8 +3,7 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { ArrowLeftIcon, CheckIcon, ChevronDownIcon, SearchIcon } from 'lucide-react'
 import { useApiQuery, usePageNavigate } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { Button } from '@qualy/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@qualy/ui/popover'
@@ -13,8 +12,10 @@ import { Spinner } from '@qualy/ui/spinner'
 import { useIsMobile } from '@qualy/ui/use-mobile'
 import { VisuallyHidden } from '@qualy/ui/visually-hidden'
 import { assessmentApi } from '../api.ts'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import { StatusBadge } from './StatusBadge.tsx'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 /**
  * How many rounds the menu offers at once.
@@ -234,7 +235,7 @@ export function BatchSwitcher({
 }) {
   const query = useApiQuery(assessmentApi)
   const navigate = usePageNavigate()
-  const { format } = useI18n()
+
   // below a tablet the standing keeps its colour and its dot and loses its
   // word: the name of the batch is what the bar is for, and the word is what
   // pushed the stage name beside it into an ellipsis
@@ -287,7 +288,7 @@ export function BatchSwitcher({
         <button type="button" {...stylex.props(styles.trigger, open && styles.triggerOpen)}>
           {/* what it does, and then the words it shows: a name that left
               those out could not be asked for by whoever reads them */}
-          <VisuallyHidden>{format(m.switchBatch)}</VisuallyHidden>
+          <VisuallyHidden>{m.batch_switch()}</VisuallyHidden>
           <span {...stylex.props(styles.triggerName)} title={name}>
             {name}
           </span>
@@ -309,14 +310,14 @@ export function BatchSwitcher({
             autoFocus
             type="search"
             value={search}
-            placeholder={format(m.searchPlaceholder)}
-            aria-label={format(m.searchPlaceholder)}
+            placeholder={m.batch_search()}
+            aria-label={m.batch_search()}
             onChange={(event) => setSearch(event.target.value)}
             {...stylex.props(styles.searchInput)}
           />
           {nearby.isFetching && !waiting && (
             <Spinner
-              aria-label={format(commonMessages.loading)}
+              aria-label={commonMessages.state_loading()}
               className={stylex.props(styles.searchSpinner).className}
             />
           )}
@@ -361,7 +362,7 @@ export function BatchSwitcher({
               })}
               {rows.length === 0 && (
                 <li {...stylex.props(styles.emptyRow)}>
-                  {format(searching ? m.noMatchTitle : m.switcherOnlyThis)}
+                  {(searching ? m.batch_noMatch : m.batch_switcherOnlyThis)()}
                 </li>
               )}
             </ul>
@@ -379,7 +380,7 @@ export function BatchSwitcher({
             }}
           >
             <ArrowLeftIcon className={stylex.props(styles.exitIcon).className} />
-            {format(m.backToList)}
+            {m.batch_back()}
           </Button>
         </div>
       </PopoverContent>

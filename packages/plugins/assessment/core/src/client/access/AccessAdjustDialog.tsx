@@ -4,7 +4,7 @@ import { ShieldOffIcon } from 'lucide-react'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { Button } from '@qualy/ui/button'
 import { Checkbox } from '@qualy/ui/checkbox'
 import {
@@ -25,7 +25,7 @@ import {
   FieldSeparator,
   FieldSet,
 } from '@qualy/ui/field'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import { DialogBlank } from '../DialogBlank.tsx'
 import {
   familyOf,
@@ -35,6 +35,8 @@ import {
   type StaffCode,
 } from './permissions.ts'
 import { adjustableOf, type AccessSubject } from './model.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // One person, one batch, one checkbox per thing they may do.
 //
@@ -50,9 +52,9 @@ import { adjustableOf, type AccessSubject } from './model.ts'
 // the same three families the stage editor uses, in the same order: a reader
 // who has seen one of these screens has already learned this shape
 const FAMILIES = [
-  { key: 'entry', label: m.permissionGroupEntry },
-  { key: 'review', label: m.permissionGroupReview },
-  { key: 'result', label: m.permissionGroupResult },
+  { key: 'entry', label: m.permissionGroup_entry },
+  { key: 'review', label: m.permissionGroup_review },
+  { key: 'result', label: m.permissionGroup_result },
 ] as const
 
 const styles = stylex.create({
@@ -101,7 +103,7 @@ export function AccessAdjustDialog({
   onReview?: () => void
   onClose: () => void
 }) {
-  const { format, locale } = useI18n()
+  const { locale } = useI18n()
   // the person it was opened for, kept while it closes: the panel drops them
   // the moment it is done, and the dialog is still fading out
   const [shown, setShown] = useState<AccessSubject | null>(subject)
@@ -142,10 +144,10 @@ export function AccessAdjustDialog({
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
       <DialogContent size="42rem" data-testid="access-adjust" data-empty={offered.length === 0}>
         <DialogHeader>
-          <DialogTitle>{format(m.accessAdjustTitle, { name })}</DialogTitle>
+          <DialogTitle>{m.access_adjustTitle({ name })}</DialogTitle>
           {offered.length > 0 && (
             <DialogDescription>
-              {format(archived ? m.accessAdjustArchivedHint : m.accessAdjustHint)}
+              {(archived ? m.access_adjustArchivedHint : m.access_adjustHint)()}
             </DialogDescription>
           )}
         </DialogHeader>
@@ -160,19 +162,19 @@ export function AccessAdjustDialog({
               kind={lapsed ? 'lapsed' : 'idle'}
               data-lapse={lapses.length === 1 ? lapses[0] : lapsed ? 'several' : undefined}
               icon={<ShieldOffIcon />}
-              title={format(m.accessAdjustNothing)}
+              title={m.access_adjustNothing()}
               description={
                 lapsed
-                  ? format(m.accessAdjustNothingLapse, {
+                  ? m.access_adjustNothingLapse({
                       lapse: lapses.length === 1 ? lapses[0]! : 'several',
                     })
-                  : format(m.accessAdjustNothingIdle)
+                  : m.access_adjustNothingIdle()
               }
               {...(onReview !== undefined && lapsed
                 ? {
                     action: (
                       <Button variant="outline" size="sm" onClick={onReview}>
-                        {format(m.accessSyncOpen)}
+                        {m.access_syncOpen()}
                       </Button>
                     ),
                   }
@@ -187,7 +189,7 @@ export function AccessAdjustDialog({
                   <div key={key} {...stylex.props(styles.family)}>
                     {index > 0 && <FieldSeparator />}
                     <FieldSet disabled={pending}>
-                      <FieldLegend variant="label">{format(label)}</FieldLegend>
+                      <FieldLegend variant="label">{label()}</FieldLegend>
                       <div {...stylex.props(styles.pairs)}>
                         {codes.map((code) => (
                           <PermissionRow
@@ -209,9 +211,9 @@ export function AccessAdjustDialog({
               })}
               {stale.length > 0 && (
                 <p {...stylex.props(styles.stale)} data-testid="access-stale">
-                  {format(m.accessAdjustStale, {
+                  {m.access_adjustStale({
                     names: new Intl.ListFormat(locale, { type: 'conjunction' }).format(
-                      stale.map((code) => format(permissionLabel(code))),
+                      stale.map((code) => permissionLabel(code)()),
                     ),
                   })}
                 </p>
@@ -222,15 +224,15 @@ export function AccessAdjustDialog({
         <DialogFooter>
           {offered.length === 0 ? (
             <Button variant="outline" onClick={onClose}>
-              {format(commonMessages.close)}
+              {commonMessages.action_close()}
             </Button>
           ) : (
             <>
               <Button variant="outline" onClick={onClose}>
-                {format(commonMessages.cancel)}
+                {commonMessages.action_cancel()}
               </Button>
               <Button disabled={pending || !changed} onClick={() => onSave(inCatalogOrder(denied))}>
-                {format(m.saveShort)}
+                {m.plan_saveShort()}
               </Button>
             </>
           )}
@@ -251,7 +253,6 @@ function PermissionRow({
   disabled: boolean
   onToggle: () => void
 }) {
-  const { format } = useI18n()
   const id = useId()
   return (
     <Field orientation="horizontal">
@@ -266,9 +267,9 @@ function PermissionRow({
       />
       <FieldContent>
         <FieldLabel htmlFor={id} className={stylex.props(styles.plainLabel).className}>
-          {format(permissionLabel(code))}
+          {permissionLabel(code)()}
         </FieldLabel>
-        <FieldDescription>{format(permissionHint(code))}</FieldDescription>
+        <FieldDescription>{permissionHint(code)()}</FieldDescription>
       </FieldContent>
     </Field>
   )

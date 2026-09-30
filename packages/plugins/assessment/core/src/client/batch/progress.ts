@@ -1,4 +1,4 @@
-import type { assessmentMessages } from '../i18n.ts'
+import * as m from '#messages'
 
 // How long until the next stage, or how long this one has been running.
 //
@@ -167,7 +167,7 @@ export const tickOf = (progress: Progress): number =>
       : SECOND
     : MINUTE
 
-type Messages = typeof assessmentMessages
+type Said = (typeof m)[keyof typeof m]
 
 /**
  * How much of the span there is room to say.
@@ -180,55 +180,63 @@ export type SpanForm = 'full' | 'single' | 'bare'
 
 /** the message and values for a span, in the caller's locale */
 export const spanMessage = (
-  m: Messages,
   progress: Progress & { kind: 'until' | 'since' },
   form: SpanForm = 'full',
-): { message: Messages[keyof Messages]; values: Record<string, number> } => {
+): { message: Said; values: Record<string, number> } => {
   const { span } = progress
   const counting = progress.kind === 'until'
   const both = span.rest > 0 && form === 'full'
   if (form === 'bare') {
     const bare = counting
       ? ({
-          days: m.bareDays,
-          hours: m.bareHours,
-          minutes: m.bareMinutes,
-          seconds: m.bareSeconds,
+          days: m.progress_bareDays,
+          hours: m.progress_bareHours,
+          minutes: m.progress_bareMinutes,
+          seconds: m.progress_bareSeconds,
         } as const)
       : ({
-          days: m.bareSinceDays,
-          hours: m.bareSinceHours,
-          minutes: m.bareSinceMinutes,
-          seconds: m.bareSinceSeconds,
+          days: m.progress_bareSinceDays,
+          hours: m.progress_bareSinceHours,
+          minutes: m.progress_bareSinceMinutes,
+          seconds: m.progress_bareSinceSeconds,
         } as const)
     return { message: bare[span.unit], values: { count: span.value } }
   }
   if (span.unit === 'days') {
     return both
       ? {
-          message: counting ? m.leftDaysHours : m.sinceDaysHours,
+          message: counting ? m.progress_leftDaysHours : m.progress_sinceDaysHours,
           values: { days: span.value, hours: span.rest },
         }
-      : { message: counting ? m.leftDays : m.sinceDays, values: { count: span.value } }
+      : {
+          message: counting ? m.progress_leftDays : m.progress_sinceDays,
+          values: { count: span.value },
+        }
   }
   if (span.unit === 'hours') {
     return both
       ? {
-          message: counting ? m.leftHoursMinutes : m.sinceHoursMinutes,
+          message: counting ? m.progress_leftHoursMinutes : m.progress_sinceHoursMinutes,
           values: { hours: span.value, minutes: span.rest },
         }
-      : { message: counting ? m.leftHours : m.sinceHours, values: { count: span.value } }
+      : {
+          message: counting ? m.progress_leftHours : m.progress_sinceHours,
+          values: { count: span.value },
+        }
   }
   if (span.unit === 'minutes') {
     return both
       ? {
-          message: counting ? m.leftMinutes : m.sinceMinutes,
+          message: counting ? m.progress_leftMinutes : m.progress_sinceMinutes,
           values: { minutes: span.value, seconds: span.rest },
         }
       : {
-          message: counting ? m.leftMinutesOnly : m.sinceMinutesOnly,
+          message: counting ? m.progress_leftMinutesOnly : m.progress_sinceMinutesOnly,
           values: { count: span.value },
         }
   }
-  return { message: counting ? m.leftSeconds : m.sinceSeconds, values: { count: span.value } }
+  return {
+    message: counting ? m.progress_leftSeconds : m.progress_sinceSeconds,
+    values: { count: span.value },
+  }
 }

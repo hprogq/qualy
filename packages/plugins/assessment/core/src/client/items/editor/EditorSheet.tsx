@@ -1,15 +1,16 @@
 import type { ReactNode } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { ChevronLeftIcon, ChevronRightIcon, XIcon } from 'lucide-react'
-import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { Button } from '@qualy/ui/button'
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from '@qualy/ui/sheet'
 import { VisuallyHidden } from '@qualy/ui/visually-hidden'
-import { assessmentMessages as m } from '../../i18n.ts'
+
 import { Tag } from './Rows.tsx'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // The panel every row of the editor opens into: a name, what kind of thing
 // it is, its place among its siblings, and a way to the next one without
@@ -85,7 +86,6 @@ export function EditorSheet({
   footer?: ReactNode
   testId?: string
 }) {
-  const { format } = useI18n()
   return (
     <Sheet open={open} onOpenChange={(next) => !next && onClose()}>
       <SheetContent side="right" xstyle={styles.panel} showCloseButton={false} data-testid={testId}>
@@ -97,7 +97,7 @@ export function EditorSheet({
                 size="icon-sm"
                 className={stylex.props(styles.backSeat).className}
                 onClick={onBack}
-                aria-label={format(m.itemsBackToTypes)}
+                aria-label={m.items_backToTypes()}
               >
                 <ChevronLeftIcon aria-hidden />
               </Button>
@@ -112,7 +112,7 @@ export function EditorSheet({
                   size="icon-xs"
                   disabled={pager.index <= 0}
                   onClick={pager.onPrevious}
-                  aria-label={format(m.itemsPrevious)}
+                  aria-label={m.items_previous()}
                 >
                   <ChevronLeftIcon aria-hidden />
                 </Button>
@@ -124,10 +124,10 @@ export function EditorSheet({
                   size="icon-xs"
                   disabled={pager.index >= pager.total - 1}
                   onClick={pager.onNext}
-                  aria-label={format(m.itemsNext)}
+                  aria-label={m.items_next()}
                 >
                   <ChevronRightIcon aria-hidden />
-                  <VisuallyHidden>{format(m.itemsNext)}</VisuallyHidden>
+                  <VisuallyHidden>{m.items_next()}</VisuallyHidden>
                 </Button>
               </span>
             )}
@@ -137,7 +137,7 @@ export function EditorSheet({
               size="icon-sm"
               className={stylex.props(styles.closeSeat).className}
               onClick={onClose}
-              aria-label={format(commonMessages.close)}
+              aria-label={commonMessages.action_close()}
             >
               <XIcon aria-hidden />
             </Button>

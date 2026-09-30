@@ -9,12 +9,13 @@ import type { AtomicSchema, NormalizedInputSchema } from '@qualy/value-schema'
 import { InputValueForm } from '@qualy/web-value-form/InputValueForm'
 import { usePickerWords } from '@qualy/web-i18n/picker-words'
 import type { FieldDraft } from '@qualy/web-value-form/model'
-import { formulaMessages as m } from './i18n.ts'
+
 import { defectWords, fieldIssueWords } from './report-words.ts'
 import { constraintNote } from './constraint-words.ts'
 import { shortTime } from './library-styles.ts'
 import { ColumnHead } from './WorkbenchLayout.tsx'
 import { workbenchStyles as w } from './workbench-styles.ts'
+import * as m from '#messages'
 
 // One try-run: the form the contract asks for, a run, and what came of it.
 //
@@ -299,13 +300,13 @@ export function TryRunPanel({
   readonly recordCount: number
   readonly onOpenRecords: () => void
 }) {
-  const { format, locale } = useI18n()
+  const { locale } = useI18n()
   const words = usePickerWords()
   // the live check is the form's; the words for what it finds are this
   // screen's, and they are the same ones a run reports
   const explain = useCallback(
-    (schema: AtomicSchema, _id: string, reason: string) => fieldIssueWords(format, schema, reason),
-    [format],
+    (schema: AtomicSchema, _id: string, reason: string) => fieldIssueWords(schema, reason),
+    [],
   )
 
   const statusWords =
@@ -329,7 +330,7 @@ export function TryRunPanel({
       {...stylex.props(styles.records, narrow && styles.recordsStrip)}
     >
       <HistoryIcon size={narrow ? 12 : 13} aria-hidden />
-      {format(m.tryRecordsTitle)}
+      {m.try_recordsTitle()}
       {recordCount === 0 ? null : (
         <span {...stylex.props(!narrow && styles.recordsCount)}>{recordCount}</span>
       )}
@@ -348,11 +349,11 @@ export function TryRunPanel({
 
   const outcomeWords = (outcome: TryOutcome): string | null =>
     outcome.refusal !== undefined
-      ? format(m.refusalPrefix, { message: outcome.refusal })
+      ? m.report_refusal({ message: outcome.refusal })
       : outcome.defect !== undefined
-        ? defectWords(format, outcome.defect)
+        ? defectWords(outcome.defect)
         : outcome.actual === undefined
-          ? format(m.testInputInvalid, { label: title })
+          ? m.editor_testInputInvalid({ label: title })
           : null
 
   const body =
@@ -380,8 +381,8 @@ export function TryRunPanel({
         problems={issues}
         scope="try"
         authoring={{
-          unnamedLabel: format(m.fieldUnnamed),
-          noteOf: (field) => constraintNote(field, format, locale),
+          unnamedLabel: m.editor_fieldUnnamed(),
+          noteOf: (field) => constraintNote(field, locale),
           ...(narrow ? { notePlacement: 'below' as const } : {}),
         }}
       />
@@ -406,7 +407,7 @@ export function TryRunPanel({
   const resultLine =
     result === null || outcome === undefined ? (
       <span data-testid="formula-try-idle" {...stylex.props(styles.result)}>
-        <span {...stylex.props(styles.resultNone)}>{format(m.resultNotRun)}</span>
+        <span {...stylex.props(styles.resultNone)}>{m.editor_resultNotRun()}</span>
       </span>
     ) : (
       <span
@@ -415,7 +416,7 @@ export function TryRunPanel({
         aria-live="polite"
         {...stylex.props(styles.result)}
       >
-        <span {...stylex.props(styles.resultLabel)}>{format(m.resultLabel)}</span>
+        <span {...stylex.props(styles.resultLabel)}>{m.editor_resultLabel()}</span>
         {problem === null ? (
           <span {...stylex.props(styles.resultValue, narrow && styles.resultValuePhone)}>
             {outcome.actual}
@@ -427,10 +428,10 @@ export function TryRunPanel({
           {fresh
             ? result.at === undefined
               ? ''
-              : format(m.resultRanAt, {
+              : m.editor_resultRanAt({
                   when: shortTime(new Date(result.at).toISOString(), locale),
                 })
-            : format(m.resultStale)}
+            : m.editor_resultStale()}
         </span>
       </span>
     )
@@ -460,17 +461,15 @@ export function TryRunPanel({
       ) : (
         <PlayIcon size={narrow ? 15 : 13} aria-hidden />
       )}
-      {format(
-        running
-          ? m.running
-          : shown === 'ran'
-            ? m.runDone
-            : shown === 'refused'
-              ? m.runRefused
-              : shown === 'failed'
-                ? m.runFailed
-                : m.run,
-      )}
+      {(running
+        ? m.editor_running
+        : shown === 'ran'
+          ? m.editor_runDone
+          : shown === 'refused'
+            ? m.editor_runRefused
+            : shown === 'failed'
+              ? m.editor_runFailed
+              : m.editor_run)()}
     </button>
   )
 
@@ -483,7 +482,7 @@ export function TryRunPanel({
         onClick={() => onKeep(actual ?? '')}
         {...stylex.props(styles.keep, narrow && styles.keepPhone)}
       >
-        {format(m.trySave)}
+        {m.editor_trySave()}
       </button>
     )
 

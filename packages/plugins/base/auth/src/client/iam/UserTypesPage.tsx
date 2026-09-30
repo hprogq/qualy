@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useApiQuery, useLoadFailure, usePageNavigate } from '@qualy/web-runtime'
 import { useI18n, useList } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { AsyncSection } from '@qualy/ui/admin'
 import {
   BandAction,
@@ -20,10 +20,12 @@ import {
   Tag,
 } from '@qualy/ui/screen'
 import { PlusIcon } from 'lucide-react'
-import { iamMessages as m } from '../i18n.ts'
+
 import { NewUserTypeForm } from './NewUserTypeForm.tsx'
 import { useUserTypeFacts } from './types/facts.ts'
 import { authApi } from '../api.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // User types, as one table: a handful of rows, each saying where that kind of
 // person may belong, how they get in and what they may carry. The row opens
@@ -33,7 +35,7 @@ const COLUMNS = 'minmax(0, 0.9fr) 6rem minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1
 
 export default function UserTypesPage() {
   const query = useApiQuery(authApi)
-  const { format, locale } = useI18n()
+  const { locale } = useI18n()
   const describe = useLoadFailure()
   const figure = new Intl.NumberFormat(locale)
   const listJoin = useList()
@@ -47,19 +49,19 @@ export default function UserTypesPage() {
 
   return (
     <Screen
-      title={format(m.userTypesTitle)}
-      description={format(m.userTypesHint)}
+      title={m.userTypes_title()}
+      description={m.userTypes_hint()}
       actions={
         canManage && (
           <BandActions
-            moreLabel={format(commonMessages.bandMore)}
+            moreLabel={commonMessages.action_more()}
             primary={
               <BandAction
                 variant="primary"
                 icon={<PlusIcon aria-hidden />}
                 onSelect={() => setCreating(true)}
               >
-                {format(m.newUserType)}
+                {m.userTypes_new()}
               </BandAction>
             }
           />
@@ -72,23 +74,23 @@ export default function UserTypesPage() {
         // on the page's own ground, where the list would have stood in a card
         framed
         retrying={types.isFetching}
-        loadingLabel={format(commonMessages.loading)}
-        retryLabel={format(commonMessages.retry)}
+        loadingLabel={commonMessages.state_loading()}
+        retryLabel={commonMessages.action_retry()}
         onRetry={() => void types.refetch()}
         skeleton={<TableSkeleton />}
       >
         <Card>
           {rows.length === 0 ? (
-            <CardEmpty>{format(m.userTypesEmpty)}</CardEmpty>
+            <CardEmpty>{m.userTypes_empty()}</CardEmpty>
           ) : (
             <Table columns={COLUMNS} openable>
               <TableHead>
-                <span>{format(m.userTypeLabel)}</span>
-                <span>{format(m.columnUsers)}</span>
-                <span>{format(m.placementLegend)}</span>
-                <span>{format(m.signInLabel)}</span>
-                <span>{format(m.openRolesLabel)}</span>
-                <span>{format(m.columnStatus)}</span>
+                <span>{m.field_userType()}</span>
+                <span>{m.userTypes_columnUsers()}</span>
+                <span>{m.userTypes_placementLegend()}</span>
+                <span>{m.userTypes_signIn()}</span>
+                <span>{m.userTypes_openRoles()}</span>
+                <span>{m.users_columnStatus()}</span>
               </TableHead>
               {rows.map((type) => {
                 const entrances = facts.entrances(type)?.filter((entrance) => entrance.admits)
@@ -105,7 +107,7 @@ export default function UserTypesPage() {
                   >
                     <Cell lead>
                       <LeadWord>{type.name}</LeadWord>
-                      {type.isSystem && <Tag>{format(m.systemBadge)}</Tag>}
+                      {type.isSystem && <Tag>{m.badge_system()}</Tag>}
                     </Cell>
                     {/* the number the list is scanned by: stacked, it keeps
                         the end of the row rather than queueing among the facts */}
@@ -115,17 +117,15 @@ export default function UserTypesPage() {
                     <Cell tone="muted">
                       {type.placementPolicy.mode === 'allow-list'
                         ? listJoin(facts.allowedKinds(type))
-                        : format(
-                            type.placementPolicy.mode === 'tenant-root'
-                              ? m.placementTenantRoot
-                              : m.placementAnywhere,
-                          )}
+                        : (type.placementPolicy.mode === 'tenant-root'
+                            ? m.field_placementTenantRoot
+                            : m.userTypes_placementAnywhere)()}
                     </Cell>
                     <Cell tone={entrances?.length === 0 ? 'warn' : 'muted'}>
                       {entrances === undefined ? (
-                        format(m.unknownWord)
+                        m.word_unknown()
                       ) : entrances.length === 0 ? (
-                        <Status tone="warn">{format(m.signInNoneShort)}</Status>
+                        <Status tone="warn">{m.userTypes_signInNoneShort()}</Status>
                       ) : (
                         listJoin(entrances.map((entrance) => entrance.name))
                       )}
@@ -135,9 +135,9 @@ export default function UserTypesPage() {
                         in. What they may carry is a press away. */}
                     <Cell tone="muted" narrow="drop">
                       {openRoles === undefined
-                        ? format(m.unknownWord)
+                        ? m.word_unknown()
                         : openRoles.length === 0
-                          ? format(m.noneWord)
+                          ? m.word_none()
                           : listJoin(openRoles.map((role) => role.name))}
                     </Cell>
                     {/* in force is the resting state and says nothing a
@@ -145,7 +145,7 @@ export default function UserTypesPage() {
                         somebody is looking at this row at all */}
                     <Cell tone="muted" narrow={type.status === 'active' ? 'drop' : 'keep'}>
                       <Status tone={type.status === 'active' ? 'plain' : 'bad'}>
-                        {format(type.status === 'active' ? m.typeEnabled : m.statusDisabled)}
+                        {(type.status === 'active' ? m.state_enabled : m.state_disabled)()}
                       </Status>
                     </Cell>
                   </TableRow>

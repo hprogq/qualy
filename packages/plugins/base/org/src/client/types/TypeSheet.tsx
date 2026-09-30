@@ -1,7 +1,7 @@
 import { useId, useMemo, useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { getApiErrorCode, useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { ConfirmDialog } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
@@ -21,8 +21,10 @@ import {
   TickGrid,
   UnsavedMark,
 } from '@qualy/ui/screen'
-import { orgMessages as m } from '../i18n.ts'
+
 import type { Api, OrgShape, OrgTypeDto, Run } from '../shape.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // One kind of unit, opened beside the table it was picked from.
 //
@@ -74,7 +76,7 @@ export function TypeSheet({
   canManage: boolean
   onClose: () => void
 }) {
-  const { format, formatError } = useI18n()
+  const { formatError } = useI18n()
   const [renaming, setRenaming] = useState(false)
   const [name, setName] = useState(type.name)
   // a name another kind already has is the name's to fix, said under it
@@ -136,12 +138,8 @@ export function TypeSheet({
       open={open}
       onClose={onClose}
       title={type.name}
-      titleAside={<Tag>{format(m.typeNodeCount, { count: inUse })}</Tag>}
-      meta={
-        <MetaLine
-          items={[format(m.typesTitle), format(m.typeInvolvedRules, { count: involved })]}
-        />
-      }
+      titleAside={<Tag>{m.type_nodeCount({ count: inUse })}</Tag>}
+      meta={<MetaLine items={[m.type_title(), m.type_involvedRules({ count: involved })]} />}
       actions={
         canManage ? (
           <Button
@@ -152,16 +150,16 @@ export function TypeSheet({
               setTaken(null)
             }}
           >
-            {format(m.rename)}
+            {m.node_rename()}
           </Button>
         ) : undefined
       }
-      closeLabel={format(commonMessages.close)}
+      closeLabel={commonMessages.action_close()}
       testId="type-sheet"
       footer={
         canManage ? (
           <>
-            {dirty && <UnsavedMark>{format(m.unsaved)}</UnsavedMark>}
+            {dirty && <UnsavedMark>{m.state_unsaved()}</UnsavedMark>}
             <Spacer />
             <Button
               size="sm"
@@ -169,7 +167,7 @@ export function TypeSheet({
               disabled={!dirty || saving}
               onClick={() => setDraft(stored)}
             >
-              {format(m.discard)}
+              {m.action_discard()}
             </Button>
             <Button
               size="sm"
@@ -177,7 +175,7 @@ export function TypeSheet({
               onClick={saveRules}
               data-testid="type-save"
             >
-              {format(m.save)}
+              {m.action_save()}
             </Button>
           </>
         ) : undefined
@@ -205,7 +203,7 @@ export function TypeSheet({
             <Input
               autoFocus
               value={name}
-              aria-label={format(m.nameLabel)}
+              aria-label={m.node_name()}
               aria-required
               {...(taken === null ? {} : { 'aria-invalid': true, 'aria-describedby': takenId })}
               onChange={(event) => {
@@ -215,7 +213,7 @@ export function TypeSheet({
               wrapperXstyle={styles.grow}
             />
             <Button size="sm" type="submit" disabled={name.trim() === '' || name === type.name}>
-              {format(m.save)}
+              {m.action_save()}
             </Button>
           </form>
           {taken !== null && (
@@ -227,15 +225,15 @@ export function TypeSheet({
       )}
 
       <Card>
-        <CardHead title={format(m.allowedChildrenTitle)} />
-        <TickGrid columns={2} label={format(m.allowedChildrenTitle)}>
+        <CardHead title={m.type_allowedChildren()} />
+        <TickGrid columns={2} label={m.type_allowedChildren()}>
           {shape.types.map((candidate) => (
             <Tick
               key={candidate.id}
               label={candidate.name}
               checked={draft.has(candidate.id)}
               disabled={!canManage || saving}
-              tally={format(m.typeNodeCount, { count: shape.nodesOfType.get(candidate.id) ?? 0 })}
+              tally={m.type_nodeCount({ count: shape.nodesOfType.get(candidate.id) ?? 0 })}
               data-child-type={candidate.id}
               onChange={(next) => {
                 const held = new Set(draft)
@@ -246,14 +244,14 @@ export function TypeSheet({
             />
           ))}
         </TickGrid>
-        <CardHint>{format(m.allowedChildrenHint)}</CardHint>
+        <CardHint>{m.type_allowedChildrenHint()}</CardHint>
       </Card>
 
       <Card>
-        <CardHead title={format(m.allowedUnder)} />
+        <CardHead title={m.type_allowedUnder()} />
         <div {...stylex.props(styles.tags)}>
           {allowedUnder.length === 0 ? (
-            <span {...stylex.props(styles.quiet)}>{format(m.allowedUnderNone)}</span>
+            <span {...stylex.props(styles.quiet)}>{m.type_allowedUnderNone()}</span>
           ) : (
             allowedUnder.map((held) => (
               <Tag key={held.id} outline>
@@ -262,14 +260,14 @@ export function TypeSheet({
             ))
           )}
         </div>
-        <CardHint>{format(m.allowedUnderHint)}</CardHint>
+        <CardHint>{m.type_allowedUnderHint()}</CardHint>
       </Card>
 
       <Card>
         <DefList>
-          <DefLine label={format(m.nameLabel)}>{type.name}</DefLine>
-          <DefLine label={format(m.typeCountColumn)}>
-            <span {...stylex.props(styles.numeric)}>{format(m.countUnits, { count: inUse })}</span>
+          <DefLine label={m.node_name()}>{type.name}</DefLine>
+          <DefLine label={m.type_countColumn()}>
+            <span {...stylex.props(styles.numeric)}>{m.node_countUnits({ count: inUse })}</span>
           </DefLine>
         </DefList>
       </Card>
@@ -277,13 +275,13 @@ export function TypeSheet({
       {canManage && (
         <Card>
           <div {...stylex.props(styles.deleteRow)}>
-            <span {...stylex.props(styles.deleteTitle)}>{format(m.typeDeleteTitle)}</span>
+            <span {...stylex.props(styles.deleteTitle)}>{m.type_deleteTitle()}</span>
             <span {...stylex.props(styles.deleteWhy)}>
               {isRootType
-                ? format(m.typeIsRootHint)
+                ? m.types_isRootHint()
                 : inUse > 0
-                  ? format(m.typeInUseHint, { count: inUse })
-                  : format(m.typeFreeHint)}
+                  ? m.type_inUseHint({ count: inUse })
+                  : m.type_freeHint()}
             </span>
             <Button
               size="xs"
@@ -291,7 +289,7 @@ export function TypeSheet({
               disabled={inUse > 0 || isRootType}
               onClick={() => setConfirmingDelete(true)}
             >
-              {format(m.delete)}
+              {m.action_delete()}
             </Button>
           </div>
         </Card>
@@ -299,10 +297,10 @@ export function TypeSheet({
 
       <ConfirmDialog
         open={confirmingDelete}
-        title={format(m.confirmDeleteType, { name: type.name })}
-        description={format(m.confirmDeleteTypeBody)}
-        confirmLabel={format(m.delete)}
-        cancelLabel={format(commonMessages.cancel)}
+        title={m.type_confirmDelete({ name: type.name })}
+        description={m.type_confirmDeleteBody()}
+        confirmLabel={m.action_delete()}
+        cancelLabel={commonMessages.action_cancel()}
         onConfirm={() =>
           void run(api.org.deleteType({ params: { typeId: type.id } }))
             .then(() => {

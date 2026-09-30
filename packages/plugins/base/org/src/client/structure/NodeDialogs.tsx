@@ -3,7 +3,7 @@ import * as stylex from '@stylexjs/stylex'
 import { orgNodePicker, type OrgNodePickerContext } from '@qualy/ui-contract'
 import { UiSlot } from '@qualy/web-runtime'
 import { getApiErrorCode, useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { Field, FormDialog } from '@qualy/ui/admin'
 import { NetworkIcon, RouteOffIcon } from 'lucide-react'
@@ -11,8 +11,10 @@ import { Button } from '@qualy/ui/button'
 import { Blank } from '@qualy/ui/screen'
 import { Input } from '@qualy/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@qualy/ui/select'
-import { orgMessages as m } from '../i18n.ts'
+
 import type { Api, OrgShape, Run } from '../shape.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // The three things done to a unit from its own row: a unit under it, another
 // name, another place. Each is a short task with an end, so each is a dialog
@@ -52,7 +54,7 @@ export function NodeDialogs({
   /** to the rules of one kind of unit, where what may hold what is set */
   onOpenRules: (orgTypeId: string) => void
 }) {
-  const { format, formatError } = useI18n()
+  const { formatError } = useI18n()
   const node = task === null ? undefined : shape.byId.get(task.nodeId)
   const [name, setName] = useState('')
   // a name a sibling already has is the name's to fix, said under it; a move
@@ -100,14 +102,14 @@ export function NodeDialogs({
     )
     const why: Record<string, string> = {}
     for (const candidate of shape.nodes) {
-      if (candidate.id === node.id) why[candidate.id] = format(m.moveBarredSelf)
-      else if (below.has(candidate.id)) why[candidate.id] = format(m.moveBarredBelow)
-      else if (candidate.id === node.parentId) why[candidate.id] = format(m.moveBarredCurrent)
-      else if (!parents.has(candidate.orgTypeId)) why[candidate.id] = format(m.moveBarredType)
-      else if (!candidate.manageable) why[candidate.id] = format(m.moveBarredReach)
+      if (candidate.id === node.id) why[candidate.id] = m.node_moveBarredSelf()
+      else if (below.has(candidate.id)) why[candidate.id] = m.node_moveBarredBelow()
+      else if (candidate.id === node.parentId) why[candidate.id] = m.node_moveBarredCurrent()
+      else if (!parents.has(candidate.orgTypeId)) why[candidate.id] = m.node_moveBarredType()
+      else if (!candidate.manageable) why[candidate.id] = m.node_moveBarredReach()
     }
     return why
-  }, [task?.kind, node, shape, format])
+  }, [task?.kind, node, shape])
 
   if (task === null || node === undefined) return null
   const kindName = shape.types.find((type) => type.id === node.orgTypeId)?.name ?? ''
@@ -123,7 +125,7 @@ export function NodeDialogs({
         onOpenRules(node.orgTypeId)
       }}
     >
-      {format(m.moveNowhereRules)}
+      {m.node_moveNowhereRules()}
     </Button>
   )
 
@@ -158,10 +160,10 @@ export function NodeDialogs({
         : targetId !== ''
   const title =
     task.kind === 'create'
-      ? format(m.createUnder, { name: node.name })
+      ? m.node_createUnder({ name: node.name })
       : task.kind === 'rename'
-        ? format(m.renameNamed, { name: node.name })
-        : format(m.moveNamed, { name: node.name })
+        ? m.node_renameNamed({ name: node.name })
+        : m.node_moveNamed({ name: node.name })
 
   return (
     <FormDialog
@@ -172,11 +174,15 @@ export function NodeDialogs({
       footer={
         <>
           <Button variant="outline" onClick={onDone}>
-            {format(nowhere ? commonMessages.close : commonMessages.cancel)}
+            {(nowhere ? commonMessages.action_close : commonMessages.action_cancel)()}
           </Button>
           {!nowhere && (
             <Button type="submit" form="org-node-task" disabled={!ready || busy}>
-              {format(task.kind === 'create' ? m.create : task.kind === 'rename' ? m.save : m.move)}
+              {(task.kind === 'create'
+                ? m.action_create
+                : task.kind === 'rename'
+                  ? m.action_save
+                  : m.action_move)()}
             </Button>
           )}
         </>
@@ -198,17 +204,17 @@ export function NodeDialogs({
               <Blank
                 size="compact"
                 icon={<NetworkIcon />}
-                title={format(m.createNowhereTitle)}
-                description={format(m.createNowhere, { type: kindName })}
+                title={m.node_createNowhereTitle()}
+                description={m.node_createNowhere({ type: kindName })}
                 action={toRules}
               />
             </div>
           ) : (
-            <Field label={format(m.typeColumn)} required>
+            <Field label={m.node_typeColumn()} required>
               {(id, control) => (
                 <Select value={typeId === '' ? undefined : typeId} onValueChange={setTypeId}>
                   <SelectTrigger id={id} {...control}>
-                    <SelectValue placeholder={format(m.selectType)} />
+                    <SelectValue placeholder={m.type_select()} />
                   </SelectTrigger>
                   <SelectContent>
                     {childTypes.map((type) => (
@@ -222,7 +228,7 @@ export function NodeDialogs({
             </Field>
           ))}
         {task.kind !== 'move' && !nowhere && (
-          <Field label={format(m.nameLabel)} required error={taken}>
+          <Field label={m.node_name()} required error={taken}>
             {(id, control) => (
               <Input
                 id={id}
@@ -245,8 +251,8 @@ export function NodeDialogs({
             <Blank
               size="compact"
               icon={<RouteOffIcon />}
-              title={format(m.moveNowhereTitle)}
-              description={format(m.moveNowhere, { type: kindName })}
+              title={m.node_moveNowhereTitle()}
+              description={m.node_moveNowhere({ type: kindName })}
               action={toRules}
             />
           </div>
@@ -276,8 +282,8 @@ export function NodeDialogs({
                     value={targetId === '' ? undefined : targetId}
                     onValueChange={setTargetId}
                   >
-                    <SelectTrigger aria-label={format(m.moveTo)}>
-                      <SelectValue placeholder={format(m.selectParent)} />
+                    <SelectTrigger aria-label={m.node_moveTo()}>
+                      <SelectValue placeholder={m.node_selectParent()} />
                     </SelectTrigger>
                     <SelectContent>
                       {shape.nodes
@@ -292,7 +298,7 @@ export function NodeDialogs({
                 }
               />
             </div>
-            <p {...stylex.props(styles.note)}>{format(m.moveConsequence)}</p>
+            <p {...stylex.props(styles.note)}>{m.node_moveConsequence()}</p>
           </>
         )}
       </form>

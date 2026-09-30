@@ -1,4 +1,4 @@
-import { assessmentMessages as m } from '../i18n.ts'
+import * as m from '#messages'
 
 // Where a claim, or a determination, came from - in the product's words.
 //
@@ -10,17 +10,17 @@ import { assessmentMessages as m } from '../i18n.ts'
 export const sourceLabelOf = (source: string) => {
   switch (source) {
     case 'proxy':
-      return m.entrySourceProxy
+      return m.entry_sourceProxy
     case 'record':
     case 'review':
-      return m.entrySourceRecord
+      return m.entry_sourceRecord
     case 'import':
-      return m.entrySourceImport
+      return m.entry_sourceImport
     case 'system':
-      return m.entrySourceSystem
+      return m.entry_sourceSystem
     case 'redetermination':
-      return m.entrySourceRedetermination
+      return m.entry_sourceRedetermination
     default:
-      return m.entrySourceSelf
+      return m.entry_sourceSelf
   }
 }

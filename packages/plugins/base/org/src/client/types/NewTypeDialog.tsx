@@ -1,11 +1,13 @@
 import { useState } from 'react'
 import { getApiErrorCode, useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { Field, FormDialog } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
-import { orgMessages as m } from '../i18n.ts'
+
 import type { Api, Run } from '../shape.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 /** a new kind of unit has only a name; what it may hold is set once it exists */
 export function NewTypeDialog({
@@ -21,7 +23,7 @@ export function NewTypeDialog({
   onCreated: (id: string) => void
   onClose: () => void
 }) {
-  const { format, formatError } = useI18n()
+  const { formatError } = useI18n()
   const [name, setName] = useState('')
   // a name another kind already has is the name's to fix, said under it
   const [taken, setTaken] = useState<string | null>(null)
@@ -51,20 +53,20 @@ export function NewTypeDialog({
   return (
     <FormDialog
       open={open}
-      title={format(m.newTypeTitle)}
+      title={m.type_new()}
       onClose={close}
       footer={
         <>
           <Button variant="outline" onClick={close}>
-            {format(commonMessages.cancel)}
+            {commonMessages.action_cancel()}
           </Button>
           <Button disabled={name.trim() === '' || busy} onClick={submit}>
-            {format(m.create)}
+            {m.action_create()}
           </Button>
         </>
       }
     >
-      <Field label={format(m.nameLabel)} required error={taken}>
+      <Field label={m.node_name()} required error={taken}>
         {(id, control) => (
           <Input
             id={id}

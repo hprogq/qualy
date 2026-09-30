@@ -1,9 +1,8 @@
 import { useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { usePageQueryState, usePageQueryUpdate, useScreenAsideOffered } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
 import { Drill, type DrillMove } from '@qualy/ui/reveal'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import { BatchScreen } from '../batch/BatchScreen.tsx'
 import type { BatchDto } from '../phase/model.ts'
 import { RosterNeighbors } from '../roster/RosterNeighbors.tsx'
@@ -12,6 +11,7 @@ import { rosterPageAddress, useRosterView } from '../roster/roster-view.ts'
 import { useRosterWalk } from '../roster/roster-walk.ts'
 import { ParticipantResultList } from './ParticipantResultList.tsx'
 import { ParticipantResultDetail } from './ParticipantResultDetail.tsx'
+import * as m from '#messages'
 
 // Checking one person's account: who took part, and what this round has
 // decided about them.
@@ -52,11 +52,10 @@ const styles = stylex.create({
 })
 
 export default function ParticipantResultsPage() {
-  const { format } = useI18n()
   const [participantId] = usePageQueryState('participant', '', { history: 'push' })
   return (
     <BatchScreen
-      title={format(m.participantResultsTab)}
+      title={m.participantResults_tab()}
       // A data-dense page takes the whole content area: the list says its
       // own name in a line over it, and an open account stands who it is
       // beside the work, in the column the rail gives up for it.

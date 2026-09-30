@@ -9,7 +9,7 @@ import {
   useRunApi,
 } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { useTerm } from '@qualy/plugin-settings/client/terms'
 import { authTerms } from '@qualy/auth-contract/terms'
 import * as stylex from '@stylexjs/stylex'
@@ -30,11 +30,13 @@ import {
   TableHead,
   TableRow,
 } from '@qualy/ui/screen'
-import { iamMessages as m } from '../i18n.ts'
+
 import { authApi } from '../api.ts'
 import { PlacementPath } from './users/PlacementPath.tsx'
 import { EmailWithStanding } from './person-facts.tsx'
 import { AccountFieldDialog } from './users/AccountFieldDialog.tsx'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // The person, stated: what the directory holds about them, and where each
 // of the other sections picks up. Editing is the banner's, because it edits
@@ -111,7 +113,7 @@ export default function UserProfilePage() {
   const run = useRunApi()
   const query = useApiQuery(authApi)
   const queryClient = useQueryClient()
-  const { format, formatError, locale } = useI18n()
+  const { formatError, locale } = useI18n()
   const businessNoWord = useTerm(authTerms.businessNumber)
   // a reading of this section that failed; the person not being there is the banner's to say
   const describe = useLoadFailure()
@@ -131,10 +133,10 @@ export default function UserProfilePage() {
         email,
       })),
     onSuccess: async ({ sent, email }) => {
-      if (sent) toast.success(format(m.personVerificationSent, { email }))
+      if (sent) toast.success(m.person_verificationSent({ email }))
       else {
         // proven meanwhile: the page says so once it reads the person again
-        toast.success(format(m.personAlreadyVerified))
+        toast.success(m.person_alreadyVerified())
         await queryClient.invalidateQueries({ queryKey: query.identity.key() })
       }
     },
@@ -153,18 +155,18 @@ export default function UserProfilePage() {
       <AsyncSection
         pending={user.isPending}
         error={user.isError ? describe.of(user.error) : null}
-        loadingLabel={format(commonMessages.loading)}
-        retryLabel={format(commonMessages.retry)}
+        loadingLabel={commonMessages.state_loading()}
+        retryLabel={commonMessages.action_retry()}
         onRetry={() => void user.refetch()}
         skeleton={<EditorSkeleton />}
       >
         {record && (
           <>
             <section {...stylex.props(styles.section)}>
-              <SectionHead title={format(m.profileSection)} />
+              <SectionHead title={m.users_profile()} />
               <Card data-testid="person-profile">
                 <DefList>
-                  <DefLine label={format(m.nameLabel)}>{record.displayName}</DefLine>
+                  <DefLine label={m.field_name()}>{record.displayName}</DefLine>
                   <DefLine label={businessNoWord}>
                     <span
                       data-testid="profile-business-no"
@@ -176,7 +178,7 @@ export default function UserProfilePage() {
                         // a gap only where somebody could fill it: the
                         // platform's own account never gets a number
                         <span {...stylex.props(system ? styles.aside : styles.missing)}>
-                          {format(m.fieldUnset)}
+                          {m.person_fieldUnset()}
                         </span>
                       ) : (
                         record.businessNo
@@ -188,15 +190,15 @@ export default function UserProfilePage() {
                             variant="ghost"
                             onClick={() => setSetting('businessNo')}
                           >
-                            {format(
-                              record.businessNo === null ? m.fieldSetAction : m.fieldChangeAction,
-                            )}
+                            {(record.businessNo === null
+                              ? m.person_fieldSet
+                              : m.person_fieldChange)()}
                           </Button>
                         </span>
                       )}
                     </span>
                   </DefLine>
-                  <DefLine label={format(m.emailLabel)}>
+                  <DefLine label={m.users_email()}>
                     <span
                       data-testid="profile-email"
                       data-email-state={
@@ -209,7 +211,7 @@ export default function UserProfilePage() {
                       {...stylex.props(styles.valueLine)}
                     >
                       {record.email === null ? (
-                        <span {...stylex.props(styles.missing)}>{format(m.fieldUnset)}</span>
+                        <span {...stylex.props(styles.missing)}>{m.person_fieldUnset()}</span>
                       ) : (
                         <EmailWithStanding
                           email={record.email}
@@ -227,32 +229,32 @@ export default function UserProfilePage() {
                               disabled={sendVerification.isPending}
                               onClick={() => sendVerification.mutate(record.email!)}
                             >
-                              {format(m.sendVerification)}
+                              {m.account_sendVerification()}
                             </Button>
                           )}
                           <Button size="xs" variant="ghost" onClick={() => setSetting('email')}>
-                            {format(record.email === null ? m.fieldSetAction : m.fieldChangeAction)}
+                            {(record.email === null ? m.person_fieldSet : m.person_fieldChange)()}
                           </Button>
                         </span>
                       ) : (
                         system && (
-                          <span {...stylex.props(styles.aside)}>{format(m.emailSystemShort)}</span>
+                          <span {...stylex.props(styles.aside)}>{m.person_emailSystem()}</span>
                         )
                       )}
                     </span>
                   </DefLine>
-                  <DefLine label={format(m.userTypeLabel)}>{record.userType.name}</DefLine>
-                  <DefLine label={format(m.columnStatus)}>
+                  <DefLine label={m.field_userType()}>{record.userType.name}</DefLine>
+                  <DefLine label={m.users_columnStatus()}>
                     <Status tone={record.status === 'active' ? 'ok' : 'bad'}>
-                      {format(record.status === 'disabled' ? m.disabledBadge : m.statusActive)}
+                      {(record.status === 'disabled' ? m.badge_disabled : m.users_statusActive)()}
                     </Status>
                   </DefLine>
-                  <DefLine label={format(m.personPlacement)}>
-                    <PlacementPath steps={path} empty={format(m.rolesNone)} />
+                  <DefLine label={m.person_placement()}>
+                    <PlacementPath steps={path} empty={m.users_rolesNone()} />
                   </DefLine>
-                  <DefLine label={format(m.lastSignInLabel)}>
+                  <DefLine label={m.users_lastSignIn()}>
                     {user.data?.lastSignInAt == null
-                      ? format(m.neverUsed)
+                      ? m.person_neverUsed()
                       : when(user.data.lastSignInAt)}
                   </DefLine>
                 </DefList>
@@ -261,7 +263,7 @@ export default function UserProfilePage() {
 
             <section {...stylex.props(styles.section)}>
               <SectionHead
-                title={format(m.rolesLabel)}
+                title={m.users_roles()}
                 count={roles.length}
                 actions={
                   <PageLink
@@ -270,33 +272,30 @@ export default function UserProfilePage() {
                     className={stylex.props(styles.link).className}
                     unavailable={null}
                   >
-                    {format(m.manageRoles)}
+                    {m.person_manageRoles()}
                   </PageLink>
                 }
               />
               <Card data-testid="person-roles" data-count={roles.length}>
                 {roles.length === 0 ? (
-                  <CardEmpty>{format(m.personNoRoles)}</CardEmpty>
+                  <CardEmpty>{m.person_noRoles()}</CardEmpty>
                 ) : (
                   <Table columns="minmax(0, 1fr) minmax(0, 1.4fr)">
                     <TableHead>
-                      <span>{format(m.rolesLabel)}</span>
-                      <span>{format(m.columnUnit)}</span>
+                      <span>{m.users_roles()}</span>
+                      <span>{m.users_columnUnit()}</span>
                     </TableHead>
                     {roles.map((role) => (
                       <TableRow key={role.grantId} height="compact">
                         <Cell lead>{role.roleName}</Cell>
                         <Cell>
                           {role.scoped
-                            ? format(m.personRoleScoped)
+                            ? m.person_roleScoped()
                             : role.orgNodeName === null
-                              ? format(m.personRoleTenantWide)
-                              : format(
-                                  role.coverage === 'subtree'
-                                    ? m.personRoleSubtree
-                                    : m.personRoleHere,
-                                  { node: role.orgNodeName },
-                                )}
+                              ? m.person_roleTenantWide()
+                              : (role.coverage === 'subtree'
+                                  ? m.person_roleSubtree
+                                  : m.person_roleHere)({ node: role.orgNodeName })}
                         </Cell>
                       </TableRow>
                     ))}

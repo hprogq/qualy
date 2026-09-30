@@ -9,7 +9,7 @@ import {
   usePageTitle,
 } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { layout } from '@qualy/ui/theme/layout.stylex'
@@ -32,7 +32,7 @@ import {
   SearchIcon,
   XIcon,
 } from 'lucide-react'
-import { assessmentMessages as m } from './i18n.ts'
+
 import { assessmentApi } from './api.ts'
 import { NewBatchDialog } from './NewBatchForm.tsx'
 import { standingOf, type BatchStanding } from './batch/standing.ts'
@@ -41,6 +41,8 @@ import { marked, readableZone, zoneMarkOf } from './batch/zone.ts'
 import { HeroSkeleton, ListSkeleton } from './batch/ListSkeleton.tsx'
 import { BatchCard } from './batch/BatchCard.tsx'
 import { agendaOf, type BatchCardRow, type HeroFrame } from './batch/hero.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // Every batch there is, and the way into one.
 //
@@ -514,11 +516,11 @@ function useHeld(active: boolean, ms: number): boolean {
  * The stage column: where the batch is, or what it has of a plan. A batch
  * with no stages at all is one whose setting up is not finished.
  */
-function stageOf(row: BatchCardRow, format: ReturnType<typeof useI18n>['format']) {
+function stageOf(row: BatchCardRow) {
   if (row.currentPhaseName !== null) return row.currentPhaseName
   return row.timeline.length > 0
-    ? format(m.stageCount, { total: row.timeline.length })
-    : format(m.stageIncomplete)
+    ? m.batch_stageCount({ total: row.timeline.length })
+    : m.batch_stageIncomplete()
 }
 
 /**
@@ -533,7 +535,6 @@ function stageOf(row: BatchCardRow, format: ReturnType<typeof useI18n>['format']
 function timeOf(
   row: BatchCardRow & { createdAt: string },
   standing: BatchStanding,
-  format: ReturnType<typeof useI18n>['format'],
   locale: string,
 ): { text: string; mark: string | null } {
   const zone = readableZone(row.timezone)
@@ -546,19 +547,19 @@ function timeOf(
     // the last stage that was entered is the closest thing to a close the
     // plan records; a batch that never ran a stage ended when it was made
     const last = [...timeline].reverse().find((entry) => entry.entry.kind === 'entered')
-    return dated((date) => format(m.endedOn, { date }), last?.entry.at ?? row.createdAt)
+    return dated((date) => m.batch_endedOn({ date }), last?.entry.at ?? row.createdAt)
   }
   if (standing === 'active') {
     const at = timeline.findIndex((entry) => entry.status === 'current')
     const next = timeline[at + 1]
     return next?.entry.kind === 'planned' && next.entry.at !== null
-      ? dated((date) => format(m.stageUntil, { date }), next.entry.at)
-      : { text: format(m.flowEndPending), mark: null }
+      ? dated((date) => m.batch_stageUntil({ date }), next.entry.at)
+      : { text: m.flow_endPending(), mark: null }
   }
   const first = timeline.find((entry) => entry.entry.kind === 'planned' && entry.entry.at !== null)
   return first?.entry.at
-    ? dated((date) => format(m.startsOn, { date }), first.entry.at)
-    : { text: format(m.timeUnset), mark: null }
+    ? dated((date) => m.batch_startsOn({ date }), first.entry.at)
+    : { text: m.batch_timeUnset(), mark: null }
 }
 
 /** the time column's words, and the offset they carry as a fact */
@@ -577,10 +578,10 @@ export default function BatchListPage() {
   const narrow = useIsMobile()
   const [searchOpen, setSearchOpen] = useState(false)
   const searchInRow = narrow && searchOpen
-  const { format, locale } = useI18n()
+  const { locale } = useI18n()
   const failure = useLoadFailure()
   // the shell repeats this once the heading itself has scrolled away
-  const titleRef = usePageTitle(format(m.batchesTitle))
+  const titleRef = usePageTitle(m.batch_title())
   const navigate = usePageNavigate()
   const [creating, setCreating] = useState(false)
   const [search, setSearch] = useState('')
@@ -736,9 +737,9 @@ export default function BatchListPage() {
   // left nothing, or nothing here for this reader at all
   const emptyKind = settledSearch !== '' ? 'search' : filtered ? 'filtered' : 'none'
   const emptyWords = {
-    none: { title: m.batchesEmpty, hint: m.batchesEmptyHint },
-    filtered: { title: m.emptyFilteredTitle, hint: m.emptyFilteredHint },
-    search: { title: m.emptySearchTitle, hint: m.emptySearchHint },
+    none: { title: m.batch_empty, hint: m.batch_emptyHint },
+    filtered: { title: m.batch_emptyFiltered, hint: m.batch_emptyFilteredHint },
+    search: { title: m.batch_emptySearch, hint: m.batch_emptySearchHint },
   } as const
 
   const standingStyle = {
@@ -772,8 +773,8 @@ export default function BatchListPage() {
       name="batches-search"
       value={search}
       autoFocus={narrow}
-      placeholder={format(m.searchPlaceholder)}
-      aria-label={format(m.searchPlaceholder)}
+      placeholder={m.batch_search()}
+      aria-label={m.batch_search()}
       onChange={(event) => setSearch(event.target.value)}
       lead={<SearchIcon aria-hidden className={stylex.props(styles.searchGlyph).className} />}
       wrapperXstyle={narrow ? styles.searchOpenSeat : styles.searchSeat}
@@ -792,14 +793,14 @@ export default function BatchListPage() {
         <div {...stylex.props(styles.masthead)}>
           {!searchInRow && (
             <h1 ref={titleRef} {...stylex.props(styles.title)}>
-              {format(m.batchesTitle)}
+              {m.batch_title()}
             </h1>
           )}
           <div {...stylex.props(styles.mastheadTools)}>
             {narrow && !searchInRow && (
               <button
                 type="button"
-                aria-label={format(m.searchPlaceholder)}
+                aria-label={m.batch_search()}
                 onClick={() => setSearchOpen(true)}
                 {...stylex.props(styles.iconButton)}
               >
@@ -815,7 +816,7 @@ export default function BatchListPage() {
                 {searchBox}
                 <button
                   type="button"
-                  aria-label={format(commonMessages.close)}
+                  aria-label={commonMessages.action_close()}
                   onClick={() => setSearchOpen(false)}
                   {...stylex.props(styles.iconButton)}
                 >
@@ -828,7 +829,7 @@ export default function BatchListPage() {
                 {narrow ? (
                   <button
                     type="button"
-                    aria-label={format(m.newBatch)}
+                    aria-label={m.batch_new()}
                     onClick={() => setCreating(true)}
                     {...stylex.props(styles.iconButton, styles.iconButtonInk)}
                   >
@@ -840,7 +841,7 @@ export default function BatchListPage() {
                     onClick={() => setCreating(true)}
                   >
                     <PlusIcon />
-                    {format(m.newBatch)}
+                    {m.batch_new()}
                   </Button>
                 )}
               </>
@@ -905,8 +906,8 @@ export default function BatchListPage() {
             error={batches.isError && batches.data === undefined ? failure.of(batches.error) : null}
             framed
             retrying={batches.isFetching}
-            loadingLabel={format(commonMessages.loading)}
-            retryLabel={format(commonMessages.retry)}
+            loadingLabel={commonMessages.state_loading()}
+            retryLabel={commonMessages.action_retry()}
             onRetry={() => void batches.refetch()}
             skeleton={<ListSkeleton labelled={listLabelled} />}
           >
@@ -918,24 +919,24 @@ export default function BatchListPage() {
               <div {...stylex.props(styles.listHead)}>
                 {listLabelled && (
                   <div {...stylex.props(styles.listHeadLine)}>
-                    <span {...stylex.props(styles.listLabel)}>{format(m.batchesAll)}</span>
+                    <span {...stylex.props(styles.listLabel)}>{m.batch_all()}</span>
                   </div>
                 )}
                 <div {...stylex.props(styles.pillScroller)}>
                   <ToggleGroup
                     className={stylex.props(styles.wide).className}
                     value={statusFilter}
-                    aria-label={format(m.filterStatus)}
+                    aria-label={m.batch_filterStatus()}
                     // a filter group always has an answer: clicking the active
                     // item would otherwise clear the group and mean nothing
                     onValueChange={(next) => next !== '' && setStatusFilter(next as StatusFilter)}
                   >
                     <ToggleGroupItem value="all">
-                      {format(m.filterAll)}
+                      {m.batch_filterAll()}
                       {chipCount(counts && counts.draft + counts.active + counts.archived)}
                     </ToggleGroupItem>
                     <ToggleGroupItem value="active">
-                      {format(m.statusActive)}
+                      {m.status_active()}
                       {chipCount(counts?.active)}
                     </ToggleGroupItem>
                     {/* a draft is a round being set up, and it is only ever
@@ -943,19 +944,19 @@ export default function BatchListPage() {
                       participant the filter is a promise of an empty page */}
                     {canCreate && (
                       <ToggleGroupItem value="draft">
-                        {format(m.statusDraft)}
+                        {m.status_draft()}
                         {chipCount(counts?.draft)}
                       </ToggleGroupItem>
                     )}
                     {/* "archived" is the word the column stores; what a reader
                       recognises is that the assessment is over */}
                     <ToggleGroupItem value="archived">
-                      {format(m.filterEnded)}
+                      {m.batch_filterEnded()}
                       {chipCount(counts?.archived)}
                     </ToggleGroupItem>
                   </ToggleGroup>
                   <span data-testid="batch-refreshing" {...stylex.props(styles.refreshSeat)}>
-                    {refreshing && <Spinner aria-label={format(commonMessages.loading)} />}
+                    {refreshing && <Spinner aria-label={commonMessages.state_loading()} />}
                   </span>
                 </div>
                 {!narrow && searchBox}
@@ -980,8 +981,8 @@ export default function BatchListPage() {
                       <EmptyMedia variant="icon">
                         <LayersIcon />
                       </EmptyMedia>
-                      <EmptyTitle>{format(emptyWords[emptyKind].title)}</EmptyTitle>
-                      <EmptyDescription>{format(emptyWords[emptyKind].hint)}</EmptyDescription>
+                      <EmptyTitle>{emptyWords[emptyKind].title()}</EmptyTitle>
+                      <EmptyDescription>{emptyWords[emptyKind].hint()}</EmptyDescription>
                     </EmptyHeader>
                   </Empty>
                 ) : narrow ? (
@@ -1003,21 +1004,19 @@ export default function BatchListPage() {
                             <span {...stylex.props(styles.rowMeta)}>
                               <span {...stylex.props(styles.standing, standingStyle[at])}>
                                 <span aria-hidden {...stylex.props(styles.dot, dotStyle[at])} />
-                                {format(
-                                  {
-                                    draft: m.statusDraft,
-                                    pending: m.statusPending,
-                                    active: m.statusActive,
-                                    archived: m.statusArchived,
-                                  }[at],
-                                )}
+                                {{
+                                  draft: m.status_draft,
+                                  pending: m.status_pending,
+                                  active: m.status_active,
+                                  archived: m.status_archived,
+                                }[at]()}
                               </span>
-                              <span {...stylex.props(styles.rowStage)}>{stageOf(row, format)}</span>
+                              <span {...stylex.props(styles.rowStage)}>{stageOf(row)}</span>
                               {/* a round still being set up has no date to
                                   give, and its stage has just said so */}
                               {at !== 'draft' && (
                                 <span {...stylex.props(styles.rowWhen)}>
-                                  <RowTime time={timeOf(row, at, format, locale)} />
+                                  <RowTime time={timeOf(row, at, locale)} />
                                 </span>
                               )}
                             </span>
@@ -1038,7 +1037,7 @@ export default function BatchListPage() {
                         onClick={() => setPageIndex((index) => index + 1)}
                         {...stylex.props(styles.more)}
                       >
-                        {format(m.nextPage)}
+                        {m.action_nextPage()}
                       </button>
                     )}
                   </div>
@@ -1048,19 +1047,19 @@ export default function BatchListPage() {
                       <TableHeader>
                         <TableRow xstyle={styles.headRow}>
                           <TableHead xstyle={[styles.head, styles.leading]}>
-                            {format(m.columnBatch)}
+                            {m.batch_columnBatch()}
                           </TableHead>
                           <TableHead xstyle={[styles.head, styles.colStatus]}>
-                            {format(m.filterStatus)}
+                            {m.batch_filterStatus()}
                           </TableHead>
                           <TableHead xstyle={[styles.head, styles.colStage]}>
-                            {format(m.columnStage)}
+                            {m.batch_columnStage()}
                           </TableHead>
                           <TableHead xstyle={[styles.head, styles.colTime]}>
-                            {format(m.columnTime)}
+                            {m.batch_columnTime()}
                           </TableHead>
                           <TableHead
-                            aria-label={format(m.enterBatch)}
+                            aria-label={m.batch_enter()}
                             xstyle={[styles.head, styles.colOpen, styles.trailing]}
                           />
                         </TableRow>
@@ -1089,21 +1088,19 @@ export default function BatchListPage() {
                               <TableCell xstyle={styles.cell}>
                                 <span {...stylex.props(styles.standing, standingStyle[at])}>
                                   <span aria-hidden {...stylex.props(styles.dot, dotStyle[at])} />
-                                  {format(
-                                    {
-                                      draft: m.statusDraft,
-                                      pending: m.statusPending,
-                                      active: m.statusActive,
-                                      archived: m.statusArchived,
-                                    }[at],
-                                  )}
+                                  {{
+                                    draft: m.status_draft,
+                                    pending: m.status_pending,
+                                    active: m.status_active,
+                                    archived: m.status_archived,
+                                  }[at]()}
                                 </span>
                               </TableCell>
                               <TableCell xstyle={[styles.cell, styles.stage]}>
-                                {stageOf(row, format)}
+                                {stageOf(row)}
                               </TableCell>
                               <TableCell xstyle={[styles.cell, styles.quiet, styles.time]}>
-                                <RowTime time={timeOf(row, at, format, locale)} />
+                                <RowTime time={timeOf(row, at, locale)} />
                               </TableCell>
                               <TableCell xstyle={[styles.cell, styles.trailing]}>
                                 <span aria-hidden {...stylex.props(styles.openGlyph)}>
@@ -1127,7 +1124,7 @@ export default function BatchListPage() {
                       data-pages={String(pageCount)}
                       {...stylex.props(styles.pagerNote)}
                     >
-                      {format(m.pageOfTotal, { page: pageIndex + 1, pages: pageCount })}
+                      {m.batch_pageOfTotal({ page: pageIndex + 1, pages: pageCount })}
                     </span>
                     {/* buttons, not anchors: these move client-side state,
                         and an anchor with no href is neither focusable nor
@@ -1140,7 +1137,7 @@ export default function BatchListPage() {
                         onClick={() => setPageIndex((index) => Math.max(0, index - 1))}
                       >
                         <ChevronLeftIcon />
-                        {format(m.previousPage)}
+                        {m.action_previousPage()}
                       </Button>
                       <Button
                         variant="ghost"
@@ -1148,7 +1145,7 @@ export default function BatchListPage() {
                         disabled={nextCursor === null}
                         onClick={() => setPageIndex((index) => index + 1)}
                       >
-                        {format(m.nextPage)}
+                        {m.action_nextPage()}
                         <ChevronRightIcon />
                       </Button>
                     </nav>

@@ -9,9 +9,10 @@ import {
 } from '@qualy/value-schema'
 import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { formulaMessages as m } from './i18n.ts'
+
 import { kindWords } from './kind-words.ts'
 import { constraintRules } from './constraint-words.ts'
+import * as m from '#messages'
 
 // What the draft takes and gives, as the compiler read it.
 //
@@ -61,11 +62,11 @@ export function ContractTable({
   readonly inputSchema: NormalizedInputSchema
   readonly outputSchema: NormalizedAtomicSchema
 }) {
-  const { format, locale } = useI18n()
+  const { locale } = useI18n()
   const rules = (schema: AtomicSchema) => {
-    const said = constraintRules(schema, format, locale)
+    const said = constraintRules(schema, locale)
     return said.length === 0 ? (
-      <span {...stylex.props(styles.quiet)}>{format(m.constraintNone)}</span>
+      <span {...stylex.props(styles.quiet)}>{m.constraint_none()}</span>
     ) : (
       <span {...stylex.props(styles.rules)}>
         {said.map((rule) => (
@@ -79,10 +80,10 @@ export function ContractTable({
     <table {...stylex.props(styles.table)} data-testid="formula-contract">
       <thead>
         <tr>
-          <th {...stylex.props(styles.head)}>{format(m.parametersLabel)}</th>
-          <th {...stylex.props(styles.head)}>{format(m.parameterTitle)}</th>
-          <th {...stylex.props(styles.head)}>{format(m.parameterKind)}</th>
-          <th {...stylex.props(styles.head)}>{format(m.parameterRule)}</th>
+          <th {...stylex.props(styles.head)}>{m.parameters_label()}</th>
+          <th {...stylex.props(styles.head)}>{m.parameters_title()}</th>
+          <th {...stylex.props(styles.head)}>{m.parameters_kind()}</th>
+          <th {...stylex.props(styles.head)}>{m.parameters_rule()}</th>
         </tr>
       </thead>
       <tbody>
@@ -94,12 +95,12 @@ export function ContractTable({
             <tr key={key} data-parameter={key}>
               <td {...stylex.props(styles.cell, styles.key)}>{key}</td>
               <td {...stylex.props(styles.cell, title === key && styles.quiet)}>
-                {title === key ? format(m.fieldUnnamed) : title}
+                {title === key ? m.editor_fieldUnnamed() : title}
               </td>
               <td {...stylex.props(styles.cell)}>
-                {kindWords(format, kindOf(schema))}
+                {kindWords(kindOf(schema))}
                 {required.has(key) ? null : (
-                  <span {...stylex.props(styles.quiet)}> {format(m.parameterOptional)}</span>
+                  <span {...stylex.props(styles.quiet)}> {m.parameters_optional()}</span>
                 )}
               </td>
               <td {...stylex.props(styles.cell)}>{rules(schema)}</td>
@@ -107,9 +108,9 @@ export function ContractTable({
           )
         })}
         <tr data-parameter="">
-          <td {...stylex.props(styles.cell, styles.output)}>{format(m.parameterOutput)}</td>
+          <td {...stylex.props(styles.cell, styles.output)}>{m.parameters_output()}</td>
           <td {...stylex.props(styles.cell)} />
-          <td {...stylex.props(styles.cell)}>{kindWords(format, kindOf(outputSchema))}</td>
+          <td {...stylex.props(styles.cell)}>{kindWords(kindOf(outputSchema))}</td>
           <td {...stylex.props(styles.cell)}>{rules(outputSchema)}</td>
         </tr>
       </tbody>

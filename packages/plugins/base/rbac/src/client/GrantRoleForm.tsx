@@ -5,7 +5,7 @@ import { orgNodePicker, type OrgNodePickerContext } from '@qualy/ui-contract'
 import { UiSlot, useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
 import type { ApiResult } from '@qualy/web-runtime/api'
 import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { ConfirmDialog, Feedback, Field, FormDialog } from '@qualy/ui/admin'
@@ -23,8 +23,10 @@ import {
 } from '@qualy/ui/select'
 import { toast } from '@qualy/ui/toast'
 import { ToggleGroup, ToggleGroupItem } from '@qualy/ui/toggle-group'
-import { rbacMessages as m } from './i18n.ts'
+
 import { accessApi } from './api.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // Giving somebody a role, which is two questions in one form: where it
 // applies and what the role is.
@@ -135,7 +137,7 @@ export function GrantRoleDialog({
   const run = useRunApi()
   const query = useApiQuery(accessApi)
   const queryClient = useQueryClient()
-  const { format, formatError } = useI18n()
+  const { formatError } = useI18n()
   const formId = useId()
   const [feedback, setFeedback] = useState<string | null>(null)
   // a unit first where the reader may give there at all: that is where
@@ -197,7 +199,7 @@ export function GrantRoleDialog({
     onSuccess: async () => {
       const name = chosen?.name ?? ''
       await queryClient.invalidateQueries({ queryKey: query.access.key() })
-      toast.success(format(m.grantDone, { role: name }))
+      toast.success(m.grants_done({ role: name }))
       onClose()
     },
     onError: (error: unknown) => setFeedback(formatError(error)),
@@ -211,12 +213,12 @@ export function GrantRoleDialog({
   }
 
   const placeholder = !targeted
-    ? format(m.grantPickUnitFirst)
+    ? m.grants_pickUnitFirst()
     : !loaded
-      ? format(m.grantRolesLoading)
+      ? m.grants_rolesLoading()
       : roles.length === 0
-        ? format(m.grantRolesNone)
-        : format(m.grantRoleChoose)
+        ? m.grants_rolesNone()
+        : m.grants_roleChoose()
 
   // Where the reader may not give authority of this reach, that is said
   // once, above every office, and nothing is listed under it.
@@ -230,30 +232,28 @@ export function GrantRoleDialog({
     roles.length === 0 &&
     (summary === 'person-disabled' || (scope === 'tenant' && !grantable.organization))
   const why = (refusal: Refused['refusal']) =>
-    format(
-      refusal === 'user-type'
-        ? m.refusedUserType
-        : refusal === 'org-type'
-          ? m.refusedOrgType
-          : refusal === 'person-disabled'
-            ? m.refusedPersonDisabled
-            : refusal === 'self-escalation'
-              ? m.refusedSelfEscalation
-              : refusal === 'authority'
-                ? m.refusedAuthority
-                : refusal === 'closed'
-                  ? m.refusedClosed
-                  : m.refusedUnavailable,
-    )
+    (refusal === 'user-type'
+      ? m.grants_refusedUserType
+      : refusal === 'org-type'
+        ? m.grants_refusedOrgType
+        : refusal === 'person-disabled'
+          ? m.grants_refusedPersonDisabled
+          : refusal === 'self-escalation'
+            ? m.grants_refusedSelfEscalation
+            : refusal === 'authority'
+              ? m.grants_refusedAuthority
+              : refusal === 'closed'
+                ? m.grants_refusedClosed
+                : m.grants_refusedUnavailable)()
   const said = {
-    'person-disabled': m.grantNonePersonDisabled,
-    'org-type': m.grantNoneRefusedUnit,
-    'user-type': m.grantNoneRefusedUserType,
-    authority: m.grantNoneRefusedAuthority,
-    mixed: m.grantNoneRefusedMixed,
-    none: scope === 'tenant' ? m.grantNoneTenant : m.grantNoneUnit,
-    'unit-only': m.grantReachUnitOnly,
-    outside: scope === 'tenant' ? m.grantNoneTenant : m.grantReachOutside,
+    'person-disabled': m.grants_nonePersonDisabled,
+    'org-type': m.grants_noneRefusedUnit,
+    'user-type': m.grants_noneRefusedUserType,
+    authority: m.grants_noneRefusedAuthority,
+    mixed: m.grants_noneRefusedMixed,
+    none: scope === 'tenant' ? m.grants_noneTenant : m.grants_noneUnit,
+    'unit-only': m.grants_reachUnitOnly,
+    outside: scope === 'tenant' ? m.grants_noneTenant : m.grants_reachOutside,
   }[summary]
   const listed = summary !== 'person-disabled' && refused.length > 0
 
@@ -261,20 +261,20 @@ export function GrantRoleDialog({
     <>
       <FormDialog
         open={open}
-        title={format(m.grantOpen)}
+        title={m.grants_open()}
         onClose={onClose}
         footer={
           stuck ? (
             <Button variant="outline" onClick={onClose}>
-              {format(commonMessages.close)}
+              {commonMessages.action_close()}
             </Button>
           ) : (
             <>
               <Button variant="outline" onClick={onClose}>
-                {format(commonMessages.cancel)}
+                {commonMessages.action_cancel()}
               </Button>
               <Button type="submit" form={formId} disabled={grant.isPending || selected === ''}>
-                {format(m.grantSubmit)}
+                {m.action_grant()}
               </Button>
             </>
           )
@@ -294,11 +294,11 @@ export function GrantRoleDialog({
         >
           <Feedback message={feedback} />
           {grantable.tenant && grantable.organization && (
-            <Field label={format(m.grantScope)}>
+            <Field label={m.grants_scope()}>
               {() => (
                 <ToggleGroup
                   fill
-                  aria-label={format(m.grantScope)}
+                  aria-label={m.grants_scope()}
                   value={scope}
                   onValueChange={(next) => {
                     if (next === '') return
@@ -307,8 +307,8 @@ export function GrantRoleDialog({
                     setFeedback(null)
                   }}
                 >
-                  <ToggleGroupItem value="org-node">{format(m.grantScopeNode)}</ToggleGroupItem>
-                  <ToggleGroupItem value="tenant">{format(m.grantScopeTenant)}</ToggleGroupItem>
+                  <ToggleGroupItem value="org-node">{m.grants_scopeNode()}</ToggleGroupItem>
+                  <ToggleGroupItem value="tenant">{m.grants_scopeTenant()}</ToggleGroupItem>
                 </ToggleGroup>
               )}
             </Field>
@@ -316,36 +316,32 @@ export function GrantRoleDialog({
 
           {scope === 'org-node' && (
             <>
-              <Field label={format(m.grantAnchor)}>
+              <Field label={m.grants_anchor()}>
                 {() => (
                   <div data-testid="grant-anchor" {...stylex.props(styles.pickerSeat)}>
                     <UiSlot
                       token={orgNodePicker}
                       context={picker}
                       fallback={
-                        <p {...stylex.props(styles.quietNote)}>
-                          {format(m.grantAnchorUnavailable)}
-                        </p>
+                        <p {...stylex.props(styles.quietNote)}>{m.grants_anchorUnavailable()}</p>
                       }
                     />
                   </div>
                 )}
               </Field>
-              <Field label={format(m.grantCoverage)}>
+              <Field label={m.grants_coverage()}>
                 {() => (
                   <ToggleGroup
                     fill
-                    aria-label={format(m.grantCoverage)}
+                    aria-label={m.grants_coverage()}
                     value={coverage}
                     onValueChange={(next) => {
                       if (next === '') return
                       setCoverage(next as Coverage)
                     }}
                   >
-                    <ToggleGroupItem value="self">{format(m.grantCoverageSelf)}</ToggleGroupItem>
-                    <ToggleGroupItem value="subtree">
-                      {format(m.grantCoverageSubtree)}
-                    </ToggleGroupItem>
+                    <ToggleGroupItem value="self">{m.grants_coverageSelf()}</ToggleGroupItem>
+                    <ToggleGroupItem value="subtree">{m.grants_coverageSubtree()}</ToggleGroupItem>
                   </ToggleGroup>
                 )}
               </Field>
@@ -364,14 +360,14 @@ export function GrantRoleDialog({
               <Blank
                 size="compact"
                 icon={<ShieldOffIcon aria-hidden />}
-                title={format(m.grantRolesNone)}
-                description={format(said)}
+                title={m.grants_rolesNone()}
+                description={said()}
                 xstyle={styles.nothing}
                 action={
                   summary === 'unit-only' ? (
                     // the one change in this form that puts offices back on offer
                     <Button variant="outline" size="sm" onClick={() => setCoverage('self')}>
-                      {format(m.grantReachUseSelf)}
+                      {m.grants_reachUseSelf()}
                     </Button>
                   ) : (
                     listed && (
@@ -394,7 +390,7 @@ export function GrantRoleDialog({
               />
             </div>
           ) : (
-            <Field label={format(m.grantRole)}>
+            <Field label={m.grants_role()}>
               {(id) => (
                 <Select
                   value={selected}
@@ -414,7 +410,7 @@ export function GrantRoleDialog({
                       <>
                         <SelectSeparator />
                         <SelectGroup>
-                          <SelectLabel>{format(m.grantRefusedGroup)}</SelectLabel>
+                          <SelectLabel>{m.grants_refusedGroup()}</SelectLabel>
                           {refused.map((role) => (
                             <SelectItem
                               key={role.id}
@@ -437,13 +433,13 @@ export function GrantRoleDialog({
       </FormDialog>
       <ConfirmDialog
         open={confirming}
-        title={format(m.grantAdministratorTitle, {
+        title={m.grants_administratorTitle({
           role: chosen?.name ?? '',
           name: options.data?.holder?.displayName ?? '',
         })}
-        description={format(m.grantAdministratorBody)}
-        confirmLabel={format(m.grantSubmit)}
-        cancelLabel={format(commonMessages.cancel)}
+        description={m.grants_administratorBody()}
+        confirmLabel={m.action_grant()}
+        cancelLabel={commonMessages.action_cancel()}
         pending={grant.isPending}
         onCancel={() => setConfirming(false)}
         onConfirm={() => {

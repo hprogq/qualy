@@ -7,6 +7,7 @@ import { page, userEvent } from 'vitest/browser'
 import { Effect } from 'effect'
 import { registerUploadDriver } from '@qualy/plugin-storage/client'
 import { addressNow, apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
+import * as m from '#messages'
 
 // The workbook door, from the recorder's side of the screen.
 //
@@ -341,41 +342,35 @@ const chooseItem = async () => {
 // sentence: this screen falls back to printing the code itself, and the
 // three column refusals had no entry at all.
 describe('the words an import problem gets', () => {
+  // said in the page's language, which the shell marks on the root
+  beforeEach(() => {
+    document.documentElement.dataset['locale'] = 'zh-CN'
+  })
   it('has one for every column refusal the proof can produce', () => {
-    // the formatter is a parameter, so a stub answering with the message id
-    // is enough to tell a known code from the fallback
-    const said = ((descriptor: { id: string }) => descriptor.id) as never
     for (const reason of ['column-missing', 'column-unknown', 'column-header-mismatch']) {
-      expect(reasonText(said, { reason }, '编号')).not.toBe('assessment/record/import/reason/other')
+      expect(reasonText({ reason }, '编号')).not.toBe(m.record_import_reason_other({ reason }))
     }
   })
 
   it("tells a value past a field's bounds from a date outside the round", () => {
-    const said = ((descriptor: { id: string }) => descriptor.id) as never
-    expect(reasonText(said, { reason: 'out-of-range' }, '编号')).toBe(
-      'assessment/record/import/reason/out-of-range',
-    )
-    expect(reasonText(said, { reason: 'out-of-material-range' }, '编号')).toBe(
-      'assessment/record/import/reason/out-of-material-range',
+    expect(reasonText({ reason: 'out-of-range' }, '编号')).toBe(m.record_import_reason_outOfRange())
+    expect(reasonText({ reason: 'out-of-material-range' }, '编号')).toBe(
+      m.record_import_reason_outOfMaterialRange(),
     )
   })
 
   // an evidence field's text is checked for its length and pattern as it is
   // when filed, and the import passes the driver's reason on as it comes
   it("has one for a text shorter than its field's minimum or off its pattern", () => {
-    const said = ((descriptor: { id: string }) => descriptor.id) as never
-    expect(reasonText(said, { reason: 'too-short' }, '编号')).toBe(
-      'assessment/record/import/reason/too-short',
-    )
-    expect(reasonText(said, { reason: 'pattern-mismatch' }, '编号')).toBe(
-      'assessment/record/import/reason/pattern-mismatch',
+    expect(reasonText({ reason: 'too-short' }, '编号')).toBe(m.record_import_reason_tooShort())
+    expect(reasonText({ reason: 'pattern-mismatch' }, '编号')).toBe(
+      m.record_import_reason_patternMismatch(),
     )
   })
 
   it('has one for each part of a file the reading refuses', () => {
-    const said = ((descriptor: { id: string }) => descriptor.id) as never
     for (const reason of ['extra-sheet', 'extra-column', 'percent-not-allowed']) {
-      expect(reasonText(said, { reason }, '编号')).not.toBe('assessment/record/import/reason/other')
+      expect(reasonText({ reason }, '编号')).not.toBe(m.record_import_reason_other({ reason }))
     }
   })
 })

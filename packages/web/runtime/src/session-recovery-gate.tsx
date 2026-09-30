@@ -2,8 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { notifyManager, useQueryClient, type QueryKey } from '@tanstack/react-query'
 import type { NamespacedId } from '@qualy/ui-contract'
 import { toast } from '@qualy/ui/toast'
-import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { signingOut } from './identity.ts'
 import { buildPageHref } from './pages.ts'
 import type { Manifest } from './runtime-context.tsx'
@@ -16,6 +15,7 @@ import {
   SESSION_RESUME_PARAM,
 } from './session-recovery.ts'
 import { SessionRecoveryDialog, type SessionRecoveryState } from './session-recovery-dialog.tsx'
+import * as commonMessages from '@qualy/web-i18n/messages'
 
 // The page's side of a session lost from under its reader (session-recovery.ts).
 //
@@ -87,7 +87,7 @@ export function SessionRecoveryGate({
   signInPage?: NamespacedId | undefined
 }) {
   const queryClient = useQueryClient()
-  const { format } = useI18n()
+
   const [standing, setStanding] = useState<SessionRecoveryState | undefined>()
   const held = useRef<Held | undefined>(undefined)
   // the reader chose to sign out: answers as nobody are taken as they come
@@ -199,7 +199,7 @@ export function SessionRecoveryGate({
       // the sign-in tab closes on hearing it, and the reader learns why the
       // lock went: quietly, without anything left to dismiss
       announceOutcome('resumed')
-      toast.success(format(commonMessages.sessionResumed))
+      toast.success(commonMessages.session_resumed())
     }
     const timer = setInterval(() => {
       if (document.visibilityState === 'visible') void ask()
@@ -217,7 +217,7 @@ export function SessionRecoveryGate({
       window.removeEventListener('focus', returned)
       unhear()
     }
-  }, [waiting, askManifest, queryClient, manifestKey, format])
+  }, [waiting, askManifest, queryClient, manifestKey])
 
   /** the sign-in page, told it is there for a recovery */
   const signInHref = (() => {

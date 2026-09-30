@@ -1,8 +1,8 @@
 import { useMemo } from 'react'
-import { useI18n } from '@qualy/web-i18n'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import type { RosterWaiting } from './roster-view.ts'
 import { widthOf } from './measure.ts'
+import * as m from '#messages'
 
 // What one person's claims wait on, counted: the words for each kind, the
 // order they are said in, and how wide the roster's waiting column must be
@@ -11,11 +11,11 @@ import { widthOf } from './measure.ts'
 export type Filings = Readonly<Record<RosterWaiting, number>>
 
 export const WORDS = {
-  inReview: m.rosterWaitingInReviewCount,
-  toSupplement: m.rosterWaitingToSupplementCount,
-  reconsidering: m.rosterWaitingReconsideringCount,
-  toRevise: m.rosterWaitingToReviseCount,
-  blocked: m.rosterWaitingBlockedCount,
+  inReview: m.roster_waitingInReviewCount,
+  toSupplement: m.roster_waitingToSupplementCount,
+  reconsidering: m.roster_waitingReconsideringCount,
+  toRevise: m.roster_waitingToReviseCount,
+  blocked: m.roster_waitingBlockedCount,
 } as const
 
 export const ORDER: readonly RosterWaiting[] = [
@@ -48,12 +48,11 @@ export const waitsOnAnything = (filings: Filings): boolean =>
  * its dashes and gives the rest to the names.
  */
 export function useWaitingColumn(rows: readonly { filings: Filings }[], heading: string): string {
-  const { format } = useI18n()
   return useMemo(() => {
     let widest = widthOf(heading, 11, 500)
     for (const row of rows) {
       const counts = ORDER.filter((kind) => row.filings[kind] > 0).map((kind) =>
-        widthOf(format(WORDS[kind], { count: row.filings[kind] }), 12, 400),
+        widthOf(WORDS[kind]({ count: row.filings[kind] }), 12, 400),
       )
       if (counts.length === 0) continue
       widest = Math.max(
@@ -62,5 +61,5 @@ export function useWaitingColumn(rows: readonly { filings: Filings }[], heading:
       )
     }
     return `${String(Math.ceil(Math.min(COLUMN_MOST, Math.max(COLUMN_LEAST, widest + 4))))}px`
-  }, [rows, heading, format])
+  }, [rows, heading])
 }

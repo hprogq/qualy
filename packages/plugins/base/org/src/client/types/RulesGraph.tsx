@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { FoldHorizontalIcon, ZoomInIcon, ZoomOutIcon } from 'lucide-react'
 import * as stylex from '@stylexjs/stylex'
-import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { Button } from '@qualy/ui/button'
 import { Card, CardEmpty, CardHead } from '@qualy/ui/screen'
-import { orgMessages as m } from '../i18n.ts'
+
 import { NODE_HEIGHT, NODE_WIDTH, rulesGraphOf, type OrgShape } from '../shape.ts'
+import * as m from '#messages'
 
 // The rules as a picture: each kind once, in the column its longest way down
 // puts it in, an arrow from a kind to each kind it may hold. Pressing a kind
@@ -104,7 +104,6 @@ export function RulesGraph({
   openId: string | null
   onOpen: (typeId: string) => void
 }) {
-  const { format } = useI18n()
   const graph = useMemo(() => rulesGraphOf(shape), [shape])
   const crossing = graph.edges.some((edge) => edge.cross)
   const seat = useRef<HTMLDivElement>(null)
@@ -146,17 +145,17 @@ export function RulesGraph({
   }, [graph.nodes.length])
   return (
     <Card xstyle={styles.card} data-testid="rules-graph" data-rules={graph.edges.length}>
-      <CardHead title={format(m.rulesTitle)} note={format(m.ruleArrowHint)}>
+      <CardHead title={m.rule_title()} note={m.rule_arrowHint()}>
         <span {...stylex.props(styles.headCount)}>
-          {format(m.ruleCount, { count: graph.edges.length })}
+          {m.type_ruleCount({ count: graph.edges.length })}
         </span>
         {graph.nodes.length > 0 && (
           <span {...stylex.props(styles.zoom)} data-testid="rules-zoom" data-zoom={zoom}>
             <Button
               size="icon-xs"
               variant="ghost"
-              aria-label={format(m.zoomOut)}
-              title={format(m.zoomOut)}
+              aria-label={m.rules_zoomOut()}
+              title={m.rules_zoomOut()}
               disabled={zoom <= ZOOM_MIN}
               onClick={() => setZoom((now) => clamp(now - ZOOM_STEP))}
             >
@@ -166,8 +165,8 @@ export function RulesGraph({
             <Button
               size="icon-xs"
               variant="ghost"
-              aria-label={format(m.zoomIn)}
-              title={format(m.zoomIn)}
+              aria-label={m.rules_zoomIn()}
+              title={m.rules_zoomIn()}
               disabled={zoom >= ZOOM_MAX}
               onClick={() => setZoom((now) => clamp(now + ZOOM_STEP))}
             >
@@ -179,8 +178,8 @@ export function RulesGraph({
             <Button
               size="icon-xs"
               variant="ghost"
-              aria-label={format(m.zoomFit)}
-              title={format(m.zoomFit)}
+              aria-label={m.rules_zoomFit()}
+              title={m.rules_zoomFit()}
               onClick={fit}
             >
               <FoldHorizontalIcon aria-hidden />
@@ -189,7 +188,7 @@ export function RulesGraph({
         )}
       </CardHead>
       {graph.nodes.length === 0 ? (
-        <CardEmpty>{format(m.typeListEmpty)}</CardEmpty>
+        <CardEmpty>{m.type_listEmpty()}</CardEmpty>
       ) : (
         <>
           <div
@@ -240,7 +239,7 @@ export function RulesGraph({
               width={graph.width * zoom}
               height={graph.height * zoom}
               role="img"
-              aria-label={format(m.ruleGraphTitle)}
+              aria-label={m.rule_graphTitle()}
               {...stylex.props(styles.drawing)}
             >
               <defs>
@@ -291,7 +290,7 @@ export function RulesGraph({
                       {node.name}
                     </text>
                     <text x={node.x + 14} y={node.y + 35} {...stylex.props(styles.count)}>
-                      {format(m.typeNodeCount, { count: node.count })}
+                      {m.type_nodeCount({ count: node.count })}
                     </text>
                   </g>
                 )
@@ -301,12 +300,12 @@ export function RulesGraph({
           <div {...stylex.props(styles.legend)}>
             <span {...stylex.props(styles.legendItem)}>
               <span aria-hidden {...stylex.props(styles.legendLine)} />
-              {format(m.ruleLegendNear)}
+              {m.rule_legendNear()}
             </span>
             {crossing && (
               <span {...stylex.props(styles.legendItem)}>
                 <span aria-hidden {...stylex.props(styles.legendLine, styles.legendLineCross)} />
-                {format(m.ruleLegendCross)}
+                {m.rule_legendCross()}
               </span>
             )}
           </div>

@@ -22,8 +22,9 @@ import {
 import { CaptchaChallenge, useCaptchaGate } from '@qualy/plugin-captcha/client'
 import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH, passwordLength } from '../rules.ts'
 import { clock, PAUSE_MS, useHold } from './hold.ts'
-import { localMessages as m } from './i18n.ts'
+
 import { authLocalApi } from './api.ts'
+import * as m from '#messages'
 
 // embedded credential renderer: the auth core's login shell owns the page,
 // this form only proves the user against one local provider instance.
@@ -169,7 +170,7 @@ export default function LocalLoginMethod({
   const api = useApi(authLocalApi)
   const run = useRunApi()
   const here = useLocation()
-  const { format, formatError } = useI18n()
+  const { formatError } = useI18n()
   const [email, setEmail] = useState(() => prefill?.email ?? remembered())
   const [keep, setKeep] = useState(() => prefill === undefined && remembered() !== '')
   const [password, setPassword] = useState(prefill?.password ?? '')
@@ -196,15 +197,15 @@ export default function LocalLoginMethod({
   const [prompt, setPrompt] = useState<CaptchaPrompt | null>(null)
 
   const address = normalizeEmail(email)
-  const emailSaid = left.email && address === null ? format(m.emailInvalid) : null
+  const emailSaid = left.email && address === null ? m.check_email() : null
   // counted in characters, as the rule a password was set under counts them
   const typed = passwordLength(password)
   const passwordSaid = !left.password
     ? null
     : typed < PASSWORD_MIN_LENGTH
-      ? format(m.passwordShort, { min: PASSWORD_MIN_LENGTH })
+      ? m.check_passwordShort({ min: PASSWORD_MIN_LENGTH })
       : typed > PASSWORD_MAX_LENGTH
-        ? format(m.passwordLong, { max: PASSWORD_MAX_LENGTH })
+        ? m.check_passwordLong({ max: PASSWORD_MAX_LENGTH })
         : null
   const ready = address !== null && typed >= PASSWORD_MIN_LENGTH && typed <= PASSWORD_MAX_LENGTH
 
@@ -280,7 +281,7 @@ export default function LocalLoginMethod({
       {...stylex.props(styles.form, shaking && styles.shaking)}
     >
       <div {...stylex.props(styles.field)}>
-        <Label htmlFor="email">{format(m.email)}</Label>
+        <Label htmlFor="email">{m.field_email()}</Label>
         <Input
           id="email"
           type="email"
@@ -306,7 +307,7 @@ export default function LocalLoginMethod({
       </div>
       <div {...stylex.props(styles.passwordField)}>
         <Label htmlFor="password" xstyle={styles.passwordLabel}>
-          {format(m.password)}
+          {m.field_password()}
         </Label>
         <div {...stylex.props(styles.passwordSeat)}>
           <Input
@@ -328,7 +329,7 @@ export default function LocalLoginMethod({
           />
           <button
             type="button"
-            aria-label={format(shown ? m.hidePassword : m.showPassword)}
+            aria-label={(shown ? m.action_hidePassword : m.action_showPassword)()}
             aria-pressed={shown}
             data-testid="password-eye"
             // out of the Tab order: the address, the password, then the rest
@@ -348,7 +349,7 @@ export default function LocalLoginMethod({
           state={{ from: `${here.pathname}${here.search}` }}
           className={stylex.props(styles.forgot).className}
         >
-          {format(m.forgot)}
+          {m.action_forgot()}
         </PageLink>
         <div {...stylex.props(styles.passwordSaid)}>
           <Said id="password-said">{passwordSaid ?? refusal}</Said>
@@ -364,7 +365,7 @@ export default function LocalLoginMethod({
             if (next !== true) remember(null)
           }}
         />
-        {format(m.remember)}
+        {m.field_remember()}
       </label>
       <CaptchaChallenge gate={gate} />
       <Button
@@ -378,17 +379,17 @@ export default function LocalLoginMethod({
         data-captcha={gate.state}
       >
         {gate.state === 'loading-provider'
-          ? format(m.preparingCheck)
+          ? m.action_preparingCheck()
           : gate.state === 'working'
-            ? format(m.checking)
+            ? m.action_checking()
             : // the check is waiting on the person now, not on the page
               gate.state === 'interaction'
-              ? format(m.finishCheck)
+              ? m.action_finishCheck()
               : busy
-                ? format(m.submitting)
+                ? m.action_submitting()
                 : held && limited
-                  ? format(m.wait, { time: clock(secondsLeft) })
-                  : format(m.submit)}
+                  ? m.action_wait({ time: clock(secondsLeft) })
+                  : m.action_submit()}
       </Button>
     </form>
   )

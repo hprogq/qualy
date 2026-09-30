@@ -1,7 +1,8 @@
 import { useCallback } from 'react'
 import { useI18n } from '@qualy/web-i18n'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import { calendarDaysBetween, inZone, useBatchZone, yearOf } from '../batch/zone.ts'
+import * as m from '#messages'
 
 // When something was filed, written the way somebody checking this round's
 // work reads it.
@@ -16,7 +17,7 @@ import { calendarDaysBetween, inZone, useBatchZone, yearOf } from '../batch/zone
 // than as nine hours ago.
 
 export function useWhen() {
-  const { format, locale } = useI18n()
+  const { locale } = useI18n()
   const zone = useBatchZone()
   return useCallback(
     (iso: string): string => {
@@ -32,7 +33,7 @@ export function useWhen() {
           hour12: false,
           ...inZone(zone),
         }).format(at)
-        return format(days <= 0 ? m.recordWhenToday : m.recordWhenYesterday, { time })
+        return (days <= 0 ? m.record_whenToday : m.record_whenYesterday)({ time })
       }
       return new Intl.DateTimeFormat(locale, {
         ...(yearOf(at.getTime(), zone) === yearOf(now, zone) ? {} : { year: 'numeric' }),
@@ -41,6 +42,6 @@ export function useWhen() {
         ...inZone(zone),
       }).format(at)
     },
-    [format, locale, zone],
+    [locale, zone],
   )
 }

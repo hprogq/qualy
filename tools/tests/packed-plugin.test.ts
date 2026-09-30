@@ -10,6 +10,7 @@ import { resolveAssembly, lockPathFor, readLock } from '@qualy/assembly'
 import { loadAssembly } from '@qualy/assembly/runtime'
 import { buildPluginModuleSource, collectWebPlugins } from '@qualy/web-build/collect'
 import { createPackageResolver } from '../../packages/core/assembly/src/metadata.ts'
+import { qualyMessages } from '@qualy/web-build/vite'
 
 // One plugin, one chain, from a tarball a package manager made.
 //
@@ -180,6 +181,9 @@ describe('a plugin installed the way a registry would hand it over', () => {
         envFile: false,
         logLevel: 'silent',
         build: { outDir: 'out', emptyOutDir: true },
+        // its #messages answered from the messages its tarball carries,
+        // compiled with the product's: nothing is written into node_modules
+        plugins: [qualyMessages({ manifestPath: at.manifestPath })],
       })
       const bundled = fs
         .readdirSync(path.join(at.dir, 'out/assets'))
@@ -188,6 +192,7 @@ describe('a plugin installed the way a registry would hand it over', () => {
         .join('\n')
       expect(bundled).toContain('acme-dist-probe-page-8f21c6')
       expect(bundled).toContain('acme-dist-probe-boot-4d90ab')
+      expect(bundled).toContain('探针')
 
       // and it comes off again without taking anything with it
       const removed = qualy(['plugin', 'remove', PROBE], at.manifestPath)

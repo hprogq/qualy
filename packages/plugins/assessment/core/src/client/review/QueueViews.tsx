@@ -1,7 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
-import { useI18n } from '@qualy/web-i18n'
 import { Avatar, AvatarFallback } from '@qualy/ui/avatar'
 import { Button } from '@qualy/ui/button'
 import { Pager } from '@qualy/ui/pager'
@@ -19,7 +18,7 @@ import {
 } from '@qualy/ui/screen'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import { scrollMotion, useBeside, useMedia, useWidthOf } from './pointer.ts'
 import {
   BESIDE_MIN,
@@ -44,6 +43,7 @@ import {
   type InboxItemDto,
   type ItemGroup,
 } from './model.ts'
+import * as m from '#messages'
 
 // The queue laid out for working through it.
 //
@@ -953,19 +953,18 @@ export function PagerFoot({
   /** figures alone, for a strip with little room; the window decides where the caller does not */
   compact?: boolean
 }) {
-  const { format } = useI18n()
   const beside = useBeside()
   if (list.total <= size) return null
   return (
     <CardFoot>
       <Pager
         testId="review-queue-pager"
-        label={format(m.reviewPagerLabel)}
+        label={m.review_pager()}
         page={list.page}
         pageSize={size}
         total={list.total}
         compact={compact ?? !beside}
-        summary={format(m.reviewPageSummary, {
+        summary={m.review_pageSummary({
           from: list.from,
           to: list.to,
           total: list.total,
@@ -992,11 +991,10 @@ export function PagerFoot({
  * certificate" and "a photo of the ceremony" into the same fact.
  */
 function FiledValue({ pair }: { pair: InboxItemDto['values'][number] }) {
-  const { format } = useI18n()
   if (pair.files === null) return <>{pair.value}</>
   return (
     <span {...stylex.props(pair.files === 0 && styles.quietFiled)}>
-      {format(m.reviewFilesCount, { count: pair.files })}
+      {m.review_filesCount({ count: pair.files })}
     </span>
   )
 }
@@ -1010,7 +1008,6 @@ const markOf = (row: InboxItemDto): 'escalated' | 'round' | null =>
   row.route === 'escalation' ? 'escalated' : row.roundNo > 1 ? 'round' : null
 
 function RoundMark({ row }: { row: InboxItemDto }) {
-  const { format } = useI18n()
   const mark = markOf(row)
   if (mark === null) return null
   return (
@@ -1020,8 +1017,8 @@ function RoundMark({ row }: { row: InboxItemDto }) {
       data-mark={mark}
     >
       {mark === 'escalated'
-        ? format(m.reviewStateEscalated)
-        : format(m.reviewStateRound, { round: row.roundNo })}
+        ? m.review_stateEscalated()
+        : m.review_stateRound({ round: row.roundNo })}
     </Status>
   )
 }
@@ -1095,14 +1092,13 @@ const tableTracks = (paneWidth: number, count: number, rows: readonly InboxItemD
  * the end of a line: "2025-" over "11-12" reads as two answers.
  */
 function AnswerRun({ row, files }: { row: InboxItemDto; files: boolean }) {
-  const { format } = useI18n()
   const said = row.values.flatMap((pair) =>
     pair.files === null
       ? pair.value === ''
         ? []
         : [pair.value]
       : files && pair.files > 0
-        ? [format(m.reviewFilesCount, { count: pair.files })]
+        ? [m.review_filesCount({ count: pair.files })]
         : [],
   )
   return (
@@ -1204,7 +1200,6 @@ export function ItemQueue({
   onPage: (page: number) => void
   onOpen: OpenRow
 }) {
-  const { format } = useI18n()
   const { seat, width, room, beside, stacked } = useQueueRoom()
   const phone = usePhone()
   const since = useDayClock()
@@ -1237,15 +1232,15 @@ export function ItemQueue({
                   facts={
                     <Facts
                       items={[
-                        format(m.reviewGroupCount, { count: group.rows.length }),
-                        format(m.reviewOldest, { when: since(group.rows[0]!.submittedAt) }),
+                        m.review_groupCount({ count: group.rows.length }),
+                        m.review_oldest({ when: since(group.rows[0]!.submittedAt) }),
                       ]}
                     />
                   }
                   action={
                     <RunKey
                       rows={group.rows}
-                      label={format(m.reviewStartItem)}
+                      label={m.review_startItem()}
                       onRun={() => onOpen(group.rows[0]!, run)}
                     />
                   }
@@ -1267,7 +1262,7 @@ export function ItemQueue({
   const master =
     layout === 'stack' ? (
       <MasterStrip
-        label={format(m.reviewMasterItems)}
+        label={m.review_masterItems()}
         count={groups.length}
         selected={open?.itemId ?? null}
       >
@@ -1284,7 +1279,7 @@ export function ItemQueue({
       </MasterStrip>
     ) : (
       <MasterCard
-        title={format(m.reviewMasterItems)}
+        title={m.review_masterItems()}
         count={groups.length}
         selected={open?.itemId ?? null}
       >
@@ -1293,7 +1288,7 @@ export function ItemQueue({
             key={group.itemId}
             id={group.itemId}
             name={group.itemTitle}
-            meta={format(m.reviewOldest, { when: since(group.rows[0]!.submittedAt) })}
+            meta={m.review_oldest({ when: since(group.rows[0]!.submittedAt) })}
             count={group.rows.length}
             selected={beside && open?.itemId === group.itemId}
             drills={!beside}
@@ -1324,20 +1319,20 @@ export function ItemQueue({
       >
         {layout === 'stack' && master}
         <PaneHead
-          back={layout === 'drill' ? { label: format(m.reviewFilterAllItems), onBack } : null}
+          back={layout === 'drill' ? { label: m.review_filterAllItems(), onBack } : null}
           title={open.itemTitle}
           facts={
             <Facts
               items={[
-                format(m.reviewGroupCount, { count: open.rows.length }),
-                format(m.reviewOldest, { when: since(open.rows[0]!.submittedAt) }),
+                m.review_groupCount({ count: open.rows.length }),
+                m.review_oldest({ when: since(open.rows[0]!.submittedAt) }),
               ]}
             />
           }
           action={
             <RunKey
               rows={open.rows}
-              label={format(m.reviewStartItem)}
+              label={m.review_startItem()}
               onRun={() => onOpen(open.rows[0]!, run)}
             />
           }
@@ -1401,7 +1396,6 @@ function ItemTable({
   onPage: (page: number) => void
   onOpen: (row: InboxItemDto) => void
 }) {
-  const { format } = useI18n()
   const list = pageOf(group.rows, page, PANE_PAGE)
   const columns = [
     ...(summarize
@@ -1413,13 +1407,13 @@ function ItemTable({
     <>
       <Table columns={columns} openable>
         <TableHead>
-          <span>{format(m.reviewColumnParticipant)}</span>
+          <span>{m.review_columnParticipant()}</span>
           {summarize ? (
-            <span>{format(m.reviewColumnSummary)}</span>
+            <span>{m.review_columnSummary()}</span>
           ) : (
             group.columns.map((label, index) => <span key={index}>{label}</span>)
           )}
-          <span>{format(m.reviewColumnWhen)}</span>
+          <span>{m.review_columnWhen()}</span>
         </TableHead>
         {list.rows.map((row) => (
           <TableRow
@@ -1488,7 +1482,6 @@ export function PersonQueue({
   onPage: (page: number) => void
   onOpen: OpenRow
 }) {
-  const { format } = useI18n()
   const { seat, width, room, beside, stacked } = useQueueRoom()
   const phone = usePhone()
   const people = groupByPerson(rows)
@@ -1527,14 +1520,14 @@ export function PersonQueue({
                       items={[
                         person.businessNo,
                         person.unitName,
-                        format(m.reviewGroupCount, { count: person.rows.length }),
+                        m.review_groupCount({ count: person.rows.length }),
                       ]}
                     />
                   }
                   action={
                     <RunKey
                       rows={person.rows}
-                      label={format(m.reviewStartPerson)}
+                      label={m.review_startPerson()}
                       onRun={() => onOpen(person.rows[0]!, run)}
                     />
                   }
@@ -1556,7 +1549,7 @@ export function PersonQueue({
   const master =
     layout === 'stack' ? (
       <MasterStrip
-        label={format(m.reviewColumnParticipant)}
+        label={m.review_columnParticipant()}
         count={people.length}
         selected={open?.key ?? null}
       >
@@ -1575,7 +1568,7 @@ export function PersonQueue({
       </MasterStrip>
     ) : (
       <MasterCard
-        title={format(m.reviewColumnParticipant)}
+        title={m.review_columnParticipant()}
         count={people.length}
         selected={open?.key ?? null}
       >
@@ -1609,7 +1602,7 @@ export function PersonQueue({
       >
         {layout === 'stack' && master}
         <PaneHead
-          back={layout === 'drill' ? { label: format(m.reviewAllPeople), onBack } : null}
+          back={layout === 'drill' ? { label: m.review_allPeople(), onBack } : null}
           face={<Face name={open.name} />}
           title={open.name}
           facts={
@@ -1617,14 +1610,14 @@ export function PersonQueue({
               items={[
                 open.businessNo,
                 open.unitName,
-                format(m.reviewGroupCount, { count: open.rows.length }),
+                m.review_groupCount({ count: open.rows.length }),
               ]}
             />
           }
           action={
             <RunKey
               rows={open.rows}
-              label={format(m.reviewStartPerson)}
+              label={m.review_startPerson()}
               onRun={() => onOpen(open.rows[0]!, run)}
             />
           }
@@ -1680,7 +1673,6 @@ function PersonTable({
   onPage: (page: number) => void
   onOpen: (row: InboxItemDto) => void
 }) {
-  const { format } = useI18n()
   const list = pageOf(rows, page, PANE_PAGE)
   const columns = [
     'minmax(7rem, 12rem)',
@@ -1692,10 +1684,10 @@ function PersonTable({
     <>
       <Table columns={columns} openable>
         <TableHead>
-          <span>{format(m.reviewColumnItem)}</span>
-          <span>{format(m.reviewColumnSummary)}</span>
-          <span>{format(m.reviewColumnFiles)}</span>
-          <span>{format(m.reviewColumnWhen)}</span>
+          <span>{m.review_columnItem()}</span>
+          <span>{m.review_columnSummary()}</span>
+          <span>{m.review_columnFiles()}</span>
+          <span>{m.review_columnWhen()}</span>
         </TableHead>
         {list.rows.map((row) => (
           <TableRow
@@ -1712,7 +1704,7 @@ function PersonTable({
             </Cell>
             {/* how many files is a desk's column; stacked it was a
                 labelled fact dangling under the answers */}
-            <Cell narrow="drop">{format(m.reviewFilesCount, { count: row.attachmentCount })}</Cell>
+            <Cell narrow="drop">{m.review_filesCount({ count: row.attachmentCount })}</Cell>
             <Cell narrow="end" numeric unlabelled>
               <When row={row} />
             </Cell>
@@ -1736,7 +1728,6 @@ export function TimeQueue({
   onPage: (page: number) => void
   onOpen: OpenRow
 }) {
-  const { format } = useI18n()
   const { seat, width, room } = useQueueRoom()
   const phone = usePhone()
   const spread = rows.length <= SPREAD_MOST
@@ -1766,10 +1757,10 @@ export function TimeQueue({
         >
           <Table columns={columns} openable>
             <TableHead>
-              <span>{format(m.reviewColumnParticipant)}</span>
-              {!tight && <span>{format(m.reviewColumnItem)}</span>}
-              <span>{format(m.reviewColumnSummary)}</span>
-              <span>{format(m.reviewColumnWhen)}</span>
+              <span>{m.review_columnParticipant()}</span>
+              {!tight && <span>{m.review_columnItem()}</span>}
+              <span>{m.review_columnSummary()}</span>
+              <span>{m.review_columnWhen()}</span>
             </TableHead>
             {list.rows.map((row) => (
               <TableRow
@@ -1844,7 +1835,6 @@ function SpreadRows({
   room: number
   onOpen: (row: InboxItemDto) => void
 }) {
-  const { format } = useI18n()
   const clock = useQueueClock()
   const phone = usePhone()
   // one question's filings keep every field in its place, an empty one as a
@@ -1924,7 +1914,7 @@ function SpreadRows({
                         >
                           {pair.files === null
                             ? pair.value
-                            : format(m.reviewFilesCount, { count: pair.files })}
+                            : m.review_filesCount({ count: pair.files })}
                         </span>
                       </span>
                     ),

@@ -1,13 +1,14 @@
 import * as stylex from '@stylexjs/stylex'
 import { XIcon } from 'lucide-react'
 import { LoadFailure, useLoadFailure } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { Button } from '@qualy/ui/button'
 import { Sheet, SheetContent, SheetTitle } from '@qualy/ui/sheet'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import { useWorkspaceMode } from './workspace/layout.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // The drawer a link to one of the reader's claims opens, where the claim it
 // names is not among theirs: gone, mistyped, or never theirs. Said in the
@@ -55,10 +56,9 @@ export function MissingClaimSheet({
   back?: string
   onClose: () => void
 }) {
-  const { format } = useI18n()
   const phone = useWorkspaceMode() === 'phone'
   const failure = useLoadFailure().missing({
-    copy: { missing: { title: format(m.entryMissingTitle) } },
+    copy: { missing: { title: m.entrySheet_missingTitle() } },
   })
   return (
     <Sheet open={open} onOpenChange={(next) => !next && onClose()}>
@@ -66,12 +66,12 @@ export function MissingClaimSheet({
         {phone && <span aria-hidden data-sheet-grab="" {...stylex.props(styles.grab)} />}
         <div {...stylex.props(styles.head)}>
           <SheetTitle className={stylex.props(styles.title).className}>
-            {format(m.entrySheetTitle)}
+            {m.entrySheet_title()}
           </SheetTitle>
           <Button
             variant="ghost"
             size="icon-sm"
-            aria-label={format(commonMessages.close)}
+            aria-label={commonMessages.action_close()}
             onClick={onClose}
           >
             <XIcon aria-hidden />
@@ -83,7 +83,7 @@ export function MissingClaimSheet({
             failure={failure}
             extra={
               <Button variant="outline" size="sm" onClick={onClose}>
-                {back ?? format(m.entryMissingBack)}
+                {back ?? m.entrySheet_missingBack()}
               </Button>
             }
           />

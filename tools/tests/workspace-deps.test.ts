@@ -166,6 +166,8 @@ describe('what a package says it depends on', () => {
           continue
         for (const used of runtimeImports(fs.readFileSync(source, 'utf8'))) {
           if (used.startsWith('.') || used.startsWith('/') || used.startsWith('virtual:')) continue
+          // the package's own import map (#messages), which is no dependency
+          if (used.startsWith('#')) continue
           if (used.startsWith('node:') || builtins.has(used)) continue
           const dependency = used.startsWith('@')
             ? used.split('/').slice(0, 2).join('/')

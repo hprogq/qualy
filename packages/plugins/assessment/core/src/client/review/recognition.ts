@@ -1,58 +1,54 @@
 import { constraintOf, type AtomicSchema } from '@qualy/value-schema'
-import type { useI18n } from '@qualy/web-i18n'
-import { assessmentMessages as m } from '../i18n.ts'
+import * as m from '#messages'
 
 // The words for what stops a recognition field, mapped from the machine
 // reasons the shared value form emits. The form renders structure and hands
 // back reasons; every consumer owns its own sentences - this is the review
 // screen's set.
 
-type Format = ReturnType<typeof useI18n>['format']
-
 export const recognitionProblemText = (
-  format: Format,
   schema: AtomicSchema | undefined,
   reason: string,
 ): string => {
   switch (reason) {
     case 'required':
-      return format(m.recognitionFieldRequired)
+      return m.review_recognitionFieldRequired()
     case 'not-an-integer':
-      return format(m.recognitionNotInteger)
+      return m.review_recognitionNotInteger()
     case 'not-a-decimal':
-      return format(m.recognitionNotDecimal)
+      return m.review_recognitionNotDecimal()
     case 'not-a-boolean':
-      return format(m.recognitionNotBoolean)
+      return m.review_recognitionNotBoolean()
     case 'out-of-material-range':
-      return format(m.recognitionOutOfMaterialRange)
+      return m.review_recognitionOutOfMaterialRange()
     default: {
       const constraint = (schema === undefined ? undefined : constraintOf(schema, reason)) ?? ''
       switch (reason) {
         case 'x-qualy-dateMaximum':
-          return format(m.recognitionAfterLatest, { constraint })
+          return m.review_recognitionAfterLatest({ constraint })
         case 'x-qualy-dateMinimum':
-          return format(m.recognitionBeforeEarliest, { constraint })
+          return m.review_recognitionBeforeEarliest({ constraint })
         case 'x-qualy-maximum':
         case 'maximum':
-          return format(m.recognitionOverMax, { constraint })
+          return m.review_recognitionOverMax({ constraint })
         case 'x-qualy-minimum':
         case 'minimum':
-          return format(m.recognitionUnderMin, { constraint })
+          return m.review_recognitionUnderMin({ constraint })
         case 'x-qualy-maxScale':
-          return format(m.recognitionScale, { constraint })
+          return m.review_recognitionScale({ constraint })
         case 'maxLength':
-          return format(m.recognitionTooLong, { constraint })
+          return m.review_recognitionTooLong({ constraint })
         case 'minLength':
-          return format(m.recognitionTooShort, { constraint })
+          return m.review_recognitionTooShort({ constraint })
         case 'enum':
-          return format(m.recognitionEnum)
+          return m.review_recognitionEnum()
         case 'type':
         case 'format':
-          return format(m.recognitionKind)
+          return m.review_recognitionKind()
         case 'pattern':
-          return format(m.recognitionPattern)
+          return m.review_recognitionPattern()
         default:
-          return format(m.recognitionOther, { reason })
+          return m.review_recognitionOther({ reason })
       }
     }
   }

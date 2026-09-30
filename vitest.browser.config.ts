@@ -8,7 +8,7 @@ import type { BrowserCommand } from 'vitest/node'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vitest/config'
-import { qualyPlugins, qualyRelease } from '@qualy/web-build/vite'
+import { qualyMessages, qualyPlugins, qualyRelease } from '@qualy/web-build/vite'
 import { coverageScope } from './tools/quality/coverage-scope.ts'
 
 const stylexUnplugin =
@@ -45,6 +45,11 @@ export default defineConfig({
     // vitest server answers for it, as the app's dev server does
     qualyRelease(),
     qualyPlugins(),
+    // every package's messages, compiled before anything resolves #messages,
+    // and the one outside plugin's whose own test runs here
+    qualyMessages({
+      extraPackages: [path.join(repoRoot, 'tools/fixtures/acme-browser-probe')],
+    }),
     stylexUnplugin({
       useCSSLayers: true,
       dev: true,

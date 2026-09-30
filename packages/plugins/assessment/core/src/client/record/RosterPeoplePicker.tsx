@@ -5,8 +5,9 @@ import { peoplePickerView } from '@qualy/ui-contract'
 import { UiSlot, useApiQuery } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { assessmentApi } from '../api.ts'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import { DialogBlank } from '../DialogBlank.tsx'
+import * as m from '#messages'
 
 // Choosing people for an administrative finding.
 //
@@ -47,7 +48,7 @@ export function RosterPeoplePicker({
   disabledLabel?: string
 }) {
   const query = useApiQuery(assessmentApi)
-  const { format, formatError } = useI18n()
+  const { formatError } = useI18n()
 
   const [nodeId, setNodeId] = useState<string | null>(null)
   const [scope, setScope] = useState<'self' | 'subtree'>('subtree')
@@ -148,8 +149,8 @@ export function RosterPeoplePicker({
         <DialogBlank
           testId="record-people-unavailable"
           icon={<ShieldQuestionIcon />}
-          title={format(m.pickerUnavailable)}
-          description={format(m.pickerUnavailableHint)}
+          title={m.roster_pickerUnavailable()}
+          description={m.roster_pickerUnavailableHint()}
         />
       }
     />

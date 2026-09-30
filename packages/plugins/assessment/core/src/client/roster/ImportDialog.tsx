@@ -6,8 +6,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Building2Icon, TriangleAlertIcon, UserRoundXIcon } from 'lucide-react'
 import { orgNodePickerView } from '@qualy/ui-contract'
 import { UiSlot, useApiQuery, useLoadFailure } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { AsyncSection, CheckboxGroup, Field } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { FieldGroup } from '@qualy/ui/field'
@@ -22,9 +21,11 @@ import {
 } from '@qualy/ui/dialog'
 import { TreeSelect } from '@qualy/ui/tree-select'
 import { assessmentApi } from '../api.ts'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import { DialogBlank } from '../DialogBlank.tsx'
 import { AdmissionOutcome, type AdmissionOutcomeFacts } from './AdmissionOutcome.tsx'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // Running the organization query again, once.
 //
@@ -117,7 +118,7 @@ export function ImportDialog({
   onClose: () => void
 }) {
   const query = useApiQuery(assessmentApi)
-  const { format } = useI18n()
+
   const failures = useLoadFailure()
   const [selection, setSelection] = useState<Selection>(EMPTY)
   useEffect(() => {
@@ -170,13 +171,13 @@ export function ImportDialog({
       <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
         <DialogContent size="32rem" data-testid="import-outcome">
           <DialogHeader>
-            <DialogTitle>{format(m.importTitle)}</DialogTitle>
+            <DialogTitle>{m.roster_importTitle()}</DialogTitle>
           </DialogHeader>
           <DialogBody>
             <AdmissionOutcome facts={outcome} {...(onReview === undefined ? {} : { onReview })} />
           </DialogBody>
           <DialogFooter>
-            <Button onClick={onClose}>{format(m.admittedDone)}</Button>
+            <Button onClick={onClose}>{m.roster_admittedDone()}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -187,16 +188,16 @@ export function ImportDialog({
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
       <DialogContent size="42rem">
         <DialogHeader>
-          <DialogTitle>{format(m.importTitle)}</DialogTitle>
-          {stuck === null && <DialogDescription>{format(m.importHint)}</DialogDescription>}
+          <DialogTitle>{m.roster_importTitle()}</DialogTitle>
+          {stuck === null && <DialogDescription>{m.roster_importHint()}</DialogDescription>}
         </DialogHeader>
         <DialogBody>
           <AsyncSection
             pending={nodes.isPending || userTypes.isPending}
             error={failed === null ? null : failures.of(failed)}
             retrying={nodes.isFetching || userTypes.isFetching}
-            loadingLabel={format(commonMessages.loading)}
-            retryLabel={format(commonMessages.retry)}
+            loadingLabel={commonMessages.state_loading()}
+            retryLabel={commonMessages.action_retry()}
             onRetry={() => {
               void nodes.refetch()
               void userTypes.refetch()
@@ -207,20 +208,20 @@ export function ImportDialog({
                 testId="import-stuck"
                 kind={stuck}
                 icon={<Building2Icon />}
-                title={format(m.importNoUnits)}
-                description={format(m.importNoUnitsHint)}
+                title={m.roster_importNoUnits()}
+                description={m.roster_importNoUnitsHint()}
               />
             ) : stuck === 'no-types' ? (
               <DialogBlank
                 testId="import-stuck"
                 kind={stuck}
                 icon={<UserRoundXIcon />}
-                title={format(m.importNoTypes)}
-                description={format(m.importNoTypesHint)}
+                title={m.roster_importNoTypes()}
+                description={m.roster_importNoTypesHint()}
               />
             ) : (
               <FieldGroup>
-                <Field label={format(m.scopeLegend)}>
+                <Field label={m.batch_scope()}>
                   {() => (
                     <div data-testid="import-units" {...stylex.props(styles.units)}>
                       <UiSlot
@@ -241,7 +242,7 @@ export function ImportDialog({
                                 setSelection((now) => ({ ...now, orgNodeIds }))
                               }
                               nodes={nodes.data?.nodes ?? []}
-                              emptyLabel={format(m.scopeEmpty)}
+                              emptyLabel={m.batch_scopeEmpty()}
                             />
                           </div>
                         }
@@ -250,14 +251,14 @@ export function ImportDialog({
                   )}
                 </Field>
                 <CheckboxGroup
-                  legend={format(m.userTypesLegend)}
+                  legend={m.batch_userTypes()}
                   options={(userTypes.data?.userTypes ?? []).map((type) => ({
                     value: type.id,
                     label: type.name,
                   }))}
                   selected={[...selection.userTypeIds]}
                   onChange={(userTypeIds) => setSelection((now) => ({ ...now, userTypeIds }))}
-                  emptyLabel={format(m.userTypesEmpty)}
+                  emptyLabel={m.batch_userTypesEmpty()}
                 />
               </FieldGroup>
             )}
@@ -266,7 +267,7 @@ export function ImportDialog({
         {stuck !== null ? (
           <DialogFooter>
             <Button variant="outline" onClick={onClose}>
-              {format(commonMessages.close)}
+              {commonMessages.action_close()}
             </Button>
           </DialogFooter>
         ) : (
@@ -281,8 +282,8 @@ export function ImportDialog({
                 {...stylex.props(styles.quiet)}
               >
                 {ready && candidates.data
-                  ? format(m.importCandidates, { count: candidates.data.candidates })
-                  : format(m.importChoose)}
+                  ? m.roster_importCandidates({ count: candidates.data.candidates })
+                  : m.roster_importChoose()}
               </span>
               {warned !== null && (
                 <ul
@@ -294,13 +295,13 @@ export function ImportDialog({
                   {warned.cannotSubmit > 0 && (
                     <li {...stylex.props(styles.warning)}>
                       <TriangleAlertIcon aria-hidden {...stylex.props(styles.warningMark)} />
-                      {format(m.importWarnCannotSubmit, { count: warned.cannotSubmit })}
+                      {m.roster_importWarnCannotSubmit({ count: warned.cannotSubmit })}
                     </li>
                   )}
                   {warned.systemAccounts > 0 && (
                     <li {...stylex.props(styles.warning)}>
                       <TriangleAlertIcon aria-hidden {...stylex.props(styles.warningMark)} />
-                      {format(m.importWarnSystem, { count: warned.systemAccounts })}
+                      {m.roster_importWarnSystem({ count: warned.systemAccounts })}
                     </li>
                   )}
                 </ul>
@@ -308,13 +309,13 @@ export function ImportDialog({
             </div>
             <div {...stylex.props(styles.footSide)}>
               <Button variant="outline" onClick={onClose}>
-                {format(commonMessages.cancel)}
+                {commonMessages.action_cancel()}
               </Button>
               <Button
                 disabled={pending || !ready || (candidates.data?.candidates ?? 0) === 0}
                 onClick={() => onImport(selection)}
               >
-                {format(m.importConfirm)}
+                {m.roster_importConfirm()}
               </Button>
             </div>
           </DialogFooter>

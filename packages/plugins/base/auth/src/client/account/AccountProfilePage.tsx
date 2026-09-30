@@ -1,16 +1,17 @@
 import { useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { useApiQuery, useLoadFailure } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { useTerm } from '@qualy/plugin-settings/client/terms'
 import { authTerms } from '@qualy/auth-contract/terms'
 import { AsyncSection } from '@qualy/ui/admin'
 import { Card, DefLine, DefList, DefListSkeleton, SectionHead } from '@qualy/ui/screen'
-import { iamMessages as m } from '../i18n.ts'
+
 import { authApi } from '../api.ts'
 import { EmailWithStanding } from '../iam/person-facts.tsx'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // The reader, as the product has them on file: the same facts an
 // administrator reads on their record, and nothing to change here - the
@@ -27,7 +28,7 @@ const styles = stylex.create({
 
 export default function AccountProfilePage() {
   const query = useApiQuery(authApi)
-  const { format } = useI18n()
+
   const describe = useLoadFailure()
   const businessNoWord = useTerm(authTerms.businessNumber)
   const self = useQuery(query.self.getSelf.queryOptions())
@@ -35,12 +36,12 @@ export default function AccountProfilePage() {
 
   return (
     <div {...stylex.props(styles.page)}>
-      <SectionHead title={format(m.accountProfile)} />
+      <SectionHead title={m.account_profile()} />
       <AsyncSection
         pending={self.isPending}
         error={self.isError ? describe.of(self.error) : null}
-        loadingLabel={format(commonMessages.loading)}
-        retryLabel={format(commonMessages.retry)}
+        loadingLabel={commonMessages.state_loading()}
+        retryLabel={commonMessages.action_retry()}
         onRetry={() => void self.refetch()}
         skeleton={
           <Card>
@@ -51,17 +52,17 @@ export default function AccountProfilePage() {
         {me && (
           <Card data-testid="account-profile">
             <DefList>
-              <DefLine label={format(m.nameLabel)}>{me.displayName}</DefLine>
+              <DefLine label={m.field_name()}>{me.displayName}</DefLine>
               <DefLine label={businessNoWord}>
-                {me.businessNo ?? format(m.personNoBusinessNo, { businessNo: businessNoWord })}
+                {me.businessNo ?? m.person_noBusinessNo({ businessNo: businessNoWord })}
               </DefLine>
-              <DefLine label={format(m.emailLabel)}>
+              <DefLine label={m.users_email()}>
                 <EmailWithStanding email={me.email} verified={me.emailVerified} />
               </DefLine>
-              <DefLine label={format(m.userTypeLabel)}>{me.userType.name}</DefLine>
-              <DefLine label={format(m.anchorLabel)}>
+              <DefLine label={m.field_userType()}>{me.userType.name}</DefLine>
+              <DefLine label={m.users_anchor()}>
                 {me.unitLineage.length === 0 ? (
-                  (me.unit?.name ?? format(m.rolesNone))
+                  (me.unit?.name ?? m.users_rolesNone())
                 ) : (
                   <span data-testid="unit-lineage" {...stylex.props(styles.lineage)}>
                     {me.unitLineage.map((step, index) => {

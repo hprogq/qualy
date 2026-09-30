@@ -52,10 +52,8 @@ export default Plugin.define(
 const files = (namespace: string) => ({
   'index.js': '',
   'src/client/ProbePage.jsx': 'export default function ProbePage() {\n  return null\n}\n',
-  'src/client/i18n.js': `export const catalogs = {
-  namespace: ${JSON.stringify(namespace)},
-  messages: [{ id: ${JSON.stringify(`${namespace}/probe/title`)}, defaultMessage: 'Probe' }],
-  locales: {},
+  'src/client/i18n.js': `export const wireMessages = {
+  ${JSON.stringify(`${namespace}/probe/title`)}: () => 'Probe',
 }
 `,
   'src/client/boot.js': 'export default {}\n',
@@ -129,7 +127,7 @@ describe('a plugin published under somebody else’s scope', () => {
       expect(acme!.surfaces.map((binding) => surfaceLabel(binding.surface))).toEqual([
         'page:acme/probe',
       ])
-      expect(acme!.hasCatalogs).toBe(true)
+      expect(acme!.hasWireMessages).toBe(true)
       expect(acme!.browserModules).toHaveLength(1)
       // and the aggregate really imports it, by the surface the manifest names
       expect(acme!.surfaces[0]!.file).toContain('ProbePage.jsx')

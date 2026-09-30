@@ -7,10 +7,9 @@ import {
   usePageHref,
   usePageNavigate,
 } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
 import { useTerm } from '@qualy/plugin-settings/client/terms'
 import { authTerms } from '@qualy/auth-contract/terms'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { AsyncSection } from '@qualy/ui/admin'
 import { Pager } from '@qualy/ui/pager'
 import {
@@ -24,8 +23,10 @@ import {
   TableHead,
   TableRow,
 } from '@qualy/ui/screen'
-import { iamMessages as m } from '../../i18n.ts'
+
 import { authApi } from '../../api.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // The people of one user type, a page at a time.
 //
@@ -41,7 +42,7 @@ const PER_PAGE = 20
 export function TypeMembers({ userTypeId }: { userTypeId: string }) {
   const query = useApiQuery(authApi)
   const navigate = usePageNavigate()
-  const { format } = useI18n()
+
   const describe = useLoadFailure()
   const businessNo = useTerm(authTerms.businessNumber)
   const [page, setPage] = useState(1)
@@ -77,17 +78,17 @@ export function TypeMembers({ userTypeId }: { userTypeId: string }) {
 
   return (
     <Card data-testid="type-members" data-total={people.data?.total ?? 0}>
-      <CardHead title={format(m.typeMembersTitle)} />
+      <CardHead title={m.userTypes_members()} />
       <AsyncSection
         pending={failure === null && (options.isPending || people.isPending)}
         error={failure}
         retrying={options.isFetching || people.isFetching}
-        loadingLabel={format(commonMessages.loading)}
-        retryLabel={format(commonMessages.retry)}
+        loadingLabel={commonMessages.state_loading()}
+        retryLabel={commonMessages.action_retry()}
         onRetry={() => void (options.isError ? options.refetch() : people.refetch())}
       >
         {items.length === 0 ? (
-          <CardEmpty>{format(m.usersEmpty)}</CardEmpty>
+          <CardEmpty>{m.users_empty()}</CardEmpty>
         ) : (
           <Table
             columns="8.5rem minmax(0, 0.8fr) minmax(0, 1.2fr) 4.5rem"
@@ -95,9 +96,9 @@ export function TypeMembers({ userTypeId }: { userTypeId: string }) {
           >
             <TableHead>
               <span>{businessNo}</span>
-              <span>{format(m.columnName)}</span>
-              <span>{format(m.columnUnit)}</span>
-              <span>{format(m.columnStatus)}</span>
+              <span>{m.users_columnName()}</span>
+              <span>{m.users_columnUnit()}</span>
+              <span>{m.users_columnStatus()}</span>
             </TableHead>
             {items.map((user) => (
               <TableRow
@@ -109,12 +110,12 @@ export function TypeMembers({ userTypeId }: { userTypeId: string }) {
                   : {})}
               >
                 <Cell lead numeric tone={user.businessNo === null ? 'quiet' : 'plain'}>
-                  {user.businessNo ?? format(m.personNoBusinessNo, { businessNo })}
+                  {user.businessNo ?? m.person_noBusinessNo({ businessNo })}
                 </Cell>
                 <Cell tone="plain">{user.displayName}</Cell>
                 <Cell>{user.primaryOrgNode.name}</Cell>
                 <Status tone={user.status === 'active' ? 'plain' : 'bad'}>
-                  {format(user.status === 'disabled' ? m.disabledBadge : m.statusActive)}
+                  {(user.status === 'disabled' ? m.badge_disabled : m.users_statusActive)()}
                 </Status>
               </TableRow>
             ))}
@@ -123,12 +124,12 @@ export function TypeMembers({ userTypeId }: { userTypeId: string }) {
         <CardFoot>
           <Pager
             testId="type-members-pager"
-            label={format(m.pagerLabel)}
+            label={m.users_pager()}
             page={people.data?.page ?? page}
             pageSize={PER_PAGE}
             total={people.data?.total ?? 0}
             disabled={people.isFetching}
-            summary={format(m.userCount, { count: people.data?.total ?? 0 })}
+            summary={m.userTypes_userCount({ count: people.data?.total ?? 0 })}
             onPage={setPage}
           />
         </CardFoot>

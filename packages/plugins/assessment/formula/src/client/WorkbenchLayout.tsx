@@ -1,7 +1,6 @@
 import * as stylex from '@stylexjs/stylex'
 import { useRef, useState, type ReactNode, type RefObject } from 'react'
 import { PageLink } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { layout } from '@qualy/ui/theme/layout.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
@@ -9,12 +8,13 @@ import { Skeleton } from '@qualy/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@qualy/ui/tabs'
 import { ArrowLeftIcon } from 'lucide-react'
 import { workbenchStyles as w } from './workbench-styles.ts'
-import { formulaMessages as m } from './i18n.ts'
+
 import {
   DEFAULT_WORKBENCH_SIZES,
   useWorkbenchSizes,
   type WorkbenchSizes,
 } from './workbench-sizes.ts'
+import * as m from '#messages'
 
 // The formula workbench's frame, whatever it is showing.
 //
@@ -658,7 +658,6 @@ export function WorkbenchLayout({
   /** drawers and dialogs that belong to the view */
   readonly children?: ReactNode
 }) {
-  const { format } = useI18n()
   const { sizes, resize } = useWorkbenchSizes()
   const workbenchRef = useRef<HTMLDivElement | null>(null)
   const upperRef = useRef<HTMLDivElement | null>(null)
@@ -734,7 +733,7 @@ export function WorkbenchLayout({
           <div {...stylex.props(styles.sourcePane)}>{source}</div>
           <Edge
             axis="x"
-            label={format(m.resizeTry)}
+            label={m.workbench_resizeTry()}
             value={sizes.tryWidth}
             fallback={DEFAULT_WORKBENCH_SIZES.tryWidth}
             limits={tryLimits}
@@ -751,7 +750,7 @@ export function WorkbenchLayout({
         </div>
         <Edge
           axis="y"
-          label={format(m.resizePanel)}
+          label={m.workbench_resizePanel()}
           value={sizes.panelHeight}
           fallback={DEFAULT_WORKBENCH_SIZES.panelHeight}
           limits={panelLimits}

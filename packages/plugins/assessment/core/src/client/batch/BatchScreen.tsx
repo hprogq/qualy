@@ -1,8 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { LoadFailure, isRecordId, useApiQuery, usePageRouteParams } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
@@ -11,10 +10,12 @@ import { PageContainer } from '@qualy/ui/page-container'
 import { Portal } from '@qualy/ui/portal'
 import { Resizing, Reveal } from '@qualy/ui/reveal'
 import { assessmentApi } from '../api.ts'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import type { BatchDto } from '../phase/model.ts'
 import { BatchZone, ZoneAwayNotice } from './BatchZone.tsx'
 import { holdsStanding, useBatchAbsence, type BatchStanding } from './absence.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // What every section of a batch needs and none of them should fetch twice:
 // the batch itself, and the clock its times are read on.
@@ -149,10 +150,10 @@ const BannerSlot = createContext<HTMLElement | null>(null)
 
 /** what a reader is told on a screen of the batch that is for somebody else */
 const DENIED = {
-  personal: m.batchDeniedPersonal,
-  review: m.batchDeniedReview,
-  manage: m.batchDeniedManage,
-  results: m.batchDeniedResults,
+  personal: m.batch_deniedPersonal,
+  review: m.batch_deniedReview,
+  manage: m.batch_deniedManage,
+  results: m.batch_deniedResults,
 } as const satisfies Record<BatchStanding, unknown>
 
 /**
@@ -242,7 +243,7 @@ export function BatchScreen({
 }) {
   const { batchId } = usePageRouteParams('batchId')
   const query = useApiQuery(assessmentApi)
-  const { format } = useI18n()
+
   const [slot, setSlot] = useState<HTMLDivElement | null>(null)
   // the section's own name is what shows unless it says otherwise
   const showing = banner ?? 'section'
@@ -275,7 +276,7 @@ export function BatchScreen({
     return (
       <LoadFailure
         failure={absent}
-        back={{ page: 'assessment/batches', label: format(m.batchGoneBack) }}
+        back={{ page: 'assessment/batches', label: m.batch_goneBack() }}
         onRetry={() => void detail.refetch()}
         retrying={detail.isFetching}
       />
@@ -296,11 +297,11 @@ export function BatchScreen({
           size="section"
           failure={{
             kind: 'denied',
-            title: format(DENIED[requires]),
-            description: format(m.batchDeniedHint),
+            title: DENIED[requires](),
+            description: m.batch_deniedHint(),
             retryable: false,
           }}
-          back={{ page: 'assessment/batch', params: { batchId }, label: format(m.batchDeniedBack) }}
+          back={{ page: 'assessment/batch', params: { batchId }, label: m.batch_deniedBack() }}
         />
       </div>
     )
@@ -310,15 +311,15 @@ export function BatchScreen({
     return (
       <AsyncSection
         pending={detail.isPending}
-        loadingLabel={format(commonMessages.loading)}
-        retryLabel={format(commonMessages.retry)}
+        loadingLabel={commonMessages.state_loading()}
+        retryLabel={commonMessages.action_retry()}
         onRetry={() => void detail.refetch()}
         xstyle={styles.fillColumn}
       >
         {batch && (
           <Arrival play={!shown} className={stylex.props(styles.bareColumn).className}>
             {batch.status === 'draft' && (
-              <p {...stylex.props(styles.draftNote, styles.bareNote)}>{format(m.draftBanner)}</p>
+              <p {...stylex.props(styles.draftNote, styles.bareNote)}>{m.batch_draftBanner()}</p>
             )}
             <BatchZone zone={batch.timezone}>
               <ZoneAwayNotice xstyle={styles.bareNote} />
@@ -334,8 +335,8 @@ export function BatchScreen({
     return (
       <AsyncSection
         pending={detail.isPending}
-        loadingLabel={format(commonMessages.loading)}
-        retryLabel={format(commonMessages.retry)}
+        loadingLabel={commonMessages.state_loading()}
+        retryLabel={commonMessages.action_retry()}
         onRetry={() => void detail.refetch()}
         xstyle={styles.fillColumn}
       >
@@ -397,8 +398,8 @@ export function BatchScreen({
       <PageContainer size={size} xstyle={styles.bodyColumn}>
         <AsyncSection
           pending={detail.isPending}
-          loadingLabel={format(commonMessages.loading)}
-          retryLabel={format(commonMessages.retry)}
+          loadingLabel={commonMessages.state_loading()}
+          retryLabel={commonMessages.action_retry()}
           onRetry={() => void detail.refetch()}
           xstyle={styles.fillFlex}
         >
@@ -414,7 +415,7 @@ export function BatchScreen({
               {/* said on the section, not over a question being composed:
                   the band has handed over, and the body is the question's */}
               {batch.status === 'draft' && noting && (
-                <p {...stylex.props(styles.draftNote)}>{format(m.draftBanner)}</p>
+                <p {...stylex.props(styles.draftNote)}>{m.batch_draftBanner()}</p>
               )}
               <BatchZone zone={batch.timezone}>
                 {/* only to a reader whose device keeps another zone: every

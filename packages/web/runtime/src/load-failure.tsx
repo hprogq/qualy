@@ -9,12 +9,12 @@ import {
   type ResourceFailure,
   type ResourceStateKind,
 } from '@qualy/ui/resource-state'
-import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { usePageHref } from './runtime-context.tsx'
 import type { PageHrefOptions } from './pages.ts'
 import { loadFailureKind, retryHelps, subjectFailureKind } from './failure-kind.ts'
 import { useClaimDocumentTitle } from './document-title.tsx'
+import * as commonMessages from '@qualy/web-i18n/messages'
 
 // A reading that failed, worded for the reader and drawn as a state (see
 // failure-kind.ts for how it is told apart). The generic words say what
@@ -32,11 +32,11 @@ export interface LoadFailureOptions {
 }
 
 const words = {
-  missing: [commonMessages.loadMissingTitle, commonMessages.loadMissingHint],
-  denied: [commonMessages.loadDeniedTitle, commonMessages.loadDeniedHint],
-  offline: [commonMessages.loadOfflineTitle, commonMessages.loadOfflineHint],
-  unavailable: [commonMessages.loadUnavailableTitle, commonMessages.loadUnavailableHint],
-  failed: [commonMessages.loadFailedTitle, commonMessages.loadFailedHint],
+  missing: [commonMessages.load_missingTitle, commonMessages.load_missingHint],
+  denied: [commonMessages.load_deniedTitle, commonMessages.load_deniedHint],
+  offline: [commonMessages.load_offlineTitle, commonMessages.load_offlineHint],
+  unavailable: [commonMessages.load_unavailableTitle, commonMessages.load_unavailableHint],
+  failed: [commonMessages.load_failedTitle, commonMessages.load_failedHint],
 } as const
 
 export interface LoadFailureWords {
@@ -60,19 +60,18 @@ export interface LoadFailureWords {
  * a whole page.
  */
 export function useLoadFailure(): LoadFailureWords {
-  const { format } = useI18n()
   const worded = useCallback(
     (kind: ResourceStateKind, options?: LoadFailureOptions): ResourceFailure => {
       const [title, description] = words[kind]
       const own = options?.copy?.[kind]
       return {
         kind,
-        title: own?.title ?? format(title),
-        description: own?.description ?? format(description),
+        title: own?.title ?? title(),
+        description: own?.description ?? description(),
         retryable: retryHelps(kind),
       }
     },
-    [format],
+    [],
   )
   return useMemo(
     () => ({
@@ -128,7 +127,6 @@ export function LoadFailure({
   /** anything else worth offering, after the ways out */
   extra?: ReactNode
 }) {
-  const { format } = useI18n()
   useClaimDocumentTitle(size === 'page' ? failure.title : null)
   const backHref = usePageHref(back?.page ?? NO_PAGE, back)
   const retry = failure.retryable && onRetry !== undefined
@@ -148,7 +146,7 @@ export function LoadFailure({
         }}
       >
         {retrying ? <Spinner aria-hidden /> : <RotateCwIcon aria-hidden />}
-        {format(commonMessages.retry)}
+        {commonMessages.action_retry()}
       </Button>,
     )
   }

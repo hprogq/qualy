@@ -3,10 +3,9 @@ import { useInfiniteQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { ChevronRightIcon, PlusIcon } from 'lucide-react'
 import { cursorPages, useApi, useApiQuery, useLoadFailure, useRunApi } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
 import { useTerm } from '@qualy/plugin-settings/client/terms'
 import { authTerms } from '@qualy/auth-contract/terms'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { AsyncSection } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
@@ -14,9 +13,11 @@ import { ListEmpty } from './ListEmpty.tsx'
 import { ListSkeleton } from './ListSkeleton.tsx'
 import { recordColumns } from './columns.stylex.ts'
 import { assessmentApi } from '../api.ts'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import { RecordStanding } from './RecordStanding.tsx'
 import { useWhen } from './when.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // What the institution has recorded in this round, newest first.
 //
@@ -208,7 +209,7 @@ export function AdministrativeEntryList({
   const api = useApi(assessmentApi)
   const run = useRunApi()
   const query = useApiQuery(assessmentApi)
-  const { format } = useI18n()
+
   const failures = useLoadFailure()
   const businessNo = useTerm(authTerms.businessNumber)
   const whenOf = useWhen()
@@ -242,8 +243,8 @@ export function AdministrativeEntryList({
         pending={book.isPending}
         error={book.isError ? failures.of(book.error) : null}
         framed
-        loadingLabel={format(commonMessages.loading)}
-        retryLabel={format(commonMessages.retry)}
+        loadingLabel={commonMessages.state_loading()}
+        retryLabel={commonMessages.action_retry()}
         onRetry={() => void book.refetch()}
         skeleton={<ListSkeleton />}
       >
@@ -251,17 +252,17 @@ export function AdministrativeEntryList({
           // a search that found nobody is not an empty book, and offering to
           // record one there would answer a question nobody asked
           needle !== '' ? (
-            <ListEmpty title={format(m.recordNobodyFound)} testId="administrative-entries-empty" />
+            <ListEmpty title={m.record_nobodyFound()} testId="administrative-entries-empty" />
           ) : (
             <ListEmpty
-              title={format(m.recordListEmpty)}
-              said={format(m.recordListEmptyHint)}
+              title={m.record_listEmpty()}
+              said={m.record_listEmptyHint()}
               testId="administrative-entries-empty"
             >
               {onRecord !== undefined && (
                 <Button variant="outline" onClick={onRecord}>
                   <PlusIcon aria-hidden {...stylex.props(styles.actionIcon)} />
-                  {format(m.recordNewAction)}
+                  {m.record_newAction()}
                 </Button>
               )}
             </ListEmpty>
@@ -276,23 +277,22 @@ export function AdministrativeEntryList({
                 aria-hidden
                 data-testid="administrative-entries-head"
               >
-                <span>{format(m.recordColumnWho)}</span>
+                <span>{m.record_columnWho()}</span>
                 <span>{businessNo}</span>
-                <span>{format(m.recordColumnItem)}</span>
-                <span {...stylex.props(styles.headWider)}>{format(m.recordColumnSource)}</span>
-                <span>{format(m.importColumnStatus)}</span>
-                <span>{format(m.recordColumnActor)}</span>
-                <span {...stylex.props(styles.headEnd)}>{format(m.recordColumnWhen)}</span>
+                <span>{m.record_columnItem()}</span>
+                <span {...stylex.props(styles.headWider)}>{m.record_columnSource()}</span>
+                <span>{m.record_import_columnStatus()}</span>
+                <span>{m.record_columnActor()}</span>
+                <span {...stylex.props(styles.headEnd)}>{m.record_columnWhen()}</span>
                 <span />
               </div>
               {rows.map((row) => {
                 const spent = row.status === 'voided'
                 const when = whenOf(row.revision.createdAt)
-                const number =
-                  row.participant.businessNo ?? format(m.noBusinessNoShort, { businessNo })
-                const source = format(
-                  row.source === 'import' ? m.recordSourceImport : m.recordSourceManual,
-                )
+                const number = row.participant.businessNo ?? m.roster_noBusinessNo({ businessNo })
+                const source = (
+                  row.source === 'import' ? m.record_sourceImport : m.record_sourceManual
+                )()
                 return (
                   <button
                     key={row.entryId}
@@ -316,7 +316,7 @@ export function AdministrativeEntryList({
                       <RecordStanding status={row.status} />
                     </span>
                     <span {...stylex.props(styles.fact)}>
-                      {row.revision.actorName ?? format(m.recordActorUnknown)}
+                      {row.revision.actorName ?? m.record_actorUnknown()}
                     </span>
                     <span {...stylex.props(styles.fact, styles.when)}>{when}</span>
                     <ChevronRightIcon aria-hidden {...stylex.props(styles.chevron)} />
@@ -341,7 +341,7 @@ export function AdministrativeEntryList({
                   disabled={book.isFetchingNextPage}
                   onClick={() => void book.fetchNextPage()}
                 >
-                  {format(m.recordMoreWho)}
+                  {m.record_moreWho()}
                 </Button>
               </div>
             )}

@@ -1,8 +1,8 @@
 import type { ReactNode } from 'react'
 import * as stylex from '@stylexjs/stylex'
-import type { MessageDescriptor } from '@qualy/i18n-contract'
+import type { Message } from '@qualy/i18n-contract'
 import { ScrollArea } from '@qualy/ui/scroll-area'
-import { assessmentMessages as m } from '../i18n.ts'
+import * as m from '#messages'
 
 /**
  * The three parts of a workbench, in reading order: what has been said about
@@ -14,10 +14,10 @@ export type WorkbenchPart = 'flow' | 'filing' | 'about'
 
 export const WORKBENCH_PARTS: readonly WorkbenchPart[] = ['flow', 'filing', 'about']
 
-export const PART_LABEL: Record<WorkbenchPart, MessageDescriptor> = {
-  flow: m.reviewPrior,
-  filing: m.reviewPayloadTitle,
-  about: m.reviewAboutSection,
+export const PART_LABEL: Record<WorkbenchPart, Message> = {
+  flow: m.review_prior,
+  filing: m.review_payloadTitle,
+  about: m.review_aboutSection,
 }
 
 const belowLg = '@media (max-width: 1023.98px)'

@@ -1,11 +1,12 @@
-import { localeNames, useI18n, useLocale } from '@qualy/web-i18n'
+import { localeNames, useLocale } from '@qualy/web-i18n'
 import { useChooseLocale } from './locale-choice.ts'
 import { supportedLocales, type SupportedLocale } from '@qualy/i18n-contract'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { ToggleGroup, ToggleGroupItem } from '@qualy/ui/toggle-group'
-import { authMessages as m } from './i18n.ts'
+
 import { ThemeChoicePicker } from './identity-bits.tsx'
+import * as m from '#messages'
 
 // The preferences row on the drawer's foot: appearance and language, both
 // held by the browser, adjusted in place. The same choices the top bar's
@@ -33,18 +34,17 @@ const styles = stylex.create({
 })
 
 export default function DrawerAccount() {
-  const { format } = useI18n()
   const locale = useLocale()
   const setLocale = useChooseLocale()
   return (
     <div data-testid="drawer-account" {...stylex.props(styles.row)}>
-      <span {...stylex.props(styles.label)}>{format(m.appearance)}</span>
+      <span {...stylex.props(styles.label)}>{m.preference_appearance()}</span>
       <ThemeChoicePicker />
       <span {...stylex.props(styles.spacer)} />
-      <span {...stylex.props(styles.label)}>{format(m.language)}</span>
+      <span {...stylex.props(styles.label)}>{m.preference_language()}</span>
       <ToggleGroup
         value={locale}
-        aria-label={format(m.language)}
+        aria-label={m.preference_language()}
         onValueChange={(next) => next !== '' && setLocale(next as SupportedLocale)}
       >
         {supportedLocales.map((candidate) => (

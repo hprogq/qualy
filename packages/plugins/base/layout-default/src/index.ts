@@ -15,7 +15,6 @@ import {
 const plugin = Plugin.define(
   '@qualy/plugin-layout-default',
   { dependsOn: ['@qualy/plugin-ui-registry'] },
-  Ui.i18n('./client/i18n'),
   Ui.layout({
     contract: APP_SHELL,
     component: Ui.react('./client/AppShell'),

@@ -11,7 +11,7 @@ import {
   useUiCollection,
 } from '@qualy/web-runtime'
 import { useI18n, useList } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { kindOf, type AtomicSchema, type ChoiceSchema } from '@qualy/value-schema'
 import type { FieldDraft as ValueDraft } from '@qualy/web-value-form/model'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
@@ -25,7 +25,7 @@ import { useLingering } from '@qualy/ui/use-lingering'
 import { useSettled } from '@qualy/ui/use-settled'
 import { calculatorAuthoringOptions } from '../../../surfaces.ts'
 import { assessmentApi } from '../../api.ts'
-import { assessmentMessages as m } from '../../i18n.ts'
+
 import { dayKeyOf, inZone, useBatchZone } from '../../batch/zone.ts'
 import { BatchBanner } from '../../batch/BatchScreen.tsx'
 import type { ItemDto } from '../../entry/model.ts'
@@ -86,6 +86,8 @@ import {
   withMintedIds,
 } from './model.ts'
 import { boundsWords, type LinkVerdict } from './words.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // One question, composed rather than typed. The editor holds the draft and
 // the contract; the three tabs render it; the panels edit one thing at a
@@ -213,26 +215,26 @@ const AREAS: readonly EditorArea[] = ['basics', 'scoring', 'rules']
 const NO_STANDING: readonly Standing[] = []
 
 const REFUSED_TITLE = {
-  conflict: m.itemsFailConflictTitle,
-  voided: m.itemsFailVoidedTitle,
-  'read-only': m.itemsFailReadOnlyTitle,
-  denied: m.itemsFailDeniedTitle,
-  gone: m.itemsFailGoneTitle,
-  full: m.itemsFailFullTitle,
-  scoring: m.itemsFailScoringTitle,
-  incompatible: m.itemsFailIncompatibleTitle,
-  other: m.itemsFailOtherTitle,
+  conflict: m.items_failConflictTitle,
+  voided: m.items_failVoidedTitle,
+  'read-only': m.items_failReadOnlyTitle,
+  denied: m.items_failDeniedTitle,
+  gone: m.items_failGoneTitle,
+  full: m.items_failFullTitle,
+  scoring: m.items_failScoringTitle,
+  incompatible: m.items_failIncompatibleTitle,
+  other: m.items_failOtherTitle,
 } as const
 
 const REFUSED_HINT = {
-  conflict: m.itemsFailConflictHint,
-  voided: m.itemsFailVoidedHint,
-  'read-only': m.itemsFailReadOnlyHint,
-  denied: m.itemsFailDeniedHint,
-  gone: m.itemsFailGoneHint,
-  full: m.itemsFailFullHint,
-  scoring: m.itemsFailScoringHint,
-  loose: m.itemsFailLooseHint,
+  conflict: m.items_failConflictHint,
+  voided: m.items_failVoidedHint,
+  'read-only': m.items_failReadOnlyHint,
+  denied: m.items_failDeniedHint,
+  gone: m.items_failGoneHint,
+  full: m.items_failFullHint,
+  scoring: m.items_failScoringHint,
+  loose: m.items_failLooseHint,
 } as const
 
 type OpenSheet =
@@ -328,7 +330,7 @@ export function ItemEditor({
 }) {
   const api = useApi(assessmentApi)
   const run = useRunApi()
-  const { format, formatError, locale } = useI18n()
+  const { formatError, locale } = useI18n()
   const zone = useBatchZone()
   const listJoin = useList()
   // What the last save here answered with, until the page's own read of the
@@ -1029,7 +1031,7 @@ export function ItemEditor({
       return { sent: draft }
     },
     onSuccess: (result: { item: ItemDto }, _input, mutated) => {
-      toast.success(format(m.itemsSaved))
+      toast.success(m.items_saved())
       setAskingReason(false)
       setImpact(null)
       setRefusal(null)
@@ -1243,14 +1245,14 @@ export function ItemEditor({
 
   // ---- what the band says --------------------------------------------------
   const revision = item?.currentRevision ?? null
-  const heading = draft.title.trim() === '' ? format(m.itemsUntitled) : draft.title
-  const modeChip = format(
+  const heading = draft.title.trim() === '' ? m.items_untitled() : draft.title
+  const modeChip = (
     draft.mode === 'automatic'
-      ? m.itemsModeAutomatic
+      ? m.items_modeAutomatic
       : draft.mode === 'direct'
-        ? m.itemsModeDirect
-        : m.itemsModeReview,
-  )
+        ? m.items_modeDirect
+        : m.items_modeReview
+  )()
   const savedWhen = ((): string | null => {
     if (revision === null) return null
     const at = new Date(revision.createdAt)
@@ -1260,7 +1262,7 @@ export function ItemEditor({
       ...inZone(zone),
     }).format(at)
     return dayKeyOf(at.getTime(), zone) === dayKeyOf(Date.now(), zone)
-      ? format(m.itemsTodayAt, { time })
+      ? m.items_todayAt({ time })
       : new Intl.DateTimeFormat(locale, {
           month: 'long',
           day: 'numeric',
@@ -1270,13 +1272,10 @@ export function ItemEditor({
         }).format(at)
   })()
   const versionWords =
-    revision === null
-      ? format(m.itemsVersionNew)
-      : format(m.itemsVersionNo, { no: revision.revisionNo })
-  const savedWords =
-    dirty || savedWhen === null ? null : format(m.itemsSavedAt, { when: savedWhen })
+    revision === null ? m.items_versionNew() : m.items_versionNo({ no: revision.revisionNo })
+  const savedWords = dirty || savedWhen === null ? null : m.items_savedAt({ when: savedWhen })
   // everything else on the path's line, so the path is measured afresh when it changes
-  const metaWords = [versionWords, dirty ? format(m.itemsUnsaved) : (savedWords ?? '')].join('\n')
+  const metaWords = [versionWords, dirty ? m.items_unsaved() : (savedWords ?? '')].join('\n')
   const recognitionHandles = recognitionRows(draft, contract).map((row) => row.handle)
   const methodLabel = calculators.find((one) => one.ref === chosenCalculator.ref)?.label ?? null
   const automaticLocked = item !== null && item.status !== 'draft'
@@ -1286,56 +1285,56 @@ export function ItemEditor({
       case 'unlink': {
         const name = recognitionOf(asked.handle)?.label ?? ''
         return {
-          title: format(m.itemsUnlinkTitle),
-          body: format(m.itemsUnlinkHint, { field: name }),
-          confirm: format(m.itemsUnlink),
+          title: m.items_unlinkTitle(),
+          body: m.items_unlinkHint({ field: name }),
+          confirm: m.items_unlink(),
         }
       }
       case 'delete-field': {
         const field = draft.fields.find((one) => one.key === asked.key)
         return {
-          title: format(m.itemsDeleteFieldTitle, { name: field?.label ?? '' }),
-          body: format(m.itemsDeleteFieldHint),
-          confirm: format(m.itemsDelete),
+          title: m.items_deleteFieldTitle({ name: field?.label ?? '' }),
+          body: m.items_deleteFieldHint(),
+          confirm: m.items_delete(),
           tone: 'destructive' as const,
         }
       }
       case 'delete-blocked': {
         const name = recognitionOf(asked.handle)?.label ?? ''
         return {
-          title: format(m.itemsDeleteBlockedTitle, { name }),
-          body: format(m.itemsDeleteBlockedHint, { recognition: name }),
-          confirm: format(m.itemsGoToRecognition),
+          title: m.items_deleteBlockedTitle({ name }),
+          body: m.items_deleteBlockedHint({ recognition: name }),
+          confirm: m.items_goToRecognition(),
         }
       }
       case 'disable-option': {
         const field = draft.fields.find((one) => one.key === asked.key)
         const option = field?.options.find((one) => one.id === asked.optionId)
         return {
-          title: format(m.itemsDisableOptionTitle, { name: option?.label ?? '' }),
-          body: format(m.itemsDisableOptionHint),
-          confirm: format(m.itemsDisable),
+          title: m.items_disableOptionTitle({ name: option?.label ?? '' }),
+          body: m.items_disableOptionHint(),
+          confirm: m.items_disable(),
         }
       }
       case 'to-direct':
         return {
-          title: format(m.itemsToDirectTitle),
-          body: format(m.itemsToDirectHint, {
+          title: m.items_toDirectTitle(),
+          body: m.items_toDirectHint({
             count: asked.handles.length,
             names: listJoin(asked.handles.map((handle) => recognitionOf(handle)?.label ?? '')),
           }),
-          confirm: format(m.itemsToDirectConfirm),
+          confirm: m.items_toDirectConfirm(),
         }
       case 'to-automatic':
         return {
-          title: format(m.itemsToAutomaticTitle),
-          body: format(m.itemsToAutomaticHint, {
+          title: m.items_toAutomaticTitle(),
+          body: m.items_toAutomaticHint({
             count: asked.parameters.length,
             names: listJoin(
               asked.parameters.map((parameter) => parameterTitle(contract, parameter, locale)),
             ),
           }),
-          confirm: format(m.itemsGoToScoring),
+          confirm: m.items_goToScoring(),
         }
       case 'adjust': {
         const recognition = recognitionOf(asked.handle)
@@ -1346,13 +1345,13 @@ export function ItemEditor({
             ? null
             : admittedSchemaOf(recognition, seat.schema)
         return {
-          title: format(m.itemsAdjustTitle),
-          body: format(m.itemsAdjustHint, {
+          title: m.items_adjustTitle(),
+          body: m.items_adjustHint({
             field: field?.label ?? '',
             current: field === undefined ? '' : fieldWords(field),
-            next: admitted === null ? '' : boundsWords(admitted, locale, format, listJoin),
+            next: admitted === null ? '' : boundsWords(admitted, locale, listJoin),
           }),
-          confirm: format(m.itemsLinkAdjustAction),
+          confirm: m.items_linkAdjustAction(),
         }
       }
       case 'mapping':
@@ -1361,7 +1360,7 @@ export function ItemEditor({
   }
   const fieldWords = (field: FieldDraft) => {
     const schema = fieldSchemaOf(field)
-    return schema === null ? '' : boundsWords(schema, locale, format, listJoin)
+    return schema === null ? '' : boundsWords(schema, locale, listJoin)
   }
   const onAskConfirm = (asked: Ask) => {
     switch (asked.kind) {
@@ -1430,10 +1429,10 @@ export function ItemEditor({
                 </span>
                 <Tag tall testId="item-standing">
                   {item === null || item.status === 'draft'
-                    ? format(m.itemsStatusComposing)
+                    ? m.items_statusComposing()
                     : item.status === 'voided'
-                      ? format(m.itemsStatusVoided)
-                      : format(m.structureStatusLive)}
+                      ? m.items_statusVoided()
+                      : m.items_structureStatusLive()}
                 </Tag>
                 {/* said, not offered: the handling is changed where its consequences are laid out */}
                 <span {...stylex.props(styles.modeSeat)}>
@@ -1446,8 +1445,8 @@ export function ItemEditor({
             description={
               <>
                 <span {...stylex.props(styles.backSeat)}>
-                  <BannerBack label={format(m.itemsBack)} onBack={leave}>
-                    {format(m.itemsCrumbRoot)}
+                  <BannerBack label={m.items_back()} onBack={leave}>
+                    {m.items_crumbRoot()}
                   </BannerBack>
                 </span>
                 {/* where the question sits, beside the way back rather than
@@ -1484,9 +1483,7 @@ export function ItemEditor({
                     <span aria-hidden {...stylex.props(styles.metaRule, styles.wideOnly)} />
                     <span {...stylex.props(styles.metaUnsavedWords)}>
                       <Dot tone="pending" />
-                      <span {...stylex.props(styles.metaUnsavedText)}>
-                        {format(m.itemsUnsaved)}
-                      </span>
+                      <span {...stylex.props(styles.metaUnsavedText)}>{m.items_unsaved()}</span>
                     </span>
                   </span>
                 )}
@@ -1496,11 +1493,11 @@ export function ItemEditor({
               <>
                 <Button
                   variant="outline"
-                  aria-label={format(m.itemsPreview)}
+                  aria-label={m.items_preview()}
                   onClick={() => setSheet({ kind: 'preview' })}
                 >
                   <EyeIcon aria-hidden />
-                  <span {...stylex.props(styles.wideOnly)}>{format(m.itemsPreview)}</span>
+                  <span {...stylex.props(styles.wideOnly)}>{m.items_preview()}</span>
                 </Button>
                 <Button
                   disabled={save.isPending || reloading || wrong}
@@ -1508,12 +1505,12 @@ export function ItemEditor({
                   data-testid="item-save"
                   data-blocked={wrong}
                 >
-                  {format(m.entrySave)}
+                  {m.entry_save()}
                 </Button>
                 {menu !== undefined && (
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="outline" size="icon" aria-label={format(m.itemsMoreActions)}>
+                      <Button variant="outline" size="icon" aria-label={m.items_moreActions()}>
                         <EllipsisVerticalIcon aria-hidden />
                       </Button>
                     </DropdownMenuTrigger>
@@ -1537,15 +1534,15 @@ export function ItemEditor({
             <Tabs value={area} onValueChange={(next) => setPanelParam(next)}>
               <TabsList xstyle={styles.tabList}>
                 {AREAS.filter((one) => one !== 'rules' || draft.mode !== 'automatic').map((one) => {
-                  const name = format(
+                  const name = (
                     one === 'basics'
-                      ? m.itemsTabBasics
+                      ? m.items_tabBasics
                       : one === 'scoring'
                         ? draft.mode === 'automatic'
-                          ? m.itemsTabScoring
-                          : m.itemsTabForm
-                        : m.itemsTabRules,
-                  )
+                          ? m.items_tabScoring
+                          : m.items_tabForm
+                        : m.items_tabRules
+                  )()
                   return (
                     <TabsTrigger
                       key={one}
@@ -1577,13 +1574,13 @@ export function ItemEditor({
             kind={refused.kind}
             title={
               refused.kind === 'loose'
-                ? format(m.itemsFailLooseTitle, { count: refused.reasons.length })
-                : format(REFUSED_TITLE[refused.kind])
+                ? m.items_failLooseTitle({ count: refused.reasons.length })
+                : REFUSED_TITLE[refused.kind]()
             }
             hint={
               refused.kind === 'incompatible' || refused.kind === 'other'
                 ? refused.words
-                : format(REFUSED_HINT[refused.kind])
+                : REFUSED_HINT[refused.kind]()
             }
             reasons={refused.kind === 'loose' ? refused.reasons : undefined}
             actions={
@@ -1595,14 +1592,14 @@ export function ItemEditor({
                     disabled={reloading || save.isPending}
                     onClick={() => void reload()}
                   >
-                    {format(m.itemsFailReload)}
+                    {m.items_failReload()}
                   </Button>
                   <Button
                     size="sm"
                     disabled={reloading || save.isPending || wrong}
                     onClick={() => void overwrite()}
                   >
-                    {format(m.itemsFailOverwrite)}
+                    {m.items_failOverwrite()}
                   </Button>
                 </>
               ) : refused.kind === 'loose' && item !== null ? (
@@ -1612,7 +1609,7 @@ export function ItemEditor({
                   disabled={reloading}
                   onClick={() => void reload()}
                 >
-                  {format(m.itemsFailReload)}
+                  {m.items_failReload()}
                 </Button>
               ) : refused.kind === 'scoring' || refused.kind === 'other' ? (
                 <Button
@@ -1621,7 +1618,7 @@ export function ItemEditor({
                   disabled={save.isPending || wrong}
                   onClick={retry}
                 >
-                  {format(m.itemsFailRetry)}
+                  {m.items_failRetry()}
                 </Button>
               ) : undefined
             }
@@ -1837,7 +1834,7 @@ export function ItemEditor({
               title={words.title}
               description={words.body}
               confirmLabel={words.confirm}
-              cancelLabel={format(commonMessages.cancel)}
+              cancelLabel={commonMessages.action_cancel()}
               tone={words.tone ?? 'default'}
               onConfirm={() => onAskConfirm(lingeringAsk)}
               onCancel={() => setAsk(null)}
@@ -1847,9 +1844,9 @@ export function ItemEditor({
 
       <ConfirmDialog
         open={leaving}
-        title={format(m.itemsLeaveUnsaved)}
-        confirmLabel={format(m.discardEdits)}
-        cancelLabel={format(commonMessages.cancel)}
+        title={m.items_leaveUnsaved()}
+        confirmLabel={m.plan_discard()}
+        cancelLabel={commonMessages.action_cancel()}
         tone="destructive"
         onConfirm={() => {
           setLeaving(false)
@@ -1860,8 +1857,8 @@ export function ItemEditor({
       {askedOnce && (
         <ReasonDialog
           open={askingReason}
-          title={format(m.itemsReasonTitle)}
-          description={format(m.itemsReasonHint)}
+          title={m.items_reasonTitle()}
+          description={m.items_reasonHint()}
           busy={save.isPending}
           onConfirm={(reason) => save.mutate({ reason })}
           onClose={() => {

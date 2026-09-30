@@ -266,9 +266,9 @@ describe('the words themselves', () => {
       'en-US',
     )
 
-    // the english default reaches the screen, which is what proves the
-    // catalog is a layer rather than the source of the words
-    await expect.element(page.getByText('My score')).toBeVisible()
+    // the english words reach the screen, compiled beside the page that
+    // says them
+    await expect.element(page.getByText('My standing')).toBeVisible()
     expect(page.getByText('我的成绩').elements()).toHaveLength(0)
     // and that line is not scored in words that cannot be read as the
     // participant having been taken off the roster

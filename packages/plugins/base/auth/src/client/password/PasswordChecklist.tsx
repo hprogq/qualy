@@ -1,10 +1,10 @@
 import { motion, useReducedMotion } from 'motion/react'
 import * as stylex from '@stylexjs/stylex'
 import { CheckIcon, CircleIcon } from 'lucide-react'
-import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { authMessages as m } from '../i18n.ts'
+
 import { lengthOf, type CheckState, type PasswordChecks } from './checks.ts'
+import * as m from '#messages'
 
 // What a new password is held to, as a list under the field: the same list
 // on every form that sets a password. What it says comes from checks.ts.
@@ -47,23 +47,22 @@ export function PasswordChecklist({
   /** a save was pressed and refused: what does not hold now says so in red */
   refused: boolean
 }) {
-  const { format } = useI18n()
   const left = min - lengthOf(password)
   return (
     <ul data-testid="password-checklist" {...stylex.props(styles.list)}>
       <Rule check="length" state={checks.length} refused={refused}>
         {checks.length === 'met' || password === ''
-          ? format(m.resetLength, { min })
-          : format(m.resetLengthShort, { min, left: Math.max(left, 0) })}
+          ? m.reset_length({ min })
+          : m.reset_lengthShort({ min, left: Math.max(left, 0) })}
       </Rule>
       <Rule check="impersonal" state={checks.impersonal} refused={refused}>
-        {format(m.passwordImpersonal)}
+        {m.password_impersonal()}
       </Rule>
       <Rule check="unguessable" state={checks.unguessable} refused={refused}>
-        {format(m.passwordUnguessable)}
+        {m.password_unguessable()}
       </Rule>
       {checks.unguessable === 'unmet' && password !== '' && (
-        <li {...stylex.props(styles.advice)}>{format(m.passwordAdvice)}</li>
+        <li {...stylex.props(styles.advice)}>{m.password_advice()}</li>
       )}
     </ul>
   )

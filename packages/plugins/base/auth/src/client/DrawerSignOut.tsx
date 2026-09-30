@@ -8,7 +8,7 @@ import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { toast } from '@qualy/ui/toast'
 import { authApi } from './api.ts'
 import { useIdentity } from './identity.ts'
-import { authMessages as m } from './i18n.ts'
+import * as m from '#messages'
 
 // The way out, at the end of the drawer's last row. Only for somebody who is
 // actually in: an anonymous visitor gets the sign-in link at the drawer's
@@ -42,7 +42,7 @@ export default function DrawerSignOut({ context }: { context?: DrawerSignOutCont
   const api = useApi(authApi)
   const run = useRunApi()
 
-  const { format, formatError } = useI18n()
+  const { formatError } = useI18n()
   const endSession = useSessionTransition()
   const me = useIdentity()
   if (!me.isSuccess) return null
@@ -59,14 +59,14 @@ export default function DrawerSignOut({ context }: { context?: DrawerSignOutCont
     return (
       <Button onClick={signOut}>
         <LogOutIcon aria-hidden />
-        {format(m.signOut)}
+        {m.action_signOut()}
       </Button>
     )
   }
   return (
     <button type="button" {...stylex.props(styles.wayOut)} onClick={signOut}>
       <LogOutIcon aria-hidden className={stylex.props(styles.glyph).className} />
-      {format(m.signOut)}
+      {m.action_signOut()}
     </button>
   )
 }

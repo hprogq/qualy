@@ -1,23 +1,20 @@
-import type { useI18n } from '@qualy/web-i18n'
-import { formulaMessages as m } from './i18n.ts'
-
-type Format = ReturnType<typeof useI18n>['format']
+import * as m from '#messages'
 
 /** the words for a kind, in the author's language */
-export const kindWords = (format: Format, kind: string | undefined): string => {
+export const kindWords = (kind: string | undefined): string => {
   switch (kind) {
     case 'text':
-      return format(m.kindText)
+      return m.kind_text()
     case 'integer':
-      return format(m.kindInteger)
+      return m.kind_integer()
     case 'decimal':
-      return format(m.kindDecimal)
+      return m.kind_decimal()
     case 'choice':
-      return format(m.kindChoice)
+      return m.kind_choice()
     case 'boolean':
-      return format(m.kindBoolean)
+      return m.kind_boolean()
     case 'date':
-      return format(m.kindDate)
+      return m.kind_date()
     default:
       return kind ?? ''
   }

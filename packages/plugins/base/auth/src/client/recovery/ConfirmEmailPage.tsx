@@ -8,9 +8,10 @@ import { motion, useReducedMotion } from 'motion/react'
 import { CheckIcon, CircleAlertIcon } from 'lucide-react'
 import { Spinner } from '@qualy/ui/spinner'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { authMessages as m } from '../i18n.ts'
+
 import { authApi } from '../api.ts'
 import { AuthShell } from '../sign-in/AuthShell.tsx'
+import * as m from '#messages'
 
 // Where a link that proves an address, or moves an account to a new one,
 // lands. The link is taken up as soon as the page opens - following it is
@@ -76,7 +77,7 @@ export default function ConfirmEmailPage() {
   const purpose = fragment.get('purpose') === 'change' ? 'change' : 'verify'
   const api = useApi(authApi)
   const run = useRunApi()
-  const { format, formatError } = useI18n()
+  const { formatError } = useI18n()
   const account = usePageHref('auth/account-profile')
   // one request per link, however often the page renders or mounts: keyed
   // by the token, never retried and never fetched again - a link is spent
@@ -100,12 +101,12 @@ export default function ConfirmEmailPage() {
 
   const outcome =
     token === null
-      ? { state: 'missing', tone: 'danger' as const, said: format(m.confirmMissing) }
+      ? { state: 'missing', tone: 'danger' as const, said: m.confirm_missing() }
       : confirm.isSuccess
         ? {
             state: 'done',
             tone: undefined,
-            said: format(purpose === 'change' ? m.confirmChanged : m.confirmVerified),
+            said: (purpose === 'change' ? m.confirm_changed : m.confirm_verified)(),
           }
         : confirm.isError
           ? { state: 'refused', tone: 'danger' as const, said: formatError(confirm.error) }
@@ -116,7 +117,7 @@ export default function ConfirmEmailPage() {
       <div {...stylex.props(styles.panel)}>
         {outcome === null ? (
           <>
-            <h1 {...stylex.props(styles.title)}>{format(m.confirmTitle)}</h1>
+            <h1 {...stylex.props(styles.title)}>{m.confirm_title()}</h1>
             <div {...stylex.props(styles.waiting)}>
               <Spinner />
             </div>
@@ -130,7 +131,7 @@ export default function ConfirmEmailPage() {
                 <CheckIcon size={22} strokeWidth={2.2} />
               )}
             </Badge>
-            <h1 {...stylex.props(styles.title)}>{format(m.confirmTitle)}</h1>
+            <h1 {...stylex.props(styles.title)}>{m.confirm_title()}</h1>
             <p
               data-testid="confirm-state"
               data-state={outcome.state}
@@ -143,11 +144,11 @@ export default function ConfirmEmailPage() {
         )}
         {account === undefined ? (
           <PageLink page="auth/login" className={stylex.props(styles.next).className}>
-            {format(m.toSignIn)}
+            {m.reset_toSignIn()}
           </PageLink>
         ) : (
           <PageLink page="auth/account-profile" className={stylex.props(styles.next).className}>
-            {format(m.toAccount)}
+            {m.confirm_toAccount()}
           </PageLink>
         )}
       </div>

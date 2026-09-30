@@ -4,19 +4,21 @@ import * as stylex from '@stylexjs/stylex'
 import { useApiQuery, useLoadFailure } from '@qualy/web-runtime'
 import type { ApiResult } from '@qualy/web-runtime/api'
 import { useI18n } from '@qualy/web-i18n'
-import type { MessageDescriptor } from '@qualy/i18n-contract'
-import { commonMessages } from '@qualy/web-i18n/messages'
+import type { Message } from '@qualy/i18n-contract'
+
 import { AsyncSection, SidePanel } from '@qualy/ui/admin'
 import { Badge } from '@qualy/ui/badge'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { assessmentApi } from '../api.ts'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import { inZone, useBatchZone, yearOf } from '../batch/zone.ts'
 import { AttachmentLink } from './AttachmentLink.tsx'
 import { answerOf, displayValueOf, fieldsOf } from './model.ts'
 import { ownReviewEventMessage, reviewEventMessage } from '../review/events.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // The whole account of one claim, read the way records are read: newest
 // first, all the way down - and grouped by the unit a reader actually
@@ -313,7 +315,7 @@ export function EntryHistory({
   onClose: () => void
 }) {
   const query = useApiQuery(assessmentApi)
-  const { format } = useI18n()
+
   const history = useQuery(query.assessment.getEntryHistory.queryOptions({ params: { entryId } }))
   const failure = useHistoryFailure(history.error)
   const data = history.data
@@ -325,11 +327,11 @@ export function EntryHistory({
   return (
     <SidePanel
       open={open}
-      title={format(m.entryHistoryTitle)}
+      title={m.entry_historyTitle()}
       description={
         data === undefined
           ? undefined
-          : format(m.entryTrailSubtitle, {
+          : m.entry_trailSubtitle({
               item: itemTitle ?? '',
               versions: data.revisions.length,
               rounds: data.rounds.length,
@@ -342,8 +344,8 @@ export function EntryHistory({
         pending={history.isPending}
         error={failure}
         retrying={history.isFetching}
-        loadingLabel={format(commonMessages.loading)}
-        retryLabel={format(commonMessages.retry)}
+        loadingLabel={commonMessages.state_loading()}
+        retryLabel={commonMessages.action_retry()}
         onRetry={() => void history.refetch()}
         skeleton={<Skeleton className={stylex.props(styles.skeleton).className} />}
       >
@@ -360,13 +362,12 @@ export function EntryHistory({
  * on another try. Both hosts put it inside a panel of their own.
  */
 function useHistoryFailure(error: unknown) {
-  const { format } = useI18n()
   const failures = useLoadFailure()
   return error === null || error === undefined
     ? null
     : failures.of(error, {
         missing: [ENTRY_MISSING],
-        copy: { missing: { title: format(m.entryMissingTitle) } },
+        copy: { missing: { title: m.entrySheet_missingTitle() } },
       })
 }
 
@@ -386,7 +387,7 @@ export function EntryTrail({
   subject?: string | undefined
 }) {
   const query = useApiQuery(assessmentApi)
-  const { format } = useI18n()
+
   const history = useQuery(query.assessment.getEntryHistory.queryOptions({ params: { entryId } }))
   const failure = useHistoryFailure(history.error)
   return (
@@ -394,8 +395,8 @@ export function EntryTrail({
       pending={history.isPending}
       error={failure}
       retrying={history.isFetching}
-      loadingLabel={format(commonMessages.loading)}
-      retryLabel={format(commonMessages.retry)}
+      loadingLabel={commonMessages.state_loading()}
+      retryLabel={commonMessages.action_retry()}
       onRetry={() => void history.refetch()}
       skeleton={<Skeleton className={stylex.props(styles.skeleton).className} />}
     >
@@ -410,10 +411,9 @@ type Revision = History['revisions'][number]
 type Supplement = Round['supplements'][number]
 
 function Trail({ data, subject }: { data: History; subject: string | undefined }) {
-  const { format } = useI18n()
   const items = useTrail(data, subject)
   if (items.length === 0) {
-    return <p {...stylex.props(styles.empty)}>{format(m.entryTrailEmpty)}</p>
+    return <p {...stylex.props(styles.empty)}>{m.entry_trailEmpty()}</p>
   }
   return (
     <div {...stylex.props(styles.trail)}>
@@ -428,19 +428,19 @@ function Trail({ data, subject }: { data: History; subject: string | undefined }
           >
             <div {...stylex.props(styles.headRow)}>
               <h4 {...stylex.props(styles.roundTitle)}>
-                {format(m.entryTrailRound, { no: item.round.roundNo })}
+                {m.entry_trailRound({ no: item.round.roundNo })}
               </h4>
               {item.round.effect != null ? (
                 // what an appeal or a re-examination did to the result, as
                 // the system tells it by comparing before and after
                 <Badge variant="secondary" data-effect={item.round.effect}>
-                  {format(roundEffectMessage(item.round.effect))}
+                  {roundEffectMessage(item.round.effect)()}
                 </Badge>
               ) : item.round.state === 'completed' ? (
-                <Badge variant="secondary">{format(m.entryRoundEnded)}</Badge>
+                <Badge variant="secondary">{m.entry_roundEnded()}</Badge>
               ) : (
                 <Badge variant="outline" className={stylex.props(styles.ongoingBadge).className}>
-                  {format(m.entryRoundOngoing)}
+                  {m.entry_roundOngoing()}
                 </Badge>
               )}
             </div>
@@ -496,7 +496,6 @@ const newestFirst = (a: { at: string; seq: number }, b: { at: string; seq: numbe
  * hand on the claim itself).
  */
 function useTrail(data: History, subject: string | undefined): readonly TrailItem[] {
-  const { format } = useI18n()
   // the round a version opened, for seating the version inside it
   const roundOfRevision = new Map<string, Round>()
   for (const round of data.rounds) {
@@ -702,9 +701,9 @@ function useTrail(data: History, subject: string | undefined): readonly TrailIte
         weight: 'plain',
         render: () => (
           <div {...stylex.props(styles.stack)}>
-            <Line title={actTitle(format, event, subject)} at={event.at} />
+            <Line title={actTitle(event, subject)} at={event.at} />
             {event.reason !== null && (
-              <Quoted label={format(m.entryTrailReasonLabel)}>{event.reason}</Quoted>
+              <Quoted label={m.entry_trailReasonLabel()}>{event.reason}</Quoted>
             )}
           </div>
         ),
@@ -753,10 +752,9 @@ function Line({
  * one currently running.
  */
 function LifecycleMark({ marker, no }: { marker: 'started' | 'ended'; no: number }) {
-  const { format } = useI18n()
   return (
     <p data-testid="round-mark" data-mark={marker} {...stylex.props(styles.mark)}>
-      {format(marker === 'started' ? m.entryRoundStartedMark : m.entryRoundEndedMark, { no })}
+      {(marker === 'started' ? m.entry_roundStartedMark : m.entry_roundEndedMark)({ no })}
     </p>
   )
 }
@@ -792,16 +790,15 @@ function RerouteStart({
   reason: string | null
   at: string
 }) {
-  const { format } = useI18n()
   return (
     <div {...stylex.props(styles.stack)}>
-      <Line title={format(m.entryRoundReroutedStart)} at={at} />
+      <Line title={m.entry_roundReroutedStart()} at={at} />
       <LifecycleMark marker="started" no={no} />
       {from !== null && (
-        <p {...stylex.props(styles.quietNote)}>{format(m.entryRoundReroutedFrom, { no: from })}</p>
+        <p {...stylex.props(styles.quietNote)}>{m.entry_roundReroutedFrom({ no: from })}</p>
       )}
       {reason !== null && reason !== '' && (
-        <Quoted label={format(m.entryTrailReasonLabel)}>{reason}</Quoted>
+        <Quoted label={m.entry_trailReasonLabel()}>{reason}</Quoted>
       )}
     </div>
   )
@@ -818,7 +815,6 @@ function Version({
   marker?: 'started'
   markerNo?: number
 }) {
-  const { format } = useI18n()
   return (
     <>
       <Line
@@ -828,19 +824,18 @@ function Version({
           // telling them they wrote it is telling them something untrue.
           revision.source === 'record' || revision.source === 'import'
             ? subject === undefined
-              ? format(revision.source === 'import' ? m.entryTrailImported : m.entryTrailRecorded)
-              : format(
-                  revision.source === 'import' ? m.entryTrailImportedBy : m.entryTrailRecordedBy,
-                  { who: subject },
-                )
+              ? (revision.source === 'import' ? m.entry_trailImported : m.entry_trailRecorded)()
+              : (revision.source === 'import' ? m.entry_trailImportedBy : m.entry_trailRecordedBy)({
+                  who: subject,
+                })
             : subject === undefined
-              ? format(revision.revisionNo === 1 ? m.entryTrailVersionFirst : m.entryTrailVersion, {
+              ? (revision.revisionNo === 1 ? m.entry_trailVersionFirst : m.entry_trailVersion)({
                   no: revision.revisionNo,
                 })
-              : format(
-                  revision.revisionNo === 1 ? m.entryTrailVersionFirstBy : m.entryTrailVersionBy,
-                  { who: subject, no: revision.revisionNo },
-                )
+              : (revision.revisionNo === 1 ? m.entry_trailVersionFirstBy : m.entry_trailVersionBy)({
+                  who: subject,
+                  no: revision.revisionNo,
+                })
         }
         at={revision.createdAt}
       />
@@ -856,11 +851,9 @@ function Version({
             ? null
             : {
                 // a record's words are what it stands on; a filer's are their note
-                label: format(
-                  revision.source === 'record' || revision.source === 'import'
-                    ? m.entryRecordBasis
-                    : m.entryNote,
-                ),
+                label: (revision.source === 'record' || revision.source === 'import'
+                  ? m.entry_recordBasis
+                  : m.entry_note)(),
                 text: revision.note,
               }
         }
@@ -875,21 +868,16 @@ function Version({
  * everybody else.
  */
 const actTitle = (
-  format: ReturnType<typeof useI18n>['format'],
   event: { kind: string; actorName?: string | null; byRound?: boolean },
   subject: string | undefined,
 ): string => {
   const own = subject === undefined ? ownReviewEventMessage(event.kind) : undefined
-  if (own !== undefined) return format(own)
+  if (own !== undefined) return own()
   const said = reviewEventMessage(event.kind, event.actorName != null, event.byRound === true)
-  return format(
-    said.message,
-    // A judge this reader is not told the name of is still a judge, and the
-    // sentence keeps its shape around the word for whoever holds that step.
+  return said.message(
     said.needsActor
       ? {
-          who:
-            event.actorName ?? format(event.byRound === true ? m.eventSomebody : m.eventReviewer),
+          who: event.actorName ?? (event.byRound === true ? m.event_somebody : m.event_reviewer)(),
         }
       : {},
   )
@@ -913,28 +901,25 @@ function Act({
   /** the round that carries on from here, when a re-route ended this one */
   continuedBy?: number | null
 }) {
-  const { format } = useI18n()
   // "submitted" alone does not say WHAT went in; where the version is
   // known, the sentence carries it
   const title =
     event.kind === 'submitted' && revisionNo != null
       ? subject === undefined
-        ? format(m.entryTrailSubmitted, { no: revisionNo })
-        : format(m.entryTrailSubmittedBy, { who: subject, no: revisionNo })
-      : actTitle(format, event, subject)
+        ? m.entry_trailSubmitted({ no: revisionNo })
+        : m.entry_trailSubmittedBy({ who: subject, no: revisionNo })
+      : actTitle(event, subject)
   return (
     <>
       <Line title={title} at={event.at} />
       {marker !== undefined && <LifecycleMark marker={marker} no={roundNo} />}
       {continuedBy != null && (
-        <p {...stylex.props(styles.quietNote)}>
-          {format(m.entryRoundReroutedNext, { no: continuedBy })}
-        </p>
+        <p {...stylex.props(styles.quietNote)}>{m.entry_roundReroutedNext({ no: continuedBy })}</p>
       )}
       {event.reason !== null && (
         <div {...stylex.props(styles.reasonRow)}>
           <Badge variant="secondary" className={stylex.props(styles.plainBadge).className}>
-            {format(m.entryTrailReason, { value: event.reason })}
+            {m.entry_trailReason({ value: event.reason })}
           </Badge>
         </div>
       )}
@@ -943,7 +928,7 @@ function Act({
         // writes a review opinion; somebody contesting a decision writes
         // why they contest it, and calling that "审核意见" put the filer's
         // own sentence under the reviewer's name for it.
-        <Quoted label={format(commentLabelOf(event.kind))}>{event.comment}</Quoted>
+        <Quoted label={commentLabelOf(event.kind)()}>{event.comment}</Quoted>
       )}
     </>
   )
@@ -952,26 +937,26 @@ function Act({
 /** what to call the words one act carries */
 const commentLabelOf = (kind: string) =>
   kind === 'appealed'
-    ? m.entryAppealReason
+    ? m.entry_appealReason
     : kind === 'reopened'
-      ? m.staffReopenReason
+      ? m.staff_reopenReason
       : kind === 'superseded-by-redetermination'
-        ? m.staffRedetermineReason
+        ? m.staff_redetermineReason
         : kind === 'escalated'
-          ? m.reviewEscalateReason
+          ? m.review_escalateReason
           : kind === 'rerouted' || kind === 'cancelled-item-voided'
-            ? m.entryTrailReasonLabel
-            : m.reviewComment
+            ? m.entry_trailReasonLabel
+            : m.review_comment
 
 /** what a round that revisited a result did to it, in words */
 const roundEffectMessage = (effect: 'upheld' | 'corrected' | 'revoked' | 'overturned') =>
   effect === 'upheld'
-    ? m.entryEffectUpheld
+    ? m.entry_effectUpheld
     : effect === 'corrected'
-      ? m.entryEffectCorrected
+      ? m.entry_effectCorrected
       : effect === 'revoked'
-        ? m.entryEffectRevoked
-        : m.entryEffectOverturned
+        ? m.entry_effectRevoked
+        : m.entry_effectOverturned
 
 function Ask({
   supplement,
@@ -983,25 +968,24 @@ function Ask({
   /** how the round that asked ended, which is why an unanswered ask closed */
   endedBy: string | null
 }) {
-  const { format } = useI18n()
-  const standing: MessageDescriptor =
+  const standing: Message =
     supplement.status === 'answered'
-      ? m.supplementStatusAnswered
+      ? m.supplement_statusAnswered
       : supplement.status === 'cancelled'
-        ? m.entryTrailAskCancelled
+        ? m.entry_trailAskCancelled
         : supplement.status === 'superseded'
           ? endedBy === 'subject-excluded'
-            ? m.outcomeSubjectExcluded
-            : m.entryTrailAskSuperseded
-          : m.entryTrailAskWaiting
+            ? m.outcome_subjectExcluded
+            : m.entry_trailAskSuperseded
+          : m.entry_trailAskWaiting
   return (
     <>
       <Line
-        title={format(subject === undefined ? m.entrySupplementTitle : m.entryTrailAskOut)}
+        title={(subject === undefined ? m.entry_supplementTitle : m.entry_trailAskOut)()}
         tone="alert"
         aside={
           <Badge variant="secondary" className={stylex.props(styles.standingBadge).className}>
-            {format(standing)}
+            {standing()}
           </Badge>
         }
         at={supplement.requestedAt}
@@ -1009,7 +993,7 @@ function Ask({
       {supplement.requestedByName !== null && (
         <p {...stylex.props(styles.quietNote)}>{supplement.requestedByName}</p>
       )}
-      <Quoted tone="alert" label={format(m.entrySheetSupAsk)}>
+      <Quoted tone="alert" label={m.entrySheet_supAsk()}>
         {supplement.instructions}
       </Quoted>
       <div {...stylex.props(styles.chipRow)}>
@@ -1017,7 +1001,7 @@ function Ask({
           <span key={asked.key} {...stylex.props(styles.chip)}>
             {asked.label}
             <span {...stylex.props(styles.chipKind)}>
-              {format(asked.kind === 'file' ? m.supplementAddFile : m.supplementAddText)}
+              {(asked.kind === 'file' ? m.supplement_addFile : m.supplement_addText)()}
             </span>
           </span>
         ))}
@@ -1035,7 +1019,6 @@ function Answer({
   revisionNo: number | null
   subject: string | undefined
 }) {
-  const { format } = useI18n()
   const response = supplement.response
   if (response === null) return null
   const answers = (response.payload ?? {}) as Record<string, unknown>
@@ -1044,8 +1027,8 @@ function Answer({
       <Line
         title={
           subject === undefined
-            ? format(m.entryTrailAnswered)
-            : format(m.entryTrailAnsweredBy, { who: subject })
+            ? m.entry_trailAnswered()
+            : m.entry_trailAnsweredBy({ who: subject })
         }
         at={response.respondedAt}
       />
@@ -1075,7 +1058,7 @@ function Answer({
             themselves: it did not overwrite what they had already filed */}
         {revisionNo !== null && (
           <p {...stylex.props(styles.softNote)}>
-            {format(subject === undefined ? m.entryTrailAnswerKept : m.entryTrailAnswerKeptOut, {
+            {(subject === undefined ? m.entry_trailAnswerKept : m.entry_trailAnswerKeptOut)({
               no: revisionNo,
             })}
           </p>
@@ -1094,17 +1077,16 @@ function Suggestion({
   formConfig?: unknown
   subject: string | undefined
 }) {
-  const { format } = useI18n()
   return (
     <div {...stylex.props(styles.card)}>
       <div {...stylex.props(styles.headRow)}>
-        <p {...stylex.props(styles.cardTitle)}>{format(m.entrySuggestionTitle)}</p>
+        <p {...stylex.props(styles.cardTitle)}>{m.entry_suggestionTitle()}</p>
         <span {...stylex.props(styles.spacer)} />
-        <p {...stylex.props(styles.asideNote)}>{format(m.entrySuggestionAdvisory)}</p>
+        <p {...stylex.props(styles.asideNote)}>{m.entry_suggestionAdvisory()}</p>
       </div>
       <FiledFields payload={payload} formConfig={formConfig} />
       <p {...stylex.props(styles.softNote)}>
-        {format(subject === undefined ? m.entrySuggestionHint : m.entrySuggestionHintOut)}
+        {(subject === undefined ? m.entry_suggestionHint : m.entry_suggestionHintOut)()}
       </p>
     </div>
   )
@@ -1131,7 +1113,6 @@ function FiledFields({
   /** the words filed beside the fields, under the name they go by */
   note?: { readonly label: string; readonly text: string } | null
 }) {
-  const { format } = useI18n()
   if (typeof payload !== 'object' || payload === null) return null
   const record = payload as Record<string, unknown>
   const fields = fieldsOf(formConfig ?? null)
@@ -1184,7 +1165,7 @@ function FiledFields({
             <dt {...stylex.props(styles.filedTerm)}>{row.label}</dt>
             {row.value.kind === 'text' ? (
               <dd {...stylex.props(styles.detail, row.value.text === '' && styles.mutedInk)}>
-                {row.value.text === '' ? format(m.entryFieldCleared) : row.value.text}
+                {row.value.text === '' ? m.entry_fieldCleared() : row.value.text}
               </dd>
             ) : (
               <dd {...stylex.props(styles.filedFiles)}>

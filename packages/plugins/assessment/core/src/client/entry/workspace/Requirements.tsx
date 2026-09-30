@@ -1,15 +1,15 @@
 import * as stylex from '@stylexjs/stylex'
 import { ArrowRightIcon } from 'lucide-react'
-import { useI18n } from '@qualy/web-i18n'
 import { Portion } from '@qualy/ui/reveal'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { assessmentMessages as m } from '../../i18n.ts'
+
 import { recordedOnly, type EntryDto, type ItemDto } from '../model.ts'
 import { useCalcLine } from './calc.ts'
 import { SectionFigure } from './marks.tsx'
 import { meterStyles } from './meter.ts'
 import { chainNamesOf, type StructureRow } from '../standing.ts'
 import { chainOf, two, type Outline } from './model.ts'
+import * as m from '#messages'
 
 // What one question asks and pays, beside its claims: how much it has
 // counted, how many places it has, which sections it adds up in and how full
@@ -156,7 +156,6 @@ export function Requirements({
   scored: boolean
   onGoto: (id: string) => void
 }) {
-  const { format } = useI18n()
   const calc = useCalcLine()
   const counted = row.right === '' ? 0 : Number(row.right)
   const voided = item.status === 'voided'
@@ -168,15 +167,15 @@ export function Requirements({
   ).trim()
   const chain = chainNamesOf(item)
   const stepName = (label: string | null, index: number) =>
-    label ?? format(m.entryFlowStep, { n: index + 1 })
+    label ?? m.entry_flowStep({ n: index + 1 })
   const routes = quiet
     ? []
     : [
         chain.normal.length > 0
-          ? { key: 'normal', name: m.reviewRouteNormal, steps: chain.normal }
+          ? { key: 'normal', name: m.review_routeNormal, steps: chain.normal }
           : null,
         chain.escalation.length > 0
-          ? { key: 'escalation', name: m.reviewRouteEscalation, steps: chain.escalation }
+          ? { key: 'escalation', name: m.review_routeEscalation, steps: chain.escalation }
           : null,
       ].filter((route) => route !== null)
   const sections = chainOf(outline, row)
@@ -196,16 +195,16 @@ export function Requirements({
             {scored ? two(counted) : '–'}
           </span>
           <span {...stylex.props(styles.quiet)}>
-            {format(counted < 0 ? m.entriesPointsDeducted : m.entriesPointsCounted)}
+            {(counted < 0 ? m.entries_pointsDeducted : m.entries_pointsCounted)()}
           </span>
         </div>
         <p {...stylex.props(styles.calc)}>
-          {quiet ? format(m.entriesNoFilingNeeded, { calc: calc(item) }) : calc(item)}
+          {quiet ? m.entries_noFilingNeeded({ calc: calc(item) }) : calc(item)}
         </p>
         {item.maxEntries !== null && !voided && !quiet && (
           <div {...stylex.props(styles.quota)} data-testid="item-quota" data-used={used}>
             <div {...stylex.props(styles.quotaLine)}>
-              <span {...stylex.props(styles.muted)}>{format(m.myEntriesQuota)}</span>
+              <span {...stylex.props(styles.muted)}>{m.myEntries_quota()}</span>
               <span {...stylex.props(styles.spacer)} />
               <span {...stylex.props(styles.strong)}>
                 {used} / {item.maxEntries}
@@ -223,7 +222,7 @@ export function Requirements({
 
       {sections.length > 0 && (
         <div {...stylex.props(styles.block, styles.ruled)}>
-          <p {...stylex.props(styles.label)}>{format(m.entriesInSections)}</p>
+          <p {...stylex.props(styles.label)}>{m.entries_inSections()}</p>
           <div {...stylex.props(styles.chain)}>
             {sections.map((section, level) => {
               const cap =
@@ -257,7 +256,7 @@ export function Requirements({
                     <span {...stylex.props(styles.spacer)} />
                     {full && (
                       <span {...stylex.props(styles.keep, styles.muted)}>
-                        {format(m.entriesSectionFull)}
+                        {m.entries_sectionFull()}
                       </span>
                     )}
                     {/* how full it is, drawn as the structure draws it: a
@@ -273,24 +272,20 @@ export function Requirements({
 
       {description !== '' && (
         <div {...stylex.props(styles.block, styles.ruled)}>
-          <p {...stylex.props(styles.label)}>{format(m.entriesDescription)}</p>
+          <p {...stylex.props(styles.label)}>{m.entries_description()}</p>
           <p {...stylex.props(styles.prose)}>{description}</p>
         </div>
       )}
 
       {routes.length > 0 && !voided && (
         <div {...stylex.props(styles.block, styles.ruled)} data-testid="question-chain">
-          <p {...stylex.props(styles.label)}>{format(m.entryFlow)}</p>
+          <p {...stylex.props(styles.label)}>{m.entry_flow()}</p>
           {routes.map((route) => (
             <div key={route.key} {...stylex.props(styles.route)}>
-              <span {...stylex.props(styles.routeName)}>{format(route.name)}</span>
+              <span {...stylex.props(styles.routeName)}>{route.name()}</span>
               {/* by the names the administrator gave the steps, and only
                   the names: who each step lands on is the round's business */}
-              <ol
-                aria-label={format(route.name)}
-                data-route={route.key}
-                {...stylex.props(styles.steps)}
-              >
+              <ol aria-label={route.name()} data-route={route.key} {...stylex.props(styles.steps)}>
                 {route.steps.map((label, index) => (
                   <li key={index} {...stylex.props(styles.step)}>
                     {index > 0 && <ArrowRightIcon aria-hidden {...stylex.props(styles.arrow)} />}
@@ -305,7 +300,7 @@ export function Requirements({
 
       {voided && (item.voidReason ?? '').trim() !== '' && (
         <div {...stylex.props(styles.block, styles.ruled)}>
-          <p {...stylex.props(styles.label)}>{format(m.entriesVoidReason)}</p>
+          <p {...stylex.props(styles.label)}>{m.entries_voidReason()}</p>
           <p {...stylex.props(styles.prose)}>{item.voidReason}</p>
         </div>
       )}

@@ -34,7 +34,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Skeleton } from '@qualy/ui/skeleton'
 import { initialsOf } from '@qualy/ui/person'
 import { Status, Tag } from '@qualy/ui/screen'
-import { iamMessages as m } from '../i18n.ts'
+
 import { rosterSearch } from './users/roster-address.ts'
 import { authApi } from '../api.ts'
 import { UserMoveDialog } from './UserMoveDialog.tsx'
@@ -42,6 +42,7 @@ import { emailShaped, refusedField, type PersonField } from './users/field-refus
 import { needsReauthentication, useReauthentication } from '../account/Reauthentication.tsx'
 import { instantWords } from '../when.ts'
 import { PersonFacts, type PersonFact } from './person-facts.tsx'
+import * as m from '#messages'
 
 // Who the open person is, above every section of their record.
 //
@@ -170,7 +171,7 @@ export default function UserDetailHeader() {
   const runApi = useRunApi()
   const query = useApiQuery(authApi)
   const queryClient = useQueryClient()
-  const { format, formatError, locale } = useI18n()
+  const { formatError, locale } = useI18n()
   const businessNoWord = useTerm(authTerms.businessNumber)
   const [feedback, setFeedback] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
@@ -196,7 +197,7 @@ export default function UserDetailHeader() {
   // not there and not the reader's are one answer on purpose
   const gone = {
     missing: ['USER_NOT_FOUND'],
-    copy: { missing: { title: format(m.personGoneTitle), description: format(m.personGone) } },
+    copy: { missing: { title: m.person_goneTitle(), description: m.person_gone() } },
   }
   const absent = addressable ? describe.subject(user, gone) : describe.missing(gone)
   const options = useQuery({
@@ -318,7 +319,7 @@ export default function UserDetailHeader() {
     setTaken(null)
   }
   const shape = useSettledCheck(email, (next) =>
-    emailShaped(next) ? null : format(m.emailInvalid),
+    emailShaped(next) ? null : m.person_emailInvalid(),
   )
   // an address being replaced, which undoes what the old one had proven
   const replacingEmail =
@@ -347,29 +348,30 @@ export default function UserDetailHeader() {
                   {
                     key: 'business-no',
                     label: businessNoWord,
-                    value: format(m.fieldUnset),
+                    value: m.person_fieldUnset(),
                     warn: true,
                   },
                 ]),
           {
             key: 'unit',
-            label: format(m.personPlacement),
+            label: m.person_placement(),
             // the unit itself, the whole way down to it on hover
             value: path.at(-1)?.name ?? '—',
             title: path.map((step) => step.name).join(' / '),
           },
           record.email === null
-            ? { key: 'email', label: format(m.emailLabel), value: format(m.fieldUnset), warn: true }
+            ? { key: 'email', label: m.users_email(), value: m.person_fieldUnset(), warn: true }
             : {
                 key: 'email',
-                label: format(m.emailLabel),
+                label: m.users_email(),
                 value: record.email,
-                ...(record.emailVerifiedAt === null ? { aside: format(m.emailUnverified) } : {}),
+                ...(record.emailVerifiedAt === null ? { aside: m.users_emailUnverified() } : {}),
               },
           {
             key: 'last-sign-in',
-            label: format(m.lastSignInLabel),
-            value: lastSignInAt === null ? format(m.neverUsed) : instantWords(locale, lastSignInAt),
+            label: m.users_lastSignIn(),
+            value:
+              lastSignInAt === null ? m.person_neverUsed() : instantWords(locale, lastSignInAt),
           },
         ]
 
@@ -381,7 +383,7 @@ export default function UserDetailHeader() {
             failure={absent}
             onRetry={() => void user.refetch()}
             retrying={user.isFetching}
-            back={{ page: 'auth/users', label: format(m.backToUsers), search: rosterSearch() }}
+            back={{ page: 'auth/users', label: m.users_back(), search: rosterSearch() }}
           />
         </div>
       </SubjectAbsence>
@@ -397,7 +399,7 @@ export default function UserDetailHeader() {
         className={stylex.props(styles.backLink).className}
       >
         <ArrowLeftIcon className={stylex.props(styles.backGlyph).className} aria-hidden />
-        {format(m.backToUsers)}
+        {m.users_back()}
       </PageLink>
 
       {!record ? (
@@ -425,7 +427,7 @@ export default function UserDetailHeader() {
                   data-testid="user-standing"
                   data-status={record.status}
                 >
-                  {format(record.status === 'disabled' ? m.disabledBadge : m.statusActive)}
+                  {(record.status === 'disabled' ? m.badge_disabled : m.users_statusActive)()}
                 </Status>
               </div>
               <div {...stylex.props(styles.factsSeat)}>
@@ -443,7 +445,7 @@ export default function UserDetailHeader() {
                     setEditing(true)
                   }}
                 >
-                  {format(m.editProfile)}
+                  {m.person_editProfile()}
                 </Button>
                 {/* the same move the organization section offers, opened here:
                       going to that section first did nothing visible when the
@@ -458,13 +460,13 @@ export default function UserDetailHeader() {
                       setMoving(true)
                     }}
                   >
-                    {format(m.transfer)}
+                    {m.action_transfer()}
                   </Button>
                 )}
                 {accountManageable && (
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="outline" size="icon-sm" aria-label={format(m.moreActions)}>
+                      <Button variant="outline" size="icon-sm" aria-label={m.action_more()}>
                         <EllipsisIcon aria-hidden />
                       </Button>
                     </DropdownMenuTrigger>
@@ -480,14 +482,14 @@ export default function UserDetailHeader() {
                             : setStatus.mutate('active')
                         }
                       >
-                        {format(record.status === 'active' ? m.disable : m.enable)}
+                        {(record.status === 'active' ? m.action_disable : m.action_enable)()}
                       </DropdownMenuItem>
                       <DropdownMenuItem
                         className={stylex.props(styles.danger).className}
                         disabled={remove.isPending}
                         onSelect={() => setConfirmingDelete(true)}
                       >
-                        {format(m.deleteAction)}
+                        {m.action_deleteUser()}
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
@@ -498,18 +500,20 @@ export default function UserDetailHeader() {
           {!editing && (feedback !== null || saved) && (
             <div {...stylex.props(styles.feedbackSeat)}>
               <Feedback message={feedback} />
-              {saved && feedback === null && <Feedback message={format(m.saved)} tone="success" />}
+              {saved && feedback === null && (
+                <Feedback message={m.feedback_saved()} tone="success" />
+              )}
             </div>
           )}
 
           <FormDialog
             open={editing}
-            title={format(m.editProfile)}
+            title={m.person_editProfile()}
             onClose={stopEditing}
             footer={
               <>
                 <Button variant="outline" onClick={stopEditing}>
-                  {format(m.cancel)}
+                  {m.action_cancel()}
                 </Button>
                 <Button
                   type="submit"
@@ -518,7 +522,7 @@ export default function UserDetailHeader() {
                     saveProfile.isPending || displayName.trim() === '' || !emailShaped(email)
                   }
                 >
-                  {format(m.save)}
+                  {m.action_save()}
                 </Button>
               </>
             }
@@ -532,7 +536,7 @@ export default function UserDetailHeader() {
               }}
             >
               <Feedback message={feedback} />
-              <Field label={format(m.nameLabel)} required>
+              <Field label={m.field_name()} required>
                 {(id, control) => (
                   <Input
                     id={id}
@@ -546,7 +550,7 @@ export default function UserDetailHeader() {
                 label={businessNoWord}
                 {...(system || !accountManageable
                   ? {}
-                  : { hint: format(m.businessNoPurpose, { businessNo: businessNoWord }) })}
+                  : { hint: m.person_businessNoPurpose({ businessNo: businessNoWord }) })}
                 error={taken?.field === 'businessNo' ? taken.said : undefined}
               >
                 {(id, control) => (
@@ -563,16 +567,14 @@ export default function UserDetailHeader() {
                 )}
               </Field>
               <Field
-                label={format(m.emailLabel)}
-                hint={format(
-                  system
-                    ? m.emailSystemHint
-                    : !accountManageable
-                      ? m.accountBeyondReachHint
-                      : replacingEmail
-                        ? m.emailChangeConsequence
-                        : m.emailPurpose,
-                )}
+                label={m.users_email()}
+                hint={(system
+                  ? m.users_emailSystemHint
+                  : !accountManageable
+                    ? m.users_accountBeyondReachHint
+                    : replacingEmail
+                      ? m.person_emailChangeConsequence
+                      : m.person_emailPurpose)()}
                 error={taken?.field === 'email' ? taken.said : (shape.error ?? undefined)}
               >
                 {(id, control) => (
@@ -591,7 +593,7 @@ export default function UserDetailHeader() {
                   />
                 )}
               </Field>
-              <Field label={format(m.userTypeLabel)} required>
+              <Field label={m.field_userType()} required>
                 {(id, control) => (
                   <Select
                     value={userTypeId}
@@ -599,7 +601,7 @@ export default function UserDetailHeader() {
                     disabled={!accountManageable}
                   >
                     <SelectTrigger id={id} {...control} xstyle={styles.fullField}>
-                      <SelectValue placeholder={format(m.selectUserType)} />
+                      <SelectValue placeholder={m.field_selectUserType()} />
                     </SelectTrigger>
                     <SelectContent>
                       {userTypes.map((type) => (
@@ -616,10 +618,10 @@ export default function UserDetailHeader() {
 
           <ConfirmDialog
             open={confirmingDisable}
-            title={format(m.confirmDisableTitle)}
-            description={format(m.confirmDisableBody)}
-            confirmLabel={format(m.disable)}
-            cancelLabel={format(m.cancel)}
+            title={m.confirm_disableTitle()}
+            description={m.confirm_disableBody()}
+            confirmLabel={m.action_disable()}
+            cancelLabel={m.action_cancel()}
             pending={setStatus.isPending}
             onConfirm={() => setStatus.mutate('disabled')}
             onCancel={() => setConfirmingDisable(false)}
@@ -627,10 +629,10 @@ export default function UserDetailHeader() {
 
           <ConfirmDialog
             open={confirmingDelete}
-            title={format(m.confirmUserDeleteTitle)}
-            description={format(m.confirmUserDeleteBody)}
-            confirmLabel={format(m.deleteAction)}
-            cancelLabel={format(m.cancel)}
+            title={m.confirm_userDeleteTitle()}
+            description={m.confirm_userDeleteBody()}
+            confirmLabel={m.action_deleteUser()}
+            cancelLabel={m.action_cancel()}
             pending={remove.isPending}
             onConfirm={() => remove.mutate(undefined)}
             onCancel={() => setConfirmingDelete(false)}

@@ -6,13 +6,14 @@ import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import type { ResolvedNavigationItem } from '@qualy/ui-contract'
 import { shell } from './shell.stylex.ts'
-import { LocalizedText, useI18n } from '@qualy/web-i18n'
+import { LocalizedText } from '@qualy/web-i18n'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { Loader } from '@qualy/brand/loader'
 import { usePendingNavigation } from '@qualy/web-runtime'
 import { NavIcon } from './icons.tsx'
-import { layoutMessages as m } from './i18n.ts'
+
 import type { AppEntry } from './TopBar.tsx'
+import * as m from '#messages'
 
 // The bar at the foot of a narrow window, and the one question it answers:
 // from where I am, where can I go.
@@ -257,10 +258,9 @@ function BottomLink({ item }: { item: BottomItem }) {
  * shell then gives the page back the room, down to the safe area.
  */
 export function AppsBar({ apps, activeApp }: { apps: readonly AppEntry[]; activeApp?: string }) {
-  const { format } = useI18n()
   return (
     <BottomBar
-      label={format(m.appsNav)}
+      label={m.shell_apps()}
       items={apps.map((app) => ({
         id: app.id,
         label: app.label,

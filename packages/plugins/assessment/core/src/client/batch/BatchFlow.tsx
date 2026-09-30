@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
-import { useI18n, useList } from '@qualy/web-i18n'
+import { useList } from '@qualy/web-i18n'
 import {
   ChevronsLeftIcon,
   ChevronsRightIcon,
@@ -20,10 +20,11 @@ import {
   TimelineSeparator,
   TimelineTitle,
 } from '@qualy/ui/timeline'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import { stagesOf, type FlowEntry, type FlowStage } from './flow.ts'
 import { useWhen } from './when.ts'
 import { ZoneNote } from './BatchZone.tsx'
+import * as m from '#messages'
 
 // The stages of the round, drawn twice.
 //
@@ -316,12 +317,10 @@ const styles = stylex.create({
  */
 const useSaid = () => {
   const when = useWhen()
-  const { format } = useI18n()
+
   return (stage: FlowStage): string => {
-    if (stage.at === null) return format(m.flowPending)
-    return (
-      when.span(stage.at, stage.until) ?? format(m.flowFromPending, { when: when.moment(stage.at) })
-    )
+    if (stage.at === null) return m.flow_pending()
+    return when.span(stage.at, stage.until) ?? m.flow_fromPending({ when: when.moment(stage.at) })
   }
 }
 
@@ -361,9 +360,9 @@ const reachedIn = (stages: readonly FlowStage[]) => {
 }
 
 const STATUS = {
-  ended: m.flowStatusEnded,
-  current: m.flowStatusCurrent,
-  future: m.flowStatusFuture,
+  ended: m.flow_statusEnded,
+  current: m.flow_statusCurrent,
+  future: m.flow_statusFuture,
 } as const
 
 /**
@@ -375,7 +374,6 @@ const NAMED_ITEMS = 3
 
 /** the items a stage alone opens: a few by name, the rest on request */
 function ScopeItems({ names }: { names: readonly string[] }) {
-  const { format } = useI18n()
   const listOf = useList()
   const [whole, setWhole] = useState(false)
   const folds = names.length > NAMED_ITEMS
@@ -388,10 +386,10 @@ function ScopeItems({ names }: { names: readonly string[] }) {
       data-named={String(shown.length)}
     >
       {names.length === 0
-        ? format(m.flowScopeSome)
+        ? m.flow_scopeSome()
         : shown.length < names.length
-          ? format(m.flowScopeFirst, { count: names.length, items: listOf(shown) })
-          : format(m.flowScopeItems, { items: listOf(shown) })}
+          ? m.flow_scopeFirst({ count: names.length, items: listOf(shown) })
+          : m.flow_scopeItems({ items: listOf(shown) })}
       {folds && (
         <button
           type="button"
@@ -399,7 +397,7 @@ function ScopeItems({ names }: { names: readonly string[] }) {
           onClick={() => setWhole((open) => !open)}
           {...stylex.props(styles.scopeToggle)}
         >
-          {format(whole ? m.flowScopeFewer : m.flowScopeAll)}
+          {(whole ? m.flow_scopeFewer : m.flow_scopeAll)()}
         </button>
       )}
     </span>
@@ -409,7 +407,7 @@ function ScopeItems({ names }: { names: readonly string[] }) {
 /** one stage, said the same way whichever direction the timeline runs */
 function Stage({ stage, upright }: { stage: FlowStage; upright: boolean }) {
   const said = useSaid()
-  const { format } = useI18n()
+
   const faded = stage.status === 'ended'
   return (
     <>
@@ -437,7 +435,7 @@ function Stage({ stage, upright }: { stage: FlowStage; upright: boolean }) {
             ).className
           }
         >
-          {format(STATUS[stage.status])}
+          {STATUS[stage.status]()}
         </Badge>
       </TimelineHeader>
       {/* the whole row fades together, not only its name: a finished stage
@@ -470,13 +468,11 @@ function Stage({ stage, upright }: { stage: FlowStage; upright: boolean }) {
               {stage.onlyItems !== null && <ScopeItems names={stage.onlyItems} />}
               {stage.somePeople && (
                 <span>
-                  {format(
-                    stage.forReader === true
-                      ? m.flowScopeYou
-                      : stage.forReader === false
-                        ? m.flowScopeNotYou
-                        : m.flowScopePeople,
-                  )}
+                  {(stage.forReader === true
+                    ? m.flow_scopeYou
+                    : stage.forReader === false
+                      ? m.flow_scopeNotYou
+                      : m.flow_scopePeople)()}
                 </span>
               )}
             </span>
@@ -516,11 +512,10 @@ export function BatchFlow({
   keepPast?: number
   xstyle?: stylex.StyleXStyles
 }) {
-  const { format } = useI18n()
   const [opened, setOpened] = useState(false)
   const stages = stagesOf(timeline)
   if (stages.length === 0) {
-    return <p {...stylex.props(styles.quietNote, xstyle)}>{format(m.noStagesYet)}</p>
+    return <p {...stylex.props(styles.quietNote, xstyle)}>{m.batch_noStages()}</p>
   }
 
   const here = stages.findIndex((stage) => stage.status === 'current')
@@ -546,7 +541,7 @@ export function BatchFlow({
               data-count={String(folded)}
               onClick={() => setOpened(true)}
             >
-              {format(m.flowEarlier, { count: folded })}
+              {m.flow_earlier({ count: folded })}
             </button>
           </TimelineItem>
         )}
@@ -570,7 +565,6 @@ export function BatchFlowStrip({
   timeline: readonly FlowEntry[]
   xstyle?: stylex.StyleXStyles
 }) {
-  const { format } = useI18n()
   const stages = stagesOf(timeline)
   const track = useRef<HTMLDivElement>(null)
   const here = useRef<HTMLDivElement>(null)
@@ -634,7 +628,7 @@ export function BatchFlowStrip({
   }, [timeline])
 
   if (stages.length === 0) {
-    return <p {...stylex.props(styles.quietNote, xstyle)}>{format(m.noStagesYet)}</p>
+    return <p {...stylex.props(styles.quietNote, xstyle)}>{m.batch_noStages()}</p>
   }
 
   return (
@@ -671,7 +665,7 @@ export function BatchFlowStrip({
         {...stylex.props(styles.wayBack, strayed && styles.wayBackShown)}
       >
         <LocateFixedIcon aria-hidden className={stylex.props(styles.wayBackIcon).className} />
-        {format(m.flowBackToCurrent)}
+        {m.flow_backToCurrent()}
       </button>
       <div
         ref={track}

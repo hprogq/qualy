@@ -4,8 +4,7 @@ import * as stylex from '@stylexjs/stylex'
 import { ShieldQuestionIcon } from 'lucide-react'
 import { orgNodePickerView } from '@qualy/ui-contract'
 import { UiSlot, useApiQuery, useLoadFailure } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { AsyncSection, CheckboxGroup } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import {
@@ -20,10 +19,12 @@ import {
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { assessmentApi } from '../api.ts'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import { DialogBlank } from '../DialogBlank.tsx'
 import { RosterPeoplePicker } from './RosterPeoplePicker.tsx'
 import { UnitRoster } from './UnitRoster.tsx'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // Who one administrative finding is about.
 //
@@ -90,7 +91,6 @@ export function RecordTargets({
   value: RecordTarget | null
   onChange: (target: RecordTarget | null) => void
 }) {
-  const { format } = useI18n()
   const [picking, setPicking] = useState<'people' | 'units' | null>(null)
   const [people, setPeople] = useState<readonly string[]>([])
   const [units, setUnits] = useState<{
@@ -102,8 +102,8 @@ export function RecordTargets({
     value === null
       ? null
       : value.kind === 'people'
-        ? format(m.recordTargetsChosen, { count: value.participantIds.length })
-        : format(m.recordTargetsUnits, { count: value.orgNodeIds.length })
+        ? m.record_targetsChosen({ count: value.participantIds.length })
+        : m.record_targetsUnits({ count: value.orgNodeIds.length })
 
   return (
     <div {...stylex.props(styles.row)} data-testid="record-targets">
@@ -115,7 +115,7 @@ export function RecordTargets({
           setPicking('people')
         }}
       >
-        {format(m.recordPickPeople)}
+        {m.record_pickPeople()}
       </Button>
       <Button
         size="sm"
@@ -129,17 +129,17 @@ export function RecordTargets({
           setPicking('units')
         }}
       >
-        {format(m.recordPickUnits)}
+        {m.record_pickUnits()}
       </Button>
       {said === null ? (
-        <span {...stylex.props(styles.none)}>{format(m.recordTargetsNone)}</span>
+        <span {...stylex.props(styles.none)}>{m.record_targetsNone()}</span>
       ) : (
         <>
           <span {...stylex.props(styles.chosen)} data-testid="record-targets-said">
             {said}
           </span>
           <Button size="sm" variant="ghost" onClick={() => onChange(null)}>
-            {format(m.recordTargetsClear)}
+            {m.record_targetsClear()}
           </Button>
         </>
       )}
@@ -151,14 +151,14 @@ export function RecordTargets({
       <Dialog open={picking === 'people'} onOpenChange={(open) => !open && setPicking(null)}>
         <DialogContent size="68rem" xstyle={styles.peoplePanel}>
           <DialogHeader>
-            <DialogTitle>{format(m.recordPickPeople)}</DialogTitle>
+            <DialogTitle>{m.record_pickPeople()}</DialogTitle>
           </DialogHeader>
           <DialogBody>
             <RosterPeoplePicker batchId={batchId} value={people} onChange={setPeople} />
           </DialogBody>
           <DialogFooter>
             <Button variant="outline" onClick={() => setPicking(null)}>
-              {format(commonMessages.cancel)}
+              {commonMessages.action_cancel()}
             </Button>
             <Button
               disabled={people.length === 0}
@@ -167,7 +167,7 @@ export function RecordTargets({
                 setPicking(null)
               }}
             >
-              {format(m.recordTargetsChosen, { count: people.length })}
+              {m.record_targetsChosen({ count: people.length })}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -176,11 +176,11 @@ export function RecordTargets({
       <Dialog open={picking === 'units'} onOpenChange={(open) => !open && setPicking(null)}>
         <DialogContent size="52rem">
           <DialogHeader>
-            <DialogTitle>{format(m.recordPickUnits)}</DialogTitle>
+            <DialogTitle>{m.record_pickUnits()}</DialogTitle>
             {/* said here rather than after confirming: somebody choosing a
                 class needs to know now that they are picking the people in
                 it today, not the class as a standing group */}
-            <DialogDescription>{format(m.recordUnitsOnce)}</DialogDescription>
+            <DialogDescription>{m.record_unitsOnce()}</DialogDescription>
           </DialogHeader>
           <DialogBody xstyle={styles.body}>
             <div {...stylex.props(styles.unitsSplit)}>
@@ -196,7 +196,7 @@ export function RecordTargets({
           </DialogBody>
           <DialogFooter>
             <Button variant="outline" onClick={() => setPicking(null)}>
-              {format(commonMessages.cancel)}
+              {commonMessages.action_cancel()}
             </Button>
             <Button
               disabled={units.orgNodeIds.length === 0}
@@ -209,7 +209,7 @@ export function RecordTargets({
                 setPicking(null)
               }}
             >
-              {format(m.recordTargetsUnits, { count: units.orgNodeIds.length })}
+              {m.record_targetsUnits({ count: units.orgNodeIds.length })}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -235,7 +235,7 @@ function RosterUnits({
   onChange: (next: { orgNodeIds: readonly string[]; userTypeIds: readonly string[] }) => void
 }) {
   const query = useApiQuery(assessmentApi)
-  const { format } = useI18n()
+
   const failures = useLoadFailure()
   const heading = useId()
   const roster = useQuery(
@@ -250,13 +250,13 @@ function RosterUnits({
       <AsyncSection
         pending={false}
         error={roster.isError ? failures.of(roster.error) : null}
-        loadingLabel={format(commonMessages.loading)}
-        retryLabel={format(commonMessages.retry)}
+        loadingLabel={commonMessages.state_loading()}
+        retryLabel={commonMessages.action_retry()}
         onRetry={() => void roster.refetch()}
       >
         <section aria-labelledby={heading} {...stylex.props(styles.unitsBlock)}>
           <h3 id={heading} {...stylex.props(styles.unitsTitle)}>
-            {format(m.recordUnitsTitle)}
+            {m.record_unitsTitle()}
           </h3>
           <UiSlot
             token={orgNodePickerView}
@@ -273,8 +273,8 @@ function RosterUnits({
               <DialogBlank
                 testId="record-units-unavailable"
                 icon={<ShieldQuestionIcon />}
-                title={format(m.unitPickerUnavailable)}
-                description={format(m.pickerUnavailableHint)}
+                title={m.roster_unitPickerUnavailable()}
+                description={m.roster_pickerUnavailableHint()}
               />
             }
           />
@@ -284,13 +284,13 @@ function RosterUnits({
         {kinds.length > 1 && (
           <div {...stylex.props(styles.kinds)}>
             <CheckboxGroup
-              legend={format(m.recordUnitKinds)}
+              legend={m.record_unitKinds()}
               options={kinds.map((kind) => ({ value: kind.id, label: kind.name }))}
               selected={[...value.userTypeIds]}
               onChange={(userTypeIds) => onChange({ ...value, userTypeIds })}
               emptyLabel=""
             />
-            <p {...stylex.props(styles.kindsHint)}>{format(m.recordUnitKindsHint)}</p>
+            <p {...stylex.props(styles.kindsHint)}>{m.record_unitKindsHint()}</p>
           </div>
         )}
       </AsyncSection>

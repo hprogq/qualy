@@ -1,12 +1,12 @@
 // The plugin aggregate `@qualy/web-build` generates and serves as a virtual
 // module. Four tables of loaders, keyed by the surface each one implements -
-// the same addresses the manifest names - plus the localisation halves, typed
-// off the provider that consumes them so this declaration cannot quietly
-// drift from what I18nProvider accepts.
+// the same addresses the manifest names - plus the two tables of what is
+// said by code rather than by the screen that says it: api failures by code,
+// and the texts the server names by id.
 declare module 'virtual:qualy/plugins' {
   import type { ComponentType } from 'react'
   import type { BrowserPlugin } from '@qualy/plugin-kit/browser'
-  import type { I18nProviderProps } from '@qualy/web-i18n'
+  import type { ErrorMessageMap, Message } from '@qualy/i18n-contract'
 
   // the tables are heterogeneous by nature; the shell wraps every entry in
   // React.lazy, which is where the per-screen prop types stop mattering
@@ -22,6 +22,6 @@ declare module 'virtual:qualy/plugins' {
   export const loginComponents: Record<string, Loader>
   /** every active plugin's browser half, in the assembly's own order */
   export const browserPlugins: readonly BrowserPlugin[]
-  export const catalogs: NonNullable<I18nProviderProps['catalogs']>
-  export const errorMessages: NonNullable<I18nProviderProps['errorMessages']>
+  export const wireMessages: Readonly<Record<string, Message>>
+  export const errorMessages: ErrorMessageMap
 }

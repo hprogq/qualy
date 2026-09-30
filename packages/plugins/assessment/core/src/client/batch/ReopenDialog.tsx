@@ -1,10 +1,9 @@
 import { useState } from 'react'
-import { useI18n } from '@qualy/web-i18n'
 import { Field, FormDialog } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
 import { Textarea } from '@qualy/ui/textarea'
-import { assessmentMessages as m } from '../i18n.ts'
+import * as m from '#messages'
 
 // Opening a finished batch again.
 //
@@ -23,7 +22,6 @@ export function ReopenDialog({
   onCancel: () => void
   onReopen: (input: { reason: string; displayName: string }) => void
 }) {
-  const { format } = useI18n()
   const [reason, setReason] = useState('')
   const [displayName, setDisplayName] = useState('')
   const ready = reason.trim() !== '' && displayName.trim() !== ''
@@ -31,42 +29,42 @@ export function ReopenDialog({
   return (
     <FormDialog
       open={open}
-      title={format(m.reopenTitle)}
-      description={format(m.reopenBody)}
+      title={m.action_reopenTitle()}
+      description={m.action_reopenBody()}
       onClose={onCancel}
       footer={
         <>
           <Button variant="outline" onClick={onCancel}>
-            {format(m.cancel)}
+            {m.action_cancel()}
           </Button>
           <Button
             disabled={!ready || pending}
             onClick={() => onReopen({ reason: reason.trim(), displayName: displayName.trim() })}
           >
-            {format(m.reopen)}
+            {m.action_reopen()}
           </Button>
         </>
       }
     >
-      <Field label={format(m.reopenReason)}>
+      <Field label={m.action_reopenReason()}>
         {(id) => (
           <Textarea
             id={id}
             rows={3}
             maxLength={500}
             value={reason}
-            placeholder={format(m.reopenReasonPlaceholder)}
+            placeholder={m.action_reopenReasonPlaceholder()}
             onChange={(event) => setReason(event.target.value)}
           />
         )}
       </Field>
-      <Field label={format(m.reopenPhaseName)} hint={format(m.reopenPhaseHint)}>
+      <Field label={m.action_reopenPhase()} hint={m.action_reopenPhaseHint()}>
         {(id) => (
           <Input
             id={id}
             maxLength={100}
             value={displayName}
-            placeholder={format(m.reopenPhasePlaceholder)}
+            placeholder={m.action_reopenPhasePlaceholder()}
             onChange={(event) => setDisplayName(event.target.value)}
           />
         )}

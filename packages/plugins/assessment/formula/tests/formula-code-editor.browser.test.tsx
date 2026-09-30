@@ -1,9 +1,7 @@
 import { StrictMode } from 'react'
 import { describe, expect, it, vi, afterEach } from 'vitest'
 import { render } from 'vitest-browser-react'
-import { I18nProvider } from '@qualy/web-i18n'
 import { UiProvider } from '@qualy/ui/provider'
-import { catalogs, errorMessages } from './support/screen.tsx'
 import { monaco } from '@qualy/plugin-assessment-formula/client/monaco-setup'
 import FormulaCodeEditor from '@qualy/plugin-assessment-formula/client/FormulaCodeEditor'
 
@@ -82,14 +80,15 @@ const editorProps = (value: string, extra?: Partial<Parameters<typeof FormulaCod
     ...extra,
   }) as Parameters<typeof FormulaCodeEditor>[0]
 
-const mount = (element: React.ReactElement) =>
-  render(
+const mount = (element: React.ReactElement) => {
+  // the page's language, marked on its root as the shell's boot script does
+  document.documentElement.dataset['locale'] = 'en-US'
+  return render(
     <StrictMode>
-      <I18nProvider catalogs={catalogs} errorMessages={errorMessages} fallback={null}>
-        <UiProvider scheme="light">{element}</UiProvider>
-      </I18nProvider>
+      <UiProvider scheme="light">{element}</UiProvider>
     </StrictMode>,
   )
+}
 
 const formulaModel = () => monaco.editor.getModel(monaco.Uri.parse('qualy-formula:///formula.ts'))
 
@@ -159,11 +158,9 @@ describe('the formula code editor', () => {
       // even a stale echo racing an IME composition cannot rewrite it
       await screen.rerender(
         <StrictMode>
-          <I18nProvider catalogs={catalogs} errorMessages={errorMessages} fallback={null}>
-            <UiProvider scheme="light">
-              <FormulaCodeEditor {...editorProps('a stale echo\n', { onChange })} />
-            </UiProvider>
-          </I18nProvider>
+          <UiProvider scheme="light">
+            <FormulaCodeEditor {...editorProps('a stale echo\n', { onChange })} />
+          </UiProvider>
         </StrictMode>,
       )
       await new Promise((resolve) => setTimeout(resolve, 10))
@@ -173,11 +170,9 @@ describe('the formula code editor', () => {
       // the SEED moving is the one adoption signal (discard, clean refetch)
       await screen.rerender(
         <StrictMode>
-          <I18nProvider catalogs={catalogs} errorMessages={errorMessages} fallback={null}>
-            <UiProvider scheme="light">
-              <FormulaCodeEditor {...editorProps('the server draft\n', { onChange, seed: 1 })} />
-            </UiProvider>
-          </I18nProvider>
+          <UiProvider scheme="light">
+            <FormulaCodeEditor {...editorProps('the server draft\n', { onChange, seed: 1 })} />
+          </UiProvider>
         </StrictMode>,
       )
       await vi.waitFor(

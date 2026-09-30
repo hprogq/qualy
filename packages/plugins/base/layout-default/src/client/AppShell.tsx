@@ -14,12 +14,12 @@ import { SectionChips, TopBar } from './TopBar.tsx'
 import { AppsBar } from './BottomBar.tsx'
 import { AppFooter } from './AppFooter.tsx'
 import { useIsBelow } from '@qualy/ui/use-mobile'
-import { useI18n } from '@qualy/web-i18n'
 import { SideNav } from './SideNav.tsx'
 import { BandFootScope } from '@qualy/ui/screen'
-import { layoutMessages as m } from './i18n.ts'
+
 import { useAppNavigation } from './useAppNavigation.ts'
 import { shell } from './shell.stylex.ts'
+import * as m from '#messages'
 
 // app-shell/v1 provider: applications across the top, the sections of the
 // open one under them, the page below.
@@ -194,7 +194,7 @@ const styles = stylex.create({
  */
 function Shell() {
   const { apps, activeApp, sections, sectionGroups } = useAppNavigation()
-  const { format } = useI18n()
+
   const narrow = useIsBelow(SIDE_BREAKPOINT)
   // a workbench fills the room under the bars and has no foot under it
   const filled = useScreenFillClaimed()
@@ -334,7 +334,7 @@ function Shell() {
               style={{ top: barHeight, height: `calc(100dvh - ${String(barHeight)}px)` }}
               {...stylex.props(styles.side)}
             >
-              <SideNav groups={sectionGroups} label={format(m.sideNav)} />
+              <SideNav groups={sectionGroups} label={m.shell_sideNav()} />
             </aside>
           )}
           <div {...stylex.props(styles.column)}>

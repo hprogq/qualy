@@ -1,9 +1,9 @@
 import * as stylex from '@stylexjs/stylex'
 import { CircleArrowUpIcon } from 'lucide-react'
-import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import type { ReviewDto } from './model.ts'
+import * as m from '#messages'
 
 const lg = '@media (min-width: 1024px)'
 
@@ -73,7 +73,6 @@ const styles = stylex.create({
  * the appellant's own grounds where the round is an appeal.
  */
 export function EscalationNotice({ review }: { review: ReviewDto }) {
-  const { format } = useI18n()
   // the guard lives here, once: only a live escalation round carries the
   // card, wherever the layout chooses to stand it
   if (review.state === 'completed' || review.chain.route !== 'escalation') return null
@@ -91,38 +90,34 @@ export function EscalationNotice({ review }: { review: ReviewDto }) {
       <CircleArrowUpIcon aria-hidden className={stylex.props(styles.escalationIcon).className} />
       <div {...stylex.props(styles.escalationWords)}>
         <p {...stylex.props(styles.escalationTitle)}>
-          {format(
-            reopened
-              ? m.reviewReopenBannerTitle
-              : appealed !== undefined
-                ? m.reviewAppealBannerTitle
-                : m.reviewEscBannerTitle,
-          )}
+          {(reopened
+            ? m.review_reopenBannerTitle
+            : appealed !== undefined
+              ? m.review_appealBannerTitle
+              : m.review_escBannerTitle)()}
         </p>
         {/* What this round is, before what anybody said in it: a title and a
             quotation with nothing between them read as the system saying
             "测试申诉", and the reviewer had to work out whose sentence it
             was. The grounds are still their own words - named. */}
         <p {...stylex.props(styles.escalationBody)}>
-          {format(
-            reopened
-              ? m.reviewReopenBannerBody
-              : appealed !== undefined
-                ? m.reviewAppealBannerBody
-                : m.reviewEscBannerBody,
-          )}
+          {(reopened
+            ? m.review_reopenBannerBody
+            : appealed !== undefined
+              ? m.review_appealBannerBody
+              : m.review_escBannerBody)()}
         </p>
         {appealed !== undefined && appealed.comment !== null && appealed.comment !== '' && (
           <p {...stylex.props(styles.escalationGrounds)}>
             <span {...stylex.props(styles.groundsLabel)}>
-              {format(reopened ? m.staffReopenReason : m.entryAppealReason)}
+              {(reopened ? m.staff_reopenReason : m.entry_appealReason)()}
             </span>
             {appealed.comment}
           </p>
         )}
         {appealed === undefined && escalated?.comment != null && escalated.comment !== '' && (
           <p {...stylex.props(styles.escalationGrounds)}>
-            <span {...stylex.props(styles.groundsLabel)}>{format(m.reviewEscalateReason)}</span>
+            <span {...stylex.props(styles.groundsLabel)}>{m.review_escalateReason()}</span>
             {escalated.comment}
           </p>
         )}

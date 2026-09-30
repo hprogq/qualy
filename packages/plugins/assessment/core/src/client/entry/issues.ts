@@ -1,5 +1,5 @@
-import type { MessageDescriptor } from '@qualy/i18n-contract'
-import { assessmentMessages as m } from '../i18n.ts'
+import type { Message } from '@qualy/i18n-contract'
+import * as m from '#messages'
 
 // What is wrong with one field of a filing, as the server names it.
 //
@@ -8,33 +8,33 @@ import { assessmentMessages as m } from '../i18n.ts'
 // in its toast instead, so both read the same words.
 
 /** the payload refusals the driver can raise, as sentences about one field */
-const ISSUE_SENTENCES: Record<string, MessageDescriptor> = {
-  required: m.entryIssueRequired,
+const ISSUE_SENTENCES: Record<string, Message> = {
+  required: m.entry_issueRequired,
   // a value past the field's own bounds; a date field bound to the round's
   // window reports its window with the same code (see issueSentence)
-  'out-of-range': m.entryIssueOutOfRange,
+  'out-of-range': m.entry_issueOutOfRange,
   // a date the scoring rule reads, outside the round's material window
-  'out-of-material-range': m.entryIssueOutOfMaterialRange,
-  'too-short': m.entryIssueTooShort,
-  'pattern-mismatch': m.entryIssuePatternMismatch,
-  'not-a-date': m.entryIssueNotADate,
-  'not-an-integer': m.entryIssueNotAnInteger,
-  'not-a-decimal': m.entryIssueNotADecimal,
-  'too-precise': m.entryIssueTooPrecise,
-  'not-a-choice': m.entryIssueNotAChoice,
-  'not-text': m.entryIssueNotText,
-  'not-a-boolean': m.entryIssueNotABoolean,
-  'too-long': m.entryIssueTooLong,
-  'too-many': m.entryIssueTooMany,
-  'too-many-attachments': m.entryIssueTooMany,
-  'not-attachments': m.entryIssueFileMissing,
-  'attachment-too-large': m.entryIssueFileTooLarge,
-  'attachment-type': m.entryIssueFileType,
-  'attachment-not-found': m.entryIssueFileMissing,
-  'attachment-retired': m.entryIssueFileMissing,
-  'attachment-not-yours': m.entryIssueFileNotYours,
-  'attachment-cross-entry': m.entryIssueFileElsewhere,
-  'duplicate-attachment': m.entryIssueFileElsewhere,
+  'out-of-material-range': m.entry_issueOutOfMaterialRange,
+  'too-short': m.entry_issueTooShort,
+  'pattern-mismatch': m.entry_issuePatternMismatch,
+  'not-a-date': m.entry_issueNotADate,
+  'not-an-integer': m.entry_issueNotAnInteger,
+  'not-a-decimal': m.entry_issueNotADecimal,
+  'too-precise': m.entry_issueTooPrecise,
+  'not-a-choice': m.entry_issueNotAChoice,
+  'not-text': m.entry_issueNotText,
+  'not-a-boolean': m.entry_issueNotABoolean,
+  'too-long': m.entry_issueTooLong,
+  'too-many': m.entry_issueTooMany,
+  'too-many-attachments': m.entry_issueTooMany,
+  'not-attachments': m.entry_issueFileMissing,
+  'attachment-too-large': m.entry_issueFileTooLarge,
+  'attachment-type': m.entry_issueFileType,
+  'attachment-not-found': m.entry_issueFileMissing,
+  'attachment-retired': m.entry_issueFileMissing,
+  'attachment-not-yours': m.entry_issueFileNotYours,
+  'attachment-cross-entry': m.entry_issueFileElsewhere,
+  'duplicate-attachment': m.entry_issueFileElsewhere,
 }
 
 /**
@@ -64,18 +64,18 @@ export const issueSentence = (
     /** the round's material window: start inclusive, end exclusive */
     readonly materialRange?: { readonly start: string; readonly end: string }
   },
-): MessageDescriptor => {
+): Message => {
   if (reason !== 'out-of-range' || field?.type !== 'date' || field.inMaterialRange !== true) {
-    return ISSUE_SENTENCES[reason] ?? m.entryIssueOther
+    return ISSUE_SENTENCES[reason] ?? m.entry_issueOther
   }
   const value = seen?.value
   const window = seen?.materialRange
   if (typeof value === 'string' && window !== undefined) {
     const inside = value >= window.start && value < window.end
-    return inside ? m.entryIssueOutOfRange : m.entryIssueOutOfMaterialRange
+    return inside ? m.entry_issueOutOfRange : m.entry_issueOutOfMaterialRange
   }
   const ownBounds = field.min !== undefined || field.max !== undefined
-  return ownBounds ? m.entryIssueOutOfRange : m.entryIssueOutOfMaterialRange
+  return ownBounds ? m.entry_issueOutOfRange : m.entry_issueOutOfMaterialRange
 }
 
 /** the fields a save was refused over, or null when the failure is not that */

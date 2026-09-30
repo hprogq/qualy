@@ -1,13 +1,12 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { motion, useReducedMotion } from 'motion/react'
 import * as stylex from '@stylexjs/stylex'
-import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { VisuallyHidden } from '@qualy/ui/visually-hidden'
 import { Portal } from '@qualy/ui/portal'
 import { retainInertBackground } from '@qualy/ui/inert-background'
 import type { CaptchaGate } from './gate.ts'
-import { captchaMessages as m } from './i18n.ts'
+import * as m from '#messages'
 
 // Where a challenge lives on the page.
 //
@@ -91,7 +90,6 @@ const FOCUSABLE =
   'iframe, button, input, select, textarea, a[href], [tabindex]:not([tabindex="-1"])'
 
 export function CaptchaChallenge({ gate }: { gate: CaptchaGate }) {
-  const { format } = useI18n()
   const still = useReducedMotion() === true
   const interacting = gate.state === 'interaction'
   const busy = gate.state === 'loading-provider' || gate.state === 'working'
@@ -160,7 +158,7 @@ export function CaptchaChallenge({ gate }: { gate: CaptchaGate }) {
     >
       {/* the caller's button shows the work; this says it to a screen reader */}
       <VisuallyHidden>
-        <span aria-live="polite">{busy ? format(m.working) : ''}</span>
+        <span aria-live="polite">{busy ? m.state_working() : ''}</span>
       </VisuallyHidden>
       {overlay ? (
         <Portal into={host}>
@@ -170,11 +168,11 @@ export function CaptchaChallenge({ gate }: { gate: CaptchaGate }) {
             tabIndex={-1}
             onKeyDown={keepFocus}
             {...(interacting
-              ? { role: 'dialog', 'aria-modal': true, 'aria-label': format(m.dialogTitle) }
+              ? { role: 'dialog', 'aria-modal': true, 'aria-label': m.dialog_title() }
               : {})}
             {...stylex.props(interacting ? styles.panel : styles.parked)}
           >
-            {interacting && <p {...stylex.props(styles.title)}>{format(m.dialogTitle)}</p>}
+            {interacting && <p {...stylex.props(styles.title)}>{m.dialog_title()}</p>}
             {container}
           </div>
         </Portal>
@@ -190,9 +188,9 @@ export function CaptchaChallenge({ gate }: { gate: CaptchaGate }) {
       )}
       {gate.state === 'failed' && (
         <p role="alert" {...stylex.props(styles.failed)}>
-          {format(m.failed)}
+          {m.state_failed()}
           <button type="button" {...stylex.props(styles.retry)} onClick={gate.recover}>
-            {format(m.retry)}
+            {m.action_retry()}
           </button>
         </p>
       )}

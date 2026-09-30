@@ -1,18 +1,18 @@
 import * as stylex from '@stylexjs/stylex'
 import { CheckIcon } from 'lucide-react'
-import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { Field } from '@qualy/ui/admin'
 import { Input } from '@qualy/ui/input'
 import { Textarea } from '@qualy/ui/textarea'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@qualy/ui/tooltip'
-import type { MessageDescriptor } from '@qualy/i18n-contract'
-import { assessmentMessages as m } from '../../i18n.ts'
+import type { Message } from '@qualy/i18n-contract'
+
 import { Choice } from '../Choice.tsx'
 import { EditorSection } from './Rows.tsx'
 import type { Draft, EditorProblem, Mode } from './model.ts'
 import { problemWords } from './words.ts'
+import * as m from '#messages'
 
 // What the question is called, where it sits, and how its records come to
 // be. The handling is chosen here in the open, as three cards, because it
@@ -135,10 +135,10 @@ const styles = stylex.create({
   note: { margin: 0, fontSize: 12, color: tokens.mutedForeground },
 })
 
-const MODES: readonly [Mode, MessageDescriptor, MessageDescriptor][] = [
-  ['review', m.itemsModeReview, m.itemsModeReviewHint],
-  ['direct', m.itemsModeDirect, m.itemsModeDirectHint],
-  ['automatic', m.itemsModeAutomatic, m.itemsModeAutomaticHint],
+const MODES: readonly [Mode, Message, Message][] = [
+  ['review', m.items_modeReview, m.items_modeReviewHint],
+  ['direct', m.items_modeDirect, m.items_modeDirectHint],
+  ['automatic', m.items_modeAutomatic, m.items_modeAutomaticHint],
 ]
 
 export function BasicsTab({
@@ -166,7 +166,6 @@ export function BasicsTab({
   /** a mode chosen; the editor decides whether a migration has to be asked first */
   onMode: (next: Mode) => void
 }) {
-  const { format } = useI18n()
   // a thing that is wrong is said at once; a thing that is only missing is
   // said once somebody has tried to save without it
   const said = (code: string) => {
@@ -180,7 +179,7 @@ export function BasicsTab({
   return (
     <div {...stylex.props(styles.stack)}>
       <section {...stylex.props(styles.grid)} data-block="basics">
-        <Field label={format(m.itemsFieldTitle)}>
+        <Field label={m.items_fieldTitle()}>
           {(id) => (
             <>
               <Input
@@ -189,18 +188,18 @@ export function BasicsTab({
                 maxLength={100}
                 required
                 aria-invalid={titleProblem !== undefined || undefined}
-                placeholder={format(m.itemsTitlePlaceholder)}
+                placeholder={m.items_titlePlaceholder()}
                 onChange={(event) => onPatch({ title: event.target.value })}
               />
               {titleProblem !== undefined && (
                 <p {...stylex.props(styles.problem)} role="alert" data-testid="basics-problem">
-                  {problemWords(titleProblem, format)}
+                  {problemWords(titleProblem)}
                 </p>
               )}
             </>
           )}
         </Field>
-        <Field label={format(m.itemsFieldGroup)}>
+        <Field label={m.items_fieldGroup()}>
           {(id) => (
             <>
               <Choice
@@ -213,7 +212,7 @@ export function BasicsTab({
               />
               {groupProblem !== undefined && (
                 <p {...stylex.props(styles.problem)} role="alert" data-testid="basics-problem">
-                  {problemWords(groupProblem, format)}
+                  {problemWords(groupProblem)}
                 </p>
               )}
             </>
@@ -222,7 +221,7 @@ export function BasicsTab({
         <div {...stylex.props(styles.span)}>
           {/* the hint under the box rather than beside the name: on a phone
               the line beside it squeezed the name to a letter per line */}
-          <Field label={format(m.itemsFieldDescription)} hint={format(m.itemsDescriptionHint)}>
+          <Field label={m.items_fieldDescription()} hint={m.items_descriptionHint()}>
             {(id) => (
               <Textarea
                 id={id}
@@ -236,8 +235,8 @@ export function BasicsTab({
         </div>
       </section>
 
-      <EditorSection title={format(m.itemsMode)} testId="mode-cards" block="mode">
-        <div role="radiogroup" aria-label={format(m.itemsMode)} {...stylex.props(styles.cards)}>
+      <EditorSection title={m.items_mode()} testId="mode-cards" block="mode">
+        <div role="radiogroup" aria-label={m.items_mode()} {...stylex.props(styles.cards)}>
           {MODES.map(([mode, name, hint]) => {
             const chosen = draft.mode === mode
             // the automatic card, and the way out of it, lock together: a
@@ -250,7 +249,7 @@ export function BasicsTab({
                 type="button"
                 role="radio"
                 aria-checked={chosen}
-                aria-label={format(name)}
+                aria-label={name()}
                 disabled={locked}
                 data-mode={mode}
                 onClick={() => {
@@ -264,8 +263,8 @@ export function BasicsTab({
               >
                 <span aria-hidden {...stylex.props(styles.radio, chosen && styles.radioOn)} />
                 <span {...stylex.props(styles.words)}>
-                  <span {...stylex.props(styles.cardName)}>{format(name)}</span>
-                  <span {...stylex.props(styles.cardHint)}>{format(hint)}</span>
+                  <span {...stylex.props(styles.cardName)}>{name()}</span>
+                  <span {...stylex.props(styles.cardHint)}>{hint()}</span>
                 </span>
               </button>
             )
@@ -285,11 +284,9 @@ export function BasicsTab({
                     </span>
                   </TooltipTrigger>
                   <TooltipContent>
-                    {format(
-                      mode === 'automatic'
-                        ? m.itemsModeLockedToAutomatic
-                        : m.itemsModeLockedFromAutomatic,
-                    )}
+                    {(mode === 'automatic'
+                      ? m.items_modeLockedToAutomatic
+                      : m.items_modeLockedFromAutomatic)()}
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
@@ -298,37 +295,37 @@ export function BasicsTab({
         </div>
         {modeProblem !== undefined && (
           <p {...stylex.props(styles.problem)} role="alert" data-testid="mode-problem">
-            {problemWords(modeProblem, format)}
+            {problemWords(modeProblem)}
           </p>
         )}
-        {automaticLocked && <p {...stylex.props(styles.note)}>{format(m.itemsModeLocked)}</p>}
+        {automaticLocked && <p {...stylex.props(styles.note)}>{m.items_modeLocked()}</p>}
       </EditorSection>
 
       {draft.mode !== 'automatic' && (
         <EditorSection
-          title={format(m.itemsChannels)}
-          hint={format(m.itemsChannelsHint)}
+          title={m.items_channels()}
+          hint={m.items_channelsHint()}
           testId="channel-cards"
           block="channels"
         >
           <div
             role="group"
-            aria-label={format(m.itemsChannels)}
+            aria-label={m.items_channels()}
             {...stylex.props(
               styles.channelList,
               channelsProblem !== undefined && styles.channelListBad,
             )}
           >
             <ChannelCard
-              name={format(m.itemsChannelParticipant)}
-              hint={format(m.itemsChannelParticipantHint)}
+              name={m.items_channelParticipant()}
+              hint={m.items_channelParticipantHint()}
               checked={draft.participant}
               channel="participant"
               onToggle={() => onPatch({ participant: !draft.participant })}
             />
             <ChannelCard
-              name={format(m.itemsChannelAdministrative)}
-              hint={format(m.itemsChannelAdministrativeHint)}
+              name={m.items_channelAdministrative()}
+              hint={m.items_channelAdministrativeHint()}
               checked={draft.administrative}
               channel="administrative"
               onToggle={() => onPatch({ administrative: !draft.administrative })}
@@ -336,7 +333,7 @@ export function BasicsTab({
           </div>
           {channelsProblem !== undefined && (
             <p {...stylex.props(styles.problem)} role="alert" data-testid="channels-problem">
-              {problemWords(channelsProblem, format)}
+              {problemWords(channelsProblem)}
             </p>
           )}
         </EditorSection>

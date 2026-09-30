@@ -16,8 +16,9 @@ import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
 import { toast } from '@qualy/ui/toast'
 import { settingsApi } from './api.ts'
-import { settingsMessages as m } from './i18n.ts'
+
 import { TERMINOLOGY_KEY, useTerminology } from './terms.ts'
+import * as m from '#messages'
 
 // The words this tenant uses, drawn the way the rest of the library is: a
 // masthead, then one white sheet per category with a term to a row. A dozen
@@ -90,12 +91,12 @@ const styles = stylex.create({
 })
 
 const LOCALE_NAME = {
-  'zh-CN': m.localeZhCN,
-  'en-US': m.localeEnUS,
+  'zh-CN': m.terminology_localeZhCn,
+  'en-US': m.terminology_localeEnUs,
 } as const
 
 export default function TerminologyPage() {
-  const { format, formatText } = useI18n()
+  const { formatText } = useI18n()
   const failures = useLoadFailure()
   // Narrow, a dozen terms means a dozen forms opened at once - two boxes and
   // two buttons each, a screen apiece. The list says what every word is
@@ -105,19 +106,19 @@ export default function TerminologyPage() {
   const categories = [...(terminology.data?.categories ?? [])].sort((a, b) => a.order - b.order)
   const terms = terminology.data?.terms ?? []
   return (
-    <Screen title={format(m.title)} description={format(m.hint)}>
+    <Screen title={m.terminology_title()} description={m.terminology_hint()}>
       <div {...stylex.props(styles.page)} data-testid="terminology-page">
         <AsyncSection
           pending={terminology.isPending}
           error={terminology.isError ? failures.of(terminology.error) : null}
           framed
-          loadingLabel={format(m.loading)}
-          retryLabel={format(m.retry)}
+          loadingLabel={m.terminology_loading()}
+          retryLabel={m.terminology_retry()}
           onRetry={() => void terminology.refetch()}
         >
           {terms.length === 0 ? (
             <div {...stylex.props(styles.sheet)}>
-              <p {...stylex.props(styles.empty)}>{format(m.empty)}</p>
+              <p {...stylex.props(styles.empty)}>{m.terminology_empty()}</p>
             </div>
           ) : (
             categories.map((category) => {
@@ -157,7 +158,7 @@ type Term = NonNullable<ReturnType<typeof useTerminology>['data']>['terms'][numb
 
 /** the drafts for one term, and the one write that saves or clears them */
 function useTermDraft(term: Term) {
-  const { format, formatError } = useI18n()
+  const { formatError } = useI18n()
   const api = useApi(settingsApi)
   const run = useRunApi()
   const queryClient = useQueryClient()
@@ -182,7 +183,7 @@ function useTermDraft(term: Term) {
         }),
       )
       await queryClient.invalidateQueries({ queryKey: TERMINOLOGY_KEY })
-      toast.success(format(m.saved))
+      toast.success(m.terminology_saved())
       return true
     } catch (error) {
       toast.error(formatError(error))
@@ -209,14 +210,13 @@ function TermBoxes({
   ) => void
   saving: boolean
 }) {
-  const { format } = useI18n()
   return (
     <>
       {supportedLocales.map((locale) => (
         <Field
           key={locale}
-          label={format(LOCALE_NAME[locale])}
-          hint={format(m.defaultWord, { value: term.defaults[locale] ?? '' })}
+          label={LOCALE_NAME[locale]()}
+          hint={m.terminology_default({ value: term.defaults[locale] ?? '' })}
         >
           {(id) => (
             <Input
@@ -238,7 +238,7 @@ function TermBoxes({
 
 /** one term: a box per language, saved as one resource under the version it was read at */
 function TermEditor({ term }: { term: Term }) {
-  const { format, formatText } = useI18n()
+  const { formatText } = useI18n()
   const { drafts, setDrafts, saving, customised, dirty, write } = useTermDraft(term)
 
   return (
@@ -246,7 +246,7 @@ function TermEditor({ term }: { term: Term }) {
       <div {...stylex.props(styles.termHead)}>
         <span {...stylex.props(styles.termTitle)}>
           {formatText(term.label)}
-          {customised && <Badge variant="secondary">{format(m.customised)}</Badge>}
+          {customised && <Badge variant="secondary">{m.terminology_customised()}</Badge>}
         </span>
         {term.description !== null && (
           <p {...stylex.props(styles.termNote)}>{formatText(term.description)}</p>
@@ -263,10 +263,10 @@ function TermEditor({ term }: { term: Term }) {
             disabled={saving || (!customised && !dirty)}
             onClick={() => void write({ 'zh-CN': '', 'en-US': '' })}
           >
-            {format(m.reset)}
+            {m.terminology_reset()}
           </Button>
           <Button size="sm" disabled={saving || !dirty} onClick={() => void write(drafts)}>
-            {format(m.save)}
+            {m.terminology_save()}
           </Button>
         </div>
       </div>
@@ -276,7 +276,7 @@ function TermEditor({ term }: { term: Term }) {
 
 /** the same term as one line of a list, with the form a press away */
 function TermRow({ term }: { term: Term }) {
-  const { format, formatText, locale } = useI18n()
+  const { formatText, locale } = useI18n()
   const { drafts, setDrafts, saving, customised, dirty, write } = useTermDraft(term)
   const [open, setOpen] = useState(false)
   const word = term.override[locale] ?? term.defaults[locale] ?? ''
@@ -294,7 +294,7 @@ function TermRow({ term }: { term: Term }) {
       <TableRow onOpen={() => setOpen(true)} data-testid="term" data-term={term.id}>
         <Cell lead>
           <LeadWord>{formatText(term.label)}</LeadWord>
-          {customised && <Tag>{format(m.customised)}</Tag>}
+          {customised && <Tag>{m.terminology_customised()}</Tag>}
         </Cell>
         {/* what the word is today, whether it was chosen here or fell back */}
         <Cell narrow="end" unlabelled tone="plain">
@@ -313,13 +313,13 @@ function TermRow({ term }: { term: Term }) {
               disabled={saving || (!customised && !dirty)}
               onClick={() => void write({ 'zh-CN': '', 'en-US': '' }).then(close)}
             >
-              {format(m.reset)}
+              {m.terminology_reset()}
             </Button>
             <Button
               disabled={saving || !dirty}
               onClick={() => void write(drafts).then((ok) => ok && close())}
             >
-              {format(m.save)}
+              {m.terminology_save()}
             </Button>
           </>
         }

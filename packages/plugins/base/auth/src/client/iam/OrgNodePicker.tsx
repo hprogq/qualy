@@ -3,8 +3,7 @@ import { XIcon } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import type { OrgNodePickerContext, PickedOrgNode } from '@qualy/ui-contract'
 import { useApiQuery } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { Badge } from '@qualy/ui/badge'
@@ -16,7 +15,8 @@ import { ToggleGroup, ToggleGroupItem } from '@qualy/ui/toggle-group'
 import { TreeSelect } from '@qualy/ui/tree-select'
 import { OrgTree } from './OrgTree.tsx'
 import { authApi } from '../api.ts'
-import { authMessages as m } from '../i18n.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // Units, chosen as a set.
 //
@@ -227,7 +227,6 @@ export function OrgNodeChooser({
   /** the units are only part of what exists */
   truncated: boolean
 }) {
-  const { format } = useI18n()
   const [search, setSearch] = useState('')
   const [orgTypeId, setOrgTypeId] = useState('')
 
@@ -301,7 +300,7 @@ export function OrgNodeChooser({
         <Input
           value={search}
           onChange={(event) => setSearch(event.target.value)}
-          placeholder={format(m.nodeSearch)}
+          placeholder={m.picker_nodeSearch()}
           className={stylex.props(styles.searchInput).className}
         />
         {(context.scope !== undefined || typeNames.size > 0) && (
@@ -314,8 +313,8 @@ export function OrgNodeChooser({
                 }
                 className={stylex.props(styles.pinned).className}
               >
-                <ToggleGroupItem value="self">{format(m.pickerScopeSelf)}</ToggleGroupItem>
-                <ToggleGroupItem value="subtree">{format(m.pickerScopeSubtree)}</ToggleGroupItem>
+                <ToggleGroupItem value="self">{m.picker_scopeSelf()}</ToggleGroupItem>
+                <ToggleGroupItem value="subtree">{m.picker_scopeSubtree()}</ToggleGroupItem>
               </ToggleGroup>
             )}
             {typeNames.size > 0 && (
@@ -323,11 +322,11 @@ export function OrgNodeChooser({
                 value={orgTypeId === '' ? ANY : orgTypeId}
                 onValueChange={(next) => setOrgTypeId(next === ANY ? '' : next)}
               >
-                <SelectTrigger size="sm" xstyle={styles.kindField} aria-label={format(m.nodeKind)}>
+                <SelectTrigger size="sm" xstyle={styles.kindField} aria-label={m.picker_nodeKind()}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value={ANY}>{format(m.nodeAnyKind)}</SelectItem>
+                  <SelectItem value={ANY}>{m.picker_nodeAnyKind()}</SelectItem>
                   {[...typeNames.entries()].map(([id, name]) => (
                     <SelectItem key={id} value={id}>
                       {name}
@@ -361,9 +360,9 @@ export function OrgNodeChooser({
           // down keeps enough width to be read
           <OrgTree
             nodes={filtering ? matches : nodes}
-            emptyLabel={format(filtering ? m.nodeNoMatch : m.pickerNoUnits)}
-            emptyHint={format(filtering ? m.nodeNoMatchHint : m.pickerNoUnitsHint)}
-            expandLabel={format(m.pickerExpand)}
+            emptyLabel={(filtering ? m.picker_nodeNoMatch : m.picker_noUnits)()}
+            emptyHint={(filtering ? m.picker_noMatchHint : m.picker_noUnitsHint)()}
+            expandLabel={m.picker_expand()}
             selected={context.value[0] ?? null}
             flat={filtering}
             // choosing out of places that mostly may not be chosen wants a
@@ -382,7 +381,7 @@ export function OrgNodeChooser({
           />
         ) : filtering ? (
           matches.length === 0 ? (
-            <p {...stylex.props(styles.quietNote)}>{format(m.nodeNoMatch)}</p>
+            <p {...stylex.props(styles.quietNote)}>{m.picker_nodeNoMatch()}</p>
           ) : (
             <ul {...stylex.props(styles.flatList)}>
               {matches.map((node) => (
@@ -405,14 +404,14 @@ export function OrgNodeChooser({
             value={context.value}
             onChange={announce}
             nodes={nodes}
-            emptyLabel={format(m.pickerNoUnits)}
-            emptyHint={format(m.pickerNoUnitsHint)}
+            emptyLabel={m.picker_noUnits()}
+            emptyHint={m.picker_noUnitsHint()}
             meta={badge}
           />
         )}
       </div>
 
-      {truncated && <p {...stylex.props(styles.moreNote)}>{format(commonMessages.moreResults)}</p>}
+      {truncated && <p {...stylex.props(styles.moreNote)}>{commonMessages.state_moreResults()}</p>}
 
       {/* What a SET of units comes to, which a set needs and one unit does
           not: a single choice is already said by the row it is on, and
@@ -425,7 +424,7 @@ export function OrgNodeChooser({
               {named.get(nodeId) ?? nodeId}
               <button
                 type="button"
-                aria-label={format(m.nodeRemove, { name: named.get(nodeId) ?? '' })}
+                aria-label={m.picker_nodeRemove({ name: named.get(nodeId) ?? '' })}
                 onClick={() => toggle(nodeId)}
               >
                 <XIcon className={stylex.props(styles.removeGlyph).className} />

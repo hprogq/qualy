@@ -1,10 +1,9 @@
 import { useEffect, useState } from 'react'
 import { FileIcon, PlusIcon, TypeIcon, XIcon } from 'lucide-react'
 import * as stylex from '@stylexjs/stylex'
-import { useI18n } from '@qualy/web-i18n'
 import { DraftNote } from './DraftNote.tsx'
 import { useLocalDraft } from './use-draft.ts'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { VisuallyHidden } from '@qualy/ui/visually-hidden'
 import { Field, FormDialog } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
@@ -14,9 +13,11 @@ import { Kbd, KbdGroup } from '@qualy/ui/kbd'
 import { Label } from '@qualy/ui/label'
 import { Textarea } from '@qualy/ui/textarea'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import { DecisionSheet } from './decision-dialogs.tsx'
 import { useFinePointer } from './pointer.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // Asking for more backing without moving the round. The builder offers two
 // shapes and only two - a written answer or files - so an ask can never grow
@@ -129,7 +130,6 @@ export function SupplementDialog({
   onClose: () => void
   onConfirm: (worded: WordedSupplement) => void
 }) {
-  const { format } = useI18n()
   const fine = useFinePointer()
   const [instructions, setInstructions] = useState(initial?.instructions ?? '')
   const [pieces, setPieces] = useState<readonly Piece[]>(() =>
@@ -230,7 +230,7 @@ export function SupplementDialog({
           setPieces(blankPieces)
         }}
       />
-      <Field label={format(m.supplementInstructionsLabel)} required>
+      <Field label={m.supplement_instructionsLabel()} required>
         {(id) => (
           <Textarea
             id={id}
@@ -244,7 +244,7 @@ export function SupplementDialog({
       </Field>
 
       <div {...stylex.props(styles.pieces)}>
-        <p {...stylex.props(styles.piecesTitle)}>{format(m.supplementPiecesLabel)}</p>
+        <p {...stylex.props(styles.piecesTitle)}>{m.supplement_piecesLabel()}</p>
         {pieces.map((piece, index) => (
           <div key={index} {...stylex.props(styles.pieceRow)}>
             <span {...stylex.props(styles.pieceKind)}>
@@ -253,13 +253,13 @@ export function SupplementDialog({
               ) : (
                 <TypeIcon aria-hidden className={stylex.props(styles.kindIcon).className} />
               )}
-              {format(piece.kind === 'file' ? m.supplementAddFile : m.supplementAddText)}
+              {(piece.kind === 'file' ? m.supplement_addFile : m.supplement_addText)()}
             </span>
             <Input
               value={piece.label}
               maxLength={LABEL_MAX}
               data-piece-slot={index + 1}
-              placeholder={format(m.supplementPieceLabel)}
+              placeholder={m.supplement_pieceLabel()}
               className={stylex.props(styles.grow).className}
               onChange={(event) => edit(index, { label: event.target.value })}
             />
@@ -274,7 +274,7 @@ export function SupplementDialog({
                 checked={piece.required}
                 onCheckedChange={(checked) => edit(index, { required: checked === true })}
               />
-              {format(m.supplementPieceRequired)}
+              {m.supplement_pieceRequired()}
             </Label>
             <Button
               variant="ghost"
@@ -283,14 +283,14 @@ export function SupplementDialog({
               onClick={() => remove(index)}
             >
               <XIcon aria-hidden />
-              <VisuallyHidden>{format(m.supplementPieceRemove)}</VisuallyHidden>
+              <VisuallyHidden>{m.supplement_pieceRemove()}</VisuallyHidden>
             </Button>
           </div>
         ))}
         <div {...stylex.props(styles.addRow)}>
           <Button variant="outline" size="sm" onClick={() => add('file')}>
             <PlusIcon aria-hidden />
-            {format(m.supplementAddFile)}
+            {m.supplement_addFile()}
             {fine && (
               // Ringed inside, not bordered: the outline button's own wash is
               // the same grey the chip defaults to, and the key vanished into
@@ -304,7 +304,7 @@ export function SupplementDialog({
           </Button>
           <Button variant="outline" size="sm" onClick={() => add('text')}>
             <PlusIcon aria-hidden />
-            {format(m.supplementAddText)}
+            {m.supplement_addText()}
             {fine && (
               <KbdGroup>
                 <Kbd className={stylex.props(styles.capOnSurface).className}>⌥</Kbd>
@@ -321,10 +321,10 @@ export function SupplementDialog({
     return (
       <DecisionSheet
         open={open}
-        title={format(m.supplementDialogTitle)}
-        hint={format(m.supplementDialogHint)}
-        slideLabel={format(m.reviewSlideSupplement)}
-        waiting={format(m.reviewSheetFillFirst)}
+        title={m.supplement_dialogTitle()}
+        hint={m.supplement_dialogHint()}
+        slideLabel={m.review_slideSupplement()}
+        waiting={m.review_sheetFillFirst()}
         ready={ready}
         onClose={onClose}
         onConfirm={confirm}
@@ -337,16 +337,16 @@ export function SupplementDialog({
   return (
     <FormDialog
       open={open}
-      title={format(m.supplementDialogTitle)}
-      description={format(m.supplementDialogHint)}
+      title={m.supplement_dialogTitle()}
+      description={m.supplement_dialogHint()}
       onClose={onClose}
       footer={
         <div {...stylex.props(styles.footer)}>
           <Button variant="outline" onClick={onClose}>
-            {format(commonMessages.cancel)}
+            {commonMessages.action_cancel()}
           </Button>
           <Button disabled={!ready} onClick={confirm}>
-            {format(m.supplementSend)}
+            {m.supplement_send()}
             <Kbd className={stylex.props(styles.onSolid).className}>⌘↵</Kbd>
           </Button>
         </div>

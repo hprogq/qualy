@@ -2,11 +2,11 @@ import * as stylex from '@stylexjs/stylex'
 import { useQuery } from '@tanstack/react-query'
 import { CheckIcon } from 'lucide-react'
 import { useApiQuery } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentApi } from '../api.ts'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import type { ItemDto } from '../entry/model.ts'
+import * as m from '#messages'
 
 // Which question is being settled, chosen by reading them.
 //
@@ -99,7 +99,6 @@ export function ItemPicker({
   value: string
   onPick: (itemId: string) => void
 }) {
-  const { format } = useI18n()
   const query = useApiQuery(assessmentApi)
   const groups = useQuery(query.assessment.listScoreGroups.queryOptions({ params: { batchId } }))
   const where = trailOf(groups.data?.groups ?? [])
@@ -131,7 +130,7 @@ export function ItemPicker({
                   {item.maxEntries !== null && (
                     <>
                       <span aria-hidden {...stylex.props(styles.tick)} />
-                      <span>{format(m.recordItemCap, { count: item.maxEntries })}</span>
+                      <span>{m.record_itemCap({ count: item.maxEntries })}</span>
                     </>
                   )}
                 </>

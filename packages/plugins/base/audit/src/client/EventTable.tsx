@@ -5,7 +5,7 @@ import { useI18n } from '@qualy/web-i18n'
 import { CardEmpty, Status } from '@qualy/ui/screen'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
-import { auditMessages as m } from './i18n.ts'
+import * as m from '#messages'
 
 // Recorded operations, newest first, one row each: when, who, what, on
 // what, how it ended and from where. A row opens into its correlation ids
@@ -228,22 +228,22 @@ export function EventTable({
   /** every row is about the same object, which the page already names */
   hideTarget?: boolean
 }) {
-  const { format, formatText, locale } = useI18n()
+  const { formatText, locale } = useI18n()
   const [openId, setOpenId] = useState('')
   const when = (iso: string) =>
     new Date(iso).toLocaleString(locale, { dateStyle: 'medium', timeStyle: 'medium' })
   const actorOf = (row: EventRow) =>
     row.actorLabel ??
     (row.actorKind === 'anonymous'
-      ? format(m.actorAnonymous)
+      ? m.events_actorAnonymous()
       : row.actorKind === 'user'
         ? (row.actorUserId?.slice(0, 8) ?? '—')
-        : format(m.actorSystem))
+        : m.events_actorSystem())
   const actionOf = (row: EventRow) => (row.actionName ? formatText(row.actionName) : row.actionCode)
   const outcomeLabel = {
-    success: m.outcomeSuccess,
-    denied: m.outcomeDenied,
-    failure: m.outcomeFailure,
+    success: m.events_outcomeSuccess,
+    denied: m.events_outcomeDenied,
+    failure: m.events_outcomeFailure,
   }
 
   return (
@@ -254,12 +254,12 @@ export function EventTable({
           data-columns={hideTarget ? 5 : 6}
           {...stylex.props(styles.head, hideTarget && styles.withoutTarget)}
         >
-          <span>{format(m.columnTime)}</span>
-          <span>{format(m.columnActor)}</span>
-          <span>{format(m.columnAction)}</span>
-          {!hideTarget && <span>{format(m.columnTarget)}</span>}
-          <span>{format(m.columnOutcome)}</span>
-          <span {...stylex.props(styles.right)}>{format(m.columnIp)}</span>
+          <span>{m.events_columnTime()}</span>
+          <span>{m.events_columnActor()}</span>
+          <span>{m.events_columnAction()}</span>
+          {!hideTarget && <span>{m.events_columnTarget()}</span>}
+          <span>{m.events_columnOutcome()}</span>
+          <span {...stylex.props(styles.right)}>{m.events_columnIp()}</span>
         </div>
         {rows.length === 0 ? (
           <CardEmpty>{empty}</CardEmpty>
@@ -282,7 +282,7 @@ export function EventTable({
                 <span {...stylex.props(styles.ellipsis, styles.when)}>{when(row.occurredAt)}</span>
                 <span {...stylex.props(styles.ellipsis, styles.actor)}>
                   <span aria-hidden {...stylex.props(styles.said)}>
-                    {format(m.columnActor)}
+                    {m.events_columnActor()}
                   </span>
                   {actorOf(row)}
                 </span>
@@ -290,21 +290,21 @@ export function EventTable({
                 {!hideTarget && (
                   <span data-cell="target" {...stylex.props(styles.ellipsis, styles.target)}>
                     <span aria-hidden {...stylex.props(styles.said)}>
-                      {format(m.columnTarget)}
+                      {m.events_columnTarget()}
                     </span>
                     {row.targetLabel ?? row.targetId ?? '—'}
                   </span>
                 )}
                 <span {...stylex.props(styles.outcome)}>
                   <Status tone={row.outcome === 'success' ? 'plain' : 'bad'}>
-                    {format(outcomeLabel[row.outcome])}
+                    {outcomeLabel[row.outcome]()}
                   </Status>
                 </span>
                 <span {...stylex.props(styles.ellipsis, styles.ip)}>{row.clientIp ?? '—'}</span>
               </button>
               {row.id === openId && (
                 <dl {...stylex.props(styles.detail)} data-testid="audit-detail">
-                  <Detail label={format(m.columnActor)} copy={row.actorUserId ?? undefined}>
+                  <Detail label={m.events_columnActor()} copy={row.actorUserId ?? undefined}>
                     {actorOf(row)}
                     {row.actorUserId !== null && onlyActor !== undefined && (
                       <>
@@ -314,14 +314,14 @@ export function EventTable({
                           {...stylex.props(styles.inlineAction)}
                           onClick={() => onlyActor(row.actorUserId ?? '')}
                         >
-                          {format(m.onlyThisActor)}
+                          {m.detail_onlyThisActor()}
                         </button>
                       </>
                     )}
                   </Detail>
                   {(row.targetLabel !== null || row.targetId !== null) && (
                     <Detail
-                      label={format(m.columnTarget)}
+                      label={m.events_columnTarget()}
                       copy={row.targetId ?? row.targetLabel ?? undefined}
                     >
                       {row.targetLabel ?? row.targetId}
@@ -330,35 +330,35 @@ export function EventTable({
                       )}
                     </Detail>
                   )}
-                  <Detail label={format(m.detailSource)}>{row.source}</Detail>
+                  <Detail label={m.events_detailSource()}>{row.source}</Detail>
                   {row.reasonCode && (
-                    <Detail label={format(m.detailReason)} copy={row.reasonCode} mono bad>
+                    <Detail label={m.events_detailReason()} copy={row.reasonCode} mono bad>
                       {row.reasonCode}
                     </Detail>
                   )}
                   {row.requestId && (
-                    <Detail label={format(m.detailRequest)} copy={row.requestId} mono>
+                    <Detail label={m.events_detailRequest()} copy={row.requestId} mono>
                       {row.requestId}
                     </Detail>
                   )}
                   {row.traceId && (
-                    <Detail label={format(m.detailTrace)} copy={row.traceId} mono>
+                    <Detail label={m.events_detailTrace()} copy={row.traceId} mono>
                       {row.traceId}
                     </Detail>
                   )}
                   {row.clientIp && (
-                    <Detail label={format(m.columnIp)} copy={row.clientIp} mono>
+                    <Detail label={m.events_columnIp()} copy={row.clientIp} mono>
                       {row.clientIp}
                     </Detail>
                   )}
                   {row.userAgent && (
-                    <Detail label={format(m.detailUserAgent)} copy={row.userAgent} quiet>
+                    <Detail label={m.events_detailUserAgent()} copy={row.userAgent} quiet>
                       {row.userAgent}
                     </Detail>
                   )}
                   {Object.keys(row.details).length > 0 && (
                     <Detail
-                      label={format(m.detailDetails)}
+                      label={m.events_detailDetails()}
                       copy={JSON.stringify(row.details, null, 2)}
                     >
                       <pre {...stylex.props(styles.pre)}>
@@ -393,7 +393,6 @@ function Detail({
   quiet?: boolean
   children: ReactNode
 }) {
-  const { format } = useI18n()
   const [copied, setCopied] = useState(false)
   return (
     <>
@@ -406,7 +405,7 @@ function Detail({
         {copy !== undefined && (
           <button
             type="button"
-            aria-label={format(m.copyValue, { label })}
+            aria-label={m.detail_copy({ label })}
             data-copied={copied}
             {...stylex.props(styles.copy)}
             onClick={() => {

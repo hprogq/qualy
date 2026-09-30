@@ -1,8 +1,8 @@
 import * as stylex from '@stylexjs/stylex'
-import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import type { EntryDto } from '../entry/model.ts'
+import * as m from '#messages'
 
 /**
  * Where an administrative finding stands, in this screen's own words.
@@ -48,12 +48,12 @@ const styles = stylex.create({
 })
 
 const said = {
-  approved: m.recordStandingSettled,
-  in_review: m.recordStandingAppealed,
-  needs_revision: m.recordStandingAppealed,
-  rejected: m.recordStandingOverturned,
-  voided: m.recordStandingWithdrawn,
-  draft: m.recordStandingSettled,
+  approved: m.record_standingSettled,
+  in_review: m.record_standingAppealed,
+  needs_revision: m.record_standingAppealed,
+  rejected: m.record_standingOverturned,
+  voided: m.record_standingWithdrawn,
+  draft: m.record_standingSettled,
 } as const
 
 const tone = {
@@ -66,7 +66,6 @@ const tone = {
 } as const
 
 export function RecordStanding({ status }: { status: EntryDto['status'] }) {
-  const { format } = useI18n()
   return (
     <span
       // the standing itself, beside the word for it: a test about what a
@@ -75,7 +74,7 @@ export function RecordStanding({ status }: { status: EntryDto['status'] }) {
       data-entry-standing={status}
       {...stylex.props(styles.chip, tone[status])}
     >
-      {format(said[status])}
+      {said[status]()}
     </span>
   )
 }

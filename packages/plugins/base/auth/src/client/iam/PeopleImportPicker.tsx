@@ -2,12 +2,12 @@ import type { PeopleImportContext } from '@qualy/ui-contract'
 import * as stylex from '@stylexjs/stylex'
 import { useQuery } from '@tanstack/react-query'
 import { PageLink, useApiQuery, usePageHref } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
 import { CheckboxGroup } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { authApi } from '../api.ts'
-import { authMessages as m } from '../i18n.ts'
+
 import OrgNodePicker from './OrgNodePicker.tsx'
+import * as m from '#messages'
 
 // Naming a slice of the organization instead of naming people.
 //
@@ -39,7 +39,7 @@ const styles = stylex.create({
 
 export default function PeopleImportPicker({ context }: { context: PeopleImportContext }) {
   const query = useApiQuery(authApi)
-  const { format } = useI18n()
+
   const options = useQuery(query.identity.getUserOptions.queryOptions({ query: {} }))
   const types = options.data?.userTypes ?? []
   // where kinds of person are made, for the reader who may go there
@@ -50,7 +50,7 @@ export default function PeopleImportPicker({ context }: { context: PeopleImportC
   return (
     <div {...stylex.props(styles.page)}>
       <div {...stylex.props(styles.section, styles.units)}>
-        <p {...stylex.props(styles.title)}>{format(m.importUnits)}</p>
+        <p {...stylex.props(styles.title)}>{m.picker_importUnits()}</p>
         <OrgNodePicker
           context={{
             value: context.value.orgNodeIds,
@@ -61,7 +61,7 @@ export default function PeopleImportPicker({ context }: { context: PeopleImportC
 
       <div {...stylex.props(styles.section, styles.kinds)}>
         <div {...stylex.props(styles.head)}>
-          <p {...stylex.props(styles.title)}>{format(m.importTypes)}</p>
+          <p {...stylex.props(styles.title)}>{m.picker_importTypes()}</p>
           {types.length > 0 && (
             <Button
               size="sm"
@@ -75,7 +75,7 @@ export default function PeopleImportPicker({ context }: { context: PeopleImportC
                 })
               }
             >
-              {format(allChosen ? m.importClearTypes : m.importAllTypes)}
+              {(allChosen ? m.picker_importClearTypes : m.picker_importAllTypes)()}
             </Button>
           )}
         </div>
@@ -84,17 +84,17 @@ export default function PeopleImportPicker({ context }: { context: PeopleImportC
             where it stops being drawn twice */}
         <CheckboxGroup
           hideLegend
-          legend={format(m.importTypes)}
+          legend={m.picker_importTypes()}
           options={types.map((type) => ({ value: type.id, label: type.name }))}
           selected={[...context.value.userTypeIds]}
           onChange={(userTypeIds) => context.onChange({ ...context.value, userTypeIds })}
-          emptyLabel={format(m.importNoTypes)}
-          emptyHint={format(typesReachable ? m.importNoTypesHint : m.importNoTypesAsk)}
+          emptyLabel={m.picker_importNoTypes()}
+          emptyHint={(typesReachable ? m.picker_importNoTypesHint : m.picker_importNoTypesAsk)()}
           {...(typesReachable
             ? {
                 emptyAction: (
                   <Button asChild size="sm" variant="outline">
-                    <PageLink page="auth/user-types">{format(m.importOpenTypes)}</PageLink>
+                    <PageLink page="auth/user-types">{m.picker_importOpenTypes()}</PageLink>
                   </Button>
                 ),
               }

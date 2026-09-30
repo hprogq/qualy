@@ -8,7 +8,7 @@ import { useApiQuery } from '@qualy/web-runtime'
 import { isApiErrorCode, useI18n } from '@qualy/web-i18n'
 import { useTerm } from '@qualy/plugin-settings/client/terms'
 import { authTerms } from '@qualy/auth-contract/terms'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
 import {
@@ -23,7 +23,8 @@ import { HoverCard, HoverCardContent, HoverCardTrigger } from '@qualy/ui/hover-c
 import { PersonCell } from '@qualy/ui/person'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { authApi } from '../api.ts'
-import { authMessages as m } from '../i18n.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // A person, wherever another screen names one.
 //
@@ -94,7 +95,7 @@ export default function PersonCard({ context }: { context: PersonCardContext }) 
   const [hovered, setHovered] = useState(false)
   const [open, setOpen] = useState(false)
   const query = useApiQuery(authApi)
-  const { format, formatError } = useI18n()
+  const { formatError } = useI18n()
   const businessNo = useTerm(authTerms.businessNumber)
 
   const detail = useQuery({
@@ -115,7 +116,7 @@ export default function PersonCard({ context }: { context: PersonCardContext }) 
                 card arrived, and the row jump with it */}
             <PersonCell
               name={context.displayName}
-              secondary={context.businessNo ?? format(m.personNoBusinessNo, { businessNo })}
+              secondary={context.businessNo ?? m.person_noBusinessNo({ businessNo })}
             />
           </button>
         </HoverCardTrigger>
@@ -126,7 +127,7 @@ export default function PersonCard({ context }: { context: PersonCardContext }) 
             // failure to report, only nothing more to show.
             <p {...stylex.props(styles.quiet)} data-testid="person-card-gone">
               {isApiErrorCode(detail.error, 'USER_NOT_FOUND')
-                ? format(m.personGone)
+                ? m.person_gone()
                 : formatError(detail.error)}
             </p>
           ) : person === undefined ? (
@@ -139,18 +140,18 @@ export default function PersonCard({ context }: { context: PersonCardContext }) 
               <div {...stylex.props(styles.who)}>
                 <p {...stylex.props(styles.name)}>{person.user.displayName}</p>
                 <p {...stylex.props(styles.aside)}>
-                  {person.user.businessNo ?? format(m.personNoBusinessNo, { businessNo })}
+                  {person.user.businessNo ?? m.person_noBusinessNo({ businessNo })}
                 </p>
               </div>
               <dl {...stylex.props(styles.facts)}>
-                <Row label={format(m.personUserType)} value={person.user.userType.name} />
+                <Row label={m.person_userType()} value={person.user.userType.name} />
                 <Row
-                  label={format(m.personPlacement)}
+                  label={m.person_placement()}
                   value={person.orgPath.map((node) => node.name).join(' / ')}
                 />
               </dl>
               {person.user.status === 'disabled' && (
-                <Badge variant="secondary">{format(m.personDisabled)}</Badge>
+                <Badge variant="secondary">{m.person_disabled()}</Badge>
               )}
             </>
           )}
@@ -160,7 +161,7 @@ export default function PersonCard({ context }: { context: PersonCardContext }) 
             className={stylex.props(styles.cardAction).className}
             onClick={() => setOpen(true)}
           >
-            {format(m.personOpenDetail)}
+            {m.person_openDetail()}
           </Button>
         </HoverCardContent>
       </HoverCard>
@@ -174,7 +175,7 @@ export default function PersonCard({ context }: { context: PersonCardContext }) 
             {detail.isError ? (
               <p {...stylex.props(styles.quiet)} data-testid="person-card-gone">
                 {isApiErrorCode(detail.error, 'USER_NOT_FOUND')
-                  ? format(m.personGone)
+                  ? m.person_gone()
                   : formatError(detail.error)}
               </p>
             ) : person === undefined ? (
@@ -184,19 +185,19 @@ export default function PersonCard({ context }: { context: PersonCardContext }) 
                 <dl {...stylex.props(styles.pairs)}>
                   <Row
                     label={businessNo}
-                    value={person.user.businessNo ?? format(m.personNoBusinessNo, { businessNo })}
+                    value={person.user.businessNo ?? m.person_noBusinessNo({ businessNo })}
                   />
-                  <Row label={format(m.personUserType)} value={person.user.userType.name} />
+                  <Row label={m.person_userType()} value={person.user.userType.name} />
                   <Row
-                    label={format(m.personStatus)}
-                    value={format(
-                      person.user.status === 'disabled' ? m.personDisabled : m.personActive,
-                    )}
+                    label={m.person_status()}
+                    value={(person.user.status === 'disabled'
+                      ? m.person_disabled
+                      : m.person_active)()}
                   />
                 </dl>
 
                 <section {...stylex.props(styles.section)}>
-                  <h4 {...stylex.props(styles.sectionTitle)}>{format(m.personPlacement)}</h4>
+                  <h4 {...stylex.props(styles.sectionTitle)}>{m.person_placement()}</h4>
                   {/* spelled from the top: a class name alone says which class
                       but never whose */}
                   <ol {...stylex.props(styles.path)}>
@@ -212,9 +213,9 @@ export default function PersonCard({ context }: { context: PersonCardContext }) 
                 </section>
 
                 <section {...stylex.props(styles.section)}>
-                  <h4 {...stylex.props(styles.sectionTitle)}>{format(m.personRoles)}</h4>
+                  <h4 {...stylex.props(styles.sectionTitle)}>{m.person_roles()}</h4>
                   {person.roles.length === 0 ? (
-                    <p {...stylex.props(styles.quiet)}>{format(m.personNoRoles)}</p>
+                    <p {...stylex.props(styles.quiet)}>{m.person_noRoles()}</p>
                   ) : (
                     <ul {...stylex.props(styles.roles)}>
                       {person.roles.map((role) => (
@@ -222,17 +223,12 @@ export default function PersonCard({ context }: { context: PersonCardContext }) 
                           <span {...stylex.props(styles.roleName)}>{role.roleName}</span>
                           <span {...stylex.props(styles.aside)}>
                             {role.orgNodeName === null
-                              ? format(m.personRoleTenantWide)
-                              : format(
-                                  role.coverage === 'subtree'
-                                    ? m.personRoleSubtree
-                                    : m.personRoleHere,
-                                  { node: role.orgNodeName },
-                                )}
+                              ? m.person_roleTenantWide()
+                              : (role.coverage === 'subtree'
+                                  ? m.person_roleSubtree
+                                  : m.person_roleHere)({ node: role.orgNodeName })}
                           </span>
-                          {role.scoped && (
-                            <Badge variant="outline">{format(m.personRoleScoped)}</Badge>
-                          )}
+                          {role.scoped && <Badge variant="outline">{m.person_roleScoped()}</Badge>}
                         </li>
                       ))}
                     </ul>
@@ -243,7 +239,7 @@ export default function PersonCard({ context }: { context: PersonCardContext }) 
           </DialogBody>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>
-              {format(commonMessages.close)}
+              {commonMessages.action_close()}
             </Button>
           </DialogFooter>
         </DialogContent>

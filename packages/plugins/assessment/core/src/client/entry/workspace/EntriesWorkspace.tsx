@@ -10,14 +10,13 @@ import {
   XIcon,
 } from 'lucide-react'
 import { useClaimScreenFoot } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { Button } from '@qualy/ui/button'
 import { liveStateOf, type LiveLine } from '@qualy/ui/live-mark'
 import { Drill } from '@qualy/ui/reveal'
 import { Sheet, SheetContent, SheetTitle } from '@qualy/ui/sheet'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { assessmentMessages as m } from '../../i18n.ts'
+
 import type { EntryDto, FilingGateDto, ItemDto } from '../model.ts'
 import type { Standing, StructureRow } from '../standing.ts'
 import { scrollerAbove, useRoomBelow, useWorkspaceMode, type WorkspaceMode } from './layout.ts'
@@ -36,6 +35,8 @@ import {
   type FilingRound,
   type Viewer,
 } from './model.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // The entries workspace: a round's structure, one question or section of it
 // opened beside it, and - at a desk - what that question asks in a column of
@@ -399,7 +400,6 @@ function Workspace({
   fit,
   mode,
 }: WorkspaceProps & { mode: WorkspaceMode }) {
-  const { format } = useI18n()
   const stream = liveStateOf(live)
   const outline = useMemo(() => outlineOf(rows), [rows])
   const [todoOnly, setTodoOnly] = useState(false)
@@ -642,8 +642,8 @@ function Workspace({
       todoOnly={todoOnly}
       onTodoOnly={setTodoOnly}
       isTodo={isTodo}
-      todoLabel={viewer === 'owner' ? m.paperViewTodo : m.entriesViewMoving}
-      todoEmpty={viewer === 'owner' ? m.myEntriesFilterNone : m.entriesNoneMoving}
+      todoLabel={viewer === 'owner' ? m.paper_viewTodo : m.entries_viewMoving}
+      todoEmpty={viewer === 'owner' ? m.entry_filterNone : m.entries_noneMoving}
       refreshing={refreshing}
       onRefresh={onRefresh}
       layout={layout}
@@ -716,12 +716,12 @@ function Workspace({
         {phone && <span aria-hidden data-sheet-grab="" {...stylex.props(styles.grab)} />}
         <div {...stylex.props(styles.asideHead)}>
           <SheetTitle className={stylex.props(styles.asideTitle).className}>
-            {format(m.entriesRequirements)}
+            {m.entries_requirements()}
           </SheetTitle>
           <Button
             variant="secondary"
             size="icon-sm"
-            aria-label={format(commonMessages.close)}
+            aria-label={commonMessages.action_close()}
             onClick={() => setAsideOpen(false)}
           >
             <XIcon aria-hidden />
@@ -762,7 +762,7 @@ function Workspace({
             <div {...stylex.props(styles.phoneBar)}>
               <button type="button" onClick={upToStructure} {...stylex.props(styles.back)}>
                 <ChevronLeftIcon aria-hidden {...stylex.props(styles.backIcon)} />
-                {format(m.paperStructure)}
+                {m.paper_structure()}
                 {outline.items.filter(isTodo).length > 0 && viewer === 'owner' && (
                   <span {...stylex.props(styles.backCount)}>
                     {outline.items.filter(isTodo).length}
@@ -772,7 +772,7 @@ function Workspace({
               <span {...stylex.props(styles.spacer)} />
               <button
                 type="button"
-                aria-label={format(m.entriesPrevious)}
+                aria-label={m.entries_previous()}
                 disabled={previous === null}
                 onClick={() => previous !== null && go(previous.id)}
                 {...stylex.props(styles.arrow)}
@@ -781,7 +781,7 @@ function Workspace({
               </button>
               <button
                 type="button"
-                aria-label={format(m.entriesNext)}
+                aria-label={m.entries_next()}
                 disabled={next === null}
                 onClick={() => next !== null && go(next.id)}
                 {...stylex.props(styles.arrow)}
@@ -801,10 +801,10 @@ function Workspace({
             {footed && filing !== null && item !== null && (
               <div {...stylex.props(styles.phoneFoot)} data-testid="phone-foot">
                 <span {...stylex.props(styles.footWords)}>
-                  <span {...stylex.props(styles.footLabel)}>{format(m.myEntriesQuota)}</span>
+                  <span {...stylex.props(styles.footLabel)}>{m.myEntries_quota()}</span>
                   <span {...stylex.props(styles.footValue)}>
                     {item.maxEntries === null
-                      ? format(m.entriesFiledShort, { count: used })
+                      ? m.entries_filedShort({ count: used })
                       : `${String(used)} / ${String(item.maxEntries)}`}
                   </span>
                 </span>
@@ -856,7 +856,7 @@ function Workspace({
             </div>
           </div>
           {item !== null && (previous !== null || next !== null) && (
-            <nav aria-label={format(m.entriesStepLabel)} {...stylex.props(styles.stepper)}>
+            <nav aria-label={m.entries_stepLabel()} {...stylex.props(styles.stepper)}>
               <button
                 type="button"
                 disabled={previous === null}
@@ -864,7 +864,7 @@ function Workspace({
                 {...stylex.props(styles.step, previous === null && styles.stepHidden)}
               >
                 <ChevronLeftIcon aria-hidden {...stylex.props(styles.stepIcon)} />
-                <span {...stylex.props(styles.stepWord)}>{format(m.entriesPrevious)}</span>
+                <span {...stylex.props(styles.stepWord)}>{m.entries_previous()}</span>
                 {previous !== null && (
                   <span {...stylex.props(styles.stepTitle)}>
                     {numberOf(previous)}. {previous.name}
@@ -882,16 +882,16 @@ function Workspace({
                     {numberOf(next)}. {next.name}
                   </span>
                 )}
-                <span {...stylex.props(styles.stepWord)}>{format(m.entriesNext)}</span>
+                <span {...stylex.props(styles.stepWord)}>{m.entries_next()}</span>
                 <ChevronRightIcon aria-hidden {...stylex.props(styles.stepIcon)} />
               </button>
             </nav>
           )}
         </div>
         {desk && item !== null && (
-          <aside aria-label={format(m.entriesRequirements)} {...stylex.props(styles.aside)}>
+          <aside aria-label={m.entries_requirements()} {...stylex.props(styles.aside)}>
             <div {...stylex.props(styles.asideHead)}>
-              <h2 {...stylex.props(styles.asideTitle)}>{format(m.entriesRequirements)}</h2>
+              <h2 {...stylex.props(styles.asideTitle)}>{m.entries_requirements()}</h2>
             </div>
             <div {...stylex.props(styles.asideScroll)}>{requirements}</div>
           </aside>

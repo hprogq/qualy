@@ -15,6 +15,12 @@
     "./server": "./src/server/index.ts",
     "./testkit": "./src/testkit/index.ts"
   },
+  "imports": {
+    "#messages": {
+      "types": "./.qualy/messages.d.ts",
+      "default": "./.qualy/messages.js"
+    }
+  },
   "peerDependencies": {
     "react": "catalog:"
   },

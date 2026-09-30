@@ -1,8 +1,8 @@
 import * as stylex from '@stylexjs/stylex'
-import { useI18n } from '@qualy/web-i18n'
 import { SectionHead } from '@qualy/ui/screen'
-import { iamMessages as m } from '../i18n.ts'
+
 import { AccountChanges, SignInRecords } from './security-records.tsx'
+import * as m from '#messages'
 
 // What happened to the reader's account, apart from the security page's
 // state of things now: the latest sign-ins and the latest changes, each
@@ -13,10 +13,9 @@ const styles = stylex.create({
 })
 
 export default function AccountActivityPage() {
-  const { format } = useI18n()
   return (
     <div {...stylex.props(styles.page)}>
-      <SectionHead title={format(m.activityTitle)} />
+      <SectionHead title={m.activity_title()} />
       <SignInRecords />
       <AccountChanges />
     </div>

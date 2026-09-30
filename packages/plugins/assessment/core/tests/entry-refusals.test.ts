@@ -2,7 +2,7 @@ import { readdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { ReservationInvalidReason, UploadRefusedReason } from '@qualy/plugin-storage/errors'
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   entryRefusalMessage,
   entryRefusalReason,
@@ -13,8 +13,17 @@ import {
   sayHeld,
   sayOwnRefusal,
 } from '../src/client/entry/refusals.ts'
-import { assessmentMessages as m } from '../src/client/i18n.ts'
+
 import type { GateDecision } from '../src/phase/gate.ts'
+import * as m from '#messages'
+
+// the page's language, where the sentences below are said
+const onPage = (locale: string) => {
+  ;(globalThis as { document?: unknown }).document = { documentElement: { dataset: { locale } } }
+}
+afterEach(() => {
+  delete (globalThis as { document?: unknown }).document
+})
 
 // One code, ASSESSMENT_ENTRY_ACTION_REFUSED, carries every refused entry
 // act; the reason is what a screen can say. A reason the server raises with
@@ -143,10 +152,8 @@ describe('why an entry act was refused', () => {
   })
 
   it('tells staff the refusal itself, and anything else the way every error is told', () => {
-    const words = {
-      format: (descriptor: { id: string }) => descriptor.id,
-      formatError: () => 'general',
-    }
+    onPage('en-US')
+    const words = { formatError: () => 'general' }
     expect(
       sayEntryFailure(
         {
@@ -156,30 +163,28 @@ describe('why an entry act was refused', () => {
         },
         words,
       ),
-    ).toBe(m.refuseNotReturnable.id)
+    ).toBe(m.entry_refuseNotReturnable())
     expect(sayEntryFailure({ _tag: 'ASSESSMENT_BATCH_READ_ONLY' }, words)).toBe('general')
   })
 })
 
 // A stage holding one of the owner's acts is said with the act named - and
-// the stage, where the round names it. The words are the catalog's; what is
-// held here is which sentence is chosen and what fills it, read through a
-// format that writes those down instead of any language.
+// the stage, where the round names it. What is held here is which sentence
+// is chosen and what fills it: each is compared with the sentence it should
+// be, said the same way, never with words written into the test.
 describe('why a stage holds the owner’s act', () => {
-  const words = {
-    format: (descriptor: { id: string }, values?: Record<string, string>) =>
-      descriptor.id === m.entryHeldAct.id
-        ? `<${values?.['act'] ?? ''}>`
-        : JSON.stringify({ id: descriptor.id, ...values }),
-    locale: 'en-US',
-  }
-  const read = (said: string | null) => JSON.parse(said ?? 'null') as Record<string, string>
+  const words = { locale: 'en-US' }
+  const acts = (...said: string[]) =>
+    new Intl.ListFormat('en-US', { type: 'disjunction' }).format(
+      said.map((act) => m.entry_heldAct({ act })),
+    )
   const during = { status: 'active', phaseName: ' 材料审核 ' }
   const refused = (action: string, reason: string) => ({
     _tag: 'ASSESSMENT_ENTRY_ACTION_REFUSED',
     action,
     reason,
   })
+  beforeEach(() => onPage('en-US'))
 
   it('reads the gate’s reason against where the round stands', () => {
     expect(holdOf('phase-closed', during)).toEqual({ why: 'phase', phase: '材料审核' })
@@ -202,91 +207,74 @@ describe('why a stage holds the owner’s act', () => {
   })
 
   it('names every act one stage holds, once, in the reader’s own list', () => {
-    const said = read(sayHeld({ why: 'phase', phase: '材料审核' }, ['edit', 'submit'], words))
-    expect(said).toEqual({
-      id: m.entryHeld.id,
-      why: 'phase',
-      phase: '材料审核',
-      acts: '<edit> or <submit>',
-    })
-    expect(read(sayHeld({ why: 'archived' }, ['abandon'], words))).toMatchObject({
-      why: 'archived',
-      phase: '',
-      acts: '<abandon>',
-    })
+    expect(sayHeld({ why: 'phase', phase: '材料审核' }, ['edit', 'submit'], words)).toBe(
+      m.entry_held({ why: 'phase', phase: '材料审核', acts: acts('edit', 'submit') }),
+    )
+    expect(sayHeld({ why: 'archived' }, ['abandon'], words)).toBe(
+      m.entry_held({ why: 'archived', phase: '', acts: acts('abandon') }),
+    )
   })
 
   it('says a refused press by the act the server refused and the stage that holds it', () => {
-    expect(read(sayOwnRefusal(refused('withdraw', 'phase-closed'), during, words))).toEqual({
-      id: m.entryHeld.id,
-      why: 'phase',
-      phase: '材料审核',
-      acts: '<withdraw>',
-    })
+    expect(sayOwnRefusal(refused('withdraw', 'phase-closed'), during, words)).toBe(
+      m.entry_held({ why: 'phase', phase: '材料审核', acts: acts('withdraw') }),
+    )
     expect(
-      read(
-        sayOwnRefusal(
-          refused('appeal', 'no-active-phase'),
-          { ...during, status: 'archived' },
-          words,
-        ),
-      ),
-    ).toMatchObject({ why: 'archived', acts: '<appeal>' })
+      sayOwnRefusal(refused('appeal', 'no-active-phase'), { ...during, status: 'archived' }, words),
+    ).toBe(m.entry_held({ why: 'archived', phase: '', acts: acts('appeal') }))
     // starting a claim is said the way its question says it
-    expect(read(sayOwnRefusal(refused('create', 'phase-closed'), during, words))).toEqual({
-      id: m.entriesHeldPhase.id,
-      phase: '材料审核',
-    })
+    expect(sayOwnRefusal(refused('create', 'phase-closed'), during, words)).toBe(
+      m.entries_heldPhase({ phase: '材料审核' }),
+    )
     // a refusal that is not the stage's keeps its own sentence
-    expect(read(sayOwnRefusal(refused('withdraw', 'review-under-way'), during, words))).toEqual({
-      id: m.refuseReviewUnderWay.id,
-    })
+    expect(sayOwnRefusal(refused('withdraw', 'review-under-way'), during, words)).toBe(
+      m.entry_refuseReviewUnderWay(),
+    )
     // an act that is not the owner's keeps the general sentence
-    expect(read(sayOwnRefusal(refused('return', 'phase-closed'), during, words))).toEqual({
-      id: m.refusePhaseClosed.id,
-    })
+    expect(sayOwnRefusal(refused('return', 'phase-closed'), during, words)).toBe(
+      m.entry_refusePhaseClosed(),
+    )
     expect(sayOwnRefusal({ _tag: 'ASSESSMENT_BATCH_READ_ONLY' }, during, words)).toBeNull()
   })
 
   it('hints at a shut key with its act, or with the refusal it carries', () => {
-    expect(read(sayBlocked('submit', 'phase-closed', during, words))).toMatchObject({
-      id: m.entryHeld.id,
-      acts: '<submit>',
-    })
-    expect(read(sayBlocked('submit', 'must-revise-first', during, words))).toEqual({
-      id: m.refuseNeedsRevision.id,
-    })
-    expect(read(sayBlocked('edit', null, during, words))).toEqual({ id: m.entryBlockedNow.id })
+    expect(sayBlocked('submit', 'phase-closed', during, words)).toBe(
+      m.entry_held({ why: 'phase', phase: '材料审核', acts: acts('submit') }),
+    )
+    expect(sayBlocked('submit', 'must-revise-first', during, words)).toBe(
+      m.entry_refuseNeedsRevision(),
+    )
+    expect(sayBlocked('edit', null, during, words)).toBe(m.entry_blockedNow())
   })
 
   // A route with nowhere to stand for the reader is not the stage's doing,
   // and waiting for another stage would not mend it: the place where the
   // next claim would start says so, and who can mend it.
   it('says a route with nowhere to stand where the next claim would start', () => {
-    expect(filingHeldOf('review-level-missing', during).message.id).toBe(m.entriesHeldRoute.id)
-    expect(filingHeldOf('review-level-missing', null).message.id).toBe(m.entriesHeldRoute.id)
+    expect(filingHeldOf('review-level-missing', during).message).toBe(m.entries_heldRoute)
+    expect(filingHeldOf('review-level-missing', null).message).toBe(m.entries_heldRoute)
     // sending names the review route; the submit key says so
-    expect(read(sayBlocked('submit', 'review-level-missing', during, words))).toEqual({
-      id: m.refuseReviewLevelMissing.id,
-    })
+    expect(sayBlocked('submit', 'review-level-missing', during, words)).toBe(
+      m.entry_refuseReviewLevelMissing(),
+    )
   })
 
   // An appeal walks the route above the ordinary one, and the staff's
   // reopening walks it too: where that route has nowhere to stand, the
   // sentence names that route and the act it held, not "sending for review".
   it('says an appeal route with nowhere to stand as an appeal', () => {
-    expect(read(sayBlocked('appeal', 'review-level-missing', during, words))).toEqual({
-      id: m.refuseAppealRouteMissing.id,
-    })
-    expect(read(sayOwnRefusal(refused('appeal', 'review-level-missing'), during, words))).toEqual({
-      id: m.refuseAppealRouteMissing.id,
-    })
-    expect(entryRefusalMessage(refused('reopen', 'review-level-missing'))?.id).toBe(
-      m.refuseReopenRouteMissing.id,
+    expect(sayBlocked('appeal', 'review-level-missing', during, words)).toBe(
+      m.entry_refuseAppealRouteMissing(),
+    )
+    expect(sayOwnRefusal(refused('appeal', 'review-level-missing'), during, words)).toBe(
+      m.entry_refuseAppealRouteMissing(),
+    )
+    expect(entryRefusalMessage(refused('reopen', 'review-level-missing'))).toBe(
+      m.entry_refuseReopenRouteMissing,
     )
     // and a claim being sent keeps the review route's own sentence
-    expect(entryRefusalMessage(refused('submit', 'review-level-missing'))?.id).toBe(
-      m.refuseReviewLevelMissing.id,
+    expect(entryRefusalMessage(refused('submit', 'review-level-missing'))).toBe(
+      m.entry_refuseReviewLevelMissing,
     )
   })
 })

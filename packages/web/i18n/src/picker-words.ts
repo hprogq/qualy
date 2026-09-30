@@ -1,5 +1,4 @@
-import { useI18n } from './index.tsx'
-import { commonMessages } from './messages.ts'
+import * as commonMessages from '#messages'
 
 /**
  * The words a generated form's pickers need.
@@ -20,14 +19,13 @@ export function usePickerWords(): {
   readonly yes: string
   readonly no: string
 } {
-  const { format } = useI18n()
   return {
-    unanswered: format(commonMessages.unanswered),
-    clear: format(commonMessages.clear),
-    month: format(commonMessages.calendarMonth),
-    year: format(commonMessages.calendarYear),
+    unanswered: commonMessages.state_unanswered(),
+    clear: commonMessages.action_clear(),
+    month: commonMessages.calendar_month(),
+    year: commonMessages.calendar_year(),
     // the two blocks of a yes-or-no field, neither pressed until answered
-    yes: format(commonMessages.yes),
-    no: format(commonMessages.no),
+    yes: commonMessages.answer_yes(),
+    no: commonMessages.answer_no(),
   }
 }

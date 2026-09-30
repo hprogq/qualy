@@ -1,28 +1,14 @@
-import { setupI18n, type I18n } from '@lingui/core'
-import { compileMessage } from '@lingui/message-utils/compileMessage'
 import {
   defaultLocale,
   supportedLocales,
   type ErrorMessageMap,
-  type MessageCatalog,
-  type MessageDescriptor,
-  type PluginCatalogs,
-  type ValuesOf,
+  type Message,
   type SupportedLocale,
   type UiText,
 } from '@qualy/i18n-contract'
-import {
-  createContext,
-  use,
-  useEffect,
-  useMemo,
-  useState,
-  type ReactNode,
-} from 'react'
-import { formatApiError, type FormatArgs, type MessageFormatter } from './format.ts'
+import { formatApiError } from './format.ts'
 
 export {
-  commonErrorMessages,
   formatApiError,
   getApiErrorCode,
   isApiError,
@@ -31,27 +17,57 @@ export {
   isTransportError,
   isBackendUnavailable,
 } from './format.ts'
-export type { MessageFormatter } from './format.ts'
 export { onLocaleChosenElsewhere, reopenInLocale } from './locale-channel.ts'
 
-// the web localization runtime: one lingui core instance holding raw icu
-// catalogs (compiled on demand, so catalogs stay plain typescript modules
-// inside the normal typecheck and test pipeline) plus a small react binding.
-// Plugins own their namespace and ship their own catalogs; this runtime only
-// assembles, activates and falls back.
+// The page's language, and the few things that are said by code rather than
+// by a message a screen calls itself.
+//
+// A message is a compiled function each package imports from its own
+// `#messages` (docs/adr/0011-i18n-paraglide.md): it reads the page's language
+// off the root, where the shell's boot script marked it before the first
+// frame, and it arrives in the same chunk as the code that says it. Nothing
+// here loads, activates or re-renders anything: a page keeps one language
+// from the moment it opens, and choosing another opens the page again.
+//
+// What remains is what a screen cannot say by itself: an api failure by its
+// code, which may be any plugin's, and a text the server names by id.
 
-export interface I18nRuntime extends MessageFormatter {
-  locale: SupportedLocale
-  formatText(text: UiText): string
-  formatError(error: unknown, registry?: ErrorMessageMap): string
+let errorRegistry: ErrorMessageMap = {}
+let wireRegistry: Readonly<Record<string, Message>> = {}
+
+/**
+ * What the assembly's plugins say for their api failures, and for the texts
+ * their server sends by id. Installed once by the composition root, before
+ * the first render; a test installs what its screen needs.
+ */
+export function installMessages(installed: {
+  readonly errorMessages?: ErrorMessageMap
+  readonly wireMessages?: Readonly<Record<string, Message>>
+}): void {
+  errorRegistry = installed.errorMessages ?? {}
+  wireRegistry = installed.wireMessages ?? {}
 }
 
-const I18nContext = createContext<I18nRuntime | undefined>(undefined)
+/** a text the server sent: business data as it stands, a message by its id */
+export function formatText(text: UiText): string {
+  if (text.kind === 'literal') return text.value
+  return wireRegistry[text.id]?.() ?? text.defaultMessage
+}
 
+/** an api failure, in the reader's words, from its code */
+export function formatError(error: unknown, registry?: ErrorMessageMap): string {
+  return formatApiError(error, registry ? { ...errorRegistry, ...registry } : errorRegistry)
+}
+
+export interface I18nRuntime {
+  readonly locale: SupportedLocale
+  readonly formatText: (text: UiText) => string
+  readonly formatError: (error: unknown, registry?: ErrorMessageMap) => string
+}
+
+/** the page's language and the two sayings above, as a screen reaches for them */
 export function useI18n(): I18nRuntime {
-  const runtime = use(I18nContext)
-  if (!runtime) throw new Error('useI18n must be used inside <I18nProvider>')
-  return runtime
+  return { locale: resolveInitialLocale(), formatText, formatError }
 }
 
 /** the language this page is written in, from the moment it opened until it closes */
@@ -129,118 +145,9 @@ const storedLocale = (): string | null => {
   return found?.[1] ?? null
 }
 
-// the runtime's own catalogs (common/*), shipped with this package
-const commonCatalogs: Partial<Record<SupportedLocale, () => Promise<{ default: MessageCatalog }>>> =
-  {
-    'zh-CN': () => import('./catalogs/zh-CN.ts'),
-  }
-
-// namespaces never overlap (a test enforces that), so a flat merge is
-// enough; a missing catalog is normal because english lives in the
-// defaultMessage of each reference and a partial locale falls back per key
-export async function loadCatalogs(
-  locale: SupportedLocale,
-  plugins: readonly PluginCatalogs[],
-): Promise<MessageCatalog> {
-  const sources = [commonCatalogs, ...plugins.map((plugin) => plugin.locales)]
-  const loaded = await Promise.all(
-    sources.map(async (locales) => {
-      const load = locales[locale]
-      return load ? (await load()).default : {}
-    }),
-  )
-  return Object.assign({}, ...loaded) as MessageCatalog
-}
-
-export interface I18nProviderProps {
-  // per-plugin catalogs, assembled by the web host from its plugin registry
-  catalogs?: readonly PluginCatalogs[]
-  // merged plugin error registry; formatError falls back to it so a page
-  // never has to know which plugin owns the code it just received
-  errorMessages?: ErrorMessageMap
-  children: ReactNode
-  // rendered until the first catalog activation completes, so the ui never
-  // flashes untranslated english
-  fallback?: ReactNode
-}
-
-export function I18nProvider({
-  catalogs = [],
-  errorMessages = {},
-  children,
-  fallback = null,
-}: I18nProviderProps) {
-  const i18n = useMemo<I18n>(() => {
-    const instance = setupI18n()
-    // raw icu strings are compiled lazily; no extraction or compile step
-    instance.setMessagesCompiler(compileMessage)
-    return instance
-  }, [])
-  const [locale] = useState<SupportedLocale>(resolveInitialLocale)
-  const [activated, setActivated] = useState<SupportedLocale | undefined>(undefined)
-
-  useEffect(() => {
-    let cancelled = false
-    const activate = (messages: MessageCatalog) => {
-      if (cancelled) return
-      i18n.load(locale, messages)
-      i18n.activate(locale)
-      // the root's two marks follow the catalog, together: the language the
-      // page is read in, and the one anything before the catalogs speaks
-      document.documentElement.lang = locale
-      document.documentElement.dataset[ROOT_MARK] = locale
-      setActivated(locale)
-    }
-    void loadCatalogs(locale, catalogs)
-      .then(activate)
-      .catch((error: unknown) => {
-        // a chunk can go missing after a deploy; activating an empty catalog
-        // renders the english defaults instead of hanging on the fallback
-        console.error(`failed to load catalogs for ${locale}`, error)
-        activate({})
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [i18n, locale, catalogs])
-
-  const runtime = useMemo<I18nRuntime>(() => {
-    const format = <Descriptor extends MessageDescriptor>(
-      descriptor: Descriptor,
-      ...args: FormatArgs<ValuesOf<Descriptor>>
-    ) =>
-      i18n._({
-        id: descriptor.id,
-        message: descriptor.defaultMessage,
-        values: args[0],
-      })
-    return {
-      locale,
-      format,
-      // literals are business data (an org name, a tenant name): shown as is
-      formatText: (text: UiText) =>
-        text.kind === 'literal'
-          ? text.value
-          : format({ id: text.id, defaultMessage: text.defaultMessage }),
-      formatError: (error: unknown, registry?: ErrorMessageMap) =>
-        formatApiError(
-          error,
-          { format },
-          registry ? { ...errorMessages, ...registry } : errorMessages,
-        ),
-    }
-    // `activated` is not read but ties the memo to the active catalog, so
-    // every consumer re-renders after a locale switch
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- deliberately one more than is read
-  }, [i18n, locale, errorMessages, activated])
-
-  if (activated === undefined) return <>{fallback}</>
-  return <I18nContext value={runtime}>{children}</I18nContext>
-}
-
 // declarative rendering of a manifest-carried text reference
 export function LocalizedText({ value }: { value: UiText }) {
-  return <>{useI18n().formatText(value)}</>
+  return <>{formatText(value)}</>
 }
 
 export const localeNames: Record<SupportedLocale, string> = {

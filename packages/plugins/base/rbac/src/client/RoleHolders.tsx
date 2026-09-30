@@ -2,15 +2,16 @@ import { useState } from 'react'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { useApiQuery, useLoadFailure, usePageHref, usePageNavigate } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { AsyncSection } from '@qualy/ui/admin'
 import { Pager } from '@qualy/ui/pager'
 import { CardEmpty, CardFoot, Cell, Table, TableHead, TableRow, Tag } from '@qualy/ui/screen'
 import { GrantOrigin } from './GrantOrigin.tsx'
-import { rbacMessages as m } from './i18n.ts'
+
 import { accessApi } from './api.ts'
 import { useMoment } from './when.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // Who holds one role, a page at a time.
 //
@@ -30,7 +31,7 @@ const styles = stylex.create({
 export function RoleHolders({ roleId }: { roleId: string }) {
   const query = useApiQuery(accessApi)
   const navigate = usePageNavigate()
-  const { format } = useI18n()
+
   const describe = useLoadFailure()
   const moment = useMoment()
   const [page, setPage] = useState(1)
@@ -49,21 +50,21 @@ export function RoleHolders({ roleId }: { roleId: string }) {
       pending={held.isPending}
       error={held.isError ? describe.of(held.error) : null}
       retrying={held.isFetching}
-      loadingLabel={format(commonMessages.loading)}
-      retryLabel={format(commonMessages.retry)}
+      loadingLabel={commonMessages.state_loading()}
+      retryLabel={commonMessages.action_retry()}
       onRetry={() => void held.refetch()}
     >
       {items.length === 0 ? (
-        <CardEmpty>{format(m.holdersEmpty)}</CardEmpty>
+        <CardEmpty>{m.holders_empty()}</CardEmpty>
       ) : (
         <Table
           columns="minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1.2fr)"
           openable={personReachable}
         >
           <TableHead>
-            <span>{format(m.holderColumn)}</span>
-            <span>{format(m.grantScope)}</span>
-            <span>{format(m.columnOrigin)}</span>
+            <span>{m.holders_column()}</span>
+            <span>{m.grants_scope()}</span>
+            <span>{m.grants_columnOrigin()}</span>
           </TableHead>
           {items.map((grant) => (
             <TableRow
@@ -82,20 +83,20 @@ export function RoleHolders({ roleId }: { roleId: string }) {
               <Cell lead>{grant.userDisplayName}</Cell>
               <Cell>
                 {grant.target.kind === 'tenant'
-                  ? format(m.tenantWide)
-                  : format(grant.target.coverage === 'subtree' ? m.atSubtree : m.atNode, {
+                  ? m.grants_tenantWide()
+                  : (grant.target.coverage === 'subtree' ? m.grants_atSubtree : m.grants_atNode)({
                       node: grant.target.orgNodeName,
                     })}
               </Cell>
               <Cell>
                 <span {...stylex.props(styles.origin)}>
                   {grant.resource === null ? (
-                    <Tag outline>{format(m.organizationalWord)}</Tag>
+                    <Tag outline>{m.holders_organizational()}</Tag>
                   ) : (
                     <GrantOrigin grant={grant} />
                   )}
                   {grant.validUntil !== null && (
-                    <span>{format(m.validUntil, { when: moment(grant.validUntil) })}</span>
+                    <span>{m.grants_validUntil({ when: moment(grant.validUntil) })}</span>
                   )}
                 </span>
               </Cell>
@@ -106,12 +107,12 @@ export function RoleHolders({ roleId }: { roleId: string }) {
       <CardFoot>
         <Pager
           testId="role-holders-pager"
-          label={format(m.pagerLabel)}
+          label={m.pager()}
           page={held.data?.page ?? page}
           pageSize={PER_PAGE}
           total={held.data?.total ?? 0}
           disabled={held.isFetching}
-          summary={format(m.holderCount, { count: held.data?.total ?? 0 })}
+          summary={m.roles_holderCount({ count: held.data?.total ?? 0 })}
           onPage={setPage}
         />
       </CardFoot>

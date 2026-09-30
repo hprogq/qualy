@@ -12,7 +12,7 @@ import {
   useRunApi,
 } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@qualy/ui/empty'
@@ -20,9 +20,11 @@ import { AsyncSection } from '@qualy/ui/admin'
 import { Screen } from '@qualy/ui/screen'
 import { ChevronRightIcon, LibraryIcon } from 'lucide-react'
 import { formulaApi } from './api.ts'
-import { formulaMessages as m } from './i18n.ts'
+
 import { LibrarySkeleton, ParameterChips } from './library.tsx'
 import { libraryStyles as l, shortWhen } from './library-styles.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // Formulas other people have offered you.
 //
@@ -59,9 +61,9 @@ export default function FormulaTemplatesPage() {
   const api = useApi(formulaApi)
   const runApi = useRunApi()
   const query = useApiQuery(formulaApi)
-  const { format, locale } = useI18n()
+  const { locale } = useI18n()
   const failure = useLoadFailure()
-  const titleRef = usePageTitle(format(m.templatesTitle))
+  const titleRef = usePageTitle(m.templates_title())
   const navigate = usePageNavigate()
 
   const templates = useInfiniteQuery({
@@ -80,22 +82,18 @@ export default function FormulaTemplatesPage() {
   )
 
   return (
-    <Screen
-      title={format(m.templatesTitle)}
-      description={format(m.templatesHint)}
-      titleRef={titleRef}
-    >
+    <Screen title={m.templates_title()} description={m.templates_hint()} titleRef={titleRef}>
       <div {...stylex.props(l.page)}>
         <section {...stylex.props(l.section)}>
           <div {...stylex.props(l.sectionHead)}>
-            <span {...stylex.props(l.sectionLabel)}>{format(m.templatesOffered)}</span>
+            <span {...stylex.props(l.sectionLabel)}>{m.templates_offered()}</span>
             <span {...stylex.props(l.spring)} />
             <PageLink
               page="assessment-formula/list"
               unavailable={null}
               className={stylex.props(l.elsewhere).className}
             >
-              {format(m.templatesMine)}
+              {m.templates_mine()}
               <ChevronRightIcon size={14} aria-hidden />
             </PageLink>
           </div>
@@ -109,8 +107,8 @@ export default function FormulaTemplatesPage() {
             }
             framed
             retrying={templates.isFetching}
-            loadingLabel={format(commonMessages.loading)}
-            retryLabel={format(commonMessages.retry)}
+            loadingLabel={commonMessages.state_loading()}
+            retryLabel={commonMessages.action_retry()}
             onRetry={() => void templates.refetch()}
             skeleton={<LibrarySkeleton columns={styles.columns} middle={2} />}
           >
@@ -121,25 +119,25 @@ export default function FormulaTemplatesPage() {
                     <EmptyMedia variant="icon">
                       <LibraryIcon />
                     </EmptyMedia>
-                    <EmptyTitle>{format(m.templatesEmpty)}</EmptyTitle>
-                    <EmptyDescription>{format(m.templatesEmptyHint)}</EmptyDescription>
+                    <EmptyTitle>{m.templates_empty()}</EmptyTitle>
+                    <EmptyDescription>{m.templates_emptyHint()}</EmptyDescription>
                   </EmptyHeader>
                 </Empty>
               ) : (
                 <>
                   <div {...stylex.props(l.grid, l.headRow, styles.columns)}>
-                    <span>{format(m.templatesNameColumn)}</span>
-                    <span>{format(m.versionLabel)}</span>
-                    <span>{format(m.templatesAuthorColumn)}</span>
-                    <span {...stylex.props(l.end)}>{format(m.templatesPublishedColumn)}</span>
+                    <span>{m.templates_nameColumn()}</span>
+                    <span>{m.version_label()}</span>
+                    <span>{m.templates_authorColumn()}</span>
+                    <span {...stylex.props(l.end)}>{m.templates_publishedColumn()}</span>
                     <span />
                   </div>
                   {items.map((row, index) => {
                     const archived = row.sourceStatus === 'archived'
-                    const author = row.authorName ?? format(m.templatesAuthorUnknown)
-                    const published = shortWhen(row.publishedAt, format, locale)
+                    const author = row.authorName ?? m.templates_authorUnknown()
+                    const published = shortWhen(row.publishedAt, locale)
                     const version =
-                      row.releaseName ?? format(m.releaseOrdinal, { number: row.versionNo })
+                      row.releaseName ?? m.history_releaseOrdinal({ number: row.versionNo })
                     return (
                       <div
                         key={row.versionId}
@@ -170,21 +168,17 @@ export default function FormulaTemplatesPage() {
                               {row.functionName}
                             </PageLink>
                             {archived && (
-                              <span {...stylex.props(l.tag)}>
-                                {format(m.templatesSourceArchived)}
-                              </span>
+                              <span {...stylex.props(l.tag)}>{m.templates_sourceArchived()}</span>
                             )}
                           </span>
                           <span {...stylex.props(styles.takes)}>
                             {row.parameters.length === 0 ? (
                               <span {...stylex.props(l.chipLabel, l.lineNone)}>
-                                {format(m.parametersNone)}
+                                {m.parameters_none()}
                               </span>
                             ) : (
                               <>
-                                <span {...stylex.props(l.chipLabel)}>
-                                  {format(m.parametersLabel)}
-                                </span>
+                                <span {...stylex.props(l.chipLabel)}>{m.parameters_label()}</span>
                                 <ParameterChips names={row.parameters} />
                               </>
                             )}
@@ -216,7 +210,7 @@ export default function FormulaTemplatesPage() {
                       onClick={() => void templates.fetchNextPage()}
                       {...stylex.props(l.more)}
                     >
-                      {format(m.loadMore)}
+                      {m.list_loadMore()}
                     </button>
                   )}
                 </>

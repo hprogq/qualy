@@ -1,43 +1,13 @@
-import {
-  defineErrorTranslations,
-  definePluginMessages,
-  type ErrorsByCode,
-} from '@qualy/i18n-contract'
+import { defineErrorTranslations, type ErrorsByCode } from '@qualy/i18n-contract'
 import type * as authGithubErrors from '../api.ts'
 
-// The words a GitHub entrance is set up in, and what the sign-in page or the
-// account page says when a trip to GitHub comes back without one.
+import * as m from '#messages'
 
-const i18n = definePluginMessages({
-  namespace: 'auth-github',
-  messages: {
-    kind: { id: 'auth-github/entrance/kind', defaultMessage: 'GitHub' },
-    clientId: { id: 'auth-github/field/client-id', defaultMessage: 'Client ID' },
-    clientSecret: { id: 'auth-github/field/client-secret', defaultMessage: 'Client secret' },
-    enterpriseUrl: {
-      id: 'auth-github/field/enterprise-url',
-      defaultMessage: 'GitHub Enterprise Server address',
-    },
-    enterpriseUrlHint: {
-      id: 'auth-github/field/enterprise-url-hint',
-      defaultMessage: 'Leave empty for github.com',
-    },
-  },
-  errors: defineErrorTranslations<ErrorsByCode<typeof authGithubErrors>>()({
-    AUTH_GITHUB_REJECTED: {
-      id: 'auth-github/error/rejected',
-      defaultMessage: 'GitHub did not confirm your account. Try again.',
-    },
-    AUTH_GITHUB_UNAVAILABLE: {
-      id: 'auth-github/error/unavailable',
-      defaultMessage: 'GitHub cannot be reached right now. Try again later.',
-    },
-  }),
-  locales: {
-    'zh-CN': () => import('./locales/zh-CN.ts'),
-  },
-})
+// What this plugin's screens say is in messages/<locale>.json, called as
+// functions from #messages where it is said. What is left here is the
+// failures its api can answer with, each with its sentence.
 
-export const githubMessages = i18n.messages
-export const catalogs = i18n.catalogs
-export const errorMessages = i18n.errorMessages
+export const errorMessages = defineErrorTranslations<ErrorsByCode<typeof authGithubErrors>>()({
+  AUTH_GITHUB_REJECTED: m.error_rejected,
+  AUTH_GITHUB_UNAVAILABLE: m.error_unavailable,
+}).registry

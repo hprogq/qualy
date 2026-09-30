@@ -1,14 +1,15 @@
 import { useState, type CSSProperties, type ReactNode } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
-import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { Button } from '@qualy/ui/button'
 import { Count } from '@qualy/ui/count'
 import { DetailSheet } from '@qualy/ui/screen'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import type { RosterWalk } from './roster-walk.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // Walking from one person to the next without going back to the list.
 //
@@ -86,7 +87,6 @@ export function RosterNeighbors({
    */
   list?: (close: () => void) => ReactNode
 }) {
-  const { format } = useI18n()
   const [listing, setListing] = useState(false)
   // nobody on the list and nothing narrowing it: nobody to step to, and
   // nothing to take back
@@ -95,14 +95,14 @@ export function RosterNeighbors({
   const { previous, next, here, total } = walk
   const place =
     here !== null && total !== null
-      ? format(m.rosterPosition, { position: here.position, total })
+      ? m.roster_position({ position: here.position, total })
       : total !== null && walk.off
-        ? format(m.rosterPositionOff, { total })
+        ? m.roster_positionOff({ total })
         : ''
 
   return (
     <nav
-      aria-label={format(m.rosterNeighbors)}
+      aria-label={m.roster_neighbors()}
       data-testid="roster-neighbors"
       data-position={here?.position ?? ''}
       data-total={total ?? ''}
@@ -112,8 +112,8 @@ export function RosterNeighbors({
       <Button
         size="icon-sm"
         variant="ghost"
-        aria-label={format(m.rosterPrevious)}
-        title={format(m.rosterPrevious)}
+        aria-label={m.roster_previous()}
+        title={m.roster_previous()}
         disabled={previous === null}
         style={RESTING}
         onClick={() => previous !== null && onOpen(previous.id, previous.page)}
@@ -129,9 +129,7 @@ export function RosterNeighbors({
           aria-haspopup="dialog"
           aria-expanded={listing}
           // the place, once there is one to say
-          aria-label={
-            place === '' ? format(m.rosterWalkHeading) : format(m.rosterWalkOpen, { place })
-          }
+          aria-label={place === '' ? m.roster_walkHeading() : m.roster_walkOpen({ place })}
           onClick={() => setListing(true)}
           {...stylex.props(styles.opener)}
         >
@@ -142,8 +140,8 @@ export function RosterNeighbors({
       <Button
         size="icon-sm"
         variant="ghost"
-        aria-label={format(m.rosterNext)}
-        title={format(m.rosterNext)}
+        aria-label={m.roster_next()}
+        title={m.roster_next()}
         disabled={next === null}
         style={RESTING}
         onClick={() => next !== null && onOpen(next.id, next.page)}
@@ -154,11 +152,11 @@ export function RosterNeighbors({
         <DetailSheet
           open={listing}
           onClose={() => setListing(false)}
-          title={format(m.rosterWalkHeading)}
+          title={m.roster_walkHeading()}
           titleAside={total === null ? undefined : <Count>{String(total)}</Count>}
           width="narrow"
           fill
-          closeLabel={format(commonMessages.close)}
+          closeLabel={commonMessages.action_close()}
           testId="roster-walk-sheet"
         >
           {list(() => setListing(false))}

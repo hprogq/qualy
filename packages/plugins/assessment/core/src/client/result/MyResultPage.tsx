@@ -13,14 +13,14 @@ import {
   usePageQueryUpdate,
 } from '@qualy/web-runtime'
 import { isApiErrorCode, useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { AsyncSection } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { useLingering } from '@qualy/ui/use-lingering'
 import { liveStateOf } from '@qualy/ui/live-mark'
 import { assessmentApi } from '../api.ts'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import type { EntryDto, FilingGateDto, ItemDto } from '../entry/model.ts'
 import { EntrySheet } from '../entry/EntrySheet.tsx'
 import { MissingClaimSheet } from '../entry/MissingClaimSheet.tsx'
@@ -35,6 +35,8 @@ import { useBatchLive } from '../live.ts'
 import { ResultLedger, ResultUnavailable } from './ResultLedger.tsx'
 import { filingShutOf, trailOf } from './ledger.ts'
 import { useMyEntriesQuery } from '../entry/my-entries.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // One's own standing in a round, and the page it is read on.
 //
@@ -47,10 +49,9 @@ import { useMyEntriesQuery } from '../entry/my-entries.ts'
 // filing page, and the button that goes there says so.
 
 export default function MyResultPage() {
-  const { format } = useI18n()
   return (
     // no band: the ledger carries its own head, with the total in it
-    <BatchScreen title={format(m.resultTab)} size="full" chrome="none" requires="personal">
+    <BatchScreen title={m.result_tab()} size="full" chrome="none" requires="personal">
       {(batch) => (
         <Standing
           batchId={batch.id}
@@ -173,7 +174,7 @@ function Standing({
   const query = useApiQuery(assessmentApi)
   const queryClient = useQueryClient()
   const navigate = usePageNavigate()
-  const { format, formatError } = useI18n()
+  const { formatError } = useI18n()
   const failures = useLoadFailure()
   const lineWords = useLineWords()
   // on a phone the drawer is somewhere the back key leaves; at a desk it is
@@ -320,7 +321,7 @@ function Standing({
     })
   const goEntries = (
     <Button variant="outline" size="sm" onClick={() => toEntries()}>
-      {format(m.resultGoEntries)}
+      {m.result_goEntries()}
     </Button>
   )
 
@@ -384,13 +385,11 @@ function Standing({
     readsAgain()
   }
   const behindSaid = (which: 'items' | 'entries' | 'reads') =>
-    format(
-      which === 'items'
-        ? m.resultStaleItems
-        : which === 'entries'
-          ? m.resultStaleEntries
-          : m.resultStaleReads,
-    )
+    (which === 'items'
+      ? m.result_staleItems
+      : which === 'entries'
+        ? m.result_staleEntries
+        : m.result_staleReads)()
   return (
     <AsyncSection
       pending={result.isPending || items.isPending || mine.isPending}
@@ -399,8 +398,8 @@ function Standing({
       error={error ? failures.of(error) : null}
       retrying={result.isFetching || items.isFetching || mine.isFetching}
       headingLevel={2}
-      loadingLabel={format(commonMessages.loading)}
-      retryLabel={format(commonMessages.retry)}
+      loadingLabel={commonMessages.state_loading()}
+      retryLabel={commonMessages.action_retry()}
       onRetry={() => {
         void result.refetch()
         void items.refetch()
@@ -439,7 +438,7 @@ function Standing({
             >
               <span>
                 {stale === 'too-large' || stale === 'score'
-                  ? format(m.resultStaleTitle)
+                  ? m.result_staleTitle()
                   : behindSaid(stale)}
               </span>
               {stale === 'too-large' ? (
@@ -457,7 +456,7 @@ function Standing({
                         disabled={items.isFetching || mine.isFetching}
                         onClick={readsAgain}
                       >
-                        {format(commonMessages.retry)}
+                        {commonMessages.action_retry()}
                       </Button>
                     </>
                   )}
@@ -469,7 +468,7 @@ function Standing({
                   disabled={result.isFetching || items.isFetching || mine.isFetching}
                   onClick={readFailedAgain}
                 >
-                  {format(stale === 'score' ? m.resultRecalculate : commonMessages.retry)}
+                  {(stale === 'score' ? m.result_recalculate : commonMessages.action_retry)()}
                 </Button>
               )}
             </div>
@@ -478,7 +477,7 @@ function Standing({
             result={result.data}
             items={questions}
             entries={entries}
-            heading={format(m.resultTab)}
+            heading={m.result_tab()}
             reader="owner"
             closed={closed}
             shut={shut}
@@ -515,7 +514,7 @@ function Standing({
           )}
           onClose={() => setDetail('')}
           // rewriting a claim is the filing page's form; the button names it
-          editLabel={format(m.resultEditAway, {
+          editLabel={m.result_editAway({
             kind: lingering.entry.status === 'draft' ? 'draft' : 'edit',
           })}
           onEdit={() => toEntries({ open: lingering.item.id, entry: lingering.entry.id })}
@@ -539,7 +538,7 @@ function Standing({
       {lingeringMissing !== null && (
         <MissingClaimSheet
           open={namedMissing}
-          back={format(m.entryMissingBackResult)}
+          back={m.entrySheet_missingBackResult()}
           // a name that led nowhere leaves the address, and no step behind it
           onClose={() => updateQuery({ detail: '' }, { history: 'replace' })}
         />

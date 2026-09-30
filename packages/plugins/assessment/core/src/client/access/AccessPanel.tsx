@@ -8,7 +8,7 @@ import { UiSlot, useApi, useApiQuery, useLoadFailure, useRunApi } from '@qualy/w
 import { useI18n } from '@qualy/web-i18n'
 import { useTerm } from '@qualy/plugin-settings/client/terms'
 import { authTerms } from '@qualy/auth-contract/terms'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { AsyncSection, ConfirmDialog, Feedback } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import {
@@ -39,7 +39,7 @@ import { VisuallyHidden } from '@qualy/ui/visually-hidden'
 import { personCard } from '@qualy/ui-contract'
 import { BATCH_STAFF_CODES } from '../../permissions.ts'
 import { assessmentApi } from '../api.ts'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import { AccessAdjustDialog } from './AccessAdjustDialog.tsx'
 import { AccessSyncDialog } from './AccessSyncDialog.tsx'
 import { AddStaffDialog } from './AddStaffDialog.tsx'
@@ -60,6 +60,8 @@ import {
   type AccessSource,
   type AccessSubject,
 } from './model.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // Who may work on this round, and on whose authority.
 //
@@ -89,15 +91,15 @@ const MATRIX_COLUMNS = `minmax(9rem, 1fr) minmax(13rem, 1.7fr) repeat(${String(B
 const LIST_COLUMNS = 'minmax(8.5rem, 0.9fr) minmax(0, 1.3fr) minmax(0, 1.2fr) 7rem'
 
 const LAPSE_WORDS = {
-  revoked: m.accessLapseRevoked,
-  expired: m.accessLapseExpired,
-  inapplicable: m.accessLapseInapplicable,
+  revoked: m.access_lapseRevoked,
+  expired: m.access_lapseExpired,
+  inapplicable: m.access_lapseInapplicable,
 } as const
 
 const STANDING_WORDS = {
-  active: m.accessStandingActive,
-  lapsed: m.accessStandingLapsed,
-  withheld: m.accessStandingWithheld,
+  active: m.access_standingActive,
+  lapsed: m.access_standingLapsed,
+  withheld: m.access_standingWithheld,
 } as const
 
 /** the value a select holds for "no narrowing": an empty string is not an item */
@@ -328,7 +330,7 @@ export function AccessPanel({
   const run = useRunApi()
   const query = useApiQuery(assessmentApi)
   const queryClient = useQueryClient()
-  const { format, formatError } = useI18n()
+  const { formatError } = useI18n()
   const failures = useLoadFailure()
   const businessNo = useTerm(authTerms.businessNumber)
   const [failure, setFailure] = useState<string | null>(null)
@@ -392,8 +394,8 @@ export function AccessPanel({
       setMerging(false)
       toast.success(
         result.merged === 0 && result.cleared > 0
-          ? format(m.toastLapsedCleared)
-          : format(m.toastMerged, { count: result.merged }),
+          ? m.toast_lapsedCleared()
+          : m.toast_merged({ count: result.merged }),
       )
       void invalidate()
     },
@@ -428,7 +430,7 @@ export function AccessPanel({
     onMutate,
     onSuccess: () => {
       setAdjusting(null)
-      toast.success(format(m.toastAdjusted))
+      toast.success(m.toast_adjusted())
       void invalidate()
     },
     onError,
@@ -453,7 +455,7 @@ export function AccessPanel({
     onSuccess: () => {
       setAddingStaff(false)
       forgetAppointing()
-      toast.success(format(m.toastStaffAdded))
+      toast.success(m.toast_staffAdded())
       void invalidate()
     },
     onError,
@@ -464,7 +466,7 @@ export function AccessPanel({
     onMutate,
     onSuccess: () => {
       setRemoving(null)
-      toast.success(format(m.toastStaffRemoved))
+      toast.success(m.toast_staffRemoved())
       void invalidate()
     },
     onError,
@@ -494,7 +496,7 @@ export function AccessPanel({
         name="access-search"
         value={draft}
         onChange={setDraft}
-        label={format(m.rosterSearch, { businessNo })}
+        label={m.roster_search({ businessNo })}
         xstyle={styles.search}
       />
       <Select
@@ -502,14 +504,14 @@ export function AccessPanel({
         onValueChange={(next) => onView({ roleId: next === ALL ? '' : next })}
       >
         <SelectTrigger
-          aria-label={format(m.accessFilterRole)}
+          aria-label={m.access_filterRole()}
           data-testid="access-filter-role"
           xstyle={styles.choice}
         >
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value={ALL}>{format(m.accessFilterRoleAny)}</SelectItem>
+          <SelectItem value={ALL}>{m.access_filterRoleAny()}</SelectItem>
           {roles.map((role) => (
             <SelectItem key={role.id} value={role.id}>
               {role.name}
@@ -522,17 +524,17 @@ export function AccessPanel({
         onValueChange={(next) => onView({ permission: next === ALL ? '' : (next as StaffCode) })}
       >
         <SelectTrigger
-          aria-label={format(m.accessFilterPermission)}
+          aria-label={m.access_filterPermission()}
           data-testid="access-filter-permission"
           xstyle={styles.choice}
         >
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value={ALL}>{format(m.accessFilterPermissionAny)}</SelectItem>
+          <SelectItem value={ALL}>{m.access_filterPermissionAny()}</SelectItem>
           {BATCH_STAFF_CODES.map((code) => (
             <SelectItem key={code} value={code}>
-              {format(permissionLabel(code))}
+              {permissionLabel(code)()}
             </SelectItem>
           ))}
         </SelectContent>
@@ -544,17 +546,17 @@ export function AccessPanel({
         }
       >
         <SelectTrigger
-          aria-label={format(m.accessFilterStanding)}
+          aria-label={m.access_filterStanding()}
           data-testid="access-filter-standing"
           xstyle={styles.choice}
         >
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value={ALL}>{format(m.accessFilterStandingAny)}</SelectItem>
+          <SelectItem value={ALL}>{m.access_filterStandingAny()}</SelectItem>
           {(Object.keys(STANDING_WORDS) as (keyof typeof STANDING_WORDS)[]).map((standing) => (
             <SelectItem key={standing} value={standing}>
-              {format(STANDING_WORDS[standing])}
+              {STANDING_WORDS[standing]()}
             </SelectItem>
           ))}
         </SelectContent>
@@ -568,7 +570,7 @@ export function AccessPanel({
           onClick={() => setAddingStaff(true)}
         >
           <PlusIcon aria-hidden {...stylex.props(styles.addIcon)} />
-          {format(m.addStaff)}
+          {m.access_addStaff()}
         </Button>
       )}
     </div>
@@ -590,7 +592,7 @@ export function AccessPanel({
         <Card data-testid="access-blank" data-kind="no-match">
           <Blank
             icon={<SearchXIcon />}
-            title={format(m.accessNoMatch)}
+            title={m.access_noMatch()}
             xstyle={styles.blank}
             action={
               <Button
@@ -602,7 +604,7 @@ export function AccessPanel({
                   onView({ q: '', roleId: '', permission: '', standing: '' })
                 }}
               >
-                {format(m.accessClearFilters)}
+                {m.access_clearFilters()}
               </Button>
             }
           />
@@ -611,14 +613,14 @@ export function AccessPanel({
         <Card data-testid="access-blank" data-kind="empty">
           <Blank
             icon={<UsersIcon />}
-            title={format(m.accessEmpty)}
-            {...(archived ? {} : { description: format(m.accessEmptyHint) })}
+            title={m.access_empty()}
+            {...(archived ? {} : { description: m.access_emptyHint() })}
             xstyle={styles.blank}
             action={
               archived ? undefined : (
                 <Button variant="outline" size="sm" onClick={() => setAddingStaff(true)}>
                   <PlusIcon aria-hidden {...stylex.props(styles.addIcon)} />
-                  {format(m.addStaff)}
+                  {m.access_addStaff()}
                 </Button>
               )
             }
@@ -632,15 +634,11 @@ export function AccessPanel({
         ) : shape === 'matrix' ? (
           <Table columns={MATRIX_COLUMNS}>
             <TableHead>
-              <span>{format(m.accessColumnPerson)}</span>
-              <span>{format(m.accessColumnRoles)}</span>
+              <span>{m.access_columnPerson()}</span>
+              <span>{m.access_columnRoles()}</span>
               {BATCH_STAFF_CODES.map((code) => (
-                <span
-                  key={code}
-                  title={format(permissionLabel(code))}
-                  {...stylex.props(styles.headWord)}
-                >
-                  {format(permissionShort(code))}
+                <span key={code} title={permissionLabel(code)()} {...stylex.props(styles.headWord)}>
+                  {permissionShort(code)()}
                 </span>
               ))}
               <span />
@@ -650,9 +648,9 @@ export function AccessPanel({
         ) : (
           <Table columns={LIST_COLUMNS}>
             <TableHead>
-              <span>{format(m.accessColumnPerson)}</span>
-              <span>{format(m.accessColumnRoles)}</span>
-              <span>{format(m.accessColumnPermissions)}</span>
+              <span>{m.access_columnPerson()}</span>
+              <span>{m.access_columnRoles()}</span>
+              <span>{m.access_columnPermissions()}</span>
               <span />
             </TableHead>
             {rows}
@@ -663,17 +661,17 @@ export function AccessPanel({
             <>
               {/* a mark alone says nothing to somebody who cannot hover it */}
               <ul
-                aria-label={format(m.accessLegend)}
+                aria-label={m.access_legend()}
                 data-testid="access-legend"
                 {...stylex.props(styles.legend)}
               >
                 <li data-mark="granted" {...stylex.props(styles.legendItem)}>
                   <CheckIcon aria-hidden {...stylex.props(styles.legendMark, styles.granted)} />
-                  {format(m.accessLegendGranted)}
+                  {m.access_legendGranted()}
                 </li>
                 <li data-mark="withheld" {...stylex.props(styles.legendItem)}>
                   <MinusIcon aria-hidden {...stylex.props(styles.legendMark, styles.withheld)} />
-                  {format(m.accessLegendWithheld)}
+                  {m.access_legendWithheld()}
                 </li>
               </ul>
               <span aria-hidden {...stylex.props(styles.legendRule)} />
@@ -681,12 +679,12 @@ export function AccessPanel({
           )}
           <Pager
             testId="access-pager"
-            label={format(m.accessPagerLabel)}
+            label={m.access_pager()}
             page={page}
             pageSize={ACCESS_PAGE_SIZE}
             total={total}
             disabled={access.isFetching}
-            summary={format(m.rosterPageSummary, {
+            summary={m.roster_pageSummary({
               from: (page - 1) * ACCESS_PAGE_SIZE + 1,
               to: (page - 1) * ACCESS_PAGE_SIZE + staff.length,
               total,
@@ -718,14 +716,14 @@ export function AccessPanel({
         onClose={() => setMerging(false)}
       />
 
-      <section ref={setSeat} aria-label={format(m.tabAccess)} {...stylex.props(styles.section)}>
+      <section ref={setSeat} aria-label={m.access_tab()} {...stylex.props(styles.section)}>
         {toolbar}
         <AsyncSection
           pending={access.isPending}
           error={access.isError ? failures.of(access.error) : null}
           framed
-          loadingLabel={format(commonMessages.loading)}
-          retryLabel={format(commonMessages.retry)}
+          loadingLabel={commonMessages.state_loading()}
+          retryLabel={commonMessages.action_retry()}
           onRetry={() => void access.refetch()}
           skeleton={
             <Card>
@@ -778,21 +776,21 @@ export function AccessPanel({
         // classes is two appointments, and the question has to say which
         title={
           removing !== null && removing.source.orgNodeName !== null
-            ? format(m.accessRemoveTitleAt, {
+            ? m.access_removeTitleAt({
                 name: removing.subject.displayName,
                 role: removing.source.roleName,
                 unit: removing.source.orgNodeName,
               })
-            : format(m.accessRemoveTitle, {
+            : m.access_removeTitle({
                 name: removing?.subject.displayName ?? '',
                 role: removing?.source.roleName ?? '',
               })
         }
-        description={format(othersRemain ? m.accessRemoveBodyKept : m.accessRemoveBody, {
+        description={(othersRemain ? m.access_removeBodyKept : m.access_removeBody)({
           name: removing?.subject.displayName ?? '',
         })}
-        confirmLabel={format(m.accessRemove)}
-        cancelLabel={format(commonMessages.cancel)}
+        confirmLabel={m.access_remove()}
+        cancelLabel={commonMessages.action_cancel()}
         pending={remove.isPending}
         tone="destructive"
         onConfirm={() => removing && remove.mutate(removing.source.sourceId)}
@@ -813,7 +811,6 @@ function SubjectRow({
   onAdjust: () => void
   onRemove: (source: AccessSource) => void
 }) {
-  const { format } = useI18n()
   const businessNo = useTerm(authTerms.businessNumber)
   const idle = subject.effective.length === 0
   // their own row, or nothing left to adjust: the server refuses the first
@@ -834,7 +831,7 @@ function SubjectRow({
       fallback={
         <PersonCell
           name={subject.displayName}
-          secondary={subject.businessNo ?? format(m.noBusinessNoShort, { businessNo })}
+          secondary={subject.businessNo ?? m.roster_noBusinessNo({ businessNo })}
         />
       }
     />
@@ -847,13 +844,13 @@ function SubjectRow({
     const turnedOff = inCatalogOrder(turnedOffCodes)
     return inForce.length === 0 && turnedOff.length === 0 ? (
       <span {...stylex.props(styles.none)} data-testid="access-none">
-        {format(m.accessNoPermission)}
+        {m.access_noPermission()}
       </span>
     ) : (
       <span {...stylex.props(styles.grants)}>
         {inForce.map((code) => (
           <span key={code} data-testid="access-grant" data-permission={code} data-state="granted">
-            {format(permissionLabel(code))}
+            {permissionLabel(code)()}
           </span>
         ))}
         {turnedOff.map((code) => (
@@ -862,18 +859,18 @@ function SubjectRow({
             data-testid="access-grant"
             data-permission={code}
             data-state="withheld"
-            title={format(m.accessWithheldMark)}
+            title={m.access_withheldMark()}
             {...stylex.props(styles.grantOff)}
           >
-            <span aria-hidden>{format(permissionLabel(code))}</span>
+            <span aria-hidden>{permissionLabel(code)()}</span>
             <VisuallyHidden>
-              {format(m.accessPermissionWithheld, { name: format(permissionLabel(code)) })}
+              {m.access_permissionWithheld({ name: permissionLabel(code)() })}
             </VisuallyHidden>
           </span>
         ))}
         {inForce.length === 0 && (
           <span {...stylex.props(styles.none)} data-testid="access-none">
-            {format(m.accessNoPermission)}
+            {m.access_noPermission()}
           </span>
         )}
       </span>
@@ -893,7 +890,7 @@ function SubjectRow({
     <span {...stylex.props(styles.acts, shape === 'cards' && styles.cardActs)}>
       {adjustable && (
         <Button size="sm" variant={shape === 'cards' ? 'outline' : 'ghost'} onClick={onAdjust}>
-          {format(m.accessAdjust)}
+          {m.access_adjust()}
         </Button>
       )}
       {/* Taking back what this round handed out, one appointment at a time,
@@ -906,7 +903,7 @@ function SubjectRow({
               size="icon-xs"
               variant="ghost"
               data-testid="access-actions"
-              aria-label={format(m.accessRowActions, { name: subject.displayName })}
+              aria-label={m.access_rowActions({ name: subject.displayName })}
             >
               <EllipsisIcon aria-hidden />
             </Button>
@@ -920,7 +917,7 @@ function SubjectRow({
                 data-source={source.sourceId}
                 onSelect={() => onRemove(source)}
               >
-                {format(m.accessRemoveSource, { role: source.roleName })}
+                {m.access_removeSource({ role: source.roleName })}
                 <span {...stylex.props(styles.menuWhere)}>
                   <Where source={source} />
                 </span>
@@ -951,7 +948,7 @@ function SubjectRow({
           {acts}
         </div>
         <div {...stylex.props(styles.cardBlock)}>
-          <span {...stylex.props(styles.cardLabel)}>{format(m.accessColumnRoles)}</span>
+          <span {...stylex.props(styles.cardLabel)}>{m.access_columnRoles()}</span>
           <ul {...stylex.props(styles.sources)}>
             {perRole.map(({ source, inForce, turnedOff }) => (
               <li key={source.sourceId} {...stylex.props(styles.cardRole)}>
@@ -986,7 +983,7 @@ function SubjectRow({
                     data-source={source.sourceId}
                     data-permission={code}
                     data-state={state}
-                    {...(state === 'withheld' ? { title: format(m.accessWithheldMark) } : {})}
+                    {...(state === 'withheld' ? { title: m.access_withheldMark() } : {})}
                     {...stylex.props(styles.cellMark)}
                   >
                     {state === 'granted' && (
@@ -998,10 +995,10 @@ function SubjectRow({
                     {state !== 'none' && (
                       <VisuallyHidden>
                         {state === 'withheld'
-                          ? format(m.accessPermissionWithheld, {
-                              name: format(permissionLabel(code)),
+                          ? m.access_permissionWithheld({
+                              name: permissionLabel(code)(),
                             })
-                          : format(permissionLabel(code))}
+                          : permissionLabel(code)()}
                       </VisuallyHidden>
                     )}
                   </span>
@@ -1046,8 +1043,7 @@ function SourceLine({
   /** `li` in a list of roles; a `div` where the role heads a line of the table */
   element?: 'li' | 'div'
 }) {
-  const { format } = useI18n()
-  const role = source.roleName === '' ? format(m.accessRoleUnknown) : source.roleName
+  const role = source.roleName === '' ? m.access_roleUnknown() : source.roleName
   const where = whereOf(source)
   return (
     <Element
@@ -1072,10 +1068,8 @@ function SourceLine({
         </span>
         {(source.origin === 'explicit' || source.lapse !== null) && (
           <span {...stylex.props(styles.marks)}>
-            {source.origin === 'explicit' && <Tag outline>{format(m.accessOriginExplicit)}</Tag>}
-            {source.lapse !== null && (
-              <Status tone="warn">{format(LAPSE_WORDS[source.lapse])}</Status>
-            )}
+            {source.origin === 'explicit' && <Tag outline>{m.access_originExplicit()}</Tag>}
+            {source.lapse !== null && <Status tone="warn">{LAPSE_WORDS[source.lapse]()}</Status>}
           </span>
         )}
       </span>
@@ -1085,9 +1079,8 @@ function SourceLine({
 
 /** where a source is held, in words */
 function Where({ source }: { source: AccessSource }) {
-  const { format } = useI18n()
   const where = whereOf(source)
   return where.kind === 'unit'
     ? where.name
-    : format(where.kind === 'everywhere' ? m.accessUnitEverywhere : m.accessUnitBeyond)
+    : (where.kind === 'everywhere' ? m.access_unitEverywhere : m.access_unitBeyond)()
 }

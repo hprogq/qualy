@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { claimActOf, claimFilesOf, claimNoteOf } from '../src/client/entry/claim-facts.ts'
 import type { EntryDto, ItemDto } from '../src/client/entry/model.ts'
-import { assessmentMessages as m } from '../src/client/i18n.ts'
+
 import type { Standing, StructureRow } from '../src/client/entry/standing.ts'
 import {
   chipsFor,
@@ -15,6 +15,7 @@ import {
   type RoundState,
   type Viewer,
 } from '../src/client/entry/workspace/model.ts'
+import * as m from '#messages'
 
 // What the entries workspace says, worked out before anything is drawn: the
 // head's figures against the filters under them, full marks, and how a
@@ -252,17 +253,17 @@ describe('a claim’s identity line', () => {
     // given up by its owner: the account's own word, not the one for a
     // question taken out of the paper
     expect(said('given-up').act).toBe('abandoned')
-    expect(said('given-up').action.id).toBe(m.resultActAbandoned.id)
-    expect(said('revoked').action.id).toBe(m.entriesActRevoked.id)
+    expect(said('given-up').action).toBe(m.result_actAbandoned)
+    expect(said('revoked').action).toBe(m.entries_actRevoked)
     // one that went with its question it was filed under: voided, never
     // given up. How any of them ended is the standing's word; the amount
     // beside it says only that it does not count, never the same word twice
     const withdrawn: ItemDto = { ...withFile, status: 'voided' }
     const gone = entryLineOf(claims[0]!, withdrawn, null, words)
-    expect(gone.action.id).toBe(m.entriesActVoided.id)
-    expect(gone.amountWord.id).toBe(m.entriesAmountNotCounted.id)
-    expect(said('given-up').amountWord.id).toBe(m.entriesAmountNotCounted.id)
-    expect(said('revoked').amountWord.id).toBe(m.entriesAmountNotCounted.id)
+    expect(gone.action).toBe(m.entries_actVoided)
+    expect(gone.amountWord).toBe(m.entries_amountNotCounted)
+    expect(said('given-up').amountWord).toBe(m.entries_amountNotCounted)
+    expect(said('revoked').amountWord).toBe(m.entries_amountNotCounted)
     // A claim that ended voided holds no time of its ending, only that of
     // the last version filed: it is never said to have ended then. Every
     // other act's time is its own.
@@ -288,35 +289,26 @@ describe('the dot beside a question', () => {
 })
 
 describe('why a new claim cannot be started', () => {
-  const said = (reason: string | null, round: RoundState | null) =>
-    filingHeldOf(reason, round).message.id
+  const said = (reason: string | null, round: RoundState | null) => filingHeldOf(reason, round).said
 
   it('names the stage that shut it, where the round names one', () => {
     const during = filingHeldOf('phase-closed', { status: 'active', phaseName: ' 材料审核 ' })
-    expect(during.message.id).toBe('assessment/entries/held-phase')
+    expect(during.said).toBe('held-phase')
     expect(during.values).toEqual({ phase: '材料审核' })
-    expect(said('phase-closed', { status: 'active', phaseName: null })).toBe(
-      'assessment/entries/held-now',
-    )
+    expect(said('phase-closed', { status: 'active', phaseName: null })).toBe('held-now')
   })
 
   it('tells an archived round and one not begun from a round between stages', () => {
-    expect(said('no-active-phase', { status: 'archived', phaseName: null })).toBe(
-      'assessment/entries/held-archived',
-    )
-    expect(said('no-active-phase', { status: 'draft', phaseName: null })).toBe(
-      'assessment/entries/held-not-started',
-    )
-    expect(said('no-active-phase', { status: 'active', phaseName: null })).toBe(
-      'assessment/entries/held-no-phase',
-    )
+    expect(said('no-active-phase', { status: 'archived', phaseName: null })).toBe('held-archived')
+    expect(said('no-active-phase', { status: 'draft', phaseName: null })).toBe('held-not-started')
+    expect(said('no-active-phase', { status: 'active', phaseName: null })).toBe('held-no-phase')
   })
 
   it('says a stage open to others only, and a round already full', () => {
-    expect(said('item-out-of-scope', null)).toBe('assessment/entries/held-item-scope')
-    expect(said('participant-out-of-scope', null)).toBe('assessment/entries/held-participant-scope')
-    expect(said('account-ceiling-reached', null)).toBe('assessment/entries/held-round-full')
-    expect(said('something-new', null)).toBe('assessment/entries/held-now')
+    expect(said('item-out-of-scope', null)).toBe('held-item-scope')
+    expect(said('participant-out-of-scope', null)).toBe('held-participant-scope')
+    expect(said('account-ceiling-reached', null)).toBe('held-round-full')
+    expect(said('something-new', null)).toBe('held-now')
   })
 })
 

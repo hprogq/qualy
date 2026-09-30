@@ -7,7 +7,7 @@ import { Input } from '@qualy/ui/input'
 import { Textarea } from '@qualy/ui/textarea'
 import { Feedback, Field, FormDialog } from '@qualy/ui/admin'
 import { formulaApi } from './api.ts'
-import { formulaMessages as m } from './i18n.ts'
+import * as m from '#messages'
 
 // Starting your own formula from somebody else's.
 //
@@ -32,7 +32,7 @@ export function CopyTemplateDialog({
   const run = useRunApi()
   const query = useApiQuery(formulaApi)
   const queryClient = useQueryClient()
-  const { format, formatError } = useI18n()
+  const { formatError } = useI18n()
   const [name, setName] = useState(suggestedName)
   const [description, setDescription] = useState(suggestedDescription ?? '')
   const [failure, setFailure] = useState<string | null>(null)
@@ -67,27 +67,27 @@ export function CopyTemplateDialog({
   return (
     <FormDialog
       open={versionId !== null}
-      title={format(m.templatesCopyTitle)}
+      title={m.templates_copyTitle()}
       onClose={onClose}
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>
-            {format(m.cancel)}
+            {m.common_cancel()}
           </Button>
           <Button
             disabled={name.trim() === '' || copy.isPending}
             onClick={() => copy.mutate()}
             data-testid="template-copy-confirm"
           >
-            {format(m.templatesCopy)}
+            {m.templates_copy()}
           </Button>
         </>
       }
     >
-      <Field label={format(m.nameLabel)} required>
+      <Field label={m.field_name()} required>
         {(id) => <Input id={id} value={name} onChange={(event) => setName(event.target.value)} />}
       </Field>
-      <Field label={format(m.descriptionLabel)}>
+      <Field label={m.field_description()}>
         {(id) => (
           <Textarea
             id={id}

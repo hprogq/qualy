@@ -3,13 +3,14 @@ import { ChevronRightIcon } from 'lucide-react'
 import { useI18n } from '@qualy/web-i18n'
 import { VisuallyHidden } from '@qualy/ui/visually-hidden'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { assessmentMessages as m } from '../../i18n.ts'
+
 import { useBatchZone } from '../../batch/zone.ts'
 import { EntryStanding } from '../EntryStanding.tsx'
 import type { EntryDto } from '../model.ts'
 import { UnreadDot } from './marks.tsx'
 import { LineParts } from './LineText.tsx'
 import { momentOf, standingOf, type EntryLine } from './model.ts'
+import * as m from '#messages'
 
 // One claim as one row: two lines that say which claim it is and what last
 // happened to it, and a column that says what it counts for.
@@ -203,7 +204,7 @@ export function EntryRow({
   selected: boolean
   onOpen: () => void
 }) {
-  const { format, locale } = useI18n()
+  const { locale } = useI18n()
   const zone = useBatchZone()
   const [lead, ...rest] = line.parts
   const when = momentOf(line.at, locale, zone)
@@ -229,9 +230,9 @@ export function EntryRow({
         )}
       >
         {line.note.kind === 'return'
-          ? format(m.entriesNoteReturned, { text: line.note.text })
+          ? m.entries_noteReturned({ text: line.note.text })
           : line.note.kind === 'ask'
-            ? format(m.entriesNoteAsked, { text: line.note.text })
+            ? m.entries_noteAsked({ text: line.note.text })
             : line.note.text}
       </span>
     )
@@ -253,7 +254,7 @@ export function EntryRow({
       )}
     >
       <span {...stylex.props(styles.main)}>
-        {unread && <VisuallyHidden>{format(m.claimUnread)}</VisuallyHidden>}
+        {unread && <VisuallyHidden>{m.entry_claimUnread()}</VisuallyHidden>}
         <span {...stylex.props(styles.identity)}>
           {unread && <UnreadDot xstyle={[styles.unread, !compact && styles.unreadHanging]} />}
           <span data-part="lead" {...stylex.props(styles.lead, unread && styles.leadUnread)}>
@@ -270,20 +271,16 @@ export function EntryRow({
         {(compact || awaitingMe || line.dated || line.files > 0 || line.note !== null) && (
           <span {...stylex.props(styles.second)}>
             {compact && standing}
-            {awaitingMe && (
-              <span {...stylex.props(styles.mine)}>{format(m.entriesAwaitingYou)}</span>
-            )}
+            {awaitingMe && <span {...stylex.props(styles.mine)}>{m.entries_awaitingYou()}</span>}
             {line.dated && (
               <span data-when="" {...stylex.props(styles.keep)}>
-                {format(m.entriesWhen, { when, action: format(line.action) })}
+                {m.entries_when({ when, action: line.action() })}
               </span>
             )}
             {line.files > 0 && (
               <>
                 {line.dated && <span aria-hidden {...stylex.props(styles.rule)} />}
-                <span {...stylex.props(styles.keep)}>
-                  {format(m.entriesFiles, { count: line.files })}
-                </span>
+                <span {...stylex.props(styles.keep)}>{m.entries_files({ count: line.files })}</span>
               </>
             )}
             {line.note !== null && !compact && (
@@ -314,7 +311,7 @@ export function EntryRow({
             {line.amount}
           </span>
         )}
-        <span {...stylex.props(styles.amountWord)}>{format(line.amountWord)}</span>
+        <span {...stylex.props(styles.amountWord)}>{line.amountWord()}</span>
       </span>
       <ChevronRightIcon aria-hidden {...stylex.props(styles.chevron)} />
     </button>

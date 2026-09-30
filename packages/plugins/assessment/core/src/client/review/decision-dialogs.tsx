@@ -5,7 +5,6 @@ import { useQuery } from '@tanstack/react-query'
 import { useApi, useRunApi } from '@qualy/web-runtime'
 import { useI18n, useList } from '@qualy/web-i18n'
 
-import { commonMessages } from '@qualy/web-i18n/messages'
 import { Field, FormDialog, RequiredMark } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { Checkbox } from '@qualy/ui/checkbox'
@@ -19,7 +18,7 @@ import { Chip, ChipGroup } from '@qualy/ui/chip'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { assessmentApi } from '../api.ts'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import { answerOf, displayValueOf, fieldsOf } from '../entry/model.ts'
 import type { EvidenceFieldSpec } from '../entry/EvidenceForm.tsx'
 import { offeredOptions } from '../entry/model.ts'
@@ -41,6 +40,8 @@ import {
 } from '@qualy/value-schema'
 import { changedSeedKeys, recognitionProblemText } from './recognition.ts'
 import { idsOf, valueOf, type ReviewDto } from './model.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // The two decisions that carry a word: sending back, and escalating. Each
 // dialog collects the word (and the picked reason when the batch configured
@@ -597,7 +598,6 @@ function ReasonPicker({
   value: string
   onChange: (next: string) => void
 }) {
-  const { format } = useI18n()
   const fine = useFinePointer()
   // read from the document, like the dialog's other keys - but never over
   // the comment box: a digit typed into a sentence is a digit, so the keys
@@ -624,10 +624,10 @@ function ReasonPicker({
     <div {...stylex.props(styles.picker)}>
       <div {...stylex.props(styles.pickerHead)}>
         <span {...stylex.props(styles.pickerLabel)}>
-          {format(m.reviewReasonLabel)}
+          {m.review_reasonLabel()}
           <RequiredMark />
         </span>
-        <span {...stylex.props(styles.quietNote)}>{format(m.reviewReasonHint)}</span>
+        <span {...stylex.props(styles.quietNote)}>{m.review_reasonHint()}</span>
       </div>
       <ChipGroup value={value} onChange={(next) => onChange(next)}>
         {reasons.map((reason, index) => (
@@ -764,7 +764,7 @@ export function ApproveDialog({
   onClose: () => void
   onConfirm: (decision: WordedDecision) => void
 }) {
-  const { format, locale } = useI18n()
+  const { locale } = useI18n()
   const listJoin = useList()
   const words = usePickerWords()
   const fine = useFinePointer()
@@ -840,10 +840,10 @@ export function ApproveDialog({
     for (const [id, reason] of materialized.issues) {
       if (reason === 'required') continue
       const schema = fields.find((field) => field.id === id)?.schema
-      said.set(id, recognitionProblemText(format, schema, reason))
+      said.set(id, recognitionProblemText(schema, reason))
     }
     return said
-  }, [materialized, fields, format])
+  }, [materialized, fields])
 
   const ready =
     form === null ||
@@ -889,8 +889,8 @@ export function ApproveDialog({
   const sayFiled = (schema: AtomicSchema, value: unknown) =>
     typeof value === 'boolean'
       ? value
-        ? format(m.recognitionYes)
-        : format(m.recognitionNo)
+        ? m.recognition_yes()
+        : m.recognition_no()
       : kindOf(schema) === 'choice'
         ? (choiceLabel(schema as never, String(value), locale) ?? String(value))
         : String(value)
@@ -943,17 +943,17 @@ export function ApproveDialog({
               scope="recognition"
               asideOf={() =>
                 locked !== null ? (
-                  <span {...stylex.props(styles.linkTag)}>{format(m.reviewTagLocked)}</span>
+                  <span {...stylex.props(styles.linkTag)}>{m.review_tagLocked()}</span>
                 ) : sourceLabel !== undefined ? (
                   <span {...stylex.props(styles.linkTag)} data-testid="recognition-source">
-                    {format(m.reviewTagLinked, { name: sourceLabel })}
+                    {m.review_tagLinked({ name: sourceLabel })}
                   </span>
                 ) : undefined
               }
             />
             {moved && locked === null && (
               <p {...stylex.props(styles.sourceLine)}>
-                <span {...stylex.props(styles.noShrink)}>{format(m.reviewFiledWas)}</span>
+                <span {...stylex.props(styles.noShrink)}>{m.review_filedWas()}</span>
                 <span {...stylex.props(styles.struck)}>{sayFiled(field.schema, filedValue)}</span>
                 <button
                   type="button"
@@ -966,7 +966,7 @@ export function ApproveDialog({
                     }))
                   }
                 >
-                  {format(m.reviewResetToFiled)}
+                  {m.review_resetToFiled()}
                 </button>
               </p>
             )}
@@ -974,14 +974,14 @@ export function ApproveDialog({
         )
       })}
       {locked !== null && (
-        <p {...stylex.props(styles.sourceLine)}>{format(m.recognitionLockedNote)}</p>
+        <p {...stylex.props(styles.sourceLine)}>{m.review_recognitionLockedNote()}</p>
       )}
       {changed && (
         <div {...stylex.props(styles.reasonBlock)}>
           <Field
-            label={format(m.recognitionReasonLabel)}
+            label={m.review_recognitionReasonLabel()}
             required
-            hint={format(m.reviewAdjustHint, { names: listJoin(changedNames) })}
+            hint={m.review_adjustHint({ names: listJoin(changedNames) })}
           >
             {(id) => (
               <Input
@@ -1001,7 +1001,7 @@ export function ApproveDialog({
   // inside the determination) is kept with the determination for whoever
   // reads it next. Each says so under its own box.
   const commentField = (
-    <Field label={format(m.reviewComment)} hint={format(m.reviewApproveHint)}>
+    <Field label={m.review_comment()} hint={m.review_approveHint()}>
       {(id) => (
         <Textarea
           id={id}
@@ -1026,32 +1026,32 @@ export function ApproveDialog({
       : wrongId !== undefined
         ? {
             tone: 'wrong',
-            words: format(m.reviewSummaryWrong, { count: problems.size }),
+            words: m.review_summaryWrong({ count: problems.size }),
             at: wrongId,
           }
         : blocked
-          ? { tone: 'wrong', words: format(m.reviewStandingRefused) }
+          ? { tone: 'wrong', words: m.review_standingRefused() }
           : missingIds[0] !== undefined
             ? {
                 tone: 'owed',
-                words: format(m.reviewFillFirst, { name: titleOf(missingIds[0]) }),
+                words: m.review_fillFirst({ name: titleOf(missingIds[0]) }),
                 at: missingIds[0],
               }
             : !ready
-              ? { tone: 'owed', words: format(m.reviewStandingReasonOwed) }
-              : { tone: 'ready', words: format(m.reviewStandingReady) }
+              ? { tone: 'owed', words: m.review_standingReasonOwed() }
+              : { tone: 'ready', words: m.review_standingReady() }
 
   if (!fine) {
     return (
       <DecisionSheet
         open={open}
-        title={format(m.reviewApprove)}
+        title={m.review_approve()}
         // in the middle of the escalation route approving is an opinion
-        hint={format(
-          review.actions.approvalConcludes ? m.reviewApproveSheetHint : m.reviewOpinionFoot,
-        )}
-        slideLabel={format(m.reviewSlideApprove)}
-        waiting={format(m.reviewSheetFillFirst)}
+        hint={(review.actions.approvalConcludes
+          ? m.review_approveSheetHint
+          : m.review_opinionFoot)()}
+        slideLabel={m.review_slideApprove()}
+        waiting={m.review_sheetFillFirst()}
         ready={ready}
         onClose={onClose}
         onConfirm={confirm}
@@ -1076,11 +1076,10 @@ export function ApproveDialog({
     <FormDialog
       open={open}
       size={form === null ? 'default' : 'wide'}
-      title={format(
-        review.actions.approvalConcludes ? m.reviewApproveTitle : m.reviewApproveOpinionTitle,
-        { name: review.participantName },
-      )}
-      description={format(m.reviewRejectSubtitle, {
+      title={(review.actions.approvalConcludes
+        ? m.review_approveTitle
+        : m.review_approveOpinionTitle)({ name: review.participantName })}
+      description={m.review_rejectSubtitle({
         item: review.itemTitle,
         no: review.revision.revisionNo,
       })}
@@ -1111,7 +1110,7 @@ export function ApproveDialog({
             )}
             <span {...stylex.props(styles.spacer)} />
             <Button variant="outline" onClick={onClose}>
-              {format(commonMessages.cancel)}
+              {commonMessages.action_cancel()}
               <Kbd>Esc</Kbd>
             </Button>
             <Button
@@ -1119,7 +1118,7 @@ export function ApproveDialog({
               disabled={!ready || blocked}
               onClick={confirm}
             >
-              {format(m.reviewApprove)}
+              {m.review_approve()}
               <Kbd className={stylex.props(styles.onSolid).className}>⌘↵</Kbd>
             </Button>
           </div>
@@ -1153,7 +1152,7 @@ export function ApproveDialog({
             <FiledValues review={review} linked={linked} xstyle={styles.filingNarrow} />
             <section {...stylex.props(styles.half)}>
               <div {...stylex.props(styles.halfHead)}>
-                <p {...stylex.props(styles.halfTitle)}>{format(m.recognitionSection)}</p>
+                <p {...stylex.props(styles.halfTitle)}>{m.review_recognitionSection()}</p>
                 <span {...stylex.props(styles.spacer)} />
                 <p
                   {...stylex.props(styles.halfNote)}
@@ -1163,20 +1162,20 @@ export function ApproveDialog({
                   data-missing={missingIds.length}
                   data-wrong={problems.size}
                 >
-                  {format(m.reviewSummaryCount, { count: fields.length })}
+                  {m.review_summaryCount({ count: fields.length })}
                   {movedIds.length > 0 && (
                     <span {...stylex.props(styles.halfNoteInk)}>
-                      {format(m.reviewSummaryDiffer, { count: movedIds.length })}
+                      {m.review_summaryDiffer({ count: movedIds.length })}
                     </span>
                   )}
                   {problems.size > 0 && (
                     <span {...stylex.props(styles.halfNoteBad)}>
-                      {format(m.reviewSummaryWrong, { count: problems.size })}
+                      {m.review_summaryWrong({ count: problems.size })}
                     </span>
                   )}
                   {missingIds.length > 0 && (
                     <span {...stylex.props(styles.halfNoteWarn)}>
-                      {format(m.reviewSummaryMissing, { count: missingIds.length })}
+                      {m.review_summaryMissing({ count: missingIds.length })}
                     </span>
                   )}
                 </p>
@@ -1282,24 +1281,22 @@ function ScorePreview({
   preview: PreviewState
   fields: readonly { readonly id: string; readonly schema: AtomicSchema }[]
 }) {
-  const { format } = useI18n()
   const bad = preview.kind === 'refused' || preview.kind === 'issues'
   const words =
     preview.kind === 'amount'
-      ? format(m.reviewPreviewStands)
+      ? m.review_previewStands()
       : preview.kind === 'refused'
-        ? format(m.reviewPreviewRefused, { reason: preview.reason })
+        ? m.review_previewRefused({ reason: preview.reason })
         : preview.kind === 'issues'
           ? recognitionProblemText(
-              format,
               fields.find((field) => field.id === preview.issues[0]!.recognitionId)?.schema,
               preview.issues[0]!.reason,
             )
           : preview.kind === 'checking'
-            ? format(m.reviewPreviewChecking)
+            ? m.review_previewChecking()
             : preview.kind === 'unavailable'
-              ? format(m.reviewPreviewUnavailable)
-              : format(m.reviewPreviewIncomplete)
+              ? m.review_previewUnavailable()
+              : m.review_previewIncomplete()
   return (
     <div
       {...stylex.props(styles.preview, bad && styles.previewBad)}
@@ -1323,18 +1320,16 @@ function ScorePreview({
                 )}
               />
             ))}
-          {format(m.reviewPreviewTitle)}
+          {m.review_previewTitle()}
         </span>
         <span {...stylex.props(styles.previewWords, bad && styles.previewWordsInk)}>{words}</span>
-        {bad && (
-          <span {...stylex.props(styles.previewWords)}>{format(m.reviewPreviewFixFirst)}</span>
-        )}
+        {bad && <span {...stylex.props(styles.previewWords)}>{m.review_previewFixFirst()}</span>}
       </span>
       {!bad &&
         (preview.kind === 'amount' ? (
           <span {...stylex.props(styles.previewFigure)}>
             <span {...stylex.props(styles.previewAmount)}>{preview.amount}</span>
-            <span {...stylex.props(styles.previewUnit)}>{format(m.reviewPreviewUnit)}</span>
+            <span {...stylex.props(styles.previewUnit)}>{m.review_previewUnit()}</span>
           </span>
         ) : (
           <span aria-hidden {...stylex.props(styles.previewAmount, styles.previewDash)}>
@@ -1356,22 +1351,21 @@ function FiledValues({
   /** payload key of a filed field -> the determinations that take their value from it */
   linked?: ReadonlyMap<string, readonly string[]>
 }) {
-  const { format } = useI18n()
   const listJoin = useList()
-  const words = { yes: format(m.recognitionYes), no: format(m.recognitionNo) }
+  const words = { yes: m.recognition_yes(), no: m.recognition_no() }
   const record = (review.revision.payload ?? {}) as Record<string, unknown>
   const fields = fieldsOf(review.form.formConfig)
   return (
     <section
       {...stylex.props(styles.filing, xstyle)}
       data-testid="approve-filing"
-      aria-label={format(m.reviewPayloadTitle)}
+      aria-label={m.review_payloadTitle()}
     >
       <div {...stylex.props(styles.halfHead, styles.filingHead)}>
-        <p {...stylex.props(styles.halfTitle)}>{format(m.reviewPayloadTitle)}</p>
+        <p {...stylex.props(styles.halfTitle)}>{m.review_payloadTitle()}</p>
         <span {...stylex.props(styles.spacer)} />
         <p {...stylex.props(styles.halfNote)}>
-          {format(m.entryVersionNo, { no: review.revision.revisionNo })}
+          {m.entry_versionNo({ no: review.revision.revisionNo })}
         </p>
       </div>
       <FadedScroll ground="inset">
@@ -1391,11 +1385,11 @@ function FiledValues({
                         {...stylex.props(styles.linkTag)}
                         data-testid="filed-linked"
                         data-field={field.key}
-                        title={format(m.reviewLinkedTo, {
+                        title={m.review_linkedTo({
                           names: listJoin(linked?.get(field.key) ?? []),
                         })}
                       >
-                        {format(m.reviewLinkedTag)}
+                        {m.review_linkedTag()}
                       </span>
                     </>
                   )}
@@ -1404,7 +1398,7 @@ function FiledValues({
                   {field.type === 'attachment' ? (
                     ids.length === 0 ? (
                       <span {...stylex.props(styles.previewQuiet)}>
-                        {format(m.reviewPreviewNoFiles)}
+                        {m.review_previewNoFiles()}
                       </span>
                     ) : (
                       <span {...stylex.props(styles.filingFiles)}>
@@ -1428,7 +1422,7 @@ function FiledValues({
           })}
           {review.revision.note !== null && review.revision.note !== '' && (
             <div {...stylex.props(styles.filingRow)}>
-              <dt {...stylex.props(styles.filingLabel)}>{format(m.entryNote)}</dt>
+              <dt {...stylex.props(styles.filingLabel)}>{m.entry_note()}</dt>
               <dd {...stylex.props(styles.filingValue)}>{review.revision.note}</dd>
             </div>
           )}
@@ -1464,7 +1458,7 @@ export function RejectDialog({
   onClose: () => void
   onConfirm: (decision: WordedDecision) => void
 }) {
-  const { format, locale } = useI18n()
+  const { locale } = useI18n()
   const pickerWords = usePickerWords()
   const fine = useFinePointer()
   const [reason, setReason] = useState(initial?.reason ?? '')
@@ -1576,10 +1570,10 @@ export function RejectDialog({
     return (
       <DecisionSheet
         open={open}
-        title={format(m.reviewReject)}
-        hint={format(review.actions.rejectionReturns ? m.reviewRejectFoot : m.reviewOpinionFoot)}
-        slideLabel={format(m.reviewSlideReject)}
-        waiting={format(m.reviewSheetFillFirst)}
+        title={m.review_reject()}
+        hint={(review.actions.rejectionReturns ? m.review_rejectFoot : m.review_opinionFoot)()}
+        slideLabel={m.review_slideReject()}
+        waiting={m.review_sheetFillFirst()}
         ready={ready}
         onClose={onClose}
         onConfirm={confirm}
@@ -1587,7 +1581,7 @@ export function RejectDialog({
         <DraftNote draft={draft} onDiscard={startAgain} />
         {caution}
         <ReasonPicker reasons={reasons} value={reason} onChange={setReason} />
-        <Field required label={format(m.reviewComment)} hint={format(m.reviewCommentHint)}>
+        <Field required label={m.review_comment()} hint={m.review_commentHint()}>
           {(id) => (
             <Textarea
               aria-required
@@ -1608,15 +1602,12 @@ export function RejectDialog({
       open={open}
       size="wide"
       restfulFocus={reasons.length > 0}
-      title={format(
-        !review.actions.rejectionReturns
-          ? m.reviewRejectOpinionTitle
-          : review.events.some((event) => event.kind === 'appealed' || event.kind === 'reopened')
-            ? m.reviewRejectRevisitTitle
-            : m.reviewRejectTitle,
-        { name: review.participantName },
-      )}
-      description={format(m.reviewRejectSubtitle, {
+      title={(!review.actions.rejectionReturns
+        ? m.review_rejectOpinionTitle
+        : review.events.some((event) => event.kind === 'appealed' || event.kind === 'reopened')
+          ? m.review_rejectRevisitTitle
+          : m.review_rejectTitle)({ name: review.participantName })}
+      description={m.review_rejectSubtitle({
         item: review.itemTitle,
         no: review.revision.revisionNo,
       })}
@@ -1624,11 +1615,11 @@ export function RejectDialog({
       footer={
         <div {...stylex.props(styles.footerRow)}>
           <p {...stylex.props(recognitionStyles.quietNote)}>
-            {format(review.actions.rejectionReturns ? m.reviewRejectFoot : m.reviewOpinionFoot)}
+            {(review.actions.rejectionReturns ? m.review_rejectFoot : m.review_opinionFoot)()}
           </p>
           <span {...stylex.props(styles.spacer)} />
           <Button variant="outline" onClick={onClose}>
-            {format(commonMessages.cancel)}
+            {commonMessages.action_cancel()}
             <Kbd>Esc</Kbd>
           </Button>
           <Button
@@ -1636,7 +1627,7 @@ export function RejectDialog({
             className={stylex.props(styles.rejectSolid, ready && styles.rejectLift).className}
             onClick={confirm}
           >
-            {format(m.reviewRejectConfirm)}
+            {m.review_rejectConfirm()}
             <Kbd className={stylex.props(styles.onSolid).className}>⌘↵</Kbd>
           </Button>
         </div>
@@ -1668,7 +1659,7 @@ export function RejectDialog({
             commentBox.current?.focus()
           }}
         />
-        <Field required label={format(m.reviewComment)} hint={format(m.reviewCommentHint)}>
+        <Field required label={m.review_comment()} hint={m.review_commentHint()}>
           {(id) => (
             <Textarea
               aria-required
@@ -1693,7 +1684,7 @@ export function RejectDialog({
                 checked={suggesting}
                 onCheckedChange={(next) => setSuggesting(next === true)}
               />
-              {format(m.reviewSuggestToggle)}
+              {m.review_suggestToggle()}
               <KbdGroup>
                 <Kbd>⌥</Kbd>
                 <Kbd>G</Kbd>
@@ -1701,22 +1692,22 @@ export function RejectDialog({
             </label>
             {suggesting && (
               <div {...stylex.props(styles.suggestGrid)}>
-                <span {...stylex.props(styles.quietNote)}>{format(m.reviewSuggestField)}</span>
-                <span {...stylex.props(styles.quietNote)}>{format(m.reviewSuggestTheirs)}</span>
-                <span {...stylex.props(styles.quietNote)}>{format(m.reviewSuggestMine)}</span>
+                <span {...stylex.props(styles.quietNote)}>{m.review_suggestField()}</span>
+                <span {...stylex.props(styles.quietNote)}>{m.review_suggestTheirs()}</span>
+                <span {...stylex.props(styles.quietNote)}>{m.review_suggestMine()}</span>
                 {fields.map((field, index) => (
                   <FieldRow
                     key={field.key}
                     slot={index + 1}
                     field={field}
                     original={displayValueOf(field, answerOf(filed, field.key), {
-                      yes: format(m.recognitionYes),
-                      no: format(m.recognitionNo),
+                      yes: m.recognition_yes(),
+                      no: m.recognition_no(),
                     })}
                     value={answerOf(suggested, field.key) ?? ''}
-                    keepLabel={format(m.reviewSuggestKeep)}
-                    yesLabel={format(m.recognitionYes)}
-                    noLabel={format(m.recognitionNo)}
+                    keepLabel={m.review_suggestKeep()}
+                    yesLabel={m.recognition_yes()}
+                    noLabel={m.recognition_no()}
                     pickerWords={pickerWords}
                     locale={locale}
                     onChange={(next) =>
@@ -1724,9 +1715,7 @@ export function RejectDialog({
                     }
                   />
                 ))}
-                <p {...stylex.props(styles.quietNote, styles.gridFoot)}>
-                  {format(m.reviewSuggestHint)}
-                </p>
+                <p {...stylex.props(styles.quietNote, styles.gridFoot)}>{m.review_suggestHint()}</p>
               </div>
             )}
           </div>
@@ -1902,7 +1891,6 @@ export function EscalateDialog({
   onClose: () => void
   onConfirm: (decision: WordedDecision) => void
 }) {
-  const { format } = useI18n()
   const fine = useFinePointer()
   const [reason, setReason] = useState(initial?.reason ?? '')
   const [comment, setComment] = useState(initial?.comment ?? '')
@@ -1919,10 +1907,10 @@ export function EscalateDialog({
     return (
       <DecisionSheet
         open={open}
-        title={format(m.reviewEscalate)}
-        hint={format(m.reviewEscalateFoot)}
-        slideLabel={format(m.reviewSlideEscalate)}
-        waiting={format(m.reviewSheetFillFirst)}
+        title={m.review_escalate()}
+        hint={m.review_escalateFoot()}
+        slideLabel={m.review_slideEscalate()}
+        waiting={m.review_sheetFillFirst()}
         ready={ready}
         onClose={onClose}
         onConfirm={confirm}
@@ -1930,8 +1918,8 @@ export function EscalateDialog({
         <ReasonPicker reasons={reasons} value={reason} onChange={setReason} />
         <Field
           required
-          label={format(m.reviewEscalateCommentLabel)}
-          hint={format(m.reviewEscalateCommentHint)}
+          label={m.review_escalateCommentLabel()}
+          hint={m.review_escalateCommentHint()}
         >
           {(id) => (
             <Textarea
@@ -1953,18 +1941,18 @@ export function EscalateDialog({
       open={open}
       restfulFocus={reasons.length > 0}
       size="wide"
-      title={format(m.reviewEscalate)}
-      description={format(m.reviewEscalateSubtitle, {
+      title={m.review_escalate()}
+      description={m.review_escalateSubtitle({
         name: review.participantName,
         item: review.itemTitle,
       })}
       onClose={onClose}
       footer={
         <div {...stylex.props(styles.footerRow)}>
-          <p {...stylex.props(recognitionStyles.quietNote)}>{format(m.reviewEscalateFoot)}</p>
+          <p {...stylex.props(recognitionStyles.quietNote)}>{m.review_escalateFoot()}</p>
           <span {...stylex.props(styles.spacer)} />
           <Button variant="outline" onClick={onClose}>
-            {format(commonMessages.cancel)}
+            {commonMessages.action_cancel()}
             <Kbd>Esc</Kbd>
           </Button>
           <Button
@@ -1972,7 +1960,7 @@ export function EscalateDialog({
             className={stylex.props(styles.escalateSolid, ready && styles.escalateLift).className}
             onClick={confirm}
           >
-            {format(m.reviewEscalate)}
+            {m.review_escalate()}
             <Kbd className={stylex.props(styles.onSolid).className}>⌘↵</Kbd>
           </Button>
         </div>
@@ -1999,8 +1987,8 @@ export function EscalateDialog({
         />
         <Field
           required
-          label={format(m.reviewEscalateCommentLabel)}
-          hint={format(m.reviewEscalateCommentHint)}
+          label={m.review_escalateCommentLabel()}
+          hint={m.review_escalateCommentHint()}
         >
           {(id) => (
             <Textarea
@@ -2018,7 +2006,7 @@ export function EscalateDialog({
         </Field>
         {stages.length > 0 && (
           <div {...stylex.props(styles.frame)}>
-            <p {...stylex.props(styles.frameTitle)}>{format(m.reviewEscalateFlow)}</p>
+            <p {...stylex.props(styles.frameTitle)}>{m.review_escalateFlow()}</p>
             <ol {...stylex.props(styles.stageList)}>
               {stages.map((stage, index) => {
                 const last = index === stages.length - 1
@@ -2038,8 +2026,8 @@ export function EscalateDialog({
                         settle it - so the chain says the names and stops */}
                     <span {...stylex.props(styles.stageName)}>
                       {stage.veiled === true
-                        ? format(m.reviewStageVeiled)
-                        : (stage.label ?? stage.nodeName ?? format(m.reviewStageSkipped))}
+                        ? m.review_stageVeiled()
+                        : (stage.label ?? stage.nodeName ?? m.review_stageSkipped())}
                     </span>
                   </li>
                 )

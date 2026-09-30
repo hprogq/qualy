@@ -14,10 +14,9 @@ import {
   usePageQueryUpdate,
   UiSlot,
 } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
 import { useTerm } from '@qualy/plugin-settings/client/terms'
 import { authTerms } from '@qualy/auth-contract/terms'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
@@ -46,13 +45,15 @@ import { Spinner } from '@qualy/ui/spinner'
 import { useIsBelow } from '@qualy/ui/use-mobile'
 import { ChevronRightIcon } from 'lucide-react'
 import { DetailSheet } from '@qualy/ui/screen'
-import { iamMessages as m } from '../i18n.ts'
+
 import { NewUserForm } from './NewUserForm.tsx'
 import { UnitPath } from './users/UnitPath.tsx'
 import { UserJump } from './users/UserJump.tsx'
 import { UnitTree, type UnitNode } from './users/UnitTree.tsx'
 import { rememberRoster } from './users/roster-address.ts'
 import { authApi } from '../api.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // People are administered where they stand, so the screen reads left to
 // right: the unit you are looking at, and the people standing there. The
@@ -176,7 +177,7 @@ const emsOf = (text: string) =>
 
 export default function UsersPage() {
   const query = useApiQuery(authApi)
-  const { format } = useI18n()
+
   const describe = useLoadFailure()
   const businessNo = useTerm(authTerms.businessNumber)
   const [anchor] = usePageQueryState('anchor')
@@ -318,12 +319,12 @@ export default function UsersPage() {
 
   return (
     <Screen
-      title={format(m.usersTitle)}
-      description={format(m.usersHint)}
+      title={m.users_title()}
+      description={m.users_hint()}
       size="broad"
       actions={
         <BandActions
-          moreLabel={format(m.moreActions)}
+          moreLabel={m.action_more()}
           primary={
             active?.manageable && (
               <BandAction
@@ -331,7 +332,7 @@ export default function UsersPage() {
                 icon={<PlusIcon aria-hidden />}
                 onSelect={() => setCreating(true)}
               >
-                {format(m.newUser)}
+                {m.users_new()}
               </BandAction>
             )
           }
@@ -362,8 +363,8 @@ export default function UsersPage() {
           error={describe.of(options.error)}
           framed
           retrying={options.isFetching}
-          loadingLabel={format(commonMessages.loading)}
-          retryLabel={format(commonMessages.retry)}
+          loadingLabel={commonMessages.state_loading()}
+          retryLabel={commonMessages.action_retry()}
           onRetry={() => void options.refetch()}
         >
           {null}
@@ -374,8 +375,8 @@ export default function UsersPage() {
           size="section"
           framed
           data-testid="users-no-anchors"
-          title={format(m.noAnchors)}
-          description={format(m.noAnchorsHint)}
+          title={m.users_noAnchors()}
+          description={m.users_noAnchorsHint()}
         />
       ) : (
         <ResizableSplit
@@ -383,7 +384,7 @@ export default function UsersPage() {
           // the same width at which the tree folds to one line: below it the
           // two stack, or the line would sit in a column the roster needed
           from={1280}
-          handleLabel={format(m.resizeTree)}
+          handleLabel={m.users_resizeTree()}
           side={
             phone ? (
               <button
@@ -396,13 +397,15 @@ export default function UsersPage() {
                   <span {...stylex.props(styles.unitSwitchName)}>{active?.name ?? ''}</span>
                   {activeUnit !== undefined && (
                     <span {...stylex.props(styles.unitSwitchNote)}>
-                      {format(within === 'self' ? m.rosterWithinSelf : m.rosterWithinSubtree, {
-                        count: within === 'self' ? activeUnit.own : activeUnit.total,
-                      })}
+                      {(within === 'self' ? m.users_rosterWithinSelf : m.users_rosterWithinSubtree)(
+                        {
+                          count: within === 'self' ? activeUnit.own : activeUnit.total,
+                        },
+                      )}
                     </span>
                   )}
                 </span>
-                <span {...stylex.props(styles.unitSwitchGo)}>{format(m.unitChange)}</span>
+                <span {...stylex.props(styles.unitSwitchGo)}>{m.users_unitChange()}</span>
                 <ChevronRightIcon aria-hidden {...stylex.props(styles.unitLinkIcon)} />
               </button>
             ) : (
@@ -420,14 +423,14 @@ export default function UsersPage() {
             <CardHead
               title={
                 phone ? (
-                  format(m.usersTitle)
+                  m.users_title()
                 ) : structureHref === undefined || active === undefined ? (
                   (active?.name ?? '')
                 ) : (
                   <PageLink
                     page="org/page"
                     search={{ node: active.orgNodeId }}
-                    title={format(m.openInStructure)}
+                    title={m.users_openInStructure()}
                     className={stylex.props(styles.unitLink).className}
                   >
                     {active.name}
@@ -443,7 +446,7 @@ export default function UsersPage() {
                     data-scope={within}
                     data-people={within === 'self' ? activeUnit.own : activeUnit.total}
                   >
-                    {format(within === 'self' ? m.rosterWithinSelf : m.rosterWithinSubtree, {
+                    {(within === 'self' ? m.users_rosterWithinSelf : m.users_rosterWithinSubtree)({
                       count: within === 'self' ? activeUnit.own : activeUnit.total,
                     })}
                   </span>
@@ -452,7 +455,7 @@ export default function UsersPage() {
             >
               {users.isFetching && !users.isPending && (
                 <Spinner
-                  aria-label={format(commonMessages.loading)}
+                  aria-label={commonMessages.state_loading()}
                   className={stylex.props(styles.away).className}
                 />
               )}
@@ -460,18 +463,18 @@ export default function UsersPage() {
                 name="users-search"
                 value={draft}
                 onChange={setDraft}
-                label={format(m.searchPeople, { businessNo })}
+                label={m.users_searchPeople({ businessNo })}
                 xstyle={styles.searchBox}
               />
               <Select
                 value={typeFilter === '' ? ALL_TYPES : typeFilter}
                 onValueChange={(next) => asking('type')(next === ALL_TYPES ? '' : next)}
               >
-                <SelectTrigger aria-label={format(m.typeFilterLabel)} xstyle={styles.typeFilter}>
+                <SelectTrigger aria-label={m.users_typeFilter()} xstyle={styles.typeFilter}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value={ALL_TYPES}>{format(m.typeFilterAll)}</SelectItem>
+                  <SelectItem value={ALL_TYPES}>{m.users_typeFilterAll()}</SelectItem>
                   {userTypes.map((type) => (
                     <SelectItem key={type.id} value={type.id}>
                       {type.name}
@@ -487,16 +490,16 @@ export default function UsersPage() {
                 onValueChange={(next) => asking('standing')(next === 'active' ? '' : next)}
               >
                 <SelectTrigger
-                  aria-label={format(m.rosterStandingLabel)}
+                  aria-label={m.users_standingFilter()}
                   data-testid="roster-standing"
                   xstyle={styles.standing}
                 >
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="active">{format(m.rosterStandingActive)}</SelectItem>
-                  <SelectItem value="disabled">{format(m.rosterStandingDisabled)}</SelectItem>
-                  <SelectItem value="any">{format(m.rosterStandingAny)}</SelectItem>
+                  <SelectItem value="active">{m.users_standingActive()}</SelectItem>
+                  <SelectItem value="disabled">{m.users_standingDisabled()}</SelectItem>
+                  <SelectItem value="any">{m.users_standingAny()}</SelectItem>
                 </SelectContent>
               </Select>
             </CardHead>
@@ -505,8 +508,8 @@ export default function UsersPage() {
               pending={options.isPending || (users.isPending && active !== undefined)}
               error={users.isError ? describe.of(users.error) : null}
               retrying={users.isFetching}
-              loadingLabel={format(commonMessages.loading)}
-              retryLabel={format(commonMessages.retry)}
+              loadingLabel={commonMessages.state_loading()}
+              retryLabel={commonMessages.action_retry()}
               onRetry={() => void users.refetch()}
               skeleton={<TableSkeleton />}
             >
@@ -520,14 +523,14 @@ export default function UsersPage() {
               >
                 <TableHead>
                   <span>{businessNo}</span>
-                  <span>{format(m.columnName)}</span>
-                  <span>{format(m.columnType)}</span>
-                  <span>{format(m.columnUnit)}</span>
-                  <span>{format(m.columnStatus)}</span>
+                  <span>{m.users_columnName()}</span>
+                  <span>{m.users_columnType()}</span>
+                  <span>{m.users_columnUnit()}</span>
+                  <span>{m.users_columnStatus()}</span>
                   {stacked && <span />}
                 </TableHead>
                 {rows.length === 0 ? (
-                  <CardEmpty>{format(m.usersEmpty)}</CardEmpty>
+                  <CardEmpty>{m.users_empty()}</CardEmpty>
                 ) : (
                   rows.map((user) => (
                     <TableRow
@@ -550,7 +553,7 @@ export default function UsersPage() {
                           <Cell lead>
                             {user.displayName}
                             {user.status !== 'active' && (
-                              <Status tone="bad">{format(m.disabledBadge)}</Status>
+                              <Status tone="bad">{m.badge_disabled()}</Status>
                             )}
                           </Cell>
                           <Cell
@@ -558,13 +561,13 @@ export default function UsersPage() {
                             unlabelled
                             tone={user.businessNo === null ? 'quiet' : 'muted'}
                           >
-                            {user.businessNo ?? format(m.personNoBusinessNo, { businessNo })}
+                            {user.businessNo ?? m.person_noBusinessNo({ businessNo })}
                           </Cell>
                         </>
                       ) : (
                         <>
                           <Cell lead numeric tone={user.businessNo === null ? 'quiet' : 'plain'}>
-                            {user.businessNo ?? format(m.personNoBusinessNo, { businessNo })}
+                            {user.businessNo ?? m.person_noBusinessNo({ businessNo })}
                           </Cell>
                           <Cell tone="plain">{user.displayName}</Cell>
                         </>
@@ -588,7 +591,7 @@ export default function UsersPage() {
                                 ? stepsTo(user.primaryOrgNode.id)
                                 : [{ id: user.primaryOrgNode.id, name: user.primaryOrgNode.name }]
                           }
-                          pickLabel={format(m.pickUnit)}
+                          pickLabel={m.users_pickUnit()}
                           onPick={asking('anchor')}
                           plain={stacked}
                         />
@@ -601,7 +604,9 @@ export default function UsersPage() {
                       <Cell narrow="end" unlabelled>
                         {!stacked && (
                           <Status tone={user.status === 'active' ? 'plain' : 'bad'}>
-                            {format(user.status === 'disabled' ? m.disabledBadge : m.statusActive)}
+                            {(user.status === 'disabled'
+                              ? m.badge_disabled
+                              : m.users_statusActive)()}
                           </Status>
                         )}
                       </Cell>
@@ -621,12 +626,12 @@ export default function UsersPage() {
               <CardFoot>
                 <Pager
                   testId="roster-pager"
-                  label={format(m.pagerLabel)}
+                  label={m.users_pager()}
                   page={users.data?.page ?? page}
                   pageSize={PAGE_SIZE}
                   total={total}
                   disabled={users.isFetching}
-                  summary={format(m.pageSummary, {
+                  summary={m.users_pageSummary({
                     from: total === 0 ? 0 : ((users.data?.page ?? page) - 1) * PAGE_SIZE + 1,
                     to: ((users.data?.page ?? page) - 1) * PAGE_SIZE + rows.length,
                     total,
@@ -651,8 +656,8 @@ export default function UsersPage() {
         <DetailSheet
           open={pickingUnit}
           onClose={() => setPickingUnit(false)}
-          title={format(m.unitsTitle)}
-          closeLabel={format(commonMessages.close)}
+          title={m.users_units()}
+          closeLabel={commonMessages.action_close()}
           testId="unit-sheet"
           fill
         >

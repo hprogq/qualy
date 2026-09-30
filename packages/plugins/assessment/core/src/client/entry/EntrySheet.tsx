@@ -2,12 +2,12 @@ import { useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { ClockIcon } from 'lucide-react'
 import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { ConfirmDialog } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@qualy/ui/tooltip'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import {
   holdOf,
   sayBlocked,
@@ -21,15 +21,17 @@ import { EntryDetail } from './EntryDetail.tsx'
 import type { ActionAvailability, EntryDto, ItemDto } from './model.ts'
 import { abandonConsequence } from './standing.ts'
 import type { EntryLine } from './workspace/model.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 /** what the owner is told giving a claim up takes with it */
 const ABANDON_SAYS = {
-  'appeal-and-result': m.entryAbandonConfirmContestedCounted,
-  appeal: m.entryAbandonConfirmContested,
-  'reopen-and-result': m.entryAbandonConfirmReopenedCounted,
-  reopen: m.entryAbandonConfirmReopened,
-  result: m.entryAbandonConfirmDecided,
-  claim: m.entryAbandonConfirm,
+  'appeal-and-result': m.entry_abandonConfirmContestedCounted,
+  appeal: m.entry_abandonConfirmContested,
+  'reopen-and-result': m.entry_abandonConfirmReopenedCounted,
+  reopen: m.entry_abandonConfirmReopened,
+  result: m.entry_abandonConfirmDecided,
+  claim: m.entry_abandonConfirm,
 } as const
 
 // The owner's drawer: their own claim, and the three things they may do to
@@ -142,7 +144,7 @@ export function EntrySheet({
   onAppeal: () => void
   onSupplement: () => void
 }) {
-  const { format, locale } = useI18n()
+  const { locale } = useI18n()
   // the stage the round is in, for saying which one holds an act
   const round = useRound(entry.batchId)
   // which act is waiting on an answer; every one of them moves the claim
@@ -170,7 +172,7 @@ export function EntrySheet({
     ...(resubmitHere ? [['submit', entry.capabilities.submit] as const] : []),
   ])
   const held = heldGroupsOf(shown, round)
-  const words = { format, locale }
+  const words = { locale }
 
   return (
     <>
@@ -205,7 +207,7 @@ export function EntrySheet({
                 busy={busy}
                 variant="ghost"
                 xstyle={styles.ghostInk}
-                label={format(m.entryAbandon)}
+                label={m.entry_abandon()}
                 onPress={() => setAsking('voided')}
               />
               <span {...stylex.props(styles.spacer)} />
@@ -214,7 +216,7 @@ export function EntrySheet({
                 round={round}
                 can={entry.capabilities.appeal}
                 busy={busy}
-                label={format(m.entryAppeal)}
+                label={m.entry_appeal()}
                 onPress={onAppeal}
               />
               <Offered
@@ -222,7 +224,7 @@ export function EntrySheet({
                 round={round}
                 can={entry.capabilities.withdraw}
                 busy={busy}
-                label={format(m.entryWithdraw)}
+                label={m.entry_withdraw()}
                 onPress={() => setAsking('draft')}
               />
               {!declared && (
@@ -235,9 +237,7 @@ export function EntrySheet({
                   // again happens from the form rather than straight from
                   // here, where it would go back unchanged
                   variant={returned && !resubmitHere ? 'default' : 'outline'}
-                  label={
-                    editLabel ?? format(entry.status === 'draft' ? m.myEntriesResume : m.entryEdit)
-                  }
+                  label={editLabel ?? (entry.status === 'draft' ? m.entry_resume : m.entry_edit)()}
                   onPress={onEdit}
                 />
               )}
@@ -248,7 +248,7 @@ export function EntrySheet({
                   can={entry.capabilities.submit}
                   busy={busy}
                   variant="default"
-                  label={format(entry.status === 'draft' ? m.entrySubmit : m.entryResubmit)}
+                  label={(entry.status === 'draft' ? m.entry_submit : m.entry_resubmit)()}
                   onPress={() => setAsking('in_review')}
                 />
               )}
@@ -267,32 +267,26 @@ export function EntrySheet({
       <ConfirmDialog
         open={asking !== null}
         tone={asking === 'voided' || (asking === 'draft' && oneWay) ? 'destructive' : 'default'}
-        title={format(
-          asking === 'voided'
-            ? m.entryAbandonConfirmTitle
-            : asking === 'draft'
-              ? m.entryWithdrawConfirm
-              : m.entrySubmitConfirm,
-        )}
-        description={format(
-          asking === 'voided'
-            ? ABANDON_SAYS[abandonConsequence(entry)]
-            : asking === 'draft'
-              ? oneWay
-                ? m.entryWithdrawFinalHint
-                : m.entryWithdrawConfirmHint
-              : m.entrySubmitConfirmHint,
-        )}
-        confirmLabel={format(
-          asking === 'voided'
-            ? m.entryAbandon
-            : asking === 'draft'
-              ? m.entryWithdraw
-              : entry.status === 'draft'
-                ? m.entrySubmit
-                : m.entryResubmit,
-        )}
-        cancelLabel={format(commonMessages.cancel)}
+        title={(asking === 'voided'
+          ? m.entry_abandonConfirmTitle
+          : asking === 'draft'
+            ? m.entry_withdrawConfirm
+            : m.entry_submitConfirm)()}
+        description={(asking === 'voided'
+          ? ABANDON_SAYS[abandonConsequence(entry)]
+          : asking === 'draft'
+            ? oneWay
+              ? m.entry_withdrawFinalHint
+              : m.entry_withdrawConfirmHint
+            : m.entry_submitConfirmHint)()}
+        confirmLabel={(asking === 'voided'
+          ? m.entry_abandon
+          : asking === 'draft'
+            ? m.entry_withdraw
+            : entry.status === 'draft'
+              ? m.entry_submit
+              : m.entry_resubmit)()}
+        cancelLabel={commonMessages.action_cancel()}
         pending={busy}
         {...(asking === 'voided'
           ? { descriptionData: { 'data-consequence': abandonConsequence(entry) } }
@@ -337,7 +331,7 @@ function Offered({
   xstyle?: stylex.StyleXStyles
   onPress: () => void
 }) {
-  const { format, locale } = useI18n()
+  const { locale } = useI18n()
   if (can.state === 'hidden') return null
   const button = (
     <Button
@@ -361,7 +355,7 @@ function Offered({
             {button}
           </span>
         </TooltipTrigger>
-        <TooltipContent>{sayBlocked(act, can.reason, round, { format, locale })}</TooltipContent>
+        <TooltipContent>{sayBlocked(act, can.reason, round, { locale })}</TooltipContent>
       </Tooltip>
     </TooltipProvider>
   )

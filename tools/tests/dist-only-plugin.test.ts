@@ -7,6 +7,7 @@ import { createWorkspace } from '@qualy/assembly/testkit'
 import { resolveAssembly } from '@qualy/assembly'
 import { loadAssembly } from '@qualy/assembly/runtime'
 import { buildPluginModuleSource, collectWebPlugins } from '@qualy/web-build/collect'
+import { qualyMessages } from '@qualy/web-build/vite'
 import { surfaceLabel } from '@qualy/ui-contract'
 import { Plugin } from '@qualy/plugin-kit'
 import { Api } from '@qualy/api-kit/plugin'
@@ -50,8 +51,9 @@ describe('a plugin published the ordinary way, with no sources', () => {
     expect(shipped).toEqual([
       'dist/client/ProbePage.js',
       'dist/client/boot.js',
-      'dist/client/i18n.js',
       'dist/index.js',
+      'messages/en-US.json',
+      'messages/zh-CN.json',
       'package.json',
     ])
   })
@@ -85,15 +87,10 @@ describe('a plugin published the ordinary way, with no sources', () => {
       expect(probe!.surfaces.map((binding) => surfaceLabel(binding.surface))).toEqual([
         'page:acme/probe',
       ])
-      expect(probe!.hasCatalogs).toBe(true)
       expect(probe!.browserModules).toHaveLength(1)
       // where each one resolved: through the package's exports, into dist,
       // and never into a src/ that does not exist
-      const resolved = [
-        ...probe!.surfaces.map((binding) => binding.file),
-        probe!.i18nModule!,
-        ...probe!.browserModules,
-      ]
+      const resolved = [...probe!.surfaces.map((binding) => binding.file), ...probe!.browserModules]
       for (const file of resolved) {
         expect(file).toContain(`${path.sep}dist${path.sep}`)
         expect(file).not.toContain(`${path.sep}src${path.sep}`)
@@ -137,6 +134,9 @@ describe('a plugin published the ordinary way, with no sources', () => {
         envFile: false,
         logLevel: 'silent',
         build: { outDir: 'dist', emptyOutDir: true },
+        // its #messages, answered with the facade compiled for it from the
+        // messages it ships: nothing is written into the installed package
+        plugins: [qualyMessages({ manifestPath: at.manifestPath })],
       })
       const assets = path.join(root, 'dist/assets')
       const chunks = fs.readdirSync(assets).filter((name) => name.endsWith('.js'))
@@ -146,6 +146,10 @@ describe('a plugin published the ordinary way, with no sources', () => {
       const page = chunks.filter((name) => name.startsWith('ProbePage-'))
       expect(page, chunks.join(', ')).toHaveLength(1)
       expect(sources.join('\n')).toContain('acme-dist-probe-page-8f21c6')
+      // and what it says, in both languages, compiled into that same chunk
+      const pageSource = fs.readFileSync(path.join(assets, page[0]!), 'utf8')
+      expect(pageSource).toContain('Probe')
+      expect(pageSource).toContain('探针')
       // and the browser half the descriptor declared is in the entry, where
       // the host runs it: a value now, so it is there because something uses
       // it rather than because an import had a side effect

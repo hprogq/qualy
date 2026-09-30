@@ -1,7 +1,8 @@
-import type { MessageDescriptor } from '@qualy/i18n-contract'
+import type { Message } from '@qualy/i18n-contract'
 import type { EvidenceChoiceOptionSpec, EvidenceFieldSpec } from './EvidenceForm.tsx'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import { assessmentUrls } from '../api.ts'
+import * as m from '#messages'
 
 // The wire shapes these screens read, named once. They mirror the api
 // group's views; the typed client checks the calls, these keep the pages
@@ -138,13 +139,13 @@ export const recordedOnly = (item: ItemDto): boolean =>
 export const administrativeItemsOf = (items: readonly ItemDto[]): readonly ItemDto[] =>
   items.filter((item) => item.status === 'active' && opensTo(item, 'administrative'))
 
-export const entryStatusMessage: Record<EntryDto['status'], MessageDescriptor> = {
-  draft: m.entryStatusDraft,
-  in_review: m.entryStatusInReview,
-  needs_revision: m.entryStatusNeedsRevision,
-  approved: m.entryStatusApproved,
-  rejected: m.entryStatusRejected,
-  voided: m.entryStatusVoided,
+export const entryStatusMessage: Record<EntryDto['status'], Message> = {
+  draft: m.entry_statusDraft,
+  in_review: m.entry_statusInReview,
+  needs_revision: m.entry_statusNeedsRevision,
+  approved: m.entry_statusApproved,
+  rejected: m.entry_statusRejected,
+  voided: m.entry_statusVoided,
 }
 
 export const entryStatusVariant: Record<

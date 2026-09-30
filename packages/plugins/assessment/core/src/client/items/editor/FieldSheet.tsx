@@ -7,7 +7,7 @@ import { Field } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { Checkbox } from '@qualy/ui/checkbox'
 import { Input } from '@qualy/ui/input'
-import { assessmentMessages as m } from '../../i18n.ts'
+
 import { EditorSheet } from './EditorSheet.tsx'
 import { sheetStyles } from './shared-styles.ts'
 import { FieldSettingsForm } from './FieldSettings.tsx'
@@ -24,6 +24,7 @@ import {
   type RecognitionDraft,
 } from './model.ts'
 import { boundsWords, kindWords } from './words.ts'
+import * as m from '#messages'
 
 // One submission field. A field of its own is edited here in full. One that
 // is the filing side of a determination keeps what a participant reads -
@@ -112,7 +113,7 @@ export function FieldSheet({
   onPage: (key: string) => void
   onClose: () => void
 }) {
-  const { format, locale } = useI18n()
+  const { locale } = useI18n()
   const listJoin = useList()
   const field = draft.fields.find((one) => one.key === fieldKey)
   if (field === undefined) return null
@@ -134,14 +135,14 @@ export function FieldSheet({
 
   if (link !== undefined && parameter !== undefined) {
     const admitted = admittedSchemaOf(link.recognition, parameter)
-    const name = field.label.trim() === '' ? format(m.itemsFieldUnnamed) : field.label
+    const name = field.label.trim() === '' ? m.items_fieldUnnamed() : field.label
     // What a participant is asked is this field's own: its name, the hint
     // under it, whether it must be filled in. What may be answered is the
     // determination's, because the two are one fact and the arithmetic
     // reads the determination.
     const words = (
       <div {...stylex.props(styles.group)}>
-        <Field label={format(m.itemsName)}>
+        <Field label={m.items_name()}>
           {(id) => (
             <Input
               id={id}
@@ -159,13 +160,13 @@ export function FieldSheet({
             />
           )}
         </Field>
-        <Field label={format(m.itemsFieldHint)}>
+        <Field label={m.items_fieldHint()}>
           {(id) => (
             <Input
               id={id}
               value={field.description}
               maxLength={200}
-              placeholder={format(m.itemsFieldHintPlaceholder)}
+              placeholder={m.items_fieldHintPlaceholder()}
               onChange={(event) => onChange({ ...field, description: event.target.value })}
             />
           )}
@@ -180,14 +181,14 @@ export function FieldSheet({
         <EditorSheet
           open={open}
           title={name}
-          tag={format(m.itemsParameterTag)}
+          tag={m.items_parameterTag()}
           pager={pager}
           onClose={onClose}
           footer={
             <>
               <span {...stylex.props(sheetStyles.footerSpacer)} />
               <Button variant="outline" onClick={onClose}>
-                {format(m.itemsDone)}
+                {m.items_done()}
               </Button>
             </>
           }
@@ -203,7 +204,7 @@ export function FieldSheet({
           />
           <label {...stylex.props(styles.checkLabel)}>
             <Checkbox checked disabled />
-            {format(m.itemsFieldRequired)}
+            {m.items_fieldRequired()}
           </label>
         </EditorSheet>
       )
@@ -212,14 +213,14 @@ export function FieldSheet({
       <EditorSheet
         open={open}
         title={name}
-        tag={format(m.itemsLinkedTag)}
+        tag={m.items_linkedTag()}
         pager={pager}
         onClose={onClose}
         footer={
           <>
             <span {...stylex.props(sheetStyles.footerSpacer)} />
             <Button variant="outline" onClick={onClose}>
-              {format(m.itemsDone)}
+              {m.items_done()}
             </Button>
           </>
         }
@@ -231,32 +232,32 @@ export function FieldSheet({
             checked={field.required}
             onCheckedChange={(next) => onChange({ ...field, required: next === true })}
           />
-          {format(m.itemsFieldRequired)}
+          {m.items_fieldRequired()}
         </label>
         <div {...stylex.props(styles.group)}>
           <div {...stylex.props(styles.banner)} data-testid="field-linked-banner">
             <LinkIcon aria-hidden {...stylex.props(styles.bannerIcon)} />
             <span {...stylex.props(styles.bannerName)}>
               {link.recognition.label.trim() === ''
-                ? format(m.itemsFieldUnnamed)
+                ? m.items_fieldUnnamed()
                 : link.recognition.label}
             </span>
-            <span {...stylex.props(styles.bannerWords)}>{format(m.itemsFieldLinkedRange)}</span>
+            <span {...stylex.props(styles.bannerWords)}>{m.items_fieldLinkedRange()}</span>
             <span {...stylex.props(styles.spacer)} />
             <button
               type="button"
               {...stylex.props(styles.go)}
               onClick={() => onGoToRecognition(link.handle)}
             >
-              {format(m.itemsGoToSettings)}
+              {m.items_goToSettings()}
               <ChevronRightIcon aria-hidden {...stylex.props(styles.icon12)} />
             </button>
           </div>
           <div {...stylex.props(styles.overview)}>
-            <span {...stylex.props(styles.overviewKey)}>{format(m.itemsFieldType)}</span>
-            <span>{kindWords(admitted, format)}</span>
-            <span {...stylex.props(styles.overviewKey)}>{format(m.itemsColumnRange)}</span>
-            <span>{boundsWords(admitted, locale, format, listJoin)}</span>
+            <span {...stylex.props(styles.overviewKey)}>{m.items_fieldType()}</span>
+            <span>{kindWords(admitted)}</span>
+            <span {...stylex.props(styles.overviewKey)}>{m.items_columnRange()}</span>
+            <span>{boundsWords(admitted, locale, listJoin)}</span>
           </div>
         </div>
       </EditorSheet>
@@ -266,8 +267,8 @@ export function FieldSheet({
   return (
     <EditorSheet
       open={open}
-      title={field.label.trim() === '' ? format(m.itemsFieldUnnamed) : field.label}
-      tag={format(m.itemsFieldTag)}
+      title={field.label.trim() === '' ? m.items_fieldUnnamed() : field.label}
+      tag={m.items_fieldTag()}
       pager={pager}
       onClose={onClose}
       footer={
@@ -277,11 +278,11 @@ export function FieldSheet({
             className={stylex.props(styles.danger).className}
             onClick={onDelete}
           >
-            {format(m.itemsFieldRemove)}
+            {m.items_formRemove()}
           </Button>
           <span {...stylex.props(sheetStyles.footerSpacer)} />
           <Button variant="outline" onClick={onClose}>
-            {format(m.itemsDone)}
+            {m.items_done()}
           </Button>
         </>
       }

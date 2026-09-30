@@ -12,14 +12,13 @@ import {
   SearchIcon,
   XIcon,
 } from 'lucide-react'
-import { useI18n } from '@qualy/web-i18n'
 import { Button } from '@qualy/ui/button'
 import { GlideAcross, Sift, SiftRow } from '@qualy/ui/reveal'
 import { Ticker } from '@qualy/ui/ticker'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@qualy/ui/select'
 import { VisuallyHidden } from '@qualy/ui/visually-hidden'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { assessmentMessages as m } from '../../i18n.ts'
+
 import { recordedOnly, type EntryDto, type ItemDto } from '../model.ts'
 import type { Standing, StructureRow } from '../standing.ts'
 import { ROOMY_PANE, useWidthOf, type WorkspaceMode } from './layout.ts'
@@ -39,6 +38,7 @@ import {
   type Outline,
   type Viewer,
 } from './model.ts'
+import * as m from '#messages'
 
 // One question, opened: where it sits, what it pays, the way to file into it,
 // and every claim under it - filtered, searched and read a page at a time.
@@ -491,7 +491,6 @@ export function FileKey({
   size?: 'default' | 'lg'
   onPress: () => void
 }) {
-  const { format } = useI18n()
   return (
     <Button
       data-testid="file-claim"
@@ -501,7 +500,7 @@ export function FileKey({
       onClick={onPress}
     >
       <PlusIcon aria-hidden />
-      {format(filing.declared ? m.entryDeclare : m.entryNew)}
+      {(filing.declared ? m.entry_declare : m.entry_new)()}
     </Button>
   )
 }
@@ -551,7 +550,6 @@ export function ItemPane({
   /** opens the question's requirements where they are not a column of their own */
   onRequirements: () => void
 }) {
-  const { format } = useI18n()
   const calc = useCalcLine()
   const still = useReducedMotion() === true
   // the toolbar and the rows lay out by the room the pane is given, not by
@@ -631,9 +629,7 @@ export function ItemPane({
   // widens its filter and moves every one after it.
   const chipRow = useRef<HTMLDivElement | null>(null)
   const [mark, setMark] = useState<{ left: number; width: number } | null>(null)
-  const offeredKey = offered
-    .map((one) => `${format(one.label)}:${String(counts.get(one.key))}`)
-    .join()
+  const offeredKey = offered.map((one) => `${one.label()}:${String(counts.get(one.key))}`).join()
 
   // The toolbar stands in one row - the filters, a search field, the order -
   // only where the filters fit in it whole. A pane wide enough by its own
@@ -699,9 +695,9 @@ export function ItemPane({
     item.itemType === 'constant' || recordedOnly(item)
       ? null
       : item.maxEntries !== null
-        ? format(m.myEntriesHeadMost, { count: item.maxEntries })
-        : format(m.entriesNoLimit),
-    item.itemType === 'declaration' ? format(m.entriesNothingToFill) : null,
+        ? m.myEntries_headMost({ count: item.maxEntries })
+        : m.entries_noLimit(),
+    item.itemType === 'declaration' ? m.entries_nothingToFill() : null,
   ].filter((fact): fact is string => fact !== null)
 
   const tagTone =
@@ -726,7 +722,7 @@ export function ItemPane({
       <div
         ref={chipRow}
         role="group"
-        aria-label={format(m.entriesFilterLabel)}
+        aria-label={m.entries_filterLabel()}
         {...stylex.props(styles.chips, wide && styles.chipsDesk)}
       >
         {wide && mark !== null && (
@@ -759,14 +755,14 @@ export function ItemPane({
                 on && wide && mark !== null && styles.chipOnDesk,
               )}
             >
-              {format(one.label)}
+              {one.label()}
               <span {...stylex.props(styles.chipCount, one.urgent && styles.chipCountWaits)}>
                 <Ticker value={String(count)} />
               </span>
               {!on && holdsNews(one.test) && (
                 <>
                   <UnreadDot />
-                  <VisuallyHidden>{format(m.holdsUnread)}</VisuallyHidden>
+                  <VisuallyHidden>{m.entry_holdsUnread()}</VisuallyHidden>
                 </>
               )}
             </button>
@@ -779,8 +775,8 @@ export function ItemPane({
           <SearchIcon aria-hidden {...stylex.props(styles.searchIcon)} />
           <input
             type="search"
-            aria-label={format(m.entriesSearch)}
-            placeholder={format(m.entriesSearch)}
+            aria-label={m.entries_search()}
+            placeholder={m.entries_search()}
             value={search}
             onChange={(event) => {
               setSearch(event.target.value)
@@ -791,7 +787,7 @@ export function ItemPane({
           {!wide && (
             <button
               type="button"
-              aria-label={format(m.entriesSearchClose)}
+              aria-label={m.entries_searchClose()}
               onClick={() => {
                 setSearch('')
                 setSearchOpen(false)
@@ -806,7 +802,7 @@ export function ItemPane({
         <Button
           variant="ghost"
           size="icon-sm"
-          aria-label={format(m.entriesSearch)}
+          aria-label={m.entries_search()}
           onClick={() => setSearchOpen(true)}
         >
           <SearchIcon aria-hidden />
@@ -820,7 +816,7 @@ export function ItemPane({
           // a quiet key at every width: the order is a way of reading the
           // list, not a field of it, and it still says the order in force
           quiet
-          aria-label={format(m.entriesSortLabel)}
+          aria-label={m.entries_sortLabel()}
           data-testid="entries-sort"
           data-order={order}
           xstyle={styles.sortSeat}
@@ -833,7 +829,7 @@ export function ItemPane({
               <>
                 {/* in a word for the eye, and in full for a screen reader */}
                 <span aria-hidden data-testid="entries-sort-word">
-                  {format(order === 'oldest' ? m.entriesSortOldestShort : m.entriesSortNewestShort)}
+                  {(order === 'oldest' ? m.entries_sortOldestShort : m.entries_sortNewestShort)()}
                 </span>
                 <VisuallyHidden>
                   <SelectValue />
@@ -845,15 +841,15 @@ export function ItemPane({
         {/* the key ends the toolbar: its list opens from that end, over the
             claims, not across into the column beside them */}
         <SelectContent align="end">
-          <SelectItem value="newest">{format(m.entriesSortNewest)}</SelectItem>
-          <SelectItem value="oldest">{format(m.entriesSortOldest)}</SelectItem>
+          <SelectItem value="newest">{m.entries_sortNewest()}</SelectItem>
+          <SelectItem value="oldest">{m.entries_sortOldest()}</SelectItem>
         </SelectContent>
       </Select>
     </div>
   )
 
   const inset = roomy ? styles.insetRoomy : styles.insetCompact
-  const addLabel = format(filing?.declared === true ? m.entryDeclare : m.entryNew)
+  const addLabel = (filing?.declared === true ? m.entry_declare : m.entry_new)()
   // Where another claim would start, the way in - or, while the stage has
   // shut it, why, in the words the way in would have had: a key that only
   // says it is unavailable sends the reader looking for the reason. A
@@ -863,11 +859,11 @@ export function ItemPane({
       <p
         data-testid="filing-held"
         data-reason={filing.reason ?? ''}
-        data-said={filing.why?.message.id ?? ''}
+        data-said={filing.why?.said ?? ''}
         {...stylex.props(styles.heldRow, inset)}
       >
         <ClockIcon aria-hidden {...stylex.props(styles.heldIcon)} />
-        {filing.why === null ? null : format(filing.why.message, filing.why.values)}
+        {filing.why === null ? null : filing.why.message(filing.why.values)}
       </p>
     ) : (
       <button
@@ -885,7 +881,7 @@ export function ItemPane({
         <span {...stylex.props(styles.spacer)} />
         {filing.room !== null && (
           <span {...stylex.props(styles.addRoom)}>
-            {format(m.entriesRoomLeft, { count: filing.room })}
+            {m.entries_roomLeft({ count: filing.room })}
           </span>
         )}
       </button>
@@ -901,7 +897,7 @@ export function ItemPane({
     >
       <div {...stylex.props(styles.head)}>
         {chain.length > 0 && (
-          <ol aria-label={format(m.entriesWhereLabel)} {...stylex.props(styles.crumbs)}>
+          <ol aria-label={m.entries_whereLabel()} {...stylex.props(styles.crumbs)}>
             {chain.map((section) => (
               <li key={section.id} {...stylex.props(styles.fact)}>
                 <button
@@ -941,7 +937,7 @@ export function ItemPane({
               )
             ) : badge !== null ? (
               <span data-testid="item-badge" {...stylex.props(styles.badge)}>
-                {format(badge)}
+                {badge()}
               </span>
             ) : null)}
         </div>
@@ -952,7 +948,7 @@ export function ItemPane({
               data-tag={row.tag ?? ''}
               {...stylex.props(styles.tag, tagTone)}
             >
-              {format(word)}
+              {word()}
             </span>
           )}
           {facts.map((fact, index) => (
@@ -966,7 +962,7 @@ export function ItemPane({
           {scored && counted !== 0 && (
             <span {...stylex.props(styles.fact, counted < 0 && styles.factNegative)} data-scored>
               <span aria-hidden {...stylex.props(styles.factRule)} />
-              {format(counted < 0 ? m.entriesDeductedFact : m.entriesCountedFact, {
+              {(counted < 0 ? m.entries_deductedFact : m.entries_countedFact)({
                 value: two(Math.abs(counted)),
               })}
             </span>
@@ -981,9 +977,9 @@ export function ItemPane({
             {...stylex.props(styles.asideKey)}
           >
             <InfoIcon aria-hidden {...stylex.props(styles.asideKeyIcon)} />
-            <span {...stylex.props(styles.asideKeyWord)}>{format(m.entriesRequirements)}</span>
+            <span {...stylex.props(styles.asideKeyWord)}>{m.entries_requirements()}</span>
             <span {...stylex.props(styles.asideKeySummary)}>
-              {facts.join(format(m.entriesListJoin))}
+              {facts.join(m.entries_listJoin())}
             </span>
             <ChevronRightIcon aria-hidden {...stylex.props(styles.asideKeyChevron)} />
           </button>
@@ -1026,7 +1022,7 @@ export function ItemPane({
               show: a question with no claims at all is the only empty one */}
           {entries.length > 0 && filtered.length === 0 && (
             <div {...stylex.props(styles.noMatch)} data-testid="entries-no-match">
-              {format(m.entriesNoMatch)}
+              {m.entries_noMatch()}
               <Button
                 variant="outline"
                 size="sm"
@@ -1035,19 +1031,17 @@ export function ItemPane({
                   setSearch('')
                 }}
               >
-                {format(m.entriesClearFilter)}
+                {m.entries_clearFilter()}
               </Button>
             </div>
           )}
           {filtered.length > limit && (
             <Trailing still={still}>
               <div {...stylex.props(styles.more, inset)} data-testid="entries-more">
-                <span>
-                  {format(m.entriesShownOf, { shown: shown.length, total: filtered.length })}
-                </span>
+                <span>{m.entries_shownOf({ shown: shown.length, total: filtered.length })}</span>
                 <span {...stylex.props(styles.spacer)} />
                 <Button variant="outline" size="sm" onClick={() => setLimit((now) => now + PAGE)}>
-                  {format(m.entriesShowMore, { count: Math.min(PAGE, filtered.length - limit) })}
+                  {m.entries_showMore({ count: Math.min(PAGE, filtered.length - limit) })}
                 </Button>
               </div>
             </Trailing>
@@ -1060,14 +1054,14 @@ export function ItemPane({
             <Trailing still={still}>
               <p data-testid="entries-record-pending" {...stylex.props(styles.heldRow, inset)}>
                 <ClockIcon aria-hidden {...stylex.props(styles.heldIcon)} />
-                {format(viewer === 'owner' ? m.entriesRecordedHint : m.paperEmptyRecordedHint)}
+                {(viewer === 'owner' ? m.entries_recordedHint : m.paper_emptyRecordedHint)()}
               </p>
             </Trailing>
           )}
           {filing !== null && filing.full && listed.length > 0 && (
             <Trailing still={still}>
               <div {...stylex.props(styles.note)} data-testid="entries-full">
-                {format(m.myEntriesAddFull)}
+                {m.myEntries_addFull()}
                 {item.maxEntries !== null && (
                   <b {...stylex.props(styles.noteStrong)}>
                     {listed.length} / {item.maxEntries}
@@ -1130,29 +1124,32 @@ function Tray({
   label: string
   onFile: () => void
 }) {
-  const { format } = useI18n()
   const granted = item.itemType === 'constant'
   const recorded = recordedOnly(item)
-  const title = granted ? m.paperEmptyGranted : recorded ? m.paperEmptyRecorded : m.paperEmptyTitle
+  const title = granted
+    ? m.paper_emptyGranted
+    : recorded
+      ? m.paper_emptyRecorded
+      : m.paper_emptyTitle
   // a stage that has shut filing is said as why, in place of the key
   const held = viewer === 'owner' && filing !== null && filing.mayAdd && filing.shut
   const hint = granted
-    ? m.paperEmptyGrantedHint
+    ? m.paper_emptyGrantedHint
     : recorded
       ? viewer === 'owner'
-        ? m.entriesRecordedHint
-        : m.paperEmptyRecordedHint
+        ? m.entries_recordedHint
+        : m.paper_emptyRecordedHint
       : item.status === 'voided'
-        ? m.itemVoided
+        ? m.entry_itemVoided
         : viewer === 'staff'
-          ? m.entriesStaffEmptyHint
+          ? m.entries_staffEmptyHint
           : filing !== null && !filing.mayAdd
             ? // nothing to press here, for now or for good: an empty list
               // must not invite a filing the page will not offer
-              m.entriesNotOpen
+              m.entries_notOpen
             : filing?.declared === true
-              ? m.entriesDeclareHint
-              : m.paperEmptyHint
+              ? m.entries_declareHint
+              : m.paper_emptyHint
   const icon = stylex.props(styles.trayIcon)
   return (
     <div
@@ -1160,7 +1157,7 @@ function Tray({
       data-testid="entries-tray"
       data-kind={granted ? 'granted' : recorded ? 'recorded' : 'filing'}
       data-reason={held ? (filing.reason ?? '') : undefined}
-      data-said={held ? (filing.why?.message.id ?? '') : undefined}
+      data-said={held ? (filing.why?.said ?? '') : undefined}
     >
       <span {...stylex.props(styles.trayMark)}>
         {granted ? (
@@ -1171,9 +1168,9 @@ function Tray({
           <FileTextIcon aria-hidden {...icon} />
         )}
       </span>
-      <p {...stylex.props(styles.trayTitle)}>{format(title)}</p>
+      <p {...stylex.props(styles.trayTitle)}>{title()}</p>
       <p {...stylex.props(styles.trayHint, held && styles.trayHeld)}>
-        {held && filing.why !== null ? format(filing.why.message, filing.why.values) : format(hint)}
+        {held && filing.why !== null ? filing.why.message(filing.why.values) : hint()}
       </p>
       {keyed && filing !== null && filing.mayAdd && !filing.shut && (
         <Button

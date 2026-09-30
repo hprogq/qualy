@@ -1,8 +1,8 @@
 import { isRecordId, useLoadFailure } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
 import type { ResourceFailure } from '@qualy/ui/resource-state'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import type { BatchDto } from '../phase/model.ts'
+import * as m from '#messages'
 
 // Whether the batch a workspace is drawn around is there for this reader,
 // said once for the bar above the rail and the screens below it.
@@ -20,8 +20,8 @@ export function useBatchAbsence(
   query: { readonly data: unknown; readonly error: unknown; readonly isError: boolean },
 ): ResourceFailure | null {
   const failure = useLoadFailure()
-  const { format } = useI18n()
-  const gone = { title: format(m.batchGoneTitle), description: format(m.batchGoneHint) }
+
+  const gone = { title: m.batch_goneTitle(), description: m.batch_goneHint() }
   const copy = { missing: gone, denied: gone }
   if (!isRecordId(batchId)) return failure.missing({ copy })
   return failure.subject(query, { missing: BATCH_MISSING, copy })

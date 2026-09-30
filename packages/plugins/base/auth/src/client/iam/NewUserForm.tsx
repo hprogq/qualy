@@ -13,9 +13,10 @@ import { Feedback, Field, FormDialog, useSettledCheck } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@qualy/ui/select'
-import { iamMessages as m } from '../i18n.ts'
+
 import { authApi } from '../api.ts'
 import { emailShaped, refusedField, type PersonField } from './users/field-refusals.ts'
+import * as m from '#messages'
 
 // Making one person. Four answers: their name, their number, what kind of
 // person they are, and where they stand.
@@ -80,7 +81,7 @@ export function NewUserForm({
   const run = useRunApi()
   const query = useApiQuery(authApi)
   const queryClient = useQueryClient()
-  const { format, formatError } = useI18n()
+  const { formatError } = useI18n()
   const businessNoWord = useTerm(authTerms.businessNumber)
   const [feedback, setFeedback] = useState<string | null>(null)
   // a value somebody else already holds, said under the field it was typed in
@@ -99,7 +100,7 @@ export function NewUserForm({
   }, [open, orgNodeId])
 
   const shape = useSettledCheck(email, (next) =>
-    emailShaped(next) ? null : format(m.emailInvalid),
+    emailShaped(next) ? null : m.person_emailInvalid(),
   )
   const options = userTypesAt(unit)
   const named = useQueryNodeName(unit, orgNodeId, orgNodeName)
@@ -152,12 +153,12 @@ export function NewUserForm({
     <>
       <FormDialog
         open={open && !picking}
-        title={format(m.newUser)}
+        title={m.users_new()}
         onClose={onClose}
         footer={
           <>
             <Button variant="outline" onClick={onClose}>
-              {format(m.cancel)}
+              {m.action_cancel()}
             </Button>
             <Button
               type="submit"
@@ -170,7 +171,7 @@ export function NewUserForm({
                 !emailShaped(email)
               }
             >
-              {format(m.create)}
+              {m.action_create()}
             </Button>
           </>
         }
@@ -184,7 +185,7 @@ export function NewUserForm({
             if (emailShaped(email)) create.mutate()
           }}
         >
-          <Field label={format(m.personNameLabel)} required>
+          <Field label={m.field_personName()} required>
             {(id, control) => (
               <Input
                 id={id}
@@ -202,7 +203,7 @@ export function NewUserForm({
           </Field>
           <Field
             label={businessNoWord}
-            hint={format(m.businessNoPurpose, { businessNo: businessNoWord })}
+            hint={m.person_businessNoPurpose({ businessNo: businessNoWord })}
             error={taken?.field === 'businessNo' ? taken.said : undefined}
           >
             {(id, control) => (
@@ -220,8 +221,8 @@ export function NewUserForm({
             )}
           </Field>
           <Field
-            label={format(m.emailLabel)}
-            hint={format(m.emailPurpose)}
+            label={m.users_email()}
+            hint={m.person_emailPurpose()}
             error={taken?.field === 'email' ? taken.said : (shape.error ?? undefined)}
           >
             {(id, control) => (
@@ -240,7 +241,7 @@ export function NewUserForm({
               />
             )}
           </Field>
-          <Field label={format(m.personPlacement)} required>
+          <Field label={m.person_placement()} required>
             {(id, control) => (
               <Button
                 id={id}
@@ -253,7 +254,7 @@ export function NewUserForm({
                 onClick={() => setPicking(true)}
               >
                 <span {...stylex.props(styles.unitWord, named === '' && styles.unitEmpty)}>
-                  {named === '' ? format(m.movePick) : named}
+                  {named === '' ? m.users_movePick() : named}
                 </span>
                 <ChevronsUpDownIcon
                   className={stylex.props(styles.chevron).className}
@@ -262,7 +263,7 @@ export function NewUserForm({
               </Button>
             )}
           </Field>
-          <Field label={format(m.userTypeLabel)} required>
+          <Field label={m.field_userType()} required>
             {(id, control) =>
               options.length === 0 ? (
                 // Not an empty dropdown. No kind of person may stand at this
@@ -270,18 +271,18 @@ export function NewUserForm({
                 // form says so and offers the way to that page rather than a
                 // control that cannot be used.
                 <span data-testid="new-user-no-types" {...stylex.props(styles.barred)}>
-                  {format(m.newUserNoTypes)}
+                  {m.users_newNoTypes()}
                   <PageLink
                     page="auth/user-types"
                     className={stylex.props(styles.barredLink).className}
                   >
-                    {format(m.newUserNoTypesGo)}
+                    {m.users_newNoTypesGo()}
                   </PageLink>
                 </span>
               ) : (
                 <Select value={userTypeId} onValueChange={setUserTypeId}>
                   <SelectTrigger id={id} {...control} xstyle={styles.fullField}>
-                    <SelectValue placeholder={format(m.selectUserType)} />
+                    <SelectValue placeholder={m.field_selectUserType()} />
                   </SelectTrigger>
                   <SelectContent>
                     {options.map((type) => (
@@ -303,12 +304,12 @@ export function NewUserForm({
       <FormDialog
         open={picking}
         size="medium"
-        title={format(m.personPlacement)}
-        description={format(m.movePick)}
+        title={m.person_placement()}
+        description={m.users_movePick()}
         onClose={() => setPicking(false)}
         footer={
           <Button variant="outline" size="sm" onClick={() => setPicking(false)}>
-            {format(m.cancel)}
+            {m.action_cancel()}
           </Button>
         }
       >
@@ -316,7 +317,7 @@ export function NewUserForm({
           <UiSlot
             token={orgNodePicker}
             context={picker}
-            fallback={<CardEmpty>{format(m.movePickerUnavailable)}</CardEmpty>}
+            fallback={<CardEmpty>{m.users_movePickerUnavailable()}</CardEmpty>}
           />
         </div>
       </FormDialog>

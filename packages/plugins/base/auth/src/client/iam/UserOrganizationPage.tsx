@@ -1,8 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useApiQuery, useLoadFailure, usePageRouteParams } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import * as stylex from '@stylexjs/stylex'
 import { ArrowRightLeftIcon } from 'lucide-react'
 import { AsyncSection, Feedback } from '@qualy/ui/admin'
@@ -16,9 +15,11 @@ import {
   Tag,
 } from '@qualy/ui/screen'
 import { Button } from '@qualy/ui/button'
-import { iamMessages as m } from '../i18n.ts'
+
 import { authApi } from '../api.ts'
 import { UserMoveDialog } from './UserMoveDialog.tsx'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // Where the person stands in the organization, and the one act that changes
 // it.
@@ -39,7 +40,7 @@ const styles = stylex.create({
 export default function UserOrganizationPage() {
   const { userId } = usePageRouteParams('userId')
   const query = useApiQuery(authApi)
-  const { format } = useI18n()
+
   // a reading of this section that failed; the person not being there is the banner's to say
   const describe = useLoadFailure()
   const [picking, setPicking] = useState(false)
@@ -57,15 +58,15 @@ export default function UserOrganizationPage() {
       <AsyncSection
         pending={user.isPending}
         error={user.isError ? describe.of(user.error) : null}
-        loadingLabel={format(commonMessages.loading)}
-        retryLabel={format(commonMessages.retry)}
+        loadingLabel={commonMessages.state_loading()}
+        retryLabel={commonMessages.action_retry()}
         onRetry={() => void user.refetch()}
         skeleton={<EditorSkeleton />}
       >
         {record && (
           <section {...stylex.props(styles.section)}>
             <SectionHead
-              title={format(m.personPlacement)}
+              title={m.person_placement()}
               actions={
                 manageable && (
                   <Button
@@ -75,16 +76,16 @@ export default function UserOrganizationPage() {
                     onClick={() => setPicking(true)}
                   >
                     <ArrowRightLeftIcon aria-hidden />
-                    {format(m.moveLabel)}
+                    {m.users_move()}
                   </Button>
                 )
               }
             />
             <Feedback message={feedback} />
-            {moved && feedback === null && <Feedback message={format(m.saved)} tone="success" />}
+            {moved && feedback === null && <Feedback message={m.feedback_saved()} tone="success" />}
             <Card>
               {path.length === 0 ? (
-                <CardEmpty>{format(m.placementEmpty)}</CardEmpty>
+                <CardEmpty>{m.userDetail_placementEmpty()}</CardEmpty>
               ) : (
                 <div data-testid="org-chain">
                   <DefList>
@@ -92,7 +93,7 @@ export default function UserOrganizationPage() {
                       <DefLine key={node.id} label={node.orgTypeName}>
                         <span data-org-node={node.id} {...stylex.props(styles.standing)}>
                           {node.name}
-                          {depth === path.length - 1 && <Tag>{format(m.columnUnit)}</Tag>}
+                          {depth === path.length - 1 && <Tag>{m.users_columnUnit()}</Tag>}
                         </span>
                       </DefLine>
                     ))}

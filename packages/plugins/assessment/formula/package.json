@@ -33,6 +33,12 @@
     "./permissions": "./src/permissions.ts",
     "./testkit": "./src/testkit.ts"
   },
+  "imports": {
+    "#messages": {
+      "types": "./.qualy/messages.d.ts",
+      "default": "./.qualy/messages.js"
+    }
+  },
   "dependencies": {
     "@effect/platform-node": "catalog:",
     "@mikro-orm/core": "catalog:",

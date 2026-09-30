@@ -8,8 +8,9 @@ import { Button } from '@qualy/ui/button'
 import { Card, CardHead } from '@qualy/ui/screen'
 import type { NamespacedId } from '@qualy/ui-contract'
 import { Skeleton } from '@qualy/ui/skeleton'
-import { orgMessages as m } from '../i18n.ts'
+
 import { orgApi } from '../api.ts'
+import * as m from '#messages'
 
 // What has to be true before a unit can go, as a list that says which of it
 // already is.
@@ -103,7 +104,7 @@ export function DeleteChecklist({
   childCount: number
   onDelete: () => void
 }) {
-  const { format, formatText } = useI18n()
+  const { formatText } = useI18n()
   const listJoin = useList()
   const query = useApiQuery(orgApi)
   const usage = useQuery(query.org.getNodeUsage.queryOptions({ params: { nodeId } }))
@@ -119,7 +120,7 @@ export function DeleteChecklist({
       data-removable={clear}
       data-holds={held.length + (children > 0 ? 1 : 0)}
     >
-      <CardHead title={format(m.deleteNode)} />
+      <CardHead title={m.action_deleteNode()} />
       <ul {...stylex.props(styles.list)}>
         <li {...stylex.props(styles.line)} data-hold="children" data-count={children}>
           <span {...stylex.props(styles.mark, children === 0 ? styles.markClear : styles.markHeld)}>
@@ -131,9 +132,7 @@ export function DeleteChecklist({
           </span>
           <span {...stylex.props(styles.words)}>
             <span {...stylex.props(styles.what)}>
-              {children === 0
-                ? format(m.holdNoChildren)
-                : format(m.holdChildren, { count: children })}
+              {children === 0 ? m.node_holdNoChildren() : m.node_holdChildren({ count: children })}
             </span>
           </span>
         </li>
@@ -146,7 +145,7 @@ export function DeleteChecklist({
           />
         ) : usage.isError ? (
           <li {...stylex.props(styles.line)}>
-            <span {...stylex.props(styles.which)}>{format(m.holdUnknown)}</span>
+            <span {...stylex.props(styles.which)}>{m.node_holdUnknown()}</span>
           </li>
         ) : held.length === 0 ? (
           <li {...stylex.props(styles.line)} data-hold="none">
@@ -154,7 +153,7 @@ export function DeleteChecklist({
               <CheckIcon aria-hidden {...stylex.props(styles.glyph)} />
             </span>
             <span {...stylex.props(styles.words)}>
-              <span {...stylex.props(styles.what)}>{format(m.holdNothingElse)}</span>
+              <span {...stylex.props(styles.what)}>{m.node_holdNothingElse()}</span>
             </span>
           </li>
         ) : (
@@ -171,12 +170,12 @@ export function DeleteChecklist({
               </span>
               <span {...stylex.props(styles.words)}>
                 <span {...stylex.props(styles.what)}>
-                  {format(m.holdLine, { label: formatText(one.label), count: one.count })}
+                  {m.node_holdLine({ label: formatText(one.label), count: one.count })}
                 </span>
                 {one.examples.length > 0 && (
                   <span {...stylex.props(styles.which)}>
                     {one.count > one.examples.length
-                      ? format(m.holdExamplesMore, { names: listJoin(one.examples) })
+                      ? m.node_holdExamplesMore({ names: listJoin(one.examples) })
                       : listJoin(one.examples)}
                   </span>
                 )}
@@ -187,7 +186,7 @@ export function DeleteChecklist({
                   params={one.target.params}
                   search={one.target.search}
                 >
-                  {format(m.holdGo)}
+                  {m.node_holdGo()}
                 </Way>
               )}
             </li>
@@ -196,10 +195,10 @@ export function DeleteChecklist({
       </ul>
       <div {...stylex.props(styles.foot)}>
         <span {...stylex.props(styles.verdict)}>
-          {format(clear ? m.holdVerdictClear : m.holdVerdictHeld)}
+          {(clear ? m.node_holdVerdictClear : m.node_holdVerdictHeld)()}
         </span>
         <Button size="sm" variant="outline" disabled={!clear} onClick={onDelete}>
-          {format(m.deleteNode)}
+          {m.action_deleteNode()}
         </Button>
       </div>
     </Card>

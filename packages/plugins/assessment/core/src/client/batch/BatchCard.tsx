@@ -9,7 +9,7 @@ import { Button } from '@qualy/ui/button'
 import { useIsMobile } from '@qualy/ui/use-mobile'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@qualy/ui/select'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@qualy/ui/tooltip'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import { dotDay, dotMoment } from './dates.ts'
 import { BatchZone } from './BatchZone.tsx'
 import { marked, useBatchZone, useZoneMark } from './zone.ts'
@@ -25,6 +25,7 @@ import {
   type HeroFrame,
   type OwnState,
 } from './hero.ts'
+import * as m from '#messages'
 
 // The batch that is running, as the thing the page leads with.
 //
@@ -614,7 +615,7 @@ function useLaneFit(lanes: RefObject<HTMLDivElement | null>, count: number): Lan
 
 function StageLanes({ timeline, now }: { timeline: readonly TimelineLike[]; now: number }) {
   const zone = useBatchZone()
-  const { format, locale } = useI18n()
+  const { locale } = useI18n()
   const markOf = useZoneMark(locale)
   const plan = planOf(timeline, now)
   // Each end of the axis is marked with the batch's offset on its own day:
@@ -690,7 +691,7 @@ function StageLanes({ timeline, now }: { timeline: readonly TimelineLike[]; now:
             {marked(dotDay(plan.start, zone), startMark)}
           </span>
           {plan.today !== null && (
-            <span {...stylex.props(styles.axisToday(at(plan.today)))}>{format(m.today)}</span>
+            <span {...stylex.props(styles.axisToday(at(plan.today)))}>{m.batch_today()}</span>
           )}
           {end !== null && (
             <span {...stylex.props(styles.axisEnd)}>{marked(dotDay(end, zone), endOwnMark)}</span>
@@ -702,13 +703,12 @@ function StageLanes({ timeline, now }: { timeline: readonly TimelineLike[]; now:
 }
 
 function Frame({ frame, current }: { frame: HeroFrame; current: string }) {
-  const { format } = useI18n()
   if (frame.kind === 'single') return null
   if (frame.kind === 'picker') {
     return (
       <Select value={current} onValueChange={frame.onPick}>
-        <SelectTrigger aria-label={format(m.pickBatch)} xstyle={styles.picker}>
-          <SelectValue placeholder={format(m.pickBatch)} />
+        <SelectTrigger aria-label={m.batch_pick()} xstyle={styles.picker}>
+          <SelectValue placeholder={m.batch_pick()} />
         </SelectTrigger>
         <SelectContent>
           {frame.options.map((option) => (
@@ -724,7 +724,7 @@ function Frame({ frame, current }: { frame: HeroFrame; current: string }) {
     <div {...stylex.props(styles.frame)}>
       <button
         type="button"
-        aria-label={format(m.previousBatch)}
+        aria-label={m.batch_previous()}
         onClick={frame.onPrevious}
         {...stylex.props(styles.frameArrow)}
       >
@@ -740,7 +740,7 @@ function Frame({ frame, current }: { frame: HeroFrame; current: string }) {
       </span>
       <button
         type="button"
-        aria-label={format(m.nextBatch)}
+        aria-label={m.batch_next()}
         onClick={frame.onNext}
         {...stylex.props(styles.frameArrow)}
       >
@@ -766,10 +766,7 @@ function Frame({ frame, current }: { frame: HeroFrame; current: string }) {
  * drawn in the weight of a fact rather than of an instruction, so it
  * neither calls out nor stands in the way.
  */
-function wordsOf(
-  row: AgendaKind,
-  format: ReturnType<typeof useI18n>['format'],
-): {
+function wordsOf(row: AgendaKind): {
   label: string
   value: string
   /** why, where the state alone does not say what to do about it */
@@ -781,13 +778,11 @@ function wordsOf(
 } {
   if (row.kind === 'review') {
     return {
-      label: format(m.awaitingReview),
+      label: m.batch_awaitingReview(),
       value:
-        row.waiting > 0
-          ? format(m.submissionsCount, { count: row.waiting })
-          : format(m.reviewsClear),
+        row.waiting > 0 ? m.batch_submissionsCount({ count: row.waiting }) : m.batch_reviewsClear(),
       note: null,
-      action: row.waiting > 0 ? format(m.startReview) : format(m.viewLine),
+      action: row.waiting > 0 ? m.batch_startReview() : m.batch_view(),
       quiet: row.waiting === 0,
       page: 'assessment/batch-reviews',
       state: row.waiting > 0 ? 'waiting' : 'clear',
@@ -796,25 +791,25 @@ function wordsOf(
   const count = { count: row.count }
   const asks = ownLineAsks(row)
   const words: Record<OwnState, () => readonly [string, string]> = {
-    toAnswer: () => [format(m.toAnswer, count), format(m.answerAsk)],
+    toAnswer: () => [m.batch_toAnswer(count), m.batch_answerAsk()],
     // once filing has closed these only say what was left
-    toFix: () => [format(m.toRevise, count), format(asks ? m.continueEntries : m.viewLine)],
-    draft: () => [format(m.toSubmit, count), format(asks ? m.continueDraft : m.viewLine)],
-    rejected: () => [format(m.notAccepted, count), format(m.seeWhy)],
-    submitted: () => [format(m.underReview, count), format(m.viewLine)],
-    approved: () => [format(m.accepted, count), format(m.viewLine)],
-    none: () => [format(m.entriesNone), format(m.startEntries)],
-    upcoming: () => [format(m.filingUpcoming), format(m.viewLine)],
-    missed: () => [format(m.filingMissed), format(m.viewLine)],
+    toFix: () => [m.batch_toRevise(count), (asks ? m.batch_continueEntries : m.batch_view)()],
+    draft: () => [m.batch_toSubmit(count), (asks ? m.batch_continueDraft : m.batch_view)()],
+    rejected: () => [m.batch_notAccepted(count), m.batch_seeWhy()],
+    submitted: () => [m.batch_underReview(count), m.batch_view()],
+    approved: () => [m.batch_accepted(count), m.batch_view()],
+    none: () => [m.batch_entriesNone(), m.batch_startEntries()],
+    upcoming: () => [m.batch_filingUpcoming(), m.batch_view()],
+    missed: () => [m.batch_filingMissed(), m.batch_view()],
     // the same answer every question gives on the reader's own page, said
     // once for the batch instead of an invitation to file
-    unreachable: () => [format(m.filingUnreachable), format(m.viewLine)],
+    unreachable: () => [m.batch_filingUnreachable(), m.batch_view()],
   }
   const [value, action] = words[row.state]()
   return {
-    label: format(m.myEntries),
+    label: m.batch_myEntries(),
     value,
-    note: row.state === 'unreachable' ? format(m.filingUnreachableHint) : null,
+    note: row.state === 'unreachable' ? m.batch_filingUnreachableHint() : null,
     action,
     quiet: !asks,
     page: 'assessment/batch-my-entries',
@@ -822,16 +817,8 @@ function wordsOf(
   }
 }
 
-function AgendaRow({
-  row,
-  batchId,
-  format,
-}: {
-  row: AgendaKind
-  batchId: string
-  format: ReturnType<typeof useI18n>['format']
-}) {
-  const { label, value, note, action, quiet, page, state } = wordsOf(row, format)
+function AgendaRow({ row, batchId }: { row: AgendaKind; batchId: string }) {
+  const { label, value, note, action, quiet, page, state } = wordsOf(row)
   const softly = quiet && styles.agendaActionIdle
   return (
     <div
@@ -864,16 +851,8 @@ function AgendaRow({
 }
 
 /** one line of work, the whole of it a way to that work */
-function PhoneAgendaRow({
-  row,
-  batchId,
-  format,
-}: {
-  row: AgendaKind
-  batchId: string
-  format: ReturnType<typeof useI18n>['format']
-}) {
-  const { label, value, note, quiet, page, state } = wordsOf(row, format)
+function PhoneAgendaRow({ row, batchId }: { row: AgendaKind; batchId: string }) {
+  const { label, value, note, quiet, page, state } = wordsOf(row)
   const words = (
     <>
       <span {...stylex.props(phone.agendaWords)}>
@@ -942,7 +921,7 @@ function CardBody({
   entered = null,
   now = Date.now(),
 }: BatchCardProps): ReactNode {
-  const { format, locale } = useI18n()
+  const { locale } = useI18n()
   const zone = useBatchZone()
   const markOf = useZoneMark(locale)
   // the card's own shape changes, not just its width, so the choice is made
@@ -985,7 +964,7 @@ function CardBody({
         {agenda.rows.length > 0 && (
           <div {...stylex.props(phone.agenda)}>
             {agenda.rows.map((line) => (
-              <PhoneAgendaRow key={line.kind} row={line} batchId={row.id} format={format} />
+              <PhoneAgendaRow key={line.kind} row={line} batchId={row.id} />
             ))}
           </div>
         )}
@@ -1020,8 +999,8 @@ function CardBody({
                       needs no noun after it */}
                   <span {...stylex.props(phone.metaAt)}>
                     {at === -1
-                      ? format(m.stageCount, { total: row.timeline.length })
-                      : format(m.stageAt, { current: at + 1, total: row.timeline.length })}
+                      ? m.batch_stageCount({ total: row.timeline.length })
+                      : m.batch_stageAt({ current: at + 1, total: row.timeline.length })}
                   </span>
                   {row.currentPhaseName !== null && (
                     <span {...stylex.props(phone.metaStage)}>{row.currentPhaseName}</span>
@@ -1034,7 +1013,7 @@ function CardBody({
 
           <Button asChild className={stylex.props(phone.enter).className}>
             <PageLink page="assessment/batch" params={{ batchId: row.id }}>
-              {format(m.enterBatch)}
+              {m.batch_enter()}
               <ArrowRightIcon aria-hidden />
             </PageLink>
           </Button>
@@ -1067,7 +1046,7 @@ function CardBody({
                 data-from={row.materialRange.start}
                 data-until={lastDay(row.materialRange.end)}
               >
-                {format(m.materialWindow, {
+                {m.batch_materialWindow({
                   from: dotDay(row.materialRange.start),
                   // stored with its end outside the window; the card says
                   // the last day that counts
@@ -1077,8 +1056,8 @@ function CardBody({
               {row.timeline.length > 0 && (
                 <span>
                   {at === -1
-                    ? format(m.stageCount, { total: row.timeline.length })
-                    : format(m.stagePosition, { current: at + 1, total: row.timeline.length })}
+                    ? m.batch_stageCount({ total: row.timeline.length })
+                    : m.batch_stagePosition({ current: at + 1, total: row.timeline.length })}
                 </span>
               )}
             </div>
@@ -1089,7 +1068,7 @@ function CardBody({
           <div {...stylex.props(styles.actions)}>
             <Button asChild>
               <PageLink page="assessment/batch" params={{ batchId: row.id }}>
-                {format(m.enterBatch)}
+                {m.batch_enter()}
                 <ArrowRightIcon aria-hidden />
               </PageLink>
             </Button>
@@ -1098,9 +1077,9 @@ function CardBody({
 
         <aside {...stylex.props(styles.side)}>
           <div {...stylex.props(styles.stage, styles.cell, styles.cellFirst)}>
-            <span {...stylex.props(styles.stageLabel)}>{format(m.currentStage)}</span>
+            <span {...stylex.props(styles.stageLabel)}>{m.batch_currentStage()}</span>
             <span {...stylex.props(styles.stageName)}>
-              {row.currentPhaseName ?? format(m.notScheduled)}
+              {row.currentPhaseName ?? m.plan_notScheduled()}
             </span>
             <span {...stylex.props(styles.stageClock)}>
               {/* the close and what is left to it, one unit: "03.01 23:59
@@ -1113,14 +1092,14 @@ function CardBody({
                   {...(mark === null ? {} : { 'data-zone-mark': mark })}
                   {...stylex.props(styles.stageWhen)}
                 >
-                  {format(m.stageDeadline, { when: marked(closes, mark) })}
+                  {m.batch_stageDeadline({ when: marked(closes, mark) })}
                 </span>
               )}
               <BatchProgress timeline={row.timeline} single />
             </span>
           </div>
           {agenda.rows.map((line) => (
-            <AgendaRow key={line.kind} row={line} batchId={row.id} format={format} />
+            <AgendaRow key={line.kind} row={line} batchId={row.id} />
           ))}
         </aside>
       </article>

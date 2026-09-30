@@ -2,15 +2,16 @@ import { useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { ClockIcon } from 'lucide-react'
 import { usePageNavigate } from '@qualy/web-runtime'
-import { useI18n, useList } from '@qualy/web-i18n'
+import { useList } from '@qualy/web-i18n'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
 import { Card } from '@qualy/ui/screen'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import { pageOf, useHowLongAgo, useQueueClock, type AwaitingDto } from './model.ts'
 import { useAwaitingQuery } from './queue.ts'
 import { PagerFoot } from './QueueViews.tsx'
+import * as m from '#messages'
 
 // What this reviewer's step is waiting on somebody else for.
 //
@@ -320,7 +321,6 @@ export function AwaitingSection({
   page: number
   onPage: (page: number) => void
 }) {
-  const { format } = useI18n()
   const navigate = usePageNavigate()
   const howLongAgo = useHowLongAgo()
   const asked = useQuery({
@@ -331,7 +331,7 @@ export function AwaitingSection({
   // its own view now, so an empty one says so instead of vanishing: a tab
   // that opens onto nothing at all reads as broken, not as quiet
   if (rows.length === 0) {
-    return <p {...stylex.props(styles.empty)}>{format(m.reviewAwaitingEmpty)}</p>
+    return <p {...stylex.props(styles.empty)}>{m.review_awaitingEmpty()}</p>
   }
   const answered = rows.filter((row) => row.status === 'answered').length
   const list = pageOf(rows, page, ASKED_PAGE)
@@ -339,25 +339,23 @@ export function AwaitingSection({
   return (
     <Card data-testid="awaiting-pane" data-count={rows.length}>
       <header {...stylex.props(styles.head)}>
-        <p {...stylex.props(styles.headTitle)}>{format(m.reviewAwaitingTitle)}</p>
+        <p {...stylex.props(styles.headTitle)}>{m.review_awaitingTitle()}</p>
         <Badge variant="outline" className={stylex.props(styles.countBadge).className}>
-          {format(m.reviewAwaitingCount, { count: rows.length })}
+          {m.review_awaitingCount({ count: rows.length })}
         </Badge>
         {answered > 0 && (
-          <p {...stylex.props(styles.quietNote)}>
-            {format(m.reviewAwaitingBack, { count: answered })}
-          </p>
+          <p {...stylex.props(styles.quietNote)}>{m.review_awaitingBack({ count: answered })}</p>
         )}
       </header>
 
       {/* the same column names the queue uses, so the two read as one table
           even though they are two lists */}
       <div {...stylex.props(styles.columns)}>
-        <span>{format(m.reviewColumnWho)}</span>
-        <span>{format(m.reviewAwaitingColAsk)}</span>
-        <span>{format(m.reviewAwaitingColWaited)}</span>
-        <span>{format(m.reviewColumnStatus)}</span>
-        <span>{format(m.reviewAwaitingColAskedAt)}</span>
+        <span>{m.review_columnWho()}</span>
+        <span>{m.review_awaitingColAsk()}</span>
+        <span>{m.review_awaitingColWaited()}</span>
+        <span>{m.review_columnStatus()}</span>
+        <span>{m.review_awaitingColAskedAt()}</span>
         <span />
       </div>
 
@@ -389,7 +387,6 @@ function AwaitingRow({
   howLongAgo: (iso: string) => string
   onOpen: () => void
 }) {
-  const { format } = useI18n()
   const clock = useQueueClock()
   const listJoin = useList()
   const answered = row.status === 'answered'
@@ -412,7 +409,7 @@ function AwaitingRow({
               aria-hidden
               {...stylex.props(styles.dot, answered ? styles.dotAnswered : styles.dotOpen)}
             />
-            {format(answered ? m.reviewAwaitingAnswered : m.supplementStatusOpen)}
+            {(answered ? m.review_awaitingAnswered : m.supplement_statusOpen)()}
           </span>
         </span>
       </div>
@@ -421,7 +418,7 @@ function AwaitingRow({
         <span {...stylex.props(styles.askTitle)}>{row.itemTitle}</span>
         {row.asks.length > 0 && (
           <span {...stylex.props(styles.askWant)}>
-            {format(m.reviewAwaitingWant, { what: listJoin(row.asks) })}
+            {m.review_awaitingWant({ what: listJoin(row.asks) })}
           </span>
         )}
       </span>
@@ -450,7 +447,7 @@ function AwaitingRow({
             data-answered={answered}
             onClick={onOpen}
           >
-            {format(answered ? m.reviewAwaitingGo : m.reviewOpen)}
+            {(answered ? m.review_awaitingGo : m.review_open)()}
           </Button>
         </span>
       </div>

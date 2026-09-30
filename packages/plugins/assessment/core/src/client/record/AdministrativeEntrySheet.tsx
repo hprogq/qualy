@@ -5,10 +5,11 @@ import { Button } from '@qualy/ui/button'
 import { toast } from '@qualy/ui/toast'
 import { useLingering } from '@qualy/ui/use-lingering'
 import { assessmentApi } from '../api.ts'
-import { assessmentMessages as m } from '../i18n.ts'
+
 import { ManagedEntrySheet, type RecognitionDto } from '../entry/ManagedEntrySheet.tsx'
 import { sayEntryFailure } from '../entry/refusals.ts'
 import type { ItemDto } from '../entry/model.ts'
+import * as m from '#messages'
 
 // One administrative fact, read and corrected.
 //
@@ -50,7 +51,7 @@ export function AdministrativeEntrySheet({
   const run = useRunApi()
   const query = useApiQuery(assessmentApi)
   const queryClient = useQueryClient()
-  const { format, formatError } = useI18n()
+  const { formatError } = useI18n()
 
   const detail = useQuery(query.assessment.getEntry.queryOptions({ params: { entryId } }))
   const items = useQuery(query.assessment.listItems.queryOptions({ params: { batchId } }))
@@ -106,7 +107,7 @@ export function AdministrativeEntrySheet({
         }),
       ),
     onSuccess: () => {
-      toast.success(format(m.staffVoided))
+      toast.success(m.staff_voided())
       void queryClient.invalidateQueries({
         queryKey: query.assessment.listAdministrativeEntries.key({
           params: { batchId },
@@ -128,7 +129,7 @@ export function AdministrativeEntrySheet({
       })
       onClose()
     },
-    onError: (error) => toast.error(sayEntryFailure(error, { format, formatError })),
+    onError: (error) => toast.error(sayEntryFailure(error, { formatError })),
   })
 
   // A record that will not open has to say so.
@@ -163,11 +164,11 @@ export function AdministrativeEntrySheet({
         // act, and the way back is to whichever settled it
         line !== undefined && line.importId !== null ? (
           <Button size="sm" variant="ghost" onClick={() => onOpenImport(line.importId!)}>
-            {format(m.importViewImport)}
+            {m.record_import_viewImport()}
           </Button>
         ) : line !== undefined && line.operationId !== null ? (
           <Button size="sm" variant="ghost" onClick={() => onOpenAct(line.operationId!)}>
-            {format(m.recordActOpen)}
+            {m.record_actOpen()}
           </Button>
         ) : null
       }

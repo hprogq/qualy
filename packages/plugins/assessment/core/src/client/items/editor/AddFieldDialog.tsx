@@ -10,18 +10,19 @@ import {
   ToggleRightIcon,
   TypeIcon,
 } from 'lucide-react'
-import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
-import type { MessageDescriptor } from '@qualy/i18n-contract'
+
+import type { Message } from '@qualy/i18n-contract'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { FormDialog } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
-import { assessmentMessages as m } from '../../i18n.ts'
+
 import { FieldSettingsForm } from './FieldSettings.tsx'
 import { Tag } from './Rows.tsx'
 import { blankField, fieldComplete, nextKey, type FieldDraft, type FieldType } from './model.ts'
 import { TYPE_LABEL } from './words.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // Adding a field is one task in one dialog: pick what kind of thing it
 // asks for, then say what it is called and what it takes, and only the
@@ -62,44 +63,44 @@ const styles = stylex.create({
 
 type Card = {
   type: FieldType
-  name: MessageDescriptor
-  hint: MessageDescriptor
+  name: Message
+  hint: Message
   icon: React.ComponentType<{ className?: string; 'aria-hidden'?: boolean }>
 }
 
-const GROUPS: readonly { label: MessageDescriptor; cards: readonly Card[] }[] = [
+const GROUPS: readonly { label: Message; cards: readonly Card[] }[] = [
   {
-    label: m.itemsTypeGroupBasic,
+    label: m.items_typeGroupBasic,
     cards: [
-      { type: 'text', name: m.itemsTypeText, hint: m.itemsTypeTextHint, icon: TypeIcon },
-      { type: 'integer', name: m.itemsTypeNumber, hint: m.itemsTypeNumberHint, icon: HashIcon },
-      { type: 'date', name: m.itemsTypeDate, hint: m.itemsTypeDateHint, icon: CalendarIcon },
+      { type: 'text', name: m.items_typeText, hint: m.items_typeTextHint, icon: TypeIcon },
+      { type: 'integer', name: m.items_typeNumber, hint: m.items_typeNumberHint, icon: HashIcon },
+      { type: 'date', name: m.items_typeDate, hint: m.items_typeDateHint, icon: CalendarIcon },
     ],
   },
   {
-    label: m.itemsTypeGroupChoice,
+    label: m.items_typeGroupChoice,
     cards: [
       {
         type: 'choice',
-        name: m.itemsTypeSingleChoice,
-        hint: m.itemsTypeChoiceHint,
+        name: m.items_typeSingleChoice,
+        hint: m.items_typeChoiceHint,
         icon: CircleDotIcon,
       },
       {
         type: 'boolean',
-        name: m.itemsTypeBoolean,
-        hint: m.itemsTypeBooleanHint,
+        name: m.items_typeBoolean,
+        hint: m.items_typeBooleanHint,
         icon: ToggleRightIcon,
       },
     ],
   },
   {
-    label: m.itemsTypeGroupOther,
+    label: m.items_typeGroupOther,
     cards: [
       {
         type: 'attachment',
-        name: m.itemsTypeAttachment,
-        hint: m.itemsTypeAttachmentHint,
+        name: m.items_typeAttachment,
+        hint: m.items_typeAttachmentHint,
         icon: FileIcon,
       },
     ],
@@ -117,14 +118,13 @@ export function AddFieldDialog({
   onAdd: (field: FieldDraft) => void
   onClose: () => void
 }) {
-  const { format } = useI18n()
   const [search, setSearch] = useState('')
   const [field, setField] = useState<FieldDraft | null>(null)
   const needle = search.trim().toLowerCase()
   const matches = (card: Card) =>
     needle === '' ||
-    format(card.name).toLowerCase().includes(needle) ||
-    format(card.hint).toLowerCase().includes(needle)
+    card.name().toLowerCase().includes(needle) ||
+    card.hint().toLowerCase().includes(needle)
   const shown = GROUPS.map((group) => ({ ...group, cards: group.cards.filter(matches) })).filter(
     (group) => group.cards.length > 0,
   )
@@ -136,23 +136,21 @@ export function AddFieldDialog({
         open={open}
         size="medium"
         restfulFocus
-        title={format(m.itemsFieldAdd)}
+        title={m.items_formAdd()}
         onClose={onClose}
       >
         <div {...stylex.props(styles.stack)} data-testid="add-field-types">
           <Input
             value={search}
             lead={<SearchIcon aria-hidden />}
-            placeholder={format(m.itemsAddFieldSearch)}
-            aria-label={format(m.itemsAddFieldSearch)}
+            placeholder={m.items_addFieldSearch()}
+            aria-label={m.items_addFieldSearch()}
             onChange={(event) => setSearch(event.target.value)}
           />
-          {shown.length === 0 && (
-            <p {...stylex.props(styles.none)}>{format(m.itemsAddFieldNoMatch)}</p>
-          )}
+          {shown.length === 0 && <p {...stylex.props(styles.none)}>{m.items_addFieldNoMatch()}</p>}
           {shown.map((group) => (
-            <div key={group.label.id} {...stylex.props(styles.group)}>
-              <span {...stylex.props(styles.groupLabel)}>{format(group.label)}</span>
+            <div key={group.label()} {...stylex.props(styles.group)}>
+              <span {...stylex.props(styles.groupLabel)}>{group.label()}</span>
               <div {...stylex.props(styles.grid)}>
                 {group.cards.map((card) => {
                   const Icon = card.icon
@@ -165,8 +163,8 @@ export function AddFieldDialog({
                       onClick={() => setField(blankField(card.type, nextKey()))}
                     >
                       <Icon aria-hidden className={stylex.props(styles.cardIcon).className} />
-                      <span {...stylex.props(styles.cardName)}>{format(card.name)}</span>
-                      <span {...stylex.props(styles.cardHint)}>{format(card.hint)}</span>
+                      <span {...stylex.props(styles.cardName)}>{card.name()}</span>
+                      <span {...stylex.props(styles.cardHint)}>{card.hint()}</span>
                     </button>
                   )
                 })}
@@ -187,23 +185,23 @@ export function AddFieldDialog({
           <Button
             variant="ghost"
             size="icon-sm"
-            aria-label={format(m.itemsBackToTypes)}
+            aria-label={m.items_backToTypes()}
             onClick={() => setField(null)}
           >
             <ChevronLeftIcon aria-hidden />
           </Button>
-          {format(m.itemsNewField)}
-          <Tag tall>{format(TYPE_LABEL[numberTyped ? 'integer' : field.type])}</Tag>
+          {m.items_newField()}
+          <Tag tall>{TYPE_LABEL[numberTyped ? 'integer' : field.type]()}</Tag>
         </span>
       }
       onClose={onClose}
       footer={
         <div {...stylex.props(styles.footer)}>
           <Button variant="outline" onClick={onClose}>
-            {format(commonMessages.cancel)}
+            {commonMessages.action_cancel()}
           </Button>
           <Button disabled={!fieldComplete(field)} onClick={() => onAdd(field)}>
-            {format(m.itemsAdd)}
+            {m.items_add()}
           </Button>
         </div>
       }

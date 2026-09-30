@@ -10,15 +10,16 @@ import {
   usePageRouteParams,
   useRunApi,
 } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { AsyncSection } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { Card, CardFoot, FootNote, SectionHead, Spacer, TableSkeleton } from '@qualy/ui/screen'
 import { ToggleGroup, ToggleGroupItem } from '@qualy/ui/toggle-group'
-import { auditMessages as m } from './i18n.ts'
+
 import { auditApi } from './api.ts'
 import { EventTable } from './EventTable.tsx'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // One person's part of the trail, as a section of their record: what was
 // done to their account, and what they did. Everything the trail keeps -
@@ -38,7 +39,7 @@ export default function UserAuditPage() {
   const api = useApi(auditApi)
   const runApi = useRunApi()
   const query = useApiQuery(auditApi)
-  const { format } = useI18n()
+
   const describe = useLoadFailure()
   // kept in the address, so a reload or a link keeps which half is read
   const [view, setView] = usePageQueryState('view')
@@ -59,18 +60,18 @@ export default function UserAuditPage() {
   return (
     <div {...stylex.props(styles.page)} data-testid="user-audit" data-view={by ? 'by' : 'about'}>
       <SectionHead
-        title={format(m.userEvents)}
+        title={m.userEvents_title()}
         actions={
           <ToggleGroup
-            aria-label={format(m.userEventsView)}
+            aria-label={m.userEvents_view()}
             value={by ? 'by' : 'about'}
             onValueChange={(next) => {
               if (next === '') return
               setView(next === 'by' ? 'by' : '')
             }}
           >
-            <ToggleGroupItem value="about">{format(m.userEventsAbout)}</ToggleGroupItem>
-            <ToggleGroupItem value="by">{format(m.userEventsBy)}</ToggleGroupItem>
+            <ToggleGroupItem value="about">{m.userEvents_about()}</ToggleGroupItem>
+            <ToggleGroupItem value="by">{m.userEvents_by()}</ToggleGroupItem>
           </ToggleGroup>
         }
       />
@@ -79,15 +80,15 @@ export default function UserAuditPage() {
         error={events.isError ? describe.of(events.error) : undefined}
         retrying={events.isFetching}
         framed
-        loadingLabel={format(commonMessages.loading)}
-        retryLabel={format(commonMessages.retry)}
+        loadingLabel={commonMessages.state_loading()}
+        retryLabel={commonMessages.action_retry()}
         onRetry={() => void events.refetch()}
         skeleton={<TableSkeleton />}
       >
         <Card data-testid="audit-table">
           <EventTable
             rows={rows}
-            empty={format(by ? m.userEventsEmptyBy : m.userEventsEmptyAbout)}
+            empty={(by ? m.userEvents_emptyBy : m.userEvents_emptyAbout)()}
             // what was done to them is all about them: their name on every row says nothing
             hideTarget={!by}
           />
@@ -95,7 +96,7 @@ export default function UserAuditPage() {
             <CardFoot>
               <FootNote>
                 <span data-testid="audit-count" data-count={rows.length}>
-                  {format(m.loadedCount, { count: rows.length })}
+                  {m.events_loadedCount({ count: rows.length })}
                 </span>
               </FootNote>
               <Spacer />
@@ -106,7 +107,7 @@ export default function UserAuditPage() {
                   disabled={events.isFetchingNextPage}
                   onClick={() => void events.fetchNextPage()}
                 >
-                  {format(m.loadMore)}
+                  {m.events_loadMore()}
                 </Button>
               )}
             </CardFoot>

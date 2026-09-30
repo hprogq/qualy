@@ -29,7 +29,7 @@ import {
   useRunApi,
 } from '@qualy/web-runtime'
 import { useI18n, useList } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
+
 import { AsyncSection } from '@qualy/ui/admin'
 import { useLingering } from '@qualy/ui/use-lingering'
 import { Badge } from '@qualy/ui/badge'
@@ -48,12 +48,14 @@ import {
   TableHead,
   TableRow,
 } from '@qualy/ui/screen'
-import { iamMessages as m } from '../i18n.ts'
+
 import { MethodSheet } from './methods/MethodSheet.tsx'
 import { NewMethodDialog } from './methods/NewMethodDialog.tsx'
 import { authApi } from '../api.ts'
 import { LoginMethodGlyph } from '../sign-in/glyph.tsx'
 import { gapped } from '../sign-in/gapped.ts'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import * as m from '#messages'
 
 // The tenant's doors, and who each one lets through.
 //
@@ -128,7 +130,7 @@ const styles = stylex.create({
 
 export default function LoginMethodsPage() {
   const query = useApiQuery(authApi)
-  const { format, formatText, formatError, locale } = useI18n()
+  const { formatText, formatError, locale } = useI18n()
   const describe = useLoadFailure()
   const listJoin = useList()
   const [selected, setSelected] = usePageQueryState('provider')
@@ -177,7 +179,7 @@ export default function LoginMethodsPage() {
       from !== 'primary' &&
       next.primary.length >= MAX_PRIMARY_LOGIN_METHODS
     ) {
-      toast.error(format(m.methodsPrimaryFull, { most: MAX_PRIMARY_LOGIN_METHODS }))
+      toast.error(m.loginMethods_primaryFull({ most: MAX_PRIMARY_LOGIN_METHODS }))
       return
     }
     next[from] = next[from].filter((id) => id !== moving)
@@ -215,7 +217,7 @@ export default function LoginMethodsPage() {
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          aria-label={format(m.methodMove, { name: gapped(provider.name, locale) })}
+          aria-label={m.loginMethods_move({ name: gapped(provider.name, locale) })}
           data-testid="method-order"
           {...stylex.props(styles.step)}
         >
@@ -229,7 +231,7 @@ export default function LoginMethodsPage() {
           onSelect={() => step(provider.id, -1)}
         >
           <ChevronUpIcon aria-hidden />
-          {format(m.methodMoveUp, { name: gapped(provider.name, locale) })}
+          {m.loginMethods_moveUp({ name: gapped(provider.name, locale) })}
         </DropdownMenuItem>
         <DropdownMenuItem
           disabled={index === count - 1}
@@ -237,7 +239,7 @@ export default function LoginMethodsPage() {
           onSelect={() => step(provider.id, 1)}
         >
           <ChevronDownIcon aria-hidden />
-          {format(m.methodMoveDown, { name: gapped(provider.name, locale) })}
+          {m.loginMethods_moveDown({ name: gapped(provider.name, locale) })}
         </DropdownMenuItem>
         {provider.prominence === 'secondary' ? (
           <DropdownMenuItem
@@ -246,7 +248,7 @@ export default function LoginMethodsPage() {
             onSelect={() => place(provider.id, 'primary', null)}
           >
             <ArrowUpToLineIcon aria-hidden />
-            {format(m.methodToPrimary, { name: gapped(provider.name, locale) })}
+            {m.loginMethods_toPrimary({ name: gapped(provider.name, locale) })}
           </DropdownMenuItem>
         ) : (
           <DropdownMenuItem
@@ -254,7 +256,7 @@ export default function LoginMethodsPage() {
             onSelect={() => place(provider.id, 'secondary', null)}
           >
             <ArrowDownToLineIcon aria-hidden />
-            {format(m.methodToSecondary, { name: gapped(provider.name, locale) })}
+            {m.loginMethods_toSecondary({ name: gapped(provider.name, locale) })}
           </DropdownMenuItem>
         )}
       </DropdownMenuContent>
@@ -283,13 +285,13 @@ export default function LoginMethodsPage() {
         }}
       >
         <CardHead
-          title={format(into === 'primary' ? m.methodsPrimaryTitle : m.methodsSecondaryTitle)}
-          sub={format(into === 'primary' ? m.methodsPrimaryHint : m.methodsSecondaryHint)}
+          title={(into === 'primary' ? m.loginMethods_primary : m.loginMethods_secondary)()}
+          sub={(into === 'primary' ? m.loginMethods_primaryHint : m.loginMethods_secondaryHint)()}
         >
           {/* how full the group is, at the far end where a count is read */}
           {into === 'primary' && (
             <span data-testid="method-primary-count" {...stylex.props(styles.fill)}>
-              {format(m.methodsPrimaryNote, {
+              {m.loginMethods_primaryNote({
                 count: members.length,
                 most: MAX_PRIMARY_LOGIN_METHODS,
               })}
@@ -301,7 +303,7 @@ export default function LoginMethodsPage() {
             data-testid={`method-drop-${into}`}
             {...stylex.props(styles.drop, over === `group:${into}` && styles.dropOver)}
           >
-            {format(canManage ? m.methodsDropHere : m.loginMethodsEmpty)}
+            {(canManage ? m.loginMethods_dropHere : m.loginMethods_empty)()}
           </div>
         ) : (
           // a kind and who may use it read as one line under the name; the
@@ -310,11 +312,11 @@ export default function LoginMethodsPage() {
           <Table columns={COLUMNS} openable facts="line">
             <TableHead>
               <span />
-              <span>{format(m.loginMethodsTitle)}</span>
-              <span>{format(m.providerKindLabel)}</span>
-              <span>{format(m.audienceLegend)}</span>
-              <span>{format(m.providerOrderLabel)}</span>
-              <span>{format(m.columnStatus)}</span>
+              <span>{m.loginMethods_title()}</span>
+              <span>{m.loginMethods_kind()}</span>
+              <span>{m.loginMethods_audience()}</span>
+              <span>{m.loginMethods_order()}</span>
+              <span>{m.users_columnStatus()}</span>
             </TableHead>
             {members.map((provider, index) => {
               const nobody =
@@ -366,7 +368,7 @@ export default function LoginMethodsPage() {
                       <button
                         type="button"
                         draggable
-                        aria-label={format(m.methodMove, { name: gapped(provider.name, locale) })}
+                        aria-label={m.loginMethods_move({ name: gapped(provider.name, locale) })}
                         data-testid="method-grip"
                         {...stylex.props(styles.grip)}
                         onDragStart={(event) => {
@@ -401,7 +403,7 @@ export default function LoginMethodsPage() {
                     />
                     <LeadWord>{provider.name}</LeadWord>
                     {provider.recommended && (
-                      <Badge variant="secondary">{format(m.methodRecommendedBadge)}</Badge>
+                      <Badge variant="secondary">{m.loginMethods_recommended()}</Badge>
                     )}
                   </Cell>
                   {/* the kind as the driver names itself; its code only
@@ -411,9 +413,9 @@ export default function LoginMethodsPage() {
                   </Cell>
                   <Cell tone={nobody ? 'warn' : 'muted'}>
                     {provider.audience.mode === 'unrestricted' ? (
-                      format(m.audienceEveryone)
+                      m.loginMethods_audienceEveryone()
                     ) : nobody ? (
-                      <Status tone="warn">{format(m.audienceSummary, { count: 0 })}</Status>
+                      <Status tone="warn">{m.loginMethods_audienceSummary({ count: 0 })}</Status>
                     ) : (
                       listJoin(
                         userTypes
@@ -434,13 +436,11 @@ export default function LoginMethodsPage() {
                     <span {...stylex.props(styles.standing)}>
                       {canManage && phone && order(provider, index, members.length)}
                       <Status tone={provider.status === 'active' ? 'plain' : 'bad'}>
-                        {format(
-                          provider.status === 'active'
-                            ? m.typeEnabled
-                            : provider.setup === 'complete'
-                              ? m.statusDisabled
-                              : m.methodSetupShort,
-                        )}
+                        {(provider.status === 'active'
+                          ? m.state_enabled
+                          : provider.setup === 'complete'
+                            ? m.state_disabled
+                            : m.loginMethods_setupShort)()}
                       </Status>
                     </span>
                   </Cell>
@@ -455,20 +455,20 @@ export default function LoginMethodsPage() {
 
   return (
     <Screen
-      title={format(m.loginMethodsTitle)}
-      description={format(m.loginMethodsHint)}
+      title={m.loginMethods_title()}
+      description={m.loginMethods_hint()}
       actions={
         canManageTrust &&
         (kinds.data?.kinds.length ?? 0) > 0 && (
           <BandActions
-            moreLabel={format(commonMessages.bandMore)}
+            moreLabel={commonMessages.action_more()}
             primary={
               <BandAction
                 variant="primary"
                 icon={<PlusIcon aria-hidden />}
                 onSelect={() => setCreating(true)}
               >
-                {format(m.methodNew)}
+                {m.loginMethods_new()}
               </BandAction>
             }
           />
@@ -481,14 +481,14 @@ export default function LoginMethodsPage() {
         // on the page's own ground, where the methods would have stood in cards
         framed
         retrying={providers.isFetching}
-        loadingLabel={format(commonMessages.loading)}
-        retryLabel={format(commonMessages.retry)}
+        loadingLabel={commonMessages.state_loading()}
+        retryLabel={commonMessages.action_retry()}
         onRetry={() => void providers.refetch()}
         skeleton={<TableSkeleton />}
       >
         {rows.length === 0 ? (
           <Card>
-            <CardEmpty>{format(m.loginMethodsEmpty)}</CardEmpty>
+            <CardEmpty>{m.loginMethods_empty()}</CardEmpty>
           </Card>
         ) : (
           <div {...stylex.props(styles.groups)}>
