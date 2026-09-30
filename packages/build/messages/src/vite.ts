@@ -9,7 +9,7 @@ import {
   messageSourceAt,
   messageSources,
   type MessageSource,
-} from './messages.ts'
+} from './compile.ts'
 
 // The messages, for a Vite server or build (docs/adr/0011-i18n-paraglide.md).
 //

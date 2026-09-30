@@ -53,6 +53,7 @@
     "@qualy/browser-observability": "workspace:*",
     "@qualy/cli": "workspace:*",
     "@qualy/i18n-contract": "workspace:*",
+    "@qualy/message-build": "workspace:*",
     "@qualy/plugin-kit": "workspace:*",
     "@qualy/rbac-contract": "workspace:*",
     "@qualy/release-contract": "workspace:*",
@@ -89,7 +90,7 @@
     "format": "oxfmt",
     "format:check": "oxfmt --check",
     "lint": "oxlint",
-    "lint:types": "node packages/build/web/src/messages-cli.ts && oxlint --type-aware --report-unused-disable-directives-severity=error",
+    "lint:types": "node packages/build/messages/src/cli.ts && oxlint --type-aware --report-unused-disable-directives-severity=error",
     "plugin:add": "node tools/repo/plugin-add.ts",
     "prepare": "effect-tsgo patch --typescript --force",
     "qualy": "node apps/cli/src/main.ts",
@@ -129,6 +130,6 @@
     "sandbox:down": "docker compose --profile sandbox down sandbox-runtime sandbox-authoring",
     "sandbox:smoke": "node tools/quality/sandbox-smoke.ts",
     "smoke:formula-production": "node tools/quality/formula-production-smoke.ts",
-    "i18n": "node packages/build/web/src/messages-cli.ts"
+    "i18n": "node packages/build/messages/src/cli.ts"
   }
 }

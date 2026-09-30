@@ -8,11 +8,11 @@ import { defineConfig } from 'vite'
 import {
   qualyBootFrame,
   qualyChunkGraph,
-  qualyMessages,
   qualyPlugins,
   qualyRelease,
   qualyShellStyle,
 } from '@qualy/web-build/vite'
+import { qualyMessages } from '@qualy/message-build/vite'
 import { bootstrapMessages } from '@qualy/web-i18n/bootstrap'
 
 const stylexUnplugin =

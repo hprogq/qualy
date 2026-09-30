@@ -8,7 +8,8 @@ import type { BrowserCommand } from 'vitest/node'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vitest/config'
-import { qualyMessages, qualyPlugins, qualyRelease } from '@qualy/web-build/vite'
+import { qualyPlugins, qualyRelease } from '@qualy/web-build/vite'
+import { qualyMessages } from '@qualy/message-build/vite'
 import { coverageScope } from './tools/quality/coverage-scope.ts'
 
 const stylexUnplugin =

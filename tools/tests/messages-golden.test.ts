@@ -4,7 +4,7 @@ import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { supportedLocales, type SupportedLocale } from '@qualy/i18n-contract'
-import { compileMessages, messagesOutDir } from '../../packages/build/web/src/messages.ts'
+import { compileMessages, messagesOutDir } from '../../packages/build/messages/src/compile.ts'
 import { repoRoot } from '../lib/manifest.ts'
 
 // Every message, as the runtime that served it before the compiler did

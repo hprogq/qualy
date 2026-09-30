@@ -7,17 +7,12 @@
   "exports": {
     "./browser-contract": "./src/browser-contract.ts",
     "./collect": "./src/collect.ts",
-    "./messages": "./src/messages.ts",
     "./package.json": "./package.json",
     "./release-store": "./src/release-store.ts",
     "./stage": "./src/stage.ts",
     "./vite": "./src/vite.ts"
   },
   "dependencies": {
-    "@inlang/paraglide-js": "catalog:",
-    "@inlang/plugin-icu1": "catalog:",
-    "@inlang/sdk": "catalog:",
-    "@messageformat/parser": "catalog:",
     "@qualy/assembly": "workspace:*",
     "@qualy/auth-contract": "workspace:*",
     "@qualy/brand": "workspace:*",

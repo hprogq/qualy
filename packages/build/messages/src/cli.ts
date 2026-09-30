@@ -1,4 +1,4 @@
-import { compileMessages, type OutputStructure } from './messages.ts'
+import { compileMessages, type OutputStructure } from './compile.ts'
 
 // `pnpm i18n`: compiles every package's messages and writes each package's
 // #messages facade. Run by the gates that read the facades (typecheck, the

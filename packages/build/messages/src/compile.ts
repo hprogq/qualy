@@ -360,7 +360,7 @@ const put = (file: string, content: string, written: Set<string>) => {
   fs.writeFileSync(file, content)
 }
 
-const GENERATOR_VERSION = '1'
+const GENERATOR_VERSION = '2'
 
 export interface CompileOptions {
   readonly manifestPath?: string
@@ -449,42 +449,56 @@ export async function compileMessages(options: CompileOptions): Promise<CompileR
   try {
     const errors = await project.errors.get()
     if (errors.length > 0) throw new AggregateError(errors, 'the message project does not load')
-    const output = await compileProject({
-      project,
-      compilerOptions: {
-        outputStructure: structure,
-        strategy: ['custom-qualy'],
-        emitGitIgnore: false,
-        emitPrettierIgnore: false,
-        emitReadme: false,
-        includeEslintDisableComment: true,
-      },
-    })
-    delete output['server.js']
-    output['runtime.js'] = RUNTIME
-    output['package.json'] = `${JSON.stringify({ type: 'module', sideEffects: false }, null, 2)}\n`
-    // the compiled messages may import nothing from the runtime but what it has
-    for (const [file, text] of Object.entries(output)) {
-      for (const match of text.matchAll(
-        /import\s*\{([^}]*)\}\s*from\s*["'](?:\.\.\/|\.\/)runtime\.js["']/g,
-      )) {
-        for (const name of match[1]!
-          .split(',')
-          .map((one) => one.trim())
-          .filter(Boolean)) {
-          if (!RUNTIME_EXPORTS.has(name)) {
-            throw new Error(
-              `${file} imports ${name} from the runtime, which the message compiler does not provide`,
-            )
+    // one output for the browser, in the layout the caller asked for, and
+    // one module per locale for Node: a server loads every message at once,
+    // and thousands of modules would cost it its start
+    const compileAs = async (outputStructure: OutputStructure) => {
+      const output = await compileProject({
+        project,
+        compilerOptions: {
+          outputStructure,
+          strategy: ['custom-qualy'],
+          emitGitIgnore: false,
+          emitPrettierIgnore: false,
+          emitReadme: false,
+          includeEslintDisableComment: true,
+        },
+      })
+      delete output['server.js']
+      output['runtime.js'] = RUNTIME
+      output['package.json'] =
+        `${JSON.stringify({ type: 'module', sideEffects: false }, null, 2)}\n`
+      // the compiled messages may import nothing from the runtime but what it has
+      for (const [file, text] of Object.entries(output)) {
+        for (const match of text.matchAll(
+          /import\s*\{([^}]*)\}\s*from\s*["'](?:\.\.\/|\.\/)runtime\.js["']/g,
+        )) {
+          for (const name of match[1]!
+            .split(',')
+            .map((one) => one.trim())
+            .filter(Boolean)) {
+            if (!RUNTIME_EXPORTS.has(name)) {
+              throw new Error(
+                `${file} imports ${name} from the runtime, which the message compiler does not provide`,
+              )
+            }
           }
         }
       }
+      return output
     }
+    const output = await compileAs(structure)
+    const serverOutput = await compileAs('locale-modules')
     const written = new Set<string>()
     const compiledDir = path.join(outDir, 'paraglide')
     for (const [file, text] of Object.entries(output))
       put(path.join(compiledDir, file), text, written)
     for (const stale of walkFiles(compiledDir)) if (!written.has(stale)) fs.rmSync(stale)
+    const serverDir = path.join(outDir, 'server')
+    for (const [file, text] of Object.entries(serverOutput)) {
+      put(path.join(serverDir, file), text, written)
+    }
+    for (const stale of walkFiles(serverDir)) if (!written.has(stale)) fs.rmSync(stale)
     put(
       path.join(outDir, 'package.json'),
       `${JSON.stringify({ type: 'module', sideEffects: false }, null, 2)}\n`,

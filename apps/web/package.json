@@ -27,6 +27,7 @@
   "devDependencies": {
     "@qualy/assembly": "workspace:*",
     "@qualy/i18n-contract": "workspace:*",
+    "@qualy/message-build": "workspace:*",
     "@qualy/testkit": "workspace:*",
     "@qualy/tsconfig": "workspace:*",
     "@qualy/value-schema": "workspace:*",

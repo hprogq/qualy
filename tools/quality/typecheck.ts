@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process'
 import os from 'node:os'
 import fs from 'node:fs'
 import path from 'node:path'
-import { compileMessages } from '../../packages/build/web/src/messages.ts'
+import { compileMessages } from '../../packages/build/messages/src/compile.ts'
 
 // no plugin names in root scripts: web-side programs are discovered from the
 // packages tree (every plugin client directory owns a tsconfig.json, and so

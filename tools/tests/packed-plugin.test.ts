@@ -10,7 +10,7 @@ import { resolveAssembly, lockPathFor, readLock } from '@qualy/assembly'
 import { loadAssembly } from '@qualy/assembly/runtime'
 import { buildPluginModuleSource, collectWebPlugins } from '@qualy/web-build/collect'
 import { createPackageResolver } from '../../packages/core/assembly/src/metadata.ts'
-import { qualyMessages } from '@qualy/web-build/vite'
+import { qualyMessages } from '@qualy/message-build/vite'
 
 // One plugin, one chain, from a tarball a package manager made.
 //

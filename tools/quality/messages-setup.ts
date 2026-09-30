@@ -1,4 +1,4 @@
-import { compileMessages } from '../../packages/build/web/src/messages.ts'
+import { compileMessages } from '../../packages/build/messages/src/compile.ts'
 
 // The node suite's global setup: code under test imports #messages, which is
 // generated from the packages' messages/*.json. Keeps whichever module
