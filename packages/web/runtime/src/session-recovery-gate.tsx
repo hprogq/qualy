@@ -8,7 +8,7 @@ import { signingOut } from './identity.ts'
 import { buildPageHref } from './pages.ts'
 import type { Manifest } from './runtime-context.tsx'
 import {
-  announceResumed,
+  announceOutcome,
   identityChanging,
   installSessionRecovery,
   onSignedInElsewhere,
@@ -161,6 +161,8 @@ export function SessionRecoveryGate({
       if (stopped || held.current !== current || manifest.viewer !== 'authenticated') return
       if (manifest.identity !== current.identity) {
         setStanding('switched')
+        // the tab that signed in is theirs, and need not wait to hear it
+        announceOutcome('switched')
         return
       }
       queryClient.setQueryData(manifestKey, manifest)
@@ -169,7 +171,7 @@ export function SessionRecoveryGate({
       current.settle(true)
       // the sign-in tab closes on hearing it, and the reader learns why the
       // lock went: quietly, without anything left to dismiss
-      announceResumed()
+      announceOutcome('resumed')
       toast.success(format(commonMessages.sessionResumed))
     }
     const timer = setInterval(() => {

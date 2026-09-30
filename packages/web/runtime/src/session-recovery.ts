@@ -103,7 +103,10 @@ export const presentedManifest = <M extends Viewed>(shown: M | undefined, asked:
 // a lock that vanished the moment it was seen read as a glitch.
 const SESSION_CHANNEL = 'qualy:session'
 
-type SessionMessage = { readonly type: 'signed-in' } | { readonly type: 'resumed' }
+type SessionMessage =
+  | { readonly type: 'signed-in' }
+  | { readonly type: 'resumed' }
+  | { readonly type: 'switched' }
 
 const isMessage = (data: unknown, type: SessionMessage['type']): boolean =>
   typeof data === 'object' && data !== null && (data as { type?: unknown }).type === type
@@ -111,17 +114,21 @@ const isMessage = (data: unknown, type: SessionMessage['type']): boolean =>
 /** the query a sign-in opened for a recovery carries, so it ends by saying so */
 export const SESSION_RESUME_PARAM = 'resume'
 
+/** what the page that waited made of a sign-in, as the tab that signed in hears it */
+export type SignInOutcome = 'resumed' | 'switched' | 'unanswered' | 'unknown'
+
 /**
  * Tells the other tabs that somebody signed in here, and waits up to
- * `waitMs` for one of them to say it carried on: 'resumed' when one did,
- * 'unanswered' when none did (the page that was waiting is gone), and
- * 'unknown' where the browser has no channel to ask over.
+ * `waitMs` for the page that was waiting to answer: 'resumed' when it carried
+ * on, 'switched' when it belonged to somebody else and cannot, 'unanswered'
+ * when nothing answered (it is gone), and 'unknown' where the browser has no
+ * channel to ask over.
  */
-export const announceSignedIn = (waitMs: number): Promise<'resumed' | 'unanswered' | 'unknown'> => {
+export const announceSignedIn = (waitMs: number): Promise<SignInOutcome> => {
   if (typeof BroadcastChannel === 'undefined') return Promise.resolve('unknown')
   const channel = new BroadcastChannel(SESSION_CHANNEL)
   return new Promise((resolve) => {
-    const done = (answer: 'resumed' | 'unanswered') => {
+    const done = (answer: SignInOutcome) => {
       clearTimeout(timer)
       channel.close()
       resolve(answer)
@@ -129,16 +136,17 @@ export const announceSignedIn = (waitMs: number): Promise<'resumed' | 'unanswere
     const timer = setTimeout(() => done('unanswered'), waitMs)
     channel.onmessage = (event: MessageEvent) => {
       if (isMessage(event.data, 'resumed')) done('resumed')
+      else if (isMessage(event.data, 'switched')) done('switched')
     }
     channel.postMessage({ type: 'signed-in' } satisfies SessionMessage)
   })
 }
 
-/** tells the tab that signed in that this page carried on */
-export const announceResumed = () => {
+/** tells the tab that signed in whether this page carried on, or belongs to somebody else */
+export const announceOutcome = (outcome: 'resumed' | 'switched') => {
   if (typeof BroadcastChannel === 'undefined') return
   const channel = new BroadcastChannel(SESSION_CHANNEL)
-  channel.postMessage({ type: 'resumed' } satisfies SessionMessage)
+  channel.postMessage({ type: outcome } satisfies SessionMessage)
   channel.close()
 }
 

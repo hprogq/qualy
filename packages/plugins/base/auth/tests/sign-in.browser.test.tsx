@@ -596,9 +596,16 @@ describe('the way back after signing in', () => {
   /** a sign-in opened by a waiting page, signed in through the password form */
   const signInForWaitingPage = async () => {
     let signedIn = false
+    let manifestAsked = 0
     await renderScreen({
       client: fakeClient({
-        app: { getManifest: emptyManifest() },
+        app: {
+          getManifest: () =>
+            Effect.sync(() => {
+              manifestAsked += 1
+              return emptyManifest()
+            }),
+        },
         auth: {
           getSession: () =>
             Effect.suspend(() =>
@@ -637,6 +644,7 @@ describe('the way back after signing in', () => {
     await page.getByLabelText('邮箱').fill('zhang@school.edu')
     await page.getByLabelText('密码').fill('a long enough password')
     await page.getByTestId('local-submit').click()
+    return { manifestAsked: () => manifestAsked }
   }
 
   it('keeps a sign-in for a waiting page one through the way chosen, and closes once it carried on', async () => {
@@ -658,11 +666,45 @@ describe('the way back after signing in', () => {
     }
   })
 
-  it('ends as an ordinary sign-in when no page answers, the one that waited being gone', async () => {
+  it('goes on as whoever signed in at once, when the waiting page says it was somebody else', async () => {
     const close = vi.spyOn(window, 'close').mockImplementation(() => {})
+    // from the moment the sign-in is heard: an ending with no answer waits
+    // three seconds for one, and this one has its answer at once
+    let heard = 0
+    const waiting = new BroadcastChannel('qualy:session')
+    waiting.onmessage = (event: MessageEvent<{ type?: string }>) => {
+      if (event.data.type !== 'signed-in') return
+      heard = Date.now()
+      waiting.postMessage({ type: 'switched' })
+    }
     try {
       await signInForWaitingPage()
       await expect.poll(addressNow, { timeout: 6_000 }).toBe('/')
+      expect(heard).toBeGreaterThan(0)
+      expect(Date.now() - heard).toBeLessThan(2_500)
+      expect(close).not.toHaveBeenCalled()
+      expect(page.getByTestId('sign-in-resumed').elements()).toHaveLength(0)
+    } finally {
+      waiting.close()
+      close.mockRestore()
+    }
+  })
+
+  // No page answers when the one that waited is gone, or when somebody else
+  // signed in here and that page can only reload. This tab's manifest is
+  // still a visitor's: sent home under it, home was this sign-in page, which
+  // found somebody signed in and sent them home again, without end.
+  it('ends as an ordinary sign-in when no page answers, under the identity signed in', async () => {
+    const close = vi.spyOn(window, 'close').mockImplementation(() => {})
+    try {
+      const { manifestAsked } = await signInForWaitingPage()
+      const before = manifestAsked()
+      // nothing claims the page carried on while nobody has said so
+      await expect.element(page.getByTestId('sign-in-waiting')).toBeInTheDocument()
+      expect(page.getByTestId('sign-in-resumed').elements()).toHaveLength(0)
+      await expect.poll(addressNow, { timeout: 6_000 }).toBe('/')
+      // the manifest was asked again, as whoever is signed in now
+      expect(manifestAsked()).toBeGreaterThan(before)
       expect(close).not.toHaveBeenCalled()
     } finally {
       close.mockRestore()

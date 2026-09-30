@@ -494,27 +494,42 @@ export default function LoginPage() {
   // (@qualy/web-runtime session recovery): this tab is only for signing in.
   // Once somebody is, it tells the page waiting in the other tab and closes
   // when that page says it carried on, or says it can be closed where the
-  // browser keeps it open - the reader's work is over there, not here. No
-  // answer means that page is gone, and the visit ends as any sign-in does.
-  const [orphaned, setOrphaned] = useState(false)
-  const resume = params.get(SESSION_RESUME_PARAM) === '1' && !orphaned
+  // browser keeps it open - the reader's work is over there, not here. When
+  // no page carried on - the one that waited is gone, or belonged to
+  // somebody else - the visit ends as any sign-in does.
+  const resume = params.get(SESSION_RESUME_PARAM) === '1'
+  // the page that waited said it carried on
+  const [resumed, setResumed] = useState(false)
+  // the ending is decided once; the manifest changing under it is not a second sign-in
+  const ended = useRef(false)
   useEffect(() => {
-    if (!signedIn) return
-    if (resume) {
-      let gone = false
-      void announceSignedIn(RESUME_ANSWER_MS).then((answer) => {
-        if (gone) return
-        if (answer === 'unanswered') setOrphaned(true)
-        else window.close()
-      })
-      return () => {
-        gone = true
-      }
-    }
+    if (!signedIn || ended.current) return
     const to: SessionDestination =
       next === undefined ? { kind: 'home' } : { kind: 'return-path', path: next }
+    if (resume) {
+      ended.current = true
+      void announceSignedIn(RESUME_ANSWER_MS).then((answer) => {
+        if (answer === 'unanswered' || answer === 'switched') {
+          void startSession({ destination: to })
+          return
+        }
+        setResumed(true)
+        window.close()
+      })
+      return
+    }
+    // Signed in, under a manifest that may still be a visitor's: signed in
+    // for a waiting page, or in another tab. Routed under it, home is this
+    // very page, which found somebody signed in and sent them home again -
+    // a loop that ran until the tab gave up. So the move is made as the
+    // identity the session now is.
+    ended.current = true
+    if (manifest.viewer !== 'authenticated') {
+      void startSession({ destination: to })
+      return
+    }
     void navigate(sessionDestinationHref(to, manifest.pages), { replace: true })
-  }, [signedIn, resume, next, navigate, manifest.pages])
+  }, [signedIn, resume, next, navigate, manifest.pages, manifest.viewer, startSession])
   const failed = failureFrom(params)
   const [leaving, setLeaving] = useState<LoginMethod | null>(null)
   // read once: the mark says where this visit came in last time, not a moment ago
@@ -602,7 +617,7 @@ export default function LoginPage() {
   const panel = (() => {
     // signed in for the page waiting in the other tab, which carries on now;
     // this tab closes itself where the browser lets it
-    if (resume && signedIn) {
+    if (resume && signedIn && resumed) {
       return (
         <div {...stylex.props(styles.panel)}>
           {header}

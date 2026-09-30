@@ -107,4 +107,42 @@ describe('a session that ends under an open page', () => {
       )
       .toBe(true)
   })
+
+  // Somebody else signs in, in the tab opened for it: the page cannot carry
+  // on as them and says so, and the sign-in tab becomes theirs. It used to
+  // go home under the visitor's manifest it still held, where home is the
+  // sign-in page, which found somebody signed in and went home again - over
+  // and over until the tab crashed.
+  it('hands the sign-in tab to whoever signed in when it was somebody else', async () => {
+    const page = session.page()
+    await signIn(page, 'student')
+    await page.goto(`/assessment/batches/${BATCH}/my-entries`)
+    await page.getByRole('heading', { level: 1 }).first().waitFor()
+    await page.context().clearCookies()
+    await page.evaluate(() =>
+      document.dispatchEvent(new Event('visibilitychange', { bubbles: true })),
+    )
+    const lock = page.getByTestId('session-recovery')
+    await expect.poll(() => lock.getAttribute('data-state'), { timeout: 20_000 }).toBe('expired')
+
+    const opening = page.context().waitForEvent('page')
+    await page.getByTestId('session-sign-in').click()
+    const signInTab = await opening
+    let asked = 0
+    signInTab.on('request', (request) => {
+      if (new URL(request.url()).pathname.endsWith('/auth/session')) asked += 1
+    })
+    await submitSignIn(signInTab, 'counsellor')
+
+    // the page that waited is the student's, and can only reload
+    await expect.poll(() => lock.getAttribute('data-state'), { timeout: 20_000 }).toBe('switched')
+    // the sign-in tab is the counsellor's now, somewhere past the sign-in page
+    await expect
+      .poll(() => new URL(signInTab.url()).pathname, { timeout: 20_000 })
+      .not.toMatch(/^\/login/)
+    const settled = asked
+    await signInTab.waitForTimeout(3_000)
+    expect(asked - settled).toBeLessThanOrEqual(1)
+    expect(new URL(signInTab.url()).pathname).not.toMatch(/^\/login/)
+  })
 })
