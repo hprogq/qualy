@@ -89,7 +89,7 @@
     "format": "oxfmt",
     "format:check": "oxfmt --check",
     "lint": "oxlint",
-    "lint:types": "oxlint --type-aware --report-unused-disable-directives-severity=error",
+    "lint:types": "node packages/build/web/src/messages-cli.ts && oxlint --type-aware --report-unused-disable-directives-severity=error",
     "plugin:add": "node tools/repo/plugin-add.ts",
     "prepare": "effect-tsgo patch --typescript --force",
     "qualy": "node apps/cli/src/main.ts",
@@ -128,6 +128,7 @@
     "sandbox:up": "node tools/quality/sandbox-uds-gate.ts && docker compose --profile sandbox up -d sandbox-runtime sandbox-authoring",
     "sandbox:down": "docker compose --profile sandbox down sandbox-runtime sandbox-authoring",
     "sandbox:smoke": "node tools/quality/sandbox-smoke.ts",
-    "smoke:formula-production": "node tools/quality/formula-production-smoke.ts"
+    "smoke:formula-production": "node tools/quality/formula-production-smoke.ts",
+    "i18n": "node packages/build/web/src/messages-cli.ts"
   }
 }

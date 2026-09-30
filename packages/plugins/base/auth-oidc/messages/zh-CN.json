@@ -1,0 +1,23 @@
+{
+  "entrance_kind": "OpenID Connect",
+  "field_issuer": "Issuer",
+  "field_issuerHint": "身份提供方的地址，与其令牌中的 iss 完全一致",
+  "field_discovery": "端点",
+  "field_discoveryAuto": "从 Issuer 自动发现",
+  "field_discoveryManual": "手动填写",
+  "field_authorizationEndpoint": "授权端点",
+  "field_tokenEndpoint": "令牌端点",
+  "field_jwksUri": "公钥集(JWKS)地址",
+  "field_userinfoEndpoint": "UserInfo 端点",
+  "field_clientId": "Client ID",
+  "field_clientSecret": "Client Secret",
+  "field_scopes": "Scopes",
+  "field_scopesHint": "以空格分隔，始终包含 openid；留空即 openid profile email",
+  "field_tokenAuth": "客户端认证方式",
+  "field_tokenAuthAuto": "自动",
+  "field_tokenAuthBasic": "HTTP Basic",
+  "field_tokenAuthPost": "放在请求体中",
+  "field_clockSkew": "时钟容差(秒)",
+  "error_rejected": "身份提供方未能确认你的身份，请重试。",
+  "error_unavailable": "暂时无法连接身份提供方，请稍后再试。"
+}

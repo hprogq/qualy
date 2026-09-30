@@ -1,0 +1,23 @@
+{
+  "entrance_kind": "OpenID Connect",
+  "field_issuer": "Issuer",
+  "field_issuerHint": "The provider’s address, exactly as its tokens name it",
+  "field_discovery": "Endpoints",
+  "field_discoveryAuto": "Discover from the issuer",
+  "field_discoveryManual": "Enter by hand",
+  "field_authorizationEndpoint": "Authorization endpoint",
+  "field_tokenEndpoint": "Token endpoint",
+  "field_jwksUri": "Key set (JWKS) address",
+  "field_userinfoEndpoint": "UserInfo endpoint",
+  "field_clientId": "Client ID",
+  "field_clientSecret": "Client secret",
+  "field_scopes": "Scopes",
+  "field_scopesHint": "Separated by spaces; openid is always asked for. Empty means openid profile email",
+  "field_tokenAuth": "Client authentication",
+  "field_tokenAuthAuto": "Automatic",
+  "field_tokenAuthBasic": "HTTP Basic",
+  "field_tokenAuthPost": "In the request body",
+  "field_clockSkew": "Clock tolerance, in seconds",
+  "error_rejected": "The identity provider did not confirm who you are. Try again.",
+  "error_unavailable": "The identity provider cannot be reached right now. Try again later."
+}

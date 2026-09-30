@@ -8,6 +8,7 @@ import { workerDependencyScan } from './dependency-scan.ts'
 import { buildPluginModuleSource, buildPluginScanSource, buildSurfaceMapSource } from './collect.ts'
 
 export { qualyChunkGraph } from './chunk-graph.ts'
+export { qualyMessages } from './messages-vite.ts'
 export {
   BROWSER_SURFACE_MAP,
   BUILD_REVISION_VARIABLE,

@@ -1,0 +1,23 @@
+{
+  "navGroup_tenant": "租户设置",
+  "permission_terminologyManage": "管理术语",
+  "permissionGroup_settings": "系统设置",
+  "navigation_terminology": "术语库",
+  "audit_termUpdate": "修改术语",
+  "terminology_title": "术语库",
+  "terminology_hint": "设置本机构在界面中使用的业务术语，留空将沿用系统默认称谓。",
+  "terminology_empty": "当前没有可自定义的术语",
+  "terminology_loadFailed": "术语暂时无法读取",
+  "terminology_loading": "正在读取术语",
+  "terminology_retry": "重试",
+  "terminology_default": "默认：{value}",
+  "terminology_save": "保存",
+  "terminology_reset": "恢复默认",
+  "terminology_saved": "已保存",
+  "terminology_customised": "已自定义",
+  "terminology_localeZhCn": "简体中文",
+  "terminology_localeEnUs": "English",
+  "error_notFound": "该设置不存在。",
+  "error_versionConflict": "该术语刚被其他人修改，请刷新后重试。",
+  "error_valueInvalid": "填写的内容不符合要求。"
+}

@@ -1,0 +1,7 @@
+{
+  "state_working": "正在进行安全验证",
+  "state_failed": "安全验证未能完成",
+  "action_retry": "重试",
+  "dialog_title": "安全验证",
+  "error_required": "请先完成安全验证"
+}

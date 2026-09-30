@@ -1,0 +1,9 @@
+{
+  "entrance_kind": "GitHub",
+  "field_clientId": "Client ID",
+  "field_clientSecret": "Client Secret",
+  "field_enterpriseUrl": "GitHub Enterprise Server 地址",
+  "field_enterpriseUrlHint": "使用 github.com 时留空",
+  "error_rejected": "GitHub 未能确认你的账号，请重试。",
+  "error_unavailable": "暂时无法连接 GitHub，请稍后再试。"
+}

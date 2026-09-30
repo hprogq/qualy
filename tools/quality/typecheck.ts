@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process'
 import os from 'node:os'
 import fs from 'node:fs'
 import path from 'node:path'
+import { compileMessages } from '../../packages/build/web/src/messages.ts'
 
 // no plugin names in root scripts: web-side programs are discovered from the
 // packages tree (every plugin client directory owns a tsconfig.json, and so
@@ -102,6 +103,11 @@ const buildInfo = (project: string) =>
 // because the smallest runner has two and one at a time is where this
 // started.
 const LANES = Math.max(2, Math.min(8, Math.floor((os.availableParallelism?.() ?? 4) / 2)))
+
+// every package's #messages facade is generated from its messages/*.json,
+// and a program cannot be checked against facades that are not there
+const messages = await compileMessages({})
+if (messages.compiled) console.log(`typecheck: ${messages.messages} messages compiled`)
 
 const failed: string[] = []
 const said: string[] = []

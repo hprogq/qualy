@@ -1,0 +1,9 @@
+{
+  "entrance_kind": "GitHub",
+  "field_clientId": "Client ID",
+  "field_clientSecret": "Client secret",
+  "field_enterpriseUrl": "GitHub Enterprise Server address",
+  "field_enterpriseUrlHint": "Leave empty for github.com",
+  "error_rejected": "GitHub did not confirm your account. Try again.",
+  "error_unavailable": "GitHub cannot be reached right now. Try again later."
+}

@@ -21,6 +21,7 @@
           "experimentalApiUsage": "off"
         }
       }
-    ]
+    ],
+    "resolveJsonModule": true
   }
 }

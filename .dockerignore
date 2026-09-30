@@ -36,3 +36,4 @@ STATUS.md
 ops/observability/collector.env
 deploy/*.env
 tools/brand/out
+packages/**/.qualy

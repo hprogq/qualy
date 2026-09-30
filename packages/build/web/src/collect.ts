@@ -57,7 +57,7 @@ export interface WebPluginEntry {
   surfaces: SurfaceBinding[]
   /** the declared localisation module, absolute, when the plugin ships one */
   i18nModule?: string
-  hasCatalogs: boolean
+  hasWireMessages: boolean
   hasErrorMessages: boolean
   /** the modules whose default export is this plugin's browser half, absolute */
   browserModules: string[]
@@ -81,7 +81,6 @@ export async function collectWebPlugins(
   const resolution = await currentResolution(manifest)
   const found: WebPluginEntry[] = []
   const claimedSurfaces = new Map<string, string>()
-  const claimedNamespaces = new Map<string, string>()
   const claimedMessageIds = new Map<string, string>()
   const claimedErrorCodes = new Map<string, string>()
   const COMMON_ERROR_CODES = new Set<string>(commonErrorCodes)
@@ -121,30 +120,21 @@ export async function collectWebPlugins(
     if (declaredI18n.length > 1) {
       throw new Error(`${entry.name} declares Ui.i18n twice; one module carries everything`)
     }
-    let hasCatalogs = false
+    let hasWireMessages = false
     let hasErrorMessages = false
     let i18nModule: string | undefined
     if (declaredI18n.length === 1) {
       i18nModule = moduleOf(declaredI18n[0]!.module)
       const module = (await import(pathToFileURL(i18nModule).href)) as {
-        catalogs?: unknown
+        wireMessages?: Record<string, unknown>
         errorMessages?: unknown
       }
-      if (module.catalogs) {
-        const catalogs = module.catalogs as {
-          namespace: string
-          messages: readonly { id: string }[]
+      if (module.wireMessages) {
+        // the ids the server sends, each claimed once
+        for (const id of Object.keys(module.wireMessages)) {
+          claim(claimedMessageIds, id, entry.name, 'message id')
         }
-        claim(claimedNamespaces, catalogs.namespace, entry.name, 'catalog namespace')
-        for (const declared of catalogs.messages) {
-          if (!declared.id.startsWith(`${catalogs.namespace}/`)) {
-            throw new Error(
-              `${entry.name}: message ${declared.id} is outside its namespace ${catalogs.namespace}/`,
-            )
-          }
-          claim(claimedMessageIds, declared.id, entry.name, 'message id')
-        }
-        hasCatalogs = true
+        hasWireMessages = true
       }
       if (module.errorMessages) {
         for (const code of Object.keys(module.errorMessages)) {
@@ -157,8 +147,8 @@ export async function collectWebPlugins(
         }
         hasErrorMessages = true
       }
-      if (!module.catalogs && !module.errorMessages) {
-        throw new Error(`${entry.name}: the declared i18n module exports no catalogs`)
+      if (!module.wireMessages && !module.errorMessages) {
+        throw new Error(`${entry.name}: the declared i18n module exports nothing to say`)
       }
     }
 
@@ -167,12 +157,12 @@ export async function collectWebPlugins(
       browserModules.push(moduleOf(declared.module))
     }
 
-    if (surfaces.length > 0 || hasCatalogs || hasErrorMessages || browserModules.length > 0) {
+    if (surfaces.length > 0 || hasWireMessages || hasErrorMessages || browserModules.length > 0) {
       found.push({
         name: entry.name,
         surfaces,
         ...(i18nModule === undefined ? {} : { i18nModule }),
-        hasCatalogs,
+        hasWireMessages,
         hasErrorMessages,
         browserModules,
       })
@@ -213,7 +203,7 @@ export async function buildPluginModuleSource(
   const slotEntries = new Map<string, string[]>()
   const loginEntries: string[] = []
   const browserEntries: string[] = []
-  const catalogEntries: string[] = []
+  const wireEntries: string[] = []
   const errorSpreads: string[] = []
   for (const entry of await collectWebPlugins(options)) {
     const ns = entry.name.split('/').pop()!.replace('plugin-', '').replaceAll('-', '_')
@@ -238,11 +228,11 @@ export async function buildPluginModuleSource(
         slotEntries.set(surface.slot, items)
       }
     }
-    if (entry.hasCatalogs) {
+    if (entry.hasWireMessages) {
       imports.push(
-        `import { catalogs as ${ns}Catalogs } from ${JSON.stringify(specifier(entry.i18nModule!, options.fromDir))}`,
+        `import { wireMessages as ${ns}WireMessages } from ${JSON.stringify(specifier(entry.i18nModule!, options.fromDir))}`,
       )
-      catalogEntries.push(`  ${ns}Catalogs,`)
+      wireEntries.push(`  ...${ns}WireMessages,`)
     }
     if (entry.hasErrorMessages) {
       imports.push(
@@ -279,9 +269,9 @@ export async function buildPluginModuleSource(
     ...browserEntries,
     ']',
     '',
-    'export const catalogs = [',
-    ...catalogEntries,
-    ']',
+    'export const wireMessages = {',
+    ...wireEntries,
+    '}',
     '',
     'export const errorMessages = {',
     ...errorSpreads,

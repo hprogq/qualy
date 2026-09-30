@@ -24,6 +24,8 @@ const repoRoot = fileURLToPath(new URL('.', import.meta.url))
 export default defineConfig({
   test: {
     env: testDatabaseUrl(),
+    // the #messages facades the code under test imports
+    globalSetup: ['tools/quality/messages-setup.ts'],
     // measured only when asked (`pnpm test:coverage`); see the scope module
     coverage: coverageScope('node', repoRoot, repoRoot, 'coverage/node'),
     // A suite that touches postgres creates a scratch database and applies the

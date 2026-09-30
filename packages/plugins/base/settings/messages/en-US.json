@@ -1,0 +1,23 @@
+{
+  "navGroup_tenant": "Tenant settings",
+  "permission_terminologyManage": "Manage terminology",
+  "permissionGroup_settings": "System settings",
+  "navigation_terminology": "Terminology",
+  "audit_termUpdate": "Change terminology",
+  "terminology_title": "Terminology",
+  "terminology_hint": "The words this tenant uses on its screens. A language left blank keeps the default",
+  "terminology_empty": "No term is open for customisation in this deployment",
+  "terminology_loadFailed": "Terminology could not be loaded",
+  "terminology_loading": "Loading terminology",
+  "terminology_retry": "Try again",
+  "terminology_default": "Default: {value}",
+  "terminology_save": "Save",
+  "terminology_reset": "Restore default",
+  "terminology_saved": "Saved",
+  "terminology_customised": "Customised",
+  "terminology_localeZhCn": "Simplified Chinese",
+  "terminology_localeEnUs": "English",
+  "error_notFound": "That setting does not exist.",
+  "error_versionConflict": "Somebody else changed this term just now. Reload and try again.",
+  "error_valueInvalid": "That value is not allowed here."
+}

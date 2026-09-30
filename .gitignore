@@ -90,6 +90,10 @@ apps/web/.qualy/
 .qualy/benchmarks/
 # pnpm lighthouse reports
 .qualy/lighthouse/
+# the compiled messages, and each package's #messages facade over them, both
+# rewritten from the packages' messages/*.json by the message compiler
+.qualy/i18n/
+packages/**/.qualy/
 
 # attachments the local storage provider keeps when this machine is the
 # deployment (its default root, ./data/storage; QUALY_STORAGE_LOCAL_ROOT moves

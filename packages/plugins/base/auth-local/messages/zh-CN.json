@@ -1,0 +1,20 @@
+{
+  "binding_password": "密码",
+  "entrance_kind": "邮箱密码",
+  "field_email": "邮箱",
+  "field_password": "密码",
+  "action_submit": "登录",
+  "action_submitting": "登录中…",
+  "action_wait": "{time} 后可重试",
+  "action_preparingCheck": "正在准备安全验证…",
+  "action_checking": "正在进行安全验证…",
+  "action_finishCheck": "完成安全验证后继续",
+  "action_forgot": "忘记密码？",
+  "action_showPassword": "显示密码",
+  "action_hidePassword": "隐藏密码",
+  "field_remember": "在此设备上记住邮箱",
+  "check_email": "请输入有效的邮箱地址",
+  "check_passwordShort": "密码至少 {min} 个字符",
+  "check_passwordLong": "密码最多 {max} 个字符",
+  "error_invalidCredentials": "邮箱或密码错误。"
+}

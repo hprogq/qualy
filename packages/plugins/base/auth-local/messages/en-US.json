@@ -1,0 +1,20 @@
+{
+  "binding_password": "Password",
+  "entrance_kind": "Email and password",
+  "field_email": "Email",
+  "field_password": "Password",
+  "action_submit": "Sign in",
+  "action_submitting": "Signing in…",
+  "action_wait": "Try again in {time}",
+  "action_preparingCheck": "Preparing a security check…",
+  "action_checking": "Running a security check…",
+  "action_finishCheck": "Complete the security check to continue",
+  "action_forgot": "Forgot password?",
+  "action_showPassword": "Show password",
+  "action_hidePassword": "Hide password",
+  "field_remember": "Remember my email on this device",
+  "check_email": "Enter a valid email address",
+  "check_passwordShort": "A password here has at least {min, plural, other {# characters}}",
+  "check_passwordLong": "A password here has at most {max, plural, other {# characters}}",
+  "error_invalidCredentials": "Incorrect email or password."
+}

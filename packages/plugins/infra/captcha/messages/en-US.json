@@ -1,0 +1,7 @@
+{
+  "state_working": "Checking this request",
+  "state_failed": "The security check could not finish",
+  "action_retry": "Try again",
+  "dialog_title": "Security check",
+  "error_required": "Complete the security check to continue."
+}
