@@ -29,7 +29,6 @@ import { Skeleton } from '../skeleton.tsx'
 // coloured pill. The metrics here are the design's, written once, so a
 // table on the roles page and a table on the audit log are the same table.
 
-const QUIET = `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)`
 const MONO = "'SFMono-Regular', ui-monospace, 'JetBrains Mono', Menlo, Consolas, monospace"
 
 const styles = stylex.create({
@@ -68,9 +67,9 @@ const styles = stylex.create({
     whiteSpace: 'nowrap',
     fontSize: 12,
     fontVariantNumeric: 'tabular-nums',
-    color: QUIET,
+    color: tokens.mutedForeground,
   },
-  cardSub: { fontSize: 11.5, fontVariantNumeric: 'tabular-nums', color: QUIET },
+  cardSub: { fontSize: 11.5, fontVariantNumeric: 'tabular-nums', color: tokens.mutedForeground },
   spacer: { flexGrow: 1, flexShrink: 1, flexBasis: '0%', minWidth: 4 },
   cardHint: {
     margin: 0,
@@ -78,7 +77,7 @@ const styles = stylex.create({
     paddingBottom: 12,
     fontSize: 11.5,
     lineHeight: 1.6,
-    color: QUIET,
+    color: tokens.mutedForeground,
     textWrap: 'pretty',
   },
   cardHintTop: { paddingTop: 10 },
@@ -124,7 +123,7 @@ const styles = stylex.create({
     },
   },
   fact: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 3 },
-  factLabel: { fontSize: 11, color: QUIET },
+  factLabel: { fontSize: 11, color: tokens.mutedForeground },
   factValue: { display: 'flex', minWidth: 0, alignItems: 'baseline', gap: 8, margin: 0 },
   factWord: {
     minWidth: 0,
@@ -279,7 +278,7 @@ const styles = stylex.create({
     '::before': {
       content: { default: 'none', [breakpoints.phone]: 'var(--q-cell-label)' },
       marginInlineEnd: 5,
-      color: QUIET,
+      color: tokens.mutedForeground,
     },
   },
   // A column that is not worth a phone's width.
@@ -335,7 +334,7 @@ const styles = stylex.create({
     width: 1,
     height: 11,
     flexShrink: 0,
-    backgroundColor: `color-mix(in oklab, ${QUIET} 40%, transparent)`,
+    backgroundColor: `color-mix(in oklab, ${tokens.mutedForeground} 34%, transparent)`,
   },
   // one fact from the next: a hairline rather than a gap, because a run of
   // grey words with air between them reads as one phrase
@@ -358,7 +357,7 @@ const styles = stylex.create({
       // the same set had put there
       content: { default: 'none', [breakpoints.phone]: '"|"' },
       marginInlineEnd: 8,
-      color: `color-mix(in oklab, ${QUIET} 45%, transparent)`,
+      color: `color-mix(in oklab, ${tokens.mutedForeground} 38%, transparent)`,
     },
   },
   // The one fact the row is scanned BY - a count, a state - kept at the far
@@ -391,7 +390,7 @@ const styles = stylex.create({
   cellLeadWord: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
   cellStrong: { fontWeight: 600 },
   cellPlain: { color: tokens.foreground },
-  cellQuiet: { color: QUIET },
+  cellQuiet: { color: tokens.mutedForeground },
   cellWarn: { color: tokens.warningForeground },
   cellNumeric: { fontVariantNumeric: 'tabular-nums' },
   cellMono: { fontFamily: MONO, fontSize: 12 },
@@ -401,7 +400,7 @@ const styles = stylex.create({
     justifySelf: 'end',
     gridColumn: { default: null, [breakpoints.phone]: 3 },
     gridRow: { default: null, [breakpoints.phone]: '1 / 3' },
-    color: QUIET,
+    color: tokens.mutedForeground,
   },
   chevronGlyph: { width: 13, height: 13 },
   // ---- states and tags -------------------------------------------------
@@ -485,8 +484,13 @@ const styles = stylex.create({
   tickBoxLowered: { marginTop: 2 },
   tickWords: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 1 },
   tickName: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-  tickNote: { fontSize: 11.5, lineHeight: 1.45, color: QUIET, textWrap: 'pretty' },
-  tickTally: { flexShrink: 0, fontSize: 11, fontVariantNumeric: 'tabular-nums', color: QUIET },
+  tickNote: { fontSize: 11.5, lineHeight: 1.45, color: tokens.mutedForeground, textWrap: 'pretty' },
+  tickTally: {
+    flexShrink: 0,
+    fontSize: 11,
+    fontVariantNumeric: 'tabular-nums',
+    color: tokens.mutedForeground,
+  },
   // ---- a row of words with a rule between them -------------------------
   metaLine: {
     display: 'flex',
@@ -497,7 +501,7 @@ const styles = stylex.create({
     rowGap: 2,
     fontSize: 12,
     fontVariantNumeric: 'tabular-nums',
-    color: QUIET,
+    color: tokens.mutedForeground,
   },
   metaItem: { display: 'contents' },
   metaRule: {

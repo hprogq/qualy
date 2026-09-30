@@ -67,7 +67,7 @@ const styles = stylex.create({
   },
   factLabel: {
     flexShrink: 0,
-    color: `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)`,
+    color: tokens.mutedForeground,
   },
   factValue: {
     minWidth: 0,
@@ -91,7 +91,7 @@ const styles = stylex.create({
     fontVariantNumeric: 'tabular-nums',
   },
   expected: { color: tokens.mutedForeground },
-  absent: { color: `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)` },
+  absent: { color: tokens.mutedForeground },
   wrong: { color: tokens.danger },
   verdictCell: { display: 'flex', height: 19, alignItems: 'center' },
   verdict: {

@@ -56,8 +56,6 @@ export type RoleRow = ApiResult<typeof accessApi, 'access', 'listRoles'>['roles'
 
 type Tab = 'permissions' | 'eligibility' | 'appointment' | 'holders'
 
-const QUIET = `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)`
-
 const styles = stylex.create({
   // the switches, what they mean, and the way out - one bar
   statusBar: {
@@ -84,7 +82,7 @@ const styles = stylex.create({
     flexBasis: '16rem',
     fontSize: 12,
     lineHeight: 1.5,
-    color: QUIET,
+    color: tokens.mutedForeground,
   },
   removal: { display: 'inline-flex', alignItems: 'center', gap: 10 },
   removalWhy: { fontSize: 12, color: tokens.mutedForeground },
@@ -100,7 +98,12 @@ const styles = stylex.create({
   },
   tabList: { gap: 0 },
   tab: { height: 42, paddingInline: 12, fontSize: 13 },
-  tabCount: { marginLeft: 6, fontSize: 11.5, fontVariantNumeric: 'tabular-nums', color: QUIET },
+  tabCount: {
+    marginLeft: 6,
+    fontSize: 11.5,
+    fontVariantNumeric: 'tabular-nums',
+    color: tokens.mutedForeground,
+  },
   toolbar: {
     display: 'flex',
     alignItems: 'center',
@@ -123,7 +126,7 @@ const styles = stylex.create({
     color: { default: tokens.surfaceMutedForeground, ':hover': tokens.foreground },
     cursor: 'pointer',
   },
-  toolbarNote: { fontSize: 12, color: QUIET },
+  toolbarNote: { fontSize: 12, color: tokens.mutedForeground },
   group: {
     display: 'flex',
     flexDirection: 'column',
@@ -136,7 +139,7 @@ const styles = stylex.create({
   },
   groupHead: { display: 'flex', alignItems: 'baseline', gap: 8 },
   groupTitle: { fontSize: 12, fontWeight: 600 },
-  groupCount: { fontSize: 11, fontVariantNumeric: 'tabular-nums', color: QUIET },
+  groupCount: { fontSize: 11, fontVariantNumeric: 'tabular-nums', color: tokens.mutedForeground },
   part: {
     display: 'flex',
     flexDirection: 'column',

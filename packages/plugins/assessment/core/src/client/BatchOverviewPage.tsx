@@ -583,7 +583,7 @@ const styles = stylex.create({
     columnGap: 9,
     rowGap: 2,
     fontSize: 12,
-    color: `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)`,
+    color: tokens.mutedForeground,
   },
   crumb: {
     display: 'inline-flex',

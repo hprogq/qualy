@@ -31,19 +31,17 @@ import type { Api, OrgShape, OrgTreeNodeDto, OrgTypeDto, Run } from '../shape.ts
 // Mutation controls only render on what the server marked manageable; the
 // server enforces anyway.
 
-const QUIET = `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)`
-
 const styles = stylex.create({
   panel: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 14 },
   intro: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 6 },
   crumbs: { display: 'flex', minWidth: 0, alignItems: 'center', gap: 6, fontSize: 12 },
-  crumbGlyph: { width: 11, height: 11, flexShrink: 0, color: QUIET },
+  crumbGlyph: { width: 11, height: 11, flexShrink: 0, color: tokens.mutedForeground },
   crumb: {
     minWidth: 0,
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
-    color: QUIET,
+    color: tokens.mutedForeground,
   },
   crumbLink: {
     flexShrink: 0,
@@ -52,7 +50,7 @@ const styles = stylex.create({
     fontFamily: 'inherit',
     fontSize: 'inherit',
     backgroundColor: 'transparent',
-    color: { default: QUIET, ':hover': tokens.foreground },
+    color: { default: tokens.mutedForeground, ':hover': tokens.foreground },
     cursor: 'pointer',
   },
   crumbHere: { color: tokens.foreground },

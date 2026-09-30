@@ -84,7 +84,7 @@ const styles = stylex.create({
   factsLabel: { flexShrink: 0, fontWeight: 500, color: tokens.surfaceMutedForeground },
   factLabel: {
     flexShrink: 0,
-    color: `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)`,
+    color: tokens.mutedForeground,
   },
   factValue: {
     minWidth: 0,
@@ -106,7 +106,7 @@ const styles = stylex.create({
     fontSize: 11.5,
     lineHeight: '17px',
   },
-  factsTerm: { color: `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)` },
+  factsTerm: { color: tokens.mutedForeground },
   factsValue: {
     minWidth: 0,
     margin: 0,

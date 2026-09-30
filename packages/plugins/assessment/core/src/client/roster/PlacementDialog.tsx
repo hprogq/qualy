@@ -63,8 +63,6 @@ const UNAVAILABLE_LABELS = {
   unplaced: m.placementUnplaced,
 } as const
 
-const QUIET = `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)`
-
 const styles = stylex.create({
   // as tall as what it holds, up to a ceiling where the list scrolls
   panel: { maxHeight: 'min(90dvh, 52rem)' },
@@ -167,7 +165,7 @@ const styles = stylex.create({
     height: '0.85em',
     marginInline: 8,
     verticalAlign: '-0.1em',
-    backgroundColor: `color-mix(in oklab, ${QUIET} 40%, transparent)`,
+    backgroundColor: `color-mix(in oklab, ${tokens.mutedForeground} 34%, transparent)`,
   },
   actions: { display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 8 },
   // how many are chosen and the way through the pages, under the list as

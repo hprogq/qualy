@@ -60,7 +60,7 @@ const styles = stylex.create({
     borderBottomColor: tokens.divider,
     backgroundColor: tokens.surfaceInset,
     fontSize: 11,
-    color: `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)`,
+    color: tokens.mutedForeground,
   },
   status: {
     display: 'inline-flex',
@@ -69,7 +69,7 @@ const styles = stylex.create({
     gap: 6,
     margin: 0,
     fontSize: 11,
-    color: `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)`,
+    color: tokens.mutedForeground,
   },
   statusWords: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
   statusWarn: { color: tokens.warningForeground },
@@ -179,7 +179,7 @@ const styles = stylex.create({
     flexShrink: 0,
     fontSize: 11,
     fontVariantNumeric: 'tabular-nums',
-    color: `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)`,
+    color: tokens.mutedForeground,
   },
   resultStale: { color: tokens.warningForeground },
   resultNone: {
@@ -188,7 +188,7 @@ const styles = stylex.create({
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
     fontSize: 12,
-    color: `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)`,
+    color: tokens.mutedForeground,
   },
   keepRow: { display: 'flex', alignItems: 'center', gap: 8 },
   keep: {

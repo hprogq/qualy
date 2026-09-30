@@ -26,7 +26,6 @@ const ZOOM_STEP = 0.2
 const clamp = (zoom: number) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(zoom * 100) / 100))
 
 const LINE = `color-mix(in oklab, ${tokens.mutedForeground} 50%, transparent)`
-const QUIET = `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)`
 
 const styles = stylex.create({
   // The picture opens fitted to whatever width it is given, so a phone
@@ -67,8 +66,13 @@ const styles = stylex.create({
   boxOpen: { stroke: tokens.foreground, strokeWidth: 1.5 },
   name: { fontSize: 13, fontWeight: 500, fill: tokens.foreground, pointerEvents: 'none' },
   nameOpen: { fontWeight: 600 },
-  count: { fontSize: 11, fill: QUIET, pointerEvents: 'none' },
-  headCount: { flexShrink: 0, fontSize: 12, fontVariantNumeric: 'tabular-nums', color: QUIET },
+  count: { fontSize: 11, fill: tokens.mutedForeground, pointerEvents: 'none' },
+  headCount: {
+    flexShrink: 0,
+    fontSize: 12,
+    fontVariantNumeric: 'tabular-nums',
+    color: tokens.mutedForeground,
+  },
   legend: {
     display: 'flex',
     flexWrap: 'wrap',
@@ -78,7 +82,7 @@ const styles = stylex.create({
     paddingInline: 16,
     paddingBottom: 12,
     fontSize: 11,
-    color: QUIET,
+    color: tokens.mutedForeground,
   },
   legendItem: { display: 'inline-flex', alignItems: 'center', gap: 8 },
   legendLine: {

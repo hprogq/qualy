@@ -26,8 +26,6 @@ import { inZone, useBatchZone } from '../batch/zone.ts'
 // only the last scheduled one may give it back, and only the unscheduled
 // suffix may still be reordered. The whole row opens the phase's details.
 
-const QUIET = `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)`
-
 const styles = stylex.create({
   nameRow: {
     display: 'flex',
@@ -114,7 +112,7 @@ const styles = stylex.create({
     whiteSpace: 'nowrap',
     fontSize: 12,
     lineHeight: 1.45,
-    color: QUIET,
+    color: tokens.mutedForeground,
   },
   refusals: {
     display: 'flex',
@@ -167,7 +165,7 @@ const styles = stylex.create({
     width: 13,
     height: 13,
     flexShrink: 0,
-    color: QUIET,
+    color: tokens.mutedForeground,
   },
   whenGlyphCurrent: {
     color: tokens.primary,
@@ -181,7 +179,7 @@ const styles = stylex.create({
   whenRelative: {
     paddingInlineStart: 19,
     fontSize: 11.5,
-    color: QUIET,
+    color: tokens.mutedForeground,
   },
   whenNote: {
     overflow: 'hidden',
@@ -307,7 +305,7 @@ const styles = stylex.create({
     width: 14,
     height: 14,
     flexShrink: 0,
-    color: QUIET,
+    color: tokens.mutedForeground,
   },
   cardFacts: {
     display: 'flex',
@@ -330,7 +328,7 @@ const styles = stylex.create({
   cardLineLabel: {
     flexShrink: 0,
     fontSize: 12,
-    color: QUIET,
+    color: tokens.mutedForeground,
   },
   cardLineBody: {
     display: 'flex',

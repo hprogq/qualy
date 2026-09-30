@@ -155,7 +155,7 @@ const styles = stylex.create({
     columnGap: 8,
     rowGap: 4,
     fontSize: 12,
-    color: `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)`,
+    color: tokens.mutedForeground,
   },
   actions: { display: 'flex', flexShrink: 0, alignItems: 'center', gap: 8 },
 
@@ -216,7 +216,7 @@ const styles = stylex.create({
     fontSize: 11,
     fontWeight: 400,
     fontVariantNumeric: 'tabular-nums',
-    color: `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)`,
+    color: tokens.mutedForeground,
   },
   panelBody: { display: 'flex', minHeight: 0, flexGrow: 1, flexDirection: 'column' },
 

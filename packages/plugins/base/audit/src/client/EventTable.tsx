@@ -91,7 +91,7 @@ const styles = stylex.create({
   said: {
     display: { default: 'none', [breakpoints.phone]: 'inline' },
     marginInlineEnd: 5,
-    color: `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)`,
+    color: tokens.mutedForeground,
   },
   action: {
     fontSize: { default: 13, [breakpoints.phone]: 14 },

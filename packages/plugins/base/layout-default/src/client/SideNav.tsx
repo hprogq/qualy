@@ -18,8 +18,6 @@ import type { SectionGroup } from './useAppNavigation.ts'
 // the headings its plugins file them by. A narrow window keeps the row: a
 // column there would take a third of the page.
 
-const QUIET = `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)`
-
 const styles = stylex.create({
   nav: {
     display: 'flex',
@@ -36,7 +34,7 @@ const styles = stylex.create({
     fontSize: 11,
     fontWeight: 600,
     letterSpacing: '0.06em',
-    color: QUIET,
+    color: tokens.mutedForeground,
   },
   list: {
     display: 'flex',

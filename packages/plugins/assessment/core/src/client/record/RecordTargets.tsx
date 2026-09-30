@@ -44,7 +44,7 @@ import { UnitRoster } from './UnitRoster.tsx'
 const styles = stylex.create({
   row: { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
   chosen: { fontSize: 13, color: tokens.mutedForeground },
-  none: { fontSize: 13, color: `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)` },
+  none: { fontSize: 13, color: tokens.mutedForeground },
   spacer: { flexGrow: 1 },
   body: { display: 'flex', minHeight: 'min(62vh, 30rem)', flexDirection: 'column' },
   // a height of its own that the picker grows into, so the list reaches the

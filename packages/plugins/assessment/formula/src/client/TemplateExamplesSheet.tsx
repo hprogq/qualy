@@ -44,7 +44,7 @@ const styles = stylex.create({
   facts: { display: 'flex', flexDirection: 'column', gap: 4 },
   factsLabel: {
     fontSize: 11,
-    color: `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)`,
+    color: tokens.mutedForeground,
   },
   fact: { display: 'flex', alignItems: 'baseline', gap: 10, fontSize: 12 },
   factLabel: { minWidth: 76, flexShrink: 0, color: tokens.mutedForeground },

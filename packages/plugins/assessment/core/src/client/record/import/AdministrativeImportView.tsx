@@ -68,7 +68,7 @@ const styles = stylex.create({
   templateRow: { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10 },
   templateNote: {
     fontSize: 12,
-    color: `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)`,
+    color: tokens.mutedForeground,
   },
   icon: { width: 14, height: 14 },
   tileIcon: { width: 18, height: 18 },

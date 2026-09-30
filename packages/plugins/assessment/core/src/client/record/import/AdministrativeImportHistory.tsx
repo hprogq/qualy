@@ -130,7 +130,7 @@ const styles = stylex.create({
   when: {
     textAlign: 'end',
     fontSize: 12.5,
-    color: `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)`,
+    color: tokens.mutedForeground,
     fontVariantNumeric: 'tabular-nums',
   },
   // what the file comes to now; narrow, the time joins it for want of a

@@ -206,7 +206,7 @@ const styles = stylex.create({
     paddingInlineStart: 11,
     fontSize: 12.5,
     lineHeight: 1.5,
-    color: `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)`,
+    color: tokens.mutedForeground,
     textWrap: 'pretty',
   },
   sectionBody: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 14 },

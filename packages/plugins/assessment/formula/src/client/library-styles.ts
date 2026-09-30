@@ -126,7 +126,7 @@ export const libraryStyles = stylex.create({
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
     fontSize: 12,
-    color: `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)`,
+    color: tokens.mutedForeground,
   },
   tag: {
     display: 'inline-flex',
@@ -198,7 +198,7 @@ export const libraryStyles = stylex.create({
   },
   chipLabel: {
     fontSize: 11,
-    color: `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)`,
+    color: tokens.mutedForeground,
   },
   skeletonRow: { display: 'flex', flexDirection: 'column', gap: 8, paddingBlock: 16 },
 })

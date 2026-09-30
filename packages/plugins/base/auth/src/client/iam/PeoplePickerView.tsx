@@ -51,8 +51,6 @@ import { UnitPath, type PathStep } from './users/UnitPath.tsx'
 
 const ANY = 'any'
 
-const QUIET = `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)`
-
 const styles = stylex.create({
   // The units on one side, the people on the other once there is room.
   //
@@ -189,7 +187,7 @@ const styles = stylex.create({
   },
   nameCell: { fontSize: 13.5, color: tokens.foreground },
   numeric: { fontVariantNumeric: 'tabular-nums' },
-  quietWord: { color: QUIET },
+  quietWord: { color: tokens.mutedForeground },
   // the name gives way before the mark beside it: a mark cut short says
   // nothing, and the name is whole on hover
   nameLine: { display: 'flex', minWidth: 0, alignItems: 'center', gap: 8 },
@@ -285,7 +283,7 @@ const styles = stylex.create({
     flexShrink: 0,
     width: 1,
     height: 11,
-    backgroundColor: `color-mix(in oklab, ${QUIET} 40%, transparent)`,
+    backgroundColor: `color-mix(in oklab, ${tokens.mutedForeground} 34%, transparent)`,
   },
   // ---- waiting and nobody ------------------------------------------------
   waiting: {

@@ -103,8 +103,6 @@ const STANDING_WORDS = {
 /** the value a select holds for "no narrowing": an empty string is not an item */
 const ALL = '*'
 
-const QUIET = `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)`
-
 const styles = stylex.create({
   page: { display: 'flex', flexDirection: 'column', gap: 16 },
   section: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 12 },
@@ -174,7 +172,7 @@ const styles = stylex.create({
     rowGap: 3,
     fontSize: 12,
     lineHeight: 1.5,
-    color: QUIET,
+    color: tokens.mutedForeground,
   },
   unit: {
     minWidth: 'min(8em, 100%)',
@@ -199,8 +197,8 @@ const styles = stylex.create({
     lineHeight: 1.6,
     color: tokens.foreground,
   },
-  grantOff: { color: QUIET, textDecorationLine: 'line-through' },
-  none: { fontSize: 12.5, color: QUIET },
+  grantOff: { color: tokens.mutedForeground, textDecorationLine: 'line-through' },
+  none: { fontSize: 12.5, color: tokens.mutedForeground },
   // ... and as a grid, one column per capability
   cellMark: {
     display: 'flex',
@@ -259,7 +257,7 @@ const styles = stylex.create({
   },
   // on a card the name gives way, never the button beside it
   cardActs: { flexShrink: 0, whiteSpace: 'nowrap' },
-  menuWhere: { marginInlineStart: 6, color: QUIET },
+  menuWhere: { marginInlineStart: 6, color: tokens.mutedForeground },
 
   // one person as a card of their own, where a row of columns is not a
   // shape a phone has
@@ -276,7 +274,7 @@ const styles = stylex.create({
   cardHead: { display: 'flex', minWidth: 0, alignItems: 'center', gap: 10 },
   cardWho: { display: 'flex', minWidth: 0, flexGrow: 1 },
   cardBlock: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 5 },
-  cardLabel: { fontSize: 11.5, fontWeight: 500, color: QUIET },
+  cardLabel: { fontSize: 11.5, fontWeight: 500, color: tokens.mutedForeground },
   // what the grid's two marks mean, once, at its foot
   legend: {
     display: 'flex',

@@ -557,7 +557,7 @@ const styles = stylex.create({
     fontSize: 11,
     fontWeight: 600,
     letterSpacing: '0.06em',
-    color: `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)`,
+    color: tokens.mutedForeground,
   },
   personList: {
     display: 'flex',

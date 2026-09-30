@@ -225,7 +225,7 @@ const styles = stylex.create({
     minWidth: 0,
     fontSize: 11,
     textAlign: 'right',
-    color: `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)`,
+    color: tokens.mutedForeground,
   },
   sideNoteOff: { color: tokens.warningForeground },
   notice: {

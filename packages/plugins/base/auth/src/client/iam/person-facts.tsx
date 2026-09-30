@@ -10,8 +10,6 @@ import { iamMessages as m } from '../i18n.ts'
 // administering them in the directory, or the person on their own account.
 // The screens around them differ in who may do what; these do not.
 
-const QUIET = `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)`
-
 const styles = stylex.create({
   // What is true of them at a glance, each under its own small word. The
   // rule between two facts is drawn by the second, in the gap before it, and
@@ -55,7 +53,7 @@ const styles = stylex.create({
   // follows the value - "unverified" after a long address - stays in sight,
   // where a fact that kept its width was cut off by the line's edge.
   factWrapping: { flexShrink: 1, maxWidth: '100%' },
-  factLabel: { flexShrink: 0, color: QUIET },
+  factLabel: { flexShrink: 0, color: tokens.mutedForeground },
   factValue: {
     minWidth: 0,
     overflow: 'hidden',
@@ -65,7 +63,7 @@ const styles = stylex.create({
     color: tokens.surfaceMutedForeground,
   },
   factWarn: { color: tokens.warningForeground },
-  factAside: { flexShrink: 0, color: QUIET },
+  factAside: { flexShrink: 0, color: tokens.mutedForeground },
   emailLine: {
     display: 'inline-flex',
     flexWrap: 'wrap',

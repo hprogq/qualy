@@ -32,7 +32,6 @@ import type { NodeTask } from './NodeDialogs.tsx'
 // what is under it fit on its own row, so the tree is the page, read across
 // like a table, and a unit opens beside it only when somebody asks for one.
 
-const QUIET = `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)`
 const COLUMNS = 'minmax(0, 1fr) 8rem 6rem 6rem 4.5rem'
 const INDENT = 24
 /** narrow, a level costs less, because the name is what is left of the row */
@@ -152,7 +151,7 @@ const styles = stylex.create({
   // of them apart at a glance. It shrinks away rather than pushing the
   // name, because the name is what somebody is looking for.
   kindPhone: { display: 'block', minWidth: 0, fontSize: 12 },
-  none: { color: QUIET },
+  none: { color: tokens.mutedForeground },
   // What can be done to a unit, at the end of its own row. Quiet until the
   // row is pointed at or holds the focus, so forty rows are not forty sets of
   // buttons; always there on a screen with nothing to point with.

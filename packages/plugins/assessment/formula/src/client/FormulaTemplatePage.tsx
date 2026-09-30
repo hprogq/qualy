@@ -86,7 +86,7 @@ const styles = stylex.create({
   fact: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 3 },
   factLabel: {
     fontSize: 11,
-    color: `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)`,
+    color: tokens.mutedForeground,
   },
   factValue: {
     margin: 0,
@@ -134,7 +134,7 @@ const styles = stylex.create({
   },
   paneNote: {
     fontSize: 12,
-    color: `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)`,
+    color: tokens.mutedForeground,
   },
   none: { fontSize: 12, color: tokens.mutedForeground },
   source: { maxHeight: 340 },

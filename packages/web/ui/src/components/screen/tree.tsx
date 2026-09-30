@@ -23,8 +23,6 @@ import { tokens } from '../../theme/tokens.stylex.ts'
 /** how far each level steps in; small, because a real tree is five or six deep */
 const INDENT = 12
 
-const QUIET = `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)`
-
 const styles = stylex.create({
   // the seat both controls sit in; it carries the hover and the open tint so
   // a pointer anywhere along the line lights the whole line
@@ -92,7 +90,7 @@ const styles = stylex.create({
   wordOpen: { fontWeight: 600 },
   lock: { width: 12, height: 12, flexShrink: 0, color: tokens.mutedForeground },
   spacer: { flexGrow: 1, flexShrink: 1, flexBasis: '0%', minWidth: 4 },
-  kind: { flexShrink: 0, whiteSpace: 'nowrap', fontSize: 11, color: QUIET },
+  kind: { flexShrink: 0, whiteSpace: 'nowrap', fontSize: 11, color: tokens.mutedForeground },
   /** what was typed, inside what was found */
   hit: { fontWeight: 600, color: tokens.foreground },
   tally: {
@@ -101,7 +99,7 @@ const styles = stylex.create({
     textAlign: 'right',
     fontSize: 11,
     fontVariantNumeric: 'tabular-nums',
-    color: QUIET,
+    color: tokens.mutedForeground,
   },
 })
 

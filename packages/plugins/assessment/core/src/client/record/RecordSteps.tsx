@@ -98,7 +98,7 @@ const styles = stylex.create({
   blockedActions: { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10 },
   blockedHint: {
     fontSize: 12,
-    color: `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)`,
+    color: tokens.mutedForeground,
   },
   blockedList: { display: 'flex', flexDirection: 'column', gap: 4, margin: 0, padding: 0 },
   blockedRow: {

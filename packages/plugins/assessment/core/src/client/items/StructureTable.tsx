@@ -38,8 +38,6 @@ import { shownRows, type StructureRow } from './structure.ts'
 // Searching keeps the sections a match sits in, so a question found by name
 // is still read where it counts.
 
-const QUIET = `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)`
-
 // The table answers to its own width, not the window's: beside the batch's
 // rail a laptop leaves it far less room than the screen suggests, and seven
 // fixed columns there squeezed the names - the thing a reader is looking
@@ -170,7 +168,7 @@ const styles = stylex.create({
     flexShrink: 0,
     alignItems: 'center',
     justifyContent: 'center',
-    color: QUIET,
+    color: tokens.mutedForeground,
   },
   // a row can be carried by a pointer; the grip says so where one rests
   grip: {
@@ -192,7 +190,7 @@ const styles = stylex.create({
     marginInlineEnd: 4,
     fontSize: 12,
     fontVariantNumeric: 'tabular-nums',
-    color: QUIET,
+    color: tokens.mutedForeground,
   },
   name: {
     minWidth: 0,
@@ -234,7 +232,7 @@ const styles = stylex.create({
     fontSize: 12,
     fontVariantNumeric: 'tabular-nums',
     whiteSpace: 'nowrap',
-    color: QUIET,
+    color: tokens.mutedForeground,
   },
   factItem: { display: 'inline-flex', alignItems: 'center', gap: 8 },
   factRule: {
@@ -268,7 +266,7 @@ const styles = stylex.create({
   },
   reachIcon: { width: 12, height: 12, flexShrink: 0 },
   reachWords: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-  none: { color: QUIET },
+  none: { color: tokens.mutedForeground },
   status: {
     display: 'flex',
     minWidth: 0,
@@ -288,7 +286,7 @@ const styles = stylex.create({
     rowGap: 2,
     fontSize: 12,
     fontVariantNumeric: 'tabular-nums',
-    color: QUIET,
+    color: tokens.mutedForeground,
   },
   acts: {
     display: 'inline-flex',
