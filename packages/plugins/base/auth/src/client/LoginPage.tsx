@@ -533,8 +533,14 @@ export default function LoginPage() {
   }, [view])
 
   /** a new state of the page, as an entry in the browser's history; the way back comes along */
+  // what the visit is for travels with every view of it: where to go after,
+  // or the page waiting in another tab
   const go = (state: Record<string, string>) =>
-    setParams({ ...state, ...(next === undefined ? {} : { next }) })
+    setParams({
+      ...state,
+      ...(next === undefined ? {} : { next }),
+      ...(resume ? { [SESSION_RESUME_PARAM]: '1' } : {}),
+    })
 
   const choose = (method: LoginMethod, from: View) => {
     if (method.mode === 'redirect') {

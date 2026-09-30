@@ -1,6 +1,6 @@
 import LoginPage from '../src/client/LoginPage.tsx'
 import { lazy } from 'react'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { page, userEvent } from 'vitest/browser'
 import { Effect } from 'effect'
 import { TooManyAttempts } from '@qualy/auth-contract/session'
@@ -586,6 +586,62 @@ describe('the way back after signing in', () => {
     await page.getByRole('button', { name: '账号密码' }).click()
     await expect.element(page.getByLabelText('邮箱')).toBeVisible()
     expect(new URLSearchParams(addressNow().split('?')[1]).get('next')).toBe('/reports')
+  })
+
+  // Opened by a page waiting in another tab for its reader: choosing a way in
+  // used to drop what the visit was for, so signing in ended as an ordinary
+  // one - sent home - and the waiting page was never told
+  it('keeps a sign-in for a waiting page one through the way chosen, and ends it here', async () => {
+    let signedIn = false
+    const close = vi.spyOn(window, 'close').mockImplementation(() => {})
+    try {
+      await renderScreen({
+        client: fakeClient({
+          app: { getManifest: emptyManifest() },
+          auth: {
+            getSession: () =>
+              Effect.suspend(() =>
+                signedIn
+                  ? Effect.succeed({
+                      user: {
+                        id: 'u1',
+                        displayName: '张三',
+                        email: 'zhang@school.edu',
+                        tenantId: 't1',
+                      },
+                    })
+                  : Effect.fail(apiError('AUTH_REQUIRED', undefined)),
+              ),
+            listLoginMethods: context([password]),
+          },
+          authLocal: {
+            login: () =>
+              Effect.sync(() => {
+                signedIn = true
+                return {}
+              }),
+          },
+        }),
+        registry: {
+          login: { local: lazy(() => import('@qualy/plugin-auth-local/client/LoginMethod')) },
+        },
+        route: '/login?resume=1',
+        children: <LoginPage />,
+      })
+      await page.getByRole('button', { name: '账号密码' }).click()
+      await expect.element(page.getByLabelText('邮箱')).toBeVisible()
+      expect(new URLSearchParams(addressNow().split('?')[1]).get('resume')).toBe('1')
+
+      await page.getByLabelText('邮箱').fill('zhang@school.edu')
+      await page.getByLabelText('密码').fill('a long enough password')
+      await page.getByTestId('local-submit').click()
+      await expect.element(page.getByTestId('sign-in-resumed')).toBeVisible()
+      expect(close).toHaveBeenCalled()
+      // still here, not sent on as an ordinary sign-in would be
+      expect(addressNow().split('?')[0]).toBe('/login')
+    } finally {
+      close.mockRestore()
+    }
   })
 })
 
