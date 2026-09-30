@@ -20988,3 +20988,10 @@ job 后通过。阶段 3、4 在 worktree 上完成,拆成三个功能提交与�
   `smoke-production.ts` 通过(权限镜像行为英文源语言);`pnpm release:build e2e --check --platform linux/arm64` 通过
   (无库启动越过 lock 与 web release、在数据库处拒绝,镜像 144 MB);E2E 6 文件 15 条全过。中间两个提交各自单独
   typecheck 通过并跑了邮件与 bootstrap 相关测试。
+- **上线**:rc.22(`f21417862`)06:50 部署,公网 release id `r_Qn1AFG_nHssqR-Q9_0OOpQ` 与 release.json 一致;公网
+  manifest 按 `x-qualy-locale` 分别给出中英标题,`context` 带当前语言的术语词。第一次推送的 CI 挂在 messages-golden:
+  它读编译器的合并工程目录,而该目录已改为按进程临时建、用完即删,本机因旧文件残留而通过;改为直接取编译器合并后的
+  消息(`test:` 提交)。第二次 CI 的 browser job 有一条 shell 滚动用例失败(同一份浏览器代码上一轮 CI 与本机全套都通过),
+  重跑后通过。
+- **下一步**:无阻塞。`qualyChunkGraph` 的结果检查若要进门禁,先定阈值口径;两次 CI 偶发(storage-local 的 route
+  mock、shell 滚动)各出现一次,再现时再查。
