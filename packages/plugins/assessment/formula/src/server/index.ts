@@ -7,7 +7,7 @@ import { sql } from 'kysely'
 import { Api } from '@qualy/api-kit/local'
 import { DEFAULT_PAGE_SIZE, encodeQueryCursor, readQueryCursor } from '@qualy/api-kit'
 import { BadRequest, cursorUnusable, pageSize } from '@qualy/api-kit/schema'
-import { originMatchesHost } from '@qualy/api-kit/origin'
+import { originMatches, publicOriginOf, trustedProxies } from '@qualy/api-kit/origin'
 import { currentRequestContext } from '@qualy/api-kit/request'
 import { CurrentUser } from '@qualy/auth-contract/session'
 import { transaction, withDatabase, type Orm } from '@qualy/plugin-database/server'
@@ -3211,13 +3211,15 @@ export const formulaApiHandlers = HttpApiBuilder.group(local, 'assessmentFormula
 
         // a browser-initiated WebSocket carries the ambient qualy_session
         // cookie regardless of the initiating page, so the ORIGIN header is
-        // the whole cross-site defense: absent, non-http(s) or pointing at a
-        // different host means someone else's page is speaking. The host it
-        // is held against is the one the request context resolved through
-        // the deployment's proxy policy; served bare, the Host header
+        // the whole cross-site defense: absent, non-http(s) or naming a
+        // different origin means someone else's page is speaking. The origin
+        // it is held against is the one the request context resolved through
+        // the deployment's proxy policy; served bare, the socket and the
+        // Host header
         const context = Option.getOrUndefined(yield* currentRequestContext)
-        const publicHost = context === undefined ? request.headers['host'] : context.publicHost
-        if (!originMatchesHost(request.headers['origin'], publicHost)) {
+        const publicOrigin =
+          context === undefined ? publicOriginOf(request, trustedProxies([])) : context.publicOrigin
+        if (!originMatches(request.headers['origin'], publicOrigin)) {
           return HttpServerResponse.empty({ status: 403 })
         }
 

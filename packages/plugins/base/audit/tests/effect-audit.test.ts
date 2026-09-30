@@ -280,6 +280,7 @@ describe.runIf(postgresAvailable)('the audit writer', () => {
                 traceId: '4bf92f3577b34da6a3ce929d0e0e4736',
                 sessionId: '44444444-4444-4444-8444-444444444444',
                 publicHost: undefined,
+                publicOrigin: undefined,
                 bindSession: () => Effect.void,
                 endpoint: undefined,
                 bindEndpoint: () => Effect.void,

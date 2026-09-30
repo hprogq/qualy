@@ -117,6 +117,7 @@ describe('logging settings', () => {
                 traceId: undefined,
                 sessionId: undefined,
                 publicHost: undefined,
+                publicOrigin: undefined,
                 bindSession: () => Effect.void,
                 endpoint: undefined,
                 bindEndpoint: () => Effect.void,

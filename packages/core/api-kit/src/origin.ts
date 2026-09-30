@@ -2,6 +2,7 @@ import { Context, Effect } from 'effect'
 import { HttpServerRequest, HttpServerResponse } from 'effect/http'
 import {
   publicHostOf,
+  publicOriginOf,
   trustedProxies,
   type AddressedRequest,
   type TrustedProxies,
@@ -16,29 +17,32 @@ import { RequestOriginRefused } from './schema.ts'
 // and nothing else in the pipeline was written to notice. So every unsafe
 // request - anything but GET, HEAD and OPTIONS - has to come from this
 // application's own origin. The browser says where a request came from in
-// `Sec-Fetch-Site`, and `same-site` is refused along with `cross-site`:
-// that value is exactly the sibling-subdomain case. A client that sends no
-// Fetch Metadata is judged by its Origin against the host the request was
-// addressed to; one that sends neither is not a browser carrying somebody's
-// cookie - curl, a CLI, a test - and is let through, because it has no
-// victim to speak for.
+// `Sec-Fetch-Site`, and only `same-origin` is let through: `same-site` is
+// exactly the sibling-subdomain case, and `none` - a request the reader
+// started from the browser's own chrome, an address typed or a bookmark -
+// is never how this application writes. A client that sends no Fetch
+// Metadata is judged by its Origin against the origin the request was
+// addressed to, scheme included; one that sends neither is not a browser
+// carrying somebody's cookie - curl, a CLI, a test - and is let through,
+// because it has no victim to speak for.
 //
 // Its own subpath, like ./request: nothing here belongs in a browser bundle.
 
-export { publicHostOf, type AddressedRequest }
+export { publicHostOf, publicOriginOf, trustedProxies, type AddressedRequest }
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
 
-/** whether an Origin header names the host a request was addressed to */
-export const originMatchesHost = (
+/** whether an Origin header is the origin a request was addressed to: scheme, host and port */
+export const originMatches = (
   origin: string | undefined,
-  publicHost: string | undefined,
+  publicOrigin: string | undefined,
 ): boolean => {
-  if (origin === undefined || publicHost === undefined) return false
+  if (origin === undefined || publicOrigin === undefined) return false
   try {
     const parsed = new URL(origin)
     return (
-      (parsed.protocol === 'http:' || parsed.protocol === 'https:') && parsed.host === publicHost
+      (parsed.protocol === 'http:' || parsed.protocol === 'https:') &&
+      parsed.origin === publicOrigin
     )
   } catch {
     return false
@@ -49,24 +53,22 @@ export interface OriginInput {
   readonly method: string
   readonly secFetchSite: string | undefined
   readonly origin: string | undefined
-  readonly publicHost: string | undefined
+  readonly publicOrigin: string | undefined
 }
 
 /** the rule, on the strings alone */
 export const originVerdict = (input: OriginInput): 'allow' | 'refuse' => {
   if (SAFE_METHODS.has(input.method)) return 'allow'
   if (input.secFetchSite !== undefined) {
-    return input.secFetchSite === 'same-origin' || input.secFetchSite === 'none'
-      ? 'allow'
-      : 'refuse'
+    return input.secFetchSite === 'same-origin' ? 'allow' : 'refuse'
   }
   if (input.origin === undefined) return 'allow'
-  return originMatchesHost(input.origin, input.publicHost) ? 'allow' : 'refuse'
+  return originMatches(input.origin, input.publicOrigin) ? 'allow' : 'refuse'
 }
 
-/** whether a request's Origin names the host it was addressed to; for a websocket handshake, which always carries one */
+/** whether a request's Origin is the origin it was addressed to; for a websocket handshake, which always carries one */
 export const sameOriginRequest = (request: AddressedRequest, trusted: TrustedProxies): boolean =>
-  originMatchesHost(request.headers['origin'], publicHostOf(request, trusted))
+  originMatches(request.headers['origin'], publicOriginOf(request, trusted))
 
 // the wire shape the api's own error encoding produces, so the browser reads
 // the refusal the way it reads every other error: by its tag
@@ -100,8 +102,10 @@ export const requestOriginGuard = (options?: {
       const request = Context.getUnsafe(fiber.context, HttpServerRequest.HttpServerRequest)
       const secFetchSite = request.headers['sec-fetch-site']
       const origin = request.headers['origin']
-      const publicHost = publicHostOf(request, trusted)
-      if (originVerdict({ method: request.method, secFetchSite, origin, publicHost }) === 'allow') {
+      const publicOrigin = publicOriginOf(request, trusted)
+      if (
+        originVerdict({ method: request.method, secFetchSite, origin, publicOrigin }) === 'allow'
+      ) {
         return httpApp
       }
       // the five facts the rule read, and nothing the request carried
@@ -113,7 +117,7 @@ export const requestOriginGuard = (options?: {
           path: pathOf(request.url),
           secFetchSite: secFetchSite ?? null,
           origin: origin ?? null,
-          host: publicHost ?? null,
+          addressed: publicOrigin ?? null,
         }),
         Effect.andThen(refused),
       )

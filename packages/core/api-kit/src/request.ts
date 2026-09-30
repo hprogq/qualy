@@ -50,9 +50,14 @@ export interface RequestContextShape {
   /**
    * The host this request was addressed to, as the browser saw it: the
    * forwarded host when a trusted proxy wrote it, the Host header
-   * otherwise. What an Origin header has to match.
+   * otherwise.
    */
   readonly publicHost: string | undefined
+  /**
+   * The origin this request was addressed to, scheme included, through the
+   * same policy. What an Origin header has to equal.
+   */
+  readonly publicOrigin: string | undefined
   /**
    * What the access log should call this request, when the address itself
    * is not safe to write down.
@@ -349,13 +354,31 @@ const KNOWN_METHODS = new Set([
  * trusted hop the answer is what the socket actually is, which for this
  * product is plain http behind whatever terminates TLS.
  */
-const schemeOf = (
-  request: HttpServerRequest.HttpServerRequest,
+export const publicSchemeOf = (
+  request: AddressedRequest,
   trusted: TrustedProxies,
 ): 'https' | 'http' => {
   const remote = normalizeIp(Option.getOrUndefined(request.remoteAddress ?? Option.none()))
   if (remote === undefined || !trusted(remote)) return 'http'
   return request.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http'
+}
+
+/**
+ * The origin the client addressed - that scheme and that host, through the
+ * same trust policy - normalised the way a browser writes its Origin header.
+ * Undefined when the request carries no host.
+ */
+export const publicOriginOf = (
+  request: AddressedRequest,
+  trusted: TrustedProxies,
+): string | undefined => {
+  const host = publicHostOf(request, trusted)
+  if (host === undefined) return undefined
+  try {
+    return new URL(`${publicSchemeOf(request, trusted)}://${host}`).origin
+  } catch {
+    return undefined
+  }
 }
 
 /**
@@ -410,7 +433,7 @@ export const serverSpans = (options?: {
           ...(parent === undefined ? {} : { parent }),
           attributes: {
             'http.request.method': request.method,
-            'url.scheme': schemeOf(request, trusted),
+            'url.scheme': publicSchemeOf(request, trusted),
           },
         }),
         (span) => {
@@ -590,7 +613,7 @@ export const httpMetrics = (options?: {
               // through the same trust policy every other forwarded header
               // here goes through: believed only from a declared proxy, so a
               // client cannot relabel its own request by sending the header
-              'url.scheme': schemeOf(request, trusted),
+              'url.scheme': publicSchemeOf(request, trusted),
               'http.response.status_code': String(status),
               ...(route === undefined ? {} : { 'http.route': route }),
               // a server error is the condition semconv requires error.type
@@ -649,6 +672,7 @@ export const requestContext = (options?: {
         ),
         userAgent: userAgentOf(request.headers['user-agent']),
         publicHost: publicHostOf(request, trusted),
+        publicOrigin: publicOriginOf(request, trusted),
         // 'noop' is the disabled tracer's sentinel span
         // (repos/effect/packages/effect/src/internal/effect.ts:5645-5648),
         // not an id worth recording

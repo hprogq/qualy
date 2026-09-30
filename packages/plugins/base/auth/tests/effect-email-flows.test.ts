@@ -770,6 +770,7 @@ describe.runIf(postgresAvailable)('asking for a reset where a challenge can be a
           sessionId: undefined,
           bindSession: () => Effect.void,
           publicHost: undefined,
+          publicOrigin: undefined,
           endpoint: undefined,
           bindEndpoint: () => Effect.void,
         }),

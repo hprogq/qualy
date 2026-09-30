@@ -183,6 +183,7 @@ describe.runIf(postgresAvailable)('admitting an attempt', () => {
           sessionId: undefined,
           bindSession: () => Effect.void,
           publicHost: undefined,
+          publicOrigin: undefined,
           endpoint: undefined,
           bindEndpoint: () => Effect.void,
         }),
