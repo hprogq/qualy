@@ -146,3 +146,42 @@ describe('a session that ends under an open page', () => {
     expect(new URL(signInTab.url()).pathname).not.toMatch(/^\/login/)
   })
 })
+
+// Somebody else signs in in another tab, and this page never saw the session
+// go: signing in there tells this tab, which asks who is signed in and finds
+// it is not the reader any more. The page stays where it was, locked with only
+// a reload, and asks nothing more as the new account.
+describe('a page whose account changed in another tab', () => {
+  const session = browsing()
+
+  it('is locked at once and sends nothing as the new account', async () => {
+    const page = session.page()
+    await signIn(page, 'student')
+    const where = `/assessment/batches/${BATCH}/my-result`
+    await page.goto(where)
+    await page.getByRole('heading', { level: 1 }).first().waitFor()
+
+    // in another tab: signed out, and signed in again as somebody else
+    const other = await page.context().newPage()
+    await page.context().clearCookies()
+    await signIn(other, 'counsellor')
+
+    const lock = page.getByTestId('session-recovery')
+    await expect.poll(() => lock.getAttribute('data-state'), { timeout: 20_000 }).toBe('switched')
+    expect(new URL(page.url()).pathname).toBe(where)
+
+    const asked: string[] = []
+    page.on('request', (request) => {
+      if (new URL(request.url()).pathname.startsWith('/api/')) asked.push(request.url())
+    })
+    // coming back to it asks everything again, and none of it goes out
+    await page.bringToFront()
+    await page.evaluate(() => {
+      document.dispatchEvent(new Event('visibilitychange', { bubbles: true }))
+      window.dispatchEvent(new Event('focus'))
+    })
+    await page.waitForTimeout(2_000)
+    expect(asked).toEqual([])
+    expect(await lock.getAttribute('data-state')).toBe('switched')
+  })
+})
