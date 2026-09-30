@@ -20821,3 +20821,32 @@ W12 审查意见收尾（十一组，分组见仓库外 `audit-2026-09-25/wave13
   - 本机 Docker 磁盘被反复构建写满一次(构建缓存 38 GB),只清了构建缓存与悬空镜像,未动任何容器与数据卷。
   - **rc.18 上线并在生产启用**(`ff0721c00`;release run 36638183012 含 sourcemaps 成功,deploy run 36638831805 按授权审批):公网 release `r_nLBw67QdaEPqPTlR-o_AYA` 与 `release.json` 相同。发布脚本推 tag 时本机 git 报一次「访问权限」错误(SSH 认证随即恢复正常,属于偶发),脚本拿不到 release 编号而空转,已停掉、手动推 tag 后从 release 一步续跑;续跑脚本加了「拿不到编号即失败」。之后在服务器上:`.env` 整份替换加入 `QUALY_BACKUP_STATUS_DIR=/var/lib/qualy/backup-status`(保留 600 root);以 `last-success` 初始化状态文件并保留其修改时间;按 rc.18 的配置重建 collector(挂载与 `filter/backup` 加载见日志);装上新 launcher(校验和与仓库一致,较旧版只多 doctor)。`sudo qualy-deploy doctor` 20 项全 PASS,含「collector 读到的时间戳与备份根一致」。collector 提示 `filestats` 别名已弃用、OTTL 路径宜带上下文前缀,已按 `file_stats` / `metric.name` / `resource.attributes` 改写并以生产同版本校验,随下个 release 生效。
   - 本机 e2e 实例(`qualy-e2e` 项目)留着供明早查看,`pnpm e2e:down` 拆除;e2e 与 capacity 的产物在 `.qualy/e2e/`(gitignored)。
+
+## 会话恢复重做、公用设备文案、恢复演练实测、镜像扫描分诊（2026-09-30 白天）
+
+- **「进页面就提示登录已失效」**(用户反馈,`21c9e0ed9`、`bd6f15a87`):回到标签页时 TanStack 按焦点重取一切(查询默认 staleTime 0),
+  manifest 永不拒绝、只答匿名,它先落进缓存时路由按访客重建,页面换成登录页,恢复还挂着的对话框叠在上面。现在 manifest 查询经
+  `presentedManifest`:已登录的页面收到匿名(或恢复中换了人)的回答时交给恢复、保留旧 manifest,地址、页面、未保存的输入都不动。
+  对话框不可关闭、没有「稍后」,只有「重新登录」(新标签打开登录页 `?resume=1`)与「退出并返回登录页」;打开登录页后显示「等待登录完成」,
+  回来仍是同一个等待。登录页见 `resume=1`:登录成功经 `BroadcastChannel('qualy:session')` 提示其他标签(只是提示,等待方照样问服务端,
+  焦点 / 可见性 / 3 秒轮询兜底)并尝试关闭自己,关不掉显示「登录成功,原页面已自动继续」;登录页自己的会话探测绕开恢复。设计写在
+  docs/notes/auth-security.md。回归:`session-transition.browser.test`(焦点重取时 manifest 先答匿名、业务读同时 401 → 地址不变、输入还在、
+  一个对话框、登录后恰好重试一次;去掉钉住即失败)、`sign-in.browser.test`(选择登录方式后 `resume` 仍在、登录后留在本页;去掉修复即失败)。
+  E2E 新旅程 `session.journey`「a session that ends under an open page」在真实部署上走完整条路:它抓到了组件测试没覆盖到的
+  「选登录方式时 `resume` 被丢、登录后被送回首页」(`bd6f15a87` 修)。
+- **公用设备文案**(`78136d846`):「这是公用电脑」→「在公用设备上使用」,小字「30 分钟无操作后自动退出登录」(原小字承诺的「关闭浏览器后」服务端并不保证)。
+- **异地恢复演练实跑**(用户已放好只读身份;`8b982150f` 给 coscli 写配置文件,否则它无配置时停下等交互):生产最新备份 `20260929T221953Z`
+  (8 小时前)全部通过——SHA256SUMS 3 个文件、`pg_restore` exit 0、迁移账本 91 条且不落后于本 checkout、租户 1 / 用户 1030、
+  附件 14274 个大小与指纹全对。备份 18.0 MiB,库 145 MB。**恢复时间合计 21.4 s**(下载 5.0、起库 9.7、恢复 4.0、附件 1.7)。
+- **Trivy 分诊**(用户授权代为裁决,详见 docs/notes/tooling.md):三个最终镜像删掉 npm / npx / corepack / yarn(`08adbc34e`,门禁断言);
+  tsc 内嵌 Go 标准库十条与 fast-xml-parser 三条 dismiss 并写明理由;alpine OpenSSL 与 bookworm PCRE2 随 Node 24.21.0 的基础镜像修掉。
+  升 24.21.0 第一次让 release smoke 必定失败(复用已被服务端关闭的 keep-alive 连接),先退回(`a96ac2d41`),rc.19 在 24.20.0 上发布。
+  用户随后贴来的分析指出上游 undici 的已知竞态、7.29.1 的调度改动,以及 smoke 在 `spawnSync` 阻塞前后复用全局连接池;我原先写的
+  「服务端对外请求也用同一个 fetch」不对——auth 出站每次新建 `Agent` 读完即关。最小复现(读完 body → 阻塞 7 s → 再请求,20 轮):
+  24.20.0 0 次、24.21.0 8 次失败,不读 body 反而 1/10;smoke 改为每个请求独占连接的 `probe`(`a9187ce93`)后 24.21.0 为 0/20、
+  本机整套 smoke 通过,重新升级(`c3f2589c9`)。
+- **rc.19 上线**(`26a1df3d0`,Node 24.20.0;CI run 36683894682 六项全绿,release run 36685095875 含 sourcemaps 成功,deploy run 36685792044
+  按授权审批):公网 `__qualy/release` 为 `r_XjScz907suQ98Rpb6skm4Q`,与 `release.json` 相同。含会话恢复重做、登录页 `resume` 修复、公用设备文案。
+- 验收:`pnpm typecheck`、`pnpm lint`、`pnpm lint:types`、`pnpm format:check` 全部 exit 0;浏览器全量 121 文件 1576 条通过
+  (之后 sign-in 套件 28 条);runtime + catalogs 13 文件 117 条;tools/tests 62 文件 390 条;本机 E2E(HEAD `26a1df3d0` 的 arm64 镜像)
+  5 文件 10 条全过;本机 release smoke:24.20.0 客户端 `e2e ok`;改用 `probe` 后 24.21.0 客户端 `e2e ok`。
