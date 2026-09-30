@@ -34,7 +34,7 @@ import type { NodeTask } from './NodeDialogs.tsx'
 
 const QUIET = `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)`
 const COLUMNS = 'minmax(0, 1fr) 8rem 6rem 6rem 4.5rem'
-const INDENT = 22
+const INDENT = 24
 /** narrow, a level costs less, because the name is what is left of the row */
 const INDENT_NARROW = 12
 
@@ -107,10 +107,11 @@ const styles = stylex.create({
   },
   rowOpen: { backgroundColor: { default: tokens.surfaceMuted, ':hover': tokens.surfaceMuted } },
   lead: { display: 'flex', minWidth: 0, alignItems: 'center', gap: 4 },
+  // the smallest a pointer target may be, which is also what a level indents
   twistie: {
     display: 'flex',
-    width: 22,
-    height: 22,
+    width: 24,
+    height: 24,
     flexShrink: 0,
     alignItems: 'center',
     justifyContent: 'center',
@@ -121,7 +122,7 @@ const styles = stylex.create({
     color: { default: tokens.mutedForeground, ':hover': tokens.foreground },
     cursor: 'pointer',
   },
-  twistieSeat: { width: 22, height: 22, flexShrink: 0 },
+  twistieSeat: { width: 24, height: 24, flexShrink: 0 },
   glyph: { width: 13, height: 13 },
   name: {
     minWidth: 0,
