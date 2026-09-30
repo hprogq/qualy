@@ -46,7 +46,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
-          node-version: 24.21.0
+          node-version: 24.20.0
       - name: the drill has an identity that can only read backups
         env:
           ID: ${{ secrets.QUALY_RECOVERY_COS_SECRET_ID }}

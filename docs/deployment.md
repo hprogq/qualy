@@ -37,7 +37,7 @@
   `org.opencontainers.image.version` 等于 release,任一不符删除全部 tag 并失败。
 - `--check` 在三者建完后对 server 镜像跑 `check-release-image.ts`,不通过同样删除本次打出的 tag:一个 release 要么完整可用,要么不存在。
 
-基础镜像全部**按 digest 固定**:三个 Dockerfile 的 `node:24.21.0-*@sha256:…` 与 `mise.toml`、CI `setup-node` 同一版本;
+基础镜像全部**按 digest 固定**:三个 Dockerfile 的 `node:24.20.0-*@sha256:…` 与 `mise.toml`、CI `setup-node` 同一版本;
 `deploy/compose.yaml`、开发 compose 的两个集群、CI 的 postgres service 同一个 `pgvector/pgvector:pg18-bookworm@sha256:…`。
 同一 commit 隔月重建,起点仍是同一批字节;`tools/tests/release-inputs.test.ts` 守住这三处一致与 digest 存在,升级基础镜像就是改这几行并过门禁。
 
@@ -51,7 +51,7 @@
    (应用 = 根包的插件依赖 + server 宿主 + deploy CLI,**沿生产边**取闭包)→ `tools/release/prune-server-image.mjs`
    (闭包由 pnpm 现算,不手写清单;删闭包外的包、tests、`./testkit` 导出目标、`src/client`、`*.tsx`、tsconfig、vitest 配置、tools、docs)
    → 拷入 staged client-dist。
-3. final:`node:24.21.0-bookworm-slim@sha256:…`(argon2 只有 glibc 预编译包)、`USER node`、`NODE_ENV=production`、HEALTHCHECK `/health/live`、
+3. final:`node:24.20.0-bookworm-slim@sha256:…`(argon2 只有 glibc 预编译包)、`USER node`、`NODE_ENV=production`、HEALTHCHECK `/health/live`、
    预建 `/var/lib/qualy/storage`、`/var/lib/qualy/web` 与两个 socket 目录(归 node,命名卷首次挂载继承所有权)。
 
 服务端**以 TS 源码 + node strip-types 运行,这是正式的生产执行模型**(2026-09-17 裁决,不是过渡方案),与 sandbox 镜像同一做法:

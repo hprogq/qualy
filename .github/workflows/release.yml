@@ -74,7 +74,7 @@ jobs:
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
-          node-version: 24.21.0
+          node-version: 24.20.0
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: the COS backend against the CI buckets, nothing skipped
@@ -109,7 +109,7 @@ jobs:
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
-          node-version: 24.21.0
+          node-version: 24.20.0
           cache: pnpm
       # the smoke seeds the deployment from this checkout, as deploy/README.md does
       - run: pnpm install --frozen-lockfile
@@ -180,7 +180,7 @@ jobs:
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
-          node-version: 24.21.0
+          node-version: 24.20.0
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - uses: actions/download-artifact@v8
