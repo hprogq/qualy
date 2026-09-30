@@ -14,6 +14,7 @@ import {
   DropdownMenuTrigger,
 } from '@qualy/ui/dropdown-menu'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
+import { VisuallyHidden } from '@qualy/ui/visually-hidden'
 import { authMessages as m } from '../i18n.ts'
 
 // The frame every page a visitor reaches before signing in stands in: the
@@ -151,8 +152,10 @@ function LanguageMenu() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button type="button" aria-label={format(m.language)} {...stylex.props(styles.language)}>
+        <button type="button" {...stylex.props(styles.language)}>
           <GlobeIcon size={15} strokeWidth={1.8} aria-hidden />
+          {/* named by what it is and then by the language it shows */}
+          <VisuallyHidden>{format(m.language)}</VisuallyHidden>
           {localeNames[locale]}
           <ChevronDownIcon size={13} aria-hidden />
         </button>
