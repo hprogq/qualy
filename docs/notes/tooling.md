@@ -209,4 +209,16 @@ ui-registry(统一 API runtime 拉 manifest 契约;页面组件用 useApi)。这
   两个沙箱镜像的 alpine OpenSSL 3.5.7-r0(CVE-2026-14456,libssl3 / libcrypto3)——要换基础镜像 digest(release-inputs 门禁要求各处一致);
   authoring 沙箱的 brace-expansion 5.0.7(CVE-2026-14257,ReDoS)。两个沙箱都无网络。首轮 SARIF 忘了 `limit-severities-for-sarif`,
   中低危也进了代码扫描,已补上。
+- **分诊(2026-09-30,用户授权代为裁决)**:
+  - **修掉的**:npm、npx、corepack、yarn 随 node 基础镜像而来,只在构建阶段用,三个最终镜像都删掉(tar、ip-address、brace-expansion、
+    undici 那几条都在 npm 自己的依赖树里);`check-release-image.ts` 断言 server 镜像里没有它们。
+  - **试过并退回的**:Node 24.21.0 的两个基础镜像修掉了 alpine OpenSSL 与 bookworm PCRE2(本地 Trivy 实扫),但以 24.21.0 作客户端时
+    release smoke 在「被拒的升级」之后第一次 fetch 必定失败(`UND_ERR_SOCKET` `other side closed`:在服务端早已关闭的 keep-alive 连接上发请求),
+    CI 两次、本机一次;同一批镜像换 24.20.0 客户端全部通过。孤立复现(空闲 8/22 s、不读完 body、`spawnSync` 阻塞事件循环)都没打出来,
+    触发条件还没找准。服务端对外请求也用同一个 fetch,所以不是只影响测试,留在 24.20.0,下一个 24.x 补丁再试(先跑 release smoke)。
+  - **有期限地接受**:沙箱 alpine 的 OpenSSL(CVE-2026-14456,QUIC 内存增长)与 server bookworm 的 PCRE2(三条)——node 用自带的
+    OpenSSL 与 V8 正则,系统库只给 apk / grep 这类工具用,沙箱还无网络;随下一次 Node 基础镜像升级清掉。
+  - **dismiss(won't fix,理由写在告警上)**:authoring 沙箱里 TypeScript 7 原生 tsc 编进去的 Go 标准库十条(tsc 在无网络沙箱里当编译器跑,
+    net/http、tls、xml、template、asn1 都不经手外部输入,等 TypeScript 用新 Go 重新构建);server 的 fast-xml-parser 三条(见上一条,
+    服务端从不加载 cos-js-sdk-v5,浏览器里用的是它 webpack 内联的那份,1.10.1 已是最新)。
 - CodeQL 早已是仓库的默认设置(javascript-typescript 与 actions 两种分析,每次推送都跑),不另写 workflow。
