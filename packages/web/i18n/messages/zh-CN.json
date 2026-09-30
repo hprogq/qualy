@@ -77,5 +77,12 @@
   "error_clientUnsupported": "页面需要刷新后才能继续使用。",
   "error_serviceUnavailable": "Qualy 暂时无法完成该操作，请稍后重试。",
   "error_network": "暂时无法连接 Qualy，请检查网络后重试。",
-  "error_unexpected": "操作失败，请重试。"
+  "error_unexpected": "操作失败，请重试。",
+  "boot_reloadLead": "加载时间较长，",
+  "boot_reload": "刷新页面",
+  "boot_assetFailedLead": "页面加载失败，",
+  "release_localeChangedTitle": "界面语言已更改",
+  "release_localeChangedHint": "刷新后本页将以新语言显示",
+  "boot_maintenanceTitle": "Qualy 正在维护",
+  "boot_maintenanceHint": "稍后恢复，届时页面会自动刷新"
 }

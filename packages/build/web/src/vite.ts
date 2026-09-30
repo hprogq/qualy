@@ -143,12 +143,19 @@ export const injectBootFrame = (html: string, copy: Readonly<Record<string, Boot
   return html.replace(BOOT_PLACEHOLDER, bootFrame().markup + bootCopyBlock(copy))
 }
 
-/** the vite plugin writing the first frame into the shell, in dev and in a build alike */
-export const qualyBootFrame = (options: { copy: Readonly<Record<string, BootCopy>> }): Plugin => ({
+/**
+ * The vite plugin writing the first frame into the shell, in dev and in a
+ * build alike. The copy is asked for when the shell is written rather than
+ * when the configuration loads: its words are compiled messages, and those
+ * are compiled by a plugin that runs first.
+ */
+export const qualyBootFrame = (options: {
+  copy: () => Promise<Readonly<Record<string, BootCopy>>>
+}): Plugin => ({
   name: 'qualy-boot-frame',
   transformIndexHtml: {
     order: 'pre',
-    handler: (html) => injectBootFrame(html, options.copy),
+    handler: async (html) => injectBootFrame(html, await options.copy()),
   },
 })
 

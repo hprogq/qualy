@@ -13,7 +13,6 @@ import {
   qualyShellStyle,
 } from '@qualy/web-build/vite'
 import { qualyMessages } from '@qualy/message-build/vite'
-import { bootstrapMessages } from '@qualy/web-i18n/bootstrap'
 
 const stylexUnplugin =
   stylexUnpluginModule.default as unknown as (typeof stylexUnpluginModule)['default']['default']
@@ -51,7 +50,9 @@ export default defineConfig(({ mode }) => ({
     qualyMessages(),
     // the first frame, and beside it what the shell says when nothing of the
     // application ever runs - from the same table the cold start reads
-    qualyBootFrame({ copy: bootstrapMessages }),
+    qualyBootFrame({
+      copy: async () => (await import('@qualy/web-i18n/bootstrap')).bootstrapMessages,
+    }),
     // and a built shell that fetches its stylesheet without holding that
     // frame for it
     qualyShellStyle(),

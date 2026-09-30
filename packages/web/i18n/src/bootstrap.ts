@@ -1,25 +1,25 @@
-import type { SupportedLocale } from '@qualy/i18n-contract'
+import { supportedLocales, type SupportedLocale } from '@qualy/i18n-contract'
+import * as m from '#messages'
 
 // The few words the application needs before it has a language.
 //
-// Two places speak before the catalogs are here, and neither can wait for
-// them: the cold-start screen, which stands above the localization runtime
-// by design, and the watchdog in index.html, which runs when no script of
-// the application ever did. Both read this table, in the locale the shell's
-// boot script resolved and marked on the root before the first frame -
-// through the same preference chain the runtime follows, so the language
-// does not change hands when the catalogs arrive. The build writes the
-// watchdog's two lines into index.html from here; nothing is typed there.
+// Two places speak before the application has marked a language anywhere,
+// and neither can wait: the cold-start screen, which stands above everything
+// else by design, and the watchdog in index.html, which runs when no script
+// of the application ever did. Both read this table in the locale the
+// shell's boot script resolved, through the same preference chain the
+// application follows, so the language does not change hands as it arrives.
+// The build writes the watchdog's lines into index.html from here; nothing
+// is typed there.
 //
 // A third place speaks with no application at all: the edge's maintenance
 // page (deploy/demo/maintenance.html), served while no release answers. It
 // is a file the proxy hands out as it stands, so its lines are typed into
 // it, and tools/tests/maintenance-page.test.ts holds them to this table.
 //
-// Three of these are also messages of the common catalog, said again here
-// rather than imported from it: the catalog for a locale is a chunk loaded
-// on demand, and the whole of it is not worth carrying in the boot graph
-// for three lines. A test holds the two in step.
+// Every line is one of this package's messages, said in both languages here
+// because nothing has chosen one yet; the words a screen says again once
+// the application is up are the same messages, so the two cannot drift.
 
 export interface BootstrapMessages {
   /** what the status region says while the screen is up */
@@ -58,51 +58,33 @@ export interface BootstrapMessages {
   readonly maintenanceHint: string
 }
 
-export const bootstrapMessages = {
-  'zh-CN': {
-    loading: '加载中',
-    stillLoading: '加载时间较长，请稍候…',
-    retry: '重试',
-    reloadLead: '加载时间较长，',
-    reload: '刷新页面',
-    assetFailedLead: '页面加载失败，',
-    updateAvailableTitle: 'Qualy 已更新',
-    updateAvailableHint: '刷新后即可使用最新版本。',
-    later: '稍后',
-    reloadNow: '刷新',
-    releaseSkewTitle: '需要刷新页面',
-    releaseSkewHint: '页面需要刷新后才能继续使用。',
-    assetFailedTitle: '页面加载失败',
-    assetFailedHint: '请检查网络后刷新页面。',
-    clientProtocolTitle: '需要刷新页面',
-    clientProtocolHint: '页面需要刷新后才能继续使用。',
-    reloadPage: '刷新页面',
-    localeChangedTitle: '界面语言已更改',
-    localeChangedHint: '刷新后本页将以新语言显示',
-    maintenanceTitle: 'Qualy 正在维护',
-    maintenanceHint: '稍后恢复，届时页面会自动刷新',
-  },
-  'en-US': {
-    loading: 'Loading',
-    stillLoading: 'Taking longer than expected…',
-    retry: 'Retry',
-    reloadLead: 'Taking longer than expected. ',
-    reload: 'Reload',
-    assetFailedLead: 'The page could not be loaded. ',
-    updateAvailableTitle: 'Qualy has been updated',
-    updateAvailableHint: 'Reload to use the latest version.',
-    later: 'Later',
-    reloadNow: 'Reload',
-    releaseSkewTitle: 'Reload needed',
-    releaseSkewHint: 'Reload the page to continue.',
-    assetFailedTitle: 'The page could not be loaded',
-    assetFailedHint: 'Check your connection and reload the page.',
-    clientProtocolTitle: 'Reload needed',
-    clientProtocolHint: 'Reload the page to continue.',
-    reloadPage: 'Reload the page',
-    localeChangedTitle: 'The language has changed',
-    localeChangedHint: 'Reload to see this page in it',
-    maintenanceTitle: 'Qualy is down for maintenance',
-    maintenanceHint: 'It will be back shortly, and the page will reload on its own.',
-  },
-} as const satisfies Record<SupportedLocale, BootstrapMessages>
+const inLocale = (locale: SupportedLocale): BootstrapMessages => {
+  const at = { locale }
+  return {
+    loading: m.state_loading({}, at),
+    stillLoading: m.state_stillLoading({}, at),
+    retry: m.action_retry({}, at),
+    reloadLead: m.boot_reloadLead({}, at),
+    reload: m.boot_reload({}, at),
+    assetFailedLead: m.boot_assetFailedLead({}, at),
+    updateAvailableTitle: m.release_updateAvailableTitle({}, at),
+    updateAvailableHint: m.release_updateAvailableHint({}, at),
+    later: m.action_later({}, at),
+    reloadNow: m.action_reload({}, at),
+    releaseSkewTitle: m.release_skewTitle({}, at),
+    releaseSkewHint: m.release_skewHint({}, at),
+    assetFailedTitle: m.release_assetFailedTitle({}, at),
+    assetFailedHint: m.release_assetFailedHint({}, at),
+    clientProtocolTitle: m.release_clientProtocolTitle({}, at),
+    clientProtocolHint: m.release_clientProtocolHint({}, at),
+    reloadPage: m.action_reloadPage({}, at),
+    localeChangedTitle: m.release_localeChangedTitle({}, at),
+    localeChangedHint: m.release_localeChangedHint({}, at),
+    maintenanceTitle: m.boot_maintenanceTitle({}, at),
+    maintenanceHint: m.boot_maintenanceHint({}, at),
+  }
+}
+
+export const bootstrapMessages = Object.fromEntries(
+  supportedLocales.map((locale) => [locale, inLocale(locale)]),
+) as Readonly<Record<SupportedLocale, BootstrapMessages>>
