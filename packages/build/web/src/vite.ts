@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import type { Plugin } from 'vite'
-import { BOOT_COPY_ID, BOOT_PLACEHOLDER, bootFrame } from '@qualy/brand/boot'
+import { BOOT_COPY_ID, BOOT_PLACEHOLDER, SHELL_STYLE_ATTRIBUTE, bootFrame } from '@qualy/brand/boot'
 import { repoRoot } from './manifest.ts'
 import { BROWSER_SURFACE_MAP } from './release-vite.ts'
 import { workerDependencyScan } from './dependency-scan.ts'
@@ -149,5 +149,39 @@ export const qualyBootFrame = (options: { copy: Readonly<Record<string, BootCopy
   transformIndexHtml: {
     order: 'pre',
     handler: (html) => injectBootFrame(html, options.copy),
+  },
+})
+
+/**
+ * The built shell with its stylesheet fetched rather than waited for.
+ *
+ * A stylesheet linked in the head holds every paint until it has arrived,
+ * the first frame's too, and the first frame is styled inline and needs
+ * none of it: on a slow connection the reader looked at an empty page for
+ * as long as the stylesheet took, which is what the frame exists to
+ * prevent. So the link becomes a preload - fetched at once, at the same
+ * priority, holding nothing - and the entry applies it before the
+ * application draws. The build links exactly one stylesheet; a shell with
+ * none or several has changed shape under this and is refused.
+ */
+export const deferShellStyle = (html: string): string => {
+  const links = [...html.matchAll(/<link rel="stylesheet"([^>]*)>/g)]
+  if (links.length !== 1) {
+    throw new Error(`the built shell links ${String(links.length)} stylesheets, expected exactly 1`)
+  }
+  return html.replace(
+    links[0]![0],
+    `<link rel="preload" as="style"${links[0]![1]!} ${SHELL_STYLE_ATTRIBUTE}>`,
+  )
+}
+
+/** the vite plugin that keeps the built shell's stylesheet from holding the first frame */
+export const qualyShellStyle = (): Plugin => ({
+  name: 'qualy-shell-style',
+  apply: 'build',
+  transformIndexHtml: {
+    // after the build has written the stylesheet's link
+    order: 'post',
+    handler: deferShellStyle,
   },
 })

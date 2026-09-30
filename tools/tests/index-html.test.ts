@@ -4,10 +4,15 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 import { defaultLocale, supportedLocales } from '@qualy/i18n-contract'
-import { BOOT_COPY_ID, BOOT_PLACEHOLDER, bootFrame } from '../../packages/web/brand/src/boot.ts'
+import {
+  BOOT_COPY_ID,
+  BOOT_PLACEHOLDER,
+  SHELL_STYLE_ATTRIBUTE,
+  bootFrame,
+} from '../../packages/web/brand/src/boot.ts'
 import { bootstrapMessages } from '../../packages/web/i18n/src/bootstrap.ts'
 import { INLINE_BOOT_SCRIPT_HASH } from '../../packages/plugins/infra/web/src/server/shell-policy.ts'
-import { injectBootFrame } from '../../packages/build/web/src/vite.ts'
+import { deferShellStyle, injectBootFrame } from '../../packages/build/web/src/vite.ts'
 import { readCurrentWebRelease, storeAt } from '../../packages/build/web/src/release-store.ts'
 
 // What index.html still carries by hand, and why, since the file itself
@@ -195,6 +200,26 @@ describe('the shell as built', () => {
   it('refuses a source without the marker', () => {
     expect(() => injectBootFrame(html.replace(BOOT_PLACEHOLDER, ''), bootstrapMessages)).toThrow(
       /marker/,
+    )
+  })
+})
+
+describe('the shell as built, fetching', () => {
+  const stylesheet = '<link rel="stylesheet" crossorigin href="/assets/s-abc.css">'
+  const shell = `<head><script>boot()</script>${stylesheet}</head>`
+
+  it('fetches its one stylesheet without holding the first frame for it', () => {
+    const built = deferShellStyle(shell)
+    expect(built).not.toContain('rel="stylesheet"')
+    expect(built).toContain(
+      `<link rel="preload" as="style" crossorigin href="/assets/s-abc.css" ${SHELL_STYLE_ATTRIBUTE}>`,
+    )
+  })
+
+  it('refuses a shell that links no stylesheet, or more than one', () => {
+    expect(() => deferShellStyle('<head></head>')).toThrow(/0 stylesheets/)
+    expect(() => deferShellStyle(shell.replace('</head>', `${stylesheet}</head>`))).toThrow(
+      /2 stylesheets/,
     )
   })
 })

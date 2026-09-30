@@ -12,7 +12,11 @@ import { browserPlugins } from 'virtual:qualy/plugins'
 import App from './App.tsx'
 import { releases, webRelease } from './release.ts'
 import { ReleaseRecoveryGate } from './release-ui.tsx'
+import { shellStyled } from './shell-style.ts'
 import './app.css'
+
+// asked for first, so it is on its way while the rest of this file runs
+const styled = shellStyled()
 
 // the release this page runs, on the root: public diagnostic, and what a
 // deployment's acceptance reads to know which build a tab is on
@@ -57,6 +61,7 @@ releases.subscribe(() => {
 // asks, while the expensive half is still in flight.
 stopBrowserPlugins = startBrowserPlugins(browserPlugins, { release: webRelease })
 
+await styled
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ReleaseRecoveryGate coordinator={releases} copy={bootstrapMessages}>

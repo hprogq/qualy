@@ -19,6 +19,13 @@ export const BOOT_PLACEHOLDER = '<!-- qualy-boot -->'
 /** the data block beside the frame holding what the shell's watchdog says, per locale */
 export const BOOT_COPY_ID = 'qualy-boot-copy'
 
+/**
+ * the attribute on the served shell's one stylesheet link, which the build
+ * turns into a preload so the frame does not wait for it, and which the
+ * entry applies before the application draws
+ */
+export const SHELL_STYLE_ATTRIBUTE = 'data-qualy-shell-style'
+
 export interface BootPlacement {
   /** cap height of the wordmark in CSS pixels */
   readonly cap: number

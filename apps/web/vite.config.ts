@@ -5,7 +5,13 @@ import * as stylexUnpluginModule from '@stylexjs/unplugin/vite'
 import react from '@vitejs/plugin-react'
 import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite'
-import { qualyBootFrame, qualyChunkGraph, qualyPlugins, qualyRelease } from '@qualy/web-build/vite'
+import {
+  qualyBootFrame,
+  qualyChunkGraph,
+  qualyPlugins,
+  qualyRelease,
+  qualyShellStyle,
+} from '@qualy/web-build/vite'
 import { bootstrapMessages } from '@qualy/web-i18n/bootstrap'
 
 const stylexUnplugin =
@@ -36,6 +42,9 @@ export default defineConfig(({ mode }) => ({
     // the first frame, and beside it what the shell says when nothing of the
     // application ever runs - from the same table the cold start reads
     qualyBootFrame({ copy: bootstrapMessages }),
+    // and a built shell that fetches its stylesheet without holding that
+    // frame for it
+    qualyShellStyle(),
     stylexUnplugin({
       useCSSLayers: true,
       dev: mode !== 'production',
