@@ -107,6 +107,7 @@
     "test:coverage": "vitest run --coverage",
     "e2e": "node tools/quality/e2e-stack.ts up && vitest run --config vitest.e2e.config.ts",
     "e2e:down": "node tools/quality/e2e-stack.ts down",
+    "lighthouse": "node tools/quality/lighthouse.ts",
     "test:watch": "vitest",
     "test:all": "pnpm test && pnpm test:browser",
     "test:browser": "vitest run --config vitest.browser.config.ts",

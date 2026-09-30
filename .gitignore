@@ -88,6 +88,8 @@ apps/web/.qualy/
 .qualy/run/
 # the benchmark's own assembly, dataset record and run summaries
 .qualy/benchmarks/
+# pnpm lighthouse reports
+.qualy/lighthouse/
 
 # attachments the local storage provider keeps when this machine is the
 # deployment (its default root, ./data/storage; QUALY_STORAGE_LOCAL_ROOT moves
