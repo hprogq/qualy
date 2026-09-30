@@ -5,6 +5,7 @@ import { Wordmark } from '@qualy/brand/wordmark'
 import { Button } from '@qualy/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@qualy/ui/dialog'
 import { Spinner } from '@qualy/ui/spinner'
+import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
@@ -32,8 +33,9 @@ const styles = stylex.create({
   panel: {
     alignItems: 'center',
     textAlign: 'center',
-    gap: 20,
-    paddingTop: 20,
+    gap: 28,
+    paddingBlock: { default: 32, [breakpoints.phone]: 28 },
+    paddingInline: { default: 32, [breakpoints.phone]: 24 },
   },
   brand: {
     color: tokens.mutedForeground,
@@ -42,13 +44,13 @@ const styles = stylex.create({
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
   },
   badge: {
     display: 'inline-flex',
-    width: 44,
-    height: 44,
-    marginBottom: 4,
+    width: 52,
+    height: 52,
+    marginBottom: 6,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 9999,
@@ -57,21 +59,29 @@ const styles = stylex.create({
   },
   title: {
     display: 'block',
-    fontSize: 17,
-    lineHeight: 1.3,
+    fontSize: 18,
+    lineHeight: 1.35,
     fontWeight: 600,
   },
   hint: {
     display: 'block',
     maxWidth: '22rem',
-    lineHeight: 1.6,
+    lineHeight: 1.65,
     textWrap: 'pretty',
   },
+  // side by side where there is room, the way on to the right; stacked on a
+  // phone with the way on first, each as wide as a thumb can find it
   actions: {
     display: 'flex',
-    flexDirection: 'column',
+    flexDirection: { default: 'row-reverse', [breakpoints.phone]: 'column' },
     alignSelf: 'stretch',
-    gap: 8,
+    gap: { default: 12, [breakpoints.phone]: 10 },
+  },
+  // shares the row equally where they stand side by side; stacked, each
+  // keeps its own height
+  action: {
+    flexGrow: { default: 1, [breakpoints.phone]: 0 },
+    flexBasis: { default: 0, [breakpoints.phone]: 'auto' },
   },
 })
 
@@ -101,7 +111,7 @@ export function SessionRecoveryDialog({
 
   const face: Record<SessionRecoveryState, { icon: ReactNode; title: string; hint: string }> = {
     expired: {
-      icon: <LockKeyholeIcon aria-hidden size={20} />,
+      icon: <LockKeyholeIcon aria-hidden size={22} />,
       title: format(commonMessages.sessionLostTitle),
       hint: format(commonMessages.sessionLostHint),
     },
@@ -111,27 +121,30 @@ export function SessionRecoveryDialog({
       hint: format(commonMessages.sessionWaitingHint),
     },
     blocked: {
-      icon: <ExternalLinkIcon aria-hidden size={20} />,
+      icon: <ExternalLinkIcon aria-hidden size={22} />,
       title: format(commonMessages.sessionBlockedTitle),
       hint: format(commonMessages.sessionBlockedHint),
     },
     switched: {
-      icon: <ArrowRightLeftIcon aria-hidden size={20} />,
+      icon: <ArrowRightLeftIcon aria-hidden size={22} />,
       title: format(commonMessages.sessionSwitchedTitle),
       hint: format(commonMessages.sessionSwitchedHint),
     },
   }
   const { icon, title, hint } = face[shown]
+  // the button sets no flex sizing of its own, so a class of ours is not
+  // racing one of its
+  const grow = stylex.props(styles.action).className
 
   const primary =
     shown === 'switched' ? (
-      <Button data-testid="session-reload" onClick={onReload}>
+      <Button size="lg" className={grow} data-testid="session-reload" onClick={onReload}>
         {format(commonMessages.sessionReload)}
       </Button>
     ) : shown === 'blocked' ? (
       // a link the reader follows: what a browser blocks is a tab a page
       // opens, not one a person does
-      <Button asChild>
+      <Button size="lg" className={grow} asChild>
         <a
           data-testid="session-sign-in"
           href={signInHref}
@@ -143,7 +156,7 @@ export function SessionRecoveryDialog({
         </a>
       </Button>
     ) : (
-      <Button data-testid="session-sign-in" onClick={onSignIn}>
+      <Button size="lg" className={grow} data-testid="session-sign-in" onClick={onSignIn}>
         {format(shown === 'waiting' ? commonMessages.sessionReopen : commonMessages.sessionSignIn)}
       </Button>
     )
@@ -157,12 +170,12 @@ export function SessionRecoveryDialog({
         // it opens on its own, not on a press: focus rests on the panel, and
         // the first Tab reaches the way on
         restfulFocus
-        size="24rem"
+        size="26rem"
         xstyle={styles.panel}
         data-testid="session-recovery"
         data-state={shown}
       >
-        <Wordmark height={13} xstyle={styles.brand} />
+        <Wordmark height={14} xstyle={styles.brand} />
         <div {...stylex.props(styles.head)}>
           <span {...stylex.props(styles.badge)}>{icon}</span>
           {/* inner spans: the title and description take no style seat, and a
@@ -177,7 +190,13 @@ export function SessionRecoveryDialog({
         <div {...stylex.props(styles.actions)}>
           {primary}
           {shown !== 'switched' && (
-            <Button variant="ghost" data-testid="session-sign-out" onClick={onSignOut}>
+            <Button
+              size="lg"
+              variant="outline"
+              className={grow}
+              data-testid="session-sign-out"
+              onClick={onSignOut}
+            >
               {format(commonMessages.sessionSignOut)}
             </Button>
           )}

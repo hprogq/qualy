@@ -319,6 +319,8 @@ describe('the sign-in screen', () => {
     })
     await expect.element(page.getByLabelText('邮箱')).toHaveValue('kept@school.edu')
     await expect.element(page.getByTestId('remember-email')).toBeChecked()
+    // the address is there already, so the password is where typing goes
+    await expect.element(page.getByLabelText('密码')).toHaveFocus()
   })
 
   it('catches a renderer that throws instead of taking the screen down', async () => {
@@ -591,54 +593,77 @@ describe('the way back after signing in', () => {
   // Opened by a page waiting in another tab for its reader: choosing a way in
   // used to drop what the visit was for, so signing in ended as an ordinary
   // one - sent home - and the waiting page was never told
-  it('keeps a sign-in for a waiting page one through the way chosen, and ends it here', async () => {
+  /** a sign-in opened by a waiting page, signed in through the password form */
+  const signInForWaitingPage = async () => {
     let signedIn = false
-    const close = vi.spyOn(window, 'close').mockImplementation(() => {})
-    try {
-      await renderScreen({
-        client: fakeClient({
-          app: { getManifest: emptyManifest() },
-          auth: {
-            getSession: () =>
-              Effect.suspend(() =>
-                signedIn
-                  ? Effect.succeed({
-                      user: {
-                        id: 'u1',
-                        displayName: '张三',
-                        email: 'zhang@school.edu',
-                        tenantId: 't1',
-                      },
-                    })
-                  : Effect.fail(apiError('AUTH_REQUIRED', undefined)),
-              ),
-            listLoginMethods: context([password]),
-          },
-          authLocal: {
-            login: () =>
-              Effect.sync(() => {
-                signedIn = true
-                return {}
-              }),
-          },
-        }),
-        registry: {
-          login: { local: lazy(() => import('@qualy/plugin-auth-local/client/LoginMethod')) },
+    await renderScreen({
+      client: fakeClient({
+        app: { getManifest: emptyManifest() },
+        auth: {
+          getSession: () =>
+            Effect.suspend(() =>
+              signedIn
+                ? Effect.succeed({
+                    user: {
+                      id: 'u1',
+                      displayName: '张三',
+                      email: 'zhang@school.edu',
+                      tenantId: 't1',
+                    },
+                  })
+                : Effect.fail(apiError('AUTH_REQUIRED', undefined)),
+            ),
+          listLoginMethods: context([password]),
         },
-        route: '/login?resume=1',
-        children: <LoginPage />,
-      })
-      await page.getByRole('button', { name: '账号密码' }).click()
-      await expect.element(page.getByLabelText('邮箱')).toBeVisible()
-      expect(new URLSearchParams(addressNow().split('?')[1]).get('resume')).toBe('1')
+        authLocal: {
+          login: () =>
+            Effect.sync(() => {
+              signedIn = true
+              return {}
+            }),
+        },
+      }),
+      registry: {
+        login: { local: lazy(() => import('@qualy/plugin-auth-local/client/LoginMethod')) },
+      },
+      route: '/login?resume=1',
+      children: <LoginPage />,
+    })
+    await page.getByRole('button', { name: '账号密码' }).click()
+    await expect.element(page.getByLabelText('邮箱')).toBeVisible()
+    expect(new URLSearchParams(addressNow().split('?')[1]).get('resume')).toBe('1')
+    // chosen, the form is ready to be typed into
+    await expect.element(page.getByLabelText('邮箱')).toHaveFocus()
+    await page.getByLabelText('邮箱').fill('zhang@school.edu')
+    await page.getByLabelText('密码').fill('a long enough password')
+    await page.getByTestId('local-submit').click()
+  }
 
-      await page.getByLabelText('邮箱').fill('zhang@school.edu')
-      await page.getByLabelText('密码').fill('a long enough password')
-      await page.getByTestId('local-submit').click()
+  it('keeps a sign-in for a waiting page one through the way chosen, and closes once it carried on', async () => {
+    const close = vi.spyOn(window, 'close').mockImplementation(() => {})
+    // the page waiting in the other tab: it hears the sign-in and says it carried on
+    const waiting = new BroadcastChannel('qualy:session')
+    waiting.onmessage = (event: MessageEvent<{ type?: string }>) => {
+      if (event.data.type === 'signed-in') waiting.postMessage({ type: 'resumed' })
+    }
+    try {
+      await signInForWaitingPage()
       await expect.element(page.getByTestId('sign-in-resumed')).toBeVisible()
-      expect(close).toHaveBeenCalled()
+      await expect.poll(() => close.mock.calls.length).toBe(1)
       // still here, not sent on as an ordinary sign-in would be
       expect(addressNow().split('?')[0]).toBe('/login')
+    } finally {
+      waiting.close()
+      close.mockRestore()
+    }
+  })
+
+  it('ends as an ordinary sign-in when no page answers, the one that waited being gone', async () => {
+    const close = vi.spyOn(window, 'close').mockImplementation(() => {})
+    try {
+      await signInForWaitingPage()
+      await expect.poll(addressNow, { timeout: 6_000 }).toBe('/')
+      expect(close).not.toHaveBeenCalled()
     } finally {
       close.mockRestore()
     }

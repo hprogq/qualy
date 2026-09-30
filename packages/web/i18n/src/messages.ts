@@ -209,4 +209,5 @@ export const commonMessages = {
     defaultMessage: 'This page belongs to the account signed in before and cannot carry on',
   },
   sessionReload: { id: 'common/session/reload', defaultMessage: 'Reload' },
+  sessionResumed: { id: 'common/session/resumed', defaultMessage: 'Signed in again' },
 } as const satisfies Record<string, MessageDescriptor>

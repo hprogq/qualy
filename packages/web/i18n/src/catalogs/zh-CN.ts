@@ -100,4 +100,5 @@ export default {
   'common/session/switched-title': '账号已切换',
   'common/session/switched-hint': '当前页面属于之前登录的账号，无法继续恢复',
   'common/session/reload': '重新载入',
+  'common/session/resumed': '已重新登录',
 } satisfies CatalogFor<typeof runtimeMessages>

@@ -605,8 +605,11 @@ smtp 后端对着 Mailpit 跑同一套,CI 设 `QUALY_REQUIRE_MAILPIT_TESTS=1`,�
   不带 `noopener`,以便区分拦截与打开,打开后由本页把新标签的 `opener` 置空;此时主按钮是一个 `target=_blank` 链接,由人点开的
   标签不受拦截,点后进入 `waiting`)、`switched`(登录成了另一个账号:本页属于之前的账号,只能重新载入)。
   「重新登录」打开的是 manifest 里登录页的地址加 `?resume=1`(`RuntimeProvider` 的 `signInPage`,不是本页地址——本页在新标签里只会再撞一次
-  失效);登录页见 `resume=1`:登录成功后经 `BroadcastChannel('qualy:session')` 发一句「有人登录了」并尝试 `window.close()`,关不掉就显示
-  「登录成功,原页面已自动继续」。**广播只是提示**,不带身份,收到后照样去问服务端;焦点、可见性、3 秒轮询兜底,所以不支持
+  失效);登录页见 `resume=1`:登录成功后经 `BroadcastChannel('qualy:session')` 发一句「有人登录了」,原页面问过服务端、确认是同一个人
+  后回一句「已恢复」,登录标签**听到回应才关闭**(关不掉就显示「登录成功,原页面已自动继续」);3 秒无人回应说明等待的页面已经没了,
+  按普通登录去首页。这样读者回到原页面时它已经恢复,而不是在回来的那一刻才恢复(2026-09-30 用户反馈「弹窗闪一下就没了」:
+  登录标签一关、浏览器切回原标签,原页面那一次确认请求还在路上)。原页面恢复后给一个轻提示「已重新登录」(toast,不用关),
+  锁屏本身立即撤掉——常见做法是解锁不留停顿,确认用不打断的方式给。**广播只是提示**,不带身份,收到后照样去问服务端;焦点、可见性、3 秒轮询兜底,所以不支持
   BroadcastChannel 的浏览器也能恢复。登录页自己的 `GET /auth/session` 探测走 `useRunApi({ recoverSession: false })`,绕开恢复,
   否则登录页本身会被恢复对话框锁住。回归测试 `apps/web/tests/session-transition.browser.test.tsx`「a signed-in page asked again
   after its session went」:焦点重取时 manifest 先答匿名、业务读同时 401,断言地址不变、输入还在、只有一个对话框,登录后恰好重试一次

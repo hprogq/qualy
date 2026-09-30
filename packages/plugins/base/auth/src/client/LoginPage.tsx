@@ -452,6 +452,12 @@ const failureFrom = (params: URLSearchParams) => {
   }
 }
 
+/**
+ * How long a sign-in opened for a waiting page waits for that page to say it
+ * carried on; it asks the server once, so this is far more than it needs.
+ */
+const RESUME_ANSWER_MS = 3_000
+
 export default function LoginPage() {
   const api = useApi(authApi)
   const query = useApiQuery(authApi)
@@ -486,15 +492,24 @@ export default function LoginPage() {
     next === undefined ? { kind: 'home' } : { kind: 'return-path', path: next }
   // Opened by a page whose session was lost while its reader was on it
   // (@qualy/web-runtime session recovery): this tab is only for signing in.
-  // Once somebody is, it tells the page waiting in the other tab and closes,
-  // or says it can be closed - the reader's work is over there, not here.
-  const resume = params.get(SESSION_RESUME_PARAM) === '1'
+  // Once somebody is, it tells the page waiting in the other tab and closes
+  // when that page says it carried on, or says it can be closed where the
+  // browser keeps it open - the reader's work is over there, not here. No
+  // answer means that page is gone, and the visit ends as any sign-in does.
+  const [orphaned, setOrphaned] = useState(false)
+  const resume = params.get(SESSION_RESUME_PARAM) === '1' && !orphaned
   useEffect(() => {
     if (!signedIn) return
     if (resume) {
-      announceSignedIn()
-      window.close()
-      return
+      let gone = false
+      void announceSignedIn(RESUME_ANSWER_MS).then((answer) => {
+        if (gone) return
+        if (answer === 'unanswered') setOrphaned(true)
+        else window.close()
+      })
+      return () => {
+        gone = true
+      }
     }
     const to: SessionDestination =
       next === undefined ? { kind: 'home' } : { kind: 'return-path', path: next }
