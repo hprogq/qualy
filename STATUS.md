@@ -20927,3 +20927,31 @@ W12 审查意见收尾（十一组，分组见仓库外 `audit-2026-09-25/wave13
   节流 A/B 与 Lighthouse 数据见上与 docs/notes/web-performance.md。
 - **待用户**:审阅本地未推送的全部提交(`dacc85dd3` 之前的四个 + 本轮);决定 i18n 默认文案是否正式做;组织树桌面端页脚 CLS
   的两种修法选哪种。
+
+## i18n 改为 Paraglide:阶段 0 至 2(2026-10-01 凌晨)
+
+用户夜间授权:推送并部署上一轮的提交(rc.20,03:32 上线,公网 release id 与 release.json 一致),然后按
+docs/adr/0011-i18n-paraglide.md(本轮完善,讨论原文 docs/i18n-chat-A/B/C.md 一并入库)做完阶段 0 至 4、跑通测试后
+提交并部署。三个待定事项用户已答复:登录只在设备没有 cookie 时写入账户语言;date/time 参数只收 `Date`;Lingui 对照组是
+生产代表性的测量基线。
+
+- **阶段 0**:`qualy.locale` cookie 只在显式选择时写入(启动脚本读 cookie,旧 localStorage 选择迁移一次);`users.preferred_locale`
+  可空列(迁移 `20260930191132_user-preferred-locale`,expand);`PUT /auth/locale` 写 cookie,已登录时同时写账户偏好;登录时
+  设备无 cookie 且账户有偏好才写 cookie;登录前选的语言与账户偏好不同时以设备为准,也不把设备的选择补进空的账户偏好(共用
+  设备);每个 API 请求带 `x-qualy-locale`,服务端顺序 header → cookie → Accept-Language → zh-CN;切换语言改为保存后整页
+  重新载入(有未保存内容时由浏览器的离开确认拦住),其他标签页收到不打断的提示;发给他人的邮件用收件人的语言。
+- **阶段 1 与 2 合并**:4241 条消息转成各包 `messages/{en-US,zh-CN}.json`(ICU1),`@qualy/message-build` 合并编译成一套
+  Paraglide 函数,每个包经包私有的 `#messages` 只拿到自己的消息(类型更严的 facade);codemod 改写 272 个文件 4245 处
+  `format()` 调用;删除 I18nProvider、catalog 加载与浏览器 ICU 编译器;错误翻译改为消息函数。Paraglide 与 ICU 插件之间的
+  两处缺陷(`#` 不格式化、`=0` 不命中)在导入时规范化;旧 Lingui 运行时渲染的 golden(5507 组参数 × 两种语言 11014 次)
+  全部逐字一致。迁移暴露的旧缺陷一并修掉(公式版本号渲染为空等,见 ADR)。
+- **对照测量**(本地生产构建,首屏静态闭包,Brotli):login 401.3 → 333.1 KB、batches 451.7 → 398.6、my-entries 507.1 → 453.1、
+  org-tree 428.0 → 372.7;请求数 75/109/136/100 → 68/105/133/95;<2 KB 的 chunk 同步减少;无 chunk 环。消息池合并阈值
+  0 时请求数反比对照组多 15–30 个,取 64 KiB。手机 Lighthouse 的 LCP 对照尚未跑(E2E 镜像构建撞上 Docker 磁盘满,清理
+  31.5 GB 构建缓存后重建,时间给了功能验收)。
+- **阶段 3 未完成**:服务端 `@qualy/text`、UiText 从 wire 退役(届时删掉过渡用的 `wireMessages` 与 `formatText`)、术语库、
+  bootstrap 与邮件改走消息,正在 worktree 分支 `i18n-phase3` 上进行,未合入 main。
+- 验收(main `dbc1fe82d`,本机):`pnpm typecheck`、`pnpm lint`、`pnpm lint:types`、`pnpm format:check` exit 0;`pnpm test`
+  407 文件 3060 条通过(27 跳过);`pnpm test:browser` 122 文件 1584 条中 1 条失败——record-recognition 的点击超时(已知的
+  满载不稳定用例,单独重跑通过);E2E(`6e6388a6c-dirty` arm64 镜像)6 文件 15 条全过;`check-chunks`、`check-csp-build`、
+  `check-public-web`、`check-staged-web` 通过。生产闭包里 inlang/lix 条目 26 → 0(编译器移出 web-build)。
