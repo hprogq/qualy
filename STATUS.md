@@ -20976,7 +20976,10 @@ job 后通过。阶段 3、4 在 worktree 上完成,拆成三个功能提交与�
   那一条;document-context 的合并、重键与超预算各有测试;`@qualy/text` 自己的测试对真实产品消息渲染两种语言。
 - **阶段 4**:CLAUDE.md 的目录、零 codegen 与 i18n 边界按新模型重写;ADR 0011 状态改为阶段 0 至 4 已实施;
   resume-highlights 同步。
-- **未做**:手机 Lighthouse 的 LCP 对照(其余验收项阶段 1 已满足);`qualyChunkGraph` 的结果检查没有进门禁。
+- **手机 Lighthouse 对照**(补上阶段 1 验收的最后一项,E2E 栈上两组 arm64 镜像先后跑,各三次取中位数):LCP login
+  3664 → 3120、batches 4226 → 3704、my-entries 5125 → 4468、org-tree 4072 → 3558 ms,整页传输各少 106–128 KB;
+  FCP 两组都双峰分布,不作比较。表见 ADR 0011 文末。
+- **未做**:`qualyChunkGraph` 的结果检查没有进门禁。
 - 验收(`0bd771af1`,即三个功能提交之后,本机):`pnpm typecheck`、`pnpm lint`、`pnpm lint:types`、`pnpm format:check`
   exit 0;`pnpm test` 409 文件 3071 条通过(28 跳过);`pnpm test:browser` 122 文件 1584 条全过;`pnpm build` 后
   `check-staged-web`、`check-chunks`、`check-csp-build`、`check-public-web` 通过;scratch 库上 `qualy deploy` → seed →

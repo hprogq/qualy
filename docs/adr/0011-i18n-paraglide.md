@@ -101,7 +101,7 @@
 - **术语**:契约只剩 `TermRef` / `termRef`;`defineTerm` 的 `defaults` 记录改为 `default: Text`,定义移到声明方插件(auth 的 `src/terms.ts`,`@qualy/auth-contract/terms` 只导出引用)。settings 在建层时把每个术语的默认词按两种语言渲染并检查(非空、不超过 `maxLength`,否则拒绝启动),管理端 DTO 的 `defaults` 是这份渲染结果,`normalizeOverride` 与它比较。生效术语经 document-context 下发:ui-registry 新增 runtime 相扩展点 `DocumentContexts`,manifest 的 `context` 字段按提供方的键携带,整页 JSON 预算 4 KiB,超出或同键两家提供即为缺陷;settings 以 `settings/terms` 提供 `{ 术语 id: 当前语言的词 }`,未登录的访客得到产品默认词(不是租户数据)。`useTerm` 同步查表,缺表时显示术语 id(只会发生在没有 settings 的 harness);术语页保存后同时刷新 manifest。术语门禁改为:源码不得出现默认词,消息里只有声明它的那一条。
 - **SSE 与 WebSocket 不带语言**:现有的流(公式语言服务的诊断、SSE 事件)不携带 `Text`,第 8 条"语言放进连接 URL"暂无对象;出现第一个需要渲染的流时再加。
 - **隔离门禁只查直接 import**:集合 token 所在的共享模块(`@qualy/ui-contract` 的 surfaces、assessment 的 `surfaces.ts`)为了在注册时解码贡献而带着 `TextSchema`,浏览器经它们传递地拿到 `@qualy/text` 的根导出(纯值,几百字节);浏览器源码自己不得 import 它,也拿不到 `./node` 与消息表。
-- **未做**:第 13 条的 `qualyChunkGraph` 结果检查(首屏闭包请求数、小 chunk 数等)仍是阶段 1 的一次性测量,没有进门禁;手机 Lighthouse 的 LCP 对照未测(见下节,其余验收项已满足)。
+- **未做**:第 13 条的 `qualyChunkGraph` 结果检查(首屏闭包请求数、小 chunk 数等)仍是阶段 1 的一次性测量,没有进门禁。
 
 ## 阶段 1 实测(2026-10-01,本地生产构建,首屏静态闭包 = 入口 + 该页 layout + 页面 chunk + 登录驱动 + 对照组的 zh-CN catalog chunk,各自的静态 import 闭包;Brotli q11)
 
@@ -115,3 +115,15 @@
 全量 chunk 数 350 → 333。构建通过 `qualyChunkGraph`(无环、无编辑器泄漏、boot 预算内)。开发冷启动:消息编译约 6 s(4241 条),之后按输入指纹跳过;生产构建时间与对照组同量级(约 10–14 s,单次)。
 
 正确性:4241 条消息 × 代表性参数(5507 组)× 两种语言共 11014 次渲染,与 Lingui 逐字一致(`tools/tests/fixtures/messages-golden.json`,之后只校验源文未改动的消息);`m.roster_count({ count: 'abc' })` 编译失败;服务端未传 locale 抛错;三种 ABI 情形均有测试。
+
+**手机 Lighthouse(阶段 1 验收的最后一项,阶段 3 之后补测)**:同一台机器、同一份演示基线,两组 arm64 release 镜像先后
+起在 E2E 栈上(`pnpm lighthouse … --runs 3 --form mobile`,lighthouse 13.5.0)。对照组是切换前一个提交 `cb0649417`
+(完整 Lingui,阶段 0 已在),实验组是 `0bd771af1`(阶段 3 之后)。LCP 是模拟节流下的估计,三次之间大多相差不到 10 ms(对照组 my-entries 有一次低约 300 ms、org-tree 有一次高约 75 ms);
+FCP 在两组里都呈双峰(约 800 ms 或 1.4–2.4 s),三次取中位数不能说明构建差异,不作比较。
+
+| 页面       | LCP 中位数 ms Lingui → Paraglide | 性能分  | 整页传输 KB | 整页请求数 |
+| ---------- | -------------------------------- | ------- | ----------- | ---------- |
+| login      | 3664 → 3120                      | 89 → 93 | 558 → 430   | 95 → 69    |
+| batches    | 4226 → 3704                      | 84 → 87 | 662 → 544   | 160 → 137  |
+| my-entries | 5125 → 4468                      | 77 → 81 | 839 → 733   | 214 → 194  |
+| org-tree   | 4072 → 3558                      | 85 → 88 | 657 → 533   | 152 → 128  |
