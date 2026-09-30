@@ -2607,6 +2607,9 @@ importers:
       '@qualy/app-contract':
         specifier: workspace:*
         version: link:../../contracts/app
+      '@qualy/brand':
+        specifier: workspace:*
+        version: link:../brand
       '@qualy/browser-observability':
         specifier: workspace:*
         version: link:../observability

@@ -351,14 +351,14 @@ describe('a session lost from under a signed-in reader', () => {
   it('holds the call, and makes it again once the same person is back', async () => {
     let back = false
     const { attempts } = await screen(() => (back ? 'reader' : undefined))
-    await expect.element(page.getByRole('alertdialog')).toBeVisible()
+    await expect.element(page.getByRole('dialog')).toBeVisible()
     expect(attempts()).toBe(1)
     back = true
     // coming back to the tab is when the page asks
     window.dispatchEvent(new Event('focus'))
     await expect.element(page.getByTestId('saved')).toHaveTextContent('saved')
     expect(attempts()).toBe(2)
-    await expect.element(page.getByRole('alertdialog')).not.toBeInTheDocument()
+    await expect.element(page.getByRole('dialog')).not.toBeInTheDocument()
     await expect
       .element(page.getByRole('textbox', { name: 'draft' }))
       .toHaveValue('half a sentence')
@@ -367,18 +367,44 @@ describe('a session lost from under a signed-in reader', () => {
   it('never makes the call as somebody else, and offers only a reload', async () => {
     let back = false
     const { attempts } = await screen(() => (back ? 'someone-else' : undefined))
-    await expect.element(page.getByRole('alertdialog')).toBeVisible()
+    await expect.element(page.getByRole('dialog')).toBeVisible()
     back = true
     window.dispatchEvent(new Event('focus'))
-    await expect.element(page.getByTestId('session-switched')).toBeVisible()
+    await expect
+      .element(page.getByTestId('session-recovery'))
+      .toHaveAttribute('data-state', 'switched')
+    // nothing there carries on as the other account
+    expect(page.getByTestId('session-sign-in').elements()).toHaveLength(0)
+    await expect.element(page.getByTestId('session-reload')).toBeVisible()
     await new Promise((settle) => setTimeout(settle, 300))
     expect(attempts()).toBe(1)
     expect(page.getByTestId('saved').element().textContent).toBe('')
   })
 
+  it('offers a link to follow when the browser blocks the tab, and then waits', async () => {
+    const blocked = vi.spyOn(window, 'open').mockReturnValue(null)
+    try {
+      await screen(() => undefined)
+      const lock = page.getByTestId('session-recovery')
+      await expect.element(lock).toHaveAttribute('data-state', 'expired')
+      await page.getByTestId('session-sign-in').click()
+      expect(blocked).toHaveBeenCalledOnce()
+      await expect.element(lock).toHaveAttribute('data-state', 'blocked')
+      const link = page.getByTestId('session-sign-in')
+      await expect.element(link).toHaveAttribute('target', '_blank')
+      await expect.element(link).toHaveAttribute('href')
+      // followed, but kept in this test's own tab
+      link.element().addEventListener('click', (event) => event.preventDefault())
+      await link.click()
+      await expect.element(lock).toHaveAttribute('data-state', 'waiting')
+    } finally {
+      blocked.mockRestore()
+    }
+  })
+
   it('fails the call as refused when the reader signs out instead', async () => {
     const { attempts } = await screen(() => undefined)
-    await expect.element(page.getByRole('alertdialog')).toBeVisible()
+    await expect.element(page.getByRole('dialog')).toBeVisible()
     await page.getByTestId('session-sign-out').click()
     await expect.element(page.getByTestId('saved')).toHaveTextContent('failed')
     expect(attempts()).toBe(1)
@@ -396,7 +422,9 @@ describe('a signed-in page asked again after its session went', () => {
   it('stays the reader\u2019s, locked, and carries on once they are back', async () => {
     let signedIn = true
     let reads = 0
-    const opened = vi.spyOn(window, 'open').mockReturnValue(null)
+    // a tab opened: the page cuts it loose, and asks nothing more of it
+    const tab = { opener: window } as unknown as Window
+    const opened = vi.spyOn(window, 'open').mockReturnValue(tab)
     const Work = () => {
       const run = useRunApi()
       const client = useQueryClient()
@@ -445,8 +473,8 @@ describe('a signed-in page asked again after its session went', () => {
     // the session goes while the reader is away, and they come back
     signedIn = false
     await page.getByRole('button', { name: 'back' }).click()
-    const lost = page.getByTestId('session-lost')
-    await expect.element(lost).toHaveAttribute('data-state', 'prompt')
+    const lost = page.getByTestId('session-recovery')
+    await expect.element(lost).toHaveAttribute('data-state', 'expired')
     // the page is still the reader's, where it was, with what they typed -
     // locked under the dialog, so found by its hook rather than its role
     await expect.element(page.getByTestId('address')).toHaveTextContent('/work')
@@ -457,16 +485,17 @@ describe('a signed-in page asked again after its session went', () => {
     // same wait, not the first question again
     await page.getByTestId('session-sign-in').click()
     expect(opened).toHaveBeenCalledOnce()
+    expect(tab.opener).toBeNull()
     await expect.element(lost).toHaveAttribute('data-state', 'waiting')
     window.dispatchEvent(new Event('focus'))
     await new Promise((settle) => setTimeout(settle, 200))
-    expect(page.getByTestId('session-lost').elements()).toHaveLength(1)
+    expect(page.getByTestId('session-recovery').elements()).toHaveLength(1)
     await expect.element(lost).toHaveAttribute('data-state', 'waiting')
 
     // the reader is back: the page carries on where it was
     signedIn = true
     window.dispatchEvent(new Event('focus'))
-    await expect.element(page.getByTestId('session-lost')).not.toBeInTheDocument()
+    await expect.element(page.getByTestId('session-recovery')).not.toBeInTheDocument()
     // the refused read, made once more and only once
     await expect.element(page.getByTestId('read')).toHaveTextContent('answer 3')
     expect(reads).toBe(3)

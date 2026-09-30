@@ -1,17 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
 import { notifyManager, useQueryClient, type QueryKey } from '@tanstack/react-query'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@qualy/ui/alert-dialog'
-import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
 import type { NamespacedId } from '@qualy/ui-contract'
 import { signingOut } from './identity.ts'
 import { buildPageHref } from './pages.ts'
@@ -22,6 +10,7 @@ import {
   onSignedInElsewhere,
   SESSION_RESUME_PARAM,
 } from './session-recovery.ts'
+import { SessionRecoveryDialog, type SessionRecoveryState } from './session-recovery-dialog.tsx'
 
 // The page's side of a session lost from under its reader (session-recovery.ts).
 //
@@ -57,9 +46,6 @@ interface Held {
   readonly settle: (again: boolean) => void
 }
 
-/** prompt: sign in again or leave; waiting: the sign-in page is open elsewhere */
-type Standing = 'prompt' | 'waiting' | 'someone-else'
-
 /** a wait that gives up when the call it holds is cancelled */
 const unlessAborted = (waiting: Promise<boolean>, signal: AbortSignal | undefined) =>
   signal === undefined
@@ -90,8 +76,7 @@ export function SessionRecoveryGate({
   signInPage?: NamespacedId | undefined
 }) {
   const queryClient = useQueryClient()
-  const { format } = useI18n()
-  const [standing, setStanding] = useState<Standing | undefined>()
+  const [standing, setStanding] = useState<SessionRecoveryState | undefined>()
   const held = useRef<Held | undefined>(undefined)
   // the reader chose to sign out: answers as nobody are taken as they come
   const leaving = useRef(false)
@@ -127,7 +112,7 @@ export function SessionRecoveryGate({
             now.identity !== mine.identity
           ) {
             release(false)
-          } else setStanding((was) => was ?? 'prompt')
+          } else setStanding((was) => was ?? 'expired')
         }, GRACE_MS)
         return unlessAborted(mine.promise, signal)
       },
@@ -136,13 +121,13 @@ export function SessionRecoveryGate({
         const current = held.current
         if (current !== undefined) {
           if (current.identity !== identity) return false
-          if (someoneElse) setStanding('someone-else')
+          if (someoneElse) setStanding('switched')
           return true
         }
         // somebody else, with nothing waiting: the page follows as it always did
         if (someoneElse) return false
         held.current = holding(identity)
-        setStanding('prompt')
+        setStanding('expired')
         return true
       },
     })
@@ -153,7 +138,8 @@ export function SessionRecoveryGate({
     }
   }, [queryClient, manifestKey])
 
-  const waiting = standing === 'prompt' || standing === 'waiting'
+  // every state but the last is still waiting for the same reader
+  const waiting = standing !== undefined && standing !== 'switched'
   useEffect(() => {
     if (!waiting) return
     let stopped = false
@@ -169,7 +155,7 @@ export function SessionRecoveryGate({
       }
       if (stopped || held.current !== current || manifest.viewer !== 'authenticated') return
       if (manifest.identity !== current.identity) {
-        setStanding('someone-else')
+        setStanding('switched')
         return
       }
       queryClient.setQueryData(manifestKey, manifest)
@@ -195,16 +181,28 @@ export function SessionRecoveryGate({
     }
   }, [waiting, askManifest, queryClient, manifestKey])
 
-  /** the sign-in page, in a tab of its own, told it is there for a recovery */
-  const openSignIn = () => {
+  /** the sign-in page, told it is there for a recovery */
+  const signInHref = (() => {
     const pages = queryClient.getQueryData<Manifest>(manifestKey)?.pages ?? []
     const entry =
       signInPage === undefined ? undefined : pages.find((page) => page.id === signInPage)
-    const href =
-      entry === undefined
-        ? window.location.href
-        : buildPageHref(entry, { search: { [SESSION_RESUME_PARAM]: '1' } })
-    window.open(href, '_blank', 'noopener')
+    return entry === undefined
+      ? window.location.href
+      : buildPageHref(entry, { search: { [SESSION_RESUME_PARAM]: '1' } })
+  })()
+
+  /**
+   * Opens it in a tab of its own. Without `noopener`, which makes `open`
+   * answer null whatever happened, so a tab the browser blocked can be told
+   * from one it opened; the new tab is then cut loose from this one by hand.
+   */
+  const openSignIn = () => {
+    const opened = window.open(signInHref, '_blank')
+    if (opened === null) {
+      setStanding('blocked')
+      return
+    }
+    opened.opener = null
     setStanding('waiting')
   }
 
@@ -236,56 +234,14 @@ export function SessionRecoveryGate({
     })()
   }
 
-  const shown = standing === 'waiting' ? 'waiting' : 'prompt'
   return (
-    <>
-      {/* controlled, and never closed by a click outside or Escape: there is
-          nothing to go back to on a page without its session */}
-      <AlertDialog open={waiting}>
-        <AlertDialogContent data-testid="session-lost" data-state={shown}>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {format(
-                shown === 'waiting'
-                  ? commonMessages.sessionWaitingTitle
-                  : commonMessages.sessionLostTitle,
-              )}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {format(
-                shown === 'waiting'
-                  ? commonMessages.sessionWaitingHint
-                  : commonMessages.sessionLostHint,
-              )}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel data-testid="session-sign-out" onClick={signOut}>
-              {format(commonMessages.sessionSignOut)}
-            </AlertDialogCancel>
-            <AlertDialogAction data-testid="session-sign-in" onClick={openSignIn}>
-              {format(
-                shown === 'waiting' ? commonMessages.sessionReopen : commonMessages.sessionSignIn,
-              )}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-      <AlertDialog open={standing === 'someone-else'}>
-        <AlertDialogContent data-testid="session-switched">
-          <AlertDialogHeader>
-            <AlertDialogTitle>{format(commonMessages.sessionSwitchedTitle)}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {format(commonMessages.sessionSwitchedHint)}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogAction onClick={() => window.location.reload()}>
-              {format(commonMessages.sessionReload)}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </>
+    <SessionRecoveryDialog
+      state={standing}
+      signInHref={signInHref}
+      onSignIn={openSignIn}
+      onOpenedYourself={() => setStanding('waiting')}
+      onSignOut={signOut}
+      onReload={() => window.location.reload()}
+    />
   )
 }

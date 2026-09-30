@@ -595,9 +595,15 @@ smtp 后端对着 Mailpit 跑同一套,CI 设 `QUALY_REQUIRE_MAILPIT_TESTS=1`,�
 - **恢复期间 manifest 被钉住**(2026-09-30,修「进页面就弹『登录已失效』、身后却已是登录页」):回到标签页时 TanStack 按焦点重取一切,
   manifest 永不拒绝、只会答匿名,它若先于被拒的业务调用落进缓存,路由就以访客重建、页面卸载换成登录页,恢复还挂着的对话框再叠上去。
   现在 runtime 的 manifest 查询经 `presentedManifest`:缓存里是已登录者、新答案是匿名(或恢复挂起时换了人),而读者既没在主动切换身份、
-  也没选择退出,就交给恢复(`SessionRecovery.lost`)并**保留旧 manifest**——地址、页面、未保存的输入都不动。对话框没有「稍后」、
-  不可 Esc/点外关闭,页面在其下 inert:没有会话的页面上除了重新登录或离开,无事可做。状态只有三个:`prompt`(刚发现)、`waiting`
-  (已在新标签页打开登录页,回到本页仍显示同一个等待,不再从头问)、`someone-else`。
+  也没选择退出,就交给恢复(`SessionRecovery.lost`)并**保留旧 manifest**——地址、页面、未保存的输入都不动。锁屏是
+  `SessionRecoveryDialog`(web-runtime,只负责画;状态机留在 `SessionRecoveryGate`),2026-09-30 从 AlertDialog 改为普通 Dialog:
+  `alertdialog` 是「立即要答的警告」,这里是会停留到登录完成的锁,语义是 `dialog` + `aria-modal`。没有「稍后」、没有角上的关闭,
+  open 只归 gate,Esc 与点遮罩都不起作用;页面在其下 inert,背景用浮层家族同一层遮罩(8px 模糊 + 压暗:认得出顶栏与卡片轮廓、
+  读不出字,既保护隐私又让人知道还在原页面)。顶部一个小 wordmark 表明这是 Qualy 自己的锁——手机上面板几乎就是全部可见内容。
+  打开时焦点落在面板上(`restfulFocus`),不替人按下主按钮。四个状态:`expired`(登录已过期,重新登录 / 退出并返回登录页)、
+  `waiting`(已打开登录页,回到本页仍是同一个等待,不再从头问;主按钮改为重新打开)、`blocked`(浏览器拦了新标签:`window.open`
+  不带 `noopener`,以便区分拦截与打开,打开后由本页把新标签的 `opener` 置空;此时主按钮是一个 `target=_blank` 链接,由人点开的
+  标签不受拦截,点后进入 `waiting`)、`switched`(登录成了另一个账号:本页属于之前的账号,只能重新载入)。
   「重新登录」打开的是 manifest 里登录页的地址加 `?resume=1`(`RuntimeProvider` 的 `signInPage`,不是本页地址——本页在新标签里只会再撞一次
   失效);登录页见 `resume=1`:登录成功后经 `BroadcastChannel('qualy:session')` 发一句「有人登录了」并尝试 `window.close()`,关不掉就显示
   「登录成功,原页面已自动继续」。**广播只是提示**,不带身份,收到后照样去问服务端;焦点、可见性、3 秒轮询兜底,所以不支持

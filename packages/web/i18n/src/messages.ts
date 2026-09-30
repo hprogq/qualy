@@ -178,7 +178,7 @@ export const commonMessages = {
   sessionLostTitle: { id: 'common/session/lost-title', defaultMessage: 'Your sign-in has expired' },
   sessionLostHint: {
     id: 'common/session/lost-hint',
-    defaultMessage: 'Sign in again and this page carries on, with nothing you have not saved lost',
+    defaultMessage: 'Sign in again to carry on. What you have filled in is kept',
   },
   sessionSignIn: { id: 'common/session/sign-in', defaultMessage: 'Sign in again' },
   sessionSignOut: { id: 'common/session/sign-out', defaultMessage: 'Sign out' },
@@ -188,17 +188,25 @@ export const commonMessages = {
   },
   sessionWaitingHint: {
     id: 'common/session/waiting-hint',
-    defaultMessage:
-      'The sign-in page is open in a new tab. Once you are signed in, this page carries on',
+    defaultMessage: 'Once you are signed in, this page picks up where it was',
   },
   sessionReopen: { id: 'common/session/reopen', defaultMessage: 'Open the sign-in page again' },
+  sessionBlockedTitle: {
+    id: 'common/session/blocked-title',
+    defaultMessage: 'The sign-in page could not open',
+  },
+  sessionBlockedHint: {
+    id: 'common/session/blocked-hint',
+    defaultMessage: 'The browser blocked the new tab. Open the sign-in page yourself',
+  },
+  sessionOpenSignIn: { id: 'common/session/open-sign-in', defaultMessage: 'Open the sign-in page' },
   sessionSwitchedTitle: {
     id: 'common/session/switched-title',
-    defaultMessage: 'Another account is signed in',
+    defaultMessage: 'The account has changed',
   },
   sessionSwitchedHint: {
     id: 'common/session/switched-hint',
-    defaultMessage: 'Reload to continue as that account. What was not saved here is discarded',
+    defaultMessage: 'This page belongs to the account signed in before and cannot carry on',
   },
   sessionReload: { id: 'common/session/reload', defaultMessage: 'Reload' },
 } as const satisfies Record<string, MessageDescriptor>

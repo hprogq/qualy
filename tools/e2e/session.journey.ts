@@ -64,8 +64,8 @@ describe('a session that ends under an open page', () => {
     await page.evaluate(() =>
       document.dispatchEvent(new Event('visibilitychange', { bubbles: true })),
     )
-    const lost = page.getByTestId('session-lost')
-    await expect.poll(() => lost.getAttribute('data-state'), { timeout: 20_000 }).toBe('prompt')
+    const lost = page.getByTestId('session-recovery')
+    await expect.poll(() => lost.getAttribute('data-state'), { timeout: 20_000 }).toBe('expired')
     expect(new URL(page.url()).pathname).toBe(where)
     const refused = answers.filter((answer) => answer.status === 401).map((answer) => answer.url)
     expect(refused.length).toBeGreaterThan(0)
@@ -81,7 +81,7 @@ describe('a session that ends under an open page', () => {
     await page.evaluate(() => window.dispatchEvent(new Event('focus')))
     await page.waitForTimeout(1_500)
     expect(new URL(page.url()).pathname).toBe(where)
-    expect(await page.getByTestId('session-lost').count()).toBe(1)
+    expect(await page.getByTestId('session-recovery').count()).toBe(1)
     expect(await lost.getAttribute('data-state')).toBe('waiting')
 
     // signing in there closes that tab, or says the page carries on
