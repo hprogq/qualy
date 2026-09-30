@@ -185,7 +185,7 @@ const styles = stylex.create({
     flexShrink: 0,
     fontFamily: MONO,
     fontSize: 11,
-    color: `color-mix(in oklab, ${tokens.mutedForeground} 75%, transparent)`,
+    color: tokens.mutedForeground,
   },
   third: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 4 },
   problemLine: { fontSize: 12, lineHeight: 1.4, color: tokens.danger, overflowWrap: 'anywhere' },

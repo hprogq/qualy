@@ -69,7 +69,7 @@ const styles = stylex.create({
     flexShrink: 0,
     fontSize: '0.75rem',
     lineHeight: '1rem',
-    color: `color-mix(in oklab, ${tokens.mutedForeground} 70%, transparent)`,
+    color: tokens.mutedForeground,
   },
   chosenBadge: {
     gap: 4,

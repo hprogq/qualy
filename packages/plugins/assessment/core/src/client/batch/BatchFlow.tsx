@@ -84,10 +84,10 @@ const flow = stylex.create({
   titleLater: { fontWeight: 400, color: tokens.mutedForeground },
   titleDone: {
     fontWeight: 400,
-    color: `color-mix(in oklab, ${tokens.mutedForeground} 70%, transparent)`,
+    color: tokens.mutedForeground,
   },
   date: { marginTop: 4, marginBottom: 0, fontWeight: 400, fontVariantNumeric: 'tabular-nums' },
-  faded: { color: `color-mix(in oklab, ${tokens.mutedForeground} 60%, transparent)` },
+  faded: { color: tokens.mutedForeground },
   note: { marginTop: 4, fontSize: 12, lineHeight: '1rem' },
 })
 
@@ -143,12 +143,12 @@ const styles = stylex.create({
     fontSize: 10,
     fontWeight: 400,
   },
-  // what is over is drawn faintest of the three: next to a solid mark for
-  // the stage in hand, a grey that is nearly as dark reads as another live
-  // one
+  // what is over wears the faintest ground of the three, and says so in its
+  // word: its words stay the secondary grey every small text is written in,
+  // since a stage drawn fainter than that could not be read
   stageBadgeEnded: {
     backgroundColor: `color-mix(in oklab, ${tokens.surfaceMuted} 60%, transparent)`,
-    color: `color-mix(in oklab, ${tokens.mutedForeground} 70%, transparent)`,
+    color: tokens.mutedForeground,
   },
   stageBadgeFuture: {
     backgroundColor: 'transparent',

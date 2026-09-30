@@ -161,7 +161,7 @@ const styles = stylex.create({
   },
   whoNoAbsent: {
     fontStyle: 'italic',
-    color: `color-mix(in oklab, ${tokens.mutedForeground} 70%, transparent)`,
+    color: tokens.mutedForeground,
   },
   typeChip: {
     flexShrink: 0,

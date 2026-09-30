@@ -694,7 +694,7 @@ const styles = stylex.create({
   // what a claim still on its way would come to: said, but not as if it counted
   lineWould: {
     fontWeight: 400,
-    color: `color-mix(in oklab, ${tokens.mutedForeground} 80%, transparent)`,
+    color: tokens.mutedForeground,
   },
   lineWouldWord: {
     // a longer word gives a line to itself rather than widen every figure

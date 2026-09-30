@@ -79,7 +79,7 @@ const styles = stylex.create({
   rest: {
     fontSize: 11,
     lineHeight: '16px',
-    color: `color-mix(in oklab, ${tokens.mutedForeground} 65%, transparent)`,
+    color: tokens.mutedForeground,
   },
   number: {
     height: 19,

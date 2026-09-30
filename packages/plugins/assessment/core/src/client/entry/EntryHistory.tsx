@@ -190,7 +190,7 @@ const styles = stylex.create({
     color: tokens.mutedForeground,
   },
   chipKind: {
-    color: `color-mix(in oklab, ${tokens.mutedForeground} 70%, transparent)`,
+    color: tokens.mutedForeground,
   },
   card: {
     display: 'flex',

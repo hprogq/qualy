@@ -263,12 +263,12 @@ const styles = stylex.create({
   // that sit side by side rather than one qualifying the other.
   stripAside: {
     fontSize: 12,
-    color: `color-mix(in oklab, ${tokens.mutedForeground} 75%, transparent)`,
+    color: tokens.mutedForeground,
     fontVariantNumeric: 'tabular-nums',
   },
   stripCount: {
     fontSize: 12,
-    color: `color-mix(in oklab, ${tokens.mutedForeground} 80%, transparent)`,
+    color: tokens.mutedForeground,
     fontVariantNumeric: 'tabular-nums',
   },
   // the whole line is the way in; the verb inside is the same door with a
@@ -557,7 +557,7 @@ const styles = stylex.create({
     marginLeft: 'auto',
     flexShrink: 0,
     fontSize: 12,
-    color: `color-mix(in oklab, ${tokens.mutedForeground} 80%, transparent)`,
+    color: tokens.mutedForeground,
   },
   feedClockNarrow: {
     display: {

@@ -36,7 +36,7 @@ const styles = stylex.create({
     flexShrink: 0,
     minWidth: 18,
     textAlign: 'right',
-    color: `color-mix(in oklab, ${tokens.mutedForeground} 55%, transparent)`,
+    color: tokens.mutedForeground,
     userSelect: 'none',
   },
   code: { minWidth: 0, whiteSpace: 'pre' },

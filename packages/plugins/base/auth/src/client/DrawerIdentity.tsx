@@ -107,7 +107,7 @@ const styles = stylex.create({
   numberAbsent: {
     fontStyle: 'italic',
     fontVariantNumeric: 'normal',
-    color: `color-mix(in oklab, ${tokens.mutedForeground} 70%, transparent)`,
+    color: tokens.mutedForeground,
   },
   spacer: {
     flexGrow: 1,

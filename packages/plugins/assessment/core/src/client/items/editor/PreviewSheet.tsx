@@ -54,7 +54,7 @@ const styles = stylex.create({
     borderColor: tokens.border,
     backgroundColor: tokens.background,
     fontSize: 13,
-    color: `color-mix(in oklab, ${tokens.mutedForeground} 75%, transparent)`,
+    color: tokens.mutedForeground,
   },
   inputIcon: { width: 14, height: 14, flexShrink: 0 },
   pill: {
