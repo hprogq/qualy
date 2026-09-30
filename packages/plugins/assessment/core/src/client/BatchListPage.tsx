@@ -152,7 +152,11 @@ const styles = stylex.create({
   createButton: {
     flexShrink: 0,
   },
-  refreshing: {
+  // Kept whether or not anything is in it: a spinner that took its room
+  // only while it showed moved the pills and the search every time a
+  // filter was asked for.
+  refreshSeat: {
+    display: 'inline-flex',
     width: 16,
     height: 16,
     flexShrink: 0,
@@ -206,6 +210,9 @@ const styles = stylex.create({
   // edges of the screen - a row that scrolls should look like it carries
   // on, and a pill stopped by a gutter looks like a pill drawn wrong.
   pillScroller: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
     width: {
       default: null,
       [breakpoints.phone]: 'auto',
@@ -906,20 +913,14 @@ export default function BatchListPage() {
             <section {...stylex.props(styles.list)}>
               {/* the list has a name of its own because the cards above it
                   are batches too: without it the pills read as filtering
-                  the whole page. A refresh that runs long is said beside
-                  that name, since it is the table being asked again */}
+                  the whole page. A refresh that runs long is said just
+                  after the pills, since it is their question being asked */}
               <div {...stylex.props(styles.listHead)}>
-                <div {...stylex.props(styles.listHeadLine)}>
-                  {listLabelled && (
+                {listLabelled && (
+                  <div {...stylex.props(styles.listHeadLine)}>
                     <span {...stylex.props(styles.listLabel)}>{format(m.batchesAll)}</span>
-                  )}
-                  {refreshing && (
-                    <Spinner
-                      aria-label={format(commonMessages.loading)}
-                      className={stylex.props(styles.refreshing).className}
-                    />
-                  )}
-                </div>
+                  </div>
+                )}
                 <div {...stylex.props(styles.pillScroller)}>
                   <ToggleGroup
                     className={stylex.props(styles.wide).className}
@@ -953,6 +954,9 @@ export default function BatchListPage() {
                       {chipCount(counts?.archived)}
                     </ToggleGroupItem>
                   </ToggleGroup>
+                  <span data-testid="batch-refreshing" {...stylex.props(styles.refreshSeat)}>
+                    {refreshing && <Spinner aria-label={format(commonMessages.loading)} />}
+                  </span>
                 </div>
                 {!narrow && searchBox}
               </div>
