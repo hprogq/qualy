@@ -1,0 +1,103 @@
+# ADR 0011:i18n 迁移到 Paraglide JS,语言随文档固定,展示文字在服务端渲染
+
+- 状态:**已接受**(2026-10-01)。阶段 0 至 2 已实施:阶段 1 的对照测量通过(见文末),切换到 Paraglide;实施中的修正见"已裁决的细节"与"实施中的修正"两节,与上文不同处以它们为准
+- 相关:STATUS.md 2026-09-30 晚 i18n PoC 记录与 2026-10-01 记录、docs/notes/web-performance.md、apps/web/vite.config.ts 中 codeSplitting 的注释、讨论原文 docs/i18n-chat-A.md / B.md / C.md
+
+> 给执行者(Claude Code):本文是一轮较长的架构讨论的结论。"被否决的方案"一节里的选项都已逐一权衡过,除非实测数据推翻其中的理由,不要重新开启讨论。
+
+## 背景
+
+### 现状
+
+- `@lingui/core` 6.6 只被当作格式化器使用:`setupI18n` 加 `setMessagesCompiler(compileMessage)`,ICU 在浏览器现场编译;语言包是手写 TS(`client/locales/zh-CN.ts`);客户端 4216 条 descriptor 各自携带英文 `defaultMessage`。
+- `virtual:qualy/plugins` 静态 import 全部插件的 `catalogs` 与 `errorMessages`,所有 descriptor 进入启动图;`I18nProvider` 要等全部插件的当前语言包到齐才渲染。
+- 所有插件的中文合并成一个 `locale-zh-CN` chunk,生产 Brotli 54.7 KB。
+- `assessment/core/src/client/i18n.ts` 共 8437 行,所有 assessment 页面共同依赖它。
+- 另有三套手写的双语文案:`packages/web/i18n/src/bootstrap.ts`、`auth/src/server/mail-copy.ts`、术语的 `defineTerm({ defaults })`。
+- wire 上的 `UiText`(`{ kind: 'message', id, defaultMessage } | { kind: 'literal', value }`)出现在 5 处合约:app manifest、ui surfaces、auth api、org api、assessment surfaces;服务端去重后共 184 条。
+- 邮件语言取自 `Accept-Language`(`auth/src/server/index.ts` 多处 `mailLocaleOf`),与用户在 Qualy 里选择的语言无关。`updateUser`(`tellAddressLeft`)和 `createUserEmailVerification` 是给他人发信,却用了操作者的语言。
+
+### 实测数据
+
+- 2026-09-30 PoC:仅把静态 `defaultMessage` 抽成空串,首屏 i18n 模块 Brotli 82.8 → 43.7 KB,手机 LCP 改善 2 至 377 ms。语言包随页面预取没有收益,React 提交反而晚约 300 ms。
+- 全产品 4193 条中英消息,Brotli q11:带 id 的中文 54.0 KB(与生产 54.7 KB 吻合);只算文案值:中文 32.4 KB,英文 35.5 KB,中英合计 69.7 KB(是单语的 2.15 倍)。
+- 184 条 wire 消息,中英合计 3.9 KB。
+- `@lingui/message-utils@6.6.0` 与 `@inlang/plugin-icu1@1.1.0` 使用同一个 `@messageformat/parser@5.1.1`。
+
+## 决定
+
+1. **框架:Paraglide JS 2**。`@inlang/paraglide-js` 与 `@inlang/plugin-icu1` 精确钉版本;升级作为单独改动,附 ICU 往返、消息契约与代表性渲染测试。
+2. **消息源:ICU MessageFormat 1 JSON,正式长期格式**。每个插件自有 `messages/en-US.json` 与 `messages/zh-CN.json`。任何语言缺任何 key 即构建失败,不允许靠 `baseLocale` 静默回退。`baseLocale` 只是编译配置;产品默认语言 `zh-CN` 是 Qualy 自己的独立常量。
+3. **构建**:assembly collector 做命名空间与冲突检查后,把活跃插件的消息合并进临时目录 `.qualy/i18n-build/` 下的 inlang project,不提交、不写回插件。不使用多 `pathPattern` 数组(导出时会写进每个路径),不写自定义 inlang storage plugin。开发环境 `locale-modules`,生产环境 `message-modules`。`experimentalPerLocaleBuild` 是观察项,正确性不依赖它。
+4. **导入 ABI:`@qualy/messages/<namespace>`**,在三种情形下都必须可解析:插件单独开发、测试与 typecheck(plugin-kit 只编译该插件自己的消息);assembly 开发与构建(集中编译,全局只有一个 runtime);已发布的 dist-only 第三方插件(specifier 保持 external,包内携带 ICU JSON,由宿主编译)。插件只能 import 自己命名空间的消息;平台通用消息另设显式契约。先依赖 `sideEffects: false` 下 Rolldown 的 tree-shaking,不预先写 import 改写。消息 key 在插件文件内用本地名,由 collector 加命名空间前缀;从现有 Qualy id 到新 key 的映射规则要确定、可逆,供差分测试使用。
+5. **类型 facade**:由 inlang 规范化模型生成 `@qualy/messages/<namespace>` 的 `.d.ts`(缺信息时退回同版本的 `@messageformat/parser`,不引入 FormatJS 的第二个解析器)。规则:`plural`、`selectordinal`、`number` 参数为 `number`;`date`、`time` 参数为 `DateInput`(见待定事项);普通插值为 `string`;带 `other` 的 `select` 参数为 `string`,合法值由调用处的领域类型经 `selectKey` 约束,不让消息文件反过来定义领域枚举。JS 输出只是 re-export,没有运行时包装。背景:Paraglide 对带兜底分支的 match 生成 `NonNullable<unknown>`,不加这层 facade 会丢掉现有 `defineMessage<Values>` 的类型安全。
+6. **浏览器**:删除 `I18nProvider`、`loadCatalogs`、`compileMessage`、`MessageDescriptor`、`defineMessage`、`CatalogFor`、`formatText`、`LocalizedText`、`ErrorMessageMap`。组件直接调用消息函数。Paraglide 客户端使用自定义 strategy,只读 `<html data-locale>`;`useLocale()` 只是返回这个常量。API 错误翻译改为 feature 内的"错误码 → 消息函数"映射,通用的传输与认证错误放在平台通用消息里。
+7. **语言生命周期:一个文档从创建到关闭只有一种语言**。创建时依次取:显式 cookie、`navigator.languages`、`zh-CN`;boot script 写入 `lang` 与 `data-locale`。cookie 只在用户明确选择时写入。账户上的 `preferredLocale` 可为空,只在登录用户明确选择时写入。切换:同一个接口同时写账户偏好并 `Set-Cookie`,然后走 leave guard,最后整页重新载入。多标签页用 BroadcastChannel 给出不打断的提示,不自动刷新。
+8. **服务端文字:`UiText` 从 wire 与内部同时退役**。新建仅服务端使用的包 `@qualy/text`(不放进 i18n-contract),只有三种构造:`text(消息函数, inputs)`、`term(TermRef)`、`literal(value)`;inputs 的类型来自 facade,`string` 类参数也可以接受 `Text`(用于术语)。`render(text, ctx)` 是同步纯函数,`ctx = { locale, terms }`,术语表每个请求查询一次并缓存。HTTP DTO 字段一律是 `string`,handler 显式渲染;api-kit 不做自动递归渲染。只在构造响应时渲染;渲染结果不缓存、不持久化,唯一例外是显式按源语言渲染的镜像(如 `Permission.name`);后台任务只存 code。服务端 Paraglide 使用自定义 strategy,未显式传 `locale` 的调用直接抛错。API client 在每个请求上附带 `x-qualy-locale`(取 `data-locale`);服务端解析顺序:该 header、cookie、`Accept-Language`、产品默认。WebSocket 与 SSE 把语言放进连接 URL。
+9. **邮件与导出**使用同一个 `render`。本人触发的,用当前文档语言;发给他人的,用收件人的 `preferredLocale`,没有则用产品默认,绝不使用操作者的语言。删除 `mail-copy.ts`。
+10. **术语库**:合约里只保留 `TermRef`(只有身份);`TermDefinition` 移到声明侧,`default`、`label`、`description` 都是引用 Paraglide 消息的 `Text`;删除 `defaults` 记录。管理端 DTO 通过逐语言渲染得到各语言默认值;`normalizeOverride` 与渲染出的默认值比较;assembly 门禁对每种语言渲染默认值,要求非空且不超过 maxLength。当前文档语言下的生效术语由 settings 插件通过 manifest 的 document-context 扩展点下发(ui-registry 不依赖 settings),`useTerm` 变为同步查表;管理员术语编辑接口保留,保存后重新获取 manifest。document-context 只放整个文档生命周期内稳定、体积小、多个 feature 都要用的数据,并设体积预算。术语只允许出现在不受词形变化影响的位置。
+11. **bootstrap 文案**改为普通 Paraglide 消息,构建时渲染两种语言写入现有的 `#qualy-boot-copy`;维护页测试改为对照生成结果。
+12. **插件隔离**:拆开前后端混用的模块(例如 `assessment/core/src/client/items/editor/ItemEditor.tsx` 第 26 行从 `surfaces.ts` 引入 `calculatorAuthoringOptions`)。客户端禁止 import `@qualy/text`、插件声明模块、服务端渲染辅助;这些规则加入 `tools/tests/plugin-isolation.test.ts`。
+13. **chunk 策略**:删除 `locale-*` codeSplitting group;保留现有 `shared`(entriesAware)策略;平台通用消息显式声明。`qualyChunkGraph` 增加对结果的检查(首屏静态闭包的请求数、小于 1 KB 与 2 KB 的 chunk 数、压缩字节、chunk 环、不该出现的 feature 泄漏)。不采用"被 N 个入口引用就放进 boot"这类源码启发式规则。
+
+## 被否决的方案
+
+- **完整 Lingui(编译期 catalog,只加载当前语言)**:完全可行,是 PoC 失败时的备选方案。它的优势是只下载一种语言、文件少而大;劣势是需要人工设计 catalog 分组、存在异步 activation 门槛、延迟消息丢失参数类型。
+- **保留原地切换语言**:要求每个组件、模块顶层字符串、Intl 缓存、`document.title`、第三方组件都跟着更新;与服务端渲染不兼容;阻断将来的单语言构建。换来的只是极低频操作不刷新页面。
+- **wire 保留 `UiText` 加生成的分发表**:浏览器需要两条出文字的路径,版本错位要靠 fallback,服务端无法按显示文字搜索、排序、分页,也无法带参数,纯服务端插件被迫把文案编译进前端。前提是原地切换,已被否决。
+- **把 `UiText` 改个名字留在服务端内部(`MessageRef | Literal` 加 `defaultMessage`)**:`defaultMessage` 的三个职责在新架构中都已消失;改用第 8 条的 `Text`。
+- **自行实现每种语言一套完整构建**:由 Paraglide 的 `experimentalPerLocaleBuild` 覆盖,稳定后再评估。
+- **inlang 原生格式、PO、MF2**:原生格式绑定 inlang,复杂消息更冗长,而 Qualy 用不到它的 markup;PO 只在专业译员与 TMS 流程下有价值;MF2 目前没有成熟的一等存储插件,出现后直接评估 ICU1 到 MF2 的迁移,不经过原生格式。
+- **把 2026-09-30 的 defaultMessage 抽取 PoC 正式落地**:属于 Lingui 专用的工作,不要做。
+- **自定义 inlang storage plugin、多 `pathPattern` 数组**:见第 3 条。
+
+## 实施阶段
+
+**阶段 0(与框架无关,可以先做)**:语言 cookie、账户 `preferredLocale`、`x-qualy-locale`、切换改为 leave guard 加整页重新载入;邮件按收件人选择语言;拆开混用模块并补充隔离规则。
+
+**阶段 1(PoC,决定是否切换)**:(实施时与阶段 2 合并:全部调用点用 codemod 一次迁完,再对全量产物做对照测量——部分迁移时 Lingui 与全部描述符仍在启动图里,测出的数字不能说明任何事;测量不通过时回退的成本与只迁四页相同)
+
+- 用脚本把全部现有消息机械转换为各插件的 ICU1 JSON;搭好第 3 至 5 条的流水线;验证三种 ABI 情形;把 `login`、`batches`、`my-entries`、`org-tree` 四个页面的调用点迁到 Paraglide。
+- 对照组是生产可用的完整 Lingui:编译期 catalog、只加载当前语言、剥离 defaultMessage。
+- 验收(手机 Lighthouse 每项 3 次取中位数,外加生产构建分析):四个页面的首屏静态闭包请求数不多于对照组,小于 2 KB 的 chunk 数没有明显增加,闭包 Brotli 字节不高于对照组,没有 chunk 环,LCP 中位数不变差。同时记录开发服务器冷启动与构建时间。
+- 正确性:三种 ABI 情形都能通过;类型测试证明 `m.itemsSelected({ count: 'abc' })` 编译失败;服务端未传 `locale` 的调用抛错。
+- 请求数明显增加且调不回来时,改为落地完整 Lingui,第 2、6 至 13 条中与框架无关的内容照样执行。
+
+**阶段 2(全量迁移)**:4193 条消息做新旧差分测试(两种语言、同一组样例参数,逐条比对);迁移全部调用点与错误映射;删除 Lingui。差分测试完成后保留一份 golden fixture,不在 CI 中长期同时运行两套渲染器。
+
+**阶段 3**:`@qualy/text`、术语库改造与 document-context、bootstrap 与邮件改造,删除 `UiText` 与 `i18n-contract` 中的旧类型。
+
+**阶段 4**:更新 CLAUDE.md 与相关文档,删除残留。
+
+## 已裁决的细节(2026-10-01,用户确认)
+
+1. **登录写 cookie,但只写空白设备**:设备没有 `qualy.locale` cookie 且账户 `preferredLocale` 非空时,登录响应写入该 cookie;设备已有 cookie 时登录永不覆盖。优先级:设备上显式的 cookie > 账户 `preferredLocale` > `navigator.languages` / `Accept-Language` > 产品默认 `zh-CN`。cookie 是这台设备的选择,`preferredLocale` 是新设备的默认值与站外通知(邮件)的语言;在设备 B 上显式切换,同时更新 B 的 cookie 与账户偏好。
+2. **登录前选的语言与账户偏好不同**:显示以设备 cookie 为准;登录既不改 cookie,也不把登录前的 cookie 写进仍为空的 `preferredLocale`(共用设备上的 cookie 可能是上一个人选的)。账户偏好只在登录后显式选择时写入。从未选过的用户 `preferredLocale` 为 null,按产品默认 `zh-CN` 处理。
+3. **date/time 消息参数只收 `Date`**:不收时间戳,不收 ISO 字符串;DTO 里的 ISO 字符串在应用边界转成 `Date`。facade 映射:`date`/`time`/`datetime` → `Date`,`number`/`plural`/`selectordinal` → `number`。实测现有 4241 条消息没有一条用 ICU 的 date/time/number 格式化(日期都在组件里走 `Intl`),这条规则暂时只约束新消息。
+4. **Lingui 对照组是"生产代表性"的测量基线,不是可上线版本**:全量真实消息、真实 Vite/Rolldown 生产构建、构建期编译 catalog、浏览器不带 ICU 编译器、剥离静态 defaultMessage、只加载当前语言、真实 Brotli、真实 code splitting 配置与页面懒加载图。不要求语言切换体验、邮件、插件 ABI、错误恢复与最终目录结构。
+
+## 实施中的修正(与上文"决定"不同之处,以此为准)
+
+- **导入 ABI 改为包私有的 `#messages`**(取代第 4 条的 `@qualy/messages/<namespace>`):每个包在自己的 `package.json` 的 `imports` 里声明 `#messages`,指向构建生成的 `./.qualy/messages.{js,d.ts}`(gitignored)。Node、TypeScript、Vite 都按导入文件所在的包原生解析它,所以插件天然只能拿到自己的消息,不需要另写隔离门禁;不存在一个中央 `@qualy/messages` 包,第三方插件也不需要改任何中央文件。已发布的 dist-only 插件不写入 node_modules:构建的 Vite 插件按导入方所在的包把 `#messages` 解析到中央生成的 facade(`tools/tests/dist-only-plugin.test.ts` 与 `packed-plugin.test.ts` 用只有 `dist/` + `messages/` 的包、以及真正打包安装的 tarball 验证,页面 chunk 里编进了中英两种文案)。平台通用消息由 `@qualy/web-i18n/messages` 显式再导出。
+- **命名空间由包名派生,插件不声明**:合并后的消息 key 是 `<包名派生的命名空间>.<本地 key>`(如 `@qualy/plugin-assessment` → `qualy-plugin-assessment`),插件代码里永远只写本地 key。原因:编译产物是插件代码要导入的东西,必须在任何插件代码运行之前存在;若命名空间靠描述器声明,编译前就得导入描述器,而描述器会传递导入服务端模块,服务端一旦也导入 `#messages` 就成了循环。所以消息源只从产品根 package.json 的 dependencies 中带 `messages/` 目录的包里发现,不执行任何插件代码;两个包不可能同名,也就不会冲突。
+- **本地 key 规则**:旧 id 去掉命名空间,`/` 变 `_`,每段的 kebab-case 连成 camelCase,例如 `assessment/review/standing-ready` → `review_standingReady`;规则可逆,迁移时逐条校验了往返。
+- **导入规范化**(`@inlang/plugin-icu1` 1.1.0 与 Paraglide 2.25.4 之间的两处真实缺陷,在合并工程的导入结果上修正,不另写 storage plugin):ICU 的 `#` 被导入成 Paraglide 不认识的 `icu:pound`,会原样插值数字(其他 ICU 实现都会按语言格式化,如 `1,234.5`);`=0` 这类精确匹配用字符串 `"0"` 与数字输入做 `===` 比较,永远不命中。两者都改写为 number 格式化。plural offset、≥1000 的精确匹配、未知格式化函数在编译门禁里直接拒绝。
+- **不用 Paraglide 的 runtime.js**:消息模块只从 runtime 取 `getLocale` 与 `experimentalStaticLocale`,编译器替换为十几行的 locale 源:页面上读 `<html data-locale>`,其余场合未传 `{ locale }` 即抛错;构建时校验编译产物从 runtime 导入的名字不超出这份清单,Paraglide 升级引入新导入会当场失败。策略、cookie、重定向那套运行时不进产物。
+- **facade 类型**:plural/selectordinal/number → `number`,date/time → `Date`,select → `string`,**普通插值 → `string | number`**(与第 5 条"普通插值为 string"不同:现有消息大量把计数直接插进某一种语言的句子,强制调用处 `String()` 只增加噪音,抓不到错;需要格式化的数字位置仍由 plural/number 强制为 number)。类型从同版本 `@messageformat/parser` 解析两种语言的源文推出(与 inlang 导入用的是同一个解析器)。
+- **错误翻译**:仍是插件级错误表,由聚合模块汇总后在启动时安装(实测 189 个错误码、中英合计约 3 KB Brotli);按 feature 拆错误表留作后续,触发条件是错误表成为首屏的可测负担。
+- **codeSplitting**:删除 `locale-*` 分组;新增 `messages` 分组(entriesAware、`minShareCount: 2`、子组合并阈值 64 KiB、不带依赖)。消息模块只依赖同为叶子的 runtime 与 registry,合并不会形成 chunk 环;实测阈值 0 时每种页面组合都成为一个几百字节的 chunk,首屏请求数比对照组多 15–30 个。
+- **迁移中暴露并修正的真实缺陷**(旧的宽松类型放过了它们):`ASSESSMENT_FORMULA_VERSION_UNCHANGED` 的版本号一直渲染为空;`AUTH_BINDING_USER_FIELD_MISSING` 永远落在 other 分支;`GRANT_ESCALATION_REFUSED` 给了消息并不读取的参数;若干 id 在客户端描述与服务端 wire 上写了两份不同的英文(以用户实际看到的 wire 版本为准,共 9 条)。
+- **失去的东西**:i18n.ts 里给译者看的注释没有迁进 ICU JSON(JSON 不带注释);需要保留的写作理由应进 docs/。
+
+## 阶段 1 实测(2026-10-01,本地生产构建,首屏静态闭包 = 入口 + 该页 layout + 页面 chunk + 登录驱动 + 对照组的 zh-CN catalog chunk,各自的静态 import 闭包;Brotli q11)
+
+| 页面       | 请求数 对照→Paraglide | <1 KB chunk | <2 KB chunk | 闭包 Brotli KB |
+| ---------- | --------------------- | ----------- | ----------- | -------------- |
+| login      | 75 → 68               | 49 → 45     | 57 → 53     | 401.3 → 333.1  |
+| batches    | 109 → 105             | 75 → 71     | 88 → 84     | 451.7 → 398.6  |
+| my-entries | 136 → 133             | 93 → 89     | 107 → 104   | 507.1 → 453.1  |
+| org-tree   | 100 → 95              | 68 → 64     | 80 → 76     | 428.0 → 372.7  |
+
+全量 chunk 数 350 → 333。构建通过 `qualyChunkGraph`(无环、无编辑器泄漏、boot 预算内)。开发冷启动:消息编译约 6 s(4241 条),之后按输入指纹跳过;生产构建时间与对照组同量级(约 10–14 s,单次)。
+
+正确性:4241 条消息 × 代表性参数(5507 组)× 两种语言共 11014 次渲染,与 Lingui 逐字一致(`tools/tests/fixtures/messages-golden.json`,之后只校验源文未改动的消息);`m.roster_count({ count: 'abc' })` 编译失败;服务端未传 locale 抛错;三种 ABI 情形均有测试。
