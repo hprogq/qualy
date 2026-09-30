@@ -57,9 +57,22 @@ Cookie + 不透明 session token(库存 sha256),不用 JWT/localStorage:
   **来源只有一个判定处**(`server/sign-in-device.ts`):表单登录读本次请求的 cookie;跳转登录在 `startFlow` 时读发起请求的 cookie
   写进流程行,回调时 `consumeFlow` 把流程行的值记到本次请求上,`completeLogin` 只用它——回调请求携带的 cookie、地址参数一概不信
   (测试以「发起时普通、回调时塞 shared」钉住)。四个驱动都不知道这件事。邮箱密码表单在公用电脑上不记住任何人的邮箱。
-- **后台请求不算使用**:浏览器在标签页隐藏或读者一分钟内没有按键、点按、触摸、滚动时发出的请求带 `x-qualy-background: 1`
-  (`@qualy/api-kit` 的 `QUALY_BACKGROUND_HEADER`,由 web-runtime 的 transport 逐个请求判定),服务端照常服务、不改 last_used_at,
-  否则开着不管的页面靠轮询与实时通道重连就能永远续命;
+- **只有读者自己的请求算使用**(2026-09-30 由「后台请求带标记」反转为正向证明):浏览器在标签页可见、且读者一分钟内按过键、
+  点按、触摸或滚动时发出的请求带 `x-qualy-activity: 1`(`@qualy/api-kit` 的 `QUALY_ACTIVITY_HEADER`,由 web-runtime 的 transport
+  逐个请求判定),服务端只在见到它时改 last_used_at;其余请求照常服务、不算使用。原先是反过来的——后台请求带 `x-qualy-background: 1`,
+  没带就算使用——而外站的链接、图片、顶层跳转发来的普通 GET 同样不带任何头,SameSite=Lax 下带着 cookie 到达,每一次都替一个
+  没人在用的会话续上空闲计时(拿不到数据、改不了东西,但破坏了「两小时没人用就过期」);同站兄弟域用 fetch 也只能发不带头的请求,
+  加自定义头就要预检,本服务不应答 CORS。发布时仍开着的旧版标签页不发这个头,在它们重新载入之前不会续期;
+- **业务 GET/HEAD 不改领域状态**(2026-09-30 写明):来源守卫只检查不安全方法,一个误写成 GET 的业务写操作会被外站链接直接触发,
+  这条不变量由代码评审守。唯一的例外是外部认证协议的导航 GET——CAS / GitHub / OIDC 的 `start` 与 `callback`:`start` 生成随机
+  state 写流程行、种 `__Host-` 流程 cookie、跳转到身份提供方,`callback` 原子地消费流程(只能一次)并建立会话;它们不靠通用的
+  CSRF 防护,而靠协议自己的关联证明——URL 里的 state 必须与本浏览器的流程 cookie 对应(别人的回调链接进不了你的会话),
+  GitHub 加 PKCE,OIDC 加 PKCE 与 nonce,绑定流程另绑原会话。
+- **不安全请求只接受 `Sec-Fetch-Site: same-origin`**(2026-09-30 收紧):`none`(从浏览器自己的地址栏、书签发起)也拒绝——本应用
+  的写操作从不这样发出;没有 Fetch Metadata 的旧浏览器按 Origin 与**完整 origin**(协议、主机、端口)比较,协议按与主机同一套
+  可信代理策略解析(只信可信代理写的 `x-forwarded-proto`),`http://` 同主机不再算同源;公式编辑器的 WebSocket 握手用同一比较。
+  不加传统 CSRF token 与请求签名:Fetch Metadata + Origin 回退 + JSON 请求体 + 无 CORS + `__Host-` cookie 已是完整的防护,
+  token 的生命周期、会话轮换与各种豁免只会增加面积而不解决 GET 的问题。
 - 校验链:session 存在 → 未过期且未超过空闲上限(否则删行,回 SESSION_EXPIRED)→ user.enabled
   → user_type.enabled → tenant.enabled 且未过 expires_at;
 - allowLocalLogin 只在登录入口检查,不参与已有 session 校验(撤销手段=禁用 user/type/tenant)。
