@@ -102,7 +102,7 @@ export default defineConfig(({ mode }) => ({
         // them.
         codeSplitting: {
           groups: [
-            // The widget library, whole. Its modules import one another in
+            // The widget library in one pool. Its modules import one another in
             // rings - a context made in one file and read in the next - which
             // an ESM graph tolerates module by module but not chunk by chunk:
             // pooled below by which entries reach them, they landed in two
@@ -110,6 +110,17 @@ export default defineConfig(({ mode }) => ({
             // the first's `var`s before that chunk had run. The shell threw
             // before it drew, in production only; nothing that fetches the
             // bundle without executing it could see it. One pool, no ring.
+            // Less the date pickers, which no first screen draws: pooled with
+            // the rest, every page's first load carried them. They import
+            // the widgets and nothing imports them back, so the two pools
+            // form no ring.
+            {
+              name: 'dates',
+              test: /[\\/]node_modules[\\/]@mantine[\\/]dates[\\/]/,
+              priority: 3,
+              // what they import stays with the widgets, which every screen has
+              includeDependenciesRecursively: false,
+            },
             {
               name: 'widgets',
               test: /[\\/]node_modules[\\/]@mantine[\\/]/,
