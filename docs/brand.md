@@ -144,6 +144,8 @@
 
 同一段脚本还是原生的 **watchdog**:20 秒后 `#qualy-boot` 还在(index.html 到了但 JS 404、chunk 版本错位、初始化直接抛错——React 永远不会挂载,React 侧的 6s / 30s 一个都覆盖不到),就在字标下方补一行「加载时间较长,刷新页面」/ "Taking longer than expected. Reload"——按已解析的 locale 取:两行文字不写在 HTML 里,构建把 `@qualy/web-i18n/bootstrap` 的 `bootstrapMessages` 裁成这两行、按 locale 写成首帧旁的一个 `application/json` 数据块 `#qualy-boot-copy`,脚本到点才读(数据块不执行,不占 CSP hash;脚本本身保持静态)。链接经 `addEventListener` 触发 `location.reload()`(内联 `onclick` 会被 CSP 拦);React 正常接管时 `#qualy-boot` 被删,定时器自然作废。同一段脚本还在 capture 阶段听 `window` 的 `error`:`#qualy-boot` 还在、失败的是同源的 `<script>` 或 stylesheet `<link>`(浏览器拿到旧 index.html、入口 JS 已被新发布换掉的那种)就立刻补「页面资源加载失败,刷新页面」,不等 20 秒;两条路都经同一个幂等的 `showRecovery(kind)`,只出现一行。应用 JS 起来之后的 chunk 失败归 `ReleaseRecoveryGate`(docs/version.md)。脚本是 CSP `script-src` 里唯一放行的 hash,改一个字节就要同步 `shell-policy.ts` 的常量(测试守)。
 
+首帧不等壳的样式表(2026-09-30):构建把壳里唯一的样式表 `<link rel="stylesheet">` 改成 `rel="preload" as="style"`(`qualyShellStyle`),入口在 React 渲染前把样式表插回原位置并等它的 `load`(`apps/web/src/shell-style.ts`)——原先这张表挡住首帧,慢网络上启动画面要等它到才出现(Slow 4G 实测约 2.6 s 白屏,现在约 0.1 s)。React 的首次提交时间不变、提交时样式已生效。量法与数据见 docs/notes/web-performance.md。
+
 ### 接管(React 挂载后)
 
 `ColdStart` 用完全相同的几何与位置渲染 `<Wordmark height={28} live>`(循环带 400ms delay),在它自己的 `useLayoutEffect` 里**同帧**移除 `#qualy-boot`,覆盖层与首帧之间不出现双字标或空白帧(首帧之下的第二个字标是另一件事,见上一段)。浏览器测试把 `bootFrame()` 生成的首帧片段(加 index.html 的静态样式)注入页面,比对两者的 `getBoundingClientRect`,逐像素一致。400ms 门槛的起点是 `performance.getEntriesByName('first-contentful-paint')` 的首帧时刻(取不到退回导航起点),不是导航:样式表慢时字标出现得晚,按导航算会让读者才看了 80ms 的静止字标就动起来。

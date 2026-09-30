@@ -20850,3 +20850,42 @@ W12 审查意见收尾（十一组，分组见仓库外 `audit-2026-09-25/wave13
 - 验收:`pnpm typecheck`、`pnpm lint`、`pnpm lint:types`、`pnpm format:check` 全部 exit 0;浏览器全量 121 文件 1576 条通过
   (之后 sign-in 套件 28 条);runtime + catalogs 13 文件 117 条;tools/tests 62 文件 390 条;本机 E2E(HEAD `26a1df3d0` 的 arm64 镜像)
   5 文件 10 条全过;本机 release smoke:24.20.0 客户端 `e2e ok`;改用 `probe` 后 24.21.0 客户端 `e2e ok`。
+
+## 会话恢复收尾(本地待审)、首屏性能与 `pnpm lighthouse`(2026-09-30 下午)
+
+- **会话恢复的后续四个提交**(本地,未推送,等用户看过):`a413bd9a1` 会话失效时把页面锁在产品自己的对话框下
+  (不可关闭,字标 + 状态图标 + 两个动作,背后页面保持挂载);`37606b040` 登录与重置密码页光标落在第一个空字段;
+  `b180ce6be` 原页面已继续后关闭登录标签页;`dacc85dd3` 在登录标签页里换了人登录时按新身份收尾,不再拿访客
+  manifest 回首页(曾在登录页与首页之间来回跳直到标签页崩溃,E2E「hands the sign-in tab to whoever signed in」钉住)。
+- **`pnpm lighthouse`**(`tools/quality/lighthouse.ts`):对 E2E 栈跑分,登录复用 E2E 旅程的方式(`tools/e2e/stack.ts`,
+  从 support.ts 拆出、不带 vitest),Lighthouse 经调试端口在同一个 Chrome 里开标签页,手机与桌面各三次取中位数,
+  报告在 `.qualy/lighthouse/`。经 `pnpm dlx lighthouse@13.5.0` 而不是依赖(装成依赖会改写沙箱包的生产 peer 解析),
+  不用 LHCI(0.15.1 固定 lighthouse 12.6.1,登录要 puppeteer)。理由与 lantern 实查见 docs/notes/web-performance.md。
+- **首屏**(本地 arm64 E2E 镜像,Lighthouse 手机档,三次中位数;「后」是撤回语言包预取之后的最终构建):
+
+  | 页面       | 手机 前 → 后 | 手机 FCP    | 手机 LCP    | 手机 CLS      |
+  | ---------- | ------------ | ----------- | ----------- | ------------- |
+  | login      | 85 → 89      | 2870 → 1691 | 3649 → 3665 | 0 → 0         |
+  | batches    | 76 → 85      | 2877 → 1386 | 4142 → 4227 | 0.135 → 0.008 |
+  | my-entries | 77 → 77      | 2875 → 2874 | 4878 → 5127 | 0.022 → 0.014 |
+  | org-tree   | 81 → 85      | 2872 → 1984 | 4120 → 4070 | 0.005 → 0.006 |
+
+  桌面在上一轮是 96–100(只差组织树的页脚 CLS),本轮只复测手机。本机结果方差很大(同一构建的手机 FCP 在 0.8–2.9 s
+  之间,取决于模块与首帧谁先到),所以只取多次中位数,生产环境另测;LCP 是 TTFB、请求发现、下载、解析执行、渲染与阻塞
+  的总和,这一轮没有动字节,模拟值基本不变。**分数不等于体验**,所以另做了真人时间轴的节流 A/B(Slow 4G + CPU ×4,
+  批次页,5 轮中位数,方法见 docs/notes/web-performance.md):改动前的构建首帧 2548、React 首次提交 3044、内容出现 8265、
+  CLS 0.347;现构建首帧 92–100、提交 3045–3052、内容 7593–7600、CLS 0.008。样式表延后**只提前了首帧**(慢网下不再白屏
+  约 2.6 s,React 提交时样式 5/5 已生效、无未样式化帧);内容提前约 670 ms 与 CLS 来自冷启动预取与批次列表的改动。
+  语言包预取经同一 A/B 测得没有收益、反而让 React 提交晚约 300 ms,在推送前撤回(改写了本地未推送的那个提交),
+  内联启动脚本与 CSP 哈希恢复原样。TBT 上升(批次页 37 → 114 ms):样式表解析(381 KB 原始 CSS)与入口执行原先在首帧
+  之前、不计入 TBT,工作量没变。
+
+  改动:样式表不再挡首帧(构建改为 preload,入口在渲染前插回并等它的 `load`);冷启动时当前页面代码与布局一起预取;
+  @mantine/dates 从首屏组件库 chunk 拆出(105.8 → 88.8 KB gzip);批次列表卡片移出列表加载区并等待办一起到、占位按手机
+  形状画;组织树展开按钮 24 px;批次切换与登录页语言按钮的可访问名称包含可见文字。
+
+- 第一轮验收(当时还含后来撤回的语言包预取):`pnpm typecheck`、`pnpm lint`、`pnpm lint:types`、`pnpm format:check` 全部 exit 0;`pnpm test`(测试库 5433)
+  405 文件 3064 条通过;`pnpm test:browser` 122 文件 1583 条中 3 条失败:批次切换测试按旧可访问名称精确查找(已改为按新名称前缀
+  定位并断言名称含批次名),record-recognition 两条是满载下选项点击超时,与改动无关,单独重跑通过;修正后三条单跑通过。
+  `node tools/quality/check-staged-web.ts` 通过;E2E 镜像(`dacc85dd3-dirty`,arm64)上 `pnpm lighthouse` 全部页面跑完,
+  Playwright 实测批次页手机端带样式渲染、无 CSP 报错。
