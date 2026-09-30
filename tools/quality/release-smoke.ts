@@ -1,6 +1,7 @@
 import { spawnSync } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import fs from 'node:fs'
+import http from 'node:http'
 import net from 'node:net'
 import os from 'node:os'
 import path from 'node:path'
@@ -189,12 +190,37 @@ const expectIn = (label: string, haystack: string, needle: string | RegExp) => {
   if (!found) refuse(`${label}: expected ${String(needle)} in:\n${haystack.slice(-2000)}`)
 }
 
+/**
+ * One request on a connection of its own, answered in full.
+ *
+ * What the smoke asks is whether a deployment serves, so no connection
+ * outlives its answer: a pooled keep-alive connection, idle across a deploy
+ * step that blocks this process (spawnSync) while the server closes it, was
+ * picked for the next request as if still open (fetch on Node 24.21.0,
+ * `other side closed`), failing a step about the deployment for a reason
+ * that is the client's.
+ */
+const probe = (url: string, timeoutMs = 10_000): Promise<{ status: number; body: string }> =>
+  new Promise((resolve, reject) => {
+    const request = http.get(url, { agent: false, timeout: timeoutMs }, (response) => {
+      let body = ''
+      response.setEncoding('utf8')
+      response.on('data', (chunk: string) => (body += chunk))
+      response.on('end', () => resolve({ status: response.statusCode ?? 0, body }))
+      response.on('error', reject)
+    })
+    request.on('timeout', () =>
+      request.destroy(new Error(`no answer from ${url} in ${String(timeoutMs)}ms`)),
+    )
+    request.on('error', reject)
+  })
+
 const waitReady = async (label: string, base = blue, timeoutMs = 120_000) => {
   const deadline = Date.now() + timeoutMs
   let last = ''
   while (Date.now() < deadline) {
     try {
-      const response = await fetch(`${base}/health/ready`)
+      const response = await probe(`${base}/health/ready`)
       if (response.status === 200) {
         step(`${label}: /health/ready 200`)
         return
@@ -248,14 +274,14 @@ const edgeOn = async (label: string, port: number) => {
   if (!withEdge) return
   const snippet = fs.readFileSync(path.join(edgeDir, 'upstream.caddy'), 'utf8')
   expectIn(label, snippet, `reverse_proxy 127.0.0.1:${String(port)} {`)
-  const answered = await fetch(`${edge}/health/ready`, { signal: AbortSignal.timeout(5000) })
+  const answered = await probe(`${edge}/health/ready`, 5000)
   if (answered.status !== 200) refuse(`${label}: the edge answered ${String(answered.status)}`)
   step(`${label}: caddy sends traffic to 127.0.0.1:${String(port)}, and it answers`)
 }
 
 const reachable = async (base: string) => {
   try {
-    await fetch(`${base}/health/live`, { signal: AbortSignal.timeout(3000) })
+    await probe(`${base}/health/live`, 3000)
     return true
   } catch {
     return false
@@ -377,7 +403,7 @@ try {
     const deadline = Date.now() + 30_000
     let status = 0
     while (Date.now() < deadline && status !== 503) {
-      status = await fetch(edge, { signal: AbortSignal.timeout(2000) }).then(
+      status = await probe(edge, 2000).then(
         (response) => response.status,
         () => 0,
       )
@@ -403,24 +429,24 @@ try {
   // --- what it serves: the release the job installed, the shell, one hashed asset, the manifest
   {
     const base = blue
-    const probe = await fetch(`${base}/__qualy/release`)
-    if (probe.status !== 200) refuse(`GET /__qualy/release status ${String(probe.status)}`)
-    const served = ((await probe.json()) as { releaseId?: unknown }).releaseId
+    const answer = await probe(`${base}/__qualy/release`)
+    if (answer.status !== 200) refuse(`GET /__qualy/release status ${String(answer.status)}`)
+    const served = (JSON.parse(answer.body) as { releaseId?: unknown }).releaseId
     if (served !== installed)
       refuse(`the server serves ${String(served)}, the job installed ${installed}`)
     step(`serving web release ${installed}`)
-    const shell = await fetch(`${base}/`)
+    const shell = await probe(`${base}/`)
     if (shell.status !== 200) refuse(`GET / status ${String(shell.status)}`)
-    const html = await shell.text()
+    const html = shell.body
     expectIn('shell', html, '<!doctype html')
     const asset = /(?:src|href)="(\/[^"]+\.(?:js|css))"/.exec(html)?.[1]
     if (asset === undefined) refuse('the shell references no built asset')
-    const fetched = await fetch(`${base}${asset}`)
+    const fetched = await probe(`${base}${asset}`)
     if (fetched.status !== 200) refuse(`GET ${asset} status ${String(fetched.status)}`)
     step(`shell and ${asset} served`)
-    const manifest = await fetch(`${base}/api/app/manifest`)
+    const manifest = await probe(`${base}/api/app/manifest`)
     if (manifest.status !== 200) refuse(`manifest status ${String(manifest.status)}`)
-    const body = (await manifest.json()) as { pages?: unknown[] }
+    const body = JSON.parse(manifest.body) as { pages?: unknown[] }
     if (!Array.isArray(body.pages)) refuse('the manifest carries no pages')
     step(`manifest: ${String(body.pages.length)} page(s) for an anonymous visitor`)
   }
@@ -507,7 +533,7 @@ try {
     if (ran.code === 0) refuse('an upgrade with a maintenance migration pending did not refuse')
     expectIn('maintenance upgrade', ran.out, holding)
     expectIn('maintenance upgrade', ran.out, '--maintenance')
-    if ((await fetch(`${blue}/health/ready`)).status !== 200)
+    if ((await probe(`${blue}/health/ready`)).status !== 200)
       refuse('blue stopped serving after a refused upgrade')
     step('upgrade.sh: a maintenance migration pending is refused, blue still serving')
   }
@@ -664,7 +690,7 @@ try {
   await waitReady('after restore')
   await edgeOn('after restore', bluePort)
   {
-    const shell = await fetch(`${blue}/`)
+    const shell = await probe(`${blue}/`)
     if (shell.status !== 200) refuse(`GET / after restore: status ${String(shell.status)}`)
     const found = psql('select value from release_smoke_marker')
     expectCode('marker after restore', found, 0)
