@@ -38,7 +38,7 @@ import { LoadingScreen } from '@qualy/ui/spinner'
 import { afterFlight } from '@qualy/ui/flight'
 import { clientFor, type ClientIdentity, type ClientOf, type TransportOptions } from './api.ts'
 import { signingOut } from './identity.ts'
-import { changingIdentity, presentedManifest } from './session-recovery.ts'
+import { announceSessionChanged, changingIdentity, presentedManifest } from './session-recovery.ts'
 import { SessionRecoveryGate } from './session-recovery-gate.tsx'
 import { type ComponentRegistry } from './registry.ts'
 import {
@@ -511,6 +511,8 @@ export function useSessionTransition() {
         await transition(options)
       } finally {
         changed()
+        // the other tabs ask who is signed in now
+        announceSessionChanged()
       }
     },
     [transition],

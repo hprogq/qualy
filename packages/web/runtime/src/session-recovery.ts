@@ -25,6 +25,14 @@ import { isAuthenticationError } from '@qualy/web-i18n'
 // somebody to nobody is a session lost too, and goes to the same recovery:
 // the page keeps being shown as the reader's until they are back, sign out,
 // or turn out to be somebody else (`presentedManifest`).
+//
+// Somebody else is never carried on as. The server authorizes every call as
+// whoever is signed in now, but it cannot know that the page making it was
+// loaded, and filled in, for somebody who was signed in before - so a page
+// that finds another identity signed in, whether or not a recovery was
+// waiting, is locked for good: it keeps the manifest it had, sends nothing
+// more (`frozen`), and offers only a reload. Signing in or out in one tab is
+// told to the others, which ask the server who is signed in there and then.
 
 export interface SessionRecovery {
   /**
@@ -33,13 +41,15 @@ export interface SessionRecovery {
    */
   readonly wait: (signal?: AbortSignal) => Promise<boolean>
   /**
-   * The manifest answered as nobody - or, while a recovery waits, as somebody
-   * else (`someoneElse`) - for a page signed in as `identity`: true when the
-   * recovery takes it (the page keeps its manifest meanwhile), false when the
-   * page is to take the answer as it is - the reader chose to sign out, or no
-   * recovery holds it.
+   * The manifest answered as nobody, or as somebody else (`someoneElse`), for
+   * a page signed in as `identity`: true when the recovery takes it (the page
+   * keeps its manifest meanwhile), false when the page is to take the answer
+   * as it is - the reader chose to sign out, or the page is changing identity
+   * itself.
    */
   readonly lost: (identity: string, someoneElse: boolean) => boolean
+  /** the page belongs to somebody no longer signed in: nothing it asks is sent */
+  readonly frozen: () => boolean
 }
 
 let installed: SessionRecovery | undefined
@@ -60,6 +70,8 @@ export const installSessionRecovery = (recovery: SessionRecovery): (() => void) 
  * they would have.
  */
 export const recovering = async <A>(call: () => Promise<A>, signal?: AbortSignal): Promise<A> => {
+  // left unanswered: a reload is the only way on from here
+  if (installed?.frozen() === true) return new Promise<never>(() => {})
   try {
     return await call()
   } catch (error) {
@@ -107,6 +119,7 @@ type SessionMessage =
   | { readonly type: 'signed-in' }
   | { readonly type: 'resumed' }
   | { readonly type: 'switched' }
+  | { readonly type: 'changed' }
 
 const isMessage = (data: unknown, type: SessionMessage['type']): boolean =>
   typeof data === 'object' && data !== null && (data as { type?: unknown }).type === type
@@ -158,6 +171,30 @@ export const onSignedInElsewhere = (heard: () => void): (() => void) => {
     if (isMessage(event.data, 'signed-in')) heard()
   }
   return () => channel.close()
+}
+
+// One channel for this page's own telling and hearing: a channel does not
+// hear what it said itself, so a page is not told of its own change.
+let hints: BroadcastChannel | undefined
+const hintChannel = () =>
+  typeof BroadcastChannel === 'undefined'
+    ? undefined
+    : (hints ??= new BroadcastChannel(SESSION_CHANNEL))
+
+/** tells the other tabs that who is signed in has changed here */
+export const announceSessionChanged = () => {
+  hintChannel()?.postMessage({ type: 'changed' } satisfies SessionMessage)
+}
+
+/** calls `heard` whenever another tab signs in or out; returns the way to stop */
+export const onSessionChangedElsewhere = (heard: () => void): (() => void) => {
+  const channel = hintChannel()
+  if (channel === undefined) return () => {}
+  const listener = (event: MessageEvent) => {
+    if (isMessage(event.data, 'changed') || isMessage(event.data, 'signed-in')) heard()
+  }
+  channel.addEventListener('message', listener)
+  return () => channel.removeEventListener('message', listener)
 }
 
 // A change of identity the page is making on purpose - signing out, signing

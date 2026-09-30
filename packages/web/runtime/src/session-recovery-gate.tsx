@@ -11,6 +11,7 @@ import {
   announceOutcome,
   identityChanging,
   installSessionRecovery,
+  onSessionChangedElsewhere,
   onSignedInElsewhere,
   SESSION_RESUME_PARAM,
 } from './session-recovery.ts'
@@ -30,6 +31,12 @@ import { SessionRecoveryDialog, type SessionRecoveryState } from './session-reco
 // never the nudge. The same person: the held calls are made again and the page
 // carries on. Somebody else: the page can only start over as them. Signing out
 // instead: the page lets go, and the sign-in page takes its place.
+//
+// Somebody else can also turn up with nothing waiting - signed out and in
+// again in another tab, which tells this one, or found when the reader comes
+// back to it. The page is locked the same way, straight to the reload: from
+// then on it sends nothing, since whatever it sent would go as the new
+// identity with what the page holds from the old one.
 
 /** how often a page waiting for its reader asks whether they are back */
 const ASK_EVERY_MS = 3_000
@@ -85,8 +92,14 @@ export function SessionRecoveryGate({
   const held = useRef<Held | undefined>(undefined)
   // the reader chose to sign out: answers as nobody are taken as they come
   const leaving = useRef(false)
+  // somebody else is signed in: the page sends nothing more
+  const frozen = useRef(false)
 
   useEffect(() => {
+    const switched = () => {
+      frozen.current = true
+      setStanding('switched')
+    }
     const release = (again: boolean) => {
       const current = held.current
       held.current = undefined
@@ -126,22 +139,35 @@ export function SessionRecoveryGate({
         const current = held.current
         if (current !== undefined) {
           if (current.identity !== identity) return false
-          if (someoneElse) setStanding('switched')
+          if (someoneElse) switched()
           return true
         }
-        // somebody else, with nothing waiting: the page follows as it always did
-        if (someoneElse) return false
         held.current = holding(identity)
-        setStanding('expired')
+        if (someoneElse) switched()
+        else setStanding('expired')
         return true
       },
+      frozen: () => frozen.current,
     })
     return () => {
       uninstall()
       held.current?.settle(false)
       held.current = undefined
+      frozen.current = false
     }
   }, [queryClient, manifestKey])
+
+  // Another tab signed in or out: who is signed in here is asked at once,
+  // rather than when the reader next comes back to this tab. The answer goes
+  // through the manifest like any other, and to the recovery from there.
+  useEffect(
+    () =>
+      onSessionChangedElsewhere(() => {
+        if (frozen.current || leaving.current || identityChanging()) return
+        void queryClient.refetchQueries({ queryKey: manifestKey, exact: true })
+      }),
+    [queryClient, manifestKey],
+  )
 
   // every state but the last is still waiting for the same reader
   const waiting = standing !== undefined && standing !== 'switched'
@@ -160,6 +186,7 @@ export function SessionRecoveryGate({
       }
       if (stopped || held.current !== current || manifest.viewer !== 'authenticated') return
       if (manifest.identity !== current.identity) {
+        frozen.current = true
         setStanding('switched')
         // the tab that signed in is theirs, and need not wait to hear it
         announceOutcome('switched')

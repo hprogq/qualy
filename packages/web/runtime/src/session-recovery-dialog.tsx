@@ -25,7 +25,7 @@ import { commonMessages } from '@qualy/web-i18n/messages'
 /**
  * expired: the session went; waiting: the sign-in page is open in a tab of
  * its own; blocked: the browser would not open that tab; switched: somebody
- * else signed in there, and the page cannot carry on as them.
+ * else is signed in now, and the page cannot carry on as them.
  */
 export type SessionRecoveryState = 'expired' | 'waiting' | 'blocked' | 'switched'
 

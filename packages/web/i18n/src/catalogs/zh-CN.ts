@@ -98,7 +98,8 @@ export default {
   'common/session/blocked-hint': '浏览器阻止了新标签页，请手动打开登录页面',
   'common/session/open-sign-in': '打开登录页',
   'common/session/switched-title': '账号已切换',
-  'common/session/switched-hint': '当前页面属于之前登录的账号，无法继续恢复',
+  'common/session/switched-hint':
+    '本页属于之前登录的账号，重新载入后以当前账号打开，未保存的内容不会保留',
   'common/session/reload': '重新载入',
   'common/session/resumed': '已重新登录',
 } satisfies CatalogFor<typeof runtimeMessages>

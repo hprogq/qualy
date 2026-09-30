@@ -507,6 +507,109 @@ describe('a signed-in page asked again after its session went', () => {
   })
 })
 
+// Somebody else signed in, with nothing waiting: signed out and in again in
+// another tab, and this page never saw the session go. The server authorizes
+// each call as whoever is signed in now; it cannot know that this page was
+// loaded and filled in for the reader before. So the page is theirs no longer
+// and cannot become the new account's: locked, it keeps what it had, sends
+// nothing more, and offers only a reload.
+describe('a signed-in page that finds somebody else signed in', () => {
+  const screen = async () => {
+    let who = 'reader'
+    const counted = { reads: 0, saves: 0 }
+    const moves: { refetch?: () => void; save?: () => void } = {}
+    const Work = () => {
+      const run = useRunApi()
+      const client = useQueryClient()
+      const manifest = useManifest()
+      const read = useQuery({
+        queryKey: ['probe', 'work'],
+        queryFn: () =>
+          run(
+            Effect.sync(() => {
+              counted.reads += 1
+              return `answer ${String(counted.reads)}`
+            }),
+          ),
+      })
+      moves.refetch = () => void client.refetchQueries()
+      moves.save = () =>
+        void run(
+          Effect.sync(() => {
+            counted.saves += 1
+          }),
+        )
+      return (
+        <main>
+          <input aria-label="draft" data-testid="draft" defaultValue="" />
+          <output data-testid="identity">
+            {manifest.viewer === 'authenticated' ? manifest.identity : ''}
+          </output>
+          <output data-testid="read">{read.data ?? ''}</output>
+        </main>
+      )
+    }
+    await renderScreen({
+      client: fakeClient({
+        app: {
+          getManifest: () =>
+            Effect.sync(() => ({
+              ...emptyManifest(),
+              viewer: 'authenticated' as const,
+              identity: who,
+            })),
+        },
+      }),
+      routes: [{ path: '/work', element: <Work /> }],
+      route: '/work',
+    })
+    await expect.element(page.getByTestId('read')).toHaveTextContent('answer 1')
+    await page.getByRole('textbox', { name: 'draft' }).fill('half a sentence')
+    return {
+      signInElsewhere: () => {
+        who = 'someone-else'
+      },
+      counted,
+      moves,
+    }
+  }
+
+  const locked = async () => {
+    const lock = page.getByTestId('session-recovery')
+    await expect.element(lock).toHaveAttribute('data-state', 'switched')
+    expect(page.getByTestId('session-sign-in').elements()).toHaveLength(0)
+    await expect.element(page.getByTestId('session-reload')).toBeVisible()
+    // still the reader's page, under its own manifest
+    await expect.element(page.getByTestId('identity')).toHaveTextContent('reader')
+    await expect.element(page.getByTestId('address')).toHaveTextContent('/work')
+  }
+
+  it('locks when coming back to it, and sends nothing more', async () => {
+    const { signInElsewhere, counted, moves } = await screen()
+    signInElsewhere()
+    // coming back to the tab: everything asked again at once
+    moves.refetch?.()
+    await locked()
+    const before = { ...counted }
+    moves.refetch?.()
+    moves.save?.()
+    await new Promise((settle) => setTimeout(settle, 300))
+    expect(counted).toEqual(before)
+  })
+
+  it('asks who is signed in as soon as another tab says it signed in or out', async () => {
+    const { signInElsewhere } = await screen()
+    signInElsewhere()
+    const elsewhere = new BroadcastChannel('qualy:session')
+    try {
+      elsewhere.postMessage({ type: 'changed' })
+      await locked()
+    } finally {
+      elsewhere.close()
+    }
+  })
+})
+
 describe('the manifest, asked again in the background', () => {
   it('keeps the page standing when the ask fails', async () => {
     let failing = false

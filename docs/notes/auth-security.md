@@ -618,6 +618,19 @@ smtp 后端对着 Mailpit 跑同一套,CI 设 `QUALY_REQUIRE_MAILPIT_TESTS=1`,�
   否则登录页本身会被恢复对话框锁住。回归测试 `apps/web/tests/session-transition.browser.test.tsx`「a signed-in page asked again
   after its session went」:焦点重取时 manifest 先答匿名、业务读同时 401,断言地址不变、输入还在、只有一个对话框,登录后恰好重试一次
   (去掉钉住即在地址断言处失败)。
+- **页面不跨身份继续**(2026-09-30,外部评审指出、按本地代码核实):后端按当前会话给每个调用授权,但它不知道发出调用的页面是为之前那个人
+  加载、由那个人填写的——甲在另一个标签退出、以乙登录,甲的表单以乙的身份提交,服务端会合法接受。所以前端守另一条不变量:**一个已挂载的
+  已登录页面只服务于加载它的那个身份**。原先只有恢复挂起时换了人才锁;没有挂起的恢复时 `lost()` 返回 false,页面接受乙的 manifest,
+  带着甲留下的状态与缓存继续。现在规则是:匿名 → 甲放行(正常登录);甲 → 匿名走恢复;甲 → 甲放行(会话续期、权限变化);**甲 → 乙一律锁成
+  `switched`**,保留甲的 manifest,只能重新载入(文案点明未保存的内容不会保留——与恢复「已填写的内容会保留」相反,跨身份恰恰应当丢);
+  锁定后本页的调用一律不发出(`SessionRecovery.frozen`,`recovering()` 入口处挂起不答),锁定之前已在途的读取无法收回,但锁定之后
+  不以乙的身份发出任何东西。不原地清缓存切成乙:要清的不只是 Query 缓存,还有组件状态、打开的抽屉与对话框、实时通道、插件自己的浏览器
+  状态,完整重载是最清楚的边界。本标签自己经 `useSessionTransition` 登录或退出不受影响(`identityChanging()` 豁免)。为了及时,
+  `useSessionTransition` 结束后经同一个 `BroadcastChannel` 发 `changed`(不带身份),其他标签立即重问 manifest,由服务端回答是谁;
+  用同一个频道对象收发,本标签不会听到自己。回归:`session-transition.browser.test.tsx`「a signed-in page that finds somebody else
+  signed in」(回到标签时锁定、锁定后读与写都不发出;另一标签广播后立即锁定),`session-recovery.test.ts` 冻结后调用不执行,
+  E2E `session.journey.ts`「a page whose account changed in another tab」(学生页开着,另一标签以辅导员登录,本页锁定、之后无任何
+  `/api` 请求)。
 - **已登录访问 `/login`**:有 `next` 去 `next`,否则回首页(`replace`)。判定用进页面后新发的一次 `GET /auth/session`(以 `isFetchedAfterMount` 为准),
   不用 30 秒保鲜的身份缓存,防过期会话在登录页与首页之间来回弹;判定前显示骨架屏。换账号就是先退出,不做多账号与「切换账号」入口。
 - `/reset-password`、`/confirm-email` 不跳:邮件链接可能在另一个账号已登录时打开,流程只认 token;已登录却忘了当前密码的人只能走找回。

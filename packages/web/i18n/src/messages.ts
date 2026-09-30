@@ -206,7 +206,8 @@ export const commonMessages = {
   },
   sessionSwitchedHint: {
     id: 'common/session/switched-hint',
-    defaultMessage: 'This page belongs to the account signed in before and cannot carry on',
+    defaultMessage:
+      'This page belongs to the account signed in before. Reloading opens it as the current one, without anything unsaved',
   },
   sessionReload: { id: 'common/session/reload', defaultMessage: 'Reload' },
   sessionResumed: { id: 'common/session/resumed', defaultMessage: 'Signed in again' },

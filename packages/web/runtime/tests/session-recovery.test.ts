@@ -36,6 +36,7 @@ describe('a call that finds the session gone', () => {
     let waited = 0
     uninstall = installSessionRecovery({
       lost: () => false,
+      frozen: () => false,
       wait: () => {
         waited += 1
         return Promise.resolve(true)
@@ -47,7 +48,11 @@ describe('a call that finds the session gone', () => {
   })
 
   it('fails as refused when the reader does not come back', async () => {
-    uninstall = installSessionRecovery({ wait: () => Promise.resolve(false), lost: () => false })
+    uninstall = installSessionRecovery({
+      wait: () => Promise.resolve(false),
+      lost: () => false,
+      frozen: () => false,
+    })
     const probe = refusedOnce()
     await expect(recovering(probe.call)).rejects.toBe(refused)
     expect(probe.calls()).toBe(1)
@@ -63,6 +68,7 @@ describe('a call that finds the session gone', () => {
     let waited = 0
     uninstall = installSessionRecovery({
       lost: () => false,
+      frozen: () => false,
       wait: () => {
         waited += 1
         return Promise.resolve(true)
@@ -76,6 +82,7 @@ describe('a call that finds the session gone', () => {
     const controller = new AbortController()
     uninstall = installSessionRecovery({
       lost: () => false,
+      frozen: () => false,
       wait: () => {
         controller.abort()
         return Promise.resolve(true)
@@ -84,6 +91,24 @@ describe('a call that finds the session gone', () => {
     const probe = refusedOnce()
     await expect(recovering(probe.call, controller.signal)).rejects.toBe(refused)
     expect(probe.calls()).toBe(1)
+  })
+
+  it('is not made at all once the page belongs to somebody no longer signed in', async () => {
+    uninstall = installSessionRecovery({
+      wait: () => Promise.resolve(true),
+      lost: () => true,
+      frozen: () => true,
+    })
+    let calls = 0
+    const answer = recovering(() => {
+      calls += 1
+      return Promise.resolve('answered')
+    })
+    const outcome = await Promise.race([
+      answer.then(() => 'answered'),
+      new Promise((settle) => setTimeout(() => settle('unanswered'), 50)),
+    ])
+    expect({ outcome, calls }).toEqual({ outcome: 'unanswered', calls: 0 })
   })
 
   it('counts identity changes the page makes on purpose, overlapping or not', () => {
@@ -106,6 +131,7 @@ describe('a manifest asked again for a signed-in page', () => {
     const told: [string, boolean][] = []
     uninstall = installSessionRecovery({
       wait: () => Promise.resolve(false),
+      frozen: () => false,
       lost: (identity, someoneElse) => {
         told.push([identity, someoneElse])
         return true
@@ -120,7 +146,11 @@ describe('a manifest asked again for a signed-in page', () => {
   })
 
   it('is taken as it came when the recovery lets it go, or nobody was signed in', () => {
-    uninstall = installSessionRecovery({ wait: () => Promise.resolve(false), lost: () => false })
+    uninstall = installSessionRecovery({
+      wait: () => Promise.resolve(false),
+      lost: () => false,
+      frozen: () => false,
+    })
     expect(presentedManifest(reader, nobody)).toBe(nobody)
     expect(presentedManifest(nobody, reader)).toBe(reader)
     expect(presentedManifest(undefined, nobody)).toBe(nobody)
@@ -130,6 +160,7 @@ describe('a manifest asked again for a signed-in page', () => {
     let asked = 0
     uninstall = installSessionRecovery({
       wait: () => Promise.resolve(false),
+      frozen: () => false,
       lost: () => {
         asked += 1
         return true
