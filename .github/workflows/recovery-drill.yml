@@ -72,7 +72,33 @@ jobs:
           ID: ${{ secrets.QUALY_RECOVERY_COS_SECRET_ID }}
           KEY: ${{ secrets.QUALY_RECOVERY_COS_SECRET_KEY }}
         run: |
-          cos() { ./coscli --disable-log -i "$ID" -k "$KEY" -e "cos.$REGION.myqcloud.com" "$@"; }
+          # coscli with no configuration file stops to ask for one, which
+          # in CI reads nothing and prints nothing; the file below has the
+          # production host's shape (/etc/qualy/coscli.yaml): no switching
+          # to a backup domain, and no asking for the bucket's type, which
+          # needs a read of the bucket this identity is not given. Plain,
+          # not encrypted: 600, in the runner's own temp, gone with it.
+          config="$RUNNER_TEMP/coscli.yaml"
+          umask 077
+          cat > "$config" <<CONFIG
+          cos:
+            base:
+              secretid: $ID
+              secretkey: $KEY
+              sessiontoken: ""
+              protocol: https
+              mode: SecretKey
+              closeautoswitchhost: "true"
+              disableencryption: "true"
+              disableautofetchbuckettype: "true"
+            buckets:
+              - name: $BUCKET
+                alias: backups
+                region: ""
+                endpoint: cos.$REGION.myqcloud.com
+                ofs: false
+          CONFIG
+          cos() { ./coscli -c "$config" --disable-log "$@"; }
           if [ -z "$STAMP" ]; then
             STAMP=$(cos ls "cos://$BUCKET/qualy/" | grep -oE '[0-9]{8}T[0-9]{6}Z' | sort -u | tail -n 1)
             [ -n "$STAMP" ] || { echo "::error::no backup under cos://$BUCKET/qualy/"; exit 1; }
