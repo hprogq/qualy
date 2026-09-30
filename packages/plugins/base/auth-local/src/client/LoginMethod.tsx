@@ -173,6 +173,12 @@ export default function LocalLoginMethod({
   const [email, setEmail] = useState(() => prefill?.email ?? remembered())
   const [keep, setKeep] = useState(() => prefill === undefined && remembered() !== '')
   const [password, setPassword] = useState(prefill?.password ?? '')
+  // the form mounts when its way in is chosen, so the first box still empty
+  // is where the reader goes next: the address, or the password when this
+  // browser kept the address. A demo account's form is filled in whole.
+  const [startAt] = useState<'email' | 'password' | null>(() =>
+    email === '' ? 'email' : password === '' ? 'password' : null,
+  )
   const [shown, setShown] = useState(false)
   // a field is judged once it has been left, or once the form was sent
   const [left, setLeft] = useState({ email: false, password: false })
@@ -278,6 +284,7 @@ export default function LocalLoginMethod({
         <Input
           id="email"
           type="email"
+          autoFocus={startAt === 'email'}
           inputMode="email"
           // the address is the account name, and a password manager files it so
           autoComplete="username"
@@ -304,6 +311,7 @@ export default function LocalLoginMethod({
         <div {...stylex.props(styles.passwordSeat)}>
           <Input
             id="password"
+            autoFocus={startAt === 'password'}
             type={shown ? 'text' : 'password'}
             autoComplete="current-password"
             style={field}

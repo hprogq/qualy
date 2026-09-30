@@ -403,6 +403,7 @@ function Ask() {
             </label>
             <input
               id="reset-email"
+              autoFocus
               type="email"
               autoComplete="username"
               value={email}
@@ -580,6 +581,7 @@ function SetNew({ token, onAskAgain }: { token: string; onAskAgain: () => void }
             <span {...stylex.props(styles.seat)}>
               <input
                 id="reset-password"
+                autoFocus
                 type={shown ? 'text' : 'password'}
                 autoComplete="new-password"
                 value={password}

@@ -70,6 +70,8 @@ describe('a forgotten password', () => {
       route: '/reset-password',
       children: <ResetPasswordPage />,
     })
+    // the one thing the page asks for is ready to be typed
+    await expect.element(page.getByLabelText('邮箱')).toHaveFocus()
     await page.getByLabelText('邮箱').fill('zhang@school.edu')
     await page.getByRole('button', { name: '发送链接' }).click()
     await expect.element(page.getByTestId('reset-asked')).toBeInTheDocument()
@@ -155,6 +157,7 @@ describe('a forgotten password', () => {
         .element()
         .querySelector<HTMLElement>(`[data-check="${check}"]`)!
     const field = page.getByLabelText('新密码', { exact: true })
+    await expect.element(field).toHaveFocus()
     // what it is held to is said while it is typed; a press before it holds
     // is answered by the list, and nothing is sent
     await field.fill('too short')
