@@ -11,7 +11,7 @@ import {
   postgresAvailable,
   runSql,
 } from '@qualy/plugin-database/testkit'
-import { QUALY_API_ID, QUALY_BACKGROUND_HEADER } from '@qualy/api-kit'
+import { QUALY_ACTIVITY_HEADER, QUALY_API_ID } from '@qualy/api-kit'
 import { hashSessionToken } from '../src/session.ts'
 import { Authenticated, CurrentUser, sessionCookieName } from '@qualy/auth-contract/session'
 import { layer as sessionLayer } from '../src/server/session.ts'
@@ -148,7 +148,7 @@ afterAll(async () => {
 describe.runIf(postgresAvailable)('a session left unused', () => {
   it('stays live 1h55 after its last recorded use, and records this one', async () => {
     await session('used-1h55', '1 hour 55 minutes')
-    const response = await ask('used-1h55')
+    const response = await ask('used-1h55', { [QUALY_ACTIVITY_HEADER]: '1' })
     expect(response.status).toBe(200)
     expect(await lastUsed('used-1h55')).toBeLessThan(60)
   })
@@ -170,21 +170,23 @@ describe.runIf(postgresAvailable)('a session left unused', () => {
     expect(await response.json()).toMatchObject({ _tag: 'SESSION_EXPIRED' })
   })
 
-  it("serves the page's own traffic without counting it as use", async () => {
+  it("serves the page's own traffic, and a request that says nothing, without counting either as use", async () => {
     await session('polled', '1 hour 50 minutes')
-    const polled = await ask('polled', { [QUALY_BACKGROUND_HEADER]: '1' })
+    // a poll, and a plain GET as a link on another site sends it
+    const polled = await ask('polled')
     expect(polled.status).toBe(200)
+    expect((await ask('polled', { [QUALY_ACTIVITY_HEADER]: '0' })).status).toBe(200)
     // still recorded as used an hour and fifty minutes ago
     expect(await lastUsed('polled')).toBeGreaterThan(6_000)
     // and a request the reader made is use
-    const read = await ask('polled')
+    const read = await ask('polled', { [QUALY_ACTIVITY_HEADER]: '1' })
     expect(read.status).toBe(200)
     expect(await lastUsed('polled')).toBeLessThan(60)
   })
 
   it('ends a session the page alone kept polling once the reader has been gone long enough', async () => {
     await session('abandoned', '2 hours 1 minute')
-    const polled = await ask('abandoned', { [QUALY_BACKGROUND_HEADER]: '1' })
+    const polled = await ask('abandoned')
     expect(polled.status).toBe(401)
     expect(await polled.json()).toMatchObject({ _tag: 'SESSION_EXPIRED' })
   })

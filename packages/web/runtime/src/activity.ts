@@ -3,9 +3,10 @@
 // A session lasts as long as its reader keeps using it (the server's idle
 // limit), and the page's own traffic is not use: a poll, a refetch a live
 // wake-up caused, anything asked while the tab is hidden. The transport marks
-// those (QUALY_BACKGROUND_HEADER) and this says which they are: a request is
-// the reader's when the tab is in view and they pressed, typed, touched or
-// scrolled in the last minute. Loading the page counts: somebody opened it.
+// the reader's own (QUALY_ACTIVITY_HEADER) and this says which they are: a
+// request is the reader's when the tab is in view and they pressed, typed,
+// touched or scrolled in the last minute. Loading the page counts: somebody
+// opened it.
 
 /** how recent an input has to be for a request to count as the reader's */
 export const RECENT_INPUT_MS = 60_000

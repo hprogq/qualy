@@ -1,6 +1,6 @@
 import { Effect, Layer } from 'effect'
 import { HttpServerRequest } from 'effect/http'
-import { QUALY_BACKGROUND_HEADER } from '@qualy/api-kit'
+import { QUALY_ACTIVITY_HEADER } from '@qualy/api-kit'
 import { bindSessionId } from '@qualy/api-kit/request'
 import { withDatabase } from '@qualy/plugin-database/server'
 import { db } from './db.ts'
@@ -110,15 +110,18 @@ const touchSession = (id: string) =>
 export const TOUCH_INTERVAL_MS = 5 * 60 * 1000
 
 /**
- * Whether the request is the page's own traffic rather than its reader's.
+ * Whether the request says its reader made it just now.
  *
- * A poll, a refetch a live wake-up caused, anything from a hidden tab: served
- * like any other request, but not use - otherwise a page left open on a
- * shared computer keeps its session alive forever by itself.
+ * Use has to be shown, not assumed. A poll, a refetch a live wake-up caused,
+ * anything from a hidden tab is served like any other request but is not use
+ * - otherwise a page left open on a shared computer keeps its session alive
+ * forever by itself. And a request that says nothing is not use either: a
+ * link or a page on another site sends the cookie with a plain GET, and taken
+ * as use it would keep an idle session alive for whoever sent it there.
  */
-const backgroundRequest = Effect.map(
+const readersRequest = Effect.map(
   HttpServerRequest.HttpServerRequest,
-  (request) => request.headers[QUALY_BACKGROUND_HEADER] === '1',
+  (request) => request.headers[QUALY_ACTIVITY_HEADER] === '1',
 )
 
 const staleness = (lastUsedAt: Date | string | null) => {
@@ -167,7 +170,7 @@ const resolve = Effect.fn('Auth.resolveSession')(function* (
     yield* clear()
     return { state: 'absent' as const }
   }
-  if (staleness(session.lastUsedAt) > TOUCH_INTERVAL_MS && !(yield* backgroundRequest)) {
+  if (staleness(session.lastUsedAt) > TOUCH_INTERVAL_MS && (yield* readersRequest)) {
     yield* touchSession(session.id).pipe(Effect.orDie)
   }
   // the request now has a session; whoever records the request - the audit
@@ -252,7 +255,7 @@ export const layer = Layer.effect(
             return yield* new AuthRequired()
           }
 
-          if (staleness(session.lastUsedAt) > TOUCH_INTERVAL_MS && !(yield* backgroundRequest)) {
+          if (staleness(session.lastUsedAt) > TOUCH_INTERVAL_MS && (yield* readersRequest)) {
             yield* touchSession(session.id).pipe(Effect.orDie)
           }
 

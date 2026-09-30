@@ -8,7 +8,7 @@ import {
   QUALY_CLIENT_UNSUPPORTED_HEADER,
 } from '@qualy/release-contract'
 import { getApiErrorCode, isBackendUnavailable } from '@qualy/web-i18n'
-import { QUALY_BACKGROUND_HEADER } from '@qualy/api-kit'
+import { QUALY_ACTIVITY_HEADER } from '@qualy/api-kit'
 import { clientFor } from '../src/api.ts'
 
 // What a browser api request says about the page, and what the page hears
@@ -254,10 +254,10 @@ describe('the server unable to serve a request right now', () => {
   })
 })
 
-// A session is kept alive by its reader, not by the page's own traffic: a
-// request made while the tab is hidden, or long after the last input, says so
-// and the server does not count it as use.
-describe('a request nobody at the page asked for', () => {
+// A session is kept alive by its reader, not by the page's own traffic: only
+// a request made while the tab is in view, soon after an input, says it is the
+// reader's, and only that counts as use.
+describe('a request the reader made', () => {
   const ask = async () => {
     const seen: Record<string, string>[] = []
     await Effect.runPromise(
@@ -269,20 +269,16 @@ describe('a request nobody at the page asked for', () => {
     return seen[0]!
   }
 
-  it('is marked when the tab is hidden, and decided as each request goes out', async () => {
+  it('is marked while the tab is in view, and decided as each request goes out', async () => {
     const host = globalThis as { document?: { visibilityState: string } }
     try {
       host.document = { visibilityState: 'hidden' }
-      expect((await ask())[QUALY_BACKGROUND_HEADER]).toBe('1')
+      expect(await ask()).not.toHaveProperty(QUALY_ACTIVITY_HEADER)
       host.document = { visibilityState: 'visible' }
-      expect(await ask()).not.toHaveProperty(QUALY_BACKGROUND_HEADER)
+      expect((await ask())[QUALY_ACTIVITY_HEADER]).toBe('1')
     } finally {
       delete host.document
     }
-  })
-
-  it('is not marked where there is no page at all', async () => {
-    expect(await ask()).not.toHaveProperty(QUALY_BACKGROUND_HEADER)
   })
 })
 

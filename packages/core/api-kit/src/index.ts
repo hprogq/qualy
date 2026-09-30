@@ -67,12 +67,15 @@ export const HEALTH_READY_PATH = '/health/ready'
 export const QUALY_REQUEST_ID_HEADER = 'x-qualy-request-id'
 
 /**
- * Set to `1` by the browser on a request nobody at the keyboard asked for just
- * now: a poll, a refetch a live wake-up caused, a page left open in a hidden
- * tab. A session is kept alive by its reader's activity, not by the page's
- * own traffic, so such a request is served without counting as use.
+ * Set to `1` by the application's own page on a request its reader made just
+ * now: the tab in view, and something pressed, typed, touched or scrolled in
+ * the last minute. Only such a request counts as use of the session - not a
+ * poll, not a hidden tab, and not a request with nothing to say for itself,
+ * which is what a link or a page on another site sends: a site that cannot
+ * run this application's script cannot set it, and a sibling that tries needs
+ * a preflight this server never answers.
  */
-export const QUALY_BACKGROUND_HEADER = 'x-qualy-background'
+export const QUALY_ACTIVITY_HEADER = 'x-qualy-activity'
 
 // --- pagination ---
 

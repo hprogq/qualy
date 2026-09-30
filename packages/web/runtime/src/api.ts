@@ -6,7 +6,7 @@ import {
   type HttpClientResponse,
 } from 'effect/http'
 import { HttpApiClient, type HttpApi, type HttpApiGroup } from 'effect/http-api'
-import { QUALY_BACKGROUND_HEADER } from '@qualy/api-kit'
+import { QUALY_ACTIVITY_HEADER } from '@qualy/api-kit'
 import { apiRouteTemplates } from '@qualy/api-kit/local'
 import { registerApiRoutes } from '@qualy/browser-observability/api-routes'
 import {
@@ -129,19 +129,19 @@ const withIdentity = (options: TransportOptions) => {
           }),
         )
   return <E, R>(client: HttpClient.HttpClient.With<E, R>): HttpClient.HttpClient.With<E, R> =>
-    judged(named(markedBackground(withoutTracePropagation(throughCurrentFetch(client)))))
+    judged(named(markedActivity(withoutTracePropagation(throughCurrentFetch(client)))))
 }
 
 /**
- * A request nobody at the page asked for just now, said so.
+ * A request the reader made just now, said so.
  *
  * Decided as each request goes out, not when the client is built: the same
  * query is the reader's when a click mounts it and the page's own when a poll
  * repeats it an hour later. The server serves both and counts only the
  * reader's as use of the session.
  */
-const markedBackground = HttpClient.mapRequest((request) =>
-  inBackground() ? HttpClientRequest.setHeader(request, QUALY_BACKGROUND_HEADER, '1') : request,
+const markedActivity = HttpClient.mapRequest((request) =>
+  inBackground() ? request : HttpClientRequest.setHeader(request, QUALY_ACTIVITY_HEADER, '1'),
 )
 
 /**
