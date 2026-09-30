@@ -402,11 +402,11 @@ const i18n = definePluginMessages({
     title: { id: 'auth/login/title', defaultMessage: 'Sign in to Qualy' },
     chooseMethod: { id: 'auth/login/choose', defaultMessage: 'Choose a way to sign in' },
     otherMethodsHeading: { id: 'auth/login/others', defaultMessage: 'Other ways to sign in' },
-    sharedDevice: { id: 'auth/login/shared-device', defaultMessage: 'This is a shared computer' },
+    // a phone or a tablet can be the shared one too, so the device, not the computer
+    sharedDevice: { id: 'auth/login/shared-device', defaultMessage: 'Using a shared device' },
     sharedDeviceHint: {
       id: 'auth/login/shared-device-hint',
-      defaultMessage:
-        "You'll need to sign in again after 30 minutes without activity or when the browser closes",
+      defaultMessage: 'Signs you out after 30 minutes without activity',
     },
     demoHeading: { id: 'auth/login/demo', defaultMessage: 'Try a demo account' },
     allOtherMethods: {
