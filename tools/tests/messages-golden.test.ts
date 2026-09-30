@@ -3,8 +3,12 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { supportedLocales, type SupportedLocale } from '@qualy/i18n-contract'
-import { compileMessages, messagesOutDir } from '../../packages/build/messages/src/compile.ts'
+import type { SupportedLocale } from '@qualy/i18n-contract'
+import {
+  compileMessages,
+  messagesOutDir,
+  readMessages,
+} from '../../packages/build/messages/src/compile.ts'
 import { repoRoot } from '../lib/manifest.ts'
 
 // Every message, as the runtime that served it before the compiler did
@@ -24,14 +28,11 @@ const golden = JSON.parse(
 ) as Record<string, [hash: string, rows?: Row[]]>
 
 const result = await compileMessages({})
-const merged = Object.fromEntries(
-  supportedLocales.map((locale) => [
-    locale,
-    JSON.parse(
-      fs.readFileSync(path.join(result.outDir, 'project', 'messages', `${locale}.json`), 'utf8'),
-    ) as Record<string, string>,
-  ]),
-) as Record<SupportedLocale, Record<string, string>>
+// every package's messages merged under their namespaces, as the compiler reads them
+const merged = readMessages(result.sources).byLocale as Record<
+  SupportedLocale,
+  Record<string, string>
+>
 const compiled = (await import(
   pathToFileURL(path.join(messagesOutDir(repoRoot), 'paraglide', 'messages', '_index.js')).href
 )) as Record<string, (inputs: unknown, options: { locale: SupportedLocale }) => string>
