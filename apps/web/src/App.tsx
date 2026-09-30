@@ -69,6 +69,7 @@ export default function App() {
               registry={registry}
               clientIdentity={webRelease}
               onClientUnsupported={(reason) => releases.notifyClientUnsupported(reason)}
+              signInPage={SIGN_IN_PAGE}
             >
               <GuardedBrowserRouter>
                 <ManifestRouter />

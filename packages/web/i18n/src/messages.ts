@@ -171,18 +171,27 @@ export const commonMessages = {
   leaveSave: { id: 'common/leave/save', defaultMessage: 'Save and leave' },
   leaveDiscard: { id: 'common/leave/discard', defaultMessage: 'Discard changes' },
   leaveStay: { id: 'common/leave/stay', defaultMessage: 'Keep editing' },
-  // The session ended while the page was open. The reader signs in again in
-  // another tab and comes back; what they were doing here carries on. If
-  // somebody else signs in instead, the page can only start over as them.
-  sessionLostTitle: { id: 'common/session/lost-title', defaultMessage: 'You have been signed out' },
+  // The session ended while the page was open. The page stays, locked, while
+  // the reader signs in again on the sign-in page in a tab of its own; once
+  // they are back it carries on. If somebody else signs in instead, the page
+  // can only start over as them.
+  sessionLostTitle: { id: 'common/session/lost-title', defaultMessage: 'Your sign-in has expired' },
   sessionLostHint: {
     id: 'common/session/lost-hint',
-    defaultMessage:
-      'Sign in again in a new tab, then come back here to carry on where you left off',
+    defaultMessage: 'Sign in again and this page carries on, with nothing you have not saved lost',
   },
-  sessionSignIn: { id: 'common/session/sign-in', defaultMessage: 'Sign in in a new tab' },
+  sessionSignIn: { id: 'common/session/sign-in', defaultMessage: 'Sign in again' },
   sessionSignOut: { id: 'common/session/sign-out', defaultMessage: 'Sign out' },
-  sessionLater: { id: 'common/session/later', defaultMessage: 'Not now' },
+  sessionWaitingTitle: {
+    id: 'common/session/waiting-title',
+    defaultMessage: 'Waiting for you to sign in',
+  },
+  sessionWaitingHint: {
+    id: 'common/session/waiting-hint',
+    defaultMessage:
+      'The sign-in page is open in a new tab. Once you are signed in, this page carries on',
+  },
+  sessionReopen: { id: 'common/session/reopen', defaultMessage: 'Open the sign-in page again' },
   sessionSwitchedTitle: {
     id: 'common/session/switched-title',
     defaultMessage: 'Another account is signed in',

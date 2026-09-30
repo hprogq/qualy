@@ -15,6 +15,7 @@ import {
   ArrowLeftIcon,
   ArrowRightIcon,
   CircleAlertIcon,
+  CircleCheckIcon,
   Clock3Icon,
   EllipsisIcon,
   LockIcon,
@@ -23,7 +24,9 @@ import {
   XIcon,
 } from 'lucide-react'
 import {
+  announceSignedIn,
   PluginSurface,
+  SESSION_RESUME_PARAM,
   sessionDestinationHref,
   useApi,
   useApiQuery,
@@ -452,7 +455,9 @@ const failureFrom = (params: URLSearchParams) => {
 export default function LoginPage() {
   const api = useApi(authApi)
   const query = useApiQuery(authApi)
-  const run = useRunApi()
+  // whether anybody is signed in is this page's question, and a refusal is
+  // its answer - never a lost session for the recovery to hold
+  const probe = useRunApi({ recoverSession: false })
   const navigate = useNavigate()
   const manifest = useManifest()
   const { format, locale } = useI18n()
@@ -466,7 +471,7 @@ export default function LoginPage() {
   // by its stale time and would bounce an expired reader between here and home.
   const present = useQuery({
     queryKey: query.auth.getSession.key(),
-    queryFn: () => run(api.auth.getSession()),
+    queryFn: () => probe(api.auth.getSession()),
     retry: false,
     refetchOnMount: 'always',
   })
@@ -479,12 +484,22 @@ export default function LoginPage() {
   const next = returnPathFrom(params, here)
   const destination: SessionDestination =
     next === undefined ? { kind: 'home' } : { kind: 'return-path', path: next }
+  // Opened by a page whose session was lost while its reader was on it
+  // (@qualy/web-runtime session recovery): this tab is only for signing in.
+  // Once somebody is, it tells the page waiting in the other tab and closes,
+  // or says it can be closed - the reader's work is over there, not here.
+  const resume = params.get(SESSION_RESUME_PARAM) === '1'
   useEffect(() => {
     if (!signedIn) return
+    if (resume) {
+      announceSignedIn()
+      window.close()
+      return
+    }
     const to: SessionDestination =
       next === undefined ? { kind: 'home' } : { kind: 'return-path', path: next }
     void navigate(sessionDestinationHref(to, manifest.pages), { replace: true })
-  }, [signedIn, next, navigate, manifest.pages])
+  }, [signedIn, resume, next, navigate, manifest.pages])
   const failed = failureFrom(params)
   const [leaving, setLeaving] = useState<LoginMethod | null>(null)
   // read once: the mark says where this visit came in last time, not a moment ago
@@ -530,8 +545,10 @@ export default function LoginPage() {
       // the browser gets there.
       setLeaving(method)
       // the way back travels with the flow, which returns there once the
-      // other side has vouched for them
-      window.requestAnimationFrame(() => window.location.assign(startHref(method.href, next)))
+      // other side has vouched for them - to this page again when it is
+      // signing in for a waiting one, so it ends here the same way
+      const returnTo = resume ? `${here}?${SESSION_RESUME_PARAM}=1` : next
+      window.requestAnimationFrame(() => window.location.assign(startHref(method.href, returnTo)))
       return
     }
     go({ method: method.code, ...(from === 'more' ? { from: 'more' } : {}) })
@@ -539,6 +556,11 @@ export default function LoginPage() {
 
   const onAuthenticated = () => {
     if (chosen !== undefined) markUsed(chosen.code)
+    // signing in for a waiting page: asked again, and the ending above follows
+    if (resume) {
+      void present.refetch()
+      return
+    }
     // a new identity must not inherit the previous one's cache
     void startSession({ destination })
   }
@@ -557,6 +579,21 @@ export default function LoginPage() {
   )
 
   const panel = (() => {
+    // signed in for the page waiting in the other tab, which carries on now;
+    // this tab closes itself where the browser lets it
+    if (resume && signedIn) {
+      return (
+        <div {...stylex.props(styles.panel)}>
+          {header}
+          <Block
+            testId="sign-in-resumed"
+            icon={<CircleCheckIcon size={18} color="currentColor" />}
+            title={format(m.resumedTitle)}
+            body={format(m.resumedHint)}
+          />
+        </div>
+      )
+    }
     // the form waits until it is known nobody is signed in
     if (context.isPending || !decided || signedIn) {
       return (

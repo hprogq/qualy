@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
 import { useEffect, useState } from 'react'
 import { Navigate } from 'react-router'
@@ -306,7 +306,7 @@ describe('a session lost from under a signed-in reader', () => {
       const [saved, setSaved] = useState('')
       return (
         <main>
-          <input aria-label="draft" defaultValue="" />
+          <input aria-label="draft" data-testid="draft" defaultValue="" />
           <button
             type="button"
             onClick={() =>
@@ -379,9 +379,102 @@ describe('a session lost from under a signed-in reader', () => {
   it('fails the call as refused when the reader signs out instead', async () => {
     const { attempts } = await screen(() => undefined)
     await expect.element(page.getByRole('alertdialog')).toBeVisible()
-    await page.getByTestId('confirm-other').click()
+    await page.getByTestId('session-sign-out').click()
     await expect.element(page.getByTestId('saved')).toHaveTextContent('failed')
     expect(attempts()).toBe(1)
+  })
+})
+
+// The way it went wrong: the reader comes back to a tab left open, and the
+// page asks everything again at once. The manifest never refuses - it answered
+// as nobody - and the page's own read was refused. The anonymous manifest used
+// to reach the routes first, so the page gave way to the sign-in page while
+// the recovery, holding the refused read, asked the reader to sign in over it.
+describe('a signed-in page asked again after its session went', () => {
+  afterEach(() => vi.restoreAllMocks())
+
+  it('stays the reader\u2019s, locked, and carries on once they are back', async () => {
+    let signedIn = true
+    let reads = 0
+    const opened = vi.spyOn(window, 'open').mockReturnValue(null)
+    const Work = () => {
+      const run = useRunApi()
+      const client = useQueryClient()
+      const manifest = useManifest()
+      const read = useQuery({
+        queryKey: ['probe', 'work'],
+        queryFn: () =>
+          run(
+            Effect.suspend(() => {
+              reads += 1
+              return signedIn || reads > 2
+                ? Effect.succeed(`answer ${String(reads)}`)
+                : Effect.fail(apiError('SESSION_EXPIRED'))
+            }),
+          ),
+      })
+      return (
+        <main>
+          <input aria-label="draft" data-testid="draft" defaultValue="" />
+          <output data-testid="viewer">{manifest.viewer}</output>
+          <output data-testid="read">{read.data ?? ''}</output>
+          {/* what coming back to the tab does: everything asked again at once */}
+          <button type="button" onClick={() => void client.refetchQueries()}>
+            back
+          </button>
+        </main>
+      )
+    }
+    await renderScreen({
+      client: fakeClient({
+        app: {
+          getManifest: () =>
+            Effect.sync(() =>
+              signedIn
+                ? { ...emptyManifest(), viewer: 'authenticated' as const, identity: 'reader' }
+                : emptyManifest(),
+            ),
+        },
+      }),
+      routes: [{ path: '/work', element: <Work /> }],
+      route: '/work',
+    })
+    await expect.element(page.getByTestId('read')).toHaveTextContent('answer 1')
+    await page.getByRole('textbox', { name: 'draft' }).fill('half a sentence')
+
+    // the session goes while the reader is away, and they come back
+    signedIn = false
+    await page.getByRole('button', { name: 'back' }).click()
+    const lost = page.getByTestId('session-lost')
+    await expect.element(lost).toHaveAttribute('data-state', 'prompt')
+    // the page is still the reader's, where it was, with what they typed -
+    // locked under the dialog, so found by its hook rather than its role
+    await expect.element(page.getByTestId('address')).toHaveTextContent('/work')
+    await expect.element(page.getByTestId('viewer')).toHaveTextContent('authenticated')
+    await expect.element(page.getByTestId('draft')).toHaveValue('half a sentence')
+
+    // signing in is opened elsewhere; coming back before it is done shows the
+    // same wait, not the first question again
+    await page.getByTestId('session-sign-in').click()
+    expect(opened).toHaveBeenCalledOnce()
+    await expect.element(lost).toHaveAttribute('data-state', 'waiting')
+    window.dispatchEvent(new Event('focus'))
+    await new Promise((settle) => setTimeout(settle, 200))
+    expect(page.getByTestId('session-lost').elements()).toHaveLength(1)
+    await expect.element(lost).toHaveAttribute('data-state', 'waiting')
+
+    // the reader is back: the page carries on where it was
+    signedIn = true
+    window.dispatchEvent(new Event('focus'))
+    await expect.element(page.getByTestId('session-lost')).not.toBeInTheDocument()
+    // the refused read, made once more and only once
+    await expect.element(page.getByTestId('read')).toHaveTextContent('answer 3')
+    expect(reads).toBe(3)
+    await expect.element(page.getByTestId('viewer')).toHaveTextContent('authenticated')
+    await expect.element(page.getByTestId('address')).toHaveTextContent('/work')
+    await expect
+      .element(page.getByRole('textbox', { name: 'draft' }))
+      .toHaveValue('half a sentence')
   })
 })
 

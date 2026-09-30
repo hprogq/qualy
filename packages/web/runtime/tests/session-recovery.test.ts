@@ -3,6 +3,7 @@ import {
   changingIdentity,
   identityChanging,
   installSessionRecovery,
+  presentedManifest,
   recovering,
 } from '../src/session-recovery.ts'
 
@@ -34,6 +35,7 @@ describe('a call that finds the session gone', () => {
   it('is made again once the reader is back', async () => {
     let waited = 0
     uninstall = installSessionRecovery({
+      lost: () => false,
       wait: () => {
         waited += 1
         return Promise.resolve(true)
@@ -45,7 +47,7 @@ describe('a call that finds the session gone', () => {
   })
 
   it('fails as refused when the reader does not come back', async () => {
-    uninstall = installSessionRecovery({ wait: () => Promise.resolve(false) })
+    uninstall = installSessionRecovery({ wait: () => Promise.resolve(false), lost: () => false })
     const probe = refusedOnce()
     await expect(recovering(probe.call)).rejects.toBe(refused)
     expect(probe.calls()).toBe(1)
@@ -60,6 +62,7 @@ describe('a call that finds the session gone', () => {
   it('leaves every other failure alone', async () => {
     let waited = 0
     uninstall = installSessionRecovery({
+      lost: () => false,
       wait: () => {
         waited += 1
         return Promise.resolve(true)
@@ -72,6 +75,7 @@ describe('a call that finds the session gone', () => {
   it('is not made again when it was cancelled while it waited', async () => {
     const controller = new AbortController()
     uninstall = installSessionRecovery({
+      lost: () => false,
       wait: () => {
         controller.abort()
         return Promise.resolve(true)
@@ -90,5 +94,55 @@ describe('a call that finds the session gone', () => {
     expect(identityChanging()).toBe(true)
     second()
     expect(identityChanging()).toBe(false)
+  })
+})
+
+describe('a manifest asked again for a signed-in page', () => {
+  const reader = { viewer: 'authenticated', identity: 'reader' }
+  const nobody = { viewer: 'anonymous' }
+  const other = { viewer: 'authenticated', identity: 'someone-else' }
+
+  it('goes to the recovery when it answers as nobody, and the page keeps its own', () => {
+    const told: [string, boolean][] = []
+    uninstall = installSessionRecovery({
+      wait: () => Promise.resolve(false),
+      lost: (identity, someoneElse) => {
+        told.push([identity, someoneElse])
+        return true
+      },
+    })
+    expect(presentedManifest(reader, nobody)).toBe(reader)
+    expect(presentedManifest(reader, other)).toBe(reader)
+    expect(told).toEqual([
+      ['reader', false],
+      ['reader', true],
+    ])
+  })
+
+  it('is taken as it came when the recovery lets it go, or nobody was signed in', () => {
+    uninstall = installSessionRecovery({ wait: () => Promise.resolve(false), lost: () => false })
+    expect(presentedManifest(reader, nobody)).toBe(nobody)
+    expect(presentedManifest(nobody, reader)).toBe(reader)
+    expect(presentedManifest(undefined, nobody)).toBe(nobody)
+  })
+
+  it('is taken as it came for the same person, and while the page changes identity itself', () => {
+    let asked = 0
+    uninstall = installSessionRecovery({
+      wait: () => Promise.resolve(false),
+      lost: () => {
+        asked += 1
+        return true
+      },
+    })
+    const renewed = { viewer: 'authenticated', identity: 'reader', pages: [] }
+    expect(presentedManifest(reader, renewed)).toBe(renewed)
+    const changed = changingIdentity()
+    try {
+      expect(presentedManifest(reader, nobody)).toBe(nobody)
+    } finally {
+      changed()
+    }
+    expect(asked).toBe(0)
   })
 })

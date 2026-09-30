@@ -408,6 +408,11 @@ const i18n = definePluginMessages({
       id: 'auth/login/shared-device-hint',
       defaultMessage: 'Signs you out after 30 minutes without activity',
     },
+    resumedTitle: { id: 'auth/login/resumed-title', defaultMessage: 'You are signed in' },
+    resumedHint: {
+      id: 'auth/login/resumed-hint',
+      defaultMessage: 'The page you were on carries on. You can close this tab',
+    },
     demoHeading: { id: 'auth/login/demo', defaultMessage: 'Try a demo account' },
     allOtherMethods: {
       id: 'auth/login/all-others',

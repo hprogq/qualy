@@ -16,6 +16,15 @@ import { isAuthenticationError } from '@qualy/web-i18n'
 // Somebody else signing in, or the reader choosing to sign out, ends the wait:
 // the call fails the way it would have, and the page's usual response to a
 // lost identity takes over.
+//
+// A call is not the only way a page finds out. Coming back to the tab asks
+// the manifest again, and the manifest never refuses: it answers as nobody.
+// Taken as it is, that answer rebuilt the routes for a visitor, the page
+// under the reader went, and the sign-in page came up in its place - with the
+// recovery's question still pending over it. So a manifest that went from
+// somebody to nobody is a session lost too, and goes to the same recovery:
+// the page keeps being shown as the reader's until they are back, sign out,
+// or turn out to be somebody else (`presentedManifest`).
 
 export interface SessionRecovery {
   /**
@@ -23,6 +32,14 @@ export interface SessionRecovery {
    * again and the call may be made again, false to fail it as refused.
    */
   readonly wait: (signal?: AbortSignal) => Promise<boolean>
+  /**
+   * The manifest answered as nobody - or, while a recovery waits, as somebody
+   * else (`someoneElse`) - for a page signed in as `identity`: true when the
+   * recovery takes it (the page keeps its manifest meanwhile), false when the
+   * page is to take the answer as it is - the reader chose to sign out, or no
+   * recovery holds it.
+   */
+  readonly lost: (identity: string, someoneElse: boolean) => boolean
 }
 
 let installed: SessionRecovery | undefined
@@ -53,6 +70,53 @@ export const recovering = async <A>(call: () => Promise<A>, signal?: AbortSignal
     if (!(await recovery.wait(signal)) || cancelled()) throw error
     return call()
   }
+}
+
+interface Viewed {
+  readonly viewer: string
+  readonly identity?: string | undefined
+}
+
+/**
+ * The manifest the page is to be shown with, given the one it has and the one
+ * just asked for: the new one, unless it is nobody's where the page was
+ * somebody's and a recovery takes that - then the page keeps the one it has.
+ */
+export const presentedManifest = <M extends Viewed>(shown: M | undefined, asked: M): M => {
+  if (
+    shown?.viewer !== 'authenticated' ||
+    shown.identity === undefined ||
+    (asked.viewer === 'authenticated' && asked.identity === shown.identity) ||
+    identityChanging()
+  ) {
+    return asked
+  }
+  const someoneElse = asked.viewer === 'authenticated'
+  return installed?.lost(shown.identity, someoneElse) === true ? shown : asked
+}
+
+// The tab a reader signs in again on tells the others, which then ask the
+// server who is signed in. Only a nudge: the message says nothing about who,
+// and nothing is believed from it.
+const SESSION_CHANNEL = 'qualy:session'
+
+/** the query a sign-in opened for a recovery carries, so it ends by saying so */
+export const SESSION_RESUME_PARAM = 'resume'
+
+/** tells the other tabs that somebody signed in here */
+export const announceSignedIn = () => {
+  if (typeof BroadcastChannel === 'undefined') return
+  const channel = new BroadcastChannel(SESSION_CHANNEL)
+  channel.postMessage({ type: 'signed-in' })
+  channel.close()
+}
+
+/** calls `heard` whenever another tab says somebody signed in; returns the way to stop */
+export const onSignedInElsewhere = (heard: () => void): (() => void) => {
+  if (typeof BroadcastChannel === 'undefined') return () => {}
+  const channel = new BroadcastChannel(SESSION_CHANNEL)
+  channel.onmessage = () => heard()
+  return () => channel.close()
 }
 
 // A change of identity the page is making on purpose - signing out, signing

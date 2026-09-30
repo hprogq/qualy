@@ -589,9 +589,22 @@ smtp 后端对着 Mailpit 跑同一套,CI 设 `QUALY_REQUIRE_MAILPIT_TESTS=1`,�
 - **原地重新登录**(2026-09-27):上面的流程只在读者选择退出、或没有身份键时才发生。manifest 对已登录者带 `identity`(租户与用户 id 的 sha256
   截断,同一人跨会话相同、不同人不同,不暴露 id);所有 API 调用经 web-runtime 的 `browserRuntime`,调用遇 `AUTH_REQUIRED` / `SESSION_EXPIRED`
   且 manifest 为已登录时先挂起(`session-recovery.ts`),约 300ms 宽限后仍不是主动切换身份(`useSessionTransition` 期间或切换已完成)才弹对话框:
-  「在新标签页登录」「退出登录」「稍后」。本页每 3 秒及回到本页时直接问 manifest:同一人回来 → 被挂起的调用原样再跑一次(被拒的调用在认证中间件处
+  「重新登录」「退出并返回登录页」。本页每 3 秒及回到本页时直接问 manifest:同一人回来 → 被挂起的调用原样再跑一次(被拒的调用在认证中间件处
   就停了,重跑安全),页面与未保存的输入都在;换了别人 → 不可关闭的「已有其他账号登录」,只能重新载入,绝不以新身份提交上一个人的内容;
-  「退出登录」→ 调用按原样失败,走上面的流程。实时通道同样经过这里,重连在恢复后继续。
+  「退出并返回登录页」→ 调用按原样失败,走上面的流程。实时通道同样经过这里,重连在恢复后继续。
+- **恢复期间 manifest 被钉住**(2026-09-30,修「进页面就弹『登录已失效』、身后却已是登录页」):回到标签页时 TanStack 按焦点重取一切,
+  manifest 永不拒绝、只会答匿名,它若先于被拒的业务调用落进缓存,路由就以访客重建、页面卸载换成登录页,恢复还挂着的对话框再叠上去。
+  现在 runtime 的 manifest 查询经 `presentedManifest`:缓存里是已登录者、新答案是匿名(或恢复挂起时换了人),而读者既没在主动切换身份、
+  也没选择退出,就交给恢复(`SessionRecovery.lost`)并**保留旧 manifest**——地址、页面、未保存的输入都不动。对话框没有「稍后」、
+  不可 Esc/点外关闭,页面在其下 inert:没有会话的页面上除了重新登录或离开,无事可做。状态只有三个:`prompt`(刚发现)、`waiting`
+  (已在新标签页打开登录页,回到本页仍显示同一个等待,不再从头问)、`someone-else`。
+  「重新登录」打开的是 manifest 里登录页的地址加 `?resume=1`(`RuntimeProvider` 的 `signInPage`,不是本页地址——本页在新标签里只会再撞一次
+  失效);登录页见 `resume=1`:登录成功后经 `BroadcastChannel('qualy:session')` 发一句「有人登录了」并尝试 `window.close()`,关不掉就显示
+  「登录成功,原页面已自动继续」。**广播只是提示**,不带身份,收到后照样去问服务端;焦点、可见性、3 秒轮询兜底,所以不支持
+  BroadcastChannel 的浏览器也能恢复。登录页自己的 `GET /auth/session` 探测走 `useRunApi({ recoverSession: false })`,绕开恢复,
+  否则登录页本身会被恢复对话框锁住。回归测试 `apps/web/tests/session-transition.browser.test.tsx`「a signed-in page asked again
+  after its session went」:焦点重取时 manifest 先答匿名、业务读同时 401,断言地址不变、输入还在、只有一个对话框,登录后恰好重试一次
+  (去掉钉住即在地址断言处失败)。
 - **已登录访问 `/login`**:有 `next` 去 `next`,否则回首页(`replace`)。判定用进页面后新发的一次 `GET /auth/session`(以 `isFetchedAfterMount` 为准),
   不用 30 秒保鲜的身份缓存,防过期会话在登录页与首页之间来回弹;判定前显示骨架屏。换账号就是先退出,不做多账号与「切换账号」入口。
 - `/reset-password`、`/confirm-email` 不跳:邮件链接可能在另一个账号已登录时打开,流程只认 token;已登录却忘了当前密码的人只能走找回。

@@ -38,15 +38,17 @@ import { LoadingScreen } from '@qualy/ui/spinner'
 import { afterFlight } from '@qualy/ui/flight'
 import { clientFor, type ClientIdentity, type ClientOf, type TransportOptions } from './api.ts'
 import { signingOut } from './identity.ts'
-import { changingIdentity } from './session-recovery.ts'
+import { changingIdentity, presentedManifest } from './session-recovery.ts'
 import { SessionRecoveryGate } from './session-recovery-gate.tsx'
 import { type ComponentRegistry } from './registry.ts'
 import {
+  browserRuntime,
   createQueryUtils,
   retryDelay,
   retryManifest,
   retryQuery,
   runMutation,
+  unrecoveredRuntime,
   type QueryUtils,
 } from './api-query.ts'
 import type { HttpApi } from 'effect/http-api'
@@ -95,6 +97,8 @@ export {
   type RouteSlots,
 } from './route-builder.tsx'
 export { cursorPages } from './api-query.ts'
+// a sign-in opened by a session's recovery, and how it says it is done
+export { announceSignedIn, SESSION_RESUME_PARAM } from './session-recovery.ts'
 export { useApiStream, type ApiStreamState } from './api-stream.ts'
 export { PageLink } from './links.tsx'
 export {
@@ -178,6 +182,8 @@ export interface RuntimeProviderProps {
   clientIdentity?: ClientIdentity
   /** the server refused this page's protocol: told to whoever blocks the page */
   onClientUnsupported?: (reason: ClientUnsupportedReason) => void
+  /** the sign-in page, opened in a tab of its own when a session is lost under a reader */
+  signInPage?: NamespacedId
   registry: ComponentRegistry
   children: ReactNode
 }
@@ -246,6 +252,7 @@ export function RuntimeProvider({
   clientFor: provided,
   clientIdentity,
   onClientUnsupported,
+  signInPage,
   registry,
   children,
 }: RuntimeProviderProps) {
@@ -311,6 +318,7 @@ export function RuntimeProvider({
       <SessionRecoveryGate
         manifestKey={manifestKey.current ?? []}
         askManifest={runtime.askManifest}
+        signInPage={signInPage}
       />
     </QueryClientProvider>
   )
@@ -325,8 +333,23 @@ function RuntimeLoader({
   const { format } = useI18n()
   const describe = useLoadFailure()
   const query = utilsFor(appApi) as QueryUtils<ClientOf<typeof appApi>>
+  const queryClient = useQueryClient()
+  const asked = query.app.getManifest.queryOptions()
   const manifest = useQuery({
-    ...query.app.getManifest.queryOptions(),
+    ...asked,
+    // A signed-in page asked again (coming back to the tab, a refresh) can be
+    // answered as nobody: the session went while the reader was away. That
+    // answer goes to the session's recovery before it reaches the routes -
+    // taken as it came, it replaced the reader's page with the sign-in page
+    // while the recovery was still asking them to sign in (session-recovery.ts).
+    queryFn: async (context) => {
+      const ask = asked.queryFn
+      if (typeof ask !== 'function') throw new Error('the manifest query has nothing to ask with')
+      return presentedManifest(
+        queryClient.getQueryData<Manifest>(asked.queryKey),
+        await ask(context),
+      )
+    },
     // the whole application is behind this one, so it waits out a backend
     // replacement rather than dropping the reader onto a retry button
     retry: retryManifest,
@@ -499,7 +522,8 @@ export function useApi<Api extends HttpApi.Constraint>(api: Api): ClientOf<Api> 
  * through the whole ui and throw away each endpoint's failure type at every
  * one of those lines.
  */
-export const useRunApi = () => runMutation()
+export const useRunApi = (options: { recoverSession?: boolean } = {}) =>
+  runMutation(options.recoverSession === false ? unrecoveredRuntime : browserRuntime)
 /**
  * One surface of this build, rendered: isolated, reported, and drawn with the
  * caller's own states for loading, failing and not being here at all.

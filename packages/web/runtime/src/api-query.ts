@@ -26,6 +26,16 @@ export const browserRuntime: ApiRuntime = {
     recovering(() => Effect.runPromise(effect, { signal: options?.signal }), options?.signal),
 }
 
+/**
+ * The same crossing for a call whose question IS the session - the sign-in
+ * page asking whether anybody is signed in. A refusal is its answer, not a
+ * session to recover: held for recovery, the page that asks would wait on
+ * the very sign-in it is there to offer.
+ */
+export const unrecoveredRuntime: ApiRuntime = {
+  runPromise: (effect, options) => Effect.runPromise(effect, { signal: options?.signal }),
+}
+
 // How long a failed read waits before it says so.
 //
 // The library retries three times with a growing delay, which is right for a

@@ -55,6 +55,8 @@ export default {
   'auth/login/others': '其他登录方式',
   'auth/login/shared-device': '在公用设备上使用',
   'auth/login/shared-device-hint': '30 分钟无操作后自动退出登录',
+  'auth/login/resumed-title': '登录成功',
+  'auth/login/resumed-hint': '原页面已自动继续，可以关闭此标签页',
   'auth/login/demo': '使用演示账号体验',
   'auth/login/all-others': '全部 {count} 种其他方式',
   'auth/login/others-count': '{count} 种',
