@@ -35,7 +35,8 @@ import { captchaPurpose, CaptchaRequired, type CaptchaProof } from '@qualy/plugi
 import { Captcha } from '@qualy/plugin-captcha/server'
 import { HARD_LIMITS, makeLimiter, RISK_RULES, type HardLimitRule } from './limiter.ts'
 import { networkKeyOf } from './network.ts'
-import { mailFor, noticeFor, type MailLocale, type MailPurpose } from './mail-copy.ts'
+import { defaultLocale, type SupportedLocale } from '@qualy/i18n-contract'
+import { mailFor, noticeFor, type MailPurpose } from './mail.ts'
 import { makeReauthentication, requireReauthenticated } from './reauthentication.ts'
 import { PublicOriginResolver } from './public-origin.ts'
 import { AnonymousTenantResolver } from './tenancy.ts'
@@ -245,7 +246,7 @@ export class EmailFlows extends Context.Service<
   {
     readonly requestReset: (input: {
       readonly email: string
-      readonly locale: MailLocale
+      readonly locale: SupportedLocale
       /** what the browser sent back after meeting a challenge */
       readonly captcha?: CaptchaProof
     }) => Effect.Effect<void, TooManyAttempts | CaptchaRequired>
@@ -264,7 +265,7 @@ export class EmailFlows extends Context.Service<
     }) => Effect.Effect<SecretChecks, ChallengeInvalid | TooManyAttempts>
     readonly requestVerification: (
       principal: Principal,
-      locale: MailLocale,
+      locale: SupportedLocale,
     ) => Effect.Effect<{ readonly sent: boolean }, EmailMissing | MailNotSent | TooManyAttempts>
     /**
      * The same link to somebody else's address on file, at an administrator's
@@ -281,7 +282,7 @@ export class EmailFlows extends Context.Service<
     readonly requestVerificationFor: <E, R>(
       tenantId: string,
       userId: string,
-      locale: MailLocale,
+      locale: SupportedLocale,
       guard: Effect.Effect<void, E, R>,
     ) => Effect.Effect<
       { readonly sent: boolean },
@@ -291,7 +292,7 @@ export class EmailFlows extends Context.Service<
     readonly redeemVerification: (token: string) => Effect.Effect<void, ChallengeInvalid>
     readonly requestChange: (
       principal: Principal,
-      input: { readonly newEmail: string; readonly locale: MailLocale },
+      input: { readonly newEmail: string; readonly locale: SupportedLocale },
     ) => Effect.Effect<
       void,
       | UserEmailConflict
@@ -312,7 +313,7 @@ export class EmailFlows extends Context.Service<
       token: string,
       context?: {
         /** the language the notice to the old address is written in */
-        readonly locale?: MailLocale
+        readonly locale?: SupportedLocale
         /** who followed the link, when anybody was signed in where they did */
         readonly viewer?: Principal
       },
@@ -326,7 +327,7 @@ export class EmailFlows extends Context.Service<
      */
     readonly tellAddressLeft: (
       tenantId: string,
-      input: { readonly to: string; readonly signedOut: boolean; readonly locale: MailLocale },
+      input: { readonly to: string; readonly signedOut: boolean; readonly locale: SupportedLocale },
     ) => Effect.Effect<void>
     /** the checks a new password of the reader's own is held to, while it is typed */
     readonly assessPassword: (
@@ -369,7 +370,7 @@ export class EmailFlows extends Context.Service<
     /** a code to show it is them, mailed to the address they proved, for an account with no password */
     readonly sendReauthenticationCode: (
       principal: Principal,
-      locale: MailLocale,
+      locale: SupportedLocale,
     ) => Effect.Effect<
       void,
       UserNotFound | ReauthenticationMethodUnavailable | MailNotSent | TooManyAttempts
@@ -424,7 +425,7 @@ export const emailFlowsLayer: Layer.Layer<
     const tellLeft = (
       tenantId: string,
       purpose: 'email-changed' | 'email-changed-by-administrator',
-      input: { readonly to: string; readonly locale: MailLocale; readonly signedOut: boolean },
+      input: { readonly to: string; readonly locale: SupportedLocale; readonly signedOut: boolean },
     ) =>
       Effect.forkIn(
         Effect.gen(function* () {
@@ -1064,7 +1065,7 @@ export const emailFlowsLayer: Layer.Layer<
         if (left === null) return
         yield* tellLeft(tenantId, 'email-changed', {
           to: left,
-          locale: context.locale ?? 'en',
+          locale: context.locale ?? defaultLocale,
           signedOut: true,
         })
       }),

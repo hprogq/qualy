@@ -46,7 +46,6 @@ import { loginIconsLayer } from './icons.ts'
 import { makeOutbound } from './outbound.ts'
 import { AuthOutbound } from '@qualy/auth-contract/outbound'
 import { EmailFlows, emailFlowsLayer } from './email-flows.ts'
-import { mailLocaleFor } from './mail-copy.ts'
 import { recipientLocaleOf } from './locale.ts'
 import { requestLocale } from '@qualy/api-kit/locale'
 import { renderTexts } from '@qualy/text'
@@ -299,7 +298,7 @@ export const sessionApiHandlers = HttpApiBuilder.group(local, 'auth', (handlers)
         const flows = yield* EmailFlows
         yield* flows.requestReset({
           email: payload.email,
-          locale: mailLocaleFor(yield* requestLocale),
+          locale: yield* requestLocale,
           ...(payload.captcha === undefined ? {} : { captcha: payload.captcha }),
         })
         return { ok: true as const }
@@ -343,7 +342,7 @@ export const sessionApiHandlers = HttpApiBuilder.group(local, 'auth', (handlers)
         // the session the link is followed in, if it is one, is the one that stays
         const viewer = (yield* CurrentViewer).principal
         yield* flows.redeemChange(payload.token, {
-          locale: mailLocaleFor(yield* requestLocale),
+          locale: yield* requestLocale,
           ...(viewer === undefined ? {} : { viewer }),
         })
         return { ok: true as const }
@@ -406,10 +405,7 @@ export const selfApiHandlers = HttpApiBuilder.group(local, 'self', (handlers) =>
       'createSelfEmailVerification',
       Effect.fn('iam.createSelfEmailVerification.handler')(function* () {
         const flows = yield* EmailFlows
-        return yield* flows.requestVerification(
-          yield* CurrentUser,
-          mailLocaleFor(yield* requestLocale),
-        )
+        return yield* flows.requestVerification(yield* CurrentUser, yield* requestLocale)
       }),
     )
     .handle(
@@ -418,7 +414,7 @@ export const selfApiHandlers = HttpApiBuilder.group(local, 'self', (handlers) =>
         const flows = yield* EmailFlows
         yield* flows.requestChange(yield* CurrentUser, {
           newEmail: payload.newEmail,
-          locale: mailLocaleFor(yield* requestLocale),
+          locale: yield* requestLocale,
         })
         return { ok: true as const }
       }),
@@ -463,10 +459,7 @@ export const selfApiHandlers = HttpApiBuilder.group(local, 'self', (handlers) =>
       'createSelfReauthenticationCode',
       Effect.fn('iam.createSelfReauthenticationCode.handler')(function* () {
         const flows = yield* EmailFlows
-        yield* flows.sendReauthenticationCode(
-          yield* CurrentUser,
-          mailLocaleFor(yield* requestLocale),
-        )
+        yield* flows.sendReauthenticationCode(yield* CurrentUser, yield* requestLocale)
         return { ok: true as const }
       }),
     )
@@ -1022,9 +1015,7 @@ export const identityApiHandlers = HttpApiBuilder.group(local, 'identity', (hand
           // the mail is theirs, so it is in their language, not the administrator's
           yield* flows.tellAddressLeft(principal.tenantId, {
             ...changed.addressLeft,
-            locale: mailLocaleFor(
-              yield* recipientLocaleOf(principal.tenantId, params.userId).pipe(Effect.orDie),
-            ),
+            locale: yield* recipientLocaleOf(principal.tenantId, params.userId).pipe(Effect.orDie),
           })
         }
         return { ok: true as const }
@@ -1079,16 +1070,14 @@ export const identityApiHandlers = HttpApiBuilder.group(local, 'identity', (hand
         // asked for it, which is what happened, and not that an
         // administrator did.
         if (params.userId === principal.userId) {
-          return yield* flows.requestVerification(principal, mailLocaleFor(yield* requestLocale))
+          return yield* flows.requestVerification(principal, yield* requestLocale)
         }
         // the address is the account's, so it is asked of whoever may
         // administer the account, inside the lock the link is written under
         return yield* flows.requestVerificationFor(
           principal.tenantId,
           params.userId,
-          mailLocaleFor(
-            yield* recipientLocaleOf(principal.tenantId, params.userId).pipe(Effect.orDie),
-          ),
+          yield* recipientLocaleOf(principal.tenantId, params.userId).pipe(Effect.orDie),
           iam.users.accountGuard(principal.tenantId, params.userId, principal),
         )
       }),

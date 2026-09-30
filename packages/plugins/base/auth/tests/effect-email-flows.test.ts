@@ -43,7 +43,7 @@ import { EmailFlows, emailFlowsLayer } from '../src/server/email-flows.ts'
 import { Iam, identityApiHandlers, serviceLayer as authLayer } from '../src/server/index.ts'
 import { identityApiGroup } from '../src/api.ts'
 import { layer as sessionLayer } from '../src/server/session.ts'
-import { noticeFor } from '../src/server/mail-copy.ts'
+import { noticeFor } from '../src/server/mail.ts'
 import { hashSessionToken } from '../src/session.ts'
 import { SYSTEM_ACCOUNT_USER_TYPE } from '../src/constants.ts'
 import { HARD_LIMITS, RISK_RULES } from '../src/server/limiter.ts'
@@ -293,9 +293,9 @@ describe.runIf(postgresAvailable)('a forgotten password', () => {
         await run(
           Effect.gen(function* () {
             const flows = yield* EmailFlows
-            yield* flows.requestReset({ email: ' ADA@school.edu ', locale: 'en' })
+            yield* flows.requestReset({ email: ' ADA@school.edu ', locale: 'en-US' })
             // a stranger's and an unproven address answer exactly the same
-            yield* flows.requestReset({ email: 'nobody@school.edu', locale: 'en' })
+            yield* flows.requestReset({ email: 'nobody@school.edu', locale: 'en-US' })
             yield* flows.requestReset({ email: 'lin@school.edu', locale: 'zh-CN' })
             const link = yield* Effect.promise(() => tokenFrom(mail, 'ada@school.edu'))
             const kept = yield* runSql<{
@@ -348,7 +348,7 @@ describe.runIf(postgresAvailable)('a forgotten password', () => {
           Effect.gen(function* () {
             const flows = yield* EmailFlows
             yield* runSql(sql`update tenants set name = 'Lighthouse'`)
-            yield* flows.requestReset({ email: 'ada@school.edu', locale: 'en' })
+            yield* flows.requestReset({ email: 'ada@school.edu', locale: 'en-US' })
             const link = yield* Effect.promise(() => tokenFrom(mail, 'ada@school.edu'))
             yield* flows.inspectReset({ token: link.token })
             const fine = yield* flows.assessReset({
@@ -399,15 +399,15 @@ describe.runIf(postgresAvailable)('a forgotten password', () => {
         await Effect.runPromiseExit(
           Effect.gen(function* () {
             const flows = yield* EmailFlows
-            yield* flows.requestReset({ email: 'ada@school.edu', locale: 'en' })
+            yield* flows.requestReset({ email: 'ada@school.edu', locale: 'en-US' })
             const link = yield* Effect.promise(() => tokenFrom(mail, 'ada@school.edu'))
             const short = yield* Effect.result(
               flows.redeemReset({ token: link.token, password: 'short' }),
             )
-            yield* flows.requestReset({ email: 'ada@school.edu', locale: 'en' })
-            yield* flows.requestReset({ email: 'ada@school.edu', locale: 'en' })
+            yield* flows.requestReset({ email: 'ada@school.edu', locale: 'en-US' })
+            yield* flows.requestReset({ email: 'ada@school.edu', locale: 'en-US' })
             const fourth = yield* Effect.result(
-              flows.requestReset({ email: 'ada@school.edu', locale: 'en' }),
+              flows.requestReset({ email: 'ada@school.edu', locale: 'en-US' }),
             )
             // the links are written after the answers, so once they have all gone
             yield* Effect.promise(() =>
@@ -451,7 +451,7 @@ describe.runIf(postgresAvailable)('reset links', () => {
             const flows = yield* EmailFlows
             const links: string[] = []
             for (let asked = 0; asked < 3; asked += 1) {
-              yield* flows.requestReset({ email: 'ada@school.edu', locale: 'en' })
+              yield* flows.requestReset({ email: 'ada@school.edu', locale: 'en-US' })
               yield* Effect.promise(() =>
                 vi.waitFor(
                   () => {
@@ -503,7 +503,7 @@ describe.runIf(postgresAvailable)('a reset link handed password after password',
             const gate = yield* Deferred.make<void>()
             return yield* Effect.gen(function* () {
               const flows = yield* EmailFlows
-              yield* flows.requestReset({ email: 'ada@school.edu', locale: 'en' })
+              yield* flows.requestReset({ email: 'ada@school.edu', locale: 'en-US' })
               const link = yield* Effect.promise(() => tokenFrom(mail, 'ada@school.edu'))
               // the same link, presented many times at once with a password
               // the door would take: one of them works one out
@@ -526,7 +526,7 @@ describe.runIf(postgresAvailable)('a reset link handed password after password',
               // another link, handed one password after another the door
               // will not take
               mail.outbox.length = 0
-              yield* flows.requestReset({ email: 'ada@school.edu', locale: 'en' })
+              yield* flows.requestReset({ email: 'ada@school.edu', locale: 'en-US' })
               const second = yield* Effect.promise(() => tokenFrom(mail, 'ada@school.edu'))
               // what the first link was counted for is not this one's
               yield* runSql(sql`delete from auth_rate_limit_buckets`)
@@ -585,7 +585,7 @@ describe.runIf(postgresAvailable)('a link presented while the tenant is busy', (
         await Effect.runPromiseExit(
           Effect.gen(function* () {
             const flows = yield* EmailFlows
-            yield* flows.requestReset({ email: 'ada@school.edu', locale: 'en' })
+            yield* flows.requestReset({ email: 'ada@school.edu', locale: 'en-US' })
             const link = yield* Effect.promise(() => tokenFrom(mail, 'ada@school.edu'))
             // judged once while it was typed, so the link's counter already
             // stands: a counter's first row names the tenant and waits for
@@ -658,7 +658,7 @@ describe.runIf(postgresAvailable)('a link presented while the tenant is busy', (
           Effect.gen(function* () {
             const flows = yield* EmailFlows
             // asked once before, so its counters already stand, as above
-            yield* flows.requestReset({ email: 'ada@school.edu', locale: 'en' })
+            yield* flows.requestReset({ email: 'ada@school.edu', locale: 'en-US' })
             yield* Effect.promise(() => tokenFrom(mail, 'ada@school.edu'))
             mail.outbox.length = 0
             const withDb = yield* withDatabase
@@ -675,7 +675,7 @@ describe.runIf(postgresAvailable)('a link presented while the tenant is busy', (
             ).pipe(Effect.forkChild)
             yield* Deferred.await(held)
             const asking = yield* flows
-              .requestReset({ email: 'ada@school.edu', locale: 'en' })
+              .requestReset({ email: 'ada@school.edu', locale: 'en-US' })
               .pipe(Effect.forkChild)
             // answered while the row is still held: writing Ada's link waits
             // for it, and the answer does not wait for that
@@ -711,7 +711,7 @@ describe.runIf(postgresAvailable)('a link presented while the tenant is busy', (
             // asked once before, so its counters already stand: a counter's
             // first row names the tenant and waits for its row like any
             // insert that does, which is not what this is about
-            yield* flows.requestReset({ email: 'nobody@school.edu', locale: 'en' })
+            yield* flows.requestReset({ email: 'nobody@school.edu', locale: 'en-US' })
             const withDb = yield* withDatabase
             const held = yield* Deferred.make<void>()
             const release = yield* Deferred.make<void>()
@@ -726,7 +726,7 @@ describe.runIf(postgresAvailable)('a link presented while the tenant is busy', (
             ).pipe(Effect.forkChild)
             yield* Deferred.await(held)
             const asking = yield* flows
-              .requestReset({ email: 'nobody@school.edu', locale: 'en' })
+              .requestReset({ email: 'nobody@school.edu', locale: 'en-US' })
               .pipe(Effect.forkChild)
             // watched rather than timed out: a query waiting on a row lock
             // cannot be interrupted, only let go
@@ -735,7 +735,7 @@ describe.runIf(postgresAvailable)('a link presented while the tenant is busy', (
             yield* Fiber.join(holder)
             yield* Fiber.join(asking)
             // somebody who is there is still sent a link once the row is free
-            yield* flows.requestReset({ email: 'ada@school.edu', locale: 'en' })
+            yield* flows.requestReset({ email: 'ada@school.edu', locale: 'en-US' })
             const link = yield* Effect.promise(() => tokenFrom(mail, 'ada@school.edu'))
             return { answered: Option.isSome(meanwhile), linked: link.token.length > 0 }
           }).pipe(Effect.provide(stack(db.url, mail.backend))),
@@ -790,7 +790,7 @@ describe.runIf(postgresAvailable)('asking for a reset where a challenge can be a
               Effect.result(
                 flows.requestReset({
                   email,
-                  locale: 'en',
+                  locale: 'en-US',
                   ...(captcha === undefined ? {} : { captcha }),
                 }),
               )
@@ -853,7 +853,7 @@ describe.runIf(postgresAvailable)('asking for a reset where a challenge can be a
       const ask = (clientIp: string, index: number) =>
         fromAddress(clientIp)(
           Effect.flatMap(EmailFlows, (flows) =>
-            Effect.result(flows.requestReset({ email: `walk-${index}@x.edu`, locale: 'en' })),
+            Effect.result(flows.requestReset({ email: `walk-${index}@x.edu`, locale: 'en-US' })),
           ),
         ).pipe(Effect.map((result) => tagOf(result) ?? 'ok'))
       const answer = ok(
@@ -899,7 +899,7 @@ describe.runIf(postgresAvailable)('an email address', () => {
 
             // a link to an address that has since been replaced proves nothing
             yield* runSql(sql`update users set email_verified_at = null where id = ${f.lin}`)
-            yield* flows.requestVerification(lin, 'en')
+            yield* flows.requestVerification(lin, 'en-US')
             const stale = yield* Effect.promise(() => tokenFrom(mail, 'lin@school.edu'))
             yield* runSql(sql`update users set email = 'lin.moved@school.edu' where id = ${f.lin}`)
             const refused = yield* Effect.result(flows.redeemVerification(stale.token))
@@ -1017,18 +1017,18 @@ describe.runIf(postgresAvailable)('an email address', () => {
             const flows = yield* EmailFlows
             const ada = f.as(f.ada, f.adaHere)
             const taken = yield* Effect.result(
-              flows.requestChange(ada, { newEmail: 'LIN@school.edu', locale: 'en' }),
+              flows.requestChange(ada, { newEmail: 'LIN@school.edu', locale: 'en-US' }),
             )
             const system = yield* Effect.result(
               flows.requestChange(f.as(f.admin, f.adminHere), {
                 newEmail: 'root2@school.edu',
-                locale: 'en',
+                locale: 'en-US',
               }),
             )
             // two reset links out to the old address, which is about to stop being hers
-            yield* flows.requestReset({ email: 'ada@school.edu', locale: 'en' })
-            yield* flows.requestReset({ email: 'ada@school.edu', locale: 'en' })
-            yield* flows.requestChange(ada, { newEmail: 'Ada.New@school.edu', locale: 'en' })
+            yield* flows.requestReset({ email: 'ada@school.edu', locale: 'en-US' })
+            yield* flows.requestReset({ email: 'ada@school.edu', locale: 'en-US' })
+            yield* flows.requestChange(ada, { newEmail: 'Ada.New@school.edu', locale: 'en-US' })
             const link = yield* Effect.promise(() => tokenFrom(mail, 'ada.new@school.edu'))
             const before = yield* runSql<{ email: string }>(
               sql`select email from users where id = ${f.ada}`,
@@ -1091,7 +1091,7 @@ describe.runIf(postgresAvailable)('an email address', () => {
             const flows = yield* EmailFlows
             const ada = f.as(f.ada, f.adaHere)
             // followed in one of Ada's own sessions
-            yield* flows.requestChange(ada, { newEmail: 'ada.new@school.edu', locale: 'en' })
+            yield* flows.requestChange(ada, { newEmail: 'ada.new@school.edu', locale: 'en-US' })
             const first = yield* Effect.promise(() => tokenFrom(mail, 'ada.new@school.edu'))
             yield* flows.redeemChange(first.token, { locale: 'zh-CN', viewer: ada })
             const kept = yield* runSql<{ id: string }>(
@@ -1099,7 +1099,7 @@ describe.runIf(postgresAvailable)('an email address', () => {
             )
             const told = yield* Effect.promise(() => noticeTo('ada@school.edu'))
             // and followed where nobody, or somebody else, is signed in
-            yield* flows.requestChange(ada, { newEmail: 'ada.third@school.edu', locale: 'en' })
+            yield* flows.requestChange(ada, { newEmail: 'ada.third@school.edu', locale: 'en-US' })
             const second = yield* Effect.promise(() => tokenFrom(mail, 'ada.third@school.edu'))
             yield* flows.redeemChange(second.token, { viewer: f.as(f.lin, f.linHere) })
             const left = yield* runSql<{ count: number }>(
@@ -1123,7 +1123,8 @@ describe.runIf(postgresAvailable)('an email address', () => {
         kept: [f.adaHere],
         told: '账号邮箱已更改',
         left: 0,
-        toldAgain: 'Your account email was changed',
+        // followed with no language known, so said in the product's own
+        toldAgain: '账号邮箱已更改',
         // somebody else's session is nobody's business here
         lin: 1,
       })
@@ -1173,7 +1174,7 @@ describe.runIf(postgresAvailable)('an email address', () => {
             ) {
               yield* flows.requestChange(yield* stolen(), {
                 newEmail: 'thief@elsewhere.example',
-                locale: 'en',
+                locale: 'en-US',
               })
               const link = yield* Effect.promise(() => tokenFrom(mail, 'thief@elsewhere.example'))
               mail.outbox.length = 0
@@ -1256,7 +1257,7 @@ describe.runIf(postgresAvailable)('an email address', () => {
             ) {
               yield* flows.requestChange(f.as(f.ada, stolen), {
                 newEmail: 'thief@elsewhere.example',
-                locale: 'en',
+                locale: 'en-US',
               })
               const link = yield* Effect.promise(() => tokenFrom(mail, 'thief@elsewhere.example'))
               mail.outbox.length = 0
@@ -1311,7 +1312,7 @@ describe.runIf(postgresAvailable)('an email address', () => {
                   yield* lockTenant(f.tenant)
                   yield* flows.requestChange(f.as(f.ada, f.adaElsewhere), {
                     newEmail: 'thief@elsewhere.example',
-                    locale: 'en',
+                    locale: 'en-US',
                   })
                   yield* Deferred.succeed(asked, undefined)
                   yield* Deferred.await(release)
@@ -1391,11 +1392,11 @@ describe.runIf(postgresAvailable)('an email address', () => {
               yield* version(f.ada),
               admin,
             )
-            yield* flows.tellAddressLeft(f.tenant, { ...ada.addressLeft!, locale: 'en' })
+            yield* flows.tellAddressLeft(f.tenant, { ...ada.addressLeft!, locale: 'en-US' })
             yield* flows.tellAddressLeft(f.tenant, {
               to: 'quiet@school.edu',
               signedOut: false,
-              locale: 'en',
+              locale: 'en-US',
             })
             // sent on a fiber of their own: read while the flows still stand
             const sentTo = (to: string) =>
@@ -1662,7 +1663,7 @@ describe.runIf(postgresAvailable)('an email address', () => {
               answers.push(
                 tagOf(
                   yield* Effect.result(
-                    flows.requestChange(ada, { newEmail: 'lin@school.edu', locale: 'en' }),
+                    flows.requestChange(ada, { newEmail: 'lin@school.edu', locale: 'en-US' }),
                   ),
                 ),
               )
@@ -1692,7 +1693,7 @@ describe.runIf(postgresAvailable)('an email address', () => {
           Effect.gen(function* () {
             const flows = yield* EmailFlows
             const refused = yield* Effect.result(
-              flows.requestVerification(f.as(f.lin, f.linHere), 'en'),
+              flows.requestVerification(f.as(f.lin, f.linHere), 'en-US'),
             )
             const open = yield* runSql<{ count: number }>(
               sql`select count(*)::int as count from user_email_challenges where consumed_at is null`,
@@ -1720,20 +1721,20 @@ describe.runIf(postgresAvailable)('a deployment with no address to write links w
           Effect.gen(function* () {
             const flows = yield* EmailFlows
             const verify = yield* Effect.result(
-              flows.requestVerification(f.as(f.lin, f.linHere), 'en'),
+              flows.requestVerification(f.as(f.lin, f.linHere), 'en-US'),
             )
             const change = yield* Effect.result(
               flows.requestChange(f.as(f.ada, f.adaHere), {
                 newEmail: 'ada.new@school.edu',
-                locale: 'en',
+                locale: 'en-US',
               }),
             )
             // Ada has a proven address and a password; nobody has the other
             const known = yield* Effect.result(
-              flows.requestReset({ email: 'ada@school.edu', locale: 'en' }),
+              flows.requestReset({ email: 'ada@school.edu', locale: 'en-US' }),
             )
             const unknown = yield* Effect.result(
-              flows.requestReset({ email: 'nobody@school.edu', locale: 'en' }),
+              flows.requestReset({ email: 'nobody@school.edu', locale: 'en-US' }),
             )
             const open = yield* runSql<{ count: number }>(
               sql`select count(*)::int as count from user_email_challenges where consumed_at is null`,
@@ -1959,7 +1960,7 @@ describe.runIf(postgresAvailable)('showing it is you again', () => {
             const fresh = f.as(f.ada, yield* freshSession(f.tenant, f.ada, f.local))
             const asked = tagOf(
               yield* Effect.result(
-                flows.requestChange(fresh, { newEmail: 'ada.new@school.edu', locale: 'en' }),
+                flows.requestChange(fresh, { newEmail: 'ada.new@school.edu', locale: 'en-US' }),
               ),
             )
             const before = yield* iam.self.reauthentication(fresh)
@@ -1967,7 +1968,9 @@ describe.runIf(postgresAvailable)('showing it is you again', () => {
             const byCode = tagOf(
               yield* Effect.result(flows.reauthenticate(fresh, { method: 'code', code: '123456' })),
             )
-            const noCode = tagOf(yield* Effect.result(flows.sendReauthenticationCode(fresh, 'en')))
+            const noCode = tagOf(
+              yield* Effect.result(flows.sendReauthenticationCode(fresh, 'en-US')),
+            )
             const wrong = tagOf(
               yield* Effect.result(
                 flows.reauthenticate(fresh, { method: 'password', password: 'not it' }),
@@ -1978,7 +1981,7 @@ describe.runIf(postgresAvailable)('showing it is you again', () => {
               password: 'ada-password',
             })
             const after = yield* iam.self.reauthentication(fresh)
-            yield* flows.requestChange(fresh, { newEmail: 'ada.new@school.edu', locale: 'en' })
+            yield* flows.requestChange(fresh, { newEmail: 'ada.new@school.edu', locale: 'en-US' })
             const link = yield* Effect.promise(() => tokenFrom(mail, 'ada.new@school.edu'))
             // a while later it no longer counts
             yield* runSql(sql`
@@ -1986,7 +1989,7 @@ describe.runIf(postgresAvailable)('showing it is you again', () => {
                where session_id = ${fresh.sessionId}`)
             const lapsed = tagOf(
               yield* Effect.result(
-                flows.requestChange(fresh, { newEmail: 'ada.other@school.edu', locale: 'en' }),
+                flows.requestChange(fresh, { newEmail: 'ada.other@school.edu', locale: 'en-US' }),
               ),
             )
             return {
@@ -2111,7 +2114,7 @@ describe.runIf(postgresAvailable)('showing it is you again', () => {
             const flows = yield* EmailFlows
             yield* runSql(sql`update users set email_verified_at = now() where id = ${f.lin}`)
             const fresh = f.as(f.lin, yield* freshSession(f.tenant, f.lin, f.local))
-            yield* flows.sendReauthenticationCode(fresh, 'en')
+            yield* flows.sendReauthenticationCode(fresh, 'en-US')
             const sent = yield* Effect.promise(() => codeFrom(mail, 'lin@school.edu'))
             const tries: (string | undefined)[] = []
             for (let tried = 0; tried < limit; tried += 1) {
@@ -2154,7 +2157,9 @@ describe.runIf(postgresAvailable)('showing it is you again', () => {
             const flows = yield* EmailFlows
             yield* runSql(sql`update users set email_verified_at = now() where id = ${f.lin}`)
             const fresh = f.as(f.lin, yield* freshSession(f.tenant, f.lin, f.local))
-            const refused = tagOf(yield* Effect.result(flows.sendReauthenticationCode(fresh, 'en')))
+            const refused = tagOf(
+              yield* Effect.result(flows.sendReauthenticationCode(fresh, 'en-US')),
+            )
             const kept = yield* runSql<{ count: number }>(
               sql`select count(*)::int as count from session_auth_grants
                    where session_id = ${fresh.sessionId}`,
@@ -2190,7 +2195,7 @@ describe.runIf(postgresAvailable)('a password judged while it is typed', () => {
             const other = yield* Effect.result(
               flows.assessPassword(f.as(f.lin, f.linHere), { password: 'one more' }),
             )
-            yield* flows.requestReset({ email: 'ada@school.edu', locale: 'en' })
+            yield* flows.requestReset({ email: 'ada@school.edu', locale: 'en-US' })
             const link = yield* Effect.promise(() => tokenFrom(mail, 'ada@school.edu'))
             for (let typed = 0; typed < limit; typed += 1) {
               yield* flows.assessReset({ token: link.token, password: `candidate ${typed}` })
@@ -2309,10 +2314,10 @@ describe.runIf(postgresAvailable)('a shared demo account', () => {
               }),
             )
             const address = yield* Effect.result(
-              flows.requestChange(ada, { newEmail: 'someone.else@school.edu', locale: 'en' }),
+              flows.requestChange(ada, { newEmail: 'someone.else@school.edu', locale: 'en-US' }),
             )
             // answered like any other address, and nothing goes out
-            yield* flows.requestReset({ email: 'ada@school.edu', locale: 'en' })
+            yield* flows.requestReset({ email: 'ada@school.edu', locale: 'en-US' })
             const challenges = yield* runSql<{ count: number }>(
               sql`select count(*)::int as count from user_email_challenges`,
             )

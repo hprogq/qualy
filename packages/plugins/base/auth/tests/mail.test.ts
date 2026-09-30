@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { mailFor, noticeFor } from '../src/server/mail-copy.ts'
+import { mailFor, noticeFor } from '../src/server/mail.ts'
 
 // The mail a person gets, in both of its parts: the plain one every client
 // shows, and the laid-out one most do - which carries the same link, names
@@ -36,11 +36,11 @@ describe('the mail a link goes out in', () => {
     // the last line is for somebody who does not know the organization,
     // not for somebody who did not ask
     expect(asked.text).not.toContain('如非本人操作')
-    expect(mailFor('verify-by-administrator', 'en', link).text).toContain('An administrator')
+    expect(mailFor('verify-by-administrator', 'en-US', link).text).toContain('An administrator')
   })
 
   it('escapes a workspace name and an address that are not text', () => {
-    const mail = mailFor('verify', 'en', 'https://qualy.example/confirm#token=t', {
+    const mail = mailFor('verify', 'en-US', 'https://qualy.example/confirm#token=t', {
       to: '"><script>alert(1)</script>',
       workspace: '<img src=x onerror=alert(1)>',
     })
@@ -50,7 +50,7 @@ describe('the mail a link goes out in', () => {
   })
 
   it('heads the message with the wordmark from the origin the link points to', () => {
-    const mail = mailFor('verify', 'en', 'https://qualy.example/confirm#token=t', {
+    const mail = mailFor('verify', 'en-US', 'https://qualy.example/confirm#token=t', {
       to: 'li@school.edu',
       workspace: null,
     })
@@ -64,7 +64,7 @@ describe('the mail a link goes out in', () => {
 
 describe('the mail a code goes out in', () => {
   it('carries the code in both parts, and names the product even with nowhere to show it from', () => {
-    const mail = noticeFor('reauthentication-code', 'en', {
+    const mail = noticeFor('reauthentication-code', 'en-US', {
       to: 'li@school.edu',
       workspace: '<b>Demo</b>',
       origin: null,
