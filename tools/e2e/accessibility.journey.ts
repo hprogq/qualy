@@ -44,12 +44,18 @@ const audit = async (page: Page): Promise<Violation[]> => {
   })
 }
 
-const SCREENS: readonly { name: string; who?: 'student' | 'counsellor'; route: string }[] = [
+const SCREENS: readonly {
+  name: string
+  who?: 'student' | 'counsellor' | 'admin'
+  route: string
+}[] = [
   { name: 'sign-in', route: '/login' },
   { name: 'batches', who: 'student', route: '/assessment/batches' },
   { name: 'my entries', who: 'student', route: `/assessment/batches/${BATCH}/my-entries` },
   { name: 'my result', who: 'student', route: `/assessment/batches/${BATCH}/my-result` },
+  { name: 'batch overview', who: 'counsellor', route: `/assessment/batches/${BATCH}` },
   { name: 'review queue', who: 'counsellor', route: `/assessment/batches/${BATCH}/reviews` },
+  { name: 'organization tree', who: 'admin', route: '/organization/tree' },
 ]
 
 describe('the key screens, to assistive technology', () => {
