@@ -20889,3 +20889,41 @@ W12 审查意见收尾（十一组，分组见仓库外 `audit-2026-09-25/wave13
   定位并断言名称含批次名),record-recognition 两条是满载下选项点击超时,与改动无关,单独重跑通过;修正后三条单跑通过。
   `node tools/quality/check-staged-web.ts` 通过;E2E 镜像(`dacc85dd3-dirty`,arm64)上 `pnpm lighthouse` 全部页面跑完,
   Playwright 实测批次页手机端带样式渲染、无 CSP 报错。
+
+## 身份连续、请求来源与会话活跃、对比度、首屏复核与 i18n PoC(2026-09-30 晚)
+
+用户转来两份外部评审(首屏报告的三处说法、换账号后的旧页面),以及一份安全评审(GET 副作用、会话活跃判定、来源比较),
+逐条对照本地代码核实后处理。全部本地提交,未推送。
+
+- **首屏报告的修正**:用应用节流(Slow 4G + CPU ×4)做了真人时间轴 A/B,结论改写进上一节与 docs/notes/web-performance.md——
+  样式表延后只提前了首帧(无未样式化帧),内容提前约 670 ms 来自冷启动预取;语言包预取测得无收益且让 React 提交晚约
+  300 ms,改写本地未推送的提交撤回;「真实网络不会波动」「LCP 基本就是字节数」两句删掉,改为多次中位数、生产另测、
+  LCP 按分段看。
+- **i18n PoC**(不进仓库):构建期把浏览器里静态描述符的 `defaultMessage` 抽成空串(4193 条)。首屏 i18n 模块 brotli
+  82.8 → 43.7 KB;四个页面 LCP 前传输各少约 40 KB(login 558 → 518 KB 等);手机 LCP(Lighthouse)−2 到 −377 ms,
+  节流时间轴批次页内容 7600 → 7384 ms。英文读者改下载 en-US 语言包,量相当。正式做还要改 I18nProvider 的失败回退、
+  catalogs 门禁把 en-US 当同等语言包,**是否正式做待用户决定**。口径表(原始/gzip/brotli)见 notes。
+- **页面不跨身份继续**:已挂载的已登录页面收到另一个已登录身份的 manifest,不论有没有挂起的恢复,一律锁成 `switched`、
+  保留原 manifest、此后一切调用不发出(`SessionRecovery.frozen`),只能重新载入(文案点明未保存的内容不保留);本标签
+  自己的登录退出不受影响;任一标签登录或退出后广播 `changed`,其他标签立即重问 manifest。原先没有挂起的恢复时页面会接受
+  乙的 manifest、带着甲的状态继续。新增浏览器测试两条(去掉修复即失败,已实测)、单元测试一条、E2E 一条。
+- **请求来源**:不安全方法只接受 `Sec-Fetch-Site: same-origin`(`none` 也拒);无 Fetch Metadata 时按完整 origin
+  (协议 + 主机 + 端口)比较,协议按可信代理策略解析;公式编辑器 WebSocket 同一比较。请求上下文加 `publicOrigin`。
+- **会话活跃改为正向证明**:只有带 `x-qualy-activity: 1`(浏览器在标签页可见且一分钟内有输入)的请求续空闲计时;原先
+  「没带后台标记就算使用」,外站链接的普通 GET 就能替闲置会话续命。发布时仍开着的旧标签页在重新载入前不会续期。
+- **GET 不变量与 manifest 边界**写进 CLAUDE.md 与 auth-security.md:业务 GET/HEAD 不改领域状态,唯一例外是 CAS/GitHub/
+  OIDC 的 `start`/`callback`(靠 state + `__Host-` 流程 cookie + PKCE/nonce);manifest 是发现边界不是授权边界。新 E2E
+  「a reader handed an administrator's manifest」:学生拿到管理员的 manifest,管理员页面能挂载,页面发出的管理域读取
+  全部 403,仅 `org/tree` 与 `iam/user-imports` 回 200 且为空(读取 = 请求范围 ∩ 授权范围,空集是正确答案);学生用自己
+  会话发的两个合法写请求 403 `ACCESS_DENIED`,管理员核对无记录产生。不加 CSRF token 与请求签名(理由见 notes)。
+- **对比度**:以次要灰 85% 画的小字 40 处、50–80% 的 15 处全部改回次要灰(tokens.css 本就规定文字只用三种灰;浅色处
+  3.0–4.0:1 → 4.9–5.5:1);由它混出的背景、分隔符、图标、把手与禁用态不动。axe 旅程加组织树与批次概览,后者查出了
+  已结束阶段那几处。
+- **批次列表刷新时的小转圈**(用户反馈):从分段控件左侧移到右侧,且始终占位,筛选时分段控件与搜索框不再跳。
+- 验收(HEAD `6d97729c6`):`pnpm typecheck`、`pnpm lint`、`pnpm lint:types`、`pnpm format:check` 全部 exit 0;
+  `pnpm test`(测试库 5433)405 文件 3067 条通过;`pnpm test:browser` 122 文件 1585 条中 3 条失败——`failure.browser.test`
+  重试忙碌态(350 ms 窗口)与 record-recognition 两条点击超时,都是满载下的已知不稳定用例,两个文件单独重跑 10 条全过;
+  本机 E2E(`6d97729c6-dirty` arm64 镜像)`pnpm e2e` 6 文件 15 条全过,含两条身份切换、伪造 manifest 与 7 个页面的 axe;
+  节流 A/B 与 Lighthouse 数据见上与 docs/notes/web-performance.md。
+- **待用户**:审阅本地未推送的全部提交(`dacc85dd3` 之前的四个 + 本轮);决定 i18n 默认文案是否正式做;组织树桌面端页脚 CLS
+  的两种修法选哪种。
