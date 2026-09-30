@@ -17,7 +17,7 @@ import {
   uuidInput,
 } from '@qualy/api-kit/schema'
 
-import { UiTextSchema } from '@qualy/i18n-contract'
+import { supportedLocales, UiTextSchema } from '@qualy/i18n-contract'
 import { EMAIL_MAX_LENGTH, normalizeEmail } from '@qualy/auth-contract/email'
 import {
   Authenticated,
@@ -1094,6 +1094,16 @@ export const sessionApiGroup = HttpApiGroup.make('auth')
     HttpApiEndpoint.delete('endSession', '/auth/session', {
       success: Schema.Struct({ ok: Schema.Literal(true) }),
     }),
+  )
+  .add(
+    // The language this browser reads Qualy in, written as a cookie; for
+    // somebody signed in, also their account's, which is what mail to them
+    // and a device they have not used before open in. The page reloads
+    // after, so no answer beyond the choice itself is needed.
+    HttpApiEndpoint.put('putLocale', '/auth/locale', {
+      payload: Schema.Struct({ locale: Schema.Literals(supportedLocales) }),
+      success: Schema.Struct({ locale: Schema.Literals(supportedLocales) }),
+    }).middleware(Viewer),
   )
   .add(
     // the same answer whether or not anybody has that address

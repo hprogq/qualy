@@ -1,21 +1,18 @@
 // What the mail this plugin sends says, in the reader's language.
 //
 // Written here rather than in the browser catalogs because it leaves from the
-// server and is read in a mail client; the language is the one the request
-// that caused it asked for, which for every message here is the reader's own
-// request. Each message is one short paragraph and the link: what the link
+// server and is read in a mail client; the language is the reader's: the
+// page's own for mail the reader asked for, the recipient's choice for mail
+// somebody else caused. Each message is one short paragraph and the link: what the link
 // does, and how long it works.
+
+import type { SupportedLocale } from '@qualy/i18n-contract'
 
 export type MailLocale = 'zh-CN' | 'en'
 
-/**
- * The reader's language: the first one their browser asks for, when it is
- * one these messages are written in; otherwise the product's own fallback.
- */
-export const mailLocaleOf = (acceptLanguage: string | undefined): MailLocale => {
-  const first = (acceptLanguage ?? '').split(',')[0]?.trim().toLowerCase() ?? ''
-  return first.startsWith('zh') ? 'zh-CN' : 'en'
-}
+/** the language of the mail, from the language the reader reads Qualy in */
+export const mailLocaleFor = (locale: SupportedLocale): MailLocale =>
+  locale === 'zh-CN' ? 'zh-CN' : 'en'
 
 export type MailPurpose = 'verify' | 'reset' | 'change'
 

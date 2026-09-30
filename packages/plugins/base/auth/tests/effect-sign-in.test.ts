@@ -607,3 +607,77 @@ describe.runIf(postgresAvailable)('how many attempts a door takes', () => {
     }
   })
 })
+
+describe.runIf(postgresAvailable)('the language a browser opens in', () => {
+  const localeCookieOf = (response: Response) =>
+    response.headers.getSetCookie().find((cookie) => cookie.startsWith('qualy.locale='))
+  const preferred = () =>
+    Effect.runPromise(
+      runSql(sql`select preferred_locale from users where id = ${userId}`).pipe(
+        Effect.map(
+          (result) =>
+            (result as unknown as { rows: { preferred_locale: string | null }[] }).rows[0]!
+              .preferred_locale,
+        ),
+        Effect.provide(probeInfra()),
+      ),
+    )
+  const setPreferred = (locale: string | null) =>
+    Effect.runPromise(
+      runSql(sql`update users set preferred_locale = ${locale} where id = ${userId}`).pipe(
+        Effect.provide(probeInfra()),
+      ),
+    )
+  const choose = (locale: string, cookie?: string) =>
+    fetch(`${base}/auth/locale`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json', ...(cookie ? { cookie } : {}) },
+      body: JSON.stringify({ locale }),
+    })
+
+  beforeEach(async () => {
+    if (!postgresAvailable) return
+    await setPreferred(null)
+  })
+
+  it('keeps a choice made before signing in for this browser alone', async () => {
+    const response = await choose('en-US')
+    expect(response.status).toBe(200)
+    const cookie = localeCookieOf(response)
+    expect(cookie?.split(';')[0]).toBe('qualy.locale=en-US')
+    // the page reads it before any of its own scripts has loaded
+    expect(cookie).not.toMatch(/HttpOnly/i)
+    expect(cookie).toMatch(/SameSite=Lax/)
+    expect(await preferred()).toBeNull()
+  })
+
+  it('keeps a signed-in choice for the account too', async () => {
+    const session = cookieFrom(await login({ email: SEEDED_EMAILS.ada, password }))
+    const response = await choose('en-US', session)
+    expect(response.status).toBe(200)
+    expect(localeCookieOf(response)?.split(';')[0]).toBe('qualy.locale=en-US')
+    expect(await preferred()).toBe('en-US')
+  })
+
+  it("opens a browser nobody chose in in the account's language, and leaves a chosen one alone", async () => {
+    // an account that never chose writes nothing
+    expect(localeCookieOf(await login({ email: SEEDED_EMAILS.ada, password }))).toBeUndefined()
+    await setPreferred('en-US')
+    const fresh = await login({ email: SEEDED_EMAILS.ada, password })
+    expect(fresh.status).toBe(200)
+    expect(localeCookieOf(fresh)?.split(';')[0]).toBe('qualy.locale=en-US')
+    // somebody chose in this browser: the choice stands, whoever signs in
+    const chosen = await fetch(`${base}/auth/local/password/login`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: 'qualy.locale=zh-CN' },
+      body: JSON.stringify({ email: SEEDED_EMAILS.ada, password }),
+    })
+    expect(chosen.status).toBe(200)
+    expect(localeCookieOf(chosen)).toBeUndefined()
+    expect(await preferred()).toBe('en-US')
+  })
+
+  it('refuses a language the product does not speak', async () => {
+    expect((await choose('fr-FR')).status).toBe(400)
+  })
+})

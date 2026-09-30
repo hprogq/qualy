@@ -21,7 +21,8 @@
     "./route-fallback": "./src/route-fallback.ts",
     "./schema-refusal": "./src/schema-refusal.ts",
     "./storable-text": "./src/storable-text.ts",
-    "./unavailable": "./src/unavailable.ts"
+    "./unavailable": "./src/unavailable.ts",
+    "./locale": "./src/locale.ts"
   },
   "dependencies": {
     "@effect/platform-node": "catalog:",

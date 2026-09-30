@@ -5,7 +5,6 @@ import type { Principal } from '@qualy/rbac-contract'
 import { withDatabase, type Orm } from '@qualy/plugin-database/server'
 import type { Secrets } from '@qualy/plugin-secrets/plugin'
 import { HttpApiBuilder } from 'effect/http-api'
-import { HttpServerRequest } from 'effect/http'
 import {
   DEFAULT_PAGE_SIZE,
   encodeQueryCursor,
@@ -47,7 +46,9 @@ import { loginIconsLayer } from './icons.ts'
 import { makeOutbound } from './outbound.ts'
 import { AuthOutbound } from '@qualy/auth-contract/outbound'
 import { EmailFlows, emailFlowsLayer } from './email-flows.ts'
-import { mailLocaleOf } from './mail-copy.ts'
+import { mailLocaleFor } from './mail-copy.ts'
+import { recipientLocaleOf } from './locale.ts'
+import { requestLocale } from '@qualy/api-kit/locale'
 
 // auth as an Effect layer.
 //
@@ -284,13 +285,20 @@ export const sessionApiHandlers = HttpApiBuilder.group(local, 'auth', (handlers)
       }),
     )
     .handle(
+      'putLocale',
+      Effect.fn('auth.putLocale.handler')(function* ({ payload }) {
+        const signIn = yield* SignIn
+        yield* signIn.chooseLocale((yield* CurrentViewer).principal, payload.locale)
+        return { locale: payload.locale }
+      }),
+    )
+    .handle(
       'createPasswordReset',
       Effect.fn('auth.createPasswordReset.handler')(function* ({ payload }) {
         const flows = yield* EmailFlows
-        const request = yield* HttpServerRequest.HttpServerRequest
         yield* flows.requestReset({
           email: payload.email,
-          locale: mailLocaleOf(request.headers['accept-language']),
+          locale: mailLocaleFor(yield* requestLocale),
           ...(payload.captcha === undefined ? {} : { captcha: payload.captcha }),
         })
         return { ok: true as const }
@@ -331,11 +339,10 @@ export const sessionApiHandlers = HttpApiBuilder.group(local, 'auth', (handlers)
       'createEmailChangeRedemption',
       Effect.fn('auth.createEmailChangeRedemption.handler')(function* ({ payload }) {
         const flows = yield* EmailFlows
-        const request = yield* HttpServerRequest.HttpServerRequest
         // the session the link is followed in, if it is one, is the one that stays
         const viewer = (yield* CurrentViewer).principal
         yield* flows.redeemChange(payload.token, {
-          locale: mailLocaleOf(request.headers['accept-language']),
+          locale: mailLocaleFor(yield* requestLocale),
           ...(viewer === undefined ? {} : { viewer }),
         })
         return { ok: true as const }
@@ -394,10 +401,9 @@ export const selfApiHandlers = HttpApiBuilder.group(local, 'self', (handlers) =>
       'createSelfEmailVerification',
       Effect.fn('iam.createSelfEmailVerification.handler')(function* () {
         const flows = yield* EmailFlows
-        const request = yield* HttpServerRequest.HttpServerRequest
         return yield* flows.requestVerification(
           yield* CurrentUser,
-          mailLocaleOf(request.headers['accept-language']),
+          mailLocaleFor(yield* requestLocale),
         )
       }),
     )
@@ -405,10 +411,9 @@ export const selfApiHandlers = HttpApiBuilder.group(local, 'self', (handlers) =>
       'createSelfEmailChange',
       Effect.fn('iam.createSelfEmailChange.handler')(function* ({ payload }) {
         const flows = yield* EmailFlows
-        const request = yield* HttpServerRequest.HttpServerRequest
         yield* flows.requestChange(yield* CurrentUser, {
           newEmail: payload.newEmail,
-          locale: mailLocaleOf(request.headers['accept-language']),
+          locale: mailLocaleFor(yield* requestLocale),
         })
         return { ok: true as const }
       }),
@@ -453,10 +458,9 @@ export const selfApiHandlers = HttpApiBuilder.group(local, 'self', (handlers) =>
       'createSelfReauthenticationCode',
       Effect.fn('iam.createSelfReauthenticationCode.handler')(function* () {
         const flows = yield* EmailFlows
-        const request = yield* HttpServerRequest.HttpServerRequest
         yield* flows.sendReauthenticationCode(
           yield* CurrentUser,
-          mailLocaleOf(request.headers['accept-language']),
+          mailLocaleFor(yield* requestLocale),
         )
         return { ok: true as const }
       }),
@@ -1000,10 +1004,12 @@ export const identityApiHandlers = HttpApiBuilder.group(local, 'identity', (hand
         // their own would tell it
         if (changed.addressLeft !== undefined) {
           const flows = yield* EmailFlows
-          const request = yield* HttpServerRequest.HttpServerRequest
+          // the mail is theirs, so it is in their language, not the administrator's
           yield* flows.tellAddressLeft(principal.tenantId, {
             ...changed.addressLeft,
-            locale: mailLocaleOf(request.headers['accept-language']),
+            locale: mailLocaleFor(
+              yield* recipientLocaleOf(principal.tenantId, params.userId).pipe(Effect.orDie),
+            ),
           })
         }
         return { ok: true as const }
@@ -1053,23 +1059,21 @@ export const identityApiHandlers = HttpApiBuilder.group(local, 'identity', (hand
         const iam = yield* Iam
         const flows = yield* EmailFlows
         const principal = yield* CurrentUser
-        const request = yield* HttpServerRequest.HttpServerRequest
         // One's own address, reached through one's own record, is proven the
         // way one proves it from one's own page: the mail says the person
         // asked for it, which is what happened, and not that an
         // administrator did.
         if (params.userId === principal.userId) {
-          return yield* flows.requestVerification(
-            principal,
-            mailLocaleOf(request.headers['accept-language']),
-          )
+          return yield* flows.requestVerification(principal, mailLocaleFor(yield* requestLocale))
         }
         // the address is the account's, so it is asked of whoever may
         // administer the account, inside the lock the link is written under
         return yield* flows.requestVerificationFor(
           principal.tenantId,
           params.userId,
-          mailLocaleOf(request.headers['accept-language']),
+          mailLocaleFor(
+            yield* recipientLocaleOf(principal.tenantId, params.userId).pipe(Effect.orDie),
+          ),
           iam.users.accountGuard(principal.tenantId, params.userId, principal),
         )
       }),

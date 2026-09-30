@@ -77,6 +77,21 @@ export const QUALY_REQUEST_ID_HEADER = 'x-qualy-request-id'
  */
 export const QUALY_ACTIVITY_HEADER = 'x-qualy-activity'
 
+/**
+ * The language the page a request came from is written in, sent by the
+ * application's own page on every api request. A page has one language from
+ * the moment it opens, so this is what an answer the reader will see in that
+ * page is rendered in - not whatever the browser's settings say this minute.
+ */
+export const QUALY_LOCALE_HEADER = 'x-qualy-locale'
+
+/**
+ * The language this browser was told to use, written only when somebody chose
+ * one. Readable by the page (it is how a new page picks its language before
+ * any script of the application has run), so it is never httpOnly.
+ */
+export const QUALY_LOCALE_COOKIE = 'qualy.locale'
+
 // --- pagination ---
 
 // Keyset pagination, in the kit because the alternative is what every list

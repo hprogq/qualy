@@ -123,6 +123,10 @@ export const User = defineEntity({
     // it just cannot be trusted to recover an account.
     emailVerifiedAt: p.datetime().nullable(),
     displayName: p.string().length(100),
+    // The language the person chose while signed in: what mail to them is
+    // written in, and what a device they sign in on for the first time
+    // opens in. Null until they choose, which reads as the product's own.
+    preferredLocale: p.string().length(16).nullable(),
     // Nullable for DELETED rows only (the check below): a soft-deleted user
     // must not pin a user type or an org unit forever, so those deletions
     // detach the reference instead of failing on it. A live user always has
@@ -150,6 +154,10 @@ export const User = defineEntity({
       expression: `deleted_at is not null or (user_type_id is not null and primary_org_node_id is not null)`,
     },
     { name: 'chk_users_email_normalized', expression: `email = lower(btrim(email))` },
+    {
+      name: 'chk_users_preferred_locale_tag',
+      expression: `preferred_locale ~ '^[a-z]{2,3}(-[A-Z][A-Za-z0-9]{1,7})?$'`,
+    },
   ],
   indexes: [
     {

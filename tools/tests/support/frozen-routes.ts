@@ -12,6 +12,7 @@
 
 export const FROZEN_ROUTES = [
   'DELETE /auth/session',
+  'PUT /auth/locale',
   'POST /auth/password-resets',
   'POST /auth/password-resets/inspections',
   'POST /auth/password-resets/assessments',

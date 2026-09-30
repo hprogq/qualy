@@ -47,6 +47,9 @@ import { CORE_GRANT_PREFIX, makeReauthentication, sessionGrantRef } from './reau
 export { AuthConfig }
 import { sessionCookieName, TooManyAttempts } from '@qualy/auth-contract/session'
 import { clearSessionCookie, flowCookieNameFor, setSessionCookie } from './session-cookie.ts'
+import { preferredLocaleOf, setLocaleCookie, writePreferredLocale } from './locale.ts'
+import { chosenLocaleOf } from '@qualy/api-kit/locale'
+import type { SupportedLocale } from '@qualy/i18n-contract'
 import { sameOriginPath } from './same-origin.ts'
 import { iconOf } from './login-icons.ts'
 
@@ -1324,6 +1327,15 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
         if (config.sessionCookieName !== sessionCookieName) {
           yield* clearSessionCookie(sessionCookieName, config.secureCookies)
         }
+        // a browser nobody chose a language in opens in the person's own from
+        // now on; one somebody did choose in is theirs, and keeps it
+        const request = yield* HttpServerRequest.HttpServerRequest
+        if (chosenLocaleOf(request.cookies) === undefined) {
+          const preferred = yield* preferredLocaleOf(input.tenantId, input.userId).pipe(
+            Effect.orDie,
+          )
+          if (preferred !== undefined) yield* setLocaleCookie(preferred, config.secureCookies)
+        }
         return user
       }),
     ),
@@ -1398,6 +1410,24 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
      * asking for one optionally would silently revoke nothing, which is what
      * the first version of this did.
      */
+    /**
+     * The language this browser is to open pages in, and, for somebody signed
+     * in, the one their account is written to in.
+     */
+    chooseLocale: bound(
+      Effect.fn('Auth.signIn.chooseLocale')(function* (
+        principal: { readonly tenantId: string; readonly userId: string } | undefined,
+        locale: SupportedLocale,
+      ) {
+        if (principal !== undefined) {
+          yield* writePreferredLocale(principal.tenantId, principal.userId, locale).pipe(
+            Effect.orDie,
+          )
+        }
+        yield* setLocaleCookie(locale, config.secureCookies)
+      }),
+    ),
+
     endSession: bound(
       Effect.fn('Auth.signIn.endSession')(function* () {
         const request = yield* HttpServerRequest.HttpServerRequest
