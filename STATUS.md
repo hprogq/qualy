@@ -20978,7 +20978,9 @@ job 后通过。阶段 3、4 在 worktree 上完成,拆成三个功能提交与�
   resume-highlights 同步。
 - **手机 Lighthouse 对照**(补上阶段 1 验收的最后一项,E2E 栈上两组 arm64 镜像先后跑,各三次取中位数):LCP login
   3664 → 3120、batches 4226 → 3704、my-entries 5125 → 4468、org-tree 4072 → 3558 ms,整页传输各少 106–128 KB;
-  FCP 两组都双峰分布,不作比较。表见 ADR 0011 文末。
+  FCP 两组都双峰分布,不作比较。真人时间轴(应用节流 Slow 4G + CPU 4×,学生打开批次列表,各 5 轮中位数):React 首次
+  提交 3048 → 2590 ms,页面内容出现 7582 → 6131 ms,LCP 7612 → 6152 ms,首帧与 CLS 不变。本机测量,生产未测;表见
+  ADR 0011 文末。
 - **未做**:`qualyChunkGraph` 的结果检查没有进门禁。
 - 验收(`0bd771af1`,即三个功能提交之后,本机):`pnpm typecheck`、`pnpm lint`、`pnpm lint:types`、`pnpm format:check`
   exit 0;`pnpm test` 409 文件 3071 条通过(28 跳过);`pnpm test:browser` 122 文件 1584 条全过;`pnpm build` 后
