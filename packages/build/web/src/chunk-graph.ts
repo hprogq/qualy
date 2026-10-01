@@ -1,4 +1,14 @@
 import type { Plugin } from 'vite'
+import { brotliCompressSync } from 'node:zlib'
+
+export interface ScreenBudget {
+  readonly name: string
+  readonly surfaces: readonly string[]
+  readonly requests: number
+  readonly brotli: number
+  readonly small1: number
+  readonly small2: number
+}
 
 // Two things about the shape of a build that nothing sees until production:
 // chunks that import one another, and what the first screen has to download.
@@ -89,7 +99,12 @@ const kib = (bytes: number) => `${(bytes / 1024).toFixed(0)} KiB`
  * The vite plugin that fails a build whose chunks import one another, or
  * whose first screen weighs more than `bootBudget` bytes before compression.
  */
-export const qualyChunkGraph = (options: { root: string; bootBudget: number }): Plugin => ({
+export const qualyChunkGraph = (options: {
+  root: string
+  bootBudget: number
+  entryBrotliBudget?: number
+  screens?: readonly ScreenBudget[]
+}): Plugin => ({
   name: 'qualy-chunk-graph',
   apply: 'build',
   // after vite's own plugins have finished writing the chunks
@@ -123,6 +138,58 @@ export const qualyChunkGraph = (options: { root: string; bootBudget: number }): 
       return named.join(', ') + (more > 0 ? `, and ${String(more)} more` : '')
     }
     const refusals: string[] = []
+    if (options.entryBrotliBudget !== undefined || options.screens !== undefined) {
+      const compressed = new Map<string, number>()
+      for (const output of Object.values(bundle)) {
+        if (output.type !== 'chunk') continue
+        compressed.set(output.fileName, brotliCompressSync(output.code).length)
+        if (!output.isEntry || options.entryBrotliBudget === undefined) continue
+        const size = compressed.get(output.fileName)!
+        const contributors = Object.entries(output.modules)
+          .sort((a, b) => b[1].renderedLength - a[1].renderedLength)
+          .slice(0, 10)
+          .map(
+            ([id, value]) =>
+              `${readable(id, options.root)}: ${value.renderedLength} rendered bytes`,
+          )
+          .join('\n    ')
+        console.info(
+          `entry ${output.fileName}: ${size} Brotli bytes; largest contributors:\n    ${contributors}`,
+        )
+        if (size > options.entryBrotliBudget)
+          refusals.push(
+            `entry ${output.fileName} has ${size} Brotli bytes, over ${options.entryBrotliBudget}; largest contributors:\n    ${contributors}`,
+          )
+      }
+      if (options.screens?.length) {
+        const asset = bundle['.qualy-browser-surfaces.json']
+        if (!asset || asset.type !== 'asset')
+          this.error('screen budgets require the private browser surface map')
+        const surfaces = JSON.parse(String(asset.source)) as Record<string, { chunk?: string }>
+        for (const screen of options.screens) {
+          const roots = screen.surfaces.map((surface) => {
+            const chunk = surfaces[surface]?.chunk
+            if (!chunk) this.error(`budget ${screen.name}: missing surface ${surface}`)
+            return chunk
+          })
+          const closure = [...staticClosure(imports, [...entries, ...roots])]
+          const br = closure.reduce((sum, file) => sum + compressed.get(file)!, 0)
+          const small1 = closure.filter((file) => bytes.get(file)! < 1024).length
+          const small2 = closure.filter((file) => bytes.get(file)! < 2048).length
+          console.info(
+            `screen ${screen.name}: ${closure.length} JS requests, ${br} Brotli bytes, <1/<2 KiB ${small1}/${small2}`,
+          )
+          if (closure.length > screen.requests || br > screen.brotli)
+            refusals.push(
+              `screen ${screen.name}: ${closure.length}/${screen.requests} JS requests, ${br}/${screen.brotli} Brotli bytes`,
+            )
+          if (small1 > screen.small1 + 4 || small2 > screen.small2 + 4)
+            this.warn(
+              `screen ${screen.name}: small chunks increased beyond +4; inspect ${closure.filter((file) => bytes.get(file)! < 2048).join(', ')}`,
+            )
+        }
+      }
+    }
 
     const rings = chunkRings(imports)
     if (rings.length > 0) {

@@ -13,18 +13,12 @@ import {
   qualyShellStyle,
 } from '@qualy/web-build/vite'
 import { qualyMessages } from '@qualy/message-build/vite'
+import { entryBrotliBudget, messagePoolBytes, screenBudgets } from './performance-budget.ts'
 
 const stylexUnplugin =
   stylexUnpluginModule.default as unknown as (typeof stylexUnpluginModule)['default']['default']
 
 const repoRoot = fileURLToPath(new URL('../..', import.meta.url))
-
-// The size under which a pool of shared messages joins its nearest neighbour.
-// Measured on the four first screens (docs/adr/0011): at 0 every combination
-// of pages was its own chunk and each screen asked for 15-30 more files than
-// the Lingui build; at 64 KiB each asks for fewer, and still carries 53-68 KB
-// less than it (Brotli).
-const MESSAGE_POOL_BYTES = 64 * 1024
 
 export default defineConfig(({ mode }) => ({
   // This build reads no `.env`, and says so.
@@ -86,7 +80,12 @@ export default defineConfig(({ mode }) => ({
     // screen weighed 1.4 MiB before compression when this was set; 2 MiB
     // leaves room to grow and none for a library a page should load itself
     // (the formula editor's alone is 2.7 MiB).
-    qualyChunkGraph({ root: repoRoot, bootBudget: 2 * 1024 * 1024 }),
+    qualyChunkGraph({
+      root: repoRoot,
+      bootBudget: 2 * 1024 * 1024,
+      entryBrotliBudget,
+      screens: screenBudgets,
+    }),
   ],
   resolve: {
     // one react instance for the host and every plugin chunk
@@ -151,7 +150,7 @@ export default defineConfig(({ mode }) => ({
               priority: 1,
               minShareCount: 2,
               entriesAware: true,
-              entriesAwareMergeThreshold: MESSAGE_POOL_BYTES,
+              entriesAwareMergeThreshold: messagePoolBytes,
               includeDependenciesRecursively: false,
             },
             // The dust the automatic splitter leaves: an icon re-export, a

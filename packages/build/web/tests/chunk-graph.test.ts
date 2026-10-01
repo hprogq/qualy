@@ -60,8 +60,12 @@ const chunk = (
 })
 
 /** what the check refused the bundle with, or nothing */
-const run = (bundle: Record<string, ReturnType<typeof chunk>>, bootBudget: number) => {
-  const plugin = qualyChunkGraph({ root: '/repo', bootBudget })
+const run = (
+  bundle: Record<string, unknown>,
+  bootBudget: number,
+  options: Partial<Parameters<typeof qualyChunkGraph>[0]> = {},
+) => {
+  const plugin = qualyChunkGraph({ root: '/repo', bootBudget, ...options })
   const generate = plugin.generateBundle as (
     this: { error: (message: string) => never },
     options: unknown,
@@ -131,4 +135,35 @@ describe('the build check', () => {
     expect(refused).toContain('monaco-editor')
     expect(run(bundle, 1000)).toBeUndefined()
   })
+})
+
+it('rejects entry compression growth independently of the boot closure', () => {
+  expect(
+    run({ e: chunk('e.js', [], ['/repo/main.ts'], 1000, true) }, 2000, { entryBrotliBudget: 1 }),
+  ).toMatch(/entry e.js.*Brotli/)
+})
+
+it('rejects extra requests even when bytes remain inside the budget', () => {
+  const bundle = {
+    e: chunk('e.js', ['page.js'], ['/repo/main.ts'], 10, true),
+    page: chunk('page.js', [], ['/repo/page.ts'], 10),
+    '.qualy-browser-surfaces.json': {
+      type: 'asset',
+      source: JSON.stringify({ 'page:example': { chunk: 'page.js' } }),
+    },
+  }
+  expect(
+    run(bundle, 2000, {
+      screens: [
+        {
+          name: 'example',
+          surfaces: ['page:example'],
+          requests: 1,
+          brotli: 1000,
+          small1: 2,
+          small2: 2,
+        },
+      ],
+    }),
+  ).toMatch(/screen example: 2\/1 JS requests/)
 })

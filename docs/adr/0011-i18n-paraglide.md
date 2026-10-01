@@ -174,3 +174,80 @@ chunk 环继续零容忍、boot 原始 2 MiB 上限与现有隔离检查保留�
 
 本轮测试涉及 Effect 的依据实际阅读: `repos/effect/packages/effect/src/Effect.ts`(succeed/fail/gen/provideService/runPromise)
 与 `repos/effect/packages/effect/src/http-api/HttpApiClient.ts`(make);生产 Effect 逻辑未改动。
+
+## 迁移后收敛与门禁落地(2026-10-01 晚)
+
+- 删除插件 `client/i18n.ts`、`Ui.i18n`/`I18nCatalogs`、启动 error registry 与 testkit 注入。
+  没有组件 companion `*.errors.ts`、`defineApiErrorPresenter` 或 `useI18n(presenter)`。
+  `useLocale()` 单独读取固定的 document locale。`useApiMutation` 是平台策略边界:会话恢复与重试沿用 API runtime,
+  release refusal 沿用 transport 的刷新协调器,不重复 toast;权限、服务不可用、网络、默认限流统一 toast,
+  BAD_REQUEST/origin/route failure 记录诊断。API_ROUTE_NOT_FOUND 不能单凭 404 推断 release mismatch,
+  因此记录诊断与提示,不擅自重载。`onRateLimited` 是登录/重置流程显式选择的冷却回调。
+  Mutation 的 `onError` 以及每次 `mutate`/`mutateAsync` 的回调只接收 `UseCaseApiFailure<E>`;
+  只有平台错误的 endpoint 禁止声明业务 `onError`,有用例错误的 endpoint 必须声明。
+  `mutation.error` 与 `onSettled` 保留真实 E,供本地清理,不伪造成功状态;延迟审核在平台失败后恢复暂存决定。
+  调用处直接更新字段、反馈、验证码或重认证状态,没有逐页平台判断。
+  多成员联合用 `assertNever(error)` 检查;五个单一 TaggedError 类由于 TS 不收窄整个对象,
+  只检查 `assertNever(error._tag)`,新增遗漏成员仍触发编译错误,不用 `as never` 掩盖。
+  现有字段归属、录入拒绝理由、评分影响数量等真实共享语义仍用原有 helper。
+  103 处 `useApiMutation` 保留 Effect 的 E,包含条件请求、纯 API 顺序工作流与延迟审核决定。
+  目录上传、登录图标上传、公式发布本地校验与顺序保存、行政附件上传保留 Promise mutation 边界;
+  预期会 reject 的上传不包进 `Effect.promise`。LocalFinding 是同文件普通 Error,首先由 instanceof 处理。
+  Query 继续按 resource state 呈现,平台格式化函数明确命名 `formatPlatformFailure`。
+  平台未知错误只展示本地化 unexpected,不显示 backend English fallback。
+- 登录 redirect failure 归 `LoginDriver.failures: Record<code, Text>`。仅实际提供的 driver 将文案投影进
+  `listLoginMethods.failureMessages`,handler 按 `requestLocale` 渲染,LoginPage 从 DTO 展示。
+  auth 不枚举外部 driver,浏览器不导入全产品错误表;重复 failure code、平台码覆盖、LoginPage 已处理的 core code 与 malformed Text 在注册时拒绝。
+  Local login 的 CAPTCHA_REQUIRED 按 typed `_tag` 打开 challenge,不会先转成错误字符串。
+- 错误码冲突由实际 API assembly 的 endpoint/middleware schema 校验,不再通过导入浏览器翻译模块判断。
+  校验允许同一 TaggedError class 跨插件复用,同码不同声明拒绝;Effect rc.118 内部导出的适配证据见 notes/effect.md。
+- 编译器在 ICU 解析前哈希 raw JSON、源码与实际工具链包 identity;检查 stamp 中全部输出的存在与大小。
+  dev 的 locale-modules 只编译一次,server 复用;缺失输出重新生成。拒绝非 object catalog、非 string value、
+  number/date/select 的冲突;plain 与一个 specialized kind 可兼容。watcher 75ms coalesce,编译中变化再跑一次,监听 unlink。
+- release messages 跟 active selection;仓库 typecheck/Node/browser suites 显式 all,仍检查 disabled source packages。
+  namespace 算法归单一零依赖子路径。保留当前 plain `string | number` 与已验证的 ICU 兼容限制,不开 experimental flags。
+- 每个拥有 messages 的包提交独立 `project.inlang/settings.json`,单一相对 pathPattern;IDE ICU 1.1.0、
+  matcher 2.2.9 固定。`plugin:add` 初始化,仓库 gate 查覆盖与版本。生产仍用临时 merged project,不读取这些 IDE 配置。
+  根目录 merged project 会碰撞本地 key 且多 path export 会破坏 ownership,不采用。
+  依据:[Sherlock quick start](https://inlang.com/m/r7kp499g/app-inlang-ideExtension/quick-start)、
+  [ICU1 plugin](https://inlang.com/m/p7c8m1d2/plugin-inlang-icu-messageformat-1)、
+  [pathPattern resolution](https://inlang.com/docs/install-plugin)。
+- TextSchema 验证完整 reference、input 与嵌套 Text,拒绝循环。新增 explicit-table `createTextRenderer`,不同 renderer
+  与嵌套 render 互不影响。既有服务保留 Node startup 安装的默认表;本次不为迁移全部服务再增一轮 Effect DI 改造。
+  UI collection token/schema 拆分、contract 改名同样不纳入本轮,避免扩大 API 变更。
+- 已无 Lingui runtime/code imports,移除残余 catalog/root dependency 与 lockfile 闭包;golden fixture 数据保留。
+
+实际扫描命令:`node tools/quality/measure-web-chunks.ts --sweep --output=/tmp/qualy-pooling-central-final.json`。
+与上节相同 JS 静态闭包口径,login 用 blank shell 与 local driver,my-entries 用 workspace shell;Brotli q11 每文件求和。
+下表每格为 **请求数 / Brotli KiB**:
+
+| pool KiB | login      | batches     | my-entries  | org-tree   | 全部 JS chunks |
+| -------- | ---------- | ----------- | ----------- | ---------- | -------------- |
+| 16       | 68 / 302.0 | 103 / 353.9 | 136 / 420.9 | 92 / 332.3 | 350            |
+| 32       | 68 / 304.2 | 102 / 356.6 | 132 / 421.0 | 92 / 334.5 | 339            |
+| 48       | 67 / 305.4 | 102 / 361.0 | 131 / 423.1 | 92 / 337.0 | 334            |
+| 64       | 67 / 310.3 | 101 / 365.2 | 130 / 424.4 | 92 / 337.0 | 330            |
+| 96       | 67 / 310.4 | 101 / 365.3 | 130 / 427.2 | 92 / 337.1 | 329            |
+
+选择 **48 KiB**:相对 32 KiB,login/entry 各少 1 请求;相对 64 KiB,batches/entry 各多 1 请求,
+但 login 少约 4.9 KiB、batches 少约 4.2 KiB、entry 少约 1.3 KiB。org 的几十 bytes 差异不作收益。
+96 KiB 没有进一步减少四页请求,录入下载更大。48 KiB 是当前图上的折中,不是所有页面同时最优。
+扫描不声称 LCP 改善,也不把一张图的结果外推到所有页面。
+最终 48 KiB source 复测:67/102/131/92 请求,312768/369636/433292/345062 Brotli bytes,
+<1 KiB 39/52/72/55,<2 KiB 45/66/87/61;334 chunks。入口 Brotli 57129 bytes(55.8 KiB)。
+生成的 release/hash 字符会带来几十 bytes 差异,正常构建可能不与扫描逐 byte 一致。
+
+`apps/web/performance-budget.ts` 与 qualyChunkGraph **已启用**:请求上限72/108/138/97,
+Brotli 上限340/400/470/375 KiB,按 baseline +5%(至少5 requests)与 +10%(向上5 KiB取整)。
+入口独立 **62 KiB**(+10% 向上1 KiB取整),构建报告 top10 rendered module contributors。
+小 chunk 各增长超过4个告警,环与原始boot 2MiB继续硬卡;LCP/FCP仍不作逐提交硬门禁。
+预算不随本次测量自动抬升;越界须检查图,合法新功能带测量与预算修改一起 review。
+
+入口主要贡献为 react-dom-client(453202 rendered bytes);剩余全量 surface/lifecycle table为7613 rendered bytes,
+不再包含领域错误文案。保留静态可分析 lazy imports 与 Vite preload,本轮不另加 registry waterfall,
+也不改成服务器下发 hashed URL。是否进一步拆表应另做有 preload/release recovery 验收的实验。
+
+本轮 Effect 代码实际依据:`repos/effect/packages/effect/src/Effect.ts`(gen/map/asVoid/Error/promise/tryPromise),
+`repos/effect/packages/effect/src/http-api/HttpApiClient.ts`(错误解码),
+`repos/effect/packages/effect/src/http-api/HttpApiEndpoint.ts` 与 `repos/effect/packages/effect/src/SchemaAST.ts`
+(装配错误 schema 与类 identity)。pipeline schema 也参与保留错误码检查,防止没有 endpoint 声明时被插件抢占。

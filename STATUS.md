@@ -21092,3 +21092,32 @@ job 后通过。阶段 3、4 在 worktree 上完成,拆成三个功能提交与�
   179.82s,exit 0;跳过的是三个真实 COS 集成文件,未提供外部桶配置。
 - 下一步:审阅本地提交;common error ownership 从 i18n-contract 移出、Text renderer 全服务 DI 与 UI token/schema
   拆分保留为后续独立变化。本轮不推送、不部署。
+
+## 按最终分包测量启用回归门禁(2026-10-02)
+
+- `node tools/quality/measure-web-chunks.ts --sweep --output=/tmp/qualy-pooling-central-final.json`
+  真实扫描16/32/48/64/96 KiB,五次 build 全部 exit 0。静态 JS 闭包按入口、页面、layout与登录driver去重,
+  小 chunk 按 raw bytes,每文件 Brotli q11 后求和;不声称整页请求数或 LCP。
+  48 KiB 折中:相对32 login/entry各少1请求,相对64 batches/entry各多1请求,但 login/batches/entry
+  各少约4.9/4.2/1.3 KiB;96没有进一步减少四页请求且entry更重。五档表与取舍写入 ADR 0011。
+- 最终48 KiB扫描:login/batches/my-entries/org-tree 为67/102/131/92请求,
+  Brotli312768/369636/433292/345062 bytes(305.4/361.0/423.1/337.0 KiB),334 JS chunks;
+  <1 KiB39/52/72/55,<2 KiB45/66/87/61。入口57129 Brotli bytes(55.8 KiB),剩余virtual表7613 rendered bytes。
+- `apps/web/performance-budget.ts` 已接入实际 Vite gate:请求上限72/108/138/97,Brotli340/400/470/375 KiB;
+  baseline约+5%(至少5请求)、+10%(向上5 KiB取整)。入口独立62 KiB,报告top10 rendered贡献;
+  小chunk数量各比基线多4以上告警,环/boot原始2 MiB维持硬卡。不自动抬基线,合法增长须带新测量审阅。
+  保留静态lazy loader与Vite preload,不开per-locale experimental build,不扩展server下发asset URL实验。
+- 验收命令与真实输出摘录:
+  - `pnpm build` → `built in 18.14s; installed web release r_nzpEJylwS5Ef7SuR5HLHIw (349 assets)`,exit 0。
+    entry与四页Brotli/请求、小chunk/环/boot检查通过;这只写本地验收release store,没有部署。
+  - `node tools/quality/check-staged-web.ts` → `349 assets, production, protocol 2`,exit 0。
+  - `node tools/quality/check-csp-build.ts` → `no code from strings in the bundle`,exit 0。
+  - `node tools/quality/check-public-web.ts` → `no uninstalled plugin left a byte; 2 plugin(s) off, nothing of any of them is in the artifact; discloses nothing it should not`,exit 0。
+  - `pnpm test` 最终 → `414 passed | 3 skipped`文件,`3099 passed | 27 skipped`测试,exit 0,包括分包9条回归。
+  - `pnpm test:browser --maxWorkers=2` → `124 passed`文件,`1593 passed`测试,exit 0。
+  - 最终 `pnpm typecheck`、`pnpm lint`、`pnpm lint:types` exit 0;真实log在/tmp/qualy-*-final-clean.log。
+  - `./node_modules/.bin/oxfmt --check . '!.codex/**' '!AGENTS.md' '!project.inlang/**'`
+    → `All matched files use the correct format`,2127文件,exit 0;`git diff --check` exit 0。
+- 本轮未重测手机Lighthouse/真人时间轴,未构建Docker镜像或跑镜像E2E;当前门禁基于构建图,旧LCP对照仍属历史测量。
+- 下一步:审阅本地三个提交;后续合法功能越界时先检查依赖图再讨论预算。全部未推送、未部署;
+  用户的CLAUDE→AGENTS改名、.codex与根project.inlang保持未暂存,未修改。
