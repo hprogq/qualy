@@ -6,7 +6,7 @@ CodegenRegistry + Vite adapter),并把迁移执行下沉到 database 插件。�
 
 ## 后续改判:@qualy/tsconfig 建了(2026-09-14)
 
-原判是「不建共享 tsconfig 包」,CLAUDE.md 里那条还指向本文的缓建表——但表里其实没有这一行,
+原判是「不建共享 tsconfig 包」,AGENTS.md 里那条还指向本文的缓建表——但表里其实没有这一行,
 引用一直是悬空的。改判的依据是数出来的:浏览器侧 19 份 tsconfig 里,
 
 ```json
@@ -137,7 +137,7 @@ pnpm 安装时警告两组 cyclic workspace dependencies。实查(Tarjan SCC,全
 
 逐边核对,**全部是活边且各有领域理由**:auth ↔ org(站位不变量判定单源在 auth 的
 placementLegal、org 改类型前要问 usersBlockingOrgType;反向是 auth 的实体闭包并入
-org 的 Tenant——CLAUDE.md 明文的跨插件取表方式);auth ↔ ui-registry(manifest 是按
+org 的 Tenant——AGENTS.md 明文的跨插件取表方式);auth ↔ ui-registry(manifest 是按
 principal 的授权投影,要 session-contract;auth 用 Ui.page 声明页面);web-runtime ↔
 ui-registry(统一 API runtime 拉 manifest 契约;页面组件用 useApi)。这是「双核心
 互相纠缠」的架构形状,不是失误。
@@ -157,7 +157,7 @@ ui-registry(统一 API runtime 拉 manifest 契约;页面组件用 useApi)。这
 
 **为什么接**:CI 有 typecheck、测试与几十个架构门禁,但没有格式检查,也没有通用 lint;源码里散着约 35 条 `eslint-disable` 注释,没有执行器,是死文本。oxlint 补的正是中间这层(React hooks 依赖、可疑写法、未用代码),不替代任何既有门禁。不引 ESLint(慢,且 typescript-eslint 依赖本仓库已没有的 JS 编译器 API);不换 Biome(另一套类型推断,现有 disable 注释要全改写)。
 
-**oxfmt 取代 Prettier**:`oxfmt --migrate=prettier` 生成的配置与原 `.prettierrc`/`.prettierignore` 一致,并带上 `sortPackageJson: false`。首轮重排约 300 个文件(Prettier 本身积累的漂移 + 长联合类型改前导 `|` 的风格差异),单独一个 commit 并登记进 `.git-blame-ignore-revs`。实测:`directory-import/src/server/service.ts` 的链式调用从 Prettier 形态出发要两轮才收敛,之后稳定;`docs/aegis-official-docs.md` 的不幂等是 Prettier 同一套 Markdown 打印逻辑带来的,与 `docs/orpc-v2-docs.md` 一起作为上游资料忽略。**Prettier 仍在 catalog**:`apps/sandbox-authoring` 的公式编辑器语言服务在运行时用它格式化文档,不是遗留。
+**oxfmt 取代 Prettier**:`oxfmt --migrate=prettier` 生成的配置与原 `.prettierrc`/`.prettierignore` 一致,并带上 `sortPackageJson: false`。首轮重排约 300 个文件(Prettier 本身积累的漂移 + 长联合类型改前导 `|` 的风格差异),单独一个 commit 并登记进 `.git-blame-ignore-revs`。实测:`directory-import/src/server/service.ts` 的链式调用从 Prettier 形态出发要两轮才收敛,之后稳定;当时导入的 Aegis 与 oRPC 整份上游手册沿用 Prettier 的 Markdown 打印逻辑且不幂等，因此未纳入格式化，后来也已从当前文档树删除。**Prettier 仍在 catalog**:`apps/sandbox-authoring` 的公式编辑器语言服务在运行时用它格式化文档,不是遗留。
 
 **公式 SDK 照常格式化**:`packages/core/formula/src` 与 `packages/core/value-schema/src` 的源码被原样打包进每个公式产物,首轮重排让 `formula-compiler` 的 golden 失败(产物少 14 字节)。起初把这两处排除在格式化之外,随后改判:已发布版本存的是各自的产物字节,沙箱只对存下的产物校验哈希,`runtime-compatibility.ts` 也刻意不比对工具链来源,所以 SDK 字节变化只影响「同一源码重新编译得到同一产物」这一点;golden 的规则本就是「有意修改 SDK 或工具链的 commit 里重算,并在 STATUS 写明原因」。纯类型层面的改动(删断言、删未用 import)不进产物,golden 不动。
 

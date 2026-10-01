@@ -280,8 +280,8 @@ const open = (stubs: Record<string, unknown> = {}, locale: 'zh-CN' | 'en-US' = '
         path: '/assessment/batches/:batchId/reviews/:instanceId',
         // the height the shell gives it, so the parts scroll inside the
         // workbench the way they do in the app rather than growing the page
-        // inline for the same reason as the paper fixture: tests sit outside
-        // the Tailwind scan and must not borrow utilities from production
+        // inline for the same reason as the paper fixture: test layout must
+        // not borrow opaque classes from the application stylesheet
         element: (
           <div
             style={{

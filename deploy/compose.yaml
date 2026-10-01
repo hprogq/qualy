@@ -85,7 +85,7 @@ x-server-environment:
   QUALY_SANDBOX_AUTHORING_SOCKET: /run/qualy-sandbox/authoring/authoring.sock
   NODE_OPTIONS: --max-old-space-size=${QUALY_SERVER_HEAP_MB:-512}
 
-# The sandbox pair, hardened as docs/sandbox-process-isolation.md requires:
+# The sandbox pair, hardened as docs/architecture/sandbox.md requires:
 # no network, read-only root, no capabilities, non-root, one unix socket
 # each on a volume of its own. Neither is given .env: a sandbox's
 # environment is its own socket path and limits, never a business secret.

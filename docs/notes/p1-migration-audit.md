@@ -1,6 +1,6 @@
 # P1 迁移审计表
 
-来源:docs/p1-tutorial.md §0.8,路径已按真实旧仓库校对。旧代码克隆在仓库根 `legacy/`
+来源是 P1 施工教程 §0.8（原文已从当前树删除，可由 Git 历史追溯），路径已按真实旧仓库校对。旧代码克隆在仓库根 `legacy/`
 (gitignored,只读参考):`legacy/qualy_old` = github.com/hprogq/qualy_old,
 `legacy/algryth` = github.com/hprogq/algryth(RBAC 参考)。旧路径以各自仓库
 `apps/api/src/` 为前缀。逐项记录迁移处置;每完成一项,把状态改为 migrated / adapted /

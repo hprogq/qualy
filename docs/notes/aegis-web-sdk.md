@@ -1,10 +1,10 @@
 # aegis-web-sdk 实查记录(RUM Phase 0)
 
-日期:2026-09-14。对应 docs/rum.md 的 Phase 0。
+日期:2026-09-14。对应 docs/archive/designs/browser-rum.md 的 Phase 0。
 
-**版本:`aegis-web-sdk@1.41.15`**(npm `latest`,与 docs/rum.md §4 记的候选版本一致)。
+**版本:`aegis-web-sdk@1.41.15`**(npm `latest`,与 docs/archive/designs/browser-rum.md §4 记的候选版本一致)。
 
-本文只记录**实际验证过**的事实,依据顺序按 docs/rum.md §38:先 pin 版本的包内类型定义与
+本文只记录**实际验证过**的事实,依据顺序按 docs/archive/designs/browser-rum.md §38:先 pin 版本的包内类型定义与
 产物源码,再腾讯云文档,再实测。凡本文没记的,就是 Phase 0 没验证过,不得当作已知。
 
 ## 怎么验的
@@ -32,9 +32,9 @@ PoC 不进仓库,建在会话临时目录里,构成:
 - `Config` 接口末尾是 `[key: string]: any`,**拼错的配置键 TypeScript 不会报**。这条决定了
   Phase 1 的 provider 必须自己收口配置对象,不能指望类型守。
 
-## 与 docs/rum.md 不一致的地方(以本文为准)
+## 与 docs/archive/designs/browser-rum.md 不一致的地方(以本文为准)
 
-| docs/rum.md 的说法                          | 实查结果                                                                                               |
+| docs/archive/designs/browser-rum.md 的说法  | 实查结果                                                                                               |
 | ------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
 | `repeat` 默认 5                             | 默认 **60**                                                                                            |
 | `hostUrl` 需显式配国内域名                  | 默认已经是 `https://rumt-zh.com`                                                                       |
@@ -84,7 +84,7 @@ PoC 不进仓库,建在会话临时目录里,构成:
 - 返回 falsy → 整个请求不发(控制台 `Sending request blocked`);
 - 可以就地改写 `options.url`。
 
-这是唯一能改到**请求 URL**的地方。docs/rum.md §17 描述的能力属于它,不属于 `beforeRequest`。
+这是唯一能改到**请求 URL**的地方。docs/archive/designs/browser-rum.md §17 描述的能力属于它,不属于 `beforeRequest`。
 
 ## CSP
 
@@ -147,7 +147,7 @@ aegis.extendBean('referer', '') // 构造完立刻覆盖
 ```
 
 只做 wire 级 `onBeforeRequest` 改 URL **不够**:日志体里的 `originFrom` 还在,实测仍有 7 次命中。
-所以 docs/rum.md §17 的分层防线是对的,但**决定性的一层是 `beforeReport`**,不是最后那层。
+所以 docs/archive/designs/browser-rum.md §17 的分层防线是对的,但**决定性的一层是 `beforeReport`**,不是最后那层。
 
 其他隐私面实测:
 
@@ -175,11 +175,11 @@ aegis.extendBean('referer', '') // 构造完立刻覆盖
 | 4     | ERROR(主动上报) | ErrorBoundary catch 后 `aegis.error({msg, ext1..3})` |
 | 4     | ERROR           | 超长 message                                         |
 
-`IMAGE_ERROR` 默认是会上报的,docs/rum.md §13 想要的「默认过滤」得自己在 `beforeReport` 里做。
+`IMAGE_ERROR` 默认是会上报的,docs/archive/designs/browser-rum.md §13 想要的「默认过滤」得自己在 `beforeReport` 里做。
 
 ## Ajax 错误:`reportApiSpeed: false` 时压根不产生
 
-这是 docs/rum.md §14 与开放问题 3 的直接答案。用例里打了 `/api/ok`(200)、`/api/404`、
+这是 docs/archive/designs/browser-rum.md §14 与开放问题 3 的直接答案。用例里打了 `/api/ok`(200)、`/api/404`、
 `/api/500`、连接被断开的 `/api/abort`,fetch 与 XHR 各一遍:
 
 **`beforeReport` 一条 `AJAX_ERROR`(level 16)都没有收到。**
@@ -192,7 +192,7 @@ Ajax 过滤逻辑。等 Phase 3 真开 API speed 时,`beforeReportSpeed` 拿到�
 
 ErrorBoundary 捕获后手动上报一次,`window.onerror` **没有**再收到同一个错误:一次页面加载里
 level 4 恰好 3 条(未捕获、边界、超长),没有重复。开放问题 6 的答案是生产构建下不重复。
-Phase 1 的 dedup(WeakSet + 短 TTL fingerprint)按 docs/rum.md §20 仍值得做,但它防的是
+Phase 1 的 dedup(WeakSet + 短 TTL fingerprint)按 docs/archive/designs/browser-rum.md §20 仍值得做,但它防的是
 将来可能出现的路径,不是现在已经存在的重复。
 
 ## 懒加载不影响 page performance 与 Web Vitals
@@ -201,7 +201,7 @@ provider 在 `fetch(config)` 之后才 `import()` Aegis,页面性能与 Web Vita
 `GET /speed/performance`(带 `firstScreenTiming`)与 `POST /speed/webvitals` 各一条。
 开放问题 2 在 PoC 规模上是通过的。**但这只证明了「能采到」,没有证明「采得准」**:
 真实应用的首屏比 PoC 长得多,延迟初始化对 LCP/FCP 的偏差要等真接上去再看。
-按 docs/rum.md §23,如果届时不可靠,先上错误监控、性能指标延后。
+按 docs/archive/designs/browser-rum.md §23,如果届时不可靠,先上错误监控、性能指标延后。
 
 Web Vitals 是在页面进入 hidden 时用 `sendBeacon` 发的,数据在 URL query 里,body 是
 `[object Object]`(SDK 把对象直接交给 sendBeacon),不是缺陷,只是别照 body 去解析。
@@ -214,7 +214,7 @@ Web Vitals 是在页面进入 hidden 时用 `sendBeacon` 发的,数据在 URL qu
 还原,得到 `src/main.tsx 40:26`,而 `main.tsx:40` 正是那行 `throw new Error(...)`。
 **逐行精确,包括列号。**
 
-`.map` 里带 `sourcesContent`(完整源码)与 `node_modules` 路径,印证 docs/rum.md §50 把它当私有
+`.map` 里带 `sourcesContent`(完整源码)与 `node_modules` 路径,印证 docs/archive/designs/browser-rum.md §50 把它当私有
 调试产物的判断。`map.file` 是 basename(`index-<hash>.js`),而错误堆栈里的文件是完整 URL。
 
 Phase 2 的腾讯侧上传与控制台还原**没有验证**,需要真实项目,见下。
@@ -226,7 +226,7 @@ Phase 2 的腾讯侧上传与控制台还原**没有验证**,需要真实项目,
 `local-20260914T123712Z-633d6de6`,31 字符,能直接原样用。
 
 SDK 产物里**没有**对 `version` 做长度或字符校验,60 的上限是平台侧约束,超了会被截断还是拒绝,
-只能对真实项目验。`rumVersionForRelease` 仍按 docs/rum.md §12 实现(≤60 原样,否则 `q-<digest>`),
+只能对真实项目验。`rumVersionForRelease` 仍按 docs/archive/designs/browser-rum.md §12 实现(≤60 原样,否则 `q-<digest>`),
 浏览器与 uploader 共用同一实现。
 
 ## 打包与类型:default 比运行时多一层(Phase 1 补记)
@@ -317,7 +317,7 @@ isHidden = true,整页此后不再发送任何东西
 
 ## SourceMap 上传:控制台 API 的三个坑(Phase 2 实测)
 
-上传流程本身与 docs/rum.md §27 一致(`DescribeReleaseFileSign` → COS → `CreateReleaseFile` →
+上传流程本身与 docs/archive/designs/browser-rum.md §27 一致(`DescribeReleaseFileSign` → COS → `CreateReleaseFile` →
 `DescribeReleaseFiles`),但有三件事只有真打过才知道。
 
 ### 目的地是固定值,而且推不出来
@@ -357,7 +357,7 @@ Bucket: rumprod-1258344699    Region: ap-guangzhou
 
 ## Phase 1 据此应写的配置
 
-在 docs/rum.md §39 基础上的修订:
+在 docs/archive/designs/browser-rum.md §39 基础上的修订:
 
 ```ts
 new Aegis({
@@ -433,7 +433,7 @@ res duration: 12ms
 ...
 ```
 
-所以 docs/rum.md §34「禁止 parse log.msg 去猜 HTTP status」这条禁令,如果照字面走,
+所以 docs/archive/designs/browser-rum.md §34「禁止 parse log.msg 去猜 HTTP status」这条禁令,如果照字面走,
 就等于 Phase 3 不能按状态码过滤。
 
 **出路是 `retCodeHandler`**,而且它是官方配置项、不是内部实现:
@@ -514,7 +514,7 @@ function Qe(headers, names, kind){ ... return acc + kind + " header " + name + "
 
 ## 官方文档与 pin 版本产物的两处分歧(Phase 4 核对)
 
-拿到 `docs/aegis-official-docs.md` 之后按 §38 的权威顺序复核了 Phase 3 的实现,两条要记:
+取得当时的上游官方文档快照后，按 §38 的权威顺序复核了 Phase 3 的实现。整份快照不再保存在当前树；本节保留与 pin 版本产物核对后仍有用的两条结论：
 
 ### 「需要开两个」不适用于本仓库
 
@@ -581,7 +581,7 @@ Phase 3 的实现按「这条日志是不是在讲一次 API 调用」来判,覆
 
 ## Phase 0 Gate 判定
 
-docs/rum.md §42 的三条否决条件:
+docs/archive/designs/browser-rum.md §42 的三条否决条件:
 
 - **CSP 不兼容** → 不成立。script-src 不用动,上报只要 connect-src 一个 host,
   唯一的坑(gzip Worker)有配置解。
@@ -597,7 +597,7 @@ docs/rum.md §42 的三条否决条件:
 
 1. 测试用 RUM application 的 browser reporting id 与 numeric SourceMap ProjectID(需要账号)。
 2. 腾讯 SourceMap 的 `FileName` 对 Vite 的 `assets/foo-HASH.js.map`,匹配的是 basename 还是相对
-   asset path(docs/rum.md 开放问题 5)。
+   asset path(docs/archive/designs/browser-rum.md 开放问题 5)。
 3. `version` 超过 60 字符时平台是截断还是拒绝。
 4. `aid: false` 对控制台错误聚合与性能页面的实际影响(开放问题 4)。
 5. 真实 whitelist 接口下发的 `use_gzip`,以及真实 endpoint 下 gzip 路径的行为。

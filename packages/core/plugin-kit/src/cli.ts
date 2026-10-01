@@ -1,7 +1,7 @@
 import type { Effect } from 'effect'
 import { ExtensionPoint, Plugin, type PluginDescriptor, type PluginFeature } from './index.ts'
 
-// Commands, as descriptor vocabulary (docs/plugin-descriptor-plan.md, M3a).
+// Commands, as descriptor vocabulary (docs/archive/designs/plugin-descriptor-plan.md, M3a).
 //
 // The structure is noun-first and two-level - `qualy <namespace> <command>` -
 // which is docker's plugin model and rake's namespaces rather than npm's

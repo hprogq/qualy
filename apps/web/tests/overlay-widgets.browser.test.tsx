@@ -195,8 +195,7 @@ describe('a menu hosting a select', () => {
               <Button variant="outline">account</Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent>
-              {/* fixture-owned row layout, inline so it never leans on the
-                  production Tailwind scan */}
+              {/* fixture-owned row layout, independent of application CSS */}
               <div
                 style={{
                   display: 'flex',

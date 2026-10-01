@@ -186,9 +186,8 @@ describe('the input is a native form citizen', () => {
   })
 })
 
-// fixture-owned styling compiles with the test, never borrowed from the
-// production Tailwind scan: the scenario needs these styles to actually
-// apply, and a scan that stops emitting them must not blank the contract
+// Fixture-owned styling compiles with the test rather than borrowing from
+// the application stylesheet; the scenario needs these rules to exist.
 const glassStyles = stylex.create({
   seat: {
     position: 'relative',

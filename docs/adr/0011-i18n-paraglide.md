@@ -1,9 +1,9 @@
 # ADR 0011:i18n 迁移到 Paraglide JS,语言随文档固定,展示文字在服务端渲染
 
 - 状态:**已接受**(2026-10-01)。阶段 0 至 4 已实施:阶段 1 的对照测量通过(见文末),切换到 Paraglide;实施中的修正见"已裁决的细节""实施中的修正""阶段 3 的实施"三节,与上文不同处以它们为准
-- 相关:STATUS.md 2026-09-30 晚 i18n PoC 记录与 2026-10-01 记录、docs/notes/web-performance.md、apps/web/vite.config.ts 中 codeSplitting 的注释、讨论原文 docs/i18n-chat-A.md / B.md / C.md
+- 相关：`docs/notes/web-performance.md`、`apps/web/vite.config.ts` 中 code splitting 的注释，以及本文末尾保留的实测基线。原始讨论已经由本 ADR 吸收，需要逐字追溯时使用 Git 历史。
 
-> 给执行者(Claude Code):本文是一轮较长的架构讨论的结论。"被否决的方案"一节里的选项都已逐一权衡过,除非实测数据推翻其中的理由,不要重新开启讨论。
+> 本文是一轮较长架构讨论的结论。“被否决的方案”中的选项已经逐一权衡；除非实测数据推翻理由，不重新开启讨论。
 
 ## 背景
 
@@ -67,7 +67,7 @@
 
 **阶段 3**:`@qualy/text`、术语库改造与 document-context、bootstrap 与邮件改造,删除 `UiText` 与 `i18n-contract` 中的旧类型。
 
-**阶段 4**:更新 CLAUDE.md 与相关文档,删除残留。
+**阶段 4**:更新 AGENTS.md 与相关文档,删除残留。
 
 ## 已裁决的细节(2026-10-01,用户确认)
 

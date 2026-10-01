@@ -2,7 +2,7 @@
 
 - 状态:**已接受,放行条件已全部满足**(2026-08-05)
 - 前提:[ADR 0002](0002-effect-as-the-backend-runtime.md)
-- 相关:docs/effect-migration.md
+- 相关:docs/archive/migrations/effect-migration.md
 
 ## 背景
 
@@ -53,7 +53,7 @@ effect-migration.md 的「cookie 会话与 middleware」。**放行条件全部�
 
 ## 后果
 
-- 现有 CLAUDE.md 里整节「插件 API 纪律」(`defineDomainErrors`、`apiErrorBoundary`、
+- 现有 AGENTS.md 里整节「插件 API 纪律」(`defineDomainErrors`、`apiErrorBoundary`、
   `walkProcedureContractsSync`、`contribute(ns, router)`)在切换完成时一并作废,由 HttpApi 的
   endpoint 声明取代。**在切换完成之前它们仍然有效**,不得提前拆掉
 - `scripts/tests/api-surface.test.ts` 冻结的路径集必须原样保留:换传输层不是改 URL 的借口。

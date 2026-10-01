@@ -1,6 +1,6 @@
 # @stylexjs/unplugin 实查记录
 
-版本:0.19.1(catalog)。UI 平台迁移(docs/ui-platform-migration.md)M0 接入时实查;
+版本:0.19.1(catalog)。UI 平台迁移(docs/archive/designs/primereact-ui-migration.md)M0 接入时实查;
 0.19.1 升级时按下面「0.19.1 复核」重新核对了两组 patch。
 
 ## 行为确认(以安装产物为准)

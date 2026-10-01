@@ -9,7 +9,7 @@ import {
 import { PROTOCOL, type ChildMessage } from '../src/dev/protocol.ts'
 
 // Handing the port from one process to the next, without either of them ever
-// holding it at the same time (docs/runtime-redesign.md §10, §14).
+// holding it at the same time (docs/development/runtime.md).
 //
 // The whole staged model rests on three things being true at once, and none
 // of them can be checked from inside a single process: a candidate that has

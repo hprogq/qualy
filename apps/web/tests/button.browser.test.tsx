@@ -85,8 +85,7 @@ describe('the button keeps its product contract', () => {
   it('asChild renders the child with the button geometry', async () => {
     await mount(
       // "mt-2" is an inert marker: the assertion below reads the class
-      // attribute itself, so nothing here depends on the utility being
-      // emitted by the production Tailwind scan
+      // attribute itself, so nothing here depends on a stylesheet rule
       <Button asChild variant="outline" size="sm" className="mt-2">
         <a href="#somewhere">open</a>
       </Button>,

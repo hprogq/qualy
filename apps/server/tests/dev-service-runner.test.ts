@@ -6,7 +6,7 @@ import type { DevServiceSpec } from '@qualy/plugin-kit/dev'
 import { PROTOCOL, type ChildMessage } from '../src/dev/protocol.ts'
 
 // The runner every development service runs in, driven the way a supervisor
-// would drive it (docs/runtime-redesign.md §16).
+// would drive it (docs/development/runtime.md).
 //
 // What is being checked is the shape of the scope rather than any behaviour
 // of the service: that preparing happens before the supervisor has said

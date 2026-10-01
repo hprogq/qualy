@@ -22,7 +22,7 @@ import {
 import { developmentEnv } from './env.ts'
 import { merge, watch, watchTargets, type Action, type WatchPlan } from './watch.ts'
 
-// The process `pnpm dev` is (docs/runtime-redesign.md §45, §46).
+// The process `pnpm dev` is described in docs/development/runtime.md.
 //
 // It owns exactly one thing: which child processes exist. The backend owns
 // its own resources, the browser's dev server owns the module graph, and this

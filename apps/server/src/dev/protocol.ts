@@ -16,7 +16,7 @@ export interface PluginRoot {
 }
 
 // What a supervised child and its host say to each other, and nothing more
-// (docs/runtime-redesign.md §39).
+// (docs/development/runtime.md).
 //
 // Logs go over stdio, health goes over http, and business data never comes
 // near this. What is left is the handful of sentences the two ends cannot get

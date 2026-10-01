@@ -77,7 +77,7 @@ run 33481203308):`@qualy/plugin-database` 的 release 不返回,池计数只能�
 
 ## 2026-09-17:transition(插件自带一次性数据步骤)已触发
 
-触发它的是构建/装配/部署重构(`docs/osi.md`,P3/P4):迁移 lineage 从仓库 `db/migrations` 搬进**每个实例**的
+触发它的是当时的构建/装配/部署方案（`docs/archive/designs/sandbox-oci.md`，P3/P4）：迁移 lineage 从仓库 `db/migrations` 搬进**每个实例**的
 Deployment State(`<state>/database/migrations`),全新安装自己生成 initial,不再继承仓库的开发历史。
 这样一来,22 条带 `-- owner:` 的手写迁移(19 条含 UPDATE/INSERT/DELETE 数据步骤,四个插件各有 `migration-upgrade.test.ts`)
 所依赖的「共享 lineage 文件」不复存在:结构 diff 推不出「先把列里的值搬进新表再删列」,而 `qualy database custom`
@@ -92,7 +92,7 @@ Deployment State(`<state>/database/migrations`),全新安装自己生成 initial
 顺带修掉一处潜伏缺陷:同一秒内两次 generate 生成同名迁移,后一次 rename 覆盖前一次(此前 generate 是人手敲的命令,
 从未在一秒内跑两次;deploy 内置 generate 之后会)。现在 stamp 取「当前时刻」与「lineage 最新一条 + 1 秒」的较大者。
 
-触发表里「advisory lock(迁移互斥)」**仍未触发**:`docs/osi.md` §29 写的是「最好有」,而其「最低要求」——
+触发表里「advisory lock(迁移互斥)」**仍未触发**：`docs/archive/designs/sandbox-oci.md` 当时写的是「最好有」，而其「最低要求」——
 同一 state 目录同一时间只允许一个 deployment job——已由 `@qualy/deployment-state` 的文件锁满足。
 
 ## 2026-09-17(同日):transition 撤回,advisory lock 触发

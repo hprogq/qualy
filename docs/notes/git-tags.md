@@ -20,12 +20,12 @@
 | `archive/data-governance-v3`    | 2c6e8dcf | 数据层架构与评审存档,数据治理方案第三版落定处                                                                                                | architecture/database.md、notes/data-layer-retrospective.md |
 | `archive/mikroorm-kysely-spike` | 59a904db | ORM 选型 spike 的全部证据:两库同一纵切跑真实 Postgres、由实体重建 org 四张表与 lineage 比对、两个生成器的缺口定位。**不在 main 里**,分支已删 | ADR 与 notes/ 的 ORM 结论建立其上                           |
 | `ui-prime-m4-checkpoint`        | c0b51d7b | PrimeReact 迁移实验的冻结点(M4 一半)。**不在 main 里**,分支已删。ADR 0010 的「PrimeReact 实证发现」逐条可在此复现                            | adr/0010、ui-platform-migration\*.md、notes/primereact.md   |
-| `pre-mikroorm-spike`            | 11b63e4f | spike 开始前的主线状态,用来对照 spike 改了什么                                                                                               | STATUS.md                                                   |
-| `p1-base`                       | 300ac17e | p1 实现基线                                                                                                                                  | reports/P0-REPORT.md                                        |
-| `p1-ready`                      | ab3d179c | p1 收口:装配清单自足                                                                                                                         | STATUS.md                                                   |
-| `p1-capability-boundary`        | 5edcd26f | 数据库降为可选能力那一刻                                                                                                                     | effect-migration.md、reports/effect-migration-progress.md   |
-| `p2-base`                       | d27a6faf | p2 施工基线                                                                                                                                  | STATUS.md                                                   |
-| `v0.1.0-p0`                     | 44cd26c9 | p0 验收                                                                                                                                      | p0-tutorial.md、HISTORY.md、reports/P0-REPORT.md            |
+| `pre-mikroorm-spike`            | 11b63e4f | spike 开始前的主线状态,用来对照 spike 改了什么                                                                                               | MikroORM 选型的 Git 对照                                    |
+| `p1-base`                       | 300ac17e | p1 实现基线                                                                                                                                  | 验收报告见该标签的 Git 树                                   |
+| `p1-ready`                      | ab3d179c | p1 收口:装配清单自足                                                                                                                         | 该标签的 Git 树                                             |
+| `p1-capability-boundary`        | 5edcd26f | 数据库降为可选能力那一刻                                                                                                                     | `../archive/migrations/effect-migration.md`                 |
+| `p2-base`                       | d27a6faf | p2 施工基线                                                                                                                                  | 该标签的 Git 树                                             |
+| `v0.1.0-p0`                     | 44cd26c9 | p0 验收                                                                                                                                      | 教程、聊天与验收报告见该标签的 Git 树                       |
 
 前四个是**证据标签**(删了就找不回来或对不上账);后五个是**里程碑标签**,主线里都有,
 留着是因为文档按名字引用它们。

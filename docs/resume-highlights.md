@@ -1,6 +1,6 @@
 # Qualy 项目亮点(简历素材)
 
-> 本文从仓库现有代码、docs/ 与 STATUS.md 整理而来,用于简历与面试准备。
+> 本文从仓库现有代码、测试与 docs 整理而来,用于简历与面试准备。
 > 每条都尽量给出**机制、动机、数字与出处**,方便面试时展开。标注「设计未实现」的内容不要写成已交付。
 
 ---
@@ -103,7 +103,7 @@
 
 ## 3. 迁移工程:Cordis + oRPC → Effect v4
 
-出处:`docs/adr/0001-0003`、`docs/effect-migration.md`、`docs/reports/effect-migration-progress.md`。
+出处：`docs/adr/0001-0003` 与 `docs/archive/migrations/effect-migration.md`。
 
 ### 3.1 动机
 
@@ -224,7 +224,7 @@
 
 ## 7. 身份、授权与多租户
 
-出处:`packages/plugins/base/{auth,auth-local,org,rbac}`、`packages/contracts/rbac`、CLAUDE.md 访问模型章节。
+出处:`packages/plugins/base/{auth,auth-local,org,rbac}`、`packages/contracts/rbac`、AGENTS.md 访问模型章节。
 
 ### 7.1 概念模型
 
@@ -267,7 +267,7 @@
 
 ## 8. 综测业务领域
 
-出处:`docs/assessment-design.md`、`docs/administrative.md`、`packages/plugins/assessment/{core,evidence,formula}`。
+出处:`docs/assessment-design.md`、`docs/archive/designs/administrative-recognition.md`、`packages/plugins/assessment/{core,evidence,formula}`。
 
 > **已实现**:批次、阶段、名单、题目与版本、填报、审核引擎、申诉(作为新审核轮)、实时暂计分、行政认定与 Excel 导入、实时推送、公式插件。
 > **设计未实现**(不要写成已交付):初步/最终公示快照、排名与并列裁决、归档打印、ScoreRun。
@@ -434,7 +434,7 @@
 - 关闭:`Layer.launch` 与关闭信号 `raceFirst`(用 `race` 时启动失败会静默挂起,SIGTERM 退出又看起来像正常关闭);HTTP 排空每 250ms 关闭空闲连接、2s 后强制关闭;`QUALY_SHUTDOWN_TIMEOUT`(默认 30s)超时点名;间隔 ≥1s 的第二个信号立即退出(1s 内视为同一次按键经进程组扇出);SIGTERM 到 "shutdown complete" 实测 9ms。
 - 生产环境迁移默认 off(归 `qualy deploy`),库落后于迁移时拒绝启动并给出运维建议。
 
-### 10.2 开发态进程监督(`docs/runtime-redesign.md`)
+### 10.2 开发态进程监督(`docs/development/runtime.md`)
 
 - 问题:Vite 原本运行在后端 Effect scope 里,每次后端重启杀掉 HMR、React 状态与查询缓存。
 - 长驻 Dev Host + **分阶段候选进程**(不是 `node --watch`),IPC 协议 `prepare → PREPARED → commit → ACCEPT → acquire`:
@@ -446,7 +446,7 @@
 - 修过的真实问题:chokidar 4 去掉 glob 支持导致 `**/node_modules/**` 失效耗尽进程(`spawn EBADF`);在 watcher `ready` 前宣布 watching,初始扫描期间的保存静默丢失(CI 抓到);`.env` 可能是密钥管理器提供的命名管道,watch 会永久阻塞,改为会话开始时读一次快照。
 - 性能:去掉 tsx 加载器改为 Node 原生 strip-types 后,读清单 ~500ms → ~320ms、装配验证 ~600ms → ~355ms,**冷启到端口 ~2.0s → ~1.3s,后端单次重载约 1.1s**。
 
-### 10.3 Web 发布版本协议(`docs/web-release.md`)
+### 10.3 Web 发布版本协议(`docs/architecture/web-release.md`)
 
 - 三个身份:`resolutionHash`(哪个插件装配)、`releaseId`(`r_` + 22 位 base64url 随机值,无时钟无顺序,只比较相等)、`clientProtocol`(小整数兼容窗口);私有构建修订号不进 bundle。
 - **release store**:`current.json` + 共享 `assets/` + `releases/<id>/`;安装顺序 assets → shell(原子 rename)→ 指针;同名资源字节不同硬失败;同 release 重装幂等。
@@ -519,12 +519,12 @@
 
 经与 `pnpm start` 相同的 runner 真启动生产装配,断言:live / ready、壳安全头与 CSP、`/api/nope` 返回 404 `API_ROUTE_NOT_FOUND` 且带 UUID request id、生产环境 `/api/docs` 与 `/api/openapi.json` 为 404、manifest `no-store`、release 端点与 store 一致、**真实 store 上的四种旧标签页矩阵**、哈希资源 immutable 且 brotli、SIGTERM 与 SIGINT 各自退出 0,以及**篡改任一 hash 进程退出 1 并点名 release**。
 
-### 11.6 当前测试规模(STATUS.md,2026-09-16)
+### 11.6 最近一次完整 CI 规模（rc.24，2026-10-02）
 
-- typecheck:exit 0
-- `pnpm test`:247 文件通过 / 3 跳过;**1,781 项通过** / 17 跳过
-- `pnpm test:browser`:57 文件 / **418 项**通过
-- `pnpm test:browser:webkit`:2 文件 / 14 项通过
+- static、Node CI、Chromium、WebKit、image、release-eligible 全部通过
+- Node：413 文件通过 / 3 跳过；**3,098 项通过** / 29 跳过
+- Chromium：125 文件 / **1,605 项**通过
+- WebKit：5 文件 / **50 项**通过
 
 ---
 
@@ -537,7 +537,7 @@
 - **上游优先**:缺陷报给上游并存档草稿,守行为不守补丁,达到零 patch。
 - **对抗式审查**:大规模并行审查产出 85 个候选问题,经复现筛选保留 16 个,每个修复附带「移除修复即失败」的测试;无法复现的发现被拒绝。
 - **收官纪律**:四条基础设施线(UI 平台、审计、遥测、开发态进程监督)完成后正式关账,没有真实需求不再重构。
-- **会话验收**:验收命令真实执行并把输出摘录进 STATUS.md,不许只声称完成。
+- **验收纪律**：命令真实执行，提交或交接列出结果；长期状态才进入 `STATUS.md`，可复用实验进入窄 notes。
 
 ---
 
@@ -562,28 +562,28 @@
 
 ## 14. 数字一览
 
-| 指标                    | 数值                                    |
-| ----------------------- | --------------------------------------- |
-| 插件                    | 19 个(运行时 16,停用 2,detached 1)      |
-| workspace 包            | 约 40+                                  |
-| 实体 / 权限码(lock 中)  | 59 / 30                                 |
-| 审计动作                | 29                                      |
-| node 测试               | 1,781 项通过(247 文件)                  |
-| 浏览器测试              | Chromium 418 项(57 文件)+ WebKit 14 项  |
-| 每轮临时数据库          | 约 150 个                               |
-| 冷启到端口              | 2.0s → 1.3s;后端重载约 1.1s             |
-| 应用组合耗时 / 关闭耗时 | 10-13ms / 9ms                           |
-| HttpApi 类型检查伸缩    | 500 端点 5.4s(约 6ms/端点)              |
-| MikroORM 上游合入       | 6 个缺陷修复,零 patch                   |
-| Argon2id                | 64MiB / t=3 / p=4,hash 36ms             |
-| 前端启动预算            | 24KB 门禁;RUM SDK 128KB 按需加载        |
-| 停用插件后产物          | 113 → 111 个 JS 资源;停用公式插件 → 100 |
+| 指标                    | 数值                                                           |
+| ----------------------- | -------------------------------------------------------------- |
+| 插件                    | 31 个（active 29、disabled 1、detached 1）                     |
+| workspace 包            | 62 个                                                          |
+| 实体 / 权限码(lock 中)  | 75 / 32                                                        |
+| 审计动作                | 29                                                             |
+| node 测试               | 3,098 项通过（413 文件）                                       |
+| 浏览器测试              | Chromium 1,605 项（125 文件）+ WebKit 50 项                    |
+| 每轮临时数据库          | 约 150 个                                                      |
+| 冷启到端口              | 2.0s → 1.3s;后端重载约 1.1s                                    |
+| 应用组合耗时 / 关闭耗时 | 10-13ms / 9ms                                                  |
+| HttpApi 类型检查伸缩    | 500 端点 5.4s(约 6ms/端点)                                     |
+| MikroORM 上游合入       | 6 个缺陷修复,零 patch                                          |
+| Argon2id                | 64MiB / t=3 / p=4,hash 36ms                                    |
+| 前端分包门禁            | entry Brotli 62 KiB；四个代表页面有请求数、闭包与小 chunk 预算 |
+| 停用插件后产物          | 113 → 111 个 JS 资源;停用公式插件 → 100                        |
 
 ---
 
 ## 15. 写简历时的注意事项
 
-- **不要写成已交付**:公示快照(初步/最终)、排名与并列裁决、归档打印、ScoreRun、CAS/OIDC 登录、限流(代码中未找到返回 429 的限流器)、邮件、通用任务框架。
-- 「腾讯云 RUM sourcemap 上传」对真实平台的复验仍待完成,可写「实现」,慎写「上线」。
+- **不要写成已交付**：公示快照（初步/最终）、排名与并列裁决、归档打印、ScoreRun、通用任务框架。
+- 生产部署与 RUM/source map 流程已有 rc.24 证据；描述时仍区分“实现并验证”与真实用户规模。
 - 「对抗式审查」若提及,建议表述为方法(候选发现 → 复现筛选 → 反向验证测试),不必强调规模。
-- 数字均来自 STATUS.md / docs 截至 2026-09-16 的记录,面试前可再跑一次测试核对。
+- 数字来自 rc.24 的 2026-10-02 CI 与当前 lock；面试前若代码继续变化，应重新运行或读取最新 CI 核对。

@@ -2,7 +2,7 @@
 
 - 状态:**已接受,M1 spike 已通过**(2026-08-05)
 - 前提:[ADR 0001](0001-no-online-plugin-install.md)
-- 相关:docs/effect-migration.md、docs/assembly-design.md 阶段 2
+- 相关:docs/archive/migrations/effect-migration.md、docs/archive/designs/assembly-design.md 阶段 2
 
 ## 背景
 
@@ -39,7 +39,7 @@ ADR 在下面这个垂直切片通过之前**不得开始全量迁移**:
 - Node 24 下 SIGTERM 能关闭 HTTP server 与数据库池,连接零泄漏
 - 数百 endpoint 规模下 typecheck 性能可接受
 
-**结果:全部通过**(实测记录见 docs/effect-migration.md 的 M1a / M1b 两节)。放行。
+**结果:全部通过**(实测记录见 docs/archive/migrations/effect-migration.md 的 M1a / M1b 两节)。放行。
 唯一未覆盖的是完整 cookie 登录流与 HttpApi middleware,推到 M3 一并验。
 
 ## 后果

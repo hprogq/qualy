@@ -3,7 +3,7 @@ import { requestShutdown } from '../shutdown.ts'
 import { PROTOCOL, hostMessage, supervised, tell, type PluginRoot } from './protocol.ts'
 
 // The line between preparing to be the server and being it
-// (docs/runtime-redesign.md §10).
+// (docs/development/runtime.md).
 //
 // Everything above this call is pure - the manifest read, the lock compared,
 // every descriptor imported, the layers composed - and everything below it

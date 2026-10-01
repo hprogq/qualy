@@ -142,7 +142,7 @@ catalog:
   '@vitest/browser-playwright': 5.0.1
   'vitest-browser-react': 2.3.0
   playwright: 1.62.1
-  # UI platform migration (docs/ui-platform-migration-mantine.md): StyleX is
+  # UI platform migration (docs/archive/designs/mantine-ui-migration.md): StyleX is
   # the styling compiler for product layout and visuals. One version across
   # the workspace - two copies of the stylex runtime would split the
   # injected CSS

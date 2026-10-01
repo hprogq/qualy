@@ -4,13 +4,8 @@ import { render } from 'vitest-browser-react'
 import { Alert, AlertDescription } from '@qualy/ui/alert'
 import '../src/app.css'
 
-// The stylesheet compiles with source(none) and an explicit @source list, so
-// a moved package silently drops out of the scan and every utility class its
-// components use stops existing - controls shipped with no background and no
-// radius before anything red happened. This asserts the compiled effect, not
-// the class string; the probe is a component still styled by Tailwind (commodity
-// widgets moved onto the widget library's own theme), and it should follow
-// the styling migration by pointing at whatever still reads that pipeline.
+// This asserts the compiled stylesheet effect rather than implementation
+// class names: a build can succeed while its design-system CSS is absent.
 describe('the design system actually styles', () => {
   it('a default alert has a border and rounded corners', async () => {
     await render(

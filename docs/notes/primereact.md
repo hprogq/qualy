@@ -3,7 +3,7 @@
 > **历史记录**:PrimeReact 已不在本仓库使用([ADR 0010](../adr/0010-ui-widget-platform.md)),实验分支冻结于 git tag `ui-prime-m4-checkpoint`。本文保留实查事实,供追溯与上游报告。
 
 版本:@primereact/ui、@primereact/core 11.1.0,@primeuix/themes 3.0.0(catalog)。
-UI 平台迁移接入期(docs/ui-platform-migration.md)实查。
+UI 平台迁移接入期(docs/archive/designs/primereact-ui-migration.md)实查。
 
 ## NodeNext 下 @primereact/core 的类型声明缺陷
 

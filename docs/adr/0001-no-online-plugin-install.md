@@ -1,7 +1,7 @@
 # ADR 0001:插件拓扑对单个进程不可变
 
 - 状态:**已接受**(2026-08-05)
-- 相关:docs/assembly-design.md、[ADR 0002](0002-effect-as-the-backend-runtime.md)
+- 相关:docs/archive/designs/assembly-design.md、[ADR 0002](0002-effect-as-the-backend-runtime.md)
 
 ## 背景
 

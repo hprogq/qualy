@@ -1,6 +1,6 @@
 # 用户批量导入（Directory Import）
 
-状态：v1 已落地（2026-09-20）。设计讨论见 docs/refactor-temp.md（用户笔记，不入库）的用户导入部分；本文是落地后的定案。
+状态：v1 已落地（2026-09-20）。设计讨论见 docs/archive/designs/user-management-and-import.md（用户笔记，不入库）的用户导入部分；本文是落地后的定案。
 
 ## 一句话
 

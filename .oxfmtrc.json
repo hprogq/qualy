@@ -12,10 +12,7 @@
     "repos/",
     "apps/web/.qualy/",
     "qualy.lock.json",
-    "docs/aegis-official-docs.md",
-    "docs/orpc-v2-docs.md",
     "docs/seed/",
-    "docs/i18n-chat-*.md",
     "tools/tests/fixtures/messages-golden.json"
   ]
 }

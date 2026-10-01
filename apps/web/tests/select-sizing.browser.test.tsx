@@ -9,11 +9,8 @@ import '../src/app.css'
 // adapter's own StyleX base, so a caller's xstyle wins property by property
 // in the same composition.
 //
-// This file also pinned the migration window's other half - that a caller
-// still writing Tailwind kept winning by cascade - with a probe that had to
-// be a utility production actually emitted. There are none left to borrow:
-// the last literal class in the product is gone, so the case retired with
-// the callers it was there for.
+// The former utility-cascade migration probe retired with the last caller;
+// current sizing is expressed directly through StyleX composition.
 
 const caller = stylex.create({
   fixed: { width: 240 },

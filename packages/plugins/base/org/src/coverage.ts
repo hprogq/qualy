@@ -1,7 +1,7 @@
 // How far a caller's authority reaches into the tree, decided once.
 //
 // This is the fifth place the coverage rule could have been written down, and
-// CLAUDE.md names it the most likely thing to drift. rbac decides coverage in
+// AGENTS.md names it the most likely thing to drift. rbac decides coverage in
 // SQL with ltree containment for a single node; this decides it in TypeScript
 // for a whole projection, because a forest is assembled from several anchors
 // and the overlaps have to be resolved before any rows are read.

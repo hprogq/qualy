@@ -38,7 +38,7 @@ import {
 // hot-reload websocket shared the port - which tied the browser's dev server
 // to the backend's lifetime, and made every backend restart take the
 // browser's session with it. It runs in its own process now
-// (docs/runtime-redesign.md §29), declared as this plugin's dev service.
+// (docs/development/runtime.md), declared as this plugin's dev service.
 //
 // So there is no mode any more. A deployment serves the bundle; a development
 // backend serves the api and leaves the browser to Vite, which is in front of

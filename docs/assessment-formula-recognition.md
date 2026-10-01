@@ -1,6 +1,6 @@
 # Qualy 严格类型认定与可编程计分系统：设计与开发规范
 
-> 状态：设计定案草案
+> 状态：核心设计已实施；本文保留完整领域收敛过程，当前运行边界另见 `docs/architecture/formula-runtime.md`
 > 日期：2026-08-29
 > 适用仓库：`hprogq/qualy`
 > 目标：建立“材料 → 审核认定 → 严格类型参数绑定 → 确定性计分函数 → 精确计分”的完整基础设施，同时保持插件边界、历史可回放、前后端类型一致和业务无关性。
@@ -11,7 +11,7 @@
 
 其他已经冻结的设计不变，包括 EntryRevision append-only、ReviewInstance/ReviewEvent 审计模型、Aggregator、ScoreGroup cap/floor、精确 bigint scorer、Publication 冻结以及插件装配纪律。
 
-当前仓库已经使用 TypeScript `7.0.2`、Node `>=24.12`、Effect `4.0.0-rc.111`，根类型检查直接调用 workspace `tsc`，并由 `@effect/tsgo` patch 接入 Effect diagnostics。 TypeScript 7 已经是原生 Go 实现并提供新的原生语言服务器，但当前尚不提供成熟稳定的程序化 Compiler API，因此 Formula 的编译和编辑器集成都必须优先围绕 CLI/LSP，而不是 `import("typescript")` 后直接操作 compiler internals。([Microsoft Developer Blogs][1])
+本文定案时仓库使用 TypeScript 7 和 Effect v4 prerelease；精确版本以 `pnpm-workspace.yaml`、`mise.toml` 和 `package.json` 为准。根类型检查调用 workspace `tsc`，并由 `@effect/tsgo` patch 接入 Effect diagnostics。TypeScript 7 的程序化 Compiler API 不是 Formula 的运行边界：编译和编辑器集成围绕 CLI/LSP，生产业务进程不通过 `import("typescript")` 执行管理员源码。([Microsoft Developer Blogs][1])
 
 ---
 
@@ -1008,7 +1008,7 @@ source_draft_revision_no integer nullable(restored-from-draft)
   这一个公式的修订;作者在公式 A 写得再多,也不会删到公式 B 的任何修订,包括 B 唯一的草稿。
   回收后修订号不重排,列表出现断号;恢复自某条已回收修订的记录仍写着来源号码,只是那条修订不能再打开或恢复
   (`ASSESSMENT_FORMULA_DRAFT_REVISION_NOT_FOUND`)。本机的试运行记录同样按公式设上限,见 §14.3.1。
-  ⑤ **回收落在哪一格**(CLAUDE.md「记录」三格):三格都不需要。回收本身不写审计、不写领域历史,也不单独记遥测;
+  ⑤ **回收落在哪一格**(AGENTS.md「记录」三格):三格都不需要。回收本身不写审计、不写领域历史,也不单独记遥测;
   它删掉的正是领域历史(修订行)本身。草稿修订是作者自己的编辑便利,不是合规记录;需要追溯的「这版规则当时怎么算」
   由发布版本承担(不可变的版本行,带发布人与发布时间),回收永远碰不到。代价要说清:被回收的那些保存,此后在任何地方都查不到。
 - **发布命名**:`releaseName`(必填,≤100)与 `releaseNotes`(可选,≤1000)是版本的**展示元数据,发布后仍可修改**;

@@ -1,106 +1,61 @@
-# 数据层架构(v3 治理栈,已归档)
+# 数据库与迁移
 
-> **本文描述的治理栈已于 2026-08-01 按「数据层简化令」整体回退**,实现归档于 tag `archive/data-governance-v3`。
-> 现行形态与重新引入的约束性触发表见 docs/notes/data-layer-retrospective.md;本文保留作 v3 设计档案与触发表兑现时的施工蓝图。
-> 决策论证与实验证据见 docs/notes/drizzle.md 与 docs/notes/orm-review.md。
+本文描述当前数据层。2026 年 8 月回退的 governance v3 方案已从现行文档移除；重新引入复杂机制必须满足[数据层回顾](../notes/data-layer-retrospective.md)记录的真实触发条件。
 
-## 1. 三集合模型与所有权
+## 职责边界
 
-| 集合      | 含义                            | 权威                            |
-| --------- | ------------------------------- | ------------------------------- |
-| available | 包可被发现(workspace 里存在)    | 文件系统                        |
-| installed | 数据库对象必须存在;**依赖闭包** | `installed.lock.json`(提交入库) |
-| active    | 业务入口与 worker 运行中        | `cordis.yml`                    |
+`@qualy/assembly` 不理解表、迁移或 PostgreSQL。数据库语义由 `@qualy/plugin-database` 的装配能力解释：业务插件通过描述器贡献实体、复合外键和可选 baseline 片段，database provider 在解析、生成、部署和运行期执行对应职责。
 
-- cordis.yml 只决定 active。**active 的任何变化(含 disabled)不得改变 installed 驱动的任何生成物**(CI 不变式测试守护)。
-- 仅显式 PURGE 流程(§7)可使插件退出 installed。
-- 所有权划分:插件拥有 schema entry、behavior 片段、依赖声明、projection worker、全量重建实现;平台拥有 installed lock、装配生成、中心迁移史、片段不可变检查、迁移执行与审计、dirty 基础设施、生命周期状态机、PURGE 依赖检查。
-- 核心原则:表是数据,停用永不删;触发器等行为对象由**迁移**创建,运行时开关只控制消费者;结构变更的裁决需要全局视野(中心生成),行为书写归属插件(片段,中心编译入迁移史)。
+实体使用 MikroORM 7 定义，查询默认通过 `kyselyOf(em)` 使用 Kysely Query Builder。原生 SQL 只用于 PostgreSQL 特有表达，并以尽可能小的 typed fragment 嵌入查询。跨插件访问表需要声明插件依赖，并把对方实体纳入自己的实体闭包。
 
-## 2. 声明与安装
+## 一条中央迁移历史
 
-- 插件的数据库能力靠 package.json `qualy` 字段**声明**,禁止探测:
+整个产品只有 `db/migrations` 一条提交的 SQL 历史，不按插件拆 migration stream。文件名为 `YYYYMMDDHHmmss[_name].sql`，迁移可以脱离 ORM 顺序执行。
 
-```jsonc
-{
-  "qualy": {
-    "database": {
-      "schemaEntry": "./src/db/schema.entry.ts",
-      "behaviorDir": "./db/behavior",
-    },
-    "dependsOn": ["@qualy/plugin-database"],
-  },
-}
+```text
+实体 + 复合外键 + baseline 片段
+                 │
+                 │ pnpm qualy generate（仅开发者）
+                 ▼
+          db/migrations/*.sql
+                 │ review + commit
+                 ▼
+      CI verify / production deploy
 ```
 
-- 已安装插件声明了 schemaEntry 但解析失败 = **硬失败**;未声明 = 明确无数据库能力。
-- 安装用 `pnpm plugin:add <name>`:一次完成根 workspace 依赖 + installed.lock 条目 + cordis.yml 条目 + 依赖闭包校验。普通开发禁止手删 installed 条目。
-- 聚合硬失败清单:重复插件 id、重复 entry 文件、dependsOn 循环、installed 非依赖闭包。聚合顺序 = 依赖拓扑序。
-- 空 installed 集不得自然产出空 schema:仅显式 `--init-empty` 放行。
+生成时使用两个 scratch 数据库比较“已提交迁移重放后的结构”和“当前声明的应然结构”，不 introspect 开发或生产目标库。生成结果必须人工审阅；CI 和镜像构建只验证，不生成迁移。
 
-## 3. 装配层
+已提交迁移只在末尾增长：不修改、不删除、不改名，也不回填早于当前 head 的时间戳。数据搬迁、回填和清理直接写进迁移，并用“旧形态 → 执行迁移 → 断言结果”的升级测试承重。已部署迁移只能 fix-forward。
 
-- `pnpm gen` 产出 `generated/db/assembly.gen.ts`(installed 集拓扑序的 schemaEntries 路径数组,gitignore)与 **提交入库** 的 `assembly.lock.json`(每插件 id/version/schemaEntry/schemaHash/behaviorHash/dependsOn + assemblySha256)。
-- `drizzle.config.ts` 的 `schema` 直接消费 schemaEntries;迁移账本配置 `migrations: { schema: 'cordis_meta', table: 'schema_migrations' }`。
-- 每插件 `src/db/schema.entry.ts` **只做直接命名导出**(`export { pingLogs } from './schema.ts'`),禁止嵌套对象包装、多层 re-export、条件导出。运行时给 `drizzle()` 的对象可另行组装,不必与 Kit 输入同形。
-- 中心迁移文件头部带 `-- assembly-sha256:` 注释;禁止改写 Kit 的 snapshot 内部制品。
+## Baseline 片段
 
-## 4. 宿主迁移职责(database 插件)
+插件可以通过 `Db.entities(..., { baselineDir })` 提供 `NNNN_*.sql`。生成器把片段编入中央迁移，并记录来源和哈希。片段描述应然状态，必须幂等；一旦编入迁移就不能修改，后续变化新增片段或中央迁移。
 
-init 顺序(全部实测):建池 + `pool.on('error')` → `select 1` 探活 → 取 advisory lock(session 级,专用 client)→ 校验全部已应用迁移的 sha256(账本 hash = migration.sql 全文 sha256;被改即拒绝启动)→ `autoMigrate`(默认 true)则单事务应用 pending,为假且有 pending 则抛错(依赖方保持 pending)→ 写旁挂审计表 `cordis_meta.migration_audit` → 释放锁 → 构造 drizzle 实例 → `yield` 清理(重置视图缓存 → `pool.end()`)。
+Baseline 适合扩展、函数和静态种子等声明性基础；一次性业务数据步骤属于中央迁移。手工 custom migration 的首行声明 owner，但所有文件仍属于同一产品 lineage。
 
-`register(ns, schema, meta?)`(effect 托管)维护 `cordis_meta.plugin_objects` 表→插件归属注册表(object_kind/schema_name/object_name/identity_arguments/parent_relation/source_hash/installed_migration/on_remove);`meta.onRemove: 'keep'|'drop'` 仅供 PURGE 流程读取,任何情况不自动删数据。注册时校验对象在 information_schema 存在,缺失 warn 指引 `pnpm db:gen`。
+## Build、Deploy、Start
 
-## 5. 行为层(trigger/function)
+- **Build**：只打包当前源码、已提交 lock 和已提交迁移；不读取部署状态，不生成或应用迁移。
+- **Deploy**：迁移器取得数据库级 advisory lock，按 ledger 应用镜像内待执行迁移。每条迁移在事务中，失败不记成功。
+- **Start**：验证数据库已经达到镜像要求；生产默认 `QUALY_MIGRATIONS=off`，不会 resolve、generate 或 apply。
 
-- 片段:插件 `db/behavior/NNNN_name.sql`,**只增不改**;`behavior.lock.json`(提交)登记 sha256 与产出迁移。已登记片段变更或消失 = 构建失败。
-- 片段可声明 `-- phase: pre-structure|post-structure|manual`(默认 post);manual 产出的迁移带 `-- manual-review: pending` 标记,须人工完成并审阅。
-- `pnpm db:gen` 是**单一编排命令**(自带文件锁):装配 → pre-structure 片段(`generate --custom` 骨架 + 确定性头部)→ Kit 结构 diff(必须 `--name`)→ post-structure 片段 → drop-guard → lock 更新。禁止分段手跑、禁止跨迁移重排历史。
-- 幂等纪律:首建严格 CREATE;函数体升级 `CREATE OR REPLACE FUNCTION`;触发器升级 `CREATE OR REPLACE TRIGGER`(PG18);**签名变化**走 `_v2` 新建→切换引用→显式 `DROP ... RESTRICT`;`IF [NOT] EXISTS` 仅限标注的补偿迁移。
-- drop-guard:新产出迁移含 `DROP TABLE`/`DROP COLUMN` 即整体回滚,`ALLOW_DESTRUCTIVE=1` 放行;已审阅的 PURGE 迁移用 `-- destructive: approved` 标记。
-- 分支纪律:迁移目录与三个 lock 禁止机械合并,分叉后基于最新主线重新生成。
+蓝绿部署会让两个 release 短时间同时连接一个数据库，因此迁移必须遵守 expand/contract。新增迁移用 `-- rollout: expand|maintenance` 声明能否在旧 release 仍服务时执行；非 expand 迁移要求维护模式。镜像回滚不等于 schema 回滚。
 
-## 6. dirty queue 与 projection(DDL 与语义定案;实现随 P3)
+## 连接与事务
 
-平台 schema `qualy_core`:
+应用连接池有获取连接、statement、lock 和 idle-in-transaction 等上限；部署迁移器不继承应用超时。数据库暂不可用的失败由 database 插件标为 unavailable，再由 API 平台统一编码为安全的 503。
 
-```sql
-create table qualy_core.projection_dirty (
-  plugin_id     text not null,
-  projection_id text not null,
-  dirty_key     text not null,
-  first_dirty_at timestamptz not null default now(),
-  last_dirty_at  timestamptz not null default now(),
-  last_op        text not null,          -- diagnostics only, never decision input
-  revision       bigint not null default 1,
-  primary key (plugin_id, projection_id, dirty_key)
-);
-create index projection_dirty_poll
-  on qualy_core.projection_dirty (plugin_id, projection_id, first_dirty_at);
+授权相关写入必须在同一数据库事务和同一连接内重读权限。结构性写入先取得租户行锁，再使用调用方连接复核授权；禁止持锁后另开池连接。生产 service、repo 和 handler 不自行 `Effect.run*`，事务和连接生命周期由 Effect scope 管理。
 
-create table qualy_core.projection_state (
-  plugin_id     text not null,
-  projection_id text not null,
-  desired_definition_hash      text not null,
-  materialized_definition_hash text,
-  state         text not null,           -- ACTIVE | RECONCILING | ERROR
-  last_success_at      timestamptz,
-  last_full_rebuild_at timestamptz,
-  last_error    text,
-  primary key (plugin_id, projection_id)
-);
-```
+## 开发流程和门禁
 
-- **合并型 dirty set,非事件日志**:插件常开触发器(behavior 片段)upsert(`ON CONFLICT ... revision+1`);触发器函数 schema-qualified、`SECURITY INVOKER`、`SET search_path = pg_catalog, pg_temp`。
-- worker 模板:短事务 `FOR UPDATE SKIP LOCKED LIMIT n` 按 first_dirty_at 取批 → **读源数据当前状态**(存在则重算、不存在则删派生行,绝不按 last_op 决策)→ upsert 投影 → 删 dirty 行 → 提交。慢计算(AI/分钟级)用 lease:认领→提交→计算→确认 revision 未变→写回。大批量导入热点的 statement-level + transition table 方案列为 P5 备选。
-- 语义定案:**dirty queue 负责增量一致性,reconcile 负责定义升级与故障恢复**。插件启动:两 hash 一致→续消 dirty;不一致→RECONCILING→插件全量重建→校验→更新 hash→ACTIVE。
+修改实体、baseline 或迁移前：
 
-## 7. PURGE 流程(文档化,本阶段不实现)
+1. 阅读本页、[数据层回顾](../notes/data-layer-retrospective.md)和相关实体／迁移测试。
+2. 只有开发者工作流运行 `pnpm qualy generate`；检查生成 SQL 的 rollout、所有权和破坏性操作。
+3. 运行相关升级测试、database check、drop guard 和 `pnpm qualy database verify`。
+4. 提交 SQL 和代码；不要在 CI、build 或应用启动时补生成。
 
-RETIRED(active 移除,表保留)→ 禁新写入 → 清消费任务 → 依赖检查(`pg_constraint` 入站外键、`pg_depend`、manifest 引用、projection_state)→ 显式 PURGE 迁移(`DROP ... RESTRICT`,迁移内标注 `-- destructive: approved`,ALLOW_DESTRUCTIVE 生成)→ tombstone 记录 → 从 installed/assembly 两个 lock 移除 → PURGED。
+`pnpm db:reset` 会删除开发 Compose 数据卷，不属于常规验证命令。`qualy.lock.json`、已应用迁移和已编译 baseline 不手改。
 
-**禁止 `DROP SCHEMA ... CASCADE`**;`plugin_objects.on_remove='keep'` 的对象在 PURGE 中保留并转为孤儿登记。
-
-## 8. 运行时自动化边界
-
-宿主启动期只自动执行**无歧义加法**(应用尚未应用的迁移);一切裁决类操作(改名、删除、签名变化、集合缩减)只发生在 db:gen 生成期并经人工审阅提交。灾备路径:迁移 SQL 可脱离 Drizzle 执行(PG18 + SQL 顺序执行 + 记 hash 的纯 migrator)。
+MikroORM 上游缺陷、版本状态和本地守卫见[上游问题索引](../upstream/README.md)与 [MikroORM 实测笔记](../notes/mikro-orm.md)。

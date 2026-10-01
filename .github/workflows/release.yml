@@ -164,7 +164,7 @@ jobs:
   # v* tags only, holds the one credential that can file them; only the
   # upload step sees it. It runs once the release is published: a map that
   # does not file is a red job to look at, not a release that did not happen
-  # (docs/rum.md, the uploader's failure policy).
+  # (docs/archive/designs/browser-rum.md, the uploader's failure policy).
   sourcemaps:
     needs: release
     runs-on: ubuntu-latest

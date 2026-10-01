@@ -6,7 +6,7 @@
 
 - v1 把 casing 从运行时/配置项迁进 schema 定义:`snakeCase.table` = `pgTableWithCasing('snake_case')`,TS camelCase 属性在**定义期**烘成 snake_case 列名(实测:`createdAt` 属性 → 迁移 SQL 里的 `created_at`)。同族 `snakeCase.view/materializedView/schema`。
 - 质变而非等价替换:表对象携带最终列名,插件的 schema 导出**自包含**,不依赖消费方配置;"kit 与运行时两边 casing 要一致"的纪律性约束结构性消失。
-- `drizzle({ casing })` 已从 DrizzleConfig 移除;kit 的 `casing` 只剩 introspect 用途。**两处都禁止写**(已入 CLAUDE.md)。
+- `drizzle({ casing })` 已从 DrizzleConfig 移除;kit 的 `casing` 只剩 introspect 用途。**两处都禁止写**(已入 AGENTS.md)。
 
 ## RQB v2:pg 驱动的 `schema` 选项已移除
 

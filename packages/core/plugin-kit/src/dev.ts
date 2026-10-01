@@ -2,7 +2,7 @@ import type { Effect, Scope } from 'effect'
 import { ExtensionPoint, Plugin, type PluginDescriptor, type PluginFeature } from './index.ts'
 
 // The processes a plugin wants beside the server while somebody is working on
-// it (docs/runtime-redesign.md §6).
+// it (docs/development/runtime.md).
 //
 // A development supervisor runs these, and it is the third reader of the same
 // descriptor: the assembler builds a runtime from it, the browser build reads

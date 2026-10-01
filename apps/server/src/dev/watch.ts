@@ -3,7 +3,7 @@ import chokidar, { type FSWatcher } from 'chokidar'
 import type { DevServiceSpec } from '@qualy/plugin-kit/dev'
 import type { PluginRoot } from './protocol.ts'
 
-// What a saved file means (docs/runtime-redesign.md §20, §21).
+// What a saved file means is described in docs/development/runtime.md.
 //
 // Not an import graph. Working out which running process actually depends on
 // a file means resolving every module in the repository on every save, and

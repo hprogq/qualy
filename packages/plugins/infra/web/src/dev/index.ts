@@ -9,7 +9,7 @@ import { WebManifestConfig, rootsFrom } from '../config.ts'
 import { decodePluginConfig } from '@qualy/plugin-kit/config'
 
 // The browser's development server, in its own process
-// (docs/runtime-redesign.md §29, §31).
+// (docs/development/runtime.md).
 //
 // It used to be mounted inside the backend, sharing its http server so the
 // hot-reload websocket could sit on one port. The price was that the two had

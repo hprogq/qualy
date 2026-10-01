@@ -14,7 +14,7 @@ import { Ui as UiService } from '@qualy/plugin-ui-registry/server/registry'
 import { createTestContext, postgresAvailable } from '@qualy/plugin-database/testkit'
 import pingPlugin from '@qualy/plugin-ping'
 
-// The descriptor prototype (docs/plugin-descriptor-plan.md, M1): the four
+// The descriptor prototype (docs/archive/designs/plugin-descriptor-plan.md, M1): the four
 // claims the audit asked to have proven before anything is cut over. The
 // host still runs the generated composition; this suite runs the same ping
 // through the two-phase assembler instead.

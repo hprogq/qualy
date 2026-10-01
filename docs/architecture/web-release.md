@@ -1,0 +1,109 @@
+# Web Release Protocol(已实现)
+
+实施方案见 docs/archive/designs/web-release-plan.md;本文记录落地后的形态与操作要点,是运维与后续改动的依据。
+
+## 三个身份
+
+| 身份             | 含义                                    | 来源                                                         | 用途                            |
+| ---------------- | --------------------------------------- | ------------------------------------------------------------ | ------------------------------- |
+| `resolutionHash` | bundle / 进程用的是哪一套插件装配       | `qualy.lock.json`                                            | 装配指纹校验,启动硬失败         |
+| `releaseId`      | 一次具体 Web build 或一次 dev Vite 会话 | `qualyRelease()` 插件铸造(`QUALY_RELEASE_ID` 或自铸不透明名) | 只比较相等:更新检测、诊断、日志 |
+| `clientProtocol` | 浏览器与 API 的兼容代际(小整数)         | `@qualy/release-contract`                                    | 兼容窗口 `min..max`,不兼容 409  |
+
+契约包 `@qualy/release-contract`:常量、四种文档的 Effect Schema(私有的 `WebReleaseIdentity` / `WebBuildMetadata` / `InstalledWebRelease`,公开的 `ReleaseProbe`)、`RELEASE_ID_PATTERN`、跨 tab 消息 schema。
+
+**公开 id 与私有 revision 分开**(2026-09-15):不给 `QUALY_RELEASE_ID` 时,production build 自铸 `r_` + 22 位 base64url(16 字节随机)——没有时钟、没有顺序,浏览器唯一能做的是比较相等;`QUALY_BUILD_REVISION`(commit / 构建号)只写进 `dist/.qualy-web-build.json` 与 store 的 `.qualy-release.json`,不进 bundle、不进探针。
+
+## 构建与安装
+
+- `pnpm build` = `vite build`(`qualyRelease()` 写 `virtual:qualy/release` 与 `dist/.qualy-web-build.json`)+ `packages/build/web/src/stage.ts` 调 `installWebRelease` 装进 `packages/plugins/infra/web/client-dist`。
+- Store 布局:`current.json`、`assets/`(所有保留 release 的 hashed 资源共存)、`releases/<id>/`(shell、public 文件、`.qualy-release.json`)。安装顺序 assets → shell(临时目录整体 rename)→ pointer;同名 asset 字节不同硬失败;同 release 重装幂等;`current` 永远指向完整的 release。
+- 保留策略:最近 `QUALY_WEB_RELEASE_RETAIN_COUNT`(默认 5)个 ∪ 最近 `QUALY_WEB_RELEASE_RETAIN_HOURS`(默认 72)小时;current 永不删;任何 release 的 metadata 读不出来则整个不 GC。
+- `node tools/quality/check-staged-web.ts [store]`:校验 current release 完整(index.html、所有 declared assets、resolutionHash = lock)并打印 releaseId;CI 在 build 后跑它。
+- 部署(2026-09-27 定,纠正 2026-09-17「store 随镜像、只装当前 release」;理由见 docs/deployment.md §3.1):镜像仍带着构建它时的 release(web 插件 `client-dist` 里只有这一个),部署另有一个比镜像活得久的 store(compose 的 `web_releases` 卷,`QUALY_WEB_RELEASE_STORE`)。`qualy deploy` 的 `web-release` 能力(`@qualy/plugin-web` 的 `src/assembly`)以 `promoteWebRelease` 把镜像 store 的 current release 连同资源与压缩件搬进部署 store 并设为 current,与 `installWebRelease` 共用同一段安装逻辑(资源 → shell 整体 rename → 指针 → GC),重跑幂等,回滚镜像时把旧 release 设回 current;`installedAt` 取装进部署 store 的时刻,保留策略按它计。
+
+## 生产服务(`@qualy/plugin-web`)
+
+- boot 读一次 `current.json` → 校验 release metadata、index.html、`resolutionHash == AssemblyInfo` → **pin 到进程生命周期**;之后 pointer 改变不影响本进程。设了 `QUALY_WEB_RELEASE_STORE` 时从部署 store 服务,并先核对它的 current 就是 asset root(镜像)里的那个 release,不是或 store 为空即拒启,提示先跑部署任务;没设时 asset root 就是 store。
+- shell 与 public 文件**不带 ETag**(2026-09-27):sirv 对匹配的 `If-None-Match` 在调用 `setHeaders` 之前直接写 304,不带任何头,浏览器沿用缓存里的 CSP 与 frame 拒绝,只改环境变量(`QUALY_CSP_MODE`、存储来源)的部署因此到不了回访的浏览器。shell 只有几 KB,每次加载完整返回;哈希资源仍带 ETag 且 immutable。
+- `/assets/*` 从共享目录服务,`public,max-age=31536000,immutable`,缺文件 404 绝不回 shell;其余从 pinned release 目录服务(SPA fallback),`Cache-Control: no-cache`,仅 html 导航带 document-only 头(X-Frame-Options / COOP / CSP / Reporting-Endpoints);favicon 等 public 文件 no-cache。两套都逐请求查盘(sirv `dev: true`),asset 在运行期被 GC 后是 404 而不是进程崩溃;隐藏路径(`/.`)一律 404。
+- `GET /__qualy/release`:pinned release 的 `ReleaseProbe`(`{schema: 2, releaseId}`,只有身份),`no-store`,不鉴权,在 `/api` 之外。开发态由 `qualyRelease()` 的 Vite 中间件答同一端点,后端不实现。**探针不再答 `mode` 与 `serverProtocol` 窗口**(2026-09-15,最小披露,见 docs/architecture/browser-surface.md):页面在这里只问「服务端换 release 了吗」,能不能继续通话由 API 在第一个真实请求上回答。因此探针文档有自己的代次(`RELEASE_PROBE_SCHEMA = 2`),私有三份文档仍是 `RELEASE_SCHEMA = 1`。
+
+## 浏览器
+
+- `main.tsx` 从 `virtual:qualy/release` 取 `webRelease`,创建一个 `ReleaseCoordinator`(`@qualy/web-runtime/release`)并 `start()`;`<html data-release>` 标记当前 release(公开诊断)。
+- 探测时机:回到可见且距上次 ≥ 5 分钟、`pageshow.persisted`(bfcache)、`online`、`vite:preloadError`、其他 tab 的 `BroadcastChannel('qualy:release')` 广播。只以 `releaseId` 相等与否判断;探测失败静默,绝不误报「已更新」。
+- 状态:`current` / `update-available`(右下角通知:稍后 / 刷新,「稍后」记住该 release)/ `reload-required`(整屏接管,原因 `release-skew` / `asset-load-failed` / `client-protocol`,阻断态不被后续探测降级)。**永不自动 reload**。
+- API 传输:`RuntimeProvider clientIdentity={webRelease}` → `clientFor()` 在每个请求加 `X-Qualy-Web-Release` / `X-Qualy-Client-Protocol`;原始响应为 409 且带 `X-Qualy-Client-Unsupported: 1` 时通知 coordinator(`client-protocol`),原请求照常失败。
+- `index.html` 的 boot 脚本:20 秒 watchdog 与「入口 script / stylesheet 加载失败」立即恢复共用一个幂等的 `showRecovery(kind)`;文案来自构建注入的 `#qualy-boot-copy` 数据块(`bootstrapMessages` 裁出的三行),脚本静态、CSP hash 不随文案变。
+
+## 服务端兼容检查(`apps/server/src/client-compatibility.ts`)
+
+只看 `/api/*`,问两个问题,顺序固定。
+
+**一、协议代次**(API 的**形状**)。无 `X-Qualy-Client-Protocol` 通过(CLI、外部集成、测试 client);
+在 `min..max` 内通过;否则 409 + `X-Qualy-Client-Unsupported: protocol`。顺序:request context →
+access log → metrics → response headers → origin guard → client compatibility → router
+(测试证明:跨站请求先被 403)。
+
+**二、release 属于哪套装配**(API 的**内容**,2026-09-15 起)。active-only 构建之后,两个 release
+不再只差代码:插件选择变了,页面里就有这台服务端没有 API 的屏,或者它会向 manifest 要自己 bundle
+里没有的 surface——而协议看不见这件事,形状没变。
+
+```text
+无 X-Qualy-Web-Release        → 不是网页(CLI/集成/测试),不判
+release == 本进程 pin 的那个   → 放行
+其他 release                   → 查 store 里那个 release 自己的 metadata
+    resolutionHash 与 browserContractHash 都相同 → 放行(保留旧 release 的目的)
+    任一不同                                     → 409 + X-Qualy-Client-Unsupported: assembly
+    查不到(已回收/不是合法 id)                  → 409 + X-Qualy-Client-Unsupported: release
+```
+
+**两个 hash 回答两件不同的事,`resolutionHash` 一个人不够**。它证明的是「同一套插件被选中」;
+而 UI 的 page/layout/slot/login **surface 声明不属于 lock 记录的内容**,内部插件版本又都是 `0.0.0`,
+所以同一 active 插件集下,普通代码增删改一个 surface 完全可能得到相同的 `resolutionHash`——
+旧 tab 之后重新 fetch manifest,就会拿到自己 bundle 里没有渲染器的 surface。
+`browserContractHash` 补的正是这一半:安装时从**私有**的 `.qualy-browser-surfaces.json` 的
+**键**(`page:<id>` / `layout:<contract>` / `slot:<slot>:<id>` / `login:<type>`,排序后带版本号)
+算 canonical sha256,写进 release 自己的 metadata。**只含 surface 身份,不含模块/源文件/包名**——
+所以「把每个组件都重写一遍但 surface 不变」的发布照样让旧 tab 继续工作。私有 map 本身仍然不进 store。
+两个 hash 任一不同都统一答 `assembly`,不新增浏览器可见的原因,也不向浏览器透露任何 hash。
+
+判断只发生在服务端,**浏览器永远不知道任何 hash**,也不知道「装配」这个概念存在。
+谁能回答这个问题也不由 host 决定:store 归 `@qualy/plugin-web`,它在建层时把判断注册进
+`@qualy/api-kit/client-assembly` 的单槽注册表(与 readiness 同一套倒置),serve 链逐请求读。
+没人注册 = 没有 release 可判(headless 部署)= 不拒绝。已知答案会记住(一个 release id 永远
+只对应一次构建),查不到的**不记**——release 可能在本进程运行期间被装上,记住「曾经查不到」
+会让它余生都被拒。
+
+三种拒绝同一个形状:409、header 说是哪一种、body 只有 `_tag`
+(`QUALY_CLIENT_PROTOCOL_UNSUPPORTED` / `..._ASSEMBLY_...` / `..._RELEASE_...`)。
+**body 不再带 `received` 与 `supported`**:浏览器只按 header 分支,把服务端的协议窗口告诉每个
+调用方不换来任何页面行为。浏览器侧 `protocol|assembly|release` 映射成阻断原因
+`client-protocol|assembly-skew|release-expired`,三者共用同一句「需要刷新页面」文案,
+区别只进 RUM 诊断(低基数工程事实)。认不出的 header 值按 `protocol` 处理并照样阻断——
+header 在就是事实,忽略它只会让读者面对一堆无从解释的 API 错误。
+
+## Breaking change 的发布顺序
+
+**2026-09-15:`CURRENT_CLIENT_PROTOCOL` 已升到 2**,窗口同为 `min = max = 2`。原因是 manifest 去掉了
+每个 surface 背后的模块名(见 docs/architecture/browser-surface.md),那是每个页面都要读的文档、服务端
+无法同时服务两种形状——所以下面的 expand → contract 顺序**不适用于这一类改动**:它适用于服务端
+能同时服务新旧两种形状的变更。形状本身破坏时只能一次到位,旧 tab 在第一个 API 请求上收到 409,
+被阻断屏要求刷新。
+
+以下是能同时服务时的顺序:
+
+1. Expand:server 窗口 `min..max+1`,部署 server。
+2. 发布 Web(`CURRENT_CLIENT_PROTOCOL` = max+1)。
+3. 等旧 tab 自然淘汰(通知 + 刷新)。
+4. Contract:server `min` 提升,旧客户端此时才收到 409 并被阻断屏要求刷新。
+
+禁止:同时删旧字段 + 发新 Web + 假设所有浏览器立刻刷新。
+
+**插件启停不走这条**:那是 assembly 变化,不是协议变化。旧 tab 在第一个 API 请求上收到 `assembly`
+拒绝并被要求刷新;同一套装配的纯代码发布则照常让旧 tab 继续工作。
+
+## 明确不做
+
+Service Worker / PWA 预缓存;每 30 秒轮询;`vite:preloadError` 无条件自动刷新;给 hashed asset `no-cache` 或给 favicon `immutable`;每个请求重读 `current.json`;把 `releaseId` 当**版本**门槛(它没有顺序语义;判的只是它属于哪套装配、同不同);把 `resolutionHash` 当 build id;把 assembly 这个概念暴露给浏览器。

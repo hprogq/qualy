@@ -2,7 +2,7 @@
 
 > 状态:现行(2026-09-17)。本文是 Qualy 从「一次提交」到「一台机器上跑着的一个 release」的唯一说明;
 > 命令序列在 `deploy/README.md`,本文讲的是形状、不变量与为什么。
-> 前提是 CLAUDE.md 的产品定位:**单一代码库、单一产品、单一发布物**。Plugin 用来组织和组合 Qualy 本身,
+> 前提是 AGENTS.md 的产品定位:**单一代码库、单一产品、单一发布物**。Plugin 用来组织和组合 Qualy 本身,
 > 不存在客户在生产环境装卸插件、拼装自己的 Qualy 的场景。
 
 ## 1. 分工
@@ -132,7 +132,7 @@ compose 与 `upgrade.sh` 不需要知道镜像仓库。`connectivity.yml` 是手
 并核对它的 web release id 就是 server 镜像里 `current.json` 的那个,否则整个 release 作废;`release` job 把它作为保留七天的 artifact
 交给 `sourcemaps` job。后者在 `rum-sourcemaps` 环境(只允许 `v*` tag)里,先核对 map 属于已发布 `release.json` 的 `webRelease`,再以
 `qualy rum sourcemaps` 按与浏览器相同的版本映射交给腾讯 RUM;上传凭据(`QUALY_RUM_TENCENT_SOURCEMAP_*`,子账号 `qualy-rum-uploader`)
-只给上传那一步。它排在发布之后:map 没交上是一个要看的红 job,不是一个没发出去的 release(docs/rum.md 的失败策略)。
+只给上传那一步。它排在发布之后:map 没交上是一个要看的红 job,不是一个没发出去的 release(docs/archive/designs/browser-rum.md 的失败策略)。
 runner 在境外、RUM 的桶在境内,桶会以 `RequestTimeOut`「User network is too slow」丢弃过慢的连接(SDK 对 4xx 不重试;
 v0.1.0-rc.3 的 job 因此跑了十分钟,一个 map 也没登记上),所以上传器 4 路并发、单个请求两分钟无进展即放弃、每个 map 换新 key 重试三次、
 每 32 个登记一次记录,job 设 30 分钟上限。v0.1.0-rc.15 又卡住一次(2026-09-30 查明):SDK 的 `Timeout` 只是套接字空闲超时,
@@ -192,7 +192,7 @@ host key(不用 runner 自带的 known_hosts)。发布制品(tag)与批准部署
   默认 512,低于容器上限,进程先回收而不是被杀)、`stop_grace_period: 40s`(`QUALY_SHUTDOWN_TIMEOUT` 30s 加余量);卷:`storage`(附件)、
   `web_releases`(**只读挂载**,从这里服务 shell 与资源)、本色的 `sandbox_runtime_<色>`、`sandbox_authoring_<色>`(**只读挂载**:server 只 connect;Linux 对只读挂载的 EROFS 写检查不覆盖 unix socket,实测 `:ro` 客户端照常连通、写文件报 EROFS;创建与删除 socket 归沙箱自己的读写挂载)。
   每色的沙箱卷分开,server 只连得到本色、也就是本 release 的沙箱。
-- `sandbox-runtime-<色>` / `sandbox-authoring-<色>`:按 `docs/sandbox-process-isolation.md`:`network_mode: none`、只读根、`cap_drop: ALL`、
+- `sandbox-runtime-<色>` / `sandbox-authoring-<色>`:按 `docs/architecture/sandbox.md`:`network_mode: none`、只读根、`cap_drop: ALL`、
   非 root、pids / mem / cpu 限额、各自一个卷;**不给 `.env`**——沙箱环境只有自己的 socket 路径与限额,没有业务 secret。
   两个卷分开,runtime 看不到 authoring 的 socket,反之亦然。没有 TCP fallback:socket 不可达时公式发布 / 计分失败,不退回主进程。
   **计分沙箱的时间(2026-09-29 在生产机上量):** v0.1.0-rc.4 上学生「我的成绩」每次 500(`ASSESSMENT_SCORING_EVALUATION_FAILED`,
@@ -219,7 +219,7 @@ host key(不用 runner 自带的 known_hosts)。发布制品(tag)与批准部署
   不会停在半启动状态;「池起来之前 socket 不存在」由 `apps/sandbox-runtime/tests/serve.test.ts` 守住。生产 `.env` 显式写
   `QUALY_SANDBOX_HARD_DEADLINE_MS=500`,作为这台主机的校准值。软期限随后改为 worker 线程的 CPU 时间(从 BOOTSTRAP 之后起算,
   产物加载后与入口返回后各核对一次,编译成本计入):同一容器内加一条空转线程、限 1 核时,墙钟版 360 次里 28 次误判超预算,
-  CPU 版 0 次;无竞争时两者中位都是 11.3 ms(docs/sandbox-process-isolation.md 同名修订)。上线后按同样方法各测 100 轮新 worker
+  CPU 版 0 次;无竞争时两者中位都是 11.3 ms(docs/architecture/sandbox.md 同名修订)。上线后按同样方法各测 100 轮新 worker
   (1200 次,白天有真实流量):rc.11(墙钟软期限)中位 11.7 / p99 43.5 / 最大 71.8 ms、1 次软超时;rc.12(CPU 软期限)
   中位 11.6 / p99 36.3 / 最大 56.1 ms、3 次墙钟超过 50 ms 但 0 次软超时,两者硬超时与节流都是 0。
 - `tools`(profile `tools`):当前 release 的 server 镜像 + 部署的 `.env` + `storage` 与 `web_releases` 卷,只跑一次性命令
@@ -285,7 +285,7 @@ URL 原样交给驱动,应用连接池、迁移器与通知监听用的是同一
 约一天前的日志会被挤掉。生产部署应把 server 日志转存到机器之外(Docker 的 `journald` / `syslog` / `fluentd` 等 logging driver,
 或主机上的日志采集),并在边缘代理上对 `/csp-reports` 按来源地址限流(nginx 用 `limit_req`,Caddy 需要 rate limit 插件)。
 
-**CAPTCHA provider**(docs/captcha.md):默认 `@qualy/plugin-captcha-altcha`(本地 PoW,不依赖第三方,无需任何配置——签名密钥由
+**CAPTCHA provider**(docs/archive/designs/captcha-design.md):默认 `@qualy/plugin-captcha-altcha`(本地 PoW,不依赖第三方,无需任何配置——签名密钥由
 `QUALY_SECRETS_MASTER_KEY` 派生);`@qualy/plugin-captcha-turnstile` 默认停用,只用于 Cloudflare 可服务的地区,启用时要先停用 altcha
 (两个 provider 同时启用在装配时被拒),并在 `.env` 填 `QUALY_CAPTCHA_TURNSTILE_SITE_KEY` / `QUALY_CAPTCHA_TURNSTILE_SECRET_KEY`(缺失即拒绝启动)。
 启用 Turnstile 会让 shell 的 CSP 在 `script-src` 与 `frame-src` 加入 `https://challenges.cloudflare.com`;浏览器端加载 Cloudflare 失败时只能重试,不会放行。

@@ -33,8 +33,8 @@ export default defineConfig(({ mode }) => ({
   // to leave to a default nobody has read.
   envDir: false,
 
-  // StyleX must transform the file before the React plugin sees it; Tailwind
-  // stays until the last migration phase (docs/ui-platform-migration-mantine.md)
+  // StyleX must transform each file before the React plugin sees it. The
+  // completed Mantine pivot is recorded in docs/archive/designs/mantine-ui-migration.md.
   plugins: [
     // the release this build or dev session is: named once, written into
     // the bundle and beside it, answered at /__qualy/release in dev

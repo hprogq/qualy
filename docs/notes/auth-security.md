@@ -312,7 +312,7 @@ default-src 'self'; script-src 'self' 'sha256-pKAg+of2SxxrkLJX27pRnCgcyN5Ud1dmuO
   每次至多 500 行,闲置超过 24 小时的桶)。计数分两种语义,类型上分开(`HardLimitRule` / `RiskRule`):
   hard 超限答 429 `TOO_MANY_ATTEMPTS { retryAfterSeconds }` + `Retry-After`,多桶同时超限答最长的等待;
   risk 只回答「这一次是否要先过 CAPTCHA」,**永远不产生拒绝**。
-- **本地登录的风险模型(2026-09-24 起,docs/captcha.md §12–24)**,全部在任何账号查询与 Argon2 之前、admission 时原子计数:
+- **本地登录的风险模型(2026-09-24 起,docs/archive/designs/captcha-design.md §12–24)**,全部在任何账号查询与 Argon2 之前、admission 时原子计数:
   - 「入口 + 来源地址」hard 300 次 / 5 分钟——资源熔断,不是安全参数;校园 NAT 下一个地址背后是成百上千人,IP 不等于一个人。
   - 「入口 + 来源地址」risk:前 20 次不要求,之后要求 CAPTCHA。
   - 「入口 + 邮箱」risk:前 5 次不要求,之后要求 CAPTCHA;**邮箱永远没有 hard limit**——匿名攻击者只能给某个账号增加
@@ -337,7 +337,7 @@ default-src 'self'; script-src 'self' 'sha256-pKAg+of2SxxrkLJX27pRnCgcyN5Ud1dmuO
   - 以上阈值是起点,待 Argon2 benchmark、校园出口峰值估计与遥测后再冻结。
   - **CAPTCHA**:默认 provider 为 ALTCHA(本地 PoW,`@qualy/plugin-captcha-altcha`,2026-09-24 与能处理 428 的登录页同笔启用);
     没有 provider 的部署风险触发一律放行(启动时 WARN 一次),那样的部署对分布式撞库的防护弱于有 provider 时。
-- **找回密码(2026-09-24 起,docs/captcha.md §25–30)**与登录是不同模型:它限制的是发给别人的邮件,不是能否登录,所以可以对邮箱设 hard 配额。
+- **找回密码(2026-09-24 起,docs/archive/designs/captcha-design.md §25–30)**与登录是不同模型:它限制的是发给别人的邮件,不是能否登录,所以可以对邮箱设 hard 配额。
   顺序:规范化邮箱 → 「来源地址」(network key)hard 100 次 / 15 分钟 → 地址 risk(前 5 次不要求)+ 邮箱 risk(一小时内第 2 次起要求,与登录一样在
   admission 时原子计数,并发请求只有第一个免 challenge)→ 需要时过 CAPTCHA(purpose `auth/password-reset`,binding 为规范化邮箱)→
   **过了 CAPTCHA 才**计「邮箱」hard 3 封 / 小时(第 4 次 429 且不发信)→ 才查账号。账号存在、不存在、邮箱未验证、没有本地密码走完全相同的前段。
@@ -655,7 +655,7 @@ smtp 后端对着 Mailpit 跑同一套,CI 设 `QUALY_REQUIRE_MAILPIT_TESTS=1`,�
 - **会话**：`GET /iam/self/sessions`（keyset，本人未过期会话）、`DELETE /iam/self/sessions/{sessionId}`（只能退出本人的其他会话；当前会话走 `DELETE /auth/session`，这里一律按 `AUTH_SESSION_NOT_FOUND` 处理）、`DELETE /iam/self/sessions`（退出除当前会话外的全部）。所有删除都同时限定 tenant、user、id。主动退出其他会话记审计 `auth.session.revoke`（`scope: one | others`）；退出当前会话属于日常操作，不记审计。界面上叫「会话」而不是「设备」：没有设备指纹，同一浏览器可能有两个会话。
 - **登录记录**：`GET /iam/self/sign-ins` 读 `sign_in_events`，支持按结果（成功/失败）和日期范围筛选。失败记录只包含已经确定是本人的那些，因为表里本来就不存输入的 identifier。
 - **账号变更**：审计仍然只归管理员。`AuditAction` 新增可选的 `subject`，是写给被操作的那个人看的措辞；只允许用在目标为人（`PERSON_TARGET = 'auth.user'`）的动作上，`compileActionCatalog` 会拒绝不符合的声明。`Audit` 服务契约新增只读方法 `subjectEvents`，只返回目标是本人、结果为成功、且声明了 subject 的事件，字段只有时间、措辞以及「本人 / 他人」，不带 details、姓名或 IP。auth 通过这个服务表面提供 `GET /iam/self/account-changes`，不直接读审计表。
-- **分页**：登录记录和账号变更按用户要求使用页码分页（`numberedPageQuery` / `numberedPageOf` + `pageWindow`），并支持日期范围。这偏离了 CLAUDE.md「向前读的流用 keyset」的默认约定，代价是每页多一次 count 和一次 offset；两个列表都按单个用户过滤，规模有限。排序键是 (时间, id)，是全序。
+- **分页**：登录记录和账号变更按用户要求使用页码分页（`numberedPageQuery` / `numberedPageOf` + `pageWindow`），并支持日期范围。这偏离了 AGENTS.md「向前读的流用 keyset」的默认约定，代价是每页多一次 count 和一次 offset；两个列表都按单个用户过滤，规模有限。排序键是 (时间, id)，是全序。
 - **最近登录**：两张入口表的「最近登录」按入口从 `sign_in_events` 取最近一次成功登录，不再读绑定的 `lastUsedAt`。这是因为按字段找人的入口（CAS）没有绑定行。
 
 ## 管理员查看他人的会话与登录记录（2026-09-26 用户裁决 #6）

@@ -1,6 +1,6 @@
-# RUM 上线手册(docs/rum.md Phase 4)
+# RUM 上线手册(docs/archive/designs/browser-rum.md Phase 4)
 
-日期:2026-09-15。对应 docs/rum.md §42 的 Phase 4。
+日期:2026-09-15。对应 docs/archive/designs/browser-rum.md §42 的 Phase 4。
 
 Phase 0–3 结束后,**代码侧已经没有待办**。剩下的全是控制台配置、部署密钥与真实环境验收,
 这份文件是那部分的执行顺序。凡是仓库能自动判定的,都已经做成命令或门禁;做不到的,
@@ -76,7 +76,7 @@ QUALY_RUM_TENCENT_SOURCEMAP_PROJECT_ID=... QUALY_RUM_TENCENT_SOURCEMAP_SECRET_ID
 version **不是参数**:uploader 从构建自己的 `.qualy-web-build.json` 读 releaseId,再过
 `rumVersionForRelease`——浏览器盖的版本号和 map 归档的版本号出自同一个函数,想漂都漂不了。
 
-上传失败**不应该**阻止部署(docs/rum.md §30):控制台不是本产品的可用性依赖。但执行上传的人
+上传失败**不应该**阻止部署(docs/archive/designs/browser-rum.md §30):控制台不是本产品的可用性依赖。但执行上传的人
 要看见失败,所以命令自己 exit 非零。
 
 `client-dist` 里 `.map` 数量必须是 0,`check-staged-web` 已经是 load-bearing 门禁。
@@ -100,14 +100,14 @@ version **不是参数**:uploader 从构建自己的 `.qualy-web-build.json` 读
 
 **一条预期内的缺口,不要当成故障**:SDK 是在问过服务端配置之后才懒加载的,而官方说明
 「初始化 Aegis 的时候这个接口已经发出去了」就监控不到。所以**冷启动期间的那几条请求
-(session、manifest)大概率没有测速数据**。这是 docs/rum.md §23 那个取舍的已知代价——
+(session、manifest)大概率没有测速数据**。这是 docs/archive/designs/browser-rum.md §23 那个取舍的已知代价——
 不为了早几十毫秒把 vendor 放进 boot graph。首屏性能同理:官方建议尽早初始化,
 Phase 0 实测懒加载下 page performance 与 Web Vitals 仍能采到,但「采得准」要在这一步看。
 
 > **一个安静的前提**:`x-qualy-request-id` 能被浏览器读到,靠的是前后端**同源**。
 > 官方那份「支持获取请求头和返回头」的文档要求跨域时加 `Access-Control-Expose-Headers`,
 > 否则 `getResponseHeader()` 取不到值。当前 Qualy 是同源,所以不需要;但**哪天把前端拆到
-> 另一个域,requestId 会从报告里安静地消失**,没有任何报错。docs/rum.md §31 记了这个条件。
+> 另一个域,requestId 会从报告里安静地消失**,没有任何报错。docs/archive/designs/browser-rum.md §31 记了这个条件。
 >
 > 顺带:官方那份文档的 `resHeaders` 示例同时开了 `apiDetail: true` 与 `reportRequest: true`,
 > 这两条是本产品的直接否决项。读产物确认过,`resHeaders` 那段是**无条件**拼进 `msg` 的,
@@ -132,7 +132,7 @@ query     = QUALY_PRIVATE_SENTINEL_QUERY
 
 ### 6. 告警与费用,然后 soak 24–72h
 
-初期只设少量信号(docs/rum.md §45):JS/Promise 错误数或错误率突增;新 release 的
+初期只设少量信号(docs/archive/designs/browser-rum.md §45):JS/Promise 错误数或错误率突增;新 release 的
 error regression 人工观察。不要一开始就对每个 4xx、每个资源错误、每次慢请求设告警——
 先跑出 baseline 再冻阈值。
 
@@ -141,7 +141,7 @@ error regression 人工观察。不要一开始就对每个 4xx、每个资源�
 
 ### 7. 切 production
 
-(自 2026-09-28 起,部署还要设 `QUALY_RUM_REPORTING=on`,缺省 off 时 provider 闲置,见 docs/rum.md §11。)
+(自 2026-09-28 起,部署还要设 `QUALY_RUM_REPORTING=on`,缺省 off 时 provider 闲置,见 docs/archive/designs/browser-rum.md §11。)
 
 staging soak 没问题后:production 域名进白名单 → `QUALY_RUM_TENCENT_ENV=production` →
 上传 production release 的 SourceMap → 开正式告警。
@@ -171,7 +171,7 @@ isErr: status === 429 || status >= 500
 
 ## 仓库这边不需要再改的
 
-- 普通 CI 永不依赖腾讯凭据或腾讯网络(docs/rum.md §46),这一点不变;
+- 普通 CI 永不依赖腾讯凭据或腾讯网络(docs/archive/designs/browser-rum.md §46),这一点不变;
 - `.map` 不进 release store,已有门禁;
 - CSP 只增加 `https://rumt-zh.com` 一个 host,开 API 测速不增加端点;
 - 上线前若要 release pipeline 自动化第 3 步,可以加一条 workflow——本文只写命令,

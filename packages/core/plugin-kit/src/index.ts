@@ -1,7 +1,7 @@
 import type { Context, Layer } from 'effect'
 
 // A plugin as an immutable description, in three concepts the kernel keeps
-// strictly apart (docs/plugin-descriptor-plan.md):
+// strictly apart (docs/archive/designs/plugin-descriptor-plan.md):
 //
 // A SERVICE is a single-provider runtime capability - a Context key and the
 // Layer that builds it. An EXTENSION POINT is a contribution channel: one

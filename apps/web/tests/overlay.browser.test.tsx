@@ -10,7 +10,7 @@ import { UiProvider } from '@qualy/ui/provider'
 import { Toaster, toast } from '@qualy/ui/toast'
 import '../src/app.css'
 
-// The overlay contract of docs/ui-platform-migration.md §11, pinned before
+// The overlay contract of docs/archive/designs/primereact-ui-migration.md §11, pinned before
 // any overlay primitive changes hands. Every case here is a way the product
 // has actually broken: a body left with pointer-events none after two
 // modals traded places, focus lost on close, an Escape that fell through a

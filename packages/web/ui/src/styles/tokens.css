@@ -1,7 +1,6 @@
 /* Qualy semantic tokens: the single source every styling system reads.
- * Tailwind consumes them through the shadcn variable aliases in theme.css,
- * StyleX through theme/tokens.stylex.ts, and the widget library theme
- * bridge reads the same names. The palette is the redesign's: ink is a
+ * StyleX uses them through theme/tokens.stylex.ts, and the widget library
+ * theme bridge reads the same names. The palette is the redesign's: ink is a
  * warm near-black on hue 80, the page is near white with the faintest
  * trace of the same hue, and the only saturation on a page is a standing
  * colour. A warm neutral reads as paper only while it is bright: darkened

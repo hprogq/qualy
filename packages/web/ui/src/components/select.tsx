@@ -288,8 +288,8 @@ function Select(props: {
 
 // The trigger's own width opinion lives in its StyleX base, where an xstyle
 // override wins property by property in the same composition. It used to be
-// a utility class, which sat in the layer ABOVE consumer StyleX and forced
-// every caller that sized a field back into Tailwind strings.
+// a utility class with higher cascade priority, which forced callers that
+// sized a field to repeat that implementation detail.
 const triggerStyles = stylex.create({
   base: {
     // fit by default, as the closed control has always been: the caller

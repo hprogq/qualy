@@ -4,7 +4,7 @@ import { loggingLayer, resolveLogging } from '../logging.ts'
 import { PROTOCOL, hostMessage, tell } from './protocol.ts'
 
 // The process a development service runs in, whichever plugin declared it
-// (docs/runtime-redesign.md §16).
+// (docs/development/runtime.md).
 //
 // It knows nothing about what it is running. A plugin ships a module with two
 // functions and this walks it through the same two bands the backend uses:

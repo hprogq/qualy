@@ -1,13 +1,13 @@
 # ADR 0010:commodity widget 底座选 Mantine 9,产品样式归 StyleX
 
 - 状态:**已接受**(2026-08-26)
-- 相关:docs/ui-platform-migration-mantine.md(执行设计)、docs/ui-platform-migration.md(被取代的 PrimeReact 设计,历史保留)、docs/notes/primereact.md(实查记录)、git tag `ui-prime-m4-checkpoint`(冻结的 PrimeReact 实验分支)
+- 相关:docs/archive/designs/mantine-ui-migration.md(执行设计)、docs/archive/designs/primereact-ui-migration.md(被取代的 PrimeReact 设计,历史保留)、docs/notes/primereact.md(实查记录)、git tag `ui-prime-m4-checkpoint`(冻结的 PrimeReact 实验分支)
 
 ## 背景
 
 Web 前端的样式底座原是 Tailwind CSS + shadcn 风格组件 + Radix primitives。它有三个结构性负担:Tailwind 的 `@source` 扫描横跨全部插件目录,使样式引擎成为平台级运行时;`@qualy/ui` 同时承担通用控件、产品语义组件与专用交互件三层职责而无清晰分界;组件视觉靠逐组件的 utility 类字符串维护。目标架构是:成熟的 commodity widget 库承担通用控件,StyleX 承担产品布局与视觉,`@qualy/ui` 是业务代码与任何第三方库之间的唯一边界。
 
-第一次尝试选择 PrimeReact 11 Styled + StyleX(设计见 docs/ui-platform-migration.md),按里程碑推进到 M4(overlay 家族)约一半后中止。该实验分支完整保留于 tag `ui-prime-m4-checkpoint`。
+第一次尝试选择 PrimeReact 11 Styled + StyleX(设计见 docs/archive/designs/primereact-ui-migration.md),按里程碑推进到 M4(overlay 家族)约一半后中止。该实验分支完整保留于 tag `ui-prime-m4-checkpoint`。
 
 ## PrimeReact 迁移实证发现(M0–M4,均可在冻结分支复现)
 
@@ -56,6 +56,6 @@ Web 前端的样式底座原是 Tailwind CSS + shadcn 风格组件 + Radix primi
 本身说的就是无时区字符串,与本仓存储格式同形——日期一路不经过 `Date`,唯一的换算是 instant ↔ 墙上时间,
 集中在一个有单元测试的模块里。继续留着 react-day-picker 反而要维护两套日历外观与两套语言真源。
 代价:多一个 Mantine 包的静态 CSS(见 §性能),以及区间绘制要绕开「隐藏日不触发 `:has()` 重跑」
-这一浏览器行为(过程记录在 STATUS.md)。
+这一浏览器行为；实验过程保存在 `docs/archive/designs/primereact-ui-migration.md`。
 
 其余四条决定不变;`@mantine/form`、notifications、dropzone 仍未引入。

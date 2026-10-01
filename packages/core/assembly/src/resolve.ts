@@ -61,7 +61,7 @@ export interface Resolution {
    * Each active plugin's default export, imported here.
    *
    * Resolution executes plugin modules now - the repeal of an older rule,
-   * decided with the descriptor model (docs/plugin-descriptor-plan.md, M3b):
+   * decided with the descriptor model (docs/archive/designs/plugin-descriptor-plan.md, M3b):
    * a descriptor is a pure value and importing it opens nothing, but it IS
    * TypeScript being run, and the runtime metadata that used to live in
    * package.json - dependencies, the config channel - lives on it.
@@ -149,7 +149,7 @@ export async function resolveAssembly(options: ResolveOptions): Promise<Resoluti
   // capability providers are declared on descriptors, and the candidate set -
   // manifest plus recalled - is exactly the set whose providers may have to
   // answer for this assembly. The repeal of "resolve does not import plugin
-  // code" was decided with the descriptor model (docs/plugin-descriptor-plan.md,
+  // code" was decided with the descriptor model (docs/archive/designs/plugin-descriptor-plan.md,
   // M3b): a descriptor is a pure value and importing it opens nothing, but it
   // IS TypeScript being run. After the metadata reads above, so a package
   // whose manifest is malformed is reported as that rather than as a missing

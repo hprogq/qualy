@@ -7,7 +7,7 @@
 `aqua:jdx/aube`,2.2.0 发布于 2026-08-25)。**结论:现在不换。** 阻塞只有一条,但它是硬的;
 除此之外的表现好得出乎意料。
 
-基线是 pnpm 11.24.0 与它写的 `pnpm-lock.yaml`(见 STATUS.md「回到 pnpm 11」)。全部实测,
+基线是 `package.json#packageManager` 固定的 pnpm 11.24.0 与它写的 `pnpm-lock.yaml`。全部实测，
 macOS arm64 + Linux x64(docker `node:24-bookworm`,`--platform linux/amd64`)。
 
 ## 结论表
@@ -134,5 +134,5 @@ Aube 树下红,根因不在 Aube:pnpm 会把**每个 workspace 包**都塞进 `n
 `autoInstallPeers`(把那些 peer 显式声明成 dependencies)。届时重跑本文的五道关口即可,尤其是最后一道——
 能写出让 pnpm 11 `--frozen-lockfile` 读得下去的 lock,是「不再被锁死」这个诉求本身。
 
-顺带定下的纪律已写进 STATUS.md:包管理器版本的变更单独成一次改动,只动版本号,跑完整门禁,并检查
+顺带定下的纪律是：包管理器版本变更单独成一次改动，只动版本号，跑完整门禁，并检查
 lockfile diff;manifest 没动而 lockfile 大面积变化,默认视为异常。
