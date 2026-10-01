@@ -21360,3 +21360,17 @@ metadataUnchanged:true; reactDomClientKnown:true; HttpStatus-1qu7jGzr.js status:
   production部署执行，不跳过CI、不本机另建正式发布镜像、不默认停机迁移。
 - 验收：指引diff仅标题；`commit-scope.test.ts`→`1 passed; 2 passed`,exit0；
   `oxfmt`完成、`git diff --check`无输出，exit0。
+
+## 2026-10-02：修复发布 CI 的日期样式副作用声明
+
+- main CI 36912420968：static/browser/image通过；服务端套件3096通过、1失败、29跳过，
+  唯一失败为side-effects门禁。三个日期adapter引入外部CSS后漏列入包sideEffects，现补齐，
+  保持日期CSS随adapter加载，不改为全局引入。
+- WebKit未执行测试：Ubuntu azure镜像下载系统依赖持续约15分钟，job超时取消。
+  保留测试与门禁，随新提交重新执行，不把安装超时解释成测试成功。
+- 真实验收：`vitest run tools/tests/side-effects.test.ts`→`1 passed; 2 passed`,exit0；
+  `pnpm build`→`built in 18.42s; installed web release r_MCaiLRzzzPdmuMoPosTkuQ (351 assets)`,exit0；
+  `oxfmt --check packages/web/ui/package.json`与`git diff --check`均exit0。
+- `check-staged-web`→`351 assets, production, protocol 2`；`check-csp-build`→`no code from strings`；
+  `check-public-web`→`discloses nothing it should not (351 served files)`，全部exit0。
+- 下一步：新main CI全部通过后创建rc.23，等待GitHub正式构建并按digest部署。

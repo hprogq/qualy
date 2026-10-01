@@ -6,6 +6,9 @@
   "type": "module",
   "sideEffects": [
     "./src/styles/*.css",
+    "./src/components/date-picker.tsx",
+    "./src/components/date-range-picker.tsx",
+    "./src/components/date-time-picker.tsx",
     "./src/components/photo-view.tsx"
   ],
   "exports": {
