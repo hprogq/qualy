@@ -32,7 +32,7 @@
 4. **导入 ABI:`@qualy/messages/<namespace>`**,在三种情形下都必须可解析:插件单独开发、测试与 typecheck(plugin-kit 只编译该插件自己的消息);assembly 开发与构建(集中编译,全局只有一个 runtime);已发布的 dist-only 第三方插件(specifier 保持 external,包内携带 ICU JSON,由宿主编译)。插件只能 import 自己命名空间的消息;平台通用消息另设显式契约。先依赖 `sideEffects: false` 下 Rolldown 的 tree-shaking,不预先写 import 改写。消息 key 在插件文件内用本地名,由 collector 加命名空间前缀;从现有 Qualy id 到新 key 的映射规则要确定、可逆,供差分测试使用。
 5. **类型 facade**:由 inlang 规范化模型生成 `@qualy/messages/<namespace>` 的 `.d.ts`(缺信息时退回同版本的 `@messageformat/parser`,不引入 FormatJS 的第二个解析器)。规则:`plural`、`selectordinal`、`number` 参数为 `number`;`date`、`time` 参数为 `DateInput`(见待定事项);普通插值为 `string`;带 `other` 的 `select` 参数为 `string`,合法值由调用处的领域类型经 `selectKey` 约束,不让消息文件反过来定义领域枚举。JS 输出只是 re-export,没有运行时包装。背景:Paraglide 对带兜底分支的 match 生成 `NonNullable<unknown>`,不加这层 facade 会丢掉现有 `defineMessage<Values>` 的类型安全。
 6. **浏览器**:删除 `I18nProvider`、`loadCatalogs`、`compileMessage`、`MessageDescriptor`、`defineMessage`、`CatalogFor`、`formatText`、`LocalizedText`、`ErrorMessageMap`。组件直接调用消息函数。Paraglide 客户端使用自定义 strategy,只读 `<html data-locale>`;`useLocale()` 只是返回这个常量。API 错误翻译改为 feature 内的"错误码 → 消息函数"映射,通用的传输与认证错误放在平台通用消息里。
-7. **语言生命周期:一个文档从创建到关闭只有一种语言**。创建时依次取:显式 cookie、`navigator.languages`、`zh-CN`;boot script 写入 `lang` 与 `data-locale`。cookie 只在用户明确选择时写入。账户上的 `preferredLocale` 可为空,只在登录用户明确选择时写入。切换:同一个接口同时写账户偏好并 `Set-Cookie`,然后走 leave guard,最后整页重新载入。多标签页用 BroadcastChannel 给出不打断的提示,不自动刷新。
+7. **语言生命周期:一个文档从创建到关闭只有一种语言**。创建时依次取:显式 cookie、`navigator.languages`、`zh-CN`;boot script 写入 `lang` 与 `data-locale`。cookie 只在用户明确选择时写入。账户上的 `preferredLocale` 可为空,只在登录用户明确选择时写入。切换:先弹出模态确认,说明整页重载与未保存表单可能丢失;确认后才由同一个接口同时写账户偏好并 `Set-Cookie`,最后整页重新载入(原有 beforeunload 保护保留)。取消不保存偏好。多标签页用 BroadcastChannel 给出不打断的提示,不自动刷新。
 8. **服务端文字:`UiText` 从 wire 与内部同时退役**。新建仅服务端使用的包 `@qualy/text`(不放进 i18n-contract),只有三种构造:`text(消息函数, inputs)`、`term(TermRef)`、`literal(value)`;inputs 的类型来自 facade,`string` 类参数也可以接受 `Text`(用于术语)。`render(text, ctx)` 是同步纯函数,`ctx = { locale, terms }`,术语表每个请求查询一次并缓存。HTTP DTO 字段一律是 `string`,handler 显式渲染;api-kit 不做自动递归渲染。只在构造响应时渲染;渲染结果不缓存、不持久化,唯一例外是显式按源语言渲染的镜像(如 `Permission.name`);后台任务只存 code。服务端 Paraglide 使用自定义 strategy,未显式传 `locale` 的调用直接抛错。API client 在每个请求上附带 `x-qualy-locale`(取 `data-locale`);服务端解析顺序:该 header、cookie、`Accept-Language`、产品默认。WebSocket 与 SSE 把语言放进连接 URL。
 9. **邮件与导出**使用同一个 `render`。本人触发的,用当前文档语言;发给他人的,用收件人的 `preferredLocale`,没有则用产品默认,绝不使用操作者的语言。删除 `mail-copy.ts`。
 10. **术语库**:合约里只保留 `TermRef`(只有身份);`TermDefinition` 移到声明侧,`default`、`label`、`description` 都是引用 Paraglide 消息的 `Text`;删除 `defaults` 记录。管理端 DTO 通过逐语言渲染得到各语言默认值;`normalizeOverride` 与渲染出的默认值比较;assembly 门禁对每种语言渲染默认值,要求非空且不超过 maxLength。当前文档语言下的生效术语由 settings 插件通过 manifest 的 document-context 扩展点下发(ui-registry 不依赖 settings),`useTerm` 变为同步查表;管理员术语编辑接口保留,保存后重新获取 manifest。document-context 只放整个文档生命周期内稳定、体积小、多个 feature 都要用的数据,并设体积预算。术语只允许出现在不受词形变化影响的位置。
@@ -138,3 +138,39 @@ FCP 在两组里都呈双峰(约 800 ms 或 1.4–2.4 s),三次取中位数不�
 
 读法:首帧是 index.html 里的启动画面,两组相同;React 首次提交早约 460 ms,页面内容与 LCP 早约 1.45 s,五轮之间各自
 相差不到 350 ms(每组第一轮都偏慢约 300 ms)。这是本机应用节流下的差,不是对真实网络的预测。
+
+## 语言切换交互与分包阈值建议(2026-10-01 下午)
+
+- 三处语言入口(登录页、账户菜单、抽屉)先确认再保存、重载。错误时保留确认供重试;请求期间禁止重复确认。
+  账户菜单的确认由菜单外的组件持有,避免菜单关闭连带卸载问题。原有表单 beforeunload 保护保留,因此浏览器仍可能再问一次。
+- BroadcastChannel 的发送端与接收端是两个实例,同文档也会收到广播。消息加入每文档随机 source,本页忽略自身消息;
+  其他标签页保留轻提示与手动刷新。兼容未带 source 的旧标签页。
+- Cookie 是**新文档**的选择依据,不是存活文档的响应语言。B 的 `data-locale` 在 A 切换后保持原值;typed client 每次请求
+  写 `x-qualy-locale`,服务端 header 优先于 cookie。前端消息、API 错误、manifest 和术语都沿用 B 的语言。
+  RUM 配置与附件二进制的直接 fetch 不返回展示文案;SSE/WebSocket 仍适用上文已实施的无 Text 约束。
+
+本次本地生产构建复测(含上述确认交互):入口 + 页面 + layout + login/local(仅登录页)的静态 import 闭包,
+去重统计 JS chunk;不含 CSS、字体、API、worker、动态加载的 slot,不是整页网络请求数。
+小 chunk 按**原始 UTF-8 bytes**小于 1024/2048 统计;压缩对每个 JS 文件分别做 Brotli q11 后求和,
+单位统一 **KiB = 1024 bytes**。使用 Vite generateBundle 输出图与 `.qualy-browser-surfaces.json` 定位 roots,
+不依赖公开文件名或源码启发式。构建共 333 个 JS chunk(不计 worker)。
+
+| 页面       | 请求数 | <1 KiB | <2 KiB | Brotli bytes | Brotli KiB | 建议请求上限 | 建议 Brotli 上限 KiB |
+| ---------- | ------ | ------ | ------ | ------------ | ---------- | ------------ | -------------------- |
+| login      | 67     | 39     | 45     | 322936       | 315.4      | 72           | 350                  |
+| batches    | 102    | 52     | 66     | 382442       | 373.5      | 108          | 415                  |
+| my-entries | 133    | 72     | 87     | 449033       | 438.5      | 140          | 485                  |
+| org-tree   | 92     | 55     | 61     | 355933       | 347.6      | 97           | 385                  |
+
+**建议,尚未启用新门禁**:请求硬上限 = 基线 + max(5, ceil(基线 × 5%));Brotli 硬上限 = 基线 × 1.10
+向上取整到 5 KiB。这为新增确认、少量表单和翻译留出明确余量,但 15–30 个请求的拆分退化、重新引入全量消息池
+或编辑器泄漏仍会被阻断。允许正常增长不意味着自动抬高基线;越界时先检查图,合法新功能附测量后再审阅预算。
+请求和字节同时检查,不能靠合并减少请求掩盖下载增长。
+
+<1/<2 KiB 数量先告警:各自比基线多 **4** 个以上即列出新增小 chunk,不做硬失败。小 chunk 与请求数高度相关,
+且一个复用良好的小模块也可能合理;按总数硬卡会诱导过度合并。全量 chunk 数只报告,不门禁。
+chunk 环继续零容忍、boot 原始 2 MiB 上限与现有隔离检查保留。Lighthouse 分数/FCP/LCP 暂不作硬门禁,
+本机 FCP 双峰和加载时序方差不适合逐提交阈值;图预算越界或分组/依赖升级时再复测手机三轮中位数与真人时间轴。
+
+本轮测试涉及 Effect 的依据实际阅读: `repos/effect/packages/effect/src/Effect.ts`(succeed/fail/gen/provideService/runPromise)
+与 `repos/effect/packages/effect/src/http-api/HttpApiClient.ts`(make);生产 Effect 逻辑未改动。

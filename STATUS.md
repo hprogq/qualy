@@ -21022,3 +21022,14 @@ job 后通过。阶段 3、4 在 worktree 上完成,拆成三个功能提交与�
     → `no code from strings in the bundle`;`node tools/quality/check-public-web.ts` → `discloses nothing it should not`,全部 exit 0。
 - 验收中首次并行跑构建与两个测试进程,读消息编译目录时出现缺文件;改串行后构建通过。未将失败运行记成通过。
 - 下一步:审阅本地提交;本轮未推送、未部署,未跑全量业务数据库或 E2E 套件。
+
+## 分包回归阈值建议(2026-10-01 下午)
+
+- ADR 0011 补入最终本地生产构建的静态 JS 闭包复测:login/batches/my-entries/org-tree 请求数 67/102/133/92,
+  Brotli q11 323015/382517/449108/356008 bytes(315.4/373.6/438.6/347.7 KiB),共 333 个 JS chunk。
+  roots、去重、压缩与小 chunk 单位均已写清,不混用 Lighthouse 整页请求数。
+- 建议请求硬上限 72/108/140/97,Brotli 上限 350/415/485/385 KiB;请求允许约 5%(至少 5 个),压缩允许约 10%。
+  <1/<2 KiB 数量各增长超过 4 个先告警,chunk 环继续零容忍;暂不以波动的 FCP/LCP 或 Lighthouse 分数硬卡。
+- 验收复用上一节实际 Vite generateBundle 图采集与 Brotli q11 计算输出;`oxfmt --check` 的项目文件检查通过,
+  `git diff --check` 通过。**这里只提出阈值,尚未启用新的构建门禁**。
+- 下一步:用户审阅预算口径后再接入 qualyChunkGraph。语言修复提交 3323540e8,本轮仍仅本地提交。
