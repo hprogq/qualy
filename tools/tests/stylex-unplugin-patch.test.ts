@@ -1,5 +1,6 @@
 import { fileURLToPath } from 'node:url'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import { runInNewContext } from 'node:vm'
 import stylexUnplugin from '@stylexjs/unplugin/vite'
 
 // The guard the repository's @stylexjs/unplugin patch adds around the
@@ -21,7 +22,8 @@ const repoRoot = fileURLToPath(new URL('../..', import.meta.url))
 
 interface PatchedPlugin {
   readonly __stylexCollectCss: (mode?: { unresolvedConstants?: 'skip' | 'throw' }) => string
-  readonly __stylexGetSharedStore: () => { rulesById: Map<string, unknown[]> }
+  readonly __stylexGetSharedStore: () => { rulesById: Map<string, unknown[]>; version: number }
+  readonly load: (id: string) => string
 }
 
 const plugin = (): PatchedPlugin => {
@@ -84,5 +86,84 @@ describe('the collected stylesheet and constants that have not arrived', () => {
     expect(css).toMatch(/@media \((max-width: ?767\.98px|width <= ?767\.98px)\)/)
     expect(css).toContain('.x1guard')
     expect(css).not.toContain('var(--xguardkey)')
+  })
+})
+
+describe('development stylesheet updates', () => {
+  it('reuses one version, observes changed and removed rules, and keeps builds strict', () => {
+    const subject = plugin()
+    const store = subject.__stylexGetSharedStore()
+    const id = 'stylex-dev-cache-test'
+    try {
+      store.rulesById.set(id, [plain])
+      store.version++
+      const css = subject.__stylexCollectCss({ unresolvedConstants: 'skip' })
+      store.rulesById.set(id, [placeholder])
+      // No version change: the cached dev response is reused. Production must
+      // still inspect the current rules and reject an unresolved constant.
+      expect(subject.__stylexCollectCss({ unresolvedConstants: 'skip' })).toBe(css)
+      expect(() => subject.__stylexCollectCss()).toThrow(/xguardkey/)
+      store.version++
+      expect(subject.__stylexCollectCss({ unresolvedConstants: 'skip' })).not.toContain('.x1plain')
+      store.rulesById.set(id, [placeholder, definition, plain])
+      store.version++
+      expect(subject.__stylexCollectCss({ unresolvedConstants: 'skip' })).toContain('.x1guard')
+      store.rulesById.delete(id)
+      store.version++
+      expect(subject.__stylexCollectCss({ unresolvedConstants: 'skip' })).not.toContain('.x1guard')
+    } finally {
+      store.rulesById.delete(id)
+      store.version++
+    }
+  })
+
+  it('coalesces bursts, keeps one request in flight, and stops on disposal', async () => {
+    vi.useFakeTimers()
+    try {
+      const handlers = new Map<string, () => void>()
+      let dispose = () => {}
+      const style = { textContent: '', parentNode: { removeChild: vi.fn() } }
+      const responses: ((response: { text: () => Promise<string> }) => void)[] = []
+      const fetch = vi.fn(() => new Promise((resolve) => responses.push(resolve)))
+      const source = plugin().load('virtual:stylex:runtime')
+      runInNewContext(source.replaceAll('import.meta.hot', 'hot').replace('export {};', ''), {
+        document: { getElementById: () => style, querySelectorAll: () => [] },
+        fetch,
+        setTimeout,
+        clearTimeout,
+        hot: {
+          on: (name: string, callback: () => void) => handlers.set(name, callback),
+          dispose: (callback: () => void) => {
+            dispose = callback
+          },
+        },
+      })
+      await vi.advanceTimersByTimeAsync(0)
+      expect(fetch).toHaveBeenCalledTimes(1)
+      const update = handlers.get('stylex:css-update')!
+      for (let i = 0; i < 20; i++) update()
+      await vi.advanceTimersByTimeAsync(500)
+      expect(fetch).toHaveBeenCalledTimes(1)
+      responses.shift()!({ text: async () => 'first' })
+      await vi.advanceTimersByTimeAsync(60)
+      expect(fetch).toHaveBeenCalledTimes(2)
+      responses.shift()!({ text: async () => 'latest' })
+      await vi.advanceTimersByTimeAsync(0)
+      expect(style.textContent).toBe('latest')
+      for (let i = 0; i < 20; i++) update()
+      await vi.advanceTimersByTimeAsync(59)
+      expect(fetch).toHaveBeenCalledTimes(2)
+      await vi.advanceTimersByTimeAsync(1)
+      expect(fetch).toHaveBeenCalledTimes(3)
+      dispose()
+      responses.shift()!({ text: async () => 'disposed' })
+      await vi.advanceTimersByTimeAsync(500)
+      update()
+      await vi.advanceTimersByTimeAsync(500)
+      expect(fetch).toHaveBeenCalledTimes(3)
+      expect(style.textContent).toBe('latest')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

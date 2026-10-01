@@ -96,3 +96,25 @@ esbuild / webpack 四个适配器。lib 全树共 58 行增删,`vite.d.ts` 与 `
 判断一条规则能不能进组件,只有一个标准:**它作用的元素是不是这个组件自己渲染的**。
 `:has()` 把「自身盒子里有什么」变成可问的,但后代选择器仍然不可表达——
 `[data-slot='alert'] > svg` 这类指向调用方所写元素的规则,只能留在 theme.css。
+
+## 开发 CSS 重复聚合与请求并发(2026-10-02)
+
+实读 0.19.1 已安装的 `lib/es/core.mjs`、`vite.mjs`、`consts.mjs` 与对应 CJS:
+CSS middleware 每次请求都重新合并全部规则、processStylexRules、Lightning CSS;
+运行时每条 css-update 消息都立即 fetch,没有并发限制,多个响应还可能逆序覆盖样式。
+路由首次加载的一批组件会持续增长 shared.version,同时触发多次 CSS 更新。
+
+现有版本化补丁增加两项开发态优化:
+
+- `collectCss({ unresolvedConstants: 'skip' })` 按 shared.version 缓存结果。
+  transform 增删规则已有 version 增量;buildStart 清缓存。启用 devPersistToDisk 时不缓存,
+  因为磁盘可能被另一进程改写。生产严格收集始终重算,不复用跳过常量的开发结果。
+- Vite 虚拟运行时合并60ms内的更新信号,只允许一个请求在途;在途收到更新则在结束后取最新表。
+  dispose 清定时器并阻止未完成响应重新写入样式;vite:afterUpdate保留180ms等待。
+  不改轮询频率,不预加载全部业务页,不改变生产 CSS 落点。
+
+测量边界:8,000条合成原子规则,修改前每次聚合约13–32ms;修改后首次生成后七次读取
+均小于1ms。实际浏览器请求还包含服务端编译排队,不能等同于纯CSS聚合耗时。
+探针没有真实业务后端或用户会话,不能把它写成真人路由点击提速百分比。
+回归 `tools/tests/stylex-unplugin-patch.test.ts` 覆盖版本复用/增删/常量到达/生产严格路径,
+以及突发更新、单请求在途、最终样式与dispose。移除条件:上游具备等效版本缓存与请求合并后升级。

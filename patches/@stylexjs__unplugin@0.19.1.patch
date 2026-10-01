@@ -1,5 +1,64 @@
+diff --git a/lib/consts.js b/lib/consts.js
+index 11afa047f9b2f281f79f27da9c8fd40c812f02aa..7f123b97f08c3573a6c2ca7c9d4335b8dc64923b 100644
+--- a/lib/consts.js
++++ b/lib/consts.js
+@@ -12,6 +12,18 @@ const STYLE_ID = '__stylex_virtual__';
+ const DEV_CSS_PATH = '${DEV_CSS_PATH}';
+ const AFTER_UPDATE_DELAY = ${DEV_AFTER_UPDATE_DELAY};
+ let lastCSS = '';
++let pending = false;
++let inFlight = false;
++let disposed = false;
++let timer;
++
++function requestUpdate(delay = 60) {
++  if (disposed) return;
++  pending = true;
++  if (inFlight) return;
++  clearTimeout(timer);
++  timer = setTimeout(update, delay);
++}
+ 
+ function ensure(){
+   let el=document.getElementById(STYLE_ID);
+@@ -40,22 +52,31 @@ async function fetchCSS() {
+ }
+ 
+ async function update(){
++  if (disposed || inFlight) return;
++  pending = false;
++  inFlight = true;
+   try {
+     const css = await fetchCSS();
+-    if (css!==lastCSS) {
++    if (!disposed && css!==lastCSS) {
+       ensure().textContent = css;
+       disableLink();
+       lastCSS = css;
+     }
+   } catch {}
++  finally {
++    inFlight = false;
++    if (pending && !disposed) requestUpdate();
++  }
+ }
+ 
+-update();
++requestUpdate(0);
+ 
+ if(import.meta.hot){
+-  import.meta.hot.on('stylex:css-update', update);
+-  import.meta.hot.on('vite:afterUpdate', () => setTimeout(update, AFTER_UPDATE_DELAY));
++  import.meta.hot.on('stylex:css-update', () => requestUpdate());
++  import.meta.hot.on('vite:afterUpdate', () => requestUpdate(AFTER_UPDATE_DELAY));
+   import.meta.hot.dispose(() => {
++    disposed = true;
++    clearTimeout(timer);
+     const el = document.getElementById(STYLE_ID);
+     if (el && el.parentNode) el.parentNode.removeChild(el);
+   });
 diff --git a/lib/core.js b/lib/core.js
-index 23e8c47ad8f19139b70ad89df42bf9d899fa21cd..4a237ec36f8f94424111dd76aaec965cc268f496 100644
+index 23e8c47ad8f19139b70ad89df42bf9d899fa21cd..9b263efbb3a33bdff180d974ba3b4e93acf0da7b 100644
 --- a/lib/core.js
 +++ b/lib/core.js
 @@ -34,7 +34,29 @@ function pickCssAssetFromRollupBundle(bundle, choose) {
@@ -33,27 +92,109 @@ index 23e8c47ad8f19139b70ad89df42bf9d899fa21cd..4a237ec36f8f94424111dd76aaec965c
      useLayers: options.useCSSLayers ?? false,
      enableLTRRTLComments: options?.enableLTRRTLComments
    });
-@@ -289,7 +311,7 @@ const unpluginFactory = (userOptions = {}, metaOptions) => {
+@@ -281,6 +303,7 @@ const unpluginFactory = (userOptions = {}, metaOptions) => {
+   }
+   function resetState() {
+     stylexRulesById.clear();
++    devCssVersion = -1;
+     if (devPersistToDisk) {
+       try {
+         _nodeFs.default.rmSync(DISK_RULES_PATH, {
+@@ -289,7 +312,12 @@ const unpluginFactory = (userOptions = {}, metaOptions) => {
        } catch {}
      }
    }
 -  function collectCss() {
++  let devCssVersion = -1;
++  let devCss = '';
 +  function collectCss(mode) {
++    const version = getSharedStore().version;
++    const cacheable = mode?.unresolvedConstants === 'skip' && !devPersistToDisk;
++    if (cacheable && version === devCssVersion) return devCss;
      const merged = new Map();
      if (devPersistToDisk) {
        try {
-@@ -308,7 +330,8 @@ const unpluginFactory = (userOptions = {}, metaOptions) => {
-     return processCollectedRulesToCSS(allRules, {
+@@ -305,11 +333,17 @@ const unpluginFactory = (userOptions = {}, metaOptions) => {
+     } catch {}
+     for (const [k, v] of stylexRulesById.entries()) merged.set(k, v);
+     const allRules = Array.from(merged.values()).flat();
+-    return processCollectedRulesToCSS(allRules, {
++    const css = processCollectedRulesToCSS(allRules, {
        useCSSLayers,
        lightningcssOptions,
 -      enableLTRRTLComments: stylexOptions?.enableLTRRTLComments
 +      enableLTRRTLComments: stylexOptions?.enableLTRRTLComments,
 +      unresolvedConstants: mode?.unresolvedConstants
      });
++    if (cacheable) {
++      devCss = css;
++      devCssVersion = version;
++    }
++    return css;
    }
    async function persistRulesToDisk(id, rules) {
+     if (!devPersistToDisk) return;
+diff --git a/lib/es/consts.mjs b/lib/es/consts.mjs
+index 4e98c8b120fcb5f79c2964d3db11b4b5bd2f009c..78f9c02386723972c5968f418ba8487f06e86a0b 100644
+--- a/lib/es/consts.mjs
++++ b/lib/es/consts.mjs
+@@ -6,6 +6,18 @@ const STYLE_ID = '__stylex_virtual__';
+ const DEV_CSS_PATH = '${DEV_CSS_PATH}';
+ const AFTER_UPDATE_DELAY = ${DEV_AFTER_UPDATE_DELAY};
+ let lastCSS = '';
++let pending = false;
++let inFlight = false;
++let disposed = false;
++let timer;
++
++function requestUpdate(delay = 60) {
++  if (disposed) return;
++  pending = true;
++  if (inFlight) return;
++  clearTimeout(timer);
++  timer = setTimeout(update, delay);
++}
+ 
+ function ensure(){
+   let el=document.getElementById(STYLE_ID);
+@@ -34,22 +46,31 @@ async function fetchCSS() {
+ }
+ 
+ async function update(){
++  if (disposed || inFlight) return;
++  pending = false;
++  inFlight = true;
+   try {
+     const css = await fetchCSS();
+-    if (css!==lastCSS) {
++    if (!disposed && css!==lastCSS) {
+       ensure().textContent = css;
+       disableLink();
+       lastCSS = css;
+     }
+   } catch {}
++  finally {
++    inFlight = false;
++    if (pending && !disposed) requestUpdate();
++  }
+ }
+ 
+-update();
++requestUpdate(0);
+ 
+ if(import.meta.hot){
+-  import.meta.hot.on('stylex:css-update', update);
+-  import.meta.hot.on('vite:afterUpdate', () => setTimeout(update, AFTER_UPDATE_DELAY));
++  import.meta.hot.on('stylex:css-update', () => requestUpdate());
++  import.meta.hot.on('vite:afterUpdate', () => requestUpdate(AFTER_UPDATE_DELAY));
+   import.meta.hot.dispose(() => {
++    disposed = true;
++    clearTimeout(timer);
+     const el = document.getElementById(STYLE_ID);
+     if (el && el.parentNode) el.parentNode.removeChild(el);
+   });
 diff --git a/lib/es/core.mjs b/lib/es/core.mjs
-index 583431190aab3aad75c831ff982d84a3bcc48341..3678117f066a6d6993545cc1383689982ca4ec59 100644
+index 583431190aab3aad75c831ff982d84a3bcc48341..b5364f53628e7b94c3ff2549b87897d0a0ae387e 100644
 --- a/lib/es/core.mjs
 +++ b/lib/es/core.mjs
 @@ -25,7 +25,29 @@ export function pickCssAssetFromRollupBundle(bundle, choose) {
@@ -87,25 +228,48 @@ index 583431190aab3aad75c831ff982d84a3bcc48341..3678117f066a6d6993545cc138368998
      useLayers: options.useCSSLayers ?? false,
      enableLTRRTLComments: options?.enableLTRRTLComments
    });
-@@ -280,7 +302,7 @@ export const unpluginFactory = (userOptions = {}, metaOptions) => {
+@@ -272,6 +294,7 @@ export const unpluginFactory = (userOptions = {}, metaOptions) => {
+   }
+   function resetState() {
+     stylexRulesById.clear();
++    devCssVersion = -1;
+     if (devPersistToDisk) {
+       try {
+         fs.rmSync(DISK_RULES_PATH, {
+@@ -280,7 +303,12 @@ export const unpluginFactory = (userOptions = {}, metaOptions) => {
        } catch {}
      }
    }
 -  function collectCss() {
++  let devCssVersion = -1;
++  let devCss = '';
 +  function collectCss(mode) {
++    const version = getSharedStore().version;
++    const cacheable = mode?.unresolvedConstants === 'skip' && !devPersistToDisk;
++    if (cacheable && version === devCssVersion) return devCss;
      const merged = new Map();
      if (devPersistToDisk) {
        try {
-@@ -299,7 +321,8 @@ export const unpluginFactory = (userOptions = {}, metaOptions) => {
-     return processCollectedRulesToCSS(allRules, {
+@@ -296,11 +324,17 @@ export const unpluginFactory = (userOptions = {}, metaOptions) => {
+     } catch {}
+     for (const [k, v] of stylexRulesById.entries()) merged.set(k, v);
+     const allRules = Array.from(merged.values()).flat();
+-    return processCollectedRulesToCSS(allRules, {
++    const css = processCollectedRulesToCSS(allRules, {
        useCSSLayers,
        lightningcssOptions,
 -      enableLTRRTLComments: stylexOptions?.enableLTRRTLComments
 +      enableLTRRTLComments: stylexOptions?.enableLTRRTLComments,
 +      unresolvedConstants: mode?.unresolvedConstants
      });
++    if (cacheable) {
++      devCss = css;
++      devCssVersion = version;
++    }
++    return css;
    }
    async function persistRulesToDisk(id, rules) {
+     if (!devPersistToDisk) return;
 diff --git a/lib/es/vite.mjs b/lib/es/vite.mjs
 index 12cea8cda04db57ce92759979e2c072e6c261a9b..a3c4f8c96455e44c37dc78f2928642f41e4974b4 100644
 --- a/lib/es/vite.mjs

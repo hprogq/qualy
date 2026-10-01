@@ -21169,3 +21169,27 @@ metadataUnchanged:true; reactDomClientKnown:true; HttpStatus-1qu7jGzr.js status:
   不能从它推导这次真实故障已解决。没有新增 exclude、自动 reload 或隐藏错误提示。
 - 下一步:在用户实际 pnpm dev 服务与发生故障的路由捕获首个失败资源URL/status、console及
   HMR full-reload消息,区分中途依赖重新优化、开发监督器重启和真实模块执行错误。
+
+## StyleX开发路由重复CSS工作优化(2026-10-02)
+
+- 根据用户路由切换卡顿及virtual StyleX CSS请求,实读0.19.1的core/vite/consts ESM/CJS发布产物。
+  每次请求全量聚合CSS+Lightning CSS,运行时每条更新立即fetch且无并发限制。
+  扩展现有pnpm patch:开发CSS按shared.version缓存(磁盘持久化模式不缓存),生产严格收集不复用;
+  浏览器60ms合并信号、单请求在途、在途变化尾随取最新,dispose禁止晚响应重写样式。
+- 测量:8,000条合成规则,原聚合32/19/15/15/13/14/14/14ms;修改后首次生成后的七次均<1ms。
+  临时实际Vite+Chromium探针关闭后退出0;组织/用户/批次懒模块476/177/554ms,
+  CSS请求88/502/151/32/213/91/75/114/80/48/1ms(包含编译排队)。没有真实后端/会话,
+  不能据此宣称真人3–4秒路由延迟已消失;未对全部路由做预热。
+- 实际验收:
+  - `pnpm test tools/tests/stylex-unplugin-patch.test.ts` → `Test Files 1 passed; Tests 5 passed`,exit0。
+  - `pnpm typecheck` →完成`typecheck client component references`,无错误。
+  - 首次`pnpm lint`误扫本轮临时预优化第三方缓存而失败;清除探针副本与缓存后重跑exit0。
+  - `pnpm build` →`built in 35.54s; installed web release r_wIcUpQpizmVuiILRB5TcWA (349 assets)`,exit0,
+    生产分包门禁通过;只写本地构建store,没有部署。
+  - 组织页两个真实Chromium套件 → `Test Files 2 passed; Tests 18 passed`,exit0。
+  - `node tools/quality/check-staged-web.ts` → `349 assets, production, protocol 2`,exit0;
+    `node tools/quality/check-csp-build.ts` → `no code from strings in the bundle`,exit0。
+  - `git diff --check`对新增patch空白上下文行报8条blank-at-eol;它们是unified diff要求的空格前缀,
+    不修改以免损坏补丁。非patch文件严格检查,patch仅豁免blank-at-eol检查。
+- 下一步:在实际开发会话比较首次与再次进入相同路由;若仍有3–4秒,分离模块transform、API与绘制。
+  依赖patch已变化,本地开发服务需重启才使用新版;不推送、不部署,用户的改名与配置保留。

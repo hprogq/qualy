@@ -206,7 +206,7 @@ overrides:
   qs: ^6.16.0
 
 patchedDependencies:
-  '@stylexjs/unplugin@0.19.1': f25208b4a013d827f6b128fa4945ec4a557fa6d7527f502e29a5ba139b73cd43
+  '@stylexjs/unplugin@0.19.1': a57e4fbec0feb76635e8fabc7e1e1a3c0c8d3a66557f2313ed2b661796e98266
 
 importers:
 
@@ -365,7 +365,7 @@ importers:
         version: link:packages/build/web
       '@stylexjs/unplugin':
         specifier: 'catalog:'
-        version: 0.19.1(patch_hash=f25208b4a013d827f6b128fa4945ec4a557fa6d7527f502e29a5ba139b73cd43)(supports-color@7.2.0)(unplugin@2.3.11)
+        version: 0.19.1(patch_hash=a57e4fbec0feb76635e8fabc7e1e1a3c0c8d3a66557f2313ed2b661796e98266)(supports-color@7.2.0)(unplugin@2.3.11)
       '@types/node':
         specifier: 'catalog:'
         version: 24.13.3
@@ -643,7 +643,7 @@ importers:
         version: 0.19.1
       '@stylexjs/unplugin':
         specifier: 'catalog:'
-        version: 0.19.1(patch_hash=f25208b4a013d827f6b128fa4945ec4a557fa6d7527f502e29a5ba139b73cd43)(supports-color@7.2.0)(unplugin@2.3.11)
+        version: 0.19.1(patch_hash=a57e4fbec0feb76635e8fabc7e1e1a3c0c8d3a66557f2313ed2b661796e98266)(supports-color@7.2.0)(unplugin@2.3.11)
       '@tanstack/react-query':
         specifier: 'catalog:'
         version: 5.101.4(react@19.2.8)
@@ -6908,7 +6908,7 @@ snapshots:
       invariant: 2.2.4
       styleq: 0.2.1
 
-  '@stylexjs/unplugin@0.19.1(patch_hash=f25208b4a013d827f6b128fa4945ec4a557fa6d7527f502e29a5ba139b73cd43)(supports-color@7.2.0)(unplugin@2.3.11)':
+  '@stylexjs/unplugin@0.19.1(patch_hash=a57e4fbec0feb76635e8fabc7e1e1a3c0c8d3a66557f2313ed2b661796e98266)(supports-color@7.2.0)(unplugin@2.3.11)':
     dependencies:
       '@babel/core': 7.29.7(supports-color@7.2.0)
       '@babel/plugin-syntax-flow': 7.29.7(@babel/core@7.29.7(supports-color@7.2.0))
