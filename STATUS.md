@@ -21150,3 +21150,22 @@ metadataUnchanged:true; reactDomClientKnown:true; HttpStatus-1qu7jGzr.js status:
   dist/chunks/index.DzobfTyw.js(resolveTestCacheDir)。本轮未修改Effect代码。
 - 下一步:存好开发页草稿后刷新一次,使用新预优化图;若新图仍重复报缺失,保留当时URL与metadata追查。
   只提交本地,不推送、不部署;用户的改名与本地配置仍未暂存。
+
+## 开发首页先失败再自动刷新调查(2026-10-02)
+
+- “页面加载失败”来自 boot 资源错误提示或 release asset-load-failed gate;不是 manifest/API 加载失败文案。
+  实读 apps/web/index.html、apps/web/src/main.tsx、packages/web/runtime/src/release.ts 与 release-ui.tsx:
+  这些路径不自动刷新,重载按钮只在用户点击时调用 reload。自动刷新仍需捕获 Vite HMR 或其他外部触发。
+- 当时 lsof -nP -iTCP:5173 -sTCP:LISTEN 没有运行服务。使用实际应用配置、独立临时冷缓存、
+  自动关闭的 Vite+Playwright Chromium 探针,不启动后端、不读写开发数据库。
+  第一次 sandbox 禁止监听端口(EPERM),获准后运行;第一次浏览器导入形状错误,修正 require 后完成探针。
+- 验收真实输出: `node /private/tmp/qualy-cold-browser.mjs` exit 0。
+  宿主加载、测试匿名 manifest 下登录页模块加载、逐一 import 活跃 page/layout/login surface,
+  均没有脚本/样式 HTTP 失败、pageerror、surface import rejection 或 HMR full-reload;
+  预优化列表保持31项,包含 react-dom/client 与 effect/http/HttpServerRequest。
+  StyleX custom css-update 不是 full-reload;framenavigated 同URL也不能单独作为整页刷新的证据。
+  模拟API不等价于真人登录后的首页;测试登录页 body为空,不把它当作UI完整验收。
+- 结论:未复现用户描述,不能确认具体根因或宣称已经修复。上一轮宿主扫描补全只验证一个已知遗漏,
+  不能从它推导这次真实故障已解决。没有新增 exclude、自动 reload 或隐藏错误提示。
+- 下一步:在用户实际 pnpm dev 服务与发生故障的路由捕获首个失败资源URL/status、console及
+  HMR full-reload消息,区分中途依赖重新优化、开发监督器重启和真实模块执行错误。
