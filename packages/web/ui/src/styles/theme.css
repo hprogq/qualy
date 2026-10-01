@@ -1,11 +1,7 @@
 @import '@fontsource-variable/inter';
-@import 'react-photo-view/dist/react-photo-view.css';
-/* the layered distribution: every widget rule arrives inside @layer mantine,
-   whose place in the cascade the app entry declares up front */
+/* Core widgets share one shell sheet. Calendar and image-viewer styles
+   load with their adapters. Keep Mantine's dependency closure upstream. */
 @import '@mantine/core/styles.layer.css';
-/* the date components' sheet, after core: it builds on core's own rules and
-   both land in the mantine layer, under everything the product states */
-@import '@mantine/dates/styles.layer.css';
 @import './tokens.css';
 
 /* What "open" and "closed" mean on a panel that animates.

@@ -1,4 +1,8 @@
+// oxlint-disable-next-line typescript/triple-slash-reference -- Ambient CSS declarations must follow workspace source consumers without a runtime import.
+/// <reference path="../styles/assets.d.ts" />
 'use client'
+
+import '@mantine/dates/styles.layer.css'
 
 import * as stylex from '@stylexjs/stylex'
 import { DatePickerInput } from '@mantine/dates'

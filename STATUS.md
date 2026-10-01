@@ -21278,3 +21278,44 @@ metadataUnchanged:true; reactDomClientKnown:true; HttpStatus-1qu7jGzr.js status:
 - 下一步:优先独立测量Mantine分组件layer样式与懒加载日期/图片样式,再考虑StyleX路由CSS,
   同一生产预览录三次mobile报告与trace比较中位数。不宣称修复后Lighthouse已提高,
   不推送、不部署,不重启用户服务;用户AGENTS改名及未跟踪配置保留。
+
+## 2026-10-02：Mantine 样式边界与全量 core 对照
+
+- 按用户裁决恢复全量 `@mantine/core/styles.layer.css`，不维护第三方组件 CSS 依赖图。
+  手工 widgets.css、试验 CSS 分包规则、多 sheet 启动修改及 41 KiB 硬预算均撤回。
+  Mantine widgets/dates 的既有 JS 共享池和四页 JS 门禁保持原状。
+- 仅把 dates CSS 移到三个日期适配器、photo CSS 移到图片适配器；后者是纯 re-export，
+  package sideEffects 白名单显式保留其 CSS，否则 production 树摇会丢完整图片样式。
+  新增窄 stylesheet 声明与图片全屏/关闭的浏览器验证，不引入 vite/client 全局类型。
+- 补齐方案 E（full core + lazy dates/photo），与正确保留图片 CSS 的 core 子集产物
+  各跑10次，交替先后顺序，同一匿名fixture、20ms API响应、Brotli、Lighthouse13.5.0
+  mobile/simulate。20份报告均确认login-methods200、真实登录方法按钮可见。
+  完整输出在本地gitignored的apps/web/.qualy/bundle-investigation/css-e-vs-subset-*。
+  不与用户DevTools13.4.1的80分直接比较；原API转发时localhost:3000停止造成的错误页
+  报告全部排除，没有启动/重启用户服务或碰用户数据。
+- 真实测量：E壳351890 raw / 51712 Brotli B（原壳54630）；子集225516 / 37811。
+  E/子集均1个初始CSS请求，传输51934/38033 B，LCP中位数4604.42/4505.70ms，
+  范围4600.33–4608.78/4504.00–4509.04ms；FCP1876.30/1951.11ms，
+  性能分82.5/83。子集在此fixture的LCP优势稳定98.72ms(2.14%)，但FCP未获益；
+  有限synthetic收益不足以支付手工依赖closure维护成本，最终选择E。
+  日期a-C9N3-j7Q.css与图片a-qIT1EIL9.css独立存在，登录报告不请求它们。
+- 已执行验收输出：
+  - `pnpm build` →`built in 18.04s; installed web release r_tQUubFJ73XQiD4Xdkw6DPQ (351 assets)`,exit0，原JS分包门禁通过。
+  - `node tools/quality/check-staged-web.ts` →`351 assets, production, protocol 2`,exit0。
+  - `node tools/quality/check-csp-build.ts` →`no code from strings in the bundle`,exit0。
+  - `node tools/quality/check-public-web.ts` →`discloses nothing it should not (351 served files)`,exit0。
+  - 子集阶段全Chromium浏览器套件→`Test Files 125 passed; Tests 1597 passed`,exit0。
+  - 最终E定向Chromium配置重跑→`Test Files 6 passed; Tests 55 passed`,exit0。
+  - 最终`pnpm typecheck`→`typecheck client component references`,exit0；
+    已有Effect建议未视为错误。`pnpm lint`→`oxlint`,exit0。
+    CSS ambient声明不能作为普通type-only模块引用，实测会报TS2882；源码消费所需
+    三斜线引用保留，4处局部lint例外附原因，不放宽仓库规则。
+  - 10文件`oxfmt --check`与`git diff --check`均exit0。
+  - 额外WebKit6文件检查→`3 failed | 3 passed; 7 failed | 48 passed (55)`,exit1。
+    用HEAD原样式与原适配器对照重跑，仍为同一7项失败、48项通过：4项时间输入、
+    checkbox Space、Select/Dialog Escape、oklch字符串精度。基线脚本finally恢复本次改动。
+    最终E再跑同一6文件仍为7失败/48通过(exit1)，diff失败名称集合输出为空(exit0)，
+    确认为同一组既有问题；图片新测试在WebKit通过。
+- 后续：以一致真实后端响应或生产RUM验证登录与已登录批次页；目前localhost:3000未运行，
+  不宣称完成真实后端/RUM验收。StyleX路由CSS若再实验应单独测量，不先引入维护机制。
+  不推送、不部署；用户AGENTS改名与未跟踪配置不纳入本次提交。

@@ -1,7 +1,7 @@
-// Looking at a picture full size without leaving the page.
-//
-// The stylesheet the viewer needs is pulled in by `theme.css` rather than
-// from here: a `.css` import inside a `.tsx` is invisible to the compiler
-// this package is typechecked with, and the theme is already where this
-// product collects the stylesheets it did not write.
+// oxlint-disable-next-line typescript/triple-slash-reference -- Ambient CSS declarations must follow workspace source consumers without a runtime import.
+/// <reference path="../styles/assets.d.ts" />
+import 'react-photo-view/dist/react-photo-view.css'
+
+// The viewer and its stylesheet enter the graph together. This re-export
+// module is marked as a side effect in package.json so bundlers keep the CSS.
 export { PhotoProvider, PhotoView } from 'react-photo-view'

@@ -58,15 +58,92 @@ photo-view 样式和字体；[构建配置](../../apps/web/vite.config.ts) 则�
 用户运行中的服务仍给出旧入口 `e-NCyELQh7.js`。独立无登录 Chromium 探针的英文 LCP 392ms
 只用于核对旧请求链，不是修复后基线；没有宣称 80 分已提高或固定减少 360ms LCP。
 
-## 下一轮优先级
+## 后续测量边界
 
-1. 先实验 Mantine core 按实际组件导入 `styles/*.layer.css`，保留其 global styles 与依赖组件。
-   日期/图片查看样式跟真正消费它们的懒边界走。Mantine 官方支持
-   [分组件样式](https://mantine.dev/styles/mantine-styles/)，但必须包含依赖组件，不能只删总表。
-   验证 dark/mobile、输入框、弹层、日历与图片查看器，并检查首屏 CSS 请求/压缩体积。
-2. 再实验 StyleX 的共享壳与路由规则拆分。现有 unplugin 没有一个可直接打开的 per-route
-   CSS 开关；实现需要保留常量解析、原子规则去重、priority 层顺序和动态 import 的 CSS preload。
-   不通过按 class 名猜所属页面来拆，也不先切成几十张很小的样式表。
-3. 用同一生产预览与同一 Lighthouse 版本各录制三次，分别保留登录和已登录批次页的报告/trace。
-   对比 median LCP/FCP、首屏 JS/CSS/font 请求和 Brotli，不以一次 80 分直接立评分门禁。
-   当前 JS 门禁不包括 CSS/字体，见 [预算说明](../adr/0011-i18n-paraglide.md)。
+Mantine 策略裁决见下文：保留全量 core，只有 dates/photo CSS 跟懒组件走。
+下一轮如有真实需求，再独立实验 StyleX 的共享壳与路由规则拆分。现有 unplugin 没有
+一个可直接打开的 per-route CSS 开关；实现需要保留常量解析、原子规则去重、priority
+层顺序和动态 import 的 CSS preload。不通过按 class 名猜所属页面来拆，也不先切成
+几十张很小的样式表。先获取同一真实后端条件下的登录/已登录批次页 trace 或生产 RUM，
+比较 LCP/FCP、首屏请求与 Brotli；不以一次 80 分建立评分门禁。
+当前 JS 门禁不包括 CSS/字体，见 [预算说明](../adr/0011-i18n-paraglide.md)。
+
+## Mantine 样式对照实验与维护成本裁决
+
+2026-10-02 后续实施，安装版本 Mantine 9.6.1。显式的全量 CSS import 不会因组件 JS
+被树摇就自动删除对应选择器；Mantine 的组件代码、CSS 是分开的发布入口。
+官方提供分组件 CSS 及依赖说明，见上面的链接和
+[global styles](https://mantine.dev/styles/global-styles/)。
+
+实读安装产物的 `@mantine/core/esm/index.mjs`、`components/Button/Button.mjs`、
+`components/Modal/Modal.mjs`、内部相对 import 的递归依赖，以及
+`@mantine/dates/esm/components/PickerInputBase/PickerInputBase.mjs`。
+例如 Button 需要 UnstyledButton/Loader，Modal 需要 ModalBase/Overlay/Paper/ScrollArea 等。
+Checkbox/Radio 的 Card、独立 Indicator 是 compound exports，Qualy 的适配组件没有渲染它们，
+不为这些附加组件保留 CSS。没有改 vendored 上游文件或引入 CSS codegen。
+
+先尝试每个 UI 适配组件导入自己的依赖 CSS。原 widgets/dates 分包正则还会匹配 CSS，
+把它们一起归入共享 chunk；改成只匹配 JavaScript 后得到细分方案。
+该方案登录页静态 CSS closure 为 10 个请求/188654 raw bytes/35583 Brotli bytes。
+页面真实录制还包括每个响应的头开销，不能只看变小的壳 CSS。
+
+用户的 localhost:3000 在测试期间停止，最初转发 API 的临时对照出现 500，所有这些错误页
+Lighthouse 分数均排除。之后使用有界匿名登录 fixture：真实构建的 HTML/JS/CSS、Brotli
+资源，固定 20ms manifest/login-methods 响应与匿名 401 session。每个版本先用 Chromium
+确认登录方法按钮出现，再跑 Lighthouse 13.5.0 mobile/simulate 三次；没有真实库、CAS
+图标或用户数据操作。这用于比较 CSS 策略，不能与用户 DevTools 13.4.1 的 80 分直接比较。
+
+| 策略                             | 登录 CSS 请求 | CSS 传输 bytes | LCP 中位数 ms | FCP 中位数 ms | 性能分中位数 |
+| -------------------------------- | ------------: | -------------: | ------------: | ------------: | -----------: |
+| 原全量样式                       |             1 |          54852 |       4606.42 |       1501.36 |           83 |
+| 分组件导入、CSS 随 widget 共享池 |             2 |          39220 |       4540.62 |       1651.30 |           83 |
+| 分组件、CSS 随消费边界细分       |            10 |          37789 |       4693.68 |       1651.16 |           82 |
+| 共享 core 子集、懒日期/图片 CSS  |             1 |          38033 |       4507.37 |       1501.67 |           84 |
+
+没有选择 10 请求方案：它虽然少传输一些字节，但这次对照没有改善 LCP。
+上述三次实验同时改变了 core 子集与 dates/photo 的加载边界，不能把原全量与子集的
+约 99ms 差值全部归因于 core 裁剪。手工组件依赖清单会复制 Mantine 内部依赖事实，
+升级时可能出现 TypeScript 无法发现的缺样式状态，因此不把它作为最终方案。
+
+最终保留全量 `@mantine/core/styles.layer.css`，壳仍只有一张初始样式表；移除手工
+`widgets.css`，撤回试验中的 CSS 分包正则修改、多 sheet 启动修改和 41 KiB 硬预算。
+既有 widgets/dates JavaScript 共享池及 JS 门禁保持原状。
+三个日期适配器各自导入 full dates sheet，图片适配器导入 photo-view sheet。
+四个适配器引用窄 CSS 类型声明，供消费 workspace 源码的包一起检查，不引入
+vite/client 全局类型。
+
+图片适配器是纯 re-export；如果保留 `sideEffects: false`，生产树摇会跳过它携带的 CSS。
+已把该模块加入 UI package 的 sideEffects 白名单，并在实际产物确认 full photo-view sheet
+单独存在。仅靠开发态测试不足以发现这种生产 CSS 丢失。
+
+为补齐缺失对照，使用全量 core + lazy extras 与正确保留图片 CSS 的最终子集产物各
+测量 10 次。每轮交替版本顺序，两者使用同一匿名 fixture、Lighthouse 13.5.0、mobile
+simulate、同一 Brotli 压缩条件。每个版本先验证登录方法出现，每份报告要求
+login-methods 请求返回 200，排除错误页；没有其他构建或测试并行争用 CPU。
+这次结果如下，CSS 传输包含响应头；Brotli 文件体积另列。
+
+| 策略                              | 次数 | 初始 CSS 请求 | CSS 传输 B |       LCP 中位数（范围）ms |       FCP 中位数（范围）ms | 性能分中位数（范围） |
+| --------------------------------- | ---: | ------------: | ---------: | -------------------------: | -------------------------: | -------------------: |
+| 全量 core + lazy extras（方案 E） |   10 |             1 |      51934 | 4604.42（4600.33–4608.78） | 1876.30（1500.98–2251.44） |        82.5（81–83） |
+| 手工 core 子集 + lazy extras      |   10 |             1 |      38033 | 4505.70（4504.00–4509.04） |  1951.11（901.11–2101.44） |          83（82–84） |
+
+方案 E 壳 `s-Ko0PgcSZ.css`：351890 raw / 51712 Brotli bytes。相对原全量壳
+54630 Brotli bytes 少 2918 B（5.3%）；子集再少 13901 B。实际日期样式独立存在于
+`a-C9N3-j7Q.css`，图片样式独立存在于 `a-qIT1EIL9.css`，登录报告不请求这两张样式表。
+
+子集在本 fixture 中的 LCP 优势稳定为 98.72ms（2.14%），不是这次采样噪声；但 FCP
+并未获益，且两者 FCP/评分有明显波动。这个有限的 synthetic 改善不抵消手工复制
+Mantine 组件依赖 closure 的持续维护风险，因此最终选择方案 E。不能将这个 LCP 差值
+当作生产设备的固定收益，也不能承诺真实站点达到 90/95 分。
+
+原始 20 份报告、逐次摘要与有界 fixture 脚本保留在本地 gitignored 的
+`apps/web/.qualy/bundle-investigation/css-e-vs-subset-*`，没有作为生产机制提交。
+localhost:3000 未运行，本次没有真实后端或线上 RUM 验证；后续应在一致的真实响应条件
+下复测登录与已登录批次页。这些 synthetic 数据不构成生产 RUM 结论。
+
+验收边界：Chromium 全套在子集实验阶段通过 125 文件/1597 测试；最终 full core
+另外执行定向表单、弹层、日期、图片验收。额外 WebKit 6 文件测试在原始代码与最终代码
+均为相同 7 项失败/48 项通过，失败名称集合逐项一致：4 项时间键盘输入、checkbox Space、
+Select/Dialog Escape，以及 `oklch(...27.325)` 与 `oklch(...27.325001)` 精度断言。
+图片查看器新测试在 WebKit 通过。这些既有失败没有被称为本轮通过，也没有混入 CSS 改动
+修改交互或放宽断言。

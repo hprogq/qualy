@@ -5,7 +5,8 @@
   "license": "AGPL-3.0-only",
   "type": "module",
   "sideEffects": [
-    "./src/styles/*.css"
+    "./src/styles/*.css",
+    "./src/components/photo-view.tsx"
   ],
   "exports": {
     "./visually-hidden": "./src/lib/visually-hidden.tsx",
