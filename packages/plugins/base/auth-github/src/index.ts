@@ -25,7 +25,6 @@ import { text } from '@qualy/text'
 import { messageRefs } from '@qualy/text/node'
 import type * as M from '#messages'
 import { Plugin } from '@qualy/plugin-kit'
-import { Ui } from '@qualy/plugin-ui-registry/plugin'
 import { authGithubApiGroup, GithubRejected, GithubUnavailable } from './api.ts'
 import { authorizeRedirect, endpointsOf, identify, pkce } from './oauth.ts'
 
@@ -72,6 +71,10 @@ const fields: readonly EntranceField[] = [
 ]
 
 export const driver: LoginDriver = {
+  failures: {
+    AUTH_GITHUB_REJECTED: text(m.error_rejected),
+    AUTH_GITHUB_UNAVAILABLE: text(m.error_unavailable),
+  },
   type: 'github',
   icon: 'github',
   presentation: {
@@ -274,7 +277,6 @@ const handlers = HttpApiBuilder.group(local, 'authGithub', (handlers) =>
 const plugin = Plugin.define(
   '@qualy/plugin-auth-github',
   { dependsOn: ['@qualy/plugin-auth'] },
-  Ui.i18n('./client/i18n'),
   Login.driver(driver),
   ApiFeature.group(authGithubApiGroup, handlers),
 )

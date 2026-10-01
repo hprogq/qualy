@@ -1,13 +1,7 @@
-import { Fragment, useState, type ReactNode } from 'react'
+import { Effect } from 'effect'
+import { assertNever, useLocale } from '@qualy/web-i18n'
 import {
-  keepPreviousData,
-  useInfiniteQuery,
-  useMutation,
-  useQuery,
-  useQueryClient,
-} from '@tanstack/react-query'
-import * as stylex from '@stylexjs/stylex'
-import {
+  useApiMutation,
   cursorPages,
   PageLink,
   useApi,
@@ -15,7 +9,10 @@ import {
   useLoadFailure,
   useRunApi,
 } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
+
+import { Fragment, useState, type ReactNode } from 'react'
+import { keepPreviousData, useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query'
+import * as stylex from '@stylexjs/stylex'
 
 import { AsyncSection, ConfirmDialog } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
@@ -29,7 +26,7 @@ import {
   Status,
   TableSkeleton,
 } from '@qualy/ui/screen'
-import type { ApiResult } from '@qualy/web-runtime/api'
+import { type ApiResult } from '@qualy/web-runtime/api'
 import { toast } from '@qualy/ui/toast'
 import { ToggleGroup, ToggleGroupItem } from '@qualy/ui/toggle-group'
 import { DateRangePicker, type DateRange } from '@qualy/ui/date-range-picker'
@@ -133,7 +130,7 @@ export function SessionsCard({ person }: { person?: RecordPerson }) {
   const run = useRunApi()
   const query = useApiQuery(authApi)
   const queryClient = useQueryClient()
-  const { formatError, locale } = useI18n()
+  const locale = useLocale()
   const describe = useLoadFailure()
   const [confirming, setConfirming] = useState(false)
   // somebody else's session, asked about before it is ended: a stray press
@@ -164,27 +161,50 @@ export function SessionsCard({ person }: { person?: RecordPerson }) {
     queryClient.invalidateQueries({
       queryKey: person === undefined ? query.self.key() : query.identity.key(),
     })
-  const endOne = useMutation({
+  const endOne = useApiMutation({
     mutationFn: (sessionId: string) =>
-      person === undefined
-        ? run(api.self.deleteSelfSession({ params: { sessionId } }))
-        : run(api.identity.deleteUserSession({ params: { userId: person.userId, sessionId } })),
+      Effect.gen(function* () {
+        return yield* person === undefined
+          ? api.self.deleteSelfSession({ params: { sessionId } })
+          : api.identity.deleteUserSession({ params: { userId: person.userId, sessionId } })
+      }),
     onSuccess: async () => {
       toast.success(m.sessions_endDone())
       await refresh()
     },
-    onError: (error: unknown) => toast.error(formatError(error)),
+    onError: (error) => {
+      switch (error._tag) {
+        case 'AUTH_SESSION_NOT_FOUND':
+          toast.error(m.error_sessionNotFound())
+          return
+        case 'USER_NOT_FOUND':
+          toast.error(m.error_userNotFound())
+          return
+        default:
+          assertNever(error)
+      }
+    },
   })
-  const endOthers = useMutation({
+  const endOthers = useApiMutation({
     mutationFn: () =>
-      person === undefined
-        ? run(api.self.deleteSelfSessions({}))
-        : run(api.identity.deleteUserSessions({ params: { userId: person.userId } })),
+      Effect.gen(function* () {
+        return yield* person === undefined
+          ? api.self.deleteSelfSessions({})
+          : api.identity.deleteUserSessions({ params: { userId: person.userId } })
+      }),
     onSuccess: async ({ ended }) => {
       toast.success(m.sessions_ended({ count: ended }))
       await refresh()
     },
-    onError: (error: unknown) => toast.error(formatError(error)),
+    onError: (error) => {
+      switch (error._tag) {
+        case 'USER_NOT_FOUND':
+          toast.error(m.error_userNotFound())
+          return
+        default:
+          assertNever(error._tag)
+      }
+    },
   })
 
   return (
@@ -353,7 +373,7 @@ type Change = ApiResult<typeof authApi, 'self', 'listSelfAccountChanges'>['items
 
 /** the days to read within */
 function Period({ range, onChange }: { range: DateRange; onChange: (next: DateRange) => void }) {
-  const { locale } = useI18n()
+  const locale = useLocale()
   return (
     <DateRangePicker
       value={range}
@@ -402,7 +422,7 @@ function Pages({
 
 /** one attempt: when first - a record is read by time - then from what, through which door */
 function SignInRow({ attempt }: { attempt: SignIn }) {
-  const { locale } = useI18n()
+  const locale = useLocale()
   return (
     <div
       data-testid="sign-in-row"
@@ -434,7 +454,7 @@ function SignInRow({ attempt }: { attempt: SignIn }) {
 
 /** one change: when, what, and whether the reader did it */
 function ChangeRow({ change }: { change: Change }) {
-  const { locale } = useI18n()
+  const locale = useLocale()
   return (
     <div data-testid="account-change" data-actor={change.actor} {...stylex.props(styles.row)}>
       <span {...stylex.props(styles.words)}>

@@ -1,3 +1,4 @@
+import { useLocale, useList } from '@qualy/web-i18n'
 import * as stylex from '@stylexjs/stylex'
 import { useMemo, useState } from 'react'
 import { useInfiniteQuery } from '@tanstack/react-query'
@@ -17,11 +18,11 @@ import {
   useRunApi,
   cursorPages,
 } from '@qualy/web-runtime'
-import { useI18n, useList } from '@qualy/web-i18n'
+
 import { displayTitle, inputOrder, type InputSchema } from '@qualy/value-schema'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
-import type { CalculatorEditorContext } from '@qualy/plugin-assessment/surfaces'
+import { type CalculatorEditorContext } from '@qualy/plugin-assessment/surfaces'
 import { formulaApi } from './api.ts'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import * as m from '#messages'
@@ -292,7 +293,7 @@ function ParameterTags({ words, end = false }: { words: readonly string[]; end?:
 }
 
 export default function CalculatorEditor({ context }: { context: CalculatorEditorContext }) {
-  const { locale } = useI18n()
+  const locale = useLocale()
   const loadFailure = useLoadFailure()
   const api = useApi(formulaApi)
   const query = useApiQuery(formulaApi)

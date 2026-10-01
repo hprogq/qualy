@@ -26,7 +26,6 @@ import { text } from '@qualy/text'
 import { messageRefs } from '@qualy/text/node'
 import type * as M from '#messages'
 import { Plugin } from '@qualy/plugin-kit'
-import { Ui } from '@qualy/plugin-ui-registry/plugin'
 import { authOidcApiGroup, OidcRejected, OidcUnavailable } from './api.ts'
 import {
   authorizeRedirect,
@@ -150,6 +149,10 @@ const fields: readonly EntranceField[] = [
 ]
 
 export const driver: LoginDriver = {
+  failures: {
+    AUTH_OIDC_REJECTED: text(m.error_rejected),
+    AUTH_OIDC_UNAVAILABLE: text(m.error_unavailable),
+  },
   type: 'oidc',
   icon: 'key',
   presentation: {
@@ -446,7 +449,6 @@ const handlers = HttpApiBuilder.group(local, 'authOidc', (handlers) =>
 const plugin = Plugin.define(
   '@qualy/plugin-auth-oidc',
   { dependsOn: ['@qualy/plugin-auth'] },
-  Ui.i18n('./client/i18n'),
   Login.driver(driver),
   ApiFeature.group(authOidcApiGroup, handlers),
 )

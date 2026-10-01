@@ -1,8 +1,8 @@
+import { formatPlatformFailure as formatError, getApiErrorCode } from '@qualy/web-i18n'
 import { useEffect, useMemo, useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { orgNodePicker, type OrgNodePickerContext } from '@qualy/ui-contract'
 import { UiSlot } from '@qualy/web-runtime'
-import { getApiErrorCode, useI18n } from '@qualy/web-i18n'
 
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { Field, FormDialog } from '@qualy/ui/admin'
@@ -12,7 +12,7 @@ import { Blank } from '@qualy/ui/screen'
 import { Input } from '@qualy/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@qualy/ui/select'
 
-import type { Api, OrgShape, Run } from '../shape.ts'
+import { type Api, type OrgShape, type Run } from '../shape.ts'
 import * as commonMessages from '@qualy/web-i18n/messages'
 import * as m from '#messages'
 
@@ -54,7 +54,6 @@ export function NodeDialogs({
   /** to the rules of one kind of unit, where what may hold what is set */
   onOpenRules: (orgTypeId: string) => void
 }) {
-  const { formatError } = useI18n()
   const node = task === null ? undefined : shape.byId.get(task.nodeId)
   const [name, setName] = useState('')
   // a name a sibling already has is the name's to fix, said under it; a move

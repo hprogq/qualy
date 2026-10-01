@@ -1,14 +1,14 @@
+import { useLocale } from '@qualy/web-i18n'
 import * as stylex from '@stylexjs/stylex'
-import type { ReactNode } from 'react'
-import { useEffect, useState, useCallback } from 'react'
-import { useI18n } from '@qualy/web-i18n'
+import { type ReactNode, useEffect, useState, useCallback } from 'react'
+
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { Spinner } from '@qualy/ui/spinner'
 import { CheckIcon, HistoryIcon, PlayIcon, TriangleAlertIcon, XIcon } from 'lucide-react'
-import type { AtomicSchema, NormalizedInputSchema } from '@qualy/value-schema'
+import { type AtomicSchema, type NormalizedInputSchema } from '@qualy/value-schema'
 import { InputValueForm } from '@qualy/web-value-form/InputValueForm'
 import { usePickerWords } from '@qualy/web-i18n/picker-words'
-import type { FieldDraft } from '@qualy/web-value-form/model'
+import { type FieldDraft } from '@qualy/web-value-form/model'
 
 import { defectWords, fieldIssueWords } from './report-words.ts'
 import { constraintNote } from './constraint-words.ts'
@@ -300,7 +300,7 @@ export function TryRunPanel({
   readonly recordCount: number
   readonly onOpenRecords: () => void
 }) {
-  const { locale } = useI18n()
+  const locale = useLocale()
   const words = usePickerWords()
   // the live check is the form's; the words for what it finds are this
   // screen's, and they are the same ones a run reports

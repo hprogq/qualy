@@ -1,3 +1,5 @@
+import { formatPlatformFailure as formatError, useLocale } from '@qualy/web-i18n'
+
 import {
   useEffect,
   useMemo,
@@ -35,11 +37,10 @@ import {
   useSessionTransition,
   type SessionDestination,
 } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
 
 import { Skeleton } from '@qualy/ui/skeleton'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import type { LoginMethod } from '@qualy/auth-contract/login'
+import { type LoginMethod } from '@qualy/auth-contract/login'
 
 import { authApi } from './api.ts'
 import { AuthShell, Ring } from './sign-in/AuthShell.tsx'
@@ -468,7 +469,7 @@ export default function LoginPage() {
   const probe = useRunApi({ recoverSession: false })
   const navigate = useNavigate()
   const manifest = useManifest()
-  const { locale } = useI18n()
+  const locale = useLocale()
   const startSession = useSessionTransition()
   const [params, setParams] = useSearchParams()
   const still = useReducedMotion() === true
@@ -731,6 +732,7 @@ export default function LoginPage() {
         header={header}
         methods={methods}
         failed={failed}
+        failureMessages={context.data?.failureMessages}
         onDismiss={() => {
           const next = new URLSearchParams(params)
           next.delete('error')
@@ -865,8 +867,10 @@ function Block({
  * happened, and what to do. Only an expired or finished sign-in is not an
  * error - it is mostly nobody's fault - and is said in grey.
  */
-function useNotice(failed: { _tag: string; retryAfterSeconds: number } | undefined) {
-  const { formatError } = useI18n()
+function useNotice(
+  failed: { _tag: string; retryAfterSeconds: number } | undefined,
+  failureMessages: Readonly<Record<string, string>> = {},
+) {
   if (failed === undefined) return undefined
   const minutes = Math.max(1, Math.ceil(failed.retryAfterSeconds / 60))
   switch (failed._tag) {
@@ -886,7 +890,11 @@ function useNotice(failed: { _tag: string; retryAfterSeconds: number } | undefin
       }
     default:
       // a driver's own reason: its sentence, and the ways in below it
-      return { tone: 'danger', title: formatError(failed), body: null }
+      return {
+        tone: 'danger',
+        title: failureMessages[failed._tag] ?? formatError(failed),
+        body: null,
+      }
   }
 }
 
@@ -895,6 +903,7 @@ function Home({
   header,
   methods,
   failed,
+  failureMessages,
   onDismiss,
   onChoose,
   onMore,
@@ -905,15 +914,16 @@ function Home({
   header: ReactNode
   methods: readonly LoginMethod[]
   failed: { _tag: string; retryAfterSeconds: number } | undefined
+  failureMessages?: Readonly<Record<string, string>>
   onDismiss: () => void
   onChoose: (method: LoginMethod) => void
   onMore: () => void
   demoAccounts: readonly { readonly label: string }[]
   onDemo: (index: number) => void
 }) {
-  const { locale } = useI18n()
+  const locale = useLocale()
   const still = useReducedMotion() === true
-  const notice = useNotice(failed)
+  const notice = useNotice(failed, failureMessages)
   const [tip, setTip] = useState<string | null>(null)
   const primary = methods.filter((method) => method.prominence === 'primary')
   const others = methods.filter((method) => method.prominence === 'secondary')

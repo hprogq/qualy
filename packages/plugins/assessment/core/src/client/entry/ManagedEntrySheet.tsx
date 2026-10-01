@@ -1,9 +1,9 @@
+import { useLocale } from '@qualy/web-i18n'
 import { useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { choiceLabel, displayTitle, kindOf, type AtomicSchema } from '@qualy/value-schema'
 import { useApiQuery } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@qualy/ui/tooltip'
@@ -16,8 +16,8 @@ import { ReasonDialog } from '../items/ReasonDialog.tsx'
 import { sourceLabelOf } from './source.ts'
 import { entryRefusalReason } from './refusals.ts'
 import { RedetermineDialog, type RedetermineInput } from './RedetermineDialog.tsx'
-import type { EntryDto, ItemDto } from './model.ts'
-import type { EntryLine } from './workspace/model.ts'
+import { type EntryDto, type ItemDto } from './model.ts'
+import { type EntryLine } from './workspace/model.ts'
 import * as m from '#messages'
 
 // The staff drawer: somebody else's claim, read in full, with the two acts
@@ -358,7 +358,7 @@ function Determination({
   itemId: string
 }) {
   const query = useApiQuery(assessmentApi)
-  const { locale } = useI18n()
+  const locale = useLocale()
   const zone = useBatchZone()
   const contract = useQuery({
     ...query.assessment.getRecognitionContract.queryOptions({ params: { itemId } }),

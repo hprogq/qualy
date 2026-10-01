@@ -1,4 +1,4 @@
-import type { ComponentType, ReactNode } from 'react'
+import { type ComponentType, type ReactNode } from 'react'
 import { primaryNavigation } from '@qualy/ui-contract'
 import {
   GuardedBrowserRouter,
@@ -12,11 +12,10 @@ import {
   type ComponentRegistry,
 } from '@qualy/web-runtime'
 import { UiProvider } from '@qualy/ui/provider'
-import { installMessages, resolveInitialLocale } from '@qualy/web-i18n'
+import { resolveInitialLocale } from '@qualy/web-i18n'
 import { bootstrapMessages } from '@qualy/web-i18n/bootstrap'
 import { ColdStart } from '@qualy/ui/spinner'
 import {
-  errorMessages,
   layoutComponents,
   loginComponents,
   pageComponents,
@@ -55,7 +54,6 @@ const coldStartCopy = bootstrapMessages[resolveInitialLocale()]
 
 // what the assembly's plugins say for their api failures; everything else a
 // screen says itself, and what the server sends arrives already said
-installMessages({ errorMessages })
 
 export default function App() {
   // The cold-start host wraps it all, above every provider, and draws the

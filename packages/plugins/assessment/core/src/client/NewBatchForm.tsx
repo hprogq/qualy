@@ -1,11 +1,13 @@
+import { assertNever, formatPlatformFailure as formatError, useLocale } from '@qualy/web-i18n'
+
+import { useApiMutation, useApi, useApiQuery } from '@qualy/web-runtime'
 import { useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Building2Icon, NetworkIcon, UserRoundXIcon } from 'lucide-react'
-import { useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
+
 import { useIsMobile } from '@qualy/ui/use-mobile'
-import { useI18n, useLocale } from '@qualy/web-i18n'
 
 import { dayAfter } from './entry/model.ts'
 import { CheckboxGroup, Feedback, Field, FormDialog, SidePanel } from '@qualy/ui/admin'
@@ -60,10 +62,9 @@ export function NewBatchDialog({
   onCreated: (batchId: string) => void
 }) {
   const api = useApi(assessmentApi)
-  const run = useRunApi()
   const query = useApiQuery(assessmentApi)
   const queryClient = useQueryClient()
-  const { formatError } = useI18n()
+
   const locale = useLocale()
 
   // asked for when the form is opened, not when the page behind it loads: a
@@ -91,20 +92,18 @@ export function NewBatchDialog({
     setFailure(null)
   }
 
-  const create = useMutation({
+  const create = useApiMutation({
     mutationFn: () =>
-      run(
-        api.assessment.createBatch({
-          payload: {
-            name,
-            // the picker hands back the last day chosen; the window is
-            // stored with its end outside it, so that day has to become the
-            // day after or material dated on it is refused
-            materialRange: { start: range.start, end: dayAfter(range.end) },
-            import: { orgNodeIds: scopeNodeIds, userTypeIds },
-          },
-        }),
-      ),
+      api.assessment.createBatch({
+        payload: {
+          name,
+          // the picker hands back the last day chosen; the window is
+          // stored with its end outside it, so that day has to become the
+          // day after or material dated on it is refused
+          materialRange: { start: range.start, end: dayAfter(range.end) },
+          import: { orgNodeIds: scopeNodeIds, userTypeIds },
+        },
+      }),
     onMutate: () => setFailure(null),
     onSuccess: async (result: { batch: { id: string } }) => {
       toast.success(m.toast_batchCreated())
@@ -112,7 +111,15 @@ export function NewBatchDialog({
       await queryClient.invalidateQueries({ queryKey: query.assessment.key() })
       onCreated(result.batch.id)
     },
-    onError: (error: unknown) => setFailure(formatError(error)),
+    onError: (error) => {
+      switch (error._tag) {
+        case 'ASSESSMENT_BATCH_REFERENCE_INVALID':
+          setFailure(m.error_batchReferenceInvalid())
+          return
+        default:
+          assertNever(error._tag)
+      }
+    },
   })
 
   // A batch is created with the people it covers, chosen from the units this

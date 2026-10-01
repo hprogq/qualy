@@ -1,9 +1,9 @@
+import { useLocale } from '@qualy/web-i18n'
 import * as stylex from '@stylexjs/stylex'
-import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 
 import { inZone, useBatchZone } from '../batch/zone.ts'
-import type { DraftKeeper } from './use-draft.ts'
+import { type DraftKeeper } from './use-draft.ts'
 import * as m from '#messages'
 
 // Said where a panel opened with words already in it: whose they are, when
@@ -41,7 +41,7 @@ const styles = stylex.create({
 })
 
 export function DraftNote({ draft, onDiscard }: { draft: DraftKeeper; onDiscard: () => void }) {
-  const { locale } = useI18n()
+  const locale = useLocale()
   const zone = useBatchZone()
   if (!draft.restored) return null
   const when =

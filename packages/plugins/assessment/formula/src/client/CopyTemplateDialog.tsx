@@ -1,7 +1,8 @@
+import { assertNever } from '@qualy/web-i18n'
+import { useApiMutation, useApi, useApiQuery } from '@qualy/web-runtime'
 import { useEffect, useState } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
+import { useQueryClient } from '@tanstack/react-query'
+
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
 import { Textarea } from '@qualy/ui/textarea'
@@ -29,10 +30,9 @@ export function CopyTemplateDialog({
   readonly onCopied: (functionId: string) => void
 }) {
   const api = useApi(formulaApi)
-  const run = useRunApi()
   const query = useApiQuery(formulaApi)
   const queryClient = useQueryClient()
-  const { formatError } = useI18n()
+
   const [name, setName] = useState(suggestedName)
   const [description, setDescription] = useState(suggestedDescription ?? '')
   const [failure, setFailure] = useState<string | null>(null)
@@ -45,23 +45,35 @@ export function CopyTemplateDialog({
     setFailure(null)
   }, [versionId, suggestedName, suggestedDescription])
 
-  const copy = useMutation({
+  const copy = useApiMutation({
     mutationFn: () =>
-      run(
-        api.assessmentFormula.copyFormulaTemplate({
-          params: { versionId: versionId ?? '' },
-          payload: {
-            name: name.trim(),
-            ...(description.trim() === '' ? {} : { description: description.trim() }),
-          },
-        }),
-      ),
+      api.assessmentFormula.copyFormulaTemplate({
+        params: { versionId: versionId ?? '' },
+        payload: {
+          name: name.trim(),
+          ...(description.trim() === '' ? {} : { description: description.trim() }),
+        },
+      }),
     onMutate: () => setFailure(null),
     onSuccess: async (result: { function: { id: string } }) => {
       await queryClient.invalidateQueries({ queryKey: query.assessmentFormula.key() })
       onCopied(result.function.id)
     },
-    onError: (error: unknown) => setFailure(formatError(error)),
+    onError: (error) => {
+      switch (error._tag) {
+        case 'ASSESSMENT_FORMULA_AUTHORING_BUSY':
+          setFailure(m.error_authoringBusy())
+          return
+        case 'ASSESSMENT_FORMULA_SOURCE_TOO_LARGE':
+          setFailure(m.error_sourceTooLarge())
+          return
+        case 'ASSESSMENT_FORMULA_TEMPLATE_NOT_FOUND':
+          setFailure(m.error_templateNotFound())
+          return
+        default:
+          assertNever(error)
+      }
+    },
   })
 
   return (

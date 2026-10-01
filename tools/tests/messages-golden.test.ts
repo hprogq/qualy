@@ -1,12 +1,13 @@
 import { createHash } from 'node:crypto'
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { describe, expect, it } from 'vitest'
+import { afterAll, describe, expect, it } from 'vitest'
 import { type SupportedLocale } from '@qualy/i18n-contract'
 import {
   compileMessages,
-  messagesOutDir,
+  messageSources,
   readMessages,
 } from '../../packages/build/messages/src/compile.ts'
 import { repoRoot } from '../lib/manifest.ts'
@@ -27,14 +28,25 @@ const golden = JSON.parse(
   fs.readFileSync(path.join(repoRoot, 'tools/tests/fixtures/messages-golden.json'), 'utf8'),
 ) as Record<string, [hash: string, rows?: Row[]]>
 
-const result = await compileMessages({ all: true })
+// This suite measures the compiler, not whatever layout another build most
+// recently installed in the workspace. Give it its own output graph while
+// retaining the actual product sources and the production compiler.
+const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-message-golden-'))
+afterAll(() => fs.rmSync(projectRoot, { recursive: true, force: true }))
+fs.writeFileSync(path.join(projectRoot, 'package.json'), JSON.stringify({ type: 'module' }))
+fs.writeFileSync(path.join(projectRoot, 'qualy.yml'), 'version: 3\nplugins: {}\n')
+const result = await compileMessages({
+  manifestPath: path.join(projectRoot, 'qualy.yml'),
+  sources: await messageSources(undefined, true),
+  outputStructure: 'locale-modules',
+})
 // every package's messages merged under their namespaces, as the compiler reads them
 const merged = readMessages(result.sources).byLocale as Record<
   SupportedLocale,
   Record<string, string>
 >
 const compiled = (await import(
-  pathToFileURL(path.join(messagesOutDir(repoRoot), 'paraglide', 'messages', '_index.js')).href
+  pathToFileURL(path.join(result.outDir, 'paraglide', 'messages', '_index.js')).href
 )) as Record<string, (inputs: unknown, options: { locale: SupportedLocale }) => string>
 
 const hashOf = (english: string, chinese: string) =>
@@ -51,6 +63,7 @@ describe('the compiled messages', () => {
       if (english === undefined || chinese === undefined) continue
       if (hashOf(english, chinese) !== hash) continue
       const say = compiled[key]!
+      expect(say, key).toBeTypeOf('function')
       const cases: Row[] = rows ?? [[{}, english, chinese]]
       for (const [inputs, wantEnglish, wantChinese] of cases) {
         for (const [locale, want] of [

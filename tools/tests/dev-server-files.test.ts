@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { isFileServingAllowed, resolveConfig } from 'vite'
+import { isFileServingAllowed, resolveConfig, loadConfigFromFile } from 'vite'
 
 // What the development server hands out under /@fs/.
 //
@@ -14,8 +14,23 @@ import { isFileServingAllowed, resolveConfig } from 'vite'
 const repo = fileURLToPath(new URL('../..', import.meta.url))
 
 const served = async () => {
+  const loaded = await loadConfigFromFile(
+    { command: 'serve', mode: 'development' },
+    `${repo}apps/web/vite.config.ts`,
+    `${repo}apps/web`,
+    'silent',
+  )
+  if (!loaded) throw new Error('web configuration not found')
+  // This gate checks file permissions, not message compilation. Running the
+  // config hooks here would replace artifacts other concurrent suites read.
   const config = await resolveConfig(
-    { configFile: `${repo}apps/web/vite.config.ts`, root: `${repo}apps/web`, logLevel: 'silent' },
+    {
+      ...loaded.config,
+      configFile: false,
+      plugins: [],
+      root: `${repo}apps/web`,
+      logLevel: 'silent',
+    },
     'serve',
     'development',
   )
@@ -30,7 +45,7 @@ describe('what the development server serves from the file system', () => {
       // generated at build time, so absent from a fresh checkout
       path.posix.join('apps/web/.qualy', 'plugins.ts'),
       'packages/web/ui/package.json',
-      'packages/plugins/assessment/core/src/client/i18n.ts',
+      'packages/plugins/assessment/core/src/client/items/scoring-refusals.ts',
       'node_modules/.pnpm/react@19.0.0/node_modules/react/index.js',
     ]) {
       expect(allowed(file), file).toBe(true)

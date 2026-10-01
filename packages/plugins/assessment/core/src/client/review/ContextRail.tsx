@@ -1,7 +1,7 @@
+import { useLocale } from '@qualy/web-i18n'
 import { RESERVED } from '../reserved.ts'
 import { memo, useMemo } from 'react'
 import * as stylex from '@stylexjs/stylex'
-import { useI18n } from '@qualy/web-i18n'
 import { Kbd } from '@qualy/ui/kbd'
 
 import { entryStatusMessage, trimAmount, type EntryDto } from '../entry/model.ts'
@@ -328,7 +328,7 @@ function AboutParts({
   review: ReviewDto
   onOpenSibling: (entryId: string) => void
 }) {
-  const { locale } = useI18n()
+  const locale = useLocale()
   const fine = useFinePointer()
   const listed = useMemo(
     () => new Intl.ListFormat(locale, { style: 'narrow', type: 'conjunction' }),

@@ -1,6 +1,6 @@
+import { useLocale, useList } from '@qualy/web-i18n'
 import { useQuery } from '@tanstack/react-query'
 import { useApiQuery, useLoadFailure, usePageNavigate } from '@qualy/web-runtime'
-import { useI18n, useList } from '@qualy/web-i18n'
 
 import { useState } from 'react'
 import { PlusIcon } from 'lucide-react'
@@ -22,7 +22,7 @@ import {
   Tag,
 } from '@qualy/ui/screen'
 
-import type { RoleRow } from './RoleEditor.tsx'
+import { type RoleRow } from './RoleEditor.tsx'
 import { NewRoleForm } from './NewRoleForm.tsx'
 import { accessApi } from './api.ts'
 import * as commonMessages from '@qualy/web-i18n/messages'
@@ -43,7 +43,7 @@ const COLUMNS = 'minmax(0, 1.1fr) 5.5rem 5rem minmax(0, 1fr) minmax(0, 1fr) 5rem
 
 export default function RolesPage() {
   const query = useApiQuery(accessApi)
-  const { locale } = useI18n()
+  const locale = useLocale()
   const describe = useLoadFailure()
   const figure = new Intl.NumberFormat(locale)
   const listJoin = useList()

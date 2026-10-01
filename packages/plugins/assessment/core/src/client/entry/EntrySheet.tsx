@@ -1,7 +1,7 @@
+import { useLocale } from '@qualy/web-i18n'
 import { useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { ClockIcon } from 'lucide-react'
-import { useI18n } from '@qualy/web-i18n'
 
 import { ConfirmDialog } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
@@ -18,9 +18,9 @@ import {
 } from './refusals.ts'
 import { useRound } from './own-acts.ts'
 import { EntryDetail } from './EntryDetail.tsx'
-import type { ActionAvailability, EntryDto, ItemDto } from './model.ts'
+import { type ActionAvailability, type EntryDto, type ItemDto } from './model.ts'
 import { abandonConsequence } from './standing.ts'
-import type { EntryLine } from './workspace/model.ts'
+import { type EntryLine } from './workspace/model.ts'
 import * as commonMessages from '@qualy/web-i18n/messages'
 import * as m from '#messages'
 
@@ -144,7 +144,7 @@ export function EntrySheet({
   onAppeal: () => void
   onSupplement: () => void
 }) {
-  const { locale } = useI18n()
+  const locale = useLocale()
   // the stage the round is in, for saying which one holds an act
   const round = useRound(entry.batchId)
   // which act is waiting on an answer; every one of them moves the claim
@@ -331,7 +331,7 @@ function Offered({
   xstyle?: stylex.StyleXStyles
   onPress: () => void
 }) {
-  const { locale } = useI18n()
+  const locale = useLocale()
   if (can.state === 'hidden') return null
   const button = (
     <Button

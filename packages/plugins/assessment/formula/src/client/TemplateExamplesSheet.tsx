@@ -1,9 +1,9 @@
+import { useLocale } from '@qualy/web-i18n'
 import * as stylex from '@stylexjs/stylex'
-import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@qualy/ui/sheet'
-import type { NormalizedInputSchema } from '@qualy/value-schema'
+import { type NormalizedInputSchema } from '@qualy/value-schema'
 
 import { inputFactsOf } from './report-words.ts'
 import * as m from '#messages'
@@ -79,7 +79,7 @@ export function TemplateExamplesSheet({
   /** the version's own input structure, which names and orders the fields */
   readonly schema: NormalizedInputSchema | null
 }) {
-  const { locale } = useI18n()
+  const locale = useLocale()
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" xstyle={styles.panel}>

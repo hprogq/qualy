@@ -1,3 +1,4 @@
+import { formatPlatformFailure as formatError, isApiErrorCode } from '@qualy/web-i18n'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
@@ -12,7 +13,6 @@ import {
   usePageQueryState,
   usePageQueryUpdate,
 } from '@qualy/web-runtime'
-import { isApiErrorCode, useI18n } from '@qualy/web-i18n'
 
 import { AsyncSection } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
@@ -21,7 +21,7 @@ import { useLingering } from '@qualy/ui/use-lingering'
 import { liveStateOf } from '@qualy/ui/live-mark'
 import { assessmentApi } from '../api.ts'
 
-import type { EntryDto, FilingGateDto, ItemDto } from '../entry/model.ts'
+import { type EntryDto, type FilingGateDto, type ItemDto } from '../entry/model.ts'
 import { EntrySheet } from '../entry/EntrySheet.tsx'
 import { MissingClaimSheet } from '../entry/MissingClaimSheet.tsx'
 import { AppealDialog } from '../entry/AppealDialog.tsx'
@@ -174,7 +174,7 @@ function Standing({
   const query = useApiQuery(assessmentApi)
   const queryClient = useQueryClient()
   const navigate = usePageNavigate()
-  const { formatError } = useI18n()
+
   const failures = useLoadFailure()
   const lineWords = useLineWords()
   // on a phone the drawer is somewhere the back key leaves; at a desk it is

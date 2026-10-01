@@ -1,3 +1,4 @@
+import { formatPlatformFailure as formatError } from '@qualy/web-i18n'
 import { useEffect, useMemo, useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
@@ -11,7 +12,6 @@ import {
   peoplePickerView,
   type PeoplePickerContext,
 } from '@qualy/ui-contract'
-import { useI18n } from '@qualy/web-i18n'
 
 import { Button } from '@qualy/ui/button'
 import {
@@ -117,7 +117,7 @@ export function AddStaffDialog({
   onClose: () => void
 }) {
   const query = useApiQuery(assessmentApi)
-  const { formatError } = useI18n()
+
   const [step, setStep] = useState(0)
   const [chosen, setChosen] = useState<readonly string[]>([])
   const [unitIds, setUnitIds] = useState<readonly string[]>([])

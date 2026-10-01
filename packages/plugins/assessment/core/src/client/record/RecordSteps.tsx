@@ -1,13 +1,21 @@
+import { assertNever, useLocale } from '@qualy/web-i18n'
+
+import { useApiMutation, useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
 import { useEffect, useMemo, useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
-import { useMutation, useQuery } from '@tanstack/react-query'
-import { useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
+import { useQuery } from '@tanstack/react-query'
+
 import { ValueFieldsForm } from '@qualy/web-value-form/InputValueForm'
 import { usePickerWords } from '@qualy/web-i18n/picker-words'
 import { draftsFromFields, materializeFields, type FieldDraft } from '@qualy/web-value-form/model'
-import { applyAssignment, choiceLabel, displayTitle, kindOf } from '@qualy/value-schema'
-import type { AtomicSchema } from '@qualy/value-schema'
-import { useI18n } from '@qualy/web-i18n'
+import {
+  applyAssignment,
+  choiceLabel,
+  displayTitle,
+  kindOf,
+  type AtomicSchema,
+} from '@qualy/value-schema'
+
 import { Feedback, Field } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
@@ -171,7 +179,7 @@ export function RecordSteps({
   const api = useApi(assessmentApi)
   const query = useApiQuery(assessmentApi)
   const run = useRunApi()
-  const { formatError, locale } = useI18n()
+  const locale = useLocale()
   const words = usePickerWords()
   const [target, setTarget] = useState<RecordTarget | null>(null)
   const [payload, setPayload] = useState<EvidencePayload>({})
@@ -326,14 +334,12 @@ export function RecordSteps({
                   ? m.record_needsFormula
                   : null
 
-  const check = useMutation({
+  const check = useApiMutation({
     mutationFn: (excluded: readonly string[]) =>
-      run(
-        api.assessment.previewAdministrativeRecord({
-          params: { batchId },
-          payload: { ...asked!, excludedParticipantIds: [...excluded] },
-        }),
-      ),
+      api.assessment.previewAdministrativeRecord({
+        params: { batchId },
+        payload: { ...asked!, excludedParticipantIds: [...excluded] },
+      }),
     onSuccess: (answer) => {
       setSeen(answer)
       setPress(crypto.randomUUID())
@@ -341,38 +347,104 @@ export function RecordSteps({
       onGo(2)
     },
     onError: (error) => {
+      let failure: string
+      switch (error._tag) {
+        case 'ASSESSMENT_ADMINISTRATIVE_RECORD_REFUSED':
+          failure = m.error_administrativeRecordRefused()
+          break
+        case 'ASSESSMENT_BATCH_NOT_FOUND':
+          failure = m.error_batchNotFound()
+          break
+        case 'ASSESSMENT_BATCH_READ_ONLY':
+          failure = m.error_batchReadOnly()
+          break
+        case 'ASSESSMENT_DETERMINATION_REFUSED':
+          failure = m.error_determinationRefused(
+            ((data: typeof error) => ({ reason: data.reason }))(error),
+          )
+          break
+        case 'ASSESSMENT_ENTRY_PAYLOAD_INVALID':
+          failure = m.error_entryPayloadInvalid()
+          break
+        case 'ASSESSMENT_ITEM_NOT_FOUND':
+          failure = m.error_itemNotFound()
+          break
+        case 'ASSESSMENT_ITEM_REVISION_CONFLICT':
+          failure = m.error_itemRevisionConflict()
+          break
+        case 'ASSESSMENT_SCORING_UNAVAILABLE':
+          failure = m.error_scoringUnavailable()
+          break
+        default:
+          assertNever(error)
+      }
       setSeen(null)
-      setProblem(formatError(error))
+      setProblem(failure)
       onGo(1)
     },
   })
 
-  const record = useMutation({
+  const record = useApiMutation({
     mutationFn: () =>
-      run(
-        api.assessment.recordAdministrativeBatch({
-          params: { batchId },
-          payload: {
-            ...asked!,
-            excludedParticipantIds: [...dropped],
-            expectedTargetFingerprint: seen!.targetFingerprint,
-            // the press, not the people: a retry after a lost answer is
-            // answered with the act it already became instead of writing a
-            // second finding on everybody
-            idempotencyKey: press,
-          },
-        }),
-      ),
+      api.assessment.recordAdministrativeBatch({
+        params: { batchId },
+        payload: {
+          ...asked!,
+          excludedParticipantIds: [...dropped],
+          expectedTargetFingerprint: seen!.targetFingerprint,
+          // the press, not the people: a retry after a lost answer is
+          // answered with the act it already became instead of writing a
+          // second finding on everybody
+          idempotencyKey: press,
+        },
+      }),
     onSuccess: (done) => {
       toast.success(m.record_doneMany({ count: done.recordedCount }))
       onRecorded()
     },
     onError: (error) => {
+      let failure: string
+      switch (error._tag) {
+        case 'ASSESSMENT_ADMINISTRATIVE_RECORD_FILES_NOT_SHAREABLE':
+          failure = m.error_administrativeRecordFilesNotShareable()
+          break
+        case 'ASSESSMENT_ADMINISTRATIVE_RECORD_REFUSED':
+          failure = m.error_administrativeRecordRefused()
+          break
+        case 'ASSESSMENT_ADMINISTRATIVE_RECORD_TARGETS_CHANGED':
+          failure = m.error_administrativeRecordTargetsChanged()
+          break
+        case 'ASSESSMENT_BATCH_NOT_FOUND':
+          failure = m.error_batchNotFound()
+          break
+        case 'ASSESSMENT_BATCH_READ_ONLY':
+          failure = m.error_batchReadOnly()
+          break
+        case 'ASSESSMENT_DETERMINATION_REFUSED':
+          failure = m.error_determinationRefused(
+            ((data: typeof error) => ({ reason: data.reason }))(error),
+          )
+          break
+        case 'ASSESSMENT_ENTRY_PAYLOAD_INVALID':
+          failure = m.error_entryPayloadInvalid()
+          break
+        case 'ASSESSMENT_ITEM_NOT_FOUND':
+          failure = m.error_itemNotFound()
+          break
+        case 'ASSESSMENT_ITEM_REVISION_CONFLICT':
+          failure = m.error_itemRevisionConflict()
+          break
+        case 'ASSESSMENT_SCORING_UNAVAILABLE':
+          failure = m.error_scoringUnavailable()
+          break
+        default:
+          assertNever(error)
+      }
       // the set moved under them, or somebody stopped being writable: either
       // way what they were shown is stale, so it goes and the reader is put
       // back where they can change something
       setSeen(null)
-      setProblem(formatError(error))
+      setProblem(failure)
       onGo(1)
     },
   })

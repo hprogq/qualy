@@ -1,10 +1,11 @@
-import type { ApiResult } from '@qualy/web-runtime/api'
+import { assertNever, useLocale, useList } from '@qualy/web-i18n'
+import { useApiMutation, useApi, useApiQuery } from '@qualy/web-runtime'
+
+import { type ApiResult } from '@qualy/web-runtime/api'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
-import { useApi, useRunApi, useApiQuery } from '@qualy/web-runtime'
-import { useI18n, useList } from '@qualy/web-i18n'
 
 import { ConfirmDialog, Feedback, Field } from '@qualy/ui/admin'
 import {
@@ -120,10 +121,10 @@ export function MethodSheet({
   onClose: () => void
 }) {
   const api = useApi(authApi)
-  const runApi = useRunApi()
+
   const query = useApiQuery(authApi)
   const queryClient = useQueryClient()
-  const { formatError, locale } = useI18n()
+  const locale = useLocale()
   const listJoin = useList()
   const figure = new Intl.NumberFormat(locale)
   // the kind as its driver names it; its code only where no driver claims it
@@ -205,91 +206,175 @@ export function MethodSheet({
   const unreadableKeys = gaps.flatMap((gap) => (gap.kind === 'secret-unreadable' ? [gap.key] : []))
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: query.identity.key() })
-  const save = useMutation({
+  const save = useApiMutation({
     mutationFn: () =>
-      runApi(
-        api.identity.setAuthProviderAudience({
-          params: { providerId: provider.id },
-          payload: {
-            // the version this editor read: a save that cannot say what it
-            // saw is a save that silently overwrites whoever went second
-            version: provider.version,
-            audience:
-              mode === 'unrestricted'
-                ? { mode: 'unrestricted' }
-                : { mode: 'allow-list', userTypeIds },
-          },
-        }),
-      ),
+      api.identity.setAuthProviderAudience({
+        params: { providerId: provider.id },
+        payload: {
+          // the version this editor read: a save that cannot say what it
+          // saw is a save that silently overwrites whoever went second
+          version: provider.version,
+          audience:
+            mode === 'unrestricted'
+              ? { mode: 'unrestricted' }
+              : { mode: 'allow-list', userTypeIds },
+        },
+      }),
     onMutate: () => setFeedback(null),
     onSuccess: async () => {
       await refresh()
       setDraft(null)
     },
-    onError: (error: unknown) => setFeedback(formatError(error)),
+    onError: (error) => {
+      switch (error._tag) {
+        case 'AUTH_PROVIDER_NOT_FOUND':
+          setFeedback(m.error_providerNotFound())
+          return
+        case 'AUTH_PROVIDER_VERSION_CONFLICT':
+          setFeedback(m.error_providerVersionConflict())
+          return
+        case 'RECOVERY_CHANNEL_REQUIRED':
+          setFeedback(m.error_recoveryChannelRequired())
+          return
+        case 'USER_TYPE_NOT_FOUND':
+          setFeedback(m.error_userTypeNotFound())
+          return
+        default:
+          assertNever(error)
+      }
+    },
   })
 
-  const saveDetails = useMutation({
+  const saveDetails = useApiMutation({
     mutationFn: () =>
-      runApi(
-        api.identity.updateAuthProvider({
-          params: { providerId: provider.id },
-          payload: {
-            version: provider.version,
-            ...(name === null || name.trim() === provider.name ? {} : { name: name.trim() }),
-            ...(valuesDirty ? { values: changedValues } : {}),
-          },
-        }),
-      ),
+      api.identity.updateAuthProvider({
+        params: { providerId: provider.id },
+        payload: {
+          version: provider.version,
+          ...(name === null || name.trim() === provider.name ? {} : { name: name.trim() }),
+          ...(valuesDirty ? { values: changedValues } : {}),
+        },
+      }),
     onMutate: () => setFeedback(null),
     onSuccess: async () => {
       await refresh()
       setName(null)
       setValues({})
     },
-    onError: (error: unknown) => setFeedback(formatError(error)),
+    onError: (error) => {
+      switch (error._tag) {
+        case 'AUTH_PROVIDER_CONFIG_INCOMPLETE':
+          setFeedback(m.error_providerConfigIncomplete())
+          return
+        case 'AUTH_PROVIDER_CONFIG_INVALID':
+          setFeedback(m.error_providerConfigInvalid())
+          return
+        case 'AUTH_PROVIDER_IDENTITY_NAMESPACE_IN_USE':
+          setFeedback(m.error_providerIdentityNamespaceInUse())
+          return
+        case 'AUTH_PROVIDER_KIND_UNAVAILABLE':
+          setFeedback(m.error_providerKindUnavailable())
+          return
+        case 'AUTH_PROVIDER_NOT_FOUND':
+          setFeedback(m.error_providerNotFound())
+          return
+        case 'AUTH_PROVIDER_VERSION_CONFLICT':
+          setFeedback(m.error_providerVersionConflict())
+          return
+        default:
+          assertNever(error)
+      }
+    },
   })
-  const clearSecret = useMutation({
+  const clearSecret = useApiMutation({
     mutationFn: (key: string) =>
-      runApi(
-        api.identity.deleteAuthProviderSecret({
-          params: { providerId: provider.id, key },
-          query: { version: String(provider.version) },
-        }),
-      ),
+      api.identity.deleteAuthProviderSecret({
+        params: { providerId: provider.id, key },
+        query: { version: String(provider.version) },
+      }),
     onMutate: () => setFeedback(null),
     onSuccess: refresh,
-    onError: (error: unknown) => setFeedback(formatError(error)),
+    onError: (error) => {
+      switch (error._tag) {
+        case 'AUTH_PROVIDER_CONFIG_INCOMPLETE':
+          setFeedback(m.error_providerConfigIncomplete())
+          return
+        case 'AUTH_PROVIDER_CONFIG_INVALID':
+          setFeedback(m.error_providerConfigInvalid())
+          return
+        case 'AUTH_PROVIDER_KIND_UNAVAILABLE':
+          setFeedback(m.error_providerKindUnavailable())
+          return
+        case 'AUTH_PROVIDER_NOT_FOUND':
+          setFeedback(m.error_providerNotFound())
+          return
+        case 'AUTH_PROVIDER_VERSION_CONFLICT':
+          setFeedback(m.error_providerVersionConflict())
+          return
+        default:
+          assertNever(error)
+      }
+    },
   })
-  const setStatus = useMutation({
+  const setStatus = useApiMutation({
     mutationFn: (status: 'active' | 'disabled') =>
-      runApi(
-        api.identity.setAuthProviderStatus({
-          params: { providerId: provider.id },
-          payload: { version: provider.version, status },
-        }),
-      ),
+      api.identity.setAuthProviderStatus({
+        params: { providerId: provider.id },
+        payload: { version: provider.version, status },
+      }),
     onMutate: () => setFeedback(null),
     onSuccess: refresh,
-    onError: (error: unknown) => setFeedback(formatError(error)),
+    onError: (error) => {
+      switch (error._tag) {
+        case 'AUTH_PROVIDER_CONFIG_INCOMPLETE':
+          setFeedback(m.error_providerConfigIncomplete())
+          return
+        case 'AUTH_PROVIDER_NOT_FOUND':
+          setFeedback(m.error_providerNotFound())
+          return
+        case 'AUTH_PROVIDER_VERSION_CONFLICT':
+          setFeedback(m.error_providerVersionConflict())
+          return
+        case 'RECOVERY_CHANNEL_REQUIRED':
+          setFeedback(m.error_recoveryChannelRequired())
+          return
+        default:
+          assertNever(error)
+      }
+    },
   })
-  const remove = useMutation({
+  const remove = useApiMutation({
     mutationFn: () =>
-      runApi(
-        api.identity.deleteAuthProvider({
-          params: { providerId: provider.id },
-          query: { version: String(provider.version) },
-        }),
-      ),
+      api.identity.deleteAuthProvider({
+        params: { providerId: provider.id },
+        query: { version: String(provider.version) },
+      }),
     onMutate: () => setFeedback(null),
     onSuccess: async () => {
       setDeleting(false)
       onClose()
       await refresh()
     },
-    onError: (error: unknown) => {
+    onError: (error) => {
+      let failure: string
+      switch (error._tag) {
+        case 'AUTH_PROVIDER_IS_SYSTEM':
+          failure = m.error_providerIsSystem()
+          break
+        case 'AUTH_PROVIDER_NOT_FOUND':
+          failure = m.error_providerNotFound()
+          break
+        case 'AUTH_PROVIDER_VERSION_CONFLICT':
+          failure = m.error_providerVersionConflict()
+          break
+        case 'RECOVERY_CHANNEL_REQUIRED':
+          failure = m.error_recoveryChannelRequired()
+          break
+        default:
+          assertNever(error)
+      }
       setDeleting(false)
-      setFeedback(formatError(error))
+      setFeedback(failure)
     },
   })
   const nameDirty = name !== null && name.trim() !== '' && name.trim() !== provider.name

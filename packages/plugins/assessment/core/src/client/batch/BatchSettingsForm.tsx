@@ -1,10 +1,17 @@
+import { formatPlatformFailure as formatError, useLocale } from '@qualy/web-i18n'
+
+import {
+  useApiMutation,
+  useApi,
+  useApiQuery,
+  useLeaveGuard,
+  usePageNavigate,
+} from '@qualy/web-runtime'
 import { useEffect, useState, type ReactNode } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { Appear } from '@qualy/ui/reveal'
 import { GripVerticalIcon, PlusIcon, RotateCcwIcon, Trash2Icon, XIcon } from 'lucide-react'
-import { useApi, useApiQuery, useLeaveGuard, usePageNavigate, useRunApi } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
 
 import { VisuallyHidden } from '@qualy/ui/visually-hidden'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
@@ -22,7 +29,7 @@ import { DEFAULT_REVIEW_REASONS } from '../../review/reasons.ts'
 
 import { planRefusalWords, refusalsOf } from '../refusals.ts'
 import { ReopenDialog } from './ReopenDialog.tsx'
-import type { BatchDto } from '../phase/model.ts'
+import { type BatchDto } from '../phase/model.ts'
 import { dayAfter, lastDay } from '../entry/model.ts'
 import * as commonMessages from '@qualy/web-i18n/messages'
 import * as m from '#messages'
@@ -410,10 +417,9 @@ const pickedOf = (range: { start: string; end: string }) => ({
 
 export function BatchSettingsForm({ batch }: { batch: BatchDto }) {
   const api = useApi(assessmentApi)
-  const run = useRunApi()
   const query = useApiQuery(assessmentApi)
   const queryClient = useQueryClient()
-  const { formatError, locale } = useI18n()
+  const locale = useLocale()
   const navigate = usePageNavigate()
 
   const [name, setName] = useState(batch.name)
@@ -454,27 +460,25 @@ export function BatchSettingsForm({ batch }: { batch: BatchDto }) {
       : formatError(error)
   }
 
-  const save = useMutation({
+  const save = useApiMutation({
     mutationFn: () =>
-      run(
-        api.assessment.updateBatch({
-          params: { batchId: batch.id },
-          payload: {
-            name,
-            descriptionMd: description.trim() === '' ? null : description,
-            // the last day picked is inside the window, so the stored end
-            // is the day after it
-            materialRange: { start: range.start, end: dayAfter(range.end) },
-            reviewReasons: { reject: rejectToSave, escalate: escalateToSave },
-          },
-        }),
-      ),
+      api.assessment.updateBatch({
+        params: { batchId: batch.id },
+        payload: {
+          name,
+          descriptionMd: description.trim() === '' ? null : description,
+          // the last day picked is inside the window, so the stored end
+          // is the day after it
+          materialRange: { start: range.start, end: dayAfter(range.end) },
+          reviewReasons: { reject: rejectToSave, escalate: escalateToSave },
+        },
+      }),
     onMutate: () => setFailure(null),
     onSuccess: async () => {
       toast.success(m.toast_batchSaved())
       await settle()
     },
-    onError: (error: unknown) => setFailure(said(error)),
+    onError: (error) => setFailure(said(error)),
   })
 
   const editable = batch.manageable && batch.status !== 'archived'
@@ -509,55 +513,51 @@ export function BatchSettingsForm({ batch }: { batch: BatchDto }) {
         }),
   })
 
-  const archive = useMutation({
+  const archive = useApiMutation({
     mutationFn: () =>
-      run(
-        api.assessment.setBatchStatus({
-          params: { batchId: batch.id },
-          payload: { status: 'archived' },
-        }),
-      ),
+      api.assessment.setBatchStatus({
+        params: { batchId: batch.id },
+        payload: { status: 'archived' },
+      }),
     onMutate: () => setFailure(null),
     onSuccess: async () => {
       toast.success(m.toast_batchArchived())
       await settle()
       setConfirming(null)
     },
-    onError: (error: unknown) => {
+    onError: (error) => {
       setConfirming(null)
       setFailure(said(error))
     },
   })
 
-  const reopen = useMutation({
+  const reopen = useApiMutation({
     mutationFn: (input: { reason: string; displayName: string }) =>
-      run(
-        api.assessment.setBatchStatus({
-          params: { batchId: batch.id },
-          payload: {
-            status: 'active',
-            reason: input.reason,
-            phase: { displayName: input.displayName },
-            // a reopening that waits has nothing to wait for yet: the new
-            // phase is scheduled from the plan afterwards
-            plannedEntryAt: null,
-          },
-        }),
-      ),
+      api.assessment.setBatchStatus({
+        params: { batchId: batch.id },
+        payload: {
+          status: 'active',
+          reason: input.reason,
+          phase: { displayName: input.displayName },
+          // a reopening that waits has nothing to wait for yet: the new
+          // phase is scheduled from the plan afterwards
+          plannedEntryAt: null,
+        },
+      }),
     onMutate: () => setFailure(null),
     onSuccess: async () => {
       toast.success(m.toast_batchReopened())
       await settle()
       setReopening(false)
     },
-    onError: (error: unknown) => {
+    onError: (error) => {
       setReopening(false)
       setFailure(said(error))
     },
   })
 
-  const remove = useMutation({
-    mutationFn: () => run(api.assessment.deleteBatch({ params: { batchId: batch.id } })),
+  const remove = useApiMutation({
+    mutationFn: () => api.assessment.deleteBatch({ params: { batchId: batch.id } }),
     onMutate: () => setFailure(null),
     onSuccess: () => {
       toast.success(m.toast_batchDeleted())
@@ -567,7 +567,7 @@ export function BatchSettingsForm({ batch }: { batch: BatchDto }) {
       bypass(() => navigate('assessment/batches', { replace: true }))
       void settle()
     },
-    onError: (error: unknown) => {
+    onError: (error) => {
       setConfirming(null)
       setFailure(said(error))
     },

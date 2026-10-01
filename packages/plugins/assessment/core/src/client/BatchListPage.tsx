@@ -1,3 +1,4 @@
+import { useLocale } from '@qualy/web-i18n'
 import { useEffect, useState, type MouseEvent } from 'react'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
@@ -8,7 +9,6 @@ import {
   usePageNavigate,
   usePageTitle,
 } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
 
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
@@ -578,7 +578,7 @@ export default function BatchListPage() {
   const narrow = useIsMobile()
   const [searchOpen, setSearchOpen] = useState(false)
   const searchInRow = narrow && searchOpen
-  const { locale } = useI18n()
+  const locale = useLocale()
   const failure = useLoadFailure()
   // the shell repeats this once the heading itself has scrolled away
   const titleRef = usePageTitle(m.batch_title())

@@ -1,5 +1,14 @@
+import { assertNever, useLocale, useList } from '@qualy/web-i18n'
+import {
+  useApiMutation,
+  useApi,
+  useApiQuery,
+  useLoadFailure,
+  usePageQueryState,
+} from '@qualy/web-runtime'
+
 import { useState } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import {
   ArrowDownToLineIcon,
@@ -21,14 +30,6 @@ import {
   DropdownMenuTrigger,
 } from '@qualy/ui/dropdown-menu'
 import { toast } from '@qualy/ui/toast'
-import {
-  useApi,
-  useApiQuery,
-  useLoadFailure,
-  usePageQueryState,
-  useRunApi,
-} from '@qualy/web-runtime'
-import { useI18n, useList } from '@qualy/web-i18n'
 
 import { AsyncSection } from '@qualy/ui/admin'
 import { useLingering } from '@qualy/ui/use-lingering'
@@ -130,13 +131,13 @@ const styles = stylex.create({
 
 export default function LoginMethodsPage() {
   const query = useApiQuery(authApi)
-  const { formatError, locale } = useI18n()
+  const locale = useLocale()
   const describe = useLoadFailure()
   const listJoin = useList()
   const [selected, setSelected] = usePageQueryState('provider')
 
   const api = useApi(authApi)
-  const runApi = useRunApi()
+
   const queryClient = useQueryClient()
   const [creating, setCreating] = useState(false)
   const phone = useIsBelow(768)
@@ -155,11 +156,22 @@ export default function LoginMethodsPage() {
   const canManageTrust = providers.data?.capabilities.canManageTrust ?? false
   const primaryRows = rows.filter((row) => row.prominence === 'primary')
   const secondaryRows = rows.filter((row) => row.prominence === 'secondary')
-  const arrange = useMutation({
+  const arrange = useApiMutation({
     mutationFn: (arrangement: { primary: string[]; secondary: string[] }) =>
-      runApi(api.identity.setAuthProviderOrder({ payload: arrangement })),
+      api.identity.setAuthProviderOrder({ payload: arrangement }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: query.identity.key() }),
-    onError: (error: unknown) => toast.error(formatError(error)),
+    onError: (error) => {
+      switch (error._tag) {
+        case 'AUTH_PROVIDER_ARRANGEMENT_INVALID':
+          toast.error(m.error_providerArrangementInvalid())
+          return
+        case 'AUTH_PROVIDER_NOT_FOUND':
+          toast.error(m.error_providerNotFound())
+          return
+        default:
+          assertNever(error)
+      }
+    },
   })
   type Group = 'primary' | 'secondary'
   const groups = () => ({

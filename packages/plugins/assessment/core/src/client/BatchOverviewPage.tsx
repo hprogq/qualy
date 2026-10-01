@@ -1,3 +1,4 @@
+import { useLocale, useList } from '@qualy/web-i18n'
 import {
   lazy,
   Suspense,
@@ -20,7 +21,6 @@ import {
   useRunApi,
   cursorPages,
 } from '@qualy/web-runtime'
-import { useI18n, useList } from '@qualy/web-i18n'
 
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { AsyncSection } from '@qualy/ui/admin'
@@ -31,7 +31,7 @@ import { Tabs, TabsList, TabsTrigger } from '@qualy/ui/tabs'
 import { VisuallyHidden } from '@qualy/ui/visually-hidden'
 import { assessmentApi } from './api.ts'
 import { useBatchLive } from './live.ts'
-import type { ApiResult } from '@qualy/web-runtime/api'
+import { type ApiResult } from '@qualy/web-runtime/api'
 import { BatchScreen } from './batch/BatchScreen.tsx'
 import { BatchFlow } from './batch/BatchFlow.tsx'
 import { calendarDaysBetween, inZone, useBatchZone, yearOf } from './batch/zone.ts'
@@ -44,7 +44,7 @@ import {
   type AlertedQuestion,
 } from './batch/admin-alerts.ts'
 import * as commonMessages from '@qualy/web-i18n/messages'
-import type { Message } from '@qualy/i18n-contract'
+import { type Message } from '@qualy/i18n-contract'
 import * as m from '#messages'
 
 // The batch's front page as one desk (§32.73, laid out to design 2a/2b):
@@ -930,7 +930,7 @@ function Desk({
   const api = useApi(assessmentApi)
   const run = useRunApi()
   const navigate = usePageNavigate()
-  const { locale } = useI18n()
+  const locale = useLocale()
   const failure = useLoadFailure()
   const zone = useBatchZone()
   const [lane, setLane] = useState<Lane>('all')

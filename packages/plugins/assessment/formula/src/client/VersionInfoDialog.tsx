@@ -1,8 +1,9 @@
+import { assertNever } from '@qualy/web-i18n'
+import { useApiMutation, useApi } from '@qualy/web-runtime'
+
 import { useEffect, useState } from 'react'
-import { useMutation } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
-import { useApi, useRunApi } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
+
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
@@ -52,8 +53,7 @@ export function VersionInfoDialog({
   readonly onSaved: () => void
 }) {
   const api = useApi(formulaApi)
-  const run = useRunApi()
-  const { formatError } = useI18n()
+
   const [name, setName] = useState('')
   const [notes, setNotes] = useState('')
   const [failure, setFailure] = useState<string | null>(null)
@@ -66,19 +66,17 @@ export function VersionInfoDialog({
     setFailure(null)
   }, [open, version])
 
-  const save = useMutation({
+  const save = useApiMutation({
     mutationFn: () => {
       if (version === null) throw new Error('no version to relabel')
-      return run(
-        api.assessmentFormula.updateFormulaVersionInfo({
-          params: { functionId, versionNo: String(version.versionNo) },
-          payload: {
-            expectedMetadataRevision: version.metadataRevision,
-            releaseName: name.trim(),
-            releaseNotes: notes.trim() === '' ? null : notes.trim(),
-          },
-        }),
-      )
+      return api.assessmentFormula.updateFormulaVersionInfo({
+        params: { functionId, versionNo: String(version.versionNo) },
+        payload: {
+          expectedMetadataRevision: version.metadataRevision,
+          releaseName: name.trim(),
+          releaseNotes: notes.trim() === '' ? null : notes.trim(),
+        },
+      })
     },
     onMutate: () => setFailure(null),
     onSuccess: () => {
@@ -86,7 +84,24 @@ export function VersionInfoDialog({
       onSaved()
       onClose()
     },
-    onError: (error: unknown) => setFailure(formatError(error)),
+    onError: (error) => {
+      switch (error._tag) {
+        case 'ASSESSMENT_FORMULA_FUNCTION_NOT_FOUND':
+          setFailure(m.error_functionNotFound())
+          return
+        case 'ASSESSMENT_FORMULA_RELEASE_NAME_TAKEN':
+          setFailure(m.error_releaseNameTaken())
+          return
+        case 'ASSESSMENT_FORMULA_VERSION_INFO_CONFLICT':
+          setFailure(m.error_versionInfoConflict())
+          return
+        case 'ASSESSMENT_FORMULA_VERSION_NOT_FOUND':
+          setFailure(m.error_versionNotFound())
+          return
+        default:
+          assertNever(error)
+      }
+    },
   })
 
   return (

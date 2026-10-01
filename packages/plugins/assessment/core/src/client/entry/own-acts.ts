@@ -1,7 +1,14 @@
+import { useApiMutation, useApi, useApiQuery } from '@qualy/web-runtime'
+import {
+  formatPlatformFailure as formatError,
+  useLocale,
+  useList,
+  assertNever,
+} from '@qualy/web-i18n'
+
 import { useMemo } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
-import { useI18n, useList } from '@qualy/web-i18n'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+
 import { toast } from '@qualy/ui/toast'
 import { assessmentApi } from '../api.ts'
 
@@ -59,7 +66,7 @@ export function useRound(batchId: string | undefined): RoundState | null {
  * holds the act is said with the act and the stage named.
  */
 export function useOwnFailure({ items, entries, materialRange }: OwnClaims) {
-  const { formatError, locale } = useI18n()
+  const locale = useLocale()
   const listJoin = useList()
   const round = useRound(entries[0]?.batchId ?? items[0]?.batchId)
   return (error: unknown, itemId: string, entryId?: string): string => {
@@ -85,12 +92,11 @@ export function useOwnFailure({ items, entries, materialRange }: OwnClaims) {
 export function useOwnClaimActs({ items, entries, materialRange }: OwnClaims) {
   const api = useApi(assessmentApi)
   const query = useApiQuery(assessmentApi)
-  const run = useRunApi()
   const queryClient = useQueryClient()
 
   const sayFailure = useOwnFailure({ items, entries, materialRange })
 
-  const setStatus = useMutation({
+  const setStatus = useApiMutation({
     mutationFn: (input: {
       entryId: string
       /** the question it answers, so a refusal can name the question's fields */
@@ -99,20 +105,18 @@ export function useOwnClaimActs({ items, entries, materialRange }: OwnClaims) {
       expectedItemRevisionId?: string
       expectedEntryRevisionId?: string
     }) =>
-      run(
-        api.assessment.setEntryStatus({
-          params: { entryId: input.entryId },
-          payload: {
-            status: input.status,
-            ...(input.expectedItemRevisionId === undefined
-              ? {}
-              : { expectedItemRevisionId: input.expectedItemRevisionId }),
-            ...(input.expectedEntryRevisionId === undefined
-              ? {}
-              : { expectedEntryRevisionId: input.expectedEntryRevisionId }),
-          },
-        }),
-      ),
+      api.assessment.setEntryStatus({
+        params: { entryId: input.entryId },
+        payload: {
+          status: input.status,
+          ...(input.expectedItemRevisionId === undefined
+            ? {}
+            : { expectedItemRevisionId: input.expectedItemRevisionId }),
+          ...(input.expectedEntryRevisionId === undefined
+            ? {}
+            : { expectedEntryRevisionId: input.expectedEntryRevisionId }),
+        },
+      }),
     onSuccess: (_result, input) => {
       toast.success(
         (input.status === 'in_review'
@@ -123,7 +127,7 @@ export function useOwnClaimActs({ items, entries, materialRange }: OwnClaims) {
       )
       void queryClient.invalidateQueries({ queryKey: query.assessment.key() })
     },
-    onError: (error: unknown, input) => toast.error(sayFailure(error, input.itemId, input.entryId)),
+    onError: (error, input) => toast.error(sayFailure(error, input.itemId, input.entryId)),
   })
 
   return setStatus
@@ -143,12 +147,11 @@ export function useOwnClaimActs({ items, entries, materialRange }: OwnClaims) {
 export function useMarkEntryRead(batchId: string) {
   const api = useApi(assessmentApi)
   const query = useApiQuery(assessmentApi)
-  const run = useRunApi()
   const queryClient = useQueryClient()
   const listKey = query.assessment.listMyEntries.key({ params: { batchId }, query: {} })
-  return useMutation({
+  return useApiMutation({
     mutationFn: (entryId: string) =>
-      run(api.assessment.markMyEntryRead({ params: { batchId, entryId } })),
+      api.assessment.markMyEntryRead({ params: { batchId, entryId } }),
     onMutate: async (entryId: string) => {
       const interrupted = queryClient.isFetching({ queryKey: listKey }) > 0
       await queryClient.cancelQueries({ queryKey: listKey })
@@ -166,6 +169,16 @@ export function useMarkEntryRead(batchId: string) {
               },
       )
       return { interrupted }
+    },
+    onError: (error) => {
+      switch (error._tag) {
+        case 'ASSESSMENT_BATCH_NOT_FOUND':
+        case 'ASSESSMENT_PARTICIPANT_NOT_FOUND':
+          void queryClient.invalidateQueries({ queryKey: query.assessment.key() })
+          return
+        default:
+          assertNever(error)
+      }
     },
     onSettled: (_result, _error, _entryId, context) => {
       if (context?.interrupted === true) {

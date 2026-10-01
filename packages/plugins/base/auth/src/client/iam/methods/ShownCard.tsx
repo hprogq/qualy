@@ -1,10 +1,19 @@
-import { useRef, useState } from 'react'
+import {
+  getApiErrorCode,
+  assertNever,
+  formatPlatformFailure,
+  formatPlatformFailure as formatError,
+} from '@qualy/web-i18n'
+import { useRunApi, useApiMutation, useApi, useApiQuery } from '@qualy/web-runtime'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { selectKey, type Message } from '@qualy/i18n-contract'
+
+import { useRef, useState } from 'react'
+
 import * as stylex from '@stylexjs/stylex'
 import { ImageUpIcon, RotateCcwIcon, XIcon } from 'lucide-react'
 import { upload } from '@qualy/plugin-storage/client'
-import { useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
+
 import { BUILTIN_LOGIN_ICONS, type BuiltinLoginIcon } from '@qualy/auth-contract/login-icons'
 import { Button } from '@qualy/ui/button'
 import { Checkbox } from '@qualy/ui/checkbox'
@@ -16,9 +25,9 @@ import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { authApi } from '../../api.ts'
 import { LOGIN_ICON_MAX_BYTES, LOGIN_ICON_SVG_MAX_BYTES, LOGIN_ICON_TYPES } from '../../../api.ts'
 import { LoginMethodGlyph } from '../../sign-in/glyph.tsx'
-import type { IconSurface } from '../../sign-in/surface.ts'
-import type { ProviderRow } from './MethodSheet.tsx'
-import type { Message } from '@qualy/i18n-contract'
+import { type IconSurface } from '../../sign-in/surface.ts'
+import { type ProviderRow } from './MethodSheet.tsx'
+
 import * as m from '#messages'
 
 // Where an entrance stands on the sign-in page and how it is drawn there.
@@ -117,23 +126,31 @@ export function ShownCard({
 }) {
   const api = useApi(authApi)
   const query = useApiQuery(authApi)
-  const runApi = useRunApi()
   const queryClient = useQueryClient()
-  const { formatError } = useI18n()
+
   const [picking, setPicking] = useState(false)
   const file = useRef<HTMLInputElement>(null)
   const refresh = () => queryClient.invalidateQueries({ queryKey: query.identity.key() })
   const primary = provider.prominence === 'primary'
 
-  const recommend = useMutation({
+  const recommend = useApiMutation({
     mutationFn: (on: boolean) =>
-      runApi(
-        api.identity.setRecommendedAuthProvider({
-          payload: { providerId: on ? provider.id : null },
-        }),
-      ),
+      api.identity.setRecommendedAuthProvider({
+        payload: { providerId: on ? provider.id : null },
+      }),
     onSuccess: refresh,
-    onError: (error: unknown) => toast.error(formatError(error)),
+    onError: (error) => {
+      switch (error._tag) {
+        case 'AUTH_PROVIDER_ARRANGEMENT_INVALID':
+          toast.error(m.error_providerArrangementInvalid())
+          return
+        case 'AUTH_PROVIDER_NOT_FOUND':
+          toast.error(m.error_providerNotFound())
+          return
+        default:
+          assertNever(error)
+      }
+    },
   })
 
   type Choice =
@@ -141,25 +158,26 @@ export function ShownCard({
     | { kind: 'default' }
     | { kind: 'clear'; surface: 'dark' }
     | { kind: 'file'; file: File; surface: IconSurface }
+  const run = useRunApi()
   const choose = useMutation({
     mutationFn: async (choice: Choice) => {
       const params = { providerId: provider.id }
       if (choice.kind !== 'file') {
-        return runApi(api.loginIcon.setProviderIcon({ params, payload: { icon: choice } }))
+        return run(api.loginIcon.setProviderIcon({ params, payload: { icon: choice } }))
       }
       const { file: picked, surface } = choice
       // a drawing travels as it is and is checked on arrival; a picture
       // goes through the store, which is what weighs it
       if (picked.type === 'image/svg+xml' || picked.name.toLowerCase().endsWith('.svg')) {
         const markup = await picked.text()
-        return runApi(
+        return run(
           api.loginIcon.setProviderIcon({
             params,
             payload: { icon: { kind: 'svg', markup, surface } },
           }),
         )
       }
-      const ticket = await runApi(
+      const ticket = await run(
         api.loginIcon.prepareProviderIconUpload({
           params,
           payload: {
@@ -178,7 +196,7 @@ export function ShownCard({
         },
         picked,
       )
-      return runApi(
+      return run(
         api.loginIcon.setProviderIcon({
           params,
           payload: { icon: { kind: 'upload', reservationId: ticket.reservationId, surface } },
@@ -190,7 +208,29 @@ export function ShownCard({
       toast.success(m.loginMethods_iconSaved())
       await refresh()
     },
-    onError: (error: unknown) => toast.error(formatError(error)),
+    onError: (error) => {
+      switch (getApiErrorCode(error)) {
+        case 'AUTH_PROVIDER_ICON_INVALID':
+          toast.error(
+            m.error_providerIconInvalid({
+              reason: selectKey(
+                typeof error === 'object' &&
+                  error !== null &&
+                  'reason' in error &&
+                  typeof error.reason === 'string'
+                  ? error.reason
+                  : 'invalid',
+              ),
+            }),
+          )
+          return
+        case 'AUTH_PROVIDER_NOT_FOUND':
+          toast.error(m.error_providerNotFound())
+          return
+        default:
+          toast.error(formatPlatformFailure(error))
+      }
+    },
   })
 
   /** which ground the file being picked is for */

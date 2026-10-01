@@ -1,7 +1,7 @@
+import { useLocale } from '@qualy/web-i18n'
 import { useQuery } from '@tanstack/react-query'
 import { useApiQuery } from '@qualy/web-runtime'
-import type { ApiResult } from '@qualy/web-runtime/api'
-import { useI18n } from '@qualy/web-i18n'
+import { type ApiResult } from '@qualy/web-runtime/api'
 import { assessmentApi } from '../api.ts'
 
 import { answerOf, displayValueOf, fieldsOf } from '../entry/model.ts'
@@ -189,7 +189,7 @@ const dayLabel = (at: Date, locale: string, zone?: string): string =>
  * an hour behind it is noise.
  */
 export function useDayClock(): (iso: string) => string {
-  const { locale } = useI18n()
+  const locale = useLocale()
   const zone = useBatchZone()
   return (iso: string) => {
     const at = new Date(iso)
@@ -207,7 +207,7 @@ export function useDayClock(): (iso: string) => string {
  * because by then the minute says nothing a reviewer acts on.
  */
 export function useQueueClock(): (iso: string) => string {
-  const { locale } = useI18n()
+  const locale = useLocale()
   const zone = useBatchZone()
   return (iso: string) => {
     const at = new Date(iso)
@@ -265,7 +265,7 @@ export const pageNumberOf = (raw: string): number => {
  * still shown beside it, because a record has to say when.
  */
 export function useHowLongAgo(): (iso: string) => string {
-  const { locale } = useI18n()
+  const locale = useLocale()
   return (iso: string) => {
     const delta = new Date(iso).getTime() - Date.now()
     const abs = Math.abs(delta)

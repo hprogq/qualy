@@ -1,9 +1,10 @@
 import { Context, Data, Effect, Layer, Redacted, Scope } from 'effect'
-import type { HttpServerRequest } from 'effect/http/HttpServerRequest'
-import type { Text } from '@qualy/text'
-import type { ClientComponentRef } from '@qualy/ui-contract'
-import type { TooManyAttempts } from './session.ts'
-import type { ReauthenticationRequired } from './sign-in-failure.ts'
+import { type HttpServerRequest } from 'effect/http/HttpServerRequest'
+import { isText, type Text } from '@qualy/text'
+import { commonErrorCodes } from '@qualy/i18n-contract'
+import { type ClientComponentRef } from '@qualy/ui-contract'
+import { type TooManyAttempts } from './session.ts'
+import { type ReauthenticationRequired } from './sign-in-failure.ts'
 
 // The login surface a driver plugin needs, and the registry of drivers itself.
 //
@@ -55,7 +56,7 @@ export {
   MAX_PRIMARY_LOGIN_METHODS,
   type BuiltinLoginIcon,
 } from './login-icons.ts'
-import type { BuiltinLoginIcon } from './login-icons.ts'
+import { type BuiltinLoginIcon } from './login-icons.ts'
 
 /**
  * How a way in is drawn: one of ours, an uploaded image by version, or its
@@ -100,6 +101,7 @@ export type LoginMethod = {
  * answer starts coming from the host.
  */
 export interface LoginContext {
+  readonly failureMessages?: Readonly<Record<string, string>>
   readonly tenant: { readonly name: string } | null
   readonly methods: readonly LoginMethod[]
   /**
@@ -344,6 +346,8 @@ export type ProviderProvisioning =
 
 export interface LoginDriver {
   readonly type: string
+  /** Redirect failures owned by this driver, rendered at the login projection. */
+  readonly failures?: Readonly<Record<string, Text>>
   readonly presentation: LoginPresentationDeclaration
   /** how its doors are drawn until an administrator chooses otherwise */
   readonly icon?: BuiltinLoginIcon
@@ -396,6 +400,21 @@ export interface LoginDriver {
  * in, and an assembly that contains one is broken rather than degraded.
  */
 export const driverContradiction = (driver: LoginDriver): string | undefined => {
+  for (const [code, message] of Object.entries(driver.failures ?? {})) {
+    if (
+      !/^[A-Z][A-Z0-9_]*$/.test(code) ||
+      commonErrorCodes.some((common) => common === code) ||
+      [
+        'AUTH_FLOW_REJECTED',
+        'AUTH_EXTERNAL_ACCOUNT_UNBOUND',
+        'AUTH_PERSON_NOT_FOUND',
+        'AUTH_METHOD_UNAVAILABLE',
+      ].includes(code) ||
+      !isText(message)
+    ) {
+      return `login driver ${driver.type} declares an invalid redirect failure ${code}`
+    }
+  }
   if (driver.provisioning.mode === 'tenant-managed') {
     const fields = driver.provisioning.entrance.fields
     const keys = new Set(fields.map((field) => field.key))
@@ -471,6 +490,14 @@ export const loginDriversLayer: Layer.Layer<LoginDrivers> = Layer.sync(LoginDriv
           }
           const contradiction = driverContradiction(driver)
           if (contradiction !== undefined) throw new Error(contradiction)
+          for (const previous of drivers.values()) {
+            for (const code of Object.keys(driver.failures ?? {})) {
+              if (Object.hasOwn(previous.driver.failures ?? {}, code))
+                throw new Error(
+                  `login failure ${code} is declared by both ${previous.driver.type} and ${driver.type}`,
+                )
+            }
+          }
           drivers.set(driver.type, { driver, owner: owner ?? 'an unnamed contributor' })
         }),
         () => Effect.sync(() => drivers.delete(driver.type)),

@@ -1,10 +1,10 @@
-import type { ReactNode } from 'react'
+import { useLocale } from '@qualy/web-i18n'
+import { type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { useApiQuery, useLoadFailure } from '@qualy/web-runtime'
-import type { ApiResult } from '@qualy/web-runtime/api'
-import { useI18n } from '@qualy/web-i18n'
-import type { Message } from '@qualy/i18n-contract'
+import { type ApiResult } from '@qualy/web-runtime/api'
+import { type Message } from '@qualy/i18n-contract'
 
 import { AsyncSection, SidePanel } from '@qualy/ui/admin'
 import { Badge } from '@qualy/ui/badge'
@@ -734,7 +734,7 @@ function Line({
   at: string
   tone?: 'alert'
 }) {
-  const { locale } = useI18n()
+  const locale = useLocale()
   const zone = useBatchZone()
   return (
     <div {...stylex.props(styles.headRow)}>

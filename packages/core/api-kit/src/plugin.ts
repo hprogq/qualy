@@ -1,10 +1,17 @@
 import { Effect, Layer } from 'effect'
-import { HttpApi, HttpApiBuilder, HttpApiScalar } from 'effect/http-api'
-import type { HttpApi as HttpApiType, HttpApiGroup } from 'effect/http-api'
+import {
+  HttpApi,
+  HttpApiBuilder,
+  HttpApiScalar,
+  type HttpApi as HttpApiType,
+  type HttpApiGroup,
+} from 'effect/http-api'
+
 import { ExtensionPoint, Plugin, type AnyLayer, type PluginFeature } from '@qualy/plugin-kit'
 import { QUALY_API_ID, QUALY_API_PREFIX } from './index.ts'
 import { Api as BrowserSafeApi } from './local.ts'
 import { storableBodies } from './storable-text.ts'
+import { validateErrorCodes } from './error-codes.ts'
 
 // The http api's face in the descriptor model.
 //
@@ -82,6 +89,9 @@ export const Api = {
   }): PluginFeature =>
     Plugin.provideExtension(ApiGroups, {
       compile: (contributions) => {
+        validateErrorCodes(
+          contributions.map(({ pluginId, value }) => ({ pluginId, group: value.group })),
+        )
         // A group identifier claimed twice would resolve to whichever handler
         // layer merged last; upstream's aggregate has no reason to know two
         // plugins were involved, so the refusal happens here, naming both.

@@ -8,5 +8,4 @@ import '../../../../../../apps/web/src/app.css'
 
 export { addressNow, apiError, emptyManifest, fakeClient } from '@qualy/testkit/browser'
 
-export const renderScreen = (options: Omit<Parameters<typeof render>[0], 'errorMessages'>) =>
-  render({ ...options, errorMessages: {} })
+export const renderScreen = (options: Parameters<typeof render>[0]) => render({ ...options })

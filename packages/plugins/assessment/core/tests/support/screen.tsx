@@ -1,8 +1,5 @@
 import { Effect } from 'effect'
 import { renderScreen as render, withDocumentContext } from '@qualy/testkit/browser'
-import { errorMessages as assessmentErrors } from '../../src/client/i18n.ts'
-import { errorMessages as formulaErrors } from '@qualy/plugin-assessment-formula/client/i18n'
-import { errorMessages as authErrors } from '@qualy/plugin-auth/client/i18n'
 // the host's stylesheet, because a screen asserted unstyled is a screen
 // nobody sees; it is the product's one stylesheet wherever a screen renders
 import '../../../../../../apps/web/src/app.css'
@@ -17,12 +14,6 @@ import '../../../../../../apps/web/src/app.css'
 // `virtual:qualy/plugins` instead would make every one of these a
 // whole-composition test, and a plugin outside this repository could not
 // write one at all.
-
-export const errorMessages = {
-  ...assessmentErrors,
-  ...formulaErrors,
-  ...authErrors,
-}
 
 export {
   addressNow,
@@ -59,7 +50,7 @@ const termsIn = (locale: 'zh-CN' | 'en-US') => ({
   },
 })
 
-export const renderScreen = (options: Omit<Parameters<typeof render>[0], 'errorMessages'>) =>
+export const renderScreen = (options: Parameters<typeof render>[0]) =>
   render({
     ...options,
     // the shell's own read of who is signed in, which a few screens share
@@ -70,5 +61,4 @@ export const renderScreen = (options: Omit<Parameters<typeof render>[0], 'errorM
       },
       termsIn(options.locale ?? 'zh-CN'),
     ),
-    errorMessages,
   })

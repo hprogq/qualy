@@ -1,8 +1,7 @@
+import { assertNever } from '@qualy/web-i18n'
+import { useApiMutation, useApi } from '@qualy/web-runtime'
 import { useState } from 'react'
-import { useMutation } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
-import { useApi, useRunApi } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
 
 import { Feedback, Field, FormDialog } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
@@ -48,27 +47,41 @@ export function AppealDialog({
   onDone: () => void
 }) {
   const api = useApi(assessmentApi)
-  const run = useRunApi()
-  const { formatError } = useI18n()
+
   const [reason, setReason] = useState('')
   const [problem, setProblem] = useState<string | null>(null)
 
-  const send = useMutation({
+  const send = useApiMutation({
     mutationFn: () =>
-      run(
-        api.assessment.appealEntry({
-          params: { entryId },
-          payload: { reason: reason.trim() },
-        }),
-      ),
+      api.assessment.appealEntry({
+        params: { entryId },
+        payload: { reason: reason.trim() },
+      }),
     onMutate: () => setProblem(null),
     onSuccess: () => {
       toast.success(m.entry_appealed())
       onDone()
     },
-    onError: (error: unknown) => {
+    onError: (error) => {
+      let failure: string
+      switch (error._tag) {
+        case 'ASSESSMENT_BATCH_NOT_FOUND':
+          failure = m.error_batchNotFound()
+          break
+        case 'ASSESSMENT_BATCH_READ_ONLY':
+          failure = m.error_batchReadOnly()
+          break
+        case 'ASSESSMENT_ENTRY_ACTION_REFUSED':
+          failure = m.error_entryActionRefused()
+          break
+        case 'ASSESSMENT_REVIEW_NOT_FOUND':
+          failure = m.error_reviewNotFound()
+          break
+        default:
+          assertNever(error)
+      }
       const refusal = entryRefusalMessage(error)
-      setProblem(refusal === null ? formatError(error) : refusal())
+      setProblem(refusal === null ? failure : refusal())
     },
   })
 

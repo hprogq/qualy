@@ -1,19 +1,26 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate, type Path } from 'react-router'
-import { keepPreviousData, useMutation, useQuery } from '@tanstack/react-query'
-import * as stylex from '@stylexjs/stylex'
-import { EllipsisVerticalIcon, EyeIcon } from 'lucide-react'
 import {
+  assertNever,
+  formatPlatformFailure as formatError,
+  useLocale,
+  useList,
+} from '@qualy/web-i18n'
+import {
+  useApiMutation,
   useApi,
   useLeaveGuard,
   useRunApi,
   usePageQueryState,
   useUiCollection,
 } from '@qualy/web-runtime'
-import { useI18n, useList } from '@qualy/web-i18n'
+
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate, type Path } from 'react-router'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import * as stylex from '@stylexjs/stylex'
+import { EllipsisVerticalIcon, EyeIcon } from 'lucide-react'
 
 import { kindOf, type AtomicSchema, type ChoiceSchema } from '@qualy/value-schema'
-import type { FieldDraft as ValueDraft } from '@qualy/web-value-form/model'
+import { type FieldDraft as ValueDraft } from '@qualy/web-value-form/model'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { BannerBack, ConfirmDialog, PageHeader } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
@@ -28,12 +35,12 @@ import { assessmentApi } from '../../api.ts'
 
 import { dayKeyOf, inZone, useBatchZone } from '../../batch/zone.ts'
 import { BatchBanner } from '../../batch/BatchScreen.tsx'
-import type { ItemDto } from '../../entry/model.ts'
+import { type ItemDto } from '../../entry/model.ts'
 import { ImpactDialog, type ChangeEffects, type ChangeImpact } from '../ImpactDialog.tsx'
 import { ReasonDialog } from '../ReasonDialog.tsx'
 import { StageSheet, type StageDraft } from '../StageSheet.tsx'
-import type { ItemOptions } from '../options.ts'
-import type { Placement } from '../paper.ts'
+import { type ItemOptions } from '../options.ts'
+import { type Placement } from '../paper.ts'
 import { AddFieldDialog } from './AddFieldDialog.tsx'
 import { BasicsTab } from './BasicsTab.tsx'
 import { ChoiceMappingDialog } from './ChoiceMappingDialog.tsx'
@@ -330,7 +337,7 @@ export function ItemEditor({
 }) {
   const api = useApi(assessmentApi)
   const run = useRunApi()
-  const { formatError, locale } = useI18n()
+  const locale = useLocale()
   const zone = useBatchZone()
   const listJoin = useList()
   // What the last save here answered with, until the page's own read of the
@@ -974,7 +981,7 @@ export function ItemEditor({
   /** the move the page was last held on, which is where "save and leave" leaves for */
   const heldFor = useRef<Path | null>(null)
   const navigate = useNavigate()
-  const save = useMutation({
+  const save = useApiMutation({
     mutationFn: ({
       reason,
       effects,
@@ -989,40 +996,36 @@ export function ItemEditor({
       const maxEntries = maxEntriesOf(draft)
       const itemType = itemTypeOf(draft, item)
       if (item === null) {
-        return run(
-          api.assessment.createItem({
-            params: { batchId },
-            payload: {
-              itemType,
-              title: draft.title.trim(),
-              scoreGroupId: draft.scoreGroupId,
-              maxEntries,
-              config: config,
-            },
-          }),
-        )
+        return api.assessment.createItem({
+          params: { batchId },
+          payload: {
+            itemType,
+            title: draft.title.trim(),
+            scoreGroupId: draft.scoreGroupId,
+            maxEntries,
+            config: config,
+          },
+        })
       }
       // saving over somebody else's version states the whole composition
       const moved = <K extends keyof Plain>(key: K, now: Plain[K]) =>
         over !== undefined || origin === null || origin[key] !== now
       const title = draft.title.trim()
-      return run(
-        api.assessment.updateItem({
-          params: { itemId: item.id },
-          payload: {
-            ...(moved('title', title) ? { title } : {}),
-            ...(moved('scoreGroupId', draft.scoreGroupId)
-              ? { scoreGroupId: draft.scoreGroupId }
-              : {}),
-            ...(moved('maxEntries', maxEntries) ? { maxEntries } : {}),
-            ...(itemType === item.itemType ? {} : { itemType }),
-            config: config,
-            expectedRevisionId: over === undefined ? (item.currentRevision?.id ?? null) : over,
-            ...(reason === null ? {} : { reason }),
-            ...(effects === undefined ? {} : { effects }),
-          },
-        }),
-      )
+      return api.assessment.updateItem({
+        params: { itemId: item.id },
+        payload: {
+          ...(moved('title', title) ? { title } : {}),
+          ...(moved('scoreGroupId', draft.scoreGroupId)
+            ? { scoreGroupId: draft.scoreGroupId }
+            : {}),
+          ...(moved('maxEntries', maxEntries) ? { maxEntries } : {}),
+          ...(itemType === item.itemType ? {} : { itemType }),
+          config: config,
+          expectedRevisionId: over === undefined ? (item.currentRevision?.id ?? null) : over,
+          ...(reason === null ? {} : { reason }),
+          ...(effects === undefined ? {} : { effects }),
+        },
+      })
     },
     onMutate: ({ reason }) => {
       setRefused(null)
@@ -1064,7 +1067,47 @@ export function ItemEditor({
       } else if (leavingNow.current) void onReload?.()
       else onSaved(result.item.id)
     },
-    onError: (error: unknown) => {
+    onError: (error) => {
+      let failure: string
+      switch (error._tag) {
+        case 'ASSESSMENT_BATCH_NOT_FOUND':
+          failure = m.error_batchNotFound()
+          break
+        case 'ASSESSMENT_BATCH_READ_ONLY':
+          failure = m.error_batchReadOnly()
+          break
+        case 'ASSESSMENT_ITEM_CHANGE_DECISION_REQUIRED':
+          failure = m.error_itemChangeDecisionRequired()
+          break
+        case 'ASSESSMENT_ITEM_CONFIG_INVALID':
+          failure = m.error_itemConfigInvalid()
+          break
+        case 'ASSESSMENT_ITEM_NOT_FOUND':
+          failure = m.error_itemNotFound()
+          break
+        case 'ASSESSMENT_ITEM_SCORING_INCOMPATIBLE':
+          failure = m.error_itemScoringIncompatible(
+            ((data: typeof error) => {
+              const refused = data.approved.refused + (data.derived?.refused === true ? 1 : 0)
+              const executionFailed =
+                data.approved.executionFailed + (data.derived?.executionFailed === true ? 1 : 0)
+              return {
+                // a question nobody files has no determinations in force: what
+                // failed is its own rule, tried as it is published or restored
+                case: data.derived !== null && data.approved.total === 0 ? 'derived' : 'standing',
+                affected: refused + executionFailed,
+                refused,
+                executionFailed,
+              }
+            })(error),
+          )
+          break
+        case 'ASSESSMENT_SCORING_UNAVAILABLE':
+          failure = m.error_scoringUnavailable()
+          break
+        default:
+          assertNever(error)
+      }
       const said = error as { _tag?: string; issues?: readonly Issue[] } & ChangeImpact
       // Asked for a reason or for what the change does, the save on the way
       // out is still going; refused outright, the reader stays to read why.
@@ -1100,7 +1143,7 @@ export function ItemEditor({
                         said?._tag === 'ASSESSMENT_ITEM_SCORING_INCOMPATIBLE'
                           ? 'incompatible'
                           : 'other',
-                      words: formatError(error),
+                      words: failure,
                     },
         )
         return

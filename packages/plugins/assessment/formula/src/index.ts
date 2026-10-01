@@ -170,7 +170,6 @@ const plugin = Plugin.define(
       },
     ],
   }),
-  Ui.i18n('./client/i18n'),
 )
 
 export default plugin

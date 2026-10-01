@@ -1,6 +1,7 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
+import { useApiMutation, useApi, useApiQuery } from '@qualy/web-runtime'
+import { formatPlatformFailure as formatError } from '@qualy/web-i18n'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+
 import { Button } from '@qualy/ui/button'
 import { toast } from '@qualy/ui/toast'
 import { useLingering } from '@qualy/ui/use-lingering'
@@ -8,7 +9,7 @@ import { assessmentApi } from '../api.ts'
 
 import { ManagedEntrySheet, type RecognitionDto } from '../entry/ManagedEntrySheet.tsx'
 import { sayEntryFailure } from '../entry/refusals.ts'
-import type { ItemDto } from '../entry/model.ts'
+import { type ItemDto } from '../entry/model.ts'
 import * as m from '#messages'
 
 // One administrative fact, read and corrected.
@@ -48,10 +49,8 @@ export function AdministrativeEntrySheet({
   onFailed: (reason: string) => void
 }) {
   const api = useApi(assessmentApi)
-  const run = useRunApi()
   const query = useApiQuery(assessmentApi)
   const queryClient = useQueryClient()
-  const { formatError } = useI18n()
 
   const detail = useQuery(query.assessment.getEntry.queryOptions({ params: { entryId } }))
   const items = useQuery(query.assessment.listItems.queryOptions({ params: { batchId } }))
@@ -98,14 +97,12 @@ export function AdministrativeEntrySheet({
 
   // Withdrawing changes what the score is made of, so the book, the claim
   // and the person's account are all asked again rather than patched here.
-  const withdraw = useMutation({
+  const withdraw = useApiMutation({
     mutationFn: (input: { entryId: string; reason: string }) =>
-      run(
-        api.assessment.interveneOnEntry({
-          params: { entryId: input.entryId },
-          payload: { kind: 'void', reason: input.reason },
-        }),
-      ),
+      api.assessment.interveneOnEntry({
+        params: { entryId: input.entryId },
+        payload: { kind: 'void', reason: input.reason },
+      }),
     onSuccess: () => {
       toast.success(m.staff_voided())
       void queryClient.invalidateQueries({

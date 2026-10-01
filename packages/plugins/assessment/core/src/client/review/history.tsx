@@ -1,6 +1,6 @@
+import { useLocale } from '@qualy/web-i18n'
 import { useEffect, useMemo, useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
-import { useI18n } from '@qualy/web-i18n'
 
 import { useLoadFailure } from '@qualy/web-runtime'
 import { AsyncSection } from '@qualy/ui/admin'
@@ -272,7 +272,7 @@ export function VersionPicker({
   onPick: (revisionId: string) => void
   onClose: () => void
 }) {
-  const { locale } = useI18n()
+  const locale = useLocale()
   const loadFailure = useLoadFailure()
   const zone = useBatchZone()
   // a phone gets the sheet where the thumb is; a keyboard gets the digits

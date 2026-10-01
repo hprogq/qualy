@@ -1,9 +1,9 @@
+import { useLocale } from '@qualy/web-i18n'
 import { useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { AlertCircleIcon, XIcon } from 'lucide-react'
 import { useApiQuery } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
 
 import { Badge } from '@qualy/ui/badge'
 import { Breadcrumb } from '@qualy/ui/breadcrumb'
@@ -498,7 +498,7 @@ export function EntryDetail({
   footer?: ReactNode
 }) {
   const query = useApiQuery(assessmentApi)
-  const { locale } = useI18n()
+  const locale = useLocale()
   const zone = useBatchZone()
   const phone = useWorkspaceMode() === 'phone'
   const yesNo = { yes: m.recognition_yes(), no: m.recognition_no() }
@@ -895,7 +895,7 @@ export function EntryDetail({
  * is not printed at all.
  */
 function RecognizedValues({ entry }: { entry: EntryDto }) {
-  const { locale } = useI18n()
+  const locale = useLocale()
   const zone = useBatchZone()
   const standing = entry.recognition ?? null
   if (standing === null) return null

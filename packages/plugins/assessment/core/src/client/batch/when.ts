@@ -1,4 +1,4 @@
-import { useI18n } from '@qualy/web-i18n'
+import { useLocale } from '@qualy/web-i18n'
 import { dayKeyOf, inZone, readableZone, useBatchZone, yearOf } from './zone.ts'
 
 // When a stage runs, said as shortly as it can be said without becoming
@@ -21,7 +21,7 @@ export interface When {
 }
 
 export const useWhen = (zone?: string): When => {
-  const { locale } = useI18n()
+  const locale = useLocale()
   const batchZone = useBatchZone()
   const clock = zone === undefined ? batchZone : readableZone(zone)
   const thisYear = yearOf(Date.now(), clock)

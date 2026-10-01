@@ -1,8 +1,9 @@
+import { formatPlatformFailure as formatError, useLocale } from '@qualy/web-i18n'
+
 import * as stylex from '@stylexjs/stylex'
 import { Suspense, useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { LoadFailure, useApi, useApiQuery, useLoadFailure, useRunApi } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { Button } from '@qualy/ui/button'
 import { EmptyRow } from '@qualy/ui/empty-row'
@@ -15,7 +16,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@qualy/ui/dropdown-menu'
-import type { NormalizedAtomicSchema, NormalizedInputSchema } from '@qualy/value-schema'
+import { type NormalizedAtomicSchema, type NormalizedInputSchema } from '@qualy/value-schema'
 import { draftsFromStored, materializeInput, type FieldDraft } from '@qualy/web-value-form/model'
 import { useTryRecords } from './try-records.ts'
 import { CopyIcon, DownloadIcon, FilePenLineIcon, LockIcon, MoreHorizontalIcon } from 'lucide-react'
@@ -177,7 +178,7 @@ export function ReleaseView({
   const api = useApi(formulaApi)
   const run = useRunApi()
   const query = useApiQuery(formulaApi)
-  const { formatError, locale } = useI18n()
+  const locale = useLocale()
   const words = usePickerWords()
   const [panelTab, setPanelTab] = useState('report')
   const [phoneTab, setPhoneTab] = useState('source')

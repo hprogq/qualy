@@ -19,7 +19,7 @@ import { surfaceLabel } from '@qualy/ui-contract'
 //
 // The probe here is written the way a third party writes one: another scope,
 // its own package.json and exports, a descriptor built with the published
-// kit, and a client component, a catalog and a browser module beside it. It
+// kit, and a client component and a browser module beside it. It
 // is installed into the workspace rather than into this repository, and no
 // file of the host is edited to make any of it work.
 
@@ -44,33 +44,27 @@ export default Plugin.define(
     layout: APP_SHELL,
     visibility: PUBLIC,
   }),
-  Ui.i18n('./client/i18n'),
   Browser.module('./client/boot'),
 )
 `
 
-const files = (namespace: string) => ({
+const files = () => ({
   'index.js': '',
   'src/client/ProbePage.jsx': 'export default function ProbePage() {\n  return null\n}\n',
-  'src/client/i18n.js': `export const errorMessages = {
-  ${JSON.stringify(`${namespace.toUpperCase()}_PROBE_REFUSED`)}: () => 'Probe refused',
-}
-`,
   'src/client/boot.js': 'export default {}\n',
 })
 
-const probe = (options: { id: string; surface: string; path: string; namespace: string }) => ({
+const probe = (options: { id: string; surface: string; path: string }) => ({
   id: options.id,
   // the package says where its modules are, which is the whole point: the
   // build asks the exports map and never guesses at src/ or an extension
   exports: {
     './plugin': './index.js',
     './client/ProbePage': './src/client/ProbePage.jsx',
-    './client/i18n': './src/client/i18n.js',
     './client/boot': './src/client/boot.js',
   },
   files: {
-    ...files(options.namespace),
+    ...files(),
     'index.js': descriptor(options.id, options.surface, options.path),
   },
 })
@@ -108,13 +102,12 @@ describe('what counts as a plugin', () => {
 })
 
 describe('a plugin published under somebody else’s scope', () => {
-  it('resolves, and brings its surfaces, catalog and browser module with it', async () => {
+  it('resolves, and brings its surfaces and browser module with it', async () => {
     const workspace = workspaceWith(
       probe({
         id: '@acme/qualy-probe',
         surface: 'acme/probe',
         path: '/acme/probe',
-        namespace: 'acme',
       }),
     )
     try {
@@ -127,7 +120,6 @@ describe('a plugin published under somebody else’s scope', () => {
       expect(acme!.surfaces.map((binding) => surfaceLabel(binding.surface))).toEqual([
         'page:acme/probe',
       ])
-      expect(acme!.hasErrorMessages).toBe(true)
       expect(acme!.browserModules).toHaveLength(1)
       // and the aggregate really imports it, by the surface the manifest names
       expect(acme!.surfaces[0]!.file).toContain('ProbePage.jsx')
@@ -140,8 +132,8 @@ describe('a plugin published under somebody else’s scope', () => {
     // two strangers claiming one page id: the browser registry would keep
     // whichever import came second, so the build refuses instead
     const workspace = workspaceWith(
-      probe({ id: '@acme/qualy-probe', surface: 'acme/probe', path: '/a', namespace: 'acme' }),
-      probe({ id: '@globex/plugin', surface: 'acme/probe', path: '/b', namespace: 'globex' }),
+      probe({ id: '@acme/qualy-probe', surface: 'acme/probe', path: '/a' }),
+      probe({ id: '@globex/plugin', surface: 'acme/probe', path: '/b' }),
     )
     try {
       await expect(collectWebPlugins({ ymlPath: workspace.manifestPath })).rejects.toThrow(
@@ -158,11 +150,10 @@ describe('a plugin published under somebody else’s scope', () => {
       exports: {
         './plugin': './index.js',
         './client/ProbePage': './src/client/ProbePage.jsx',
-        './client/i18n': './src/client/i18n.js',
         './client/boot': './src/client/boot.js',
       },
       files: {
-        ...files('acme'),
+        ...files(),
         // a copied-and-renamed package, which resolution has to catch: every
         // registry downstream is keyed by the package id
         'index.js': descriptor('@acme/somebody-else', 'acme/probe', '/acme/probe'),

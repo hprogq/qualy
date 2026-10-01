@@ -1,6 +1,6 @@
+import { useLocale } from '@qualy/web-i18n'
 import * as stylex from '@stylexjs/stylex'
 import { useEffect, useRef, useState } from 'react'
-import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { Popover, PopoverContent, PopoverTrigger } from '@qualy/ui/popover'
 import { InfoIcon, PencilLineIcon } from 'lucide-react'
@@ -113,7 +113,7 @@ export function ReleaseInfoPopover({
   /** the card can stand in two places at once; each names its own mark */
   readonly testId?: string
 }) {
-  const { locale } = useI18n()
+  const locale = useLocale()
   const [open, setOpen] = useState(false)
   const [pinned, setPinned] = useState(false)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)

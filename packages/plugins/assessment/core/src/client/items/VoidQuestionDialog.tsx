@@ -1,8 +1,8 @@
+import { scoringIncompatibleValues } from './scoring-refusals.ts'
+import { assertNever } from '@qualy/web-i18n'
+import { useApiMutation, useApi } from '@qualy/web-runtime'
 import { useState } from 'react'
-import { useMutation } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
-import { useApi, useRunApi } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
 
 import { Field, FormDialog } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
@@ -10,7 +10,7 @@ import { Input } from '@qualy/ui/input'
 import { toast } from '@qualy/ui/toast'
 import { assessmentApi } from '../api.ts'
 
-import type { ItemDto } from '../entry/model.ts'
+import { type ItemDto } from '../entry/model.ts'
 import * as commonMessages from '@qualy/web-i18n/messages'
 import * as m from '#messages'
 
@@ -39,20 +39,43 @@ export function VoidQuestionDialog({
   onDone: () => void
 }) {
   const api = useApi(assessmentApi)
-  const run = useRunApi()
-  const { formatError } = useI18n()
+
   const [reason, setReason] = useState('')
 
-  const act = useMutation({
+  const act = useApiMutation({
     mutationFn: () =>
-      run(
-        api.assessment.setItemStatus({
-          params: { itemId: item.id },
-          payload: { status: 'voided', reason: reason.trim() },
-        }),
-      ),
+      api.assessment.setItemStatus({
+        params: { itemId: item.id },
+        payload: { status: 'voided', reason: reason.trim() },
+      }),
     onSuccess: onDone,
-    onError: (error) => toast.error(formatError(error)),
+    onError: (error) => {
+      switch (error._tag) {
+        case 'ASSESSMENT_BATCH_READ_ONLY':
+          toast.error(m.error_batchReadOnly())
+          return
+        case 'ASSESSMENT_ITEM_ACTION_REFUSED':
+          toast.error(m.error_itemActionRefused())
+          return
+        case 'ASSESSMENT_ITEM_CONFIG_INVALID':
+          toast.error(m.error_itemConfigInvalid())
+          return
+        case 'ASSESSMENT_ITEM_NOT_FOUND':
+          toast.error(m.error_itemNotFound())
+          return
+        case 'ASSESSMENT_ITEM_REVISION_CONFLICT':
+          toast.error(m.error_itemRevisionConflict())
+          return
+        case 'ASSESSMENT_ITEM_SCORING_INCOMPATIBLE':
+          toast.error(m.error_itemScoringIncompatible(scoringIncompatibleValues(error)))
+          return
+        case 'ASSESSMENT_SCORING_UNAVAILABLE':
+          toast.error(m.error_scoringUnavailable())
+          return
+        default:
+          assertNever(error)
+      }
+    },
   })
 
   return (

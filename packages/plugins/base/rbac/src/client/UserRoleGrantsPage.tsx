@@ -1,13 +1,13 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { assertNever } from '@qualy/web-i18n'
 import {
+  useApiMutation,
   useApi,
   useApiQuery,
   useLoadFailure,
   usePageRouteParams,
-  useRunApi,
 } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useState } from 'react'
 
 import * as stylex from '@stylexjs/stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
@@ -80,10 +80,9 @@ type Grant = {
 export default function UserRoleGrantsPage() {
   const { userId } = usePageRouteParams('userId')
   const api = useApi(accessApi)
-  const run = useRunApi()
   const query = useApiQuery(accessApi)
   const queryClient = useQueryClient()
-  const { formatError } = useI18n()
+
   const describe = useLoadFailure()
   const moment = useMoment()
   // whose authority is waiting on an answer; taking one away is not undone
@@ -102,13 +101,40 @@ export default function UserRoleGrantsPage() {
 
   // one grant at a time: replacing the whole set meant proposing to delete
   // every grant this caller could not see
-  const revoke = useMutation({
-    mutationFn: (grantId: string) => run(api.access.deleteRoleGrant({ params: { grantId } })),
+  const revoke = useApiMutation({
+    mutationFn: (grantId: string) => api.access.deleteRoleGrant({ params: { grantId } }),
     onMutate: () => setFeedback(null),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: query.access.key() })
     },
-    onError: (error: unknown) => setFeedback(formatError(error)),
+    onError: (error) => {
+      switch (error._tag) {
+        case 'GRANT_NOT_FOUND':
+          setFeedback(m.error_grantNotFound())
+          return
+        case 'GRANT_RESOURCE_BOUND':
+          setFeedback(
+            m.error_grantResourceBound(
+              ((data: typeof error) => ({ namespace: data.namespace, type: data.type }))(error),
+            ),
+          )
+          return
+        case 'GRANT_RULE_REFUSED':
+          setFeedback(m.error_grantRuleRefused())
+          return
+        case 'LAST_ADMINISTRATOR':
+          setFeedback(m.error_lastAdministrator())
+          return
+        case 'ROLE_NOT_FOUND':
+          setFeedback(m.error_roleNotFound())
+          return
+        case 'TENANT_ADMIN_REQUIRED':
+          setFeedback(m.error_tenantAdminRequired())
+          return
+        default:
+          assertNever(error)
+      }
+    },
   })
 
   const where = (grant: Grant) =>

@@ -1,9 +1,9 @@
+import { useLocale } from '@qualy/web-i18n'
 import { useEffect, useId, useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { ShieldOffIcon } from 'lucide-react'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
-import { useI18n } from '@qualy/web-i18n'
 
 import { Button } from '@qualy/ui/button'
 import { Checkbox } from '@qualy/ui/checkbox'
@@ -103,7 +103,7 @@ export function AccessAdjustDialog({
   onReview?: () => void
   onClose: () => void
 }) {
-  const { locale } = useI18n()
+  const locale = useLocale()
   // the person it was opened for, kept while it closes: the panel drops them
   // the moment it is done, and the dialog is still fading out
   const [shown, setShown] = useState<AccessSubject | null>(subject)

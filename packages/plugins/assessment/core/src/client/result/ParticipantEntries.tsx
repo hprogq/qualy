@@ -1,29 +1,30 @@
-import { useEffect, useMemo, useState } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import * as stylex from '@stylexjs/stylex'
-import { PenLineIcon } from 'lucide-react'
+import { Effect } from 'effect'
 import {
+  useApiMutation,
   PageLink,
   useApi,
   useApiQuery,
   useLoadFailure,
   usePageQueryState,
   usePageQueryUpdate,
-  useRunApi,
 } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
+import { formatPlatformFailure as formatError } from '@qualy/web-i18n'
+import { useEffect, useMemo, useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import * as stylex from '@stylexjs/stylex'
+import { PenLineIcon } from 'lucide-react'
 
 import { AsyncSection } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { toast } from '@qualy/ui/toast'
 import { useLingering } from '@qualy/ui/use-lingering'
-import type { LiveLine } from '@qualy/ui/live-mark'
+import { type LiveLine } from '@qualy/ui/live-mark'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { assessmentApi } from '../api.ts'
 
 import { ManagedEntrySheet } from '../entry/ManagedEntrySheet.tsx'
-import type { RedetermineInput } from '../entry/RedetermineDialog.tsx'
+import { type RedetermineInput } from '../entry/RedetermineDialog.tsx'
 import { sayEntryFailure } from '../entry/refusals.ts'
 import { standingRows, type Standing } from '../entry/standing.ts'
 import { opensTo, type EntryDto, type ItemDto } from '../entry/model.ts'
@@ -131,10 +132,10 @@ export function ParticipantEntries({
   onEntry: (entryId: string) => void
 }) {
   const api = useApi(assessmentApi)
-  const run = useRunApi()
+
   const query = useApiQuery(assessmentApi)
   const queryClient = useQueryClient()
-  const { formatError } = useI18n()
+
   const failures = useLoadFailure()
   const lineWords = useLineWords()
   // which question is open: the same address key the owner's page keeps
@@ -204,32 +205,30 @@ export function ParticipantEntries({
       }),
     })
   }
-  const intervene = useMutation({
+  const intervene = useApiMutation({
     mutationFn: (input: {
       entryId: string
       kind: 'return-for-revision' | 'void'
       reason: string
     }) =>
-      run(
-        api.assessment.interveneOnEntry({
+      api.assessment
+        .interveneOnEntry({
           params: { entryId: input.entryId },
           payload: { kind: input.kind, reason: input.reason },
-        }),
-      ).then(() => input.kind),
+        })
+        .pipe(Effect.map(() => input.kind)),
     onSuccess: (kind) => {
       toast.success((kind === 'void' ? m.staff_voided : m.staff_returned)())
       refresh()
     },
     onError: (error) => toast.error(sayEntryFailure(error, { formatError })),
   })
-  const reopen = useMutation({
+  const reopen = useApiMutation({
     mutationFn: (input: { entryId: string; reason: string }) =>
-      run(
-        api.assessment.reopenEntry({
-          params: { entryId: input.entryId },
-          payload: { reason: input.reason },
-        }),
-      ),
+      api.assessment.reopenEntry({
+        params: { entryId: input.entryId },
+        payload: { reason: input.reason },
+      }),
     onSuccess: () => {
       toast.success(m.staff_reopened())
       refresh()
@@ -237,20 +236,18 @@ export function ParticipantEntries({
     onError: (error) => toast.error(sayEntryFailure(error, { formatError })),
   })
   const [correctionProblem, setCorrectionProblem] = useState<string | null>(null)
-  const redetermine = useMutation({
+  const redetermine = useApiMutation({
     mutationFn: (input: { entryId: string; value: RedetermineInput }) =>
-      run(
-        api.assessment.redetermineEntry({
-          params: { entryId: input.entryId },
-          payload: {
-            decision: input.value.decision,
-            reason: input.value.reason,
-            ...(input.value.recognition === undefined
-              ? {}
-              : { recognition: { values: input.value.recognition.values } }),
-          },
-        }),
-      ),
+      api.assessment.redetermineEntry({
+        params: { entryId: input.entryId },
+        payload: {
+          decision: input.value.decision,
+          reason: input.value.reason,
+          ...(input.value.recognition === undefined
+            ? {}
+            : { recognition: { values: input.value.recognition.values } }),
+        },
+      }),
     onMutate: () => setCorrectionProblem(null),
     onSuccess: () => {
       toast.success(m.staff_redetermined())

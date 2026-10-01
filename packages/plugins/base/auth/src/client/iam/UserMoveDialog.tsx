@@ -1,8 +1,9 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { assertNever } from '@qualy/web-i18n'
+import { useApiMutation, UiSlot, useApi, useApiQuery } from '@qualy/web-runtime'
+
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
 import { orgNodePicker, type OrgNodePickerContext } from '@qualy/ui-contract'
-import { UiSlot, useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
 
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
@@ -57,10 +58,10 @@ export function UserMoveDialog({
   onDone: (outcome: MoveOutcome) => void
 }) {
   const api = useApi(authApi)
-  const runApi = useRunApi()
+
   const query = useApiQuery(authApi)
   const queryClient = useQueryClient()
-  const { formatError } = useI18n()
+
   const [destination, setDestination] = useState('')
   const [confirming, setConfirming] = useState('')
 
@@ -104,21 +105,41 @@ export function UserMoveDialog({
     [options.data],
   )
 
-  const move = useMutation({
+  const move = useApiMutation({
     mutationFn: (primaryOrgNodeId: string) =>
-      runApi(
-        api.identity.setUserPlacement({
-          params: { userId },
-          payload: { primaryOrgNodeId, version: record?.version ?? 1 },
-        }),
-      ),
+      api.identity.setUserPlacement({
+        params: { userId },
+        payload: { primaryOrgNodeId, version: record?.version ?? 1 },
+      }),
     onMutate: onStart,
     onSuccess: async () => {
       setDestination('')
       onDone({ moved: true })
       await queryClient.invalidateQueries({ queryKey: query.identity.key() })
     },
-    onError: (error: unknown) => onDone({ moved: false, said: formatError(error) }),
+    onError: (error) => {
+      let failure: string
+      switch (error._tag) {
+        case 'SYSTEM_ACCOUNT_PROTECTED':
+          failure = m.error_systemAccountProtected()
+          break
+        case 'USER_PLACEMENT_NOT_FOUND':
+          failure = m.error_userPlacementNotFound()
+          break
+        case 'USER_TYPE_NOT_FOUND':
+          failure = m.error_userTypeNotFound()
+          break
+        case 'USER_TYPE_PLACEMENT_NOT_ALLOWED':
+          failure = m.error_userTypePlacementNotAllowed()
+          break
+        case 'USER_VERSION_CONFLICT':
+          failure = m.error_userVersionConflict()
+          break
+        default:
+          assertNever(error)
+      }
+      onDone({ moved: false, said: failure })
+    },
   })
 
   const picker: OrgNodePickerContext = {

@@ -1,4 +1,11 @@
 import {
+  formatPlatformFailure as formatError,
+  useLocale,
+  isApiErrorCode,
+  useList,
+} from '@qualy/web-i18n'
+
+import {
   useEffect,
   useId,
   useLayoutEffect,
@@ -16,13 +23,13 @@ import { LiveMark, type LiveState } from '@qualy/ui/live-mark'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { AlignLeftIcon, BarChart3Icon, ChevronDownIcon, ChevronRightIcon } from 'lucide-react'
-import { isApiErrorCode, useI18n, useList } from '@qualy/web-i18n'
-import type { LinePart } from '../entry/identity.ts'
+
+import { type LinePart } from '../entry/identity.ts'
 import { LineParts } from '../entry/workspace/LineText.tsx'
 
 import { inZone, useBatchZone } from '../batch/zone.ts'
 import { EntryStanding } from '../entry/EntryStanding.tsx'
-import type { EntryDto } from '../entry/model.ts'
+import { type EntryDto } from '../entry/model.ts'
 import {
   buildLedger,
   twoPlaces,
@@ -1794,7 +1801,7 @@ function ItemRow({
   /** filing another claim on the question, where the reader may right now */
   onAdd: (() => void) | null
 }) {
-  const { locale } = useI18n()
+  const locale = useLocale()
   const zone = useBatchZone()
   const list = useList()
   const panelId = useId()
@@ -2181,7 +2188,7 @@ function LineRow({
   closed: boolean
   onEntryOpen: ((entryId: string) => void) | undefined
 }) {
-  const { locale } = useI18n()
+  const locale = useLocale()
   const zone = useBatchZone()
   const tagKind = UNCOUNTED.has(line.standing) ? line.standing : null
   const claim = line.claim
@@ -2423,7 +2430,6 @@ export function ResultUnavailable({
   onRetry: () => void
   action?: ReactNode
 }) {
-  const { formatError } = useI18n()
   const tooLarge = isApiErrorCode(error, 'ASSESSMENT_SCORING_ACCOUNT_TOO_LARGE')
   return (
     <section

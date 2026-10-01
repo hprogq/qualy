@@ -1,15 +1,16 @@
+import { formatPlatformFailure as formatError, useLocale } from '@qualy/web-i18n'
+
 import { useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { useApi, useLoadFailure, useManifestRefresh, useRunApi } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
 import { supportedLocales, type SupportedLocale } from '@qualy/i18n-contract'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { AsyncSection, Field } from '@qualy/ui/admin'
-import { Card, Cell, LeadWord, Table, TableRow, Tag } from '@qualy/ui/screen'
-import { FormDialog } from '@qualy/ui/admin'
+import { AsyncSection, Field, FormDialog } from '@qualy/ui/admin'
+import { Card, Cell, LeadWord, Table, TableRow, Tag, Screen } from '@qualy/ui/screen'
+
 import { useIsBelow } from '@qualy/ui/use-mobile'
-import { Screen } from '@qualy/ui/screen'
+
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
@@ -157,7 +158,6 @@ type Term = NonNullable<ReturnType<typeof useTerminology>['data']>['terms'][numb
 
 /** the drafts for one term, and the one write that saves or clears them */
 function useTermDraft(term: Term) {
-  const { formatError } = useI18n()
   const api = useApi(settingsApi)
   const run = useRunApi()
   const queryClient = useQueryClient()
@@ -278,7 +278,7 @@ function TermEditor({ term }: { term: Term }) {
 
 /** the same term as one line of a list, with the form a press away */
 function TermRow({ term }: { term: Term }) {
-  const { locale } = useI18n()
+  const locale = useLocale()
   const { drafts, setDrafts, saving, customised, dirty, write } = useTermDraft(term)
   const [open, setOpen] = useState(false)
   const word = term.override[locale] ?? term.defaults[locale] ?? ''

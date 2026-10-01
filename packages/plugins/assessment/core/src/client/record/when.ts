@@ -1,5 +1,5 @@
+import { useLocale } from '@qualy/web-i18n'
 import { useCallback } from 'react'
-import { useI18n } from '@qualy/web-i18n'
 
 import { calendarDaysBetween, inZone, useBatchZone, yearOf } from '../batch/zone.ts'
 import * as m from '#messages'
@@ -17,7 +17,7 @@ import * as m from '#messages'
 // than as nine hours ago.
 
 export function useWhen() {
-  const { locale } = useI18n()
+  const locale = useLocale()
   const zone = useBatchZone()
   return useCallback(
     (iso: string): string => {

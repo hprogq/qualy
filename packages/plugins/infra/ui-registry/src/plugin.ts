@@ -1,5 +1,5 @@
 import { Layer } from 'effect'
-import type { Text } from '@qualy/text'
+import { type Text } from '@qualy/text'
 import {
   definePage,
   reactComponent,
@@ -37,21 +37,6 @@ import { documentContext } from './document-context.ts'
 export const UiSurfaceDeclarations = ExtensionPoint.make<UiSurfaces>(
   '@qualy/plugin-ui-registry/surfaces',
   { phase: 'prepare' },
-)
-
-/**
- * The plugin's localisation module, by reference.
- *
- * An external channel: the interpreter is the browser BUILD, not the server
- * process - the collector imports the module, validates namespaces and ids,
- * and splices its catalogs into the virtual aggregate. The module itself
- * stays authored content (definePluginMessages + locale tables); only its
- * discovery moved from a ./client entry export onto the descriptor, which is
- * what let the entry file disappear.
- */
-export const I18nCatalogs = ExtensionPoint.make<{ readonly module: string }>(
-  '@qualy/plugin-ui-registry/i18n',
-  { phase: 'external' },
 )
 
 /**
@@ -155,9 +140,6 @@ export const Ui = {
   /** the bulk form, for collections and anything the sugar above does not say */
   surfaces: (surfaces: UiSurfaces): PluginFeature =>
     Plugin.contribute(UiSurfaceDeclarations, surfaces),
-
-  /** names the module exporting `errorMessages`: what this plugin's api failures say */
-  i18n: (module: string): PluginFeature => Plugin.contribute(I18nCatalogs, { module }),
 
   /** something of this plugin's that a whole page reads, delivered with the manifest */
   documentContext,

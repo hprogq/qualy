@@ -24,7 +24,6 @@
     "./client/formula-lsp/document": "./src/client/formula-lsp/document.ts",
     "./client/formula-lsp/monaco": "./src/client/formula-lsp/monaco.ts",
     "./client/formula-lsp/protocol": "./src/client/formula-lsp/protocol.ts",
-    "./client/i18n": "./src/client/i18n.ts",
     "./client/monaco-setup": "./src/client/monaco-setup.ts",
     "./client/use-draft-preview": "./src/client/use-draft-preview.ts",
     "./config": "./src/server/config.ts",

@@ -1,7 +1,8 @@
+import { formatPlatformFailure as formatError, isAuthenticationError } from '@qualy/web-i18n'
 import { useState } from 'react'
 import { ChevronDownIcon } from 'lucide-react'
 import { PageLink } from '@qualy/web-runtime'
-import { isAuthenticationError, useI18n } from '@qualy/web-i18n'
+
 import { useTerm } from '@qualy/plugin-settings/client/terms'
 import { authTerms } from '@qualy/auth-contract/terms'
 import * as stylex from '@stylexjs/stylex'
@@ -159,7 +160,6 @@ const styles = stylex.create({
 })
 
 export default function DrawerIdentity() {
-  const { formatError } = useI18n()
   const businessNo = useTerm(authTerms.businessNumber)
   const [lineageOpen, setLineageOpen] = useState(false)
   const me = useIdentity()

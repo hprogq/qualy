@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { errorMessages } from '../src/client/i18n.ts'
+import { scoringIncompatibleValues } from '../src/client/items/scoring-refusals.ts'
 import enUS from '../messages/en-US.json' with { type: 'json' }
 import zhCN from '../messages/zh-CN.json' with { type: 'json' }
 
@@ -8,22 +8,16 @@ import zhCN from '../messages/zh-CN.json' with { type: 'json' }
 // rule cannot handle 1 determination already in force" - about a rule that
 // was not new and determinations that did not exist.
 
-const entry = errorMessages['ASSESSMENT_ITEM_SCORING_INCOMPATIBLE'] as unknown as {
-  readonly values: (data: unknown) => Record<string, unknown>
-}
-
 describe('a scoring rule that cannot be carried', () => {
   it('says a derived question failed its own rule, not the claims in force', () => {
     expect(
-      entry.values({
-        itemId: 'q',
+      scoringIncompatibleValues({
         approved: { total: 0, refused: 0, executionFailed: 0 },
         derived: { refused: true, executionFailed: false },
       }),
     ).toMatchObject({ case: 'derived' })
     expect(
-      entry.values({
-        itemId: 'q',
+      scoringIncompatibleValues({
         approved: { total: 3, refused: 1, executionFailed: 1 },
         derived: null,
       }),

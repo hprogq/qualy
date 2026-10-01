@@ -1,20 +1,21 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query'
-import * as stylex from '@stylexjs/stylex'
-import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
-import { useEffect, useState } from 'react'
-import type { Effect } from 'effect'
-import type { ApiResult } from '@qualy/web-runtime/api'
+import { assertNever, getApiErrorCode, useList } from '@qualy/web-i18n'
 import {
+  useApiMutation,
   useApi,
-  useRunApi,
   useApiQuery,
   useLoadFailure,
   PageLink,
   usePageHref,
   usePageNavigate,
 } from '@qualy/web-runtime'
-import { getApiErrorCode, useI18n, useList } from '@qualy/web-i18n'
+
+import { useQueryClient } from '@tanstack/react-query'
+import * as stylex from '@stylexjs/stylex'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
+import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
+import { useEffect, useState } from 'react'
+
+import { type ApiResult } from '@qualy/web-runtime/api'
 
 import { AsyncSection, ConfirmDialog, Feedback, Field, FormDialog } from '@qualy/ui/admin'
 import {
@@ -123,13 +124,13 @@ export function UserTypeConfig({
   canManage: boolean
 }) {
   const api = useApi(authApi)
-  const runApi = useRunApi()
+
   const query = useApiQuery(authApi)
   const queryClient = useQueryClient()
   const navigate = usePageNavigate()
   // the way to the entrances is offered only to a reader who may go there
   const entrancesHref = usePageHref('auth/login-methods')
-  const { formatError } = useI18n()
+
   const describe = useLoadFailure()
   const listJoin = useList()
   const facts = useUserTypeFacts()
@@ -157,23 +158,9 @@ export function UserTypeConfig({
   }, [userType])
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: query.identity.key() })
-  // the one crossing from an effect to a promise on this screen: TanStack
-  // needs a promise, and doing it here keeps every call site an effect
-  const run = <Variables,>(call: (input: Variables) => Effect.Effect<unknown, unknown>) => ({
-    mutationFn: (input: Variables) => runApi(call(input)),
-    onMutate: () => {
-      setFeedback(null)
-      setSaved(false)
-    },
-    onSuccess: async () => {
-      setSaved(true)
-      await refresh()
-    },
-    onError: (error: unknown) => setFeedback(formatError(error)),
-  })
 
-  const saveProfile = useMutation({
-    ...run(() =>
+  const saveProfile = useApiMutation({
+    mutationFn: () =>
       api.identity.updateUserType({
         params: { userTypeId: userType.id },
         payload: {
@@ -184,7 +171,6 @@ export function UserTypeConfig({
           description: description.trim() === '' ? null : description,
         },
       }),
-    ),
     onMutate: () => {
       setSaved(false)
       setRenameRefusal(null)
@@ -193,18 +179,33 @@ export function UserTypeConfig({
       setRenaming(false)
       await refresh()
     },
-    onError: (error: unknown) =>
+    onError: (error) => {
+      let failure: string
+      switch (error._tag) {
+        case 'USER_TYPE_CONFLICT':
+          failure = m.error_userTypeConflict()
+          break
+        case 'USER_TYPE_NOT_FOUND':
+          failure = m.error_userTypeNotFound()
+          break
+        case 'USER_TYPE_VERSION_CONFLICT':
+          failure = m.error_userTypeVersionConflict()
+          break
+        default:
+          assertNever(error)
+      }
       setRenameRefusal({
         taken: getApiErrorCode(error) === 'USER_TYPE_CONFLICT',
-        said: formatError(error),
-      }),
+        said: failure,
+      })
+    },
   })
   const closeRename = () => {
     setRenaming(false)
     setRenameRefusal(null)
   }
-  const savePlacement = useMutation(
-    run(() =>
+  const savePlacement = useApiMutation({
+    mutationFn: () =>
       api.identity.setPlacementPolicy({
         params: { userTypeId: userType.id },
         payload: {
@@ -213,23 +214,121 @@ export function UserTypeConfig({
             mode === 'unrestricted' ? { mode: 'unrestricted' } : { mode: 'allow-list', orgTypeIds },
         },
       }),
-    ),
-  )
-  const setStatus = useMutation(
-    run((status: 'active' | 'disabled') =>
+    onMutate: () => {
+      setFeedback(null)
+      setSaved(false)
+    },
+    onSuccess: async () => {
+      setSaved(true)
+      await refresh()
+    },
+    onError: (error) => {
+      switch (error._tag) {
+        case 'USER_TYPE_CONFLICT':
+          setFeedback(m.error_userTypeConflict())
+          return
+        case 'USER_TYPE_IS_SYSTEM':
+          setFeedback(m.error_userTypeIsSystem())
+          return
+        case 'USER_TYPE_NOT_FOUND':
+          setFeedback(m.error_userTypeNotFound())
+          return
+        case 'USER_TYPE_ORG_TYPE_NOT_FOUND':
+          setFeedback(m.error_userTypeOrgTypeNotFound())
+          return
+        case 'USER_TYPE_PLACEMENT_IN_USE':
+          setFeedback(
+            m.error_userTypePlacementInUse(
+              ((data: typeof error) => ({ userCount: data.userCount }))(error),
+            ),
+          )
+          return
+        case 'USER_TYPE_VERSION_CONFLICT':
+          setFeedback(m.error_userTypeVersionConflict())
+          return
+        default:
+          assertNever(error)
+      }
+    },
+  })
+  const setStatus = useApiMutation({
+    mutationFn: (status: 'active' | 'disabled') =>
       api.identity.setUserTypeStatus({
         params: { userTypeId: userType.id },
         payload: { status, version: userType.version },
       }),
-    ),
-  )
-  const remove = useMutation({
-    ...run(() =>
+    onMutate: () => {
+      setFeedback(null)
+      setSaved(false)
+    },
+    onSuccess: async () => {
+      setSaved(true)
+      await refresh()
+    },
+    onError: (error) => {
+      switch (error._tag) {
+        case 'USER_TYPE_CONFLICT':
+          setFeedback(m.error_userTypeConflict())
+          return
+        case 'USER_TYPE_IN_USE':
+          setFeedback(
+            m.error_userTypeInUse(((data: typeof error) => ({ userCount: data.userCount }))(error)),
+          )
+          return
+        case 'USER_TYPE_NOT_FOUND':
+          setFeedback(m.error_userTypeNotFound())
+          return
+        case 'USER_TYPE_VERSION_CONFLICT':
+          setFeedback(m.error_userTypeVersionConflict())
+          return
+        default:
+          assertNever(error)
+      }
+    },
+  })
+  const remove = useApiMutation({
+    mutationFn: () =>
       api.identity.deleteUserType({
         params: { userTypeId: userType.id },
         query: { version: String(userType.version) },
       }),
-    ),
+    onMutate: () => {
+      setFeedback(null)
+      setSaved(false)
+    },
+    onError: (error) => {
+      switch (error._tag) {
+        case 'USER_TYPE_CONFLICT':
+          setFeedback(m.error_userTypeConflict())
+          return
+        case 'USER_TYPE_IN_USE':
+          setFeedback(
+            m.error_userTypeInUse(((data: typeof error) => ({ userCount: data.userCount }))(error)),
+          )
+          return
+        case 'USER_TYPE_IS_SYSTEM':
+          setFeedback(m.error_userTypeIsSystem())
+          return
+        case 'USER_TYPE_LAST_FOR_ROLE':
+          setFeedback(
+            m.error_userTypeLastForRole(
+              ((data: typeof error) => ({ roleCount: data.roleCount }))(error),
+            ),
+          )
+          return
+        case 'USER_TYPE_NOT_FOUND':
+          setFeedback(m.error_userTypeNotFound())
+          return
+        case 'USER_TYPE_REFERENCED':
+          setFeedback(m.error_userTypeReferenced())
+          return
+        case 'USER_TYPE_VERSION_CONFLICT':
+          setFeedback(m.error_userTypeVersionConflict())
+          return
+        default:
+          assertNever(error)
+      }
+    },
     onSuccess: async () => {
       setConfirmingDelete(false)
       // the page is about a type that is gone; the list is where it was

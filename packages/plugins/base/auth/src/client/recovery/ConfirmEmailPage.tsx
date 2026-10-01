@@ -1,9 +1,9 @@
-import type { ReactNode } from 'react'
+import { formatPlatformFailure as formatError } from '@qualy/web-i18n'
+import { type ReactNode } from 'react'
 import { useLocation } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { PageLink, useApi, usePageHref, useRunApi } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
 import { motion, useReducedMotion } from 'motion/react'
 import { CheckIcon, CircleAlertIcon } from 'lucide-react'
 import { Spinner } from '@qualy/ui/spinner'
@@ -77,7 +77,7 @@ export default function ConfirmEmailPage() {
   const purpose = fragment.get('purpose') === 'change' ? 'change' : 'verify'
   const api = useApi(authApi)
   const run = useRunApi()
-  const { formatError } = useI18n()
+
   const account = usePageHref('auth/account-profile')
   // one request per link, however often the page renders or mounts: keyed
   // by the token, never retried and never fetched again - a link is spent

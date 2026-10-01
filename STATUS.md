@@ -21034,7 +21034,6 @@ job 后通过。阶段 3、4 在 worktree 上完成,拆成三个功能提交与�
   `git diff --check` 通过。**这里只提出阈值,尚未启用新的构建门禁**。
 - 下一步:用户审阅预算口径后再接入 qualyChunkGraph。语言修复提交 3323540e8,本轮仍仅本地提交。
 
-
 ## 消息编译与 IDE 工程收敛(2026-10-01 晚)
 
 - release 消息按 active selection 编译;仓库 typecheck、Node 与 browser 检查显式 all,disabled 的源消息仍受检查。
@@ -21054,3 +21053,42 @@ job 后通过。阶段 3、4 在 worktree 上完成,拆成三个功能提交与�
 - 首次组合 Node 验收因 dev-server-files 测试运行 Vite 消息插件,与其他 worker 的编译格式冲突而缺文件;
   改为只载入真实配置并关闭该权限测试不需要的插件后,整组复跑通过。后续编译/构建/测试串行执行。
 - 下一步:本地审阅错误边界与性能提交;IDE 可 Reload Window 重新发现各包工程。本轮不推送、不部署。
+
+## API mutation 平台策略与调用处领域失败(2026-10-02)
+
+- `useApiMutation` 自动处理平台/网络失败,业务 `onError` 只接收 `UseCaseApiFailure<E>`。
+  有领域失败时要求回调,只有平台失败时禁止声明业务回调;每次 mutate/mutateAsync 的临时回调也过滤,
+  平台策略只执行一次。mutation.error/onSettled 保留真实失败,用于恢复本地状态。会话与 release 恢复沿用已有协调器。
+  BAD_REQUEST/origin/route failure 捕获诊断,不把普通 404 擅自当成 release mismatch 而重载。
+- 103 处 typed API mutation 直接在调用处处理字段、反馈、验证码、重认证等行为。onRateLimited 显式接入登录冷却。
+  延迟审核遇到平台失败恢复暂存决定,不会留下假成功;异步回调身份稳定。预期会 reject 的上传与本地 Promise 组合
+  保留原运行边界,不用 Effect.promise 伪装 typed failure;LocalFinding 保持同文件普通 Error。
+- 删除全局 error registry、Ui.i18n/I18nCatalogs、12 个 client/i18n.ts 与旧 ErrorMessageMap 等契约;
+  无新增组件 companion .errors.ts/presenter。useLocale 与错误处理解耦,formatPlatformFailure 不显示后端英文 fallback。
+  Query 保留 resource failure 呈现。真实共享领域判断(字段/评分/录入拒绝)仍用 semantic helper。
+- LoginDriver 拥有 redirect failures,仅提供中的 method type 按请求语言渲染进 DTO。注册拒绝重复 code、
+  core/platform code 覆盖与 malformed Text。API 错误码唯一性由实际 endpoint/middleware assembly 检查;
+  pipeline schema 参与保留检查,同 class 复用允许,同码不同 class 拒绝。TextSchema 严查输入与循环,
+  explicit-table renderer 隔离;既有服务的默认 table 安装方式保留,不扩大为全部服务 DI 迁移。
+- 实读上游路径:repos/effect/packages/effect/src/Effect.ts(gen/map/asVoid/Error/promise/tryPromise)、
+  http-api/HttpApiClient.ts、http-api/HttpApiEndpoint.ts、SchemaAST.ts。rc.118 内部运行时导出与 .d.ts 差异
+  以 node 实查为依据,证据存 docs/notes/effect.md;版本适配 cast 集中在 API 装配边界。
+- 验收命令与真实输出摘录:
+  - `pnpm test:browser --maxWorkers=2` → `Test Files 124 passed (124); Tests 1593 passed (1593)`,309.16s。
+    包括新增平台/per-call callback 过滤与 payload 保留回归,以及语言确认、登录、表单与审核全套浏览器验收。
+  - `pnpm test tools/tests/error-codes.test.ts` → `Test Files 1 passed (1); Tests 5 passed (5)`;
+    追加 pipeline code 被冒认的回归后执行,同一真实 schema 仍可复用。
+  - `pnpm exec tsc -p packages/web/runtime/tsconfig.json --noEmit` → exit 0,包含 mutation 的负向类型门禁。
+  - `pnpm typecheck`、`pnpm lint`、`pnpm lint:types` → exit 0;Node 21 文件 161 条组合验收见上一节。
+  - `pnpm qualy resolve --frozen-lockfile` → `qualy.lock.json is up to date`,exit 0;未修改 lock。
+- browser 首次全跑碰到 effect/http/HttpServerRequest 被晚发现后 optimizer 重载、以及满载初始化超时;
+  明确预优化依赖后以两个 worker 完整重跑通过,未提高 timeout 或弱化断言。
+- 全量 Node 首跑:417 文件中412通过、2失败、3跳过;3126条中3097通过、2失败、27跳过。
+  登录 strict DTO 断言补上新增的空 failureMessages,不弱化断言;golden 改为独立临时输出工程,
+  从真实产品 sources 经同一编译器构建,避免全套并发对 workspace 产物的依赖,并逐 key 检查函数存在。
+  `pnpm test tools/tests/messages-golden.test.ts packages/plugins/base/auth/tests/effect-sign-in.test.ts`
+  → `Test Files 2 passed (2); Tests 28 passed (28)`;golden 隔离后单套再次通过。
+  `pnpm test` 最终完整复跑 → `Test Files 414 passed | 3 skipped (417); Tests 3099 passed | 27 skipped (3126)`,
+  179.82s,exit 0;跳过的是三个真实 COS 集成文件,未提供外部桶配置。
+- 下一步:审阅本地提交;common error ownership 从 i18n-contract 移出、Text renderer 全服务 DI 与 UI token/schema
+  拆分保留为后续独立变化。本轮不推送、不部署。

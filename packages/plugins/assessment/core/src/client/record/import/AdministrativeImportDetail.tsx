@@ -1,9 +1,7 @@
-import { Fragment, useMemo, useState } from 'react'
-import * as stylex from '@stylexjs/stylex'
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChevronRightIcon, DownloadIcon } from 'lucide-react'
-import { choiceLabel, displayTitle, kindOf, type AtomicSchema } from '@qualy/value-schema'
+import { assertNever, formatPlatformFailure as formatError, useLocale } from '@qualy/web-i18n'
+
 import {
+  useApiMutation,
   LoadFailure,
   cursorPages,
   isRecordId,
@@ -12,7 +10,12 @@ import {
   useLoadFailure,
   useRunApi,
 } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
+import { Fragment, useMemo, useState } from 'react'
+import * as stylex from '@stylexjs/stylex'
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query'
+import { ChevronRightIcon, DownloadIcon } from 'lucide-react'
+import { choiceLabel, displayTitle, kindOf, type AtomicSchema } from '@qualy/value-schema'
+
 import { useTerm } from '@qualy/plugin-settings/client/terms'
 import { authTerms } from '@qualy/auth-contract/terms'
 
@@ -181,7 +184,7 @@ export function AdministrativeImportDetail({
   const run = useRunApi()
   const query = useApiQuery(assessmentApi)
   const queryClient = useQueryClient()
-  const { formatError, locale } = useI18n()
+  const locale = useLocale()
   const zone = useBatchZone()
   const businessNo = useTerm(authTerms.businessNumber)
   const [asking, setAsking] = useState(false)
@@ -213,9 +216,8 @@ export function AdministrativeImportDetail({
   })
   const lines = useMemo(() => rows.data?.pages.flatMap((page) => page.items) ?? [], [rows.data])
 
-  const download = useMutation({
-    mutationFn: () =>
-      run(api.assessment.describeAdministrativeImportSource({ params: { importId } })),
+  const download = useApiMutation({
+    mutationFn: () => api.assessment.describeAdministrativeImportSource({ params: { importId } }),
     onSuccess: (described) => {
       // a store with its own door is sent to; otherwise the bytes come
       // through this api, under the file's own name
@@ -227,17 +229,26 @@ export function AdministrativeImportDetail({
             }),
       )
     },
-    onError: (error) => toast.error(formatError(error)),
+    onError: (error) => {
+      switch (error._tag) {
+        case 'ASSESSMENT_ADMINISTRATIVE_IMPORT_NOT_FOUND':
+          toast.error(m.error_administrativeImportNotFound())
+          return
+        case 'ASSESSMENT_ATTACHMENT_NOT_FOUND':
+          toast.error(m.error_attachmentNotFound())
+          return
+        default:
+          assertNever(error)
+      }
+    },
   })
 
-  const reverse = useMutation({
+  const reverse = useApiMutation({
     mutationFn: (reason: string) =>
-      run(
-        api.assessment.reverseAdministrativeImport({
-          params: { importId },
-          payload: { reason },
-        }),
-      ),
+      api.assessment.reverseAdministrativeImport({
+        params: { importId },
+        payload: { reason },
+      }),
     onSuccess: (done) => {
       toast.success(m.record_import_reversed({ count: done.affectedCount }))
       // what the score is made of just changed: the import, its rows, the

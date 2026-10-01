@@ -10,7 +10,6 @@
     "./actions": "./src/actions.ts",
     "./api": "./src/api.ts",
     "./client/OrgPage": "./src/client/OrgPage.tsx",
-    "./client/i18n": "./src/client/i18n.ts",
     "./db": "./src/db/entities.ts",
     "./package.json": "./package.json",
     "./permissions": "./src/permissions.ts",

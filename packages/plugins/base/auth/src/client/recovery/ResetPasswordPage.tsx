@@ -1,11 +1,19 @@
+import { formatPlatformFailure as formatError } from '@qualy/web-i18n'
+import {
+  useApiMutation,
+  PageLink,
+  useApi,
+  useApiQuery,
+  usePageHref,
+  useRunApi,
+} from '@qualy/web-runtime'
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { Link, useLocation } from 'react-router'
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import * as stylex from '@stylexjs/stylex'
 import { ArrowLeftIcon, CheckIcon, CircleAlertIcon, EyeIcon, MailCheckIcon } from 'lucide-react'
-import { PageLink, useApi, useApiQuery, usePageHref, useRunApi } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
+
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { normalizeEmail } from '@qualy/auth-contract/email'
 import { retryAfterOf } from '@qualy/auth-contract/session'
@@ -292,8 +300,7 @@ function BackToSignIn() {
 
 function Ask() {
   const api = useApi(authApi)
-  const run = useRunApi()
-  const { formatError } = useI18n()
+
   const [email, setEmail] = useState('')
   // judged once it has been left or the form sent, never while it is typed
   const [checked, setChecked] = useState(false)
@@ -305,25 +312,23 @@ function Ask() {
   const { held, secondsLeft, hold } = useHold()
   // the challenge the request was answered with, while it is being met
   const [prompt, setPrompt] = useState<CaptchaPrompt | null>(null)
-  const ask = useMutation({
+  const ask = useApiMutation({
     mutationFn: (input: { address: string; proof?: CaptchaProof }) =>
-      run(
-        api.auth.createPasswordReset({
-          payload: {
-            email: input.address,
-            ...(input.proof === undefined ? {} : { captcha: input.proof }),
-          },
-        }),
-      ),
+      api.auth.createPasswordReset({
+        payload: {
+          email: input.address,
+          ...(input.proof === undefined ? {} : { captcha: input.proof }),
+        },
+      }),
     onSuccess: (_answer, input) => setSentTo(input.address),
+    onRateLimited: ({ retryAfterSeconds }) => hold(retryAfterSeconds * 1000),
     onError: (failure) => {
       // not a refusal: the same request goes again by itself once it is met
-      if (failure instanceof CaptchaRequired) {
+      if (failure._tag === 'CAPTCHA_REQUIRED') {
         setPrompt({ provider: failure.provider, challenge: failure.challenge })
         return
       }
-      const wait = retryAfterOf(failure)
-      hold(wait === undefined ? PAUSE_MS : wait * 1000)
+      hold(PAUSE_MS)
     },
     onSettled: () => {
       sending.current = false
@@ -452,7 +457,7 @@ function SetNew({ token, onAskAgain }: { token: string; onAskAgain: () => void }
   const api = useApi(authApi)
   const query = useApiQuery(authApi)
   const run = useRunApi()
-  const { formatError } = useI18n()
+
   // what a password here has to be, said while it is typed
   const rule = useQuery(query.auth.listLoginMethods.queryOptions()).data?.passwordRule ?? null
   // whether the link still works, asked as the page opens rather than after
@@ -482,9 +487,9 @@ function SetNew({ token, onAskAgain }: { token: string; onAskAgain: () => void }
         (answer) => answer.checks,
       ),
   })
-  const set = useMutation({
-    mutationFn: () => run(api.auth.createPasswordResetRedemption({ payload: { token, password } })),
-    onError: (error: unknown) => {
+  const set = useApiMutation({
+    mutationFn: () => api.auth.createPasswordResetRedemption({ payload: { token, password } }),
+    onError: (error) => {
       if (tagOf(error) === 'AUTH_BINDING_CREDENTIAL_INVALID') setRefused(true)
       hold(PAUSE_MS)
     },

@@ -1,3 +1,4 @@
+import { formatPlatformFailure as formatError } from '@qualy/web-i18n'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import { PlusIcon, Trash2Icon } from 'lucide-react'
@@ -9,7 +10,6 @@ import {
   usePageQueryUpdate,
   useRunApi,
 } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
 
 import * as stylex from '@stylexjs/stylex'
 import { AsyncSection } from '@qualy/ui/admin'
@@ -55,7 +55,7 @@ export default function OrgPage() {
   const api = useApi(orgApi)
   const runApi = useRunApi()
   const query = useApiQuery(orgApi)
-  const { formatError } = useI18n()
+
   const failures = useLoadFailure()
   const queryClient = useQueryClient()
   const [view, setView] = usePageQueryState('view')

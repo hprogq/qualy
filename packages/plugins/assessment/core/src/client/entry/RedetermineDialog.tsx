@@ -1,9 +1,9 @@
+import { useLocale } from '@qualy/web-i18n'
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
-import type { AtomicSchema } from '@qualy/value-schema'
+import { type AtomicSchema } from '@qualy/value-schema'
 import { useApiQuery } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
 
 import { usePickerWords } from '@qualy/web-i18n/picker-words'
 import { ValueFieldsForm } from '@qualy/web-value-form/InputValueForm'
@@ -56,7 +56,7 @@ export function RedetermineDialog({
   onConfirm: (input: RedetermineInput) => void
   onClose: () => void
 }) {
-  const { locale } = useI18n()
+  const locale = useLocale()
   const words = usePickerWords()
   const query = useApiQuery(assessmentApi)
   const contract = useQuery({

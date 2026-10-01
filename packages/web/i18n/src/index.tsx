@@ -1,19 +1,16 @@
-import {
-  defaultLocale,
-  supportedLocales,
-  type ErrorMessageMap,
-  type SupportedLocale,
-} from '@qualy/i18n-contract'
-import { formatApiError } from './format.ts'
+import { defaultLocale, supportedLocales, type SupportedLocale } from '@qualy/i18n-contract'
 
 export {
-  formatApiError,
+  formatPlatformFailure,
   getApiErrorCode,
   isApiError,
   isApiErrorCode,
   isAuthenticationError,
   isTransportError,
   isBackendUnavailable,
+  isUseCaseApiFailure,
+  type UseCaseApiFailure,
+  assertNever,
 } from './format.ts'
 export { onLocaleChosenElsewhere, reopenInLocale } from './locale-channel.ts'
 
@@ -27,39 +24,12 @@ export { onLocaleChosenElsewhere, reopenInLocale } from './locale-channel.ts'
 // here loads, activates or re-renders anything: a page keeps one language
 // from the moment it opens, and choosing another opens the page again.
 //
-// What remains is what a screen cannot say by itself: an api failure by its
-// code, which may be any plugin's. Whatever else the server sends, it has
-// already said in the page's language.
+// Shared infrastructure failures are formatted here. Domain failures stay
+// with their calling use case; server presentation DTOs arrive rendered.
 
-let errorRegistry: ErrorMessageMap = {}
-
-/**
- * What the assembly's plugins say for their api failures. Installed once by
- * the composition root, before the first render; a test installs what its
- * screen needs.
- */
-export function installMessages(installed: { readonly errorMessages?: ErrorMessageMap }): void {
-  errorRegistry = installed.errorMessages ?? {}
-}
-
-/** an api failure, in the reader's words, from its code */
-export function formatError(error: unknown, registry?: ErrorMessageMap): string {
-  return formatApiError(error, registry ? { ...errorRegistry, ...registry } : errorRegistry)
-}
-
-export interface I18nRuntime {
-  readonly locale: SupportedLocale
-  readonly formatError: (error: unknown, registry?: ErrorMessageMap) => string
-}
-
-/** the page's language and a failure's words, as a screen reaches for them */
-export function useI18n(): I18nRuntime {
-  return { locale: resolveInitialLocale(), formatError }
-}
-
-/** the language this page is written in, from the moment it opened until it closes */
+/** The fixed language of this document. */
 export function useLocale(): SupportedLocale {
-  return useI18n().locale
+  return resolveInitialLocale()
 }
 
 /**
@@ -75,7 +45,7 @@ export function useLocale(): SupportedLocale {
  * tokens, units - and none of them wants an "and" before the last one.
  */
 export function useList(): (items: readonly string[]) => string {
-  const { locale } = useI18n()
+  const locale = useLocale()
   // conjunction-narrow, not unit-narrow: a unit list in Chinese has no
   // separator at all, so three names came out as one run-together word. This
   // is the one form that is a plain enumeration in both languages - "A、B、C"

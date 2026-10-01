@@ -1,8 +1,8 @@
+import { useLocale } from '@qualy/web-i18n'
 import { RESERVED } from '../reserved.ts'
 import { memo } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { ChevronRightIcon, DownloadIcon, SparklesIcon } from 'lucide-react'
-import { useI18n } from '@qualy/web-i18n'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
 import { Kbd } from '@qualy/ui/kbd'
@@ -399,7 +399,7 @@ export const FilingColumn = memo(function FilingColumn({
   /** the way to another face of the pager, for the summary's links */
   onPart: (part: WorkbenchPart) => void
 }) {
-  const { locale } = useI18n()
+  const locale = useLocale()
   const zone = useBatchZone()
   const fine = useFinePointer()
   // every field the question asks, files included and in their own places:
@@ -737,7 +737,7 @@ function SupplementCard({
   /** how the round ended, which is why an unanswered ask closed */
   endedBy: string | null
 }) {
-  const { locale } = useI18n()
+  const locale = useLocale()
   const zone = useBatchZone()
   const answers = (supplement.response?.payload ?? {}) as Record<string, unknown>
   return (

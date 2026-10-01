@@ -1,11 +1,13 @@
+import { Effect } from 'effect'
+import { formatPlatformFailure as formatError } from '@qualy/web-i18n'
+import { useApiMutation, UiSlot, useApi, useApiQuery, useLoadFailure } from '@qualy/web-runtime'
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 import { CheckIcon, EllipsisIcon, MinusIcon, PlusIcon, SearchXIcon, UsersIcon } from 'lucide-react'
-import { UiSlot, useApi, useApiQuery, useLoadFailure, useRunApi } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
+
 import { useTerm } from '@qualy/plugin-settings/client/terms'
 import { authTerms } from '@qualy/auth-contract/terms'
 
@@ -327,10 +329,9 @@ export function AccessPanel({
   archived: boolean
 }) {
   const api = useApi(assessmentApi)
-  const run = useRunApi()
   const query = useApiQuery(assessmentApi)
   const queryClient = useQueryClient()
-  const { formatError } = useI18n()
+
   const failures = useLoadFailure()
   const businessNo = useTerm(authTerms.businessNumber)
   const [failure, setFailure] = useState<string | null>(null)
@@ -386,9 +387,9 @@ export function AccessPanel({
   const onError = (error: unknown) => setFailure(formatError(error))
   const onMutate = () => setFailure(null)
 
-  const sync = useMutation({
+  const sync = useApiMutation({
     mutationFn: (selection: AccessSelection) =>
-      run(api.assessment.applyAccessSync({ params: { batchId }, payload: selection })),
+      api.assessment.applyAccessSync({ params: { batchId }, payload: selection }),
     onMutate,
     onSuccess: (result: { merged: number; cleared: number }) => {
       setMerging(false)
@@ -404,29 +405,24 @@ export function AccessPanel({
   // The dialog decides as a whole; the api states one capability at a time.
   // The difference is sent, so a dialog closed without changing anything
   // sends nothing at all.
-  const setDeny = useMutation({
-    mutationFn: async (input: {
-      userId: string
-      was: readonly string[]
-      now: readonly string[]
-    }) => {
-      const changes = [
-        ...input.now
-          .filter((code) => !input.was.includes(code))
-          .map((code) => [code, true] as const),
-        ...input.was
-          .filter((code) => !input.now.includes(code))
-          .map((code) => [code, false] as const),
-      ]
-      for (const [permission, denied] of changes) {
-        await run(
-          api.assessment.setAccessDeny({
+  const setDeny = useApiMutation({
+    mutationFn: (input: { userId: string; was: readonly string[]; now: readonly string[] }) =>
+      Effect.gen(function* () {
+        const changes = [
+          ...input.now
+            .filter((code) => !input.was.includes(code))
+            .map((code) => [code, true] as const),
+          ...input.was
+            .filter((code) => !input.now.includes(code))
+            .map((code) => [code, false] as const),
+        ]
+        for (const [permission, denied] of changes) {
+          yield* api.assessment.setAccessDeny({
             params: { batchId, userId: input.userId, permission },
             payload: { denied },
-          }),
-        )
-      }
-    },
+          })
+        }
+      }),
     onMutate,
     onSuccess: () => {
       setAdjusting(null)
@@ -435,22 +431,20 @@ export function AccessPanel({
     },
     onError,
   })
-  const addStaff = useMutation({
+  const addStaff = useApiMutation({
     mutationFn: (input: {
       userIds: readonly string[]
       orgNodeIds: readonly string[]
       roleId: string
     }) =>
-      run(
-        api.assessment.addStaff({
-          params: { batchId },
-          payload: {
-            userIds: [...input.userIds],
-            orgNodeIds: [...input.orgNodeIds],
-            roleId: input.roleId,
-          },
-        }),
-      ),
+      api.assessment.addStaff({
+        params: { batchId },
+        payload: {
+          userIds: [...input.userIds],
+          orgNodeIds: [...input.orgNodeIds],
+          roleId: input.roleId,
+        },
+      }),
     onMutate,
     onSuccess: () => {
       setAddingStaff(false)
@@ -460,9 +454,8 @@ export function AccessPanel({
     },
     onError,
   })
-  const remove = useMutation({
-    mutationFn: (sourceId: string) =>
-      run(api.assessment.removeStaff({ params: { batchId, sourceId } })),
+  const remove = useApiMutation({
+    mutationFn: (sourceId: string) => api.assessment.removeStaff({ params: { batchId, sourceId } }),
     onMutate,
     onSuccess: () => {
       setRemoving(null)

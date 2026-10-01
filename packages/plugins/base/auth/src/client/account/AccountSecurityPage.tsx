@@ -1,8 +1,17 @@
+import { assertNever, formatPlatformFailure as formatError, getApiErrorCode } from '@qualy/web-i18n'
+
+import {
+  useRunApi,
+  useApiMutation,
+  useApi,
+  useApiQuery,
+  useLoadFailure,
+  usePageHref,
+} from '@qualy/web-runtime'
+
 import { useId, useState, type FormEvent, type ReactNode } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
-import { useApi, useApiQuery, useLoadFailure, usePageHref, useRunApi } from '@qualy/web-runtime'
-import { getApiErrorCode, useI18n } from '@qualy/web-i18n'
 
 import { AsyncSection, Field, FormDialog, useSettledCheck } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
@@ -147,10 +156,9 @@ function PasswordSetting({
   emailVerified: boolean
 }) {
   const api = useApi(authApi)
-  const run = useRunApi()
   const query = useApiQuery(authApi)
   const queryClient = useQueryClient()
-  const { formatError } = useI18n()
+
   const formId = useId()
   const reauthentication = useReauthentication(usePageHref('auth/account-security'))
   const [open, setOpen] = useState(false)
@@ -161,6 +169,7 @@ function PasswordSetting({
   // said in red once a press found something wrong, for as long as it is
   const [refused, setRefused] = useState(false)
   const rule = useQuery(query.auth.listLoginMethods.queryOptions()).data?.passwordRule ?? null
+  const run = useRunApi()
   const checks = usePasswordChecks({
     password: fresh,
     min: rule?.minLength ?? 0,
@@ -179,22 +188,20 @@ function PasswordSetting({
     setMismatch(false)
     setRefused(false)
   }
-  const save = useMutation({
+  const save = useApiMutation({
     mutationFn: () =>
-      run(
-        api.self.putSelfPassword({
-          payload: {
-            newPassword: fresh,
-            ...(standing === 'set' ? { currentPassword: current } : {}),
-          },
-        }),
-      ),
+      api.self.putSelfPassword({
+        payload: {
+          newPassword: fresh,
+          ...(standing === 'set' ? { currentPassword: current } : {}),
+        },
+      }),
     onSuccess: async () => {
       close()
       toast.success(m.account_passwordChanged())
       await queryClient.invalidateQueries({ queryKey: query.self.key() })
     },
-    onError: (error: unknown) => {
+    onError: (error) => {
       if ((error as { _tag?: unknown })._tag === 'AUTH_BINDING_CREDENTIAL_INVALID') setRefused(true)
       // it lapsed while the form was open: shown again, and sent again
       if (needsReauthentication(error)) reauthentication.ask(() => save.mutate())
@@ -335,8 +342,7 @@ function PasswordSetting({
 
 function EmailSetting({ email, verified }: { email: string | null; verified: boolean }) {
   const api = useApi(authApi)
-  const run = useRunApi()
-  const { formatError } = useI18n()
+
   const formId = useId()
   const reauthentication = useReauthentication(usePageHref('auth/account-security'))
   const [open, setOpen] = useState(false)
@@ -349,18 +355,32 @@ function EmailSetting({ email, verified }: { email: string | null; verified: boo
     setNext('')
     change.reset()
   }
-  const verify = useMutation({
-    mutationFn: () => run(api.self.createSelfEmailVerification({})),
+  const verify = useApiMutation({
+    mutationFn: () => api.self.createSelfEmailVerification({}),
     onSuccess: () => toast.success(m.account_verificationSent()),
-    onError: (error: unknown) => toast.error(formatError(error)),
+    onError: (error) => {
+      switch (error._tag) {
+        case 'AUTH_EMAIL_MISSING':
+          toast.error(m.error_emailMissing())
+          return
+        case 'AUTH_MAIL_NOT_SENT':
+          toast.error(m.error_mailNotSent())
+          return
+        case 'USER_NOT_FOUND':
+          toast.error(m.error_userNotFound())
+          return
+        default:
+          assertNever(error)
+      }
+    },
   })
-  const change = useMutation({
-    mutationFn: () => run(api.self.createSelfEmailChange({ payload: { newEmail: next } })),
+  const change = useApiMutation({
+    mutationFn: () => api.self.createSelfEmailChange({ payload: { newEmail: next } }),
     onSuccess: () => {
       close()
       toast.success(m.account_changeSent())
     },
-    onError: (error: unknown) => {
+    onError: (error) => {
       if (needsReauthentication(error)) reauthentication.ask(() => change.mutate())
     },
   })

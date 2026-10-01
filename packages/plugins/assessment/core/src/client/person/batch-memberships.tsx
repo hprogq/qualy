@@ -1,6 +1,6 @@
+import { useLocale } from '@qualy/web-i18n'
 import { useInfiniteQuery } from '@tanstack/react-query'
 import { cursorPages, useLoadFailure, usePageHref, usePageNavigate } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
 
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
@@ -23,8 +23,8 @@ import { Button } from '@qualy/ui/button'
 import { StatusBadge } from '../batch/StatusBadge.tsx'
 import { useWhen } from '../batch/when.ts'
 import { zoneMarkOf } from '../batch/zone.ts'
-import type { ApiResult } from '@qualy/web-runtime/api'
-import type { assessmentApi } from '../api.ts'
+import { type ApiResult } from '@qualy/web-runtime/api'
+import { type assessmentApi } from '../api.ts'
 import * as commonMessages from '@qualy/web-i18n/messages'
 import * as m from '#messages'
 
@@ -149,7 +149,7 @@ export function BatchMemberships({
   /** one page, from where the last one ended */
   fetchPage: (cursor: string | undefined) => Promise<BatchMembershipPage>
 }) {
-  const { locale } = useI18n()
+  const locale = useLocale()
   const failures = useLoadFailure()
   const navigate = usePageNavigate()
   // a row is a way into the round only for a reader who may open rounds

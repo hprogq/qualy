@@ -1,10 +1,12 @@
+import { formatPlatformFailure as formatError, useLocale } from '@qualy/web-i18n'
+
+import { useApiMutation, useApi, useApiQuery, useLoadFailure, useRunApi } from '@qualy/web-runtime'
 import { useMemo, useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { DownloadIcon, FileSpreadsheetIcon } from 'lucide-react'
 import { displayTitle, type AtomicSchema } from '@qualy/value-schema'
-import { useApi, useApiQuery, useLoadFailure, useRunApi } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
+
 import { useTerm } from '@qualy/plugin-settings/client/terms'
 import { authTerms } from '@qualy/auth-contract/terms'
 
@@ -226,7 +228,7 @@ export function AdministrativeImportView({
   const run = useRunApi()
   const query = useApiQuery(assessmentApi)
   const queryClient = useQueryClient()
-  const { formatError, locale } = useI18n()
+  const locale = useLocale()
   const failures = useLoadFailure()
   const businessNo = useTerm(authTerms.businessNumber)
   const items = useQuery(query.assessment.listItems.queryOptions({ params: { batchId } }))
@@ -289,19 +291,17 @@ export function AdministrativeImportView({
     onError: (error) => toast.error(sayEntryFailure(error, { formatError })),
   })
 
-  const check = useMutation({
+  const check = useApiMutation({
     mutationFn: (input: { attachmentId: string; basis: string }) =>
-      run(
-        api.assessment.previewAdministrativeImport({
-          params: { batchId },
-          payload: {
-            attachmentId: input.attachmentId,
-            itemId,
-            expectedItemRevisionId: revisionId,
-            ...(input.basis.trim() === '' ? {} : { defaultBasis: input.basis.trim() }),
-          },
-        }),
-      ),
+      api.assessment.previewAdministrativeImport({
+        params: { batchId },
+        payload: {
+          attachmentId: input.attachmentId,
+          itemId,
+          expectedItemRevisionId: revisionId,
+          ...(input.basis.trim() === '' ? {} : { defaultBasis: input.basis.trim() }),
+        },
+      }),
     onMutate: (input) => {
       setCheckedBasis(input.basis)
       setConfirmed(false)
@@ -313,20 +313,18 @@ export function AdministrativeImportView({
     onError: () => setAt(1),
   })
 
-  const commit = useMutation({
+  const commit = useApiMutation({
     mutationFn: () =>
-      run(
-        api.assessment.commitAdministrativeImport({
-          params: { batchId },
-          payload: {
-            attachmentId: uploaded!.attachmentId,
-            itemId,
-            expectedItemRevisionId: revisionId,
-            ...(basis.trim() === '' ? {} : { defaultBasis: basis.trim() }),
-            confirmWarnings: confirmed,
-          },
-        }),
-      ),
+      api.assessment.commitAdministrativeImport({
+        params: { batchId },
+        payload: {
+          attachmentId: uploaded!.attachmentId,
+          itemId,
+          expectedItemRevisionId: revisionId,
+          ...(basis.trim() === '' ? {} : { defaultBasis: basis.trim() }),
+          confirmWarnings: confirmed,
+        },
+      }),
     onSuccess: (done) => {
       toast.success(m.record_import_done({ count: done.importedCount }))
       void queryClient.invalidateQueries({

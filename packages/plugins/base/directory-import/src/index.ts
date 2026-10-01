@@ -38,7 +38,6 @@ const plugin = Plugin.define(
     dependsOn: ['@qualy/plugin-org', '@qualy/plugin-auth', '@qualy/plugin-rbac'],
   }),
   Audit.actions('directory', directoryImportActions),
-  Ui.i18n('./client/i18n'),
   // no page of its own: importing is a dialog over the roster it adds to, and
   // what was imported before is a sheet beside it
   Ui.surfaces({

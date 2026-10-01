@@ -1,10 +1,10 @@
-import type { ErrorMessageMap } from '@qualy/i18n-contract'
+import { type CommonErrorCode } from '@qualy/i18n-contract'
 import * as m from '#messages'
 
 // framework-free error localization: turns a thrown api error into a
 // localized sentence from its stable code and typed data. The backend's
-// english message is a protocol fallback (openapi docs, non-browser
-// clients, missing translations), never the primary display text.
+// english message serves non-browser clients. Use cases own domain failures;
+// this module formats only the platform failures and a localized fallback.
 
 /**
  * A failure the api declared, whichever client produced it.
@@ -83,9 +83,7 @@ function asApiError(error: unknown): ApiErrorShape | undefined {
     code: candidate._tag,
     // the fields are on the instance, so the instance is its own data
     data: error,
-    // and the english sentence the server sends for clients that do not
-    // localize, which is the last thing between an untranslated code and
-    // "something went wrong"
+    // Available for protocol inspection, never displayed by the formatter.
     message: error instanceof Error ? error.message : undefined,
   }
 }
@@ -115,68 +113,53 @@ function isNetworkError(error: unknown): boolean {
 // arrives now is ACCESS_DENIED and BAD_REQUEST. Every one of those four
 // translations was unreachable, and the two that do arrive fell through to the
 // english message the server sends for non-browser clients.
-const clientUnsupported = m.error_clientUnsupported
+export const commonErrorMessages: Record<CommonErrorCode, (error: unknown) => string> = {
+  AUTH_REQUIRED: () => m.error_authRequired(),
+  SESSION_EXPIRED: () => m.error_sessionExpired(),
+  ACCESS_DENIED: () => m.error_accessDenied(),
+  BAD_REQUEST: () => m.error_badRequest(),
+  TOO_MANY_ATTEMPTS: (error) => {
+    const seconds = (error as { retryAfterSeconds?: number }).retryAfterSeconds ?? 0
+    return m.error_tooManyAttempts({ minutes: Math.max(1, Math.ceil(seconds / 60)) })
+  },
+  REQUEST_ORIGIN_REFUSED: () => m.error_requestOriginRefused(),
+  API_ROUTE_NOT_FOUND: () => m.error_apiRouteNotFound(),
+  QUALY_CLIENT_PROTOCOL_UNSUPPORTED: () => m.error_clientUnsupported(),
+  QUALY_CLIENT_ASSEMBLY_UNSUPPORTED: () => m.error_clientUnsupported(),
+  QUALY_CLIENT_RELEASE_UNSUPPORTED: () => m.error_clientUnsupported(),
+  SERVICE_UNAVAILABLE: () => m.error_serviceUnavailable(),
+}
 
-export const commonErrorMessages = {
-  AUTH_REQUIRED: {
-    message: m.error_authRequired,
-  },
-  SESSION_EXPIRED: {
-    message: m.error_sessionExpired,
-  },
-  // counted where the attempt came from and at what it was aimed; the reader
-  // is told how long, rounded up to whole minutes, and nothing about which
-  TOO_MANY_ATTEMPTS: {
-    message: m.error_tooManyAttempts,
-    values: (data: { readonly retryAfterSeconds: number }) => ({
-      minutes: Math.max(1, Math.ceil(data.retryAfterSeconds / 60)),
-    }),
-  },
-  ACCESS_DENIED: {
-    message: m.error_accessDenied,
-  },
-  BAD_REQUEST: {
-    message: m.error_badRequest,
-  },
-  REQUEST_ORIGIN_REFUSED: {
-    message: m.error_requestOriginRefused,
-  },
-  // both mean the page and the api have drifted apart: the reader's move
-  // is a reload, and the release coordinator blocks the page on the rest
-  API_ROUTE_NOT_FOUND: {
-    message: m.error_apiRouteNotFound,
-  },
-  // Three findings, one sentence, one id. The api refuses a page whose
-  // protocol generation it does not speak, one built from a different plugin
-  // selection, and one naming a release it cannot identify; a reader does the
-  // same thing about all three, and which it was belongs to the diagnostic
-  // rather than to the screen.
-  QUALY_CLIENT_PROTOCOL_UNSUPPORTED: { message: clientUnsupported },
-  QUALY_CLIENT_ASSEMBLY_UNSUPPORTED: { message: clientUnsupported },
-  QUALY_CLIENT_RELEASE_UNSUPPORTED: { message: clientUnsupported },
-  // the database, or something else the server needs, is down or saturated;
-  // which one stays in the server log, and the reader's move is to wait
-  SERVICE_UNAVAILABLE: {
-    message: m.error_serviceUnavailable,
-  },
-} satisfies ErrorMessageMap
-
-// resolution order: transport failure, plugin-owned code, common code,
-// backend english message, generic fallback
-export function formatApiError(error: unknown, registry: ErrorMessageMap = {}): string {
+/** Platform failures only; domain failures belong to their use case. */
+export function formatPlatformFailure(error: unknown): string {
   if (isNetworkError(error)) return m.error_network()
-  const apiError = asApiError(error)
-  if (apiError) {
-    const common: ErrorMessageMap = commonErrorMessages
-    const registration = registry[apiError.code] ?? common[apiError.code]
-    if (registration) {
-      // the aggregate erased which code owns which data shape; the registry
-      // itself was type-checked against its contract, so the projection is
-      // safe here even though the static link is gone
-      const values = registration.values?.(apiError.data as never)
-      return registration.message(values ?? {})
-    }
-    if (apiError.message) return apiError.message
-  }
+  const code = getApiErrorCode(error)
+  if (code !== undefined && Object.hasOwn(commonErrorMessages, code))
+    return commonErrorMessages[code as CommonErrorCode](error)
   return m.error_unexpected()
+}
+
+export type UseCaseApiFailure<E> = E extends { readonly _tag: infer Tag extends string }
+  ? Tag extends Uppercase<Tag>
+    ? Tag extends CommonErrorCode
+      ? never
+      : E
+    : never
+  : never
+
+/** Separate transport/platform failures while preserving the endpoint's domain union. */
+export function isUseCaseApiFailure<E>(error: E): error is E & UseCaseApiFailure<E> {
+  const code = getApiErrorCode(error)
+  if (
+    code === undefined ||
+    !/^[A-Z][A-Z0-9_]*$/.test(code) ||
+    isTransportError(error) ||
+    Object.hasOwn(commonErrorMessages, code)
+  )
+    return false
+  return true
+}
+
+export function assertNever(value: never): never {
+  throw new Error(`unhandled domain failure: ${String(getApiErrorCode(value))}`)
 }

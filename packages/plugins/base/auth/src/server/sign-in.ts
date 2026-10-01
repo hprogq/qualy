@@ -28,7 +28,7 @@ import { createSessionToken, hashSessionToken } from '../session.ts'
 import { createHash, timingSafeEqual } from 'node:crypto'
 import { Secrets } from '@qualy/plugin-secrets/plugin'
 import { AuthConfig, SHARED_DEVICE_TTL_SECONDS } from './auth-config.ts'
-import type { SignInDevice } from '@qualy/auth-contract/device'
+import { type SignInDevice } from '@qualy/auth-contract/device'
 import { signInDevice } from './sign-in-device.ts'
 import { configOf, entranceSecrets, makeReadiness } from './readiness.ts'
 import { FLOW_TTL_MINUTES, makeFlows } from './flows.ts'
@@ -49,7 +49,7 @@ import { sessionCookieName, TooManyAttempts } from '@qualy/auth-contract/session
 import { clearSessionCookie, flowCookieNameFor, setSessionCookie } from './session-cookie.ts'
 import { preferredLocaleOf, setLocaleCookie, writePreferredLocale } from './locale.ts'
 import { chosenLocaleOf } from '@qualy/api-kit/locale'
-import type { SupportedLocale } from '@qualy/i18n-contract'
+import { type SupportedLocale } from '@qualy/i18n-contract'
 import { sameOriginPath } from './same-origin.ts'
 import { iconOf } from './login-icons.ts'
 
@@ -1369,6 +1369,11 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
         const tenant = yield* defaultTenant()
         if (!tenant) return { tenant: null, methods: [], passwordRule: null }
         const methods = yield* methodsOf(tenant.id)
+        const failureMessages: Record<string, import('@qualy/text').Text> = {}
+        for (const type of new Set(methods.map((method) => method.type))) {
+          const driver = (yield* drivers.forType(type))?.driver
+          Object.assign(failureMessages, driver?.failures)
+        }
         let passwordRule: LoginContext['passwordRule'] = null
         for (const method of methods) {
           const binding = (yield* drivers.forType(method.type))?.driver.binding
@@ -1384,6 +1389,7 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
         return {
           tenant: { name: tenant.name },
           methods,
+          failureMessages,
           passwordRule,
           ...(demoAccounts.length === 0
             ? {}

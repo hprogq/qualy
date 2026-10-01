@@ -1,6 +1,22 @@
+import {
+  useRunApi,
+  useApiMutation,
+  UiSlot,
+  useApi,
+  useApiQuery,
+  useLoadFailure,
+} from '@qualy/web-runtime'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  assertNever,
+  formatPlatformFailure,
+  formatPlatformFailure as formatError,
+  getApiErrorCode,
+} from '@qualy/web-i18n'
+
 import { useMemo, useState, type ReactNode } from 'react'
 import * as stylex from '@stylexjs/stylex'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+
 import {
   CheckIcon,
   ChevronRightIcon,
@@ -10,13 +26,12 @@ import {
   PlusIcon,
   XIcon,
 } from 'lucide-react'
-import { UiSlot, useApi, useApiQuery, useLoadFailure, useRunApi } from '@qualy/web-runtime'
-import { getApiErrorCode, useI18n } from '@qualy/web-i18n'
+
 import { useTerm } from '@qualy/plugin-settings/client/terms'
 import { authTerms } from '@qualy/auth-contract/terms'
 import { upload } from '@qualy/plugin-storage/client'
 import { orgNodePicker, type OrgNodePickerContext, type PickedOrgNode } from '@qualy/ui-contract'
-import type { ApiResult } from '@qualy/web-runtime/api'
+import { type ApiResult } from '@qualy/web-runtime/api'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { AsyncSection, Field, Feedback, FormDialog, RequiredMark } from '@qualy/ui/admin'
@@ -28,7 +43,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Spinner } from '@qualy/ui/spinner'
 import { useIsBelow } from '@qualy/ui/use-mobile'
 import { Pager } from '@qualy/ui/pager'
-import type { ResourceFailure } from '@qualy/ui/resource-state'
+import { type ResourceFailure } from '@qualy/ui/resource-state'
 import { toast } from '@qualy/ui/toast'
 import { directoryApi } from './api.ts'
 import { FlowFrame, type FlowAction } from './flow.tsx'
@@ -563,13 +578,11 @@ export function ImportWizard({
   onClose: () => void
   onOpenRecord: (importId: string) => void
 }) {
-  const { formatError } = useI18n()
   const failures = useLoadFailure()
   const businessNo = useTerm(authTerms.businessNumber)
   const phone = useIsBelow(PHONE)
   const api = useApi(directoryApi)
   const query = useApiQuery(directoryApi)
-  const run = useRunApi()
   const queryClient = useQueryClient()
 
   const options = useQuery(query.directory.getUserImportOptions.queryOptions({}))
@@ -639,6 +652,7 @@ export function ImportWizard({
     return failures.of(error)
   }
 
+  const run = useRunApi()
   const uploading = useMutation({
     mutationFn: async (file: File) => {
       const ticket = await run(
@@ -661,9 +675,15 @@ export function ImportWizard({
         {},
       )
       const meta = await run(
-        api.directory.completeUserImportUpload({ params: { reservationId: ticket.reservationId } }),
+        api.directory.completeUserImportUpload({
+          params: { reservationId: ticket.reservationId },
+        }),
       )
-      return { attachmentId: meta.id, filename: meta.filename, size: file.size } satisfies Uploaded
+      return {
+        attachmentId: meta.id,
+        filename: meta.filename,
+        size: file.size,
+      } satisfies Uploaded
     },
     onSuccess: (file) => {
       setUploaded(file)
@@ -671,7 +691,18 @@ export function ImportWizard({
       setPreview(null)
       setAt(1)
     },
-    onError: (error) => toast.error(formatError(error)),
+    onError: (error) => {
+      switch (getApiErrorCode(error)) {
+        case 'USER_IMPORT_INVALID':
+          toast.error(m.error_invalid())
+          return
+        case 'USER_IMPORT_SOURCE_UNAVAILABLE':
+          toast.error(m.error_sourceUnavailable())
+          return
+        default:
+          toast.error(formatPlatformFailure(error))
+      }
+    },
   })
 
   const mapping = () => ({
@@ -690,29 +721,70 @@ export function ImportWizard({
     mapping: mapping(),
   })
 
-  const checking = useMutation({
-    mutationFn: () => run(api.directory.previewUserImport({ payload: request() })),
+  const checking = useApiMutation({
+    mutationFn: () => api.directory.previewUserImport({ payload: request() }),
     onSuccess: (found) => {
       setPreview(found)
       setIssuePage(1)
       setAt(3)
     },
-    onError: (error) => toast.error(formatError(error)),
+    onError: (error) => {
+      switch (error._tag) {
+        case 'USER_IMPORT_BUSY':
+          toast.error(m.error_busy())
+          return
+        case 'USER_IMPORT_INVALID':
+          toast.error(m.error_invalid())
+          return
+        case 'USER_IMPORT_MAPPING_INVALID':
+          toast.error(m.error_mappingInvalid())
+          return
+        case 'USER_IMPORT_SOURCE_UNAVAILABLE':
+          toast.error(m.error_sourceUnavailable())
+          return
+        case 'USER_IMPORT_SOURCE_USED':
+          toast.error(m.error_sourceUsed())
+          return
+        default:
+          assertNever(error)
+      }
+    },
   })
 
-  const committing = useMutation({
+  const committing = useApiMutation({
     mutationFn: () =>
-      run(
-        api.directory.commitUserImport({
-          payload: { ...request(), expectedPlanFingerprint: preview?.planFingerprint ?? '' },
-        }),
-      ),
+      api.directory.commitUserImport({
+        payload: { ...request(), expectedPlanFingerprint: preview?.planFingerprint ?? '' },
+      }),
     onSuccess: (result) => {
       setDone(result)
       setAt(4)
       void queryClient.invalidateQueries({ queryKey: query.directory.listUserImports.key() })
     },
-    onError: (error) => toast.error(formatError(error)),
+    onError: (error) => {
+      switch (error._tag) {
+        case 'USER_IMPORT_BUSY':
+          toast.error(m.error_busy())
+          return
+        case 'USER_IMPORT_INVALID':
+          toast.error(m.error_invalid())
+          return
+        case 'USER_IMPORT_MAPPING_INVALID':
+          toast.error(m.error_mappingInvalid())
+          return
+        case 'USER_IMPORT_PLAN_CHANGED':
+          toast.error(m.error_planChanged())
+          return
+        case 'USER_IMPORT_SOURCE_UNAVAILABLE':
+          toast.error(m.error_sourceUnavailable())
+          return
+        case 'USER_IMPORT_SOURCE_USED':
+          toast.error(m.error_sourceUsed())
+          return
+        default:
+          assertNever(error)
+      }
+    },
   })
 
   const mappingReady =

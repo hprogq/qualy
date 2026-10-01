@@ -368,6 +368,26 @@ describe('the sign-in screen', () => {
     await expect.element(page.getByRole('button', { name: '账号密码' })).toBeVisible()
   })
 
+  it('shows the offered driver failure without importing its implementation', async () => {
+    await renderScreen({
+      client: fakeClient({
+        app: { getManifest: emptyManifest() },
+        auth: {
+          ...anonymous,
+          listLoginMethods: {
+            ...context([away('campus', '校园登录')]),
+            failureMessages: { CAMPUS_PROOF_REJECTED: '校园身份校验未通过' },
+          },
+        },
+      }),
+      route: '/login?error=CAMPUS_PROOF_REJECTED',
+      children: <LoginPage />,
+    })
+    await expect
+      .element(page.getByTestId('sign-in-failure'))
+      .toHaveTextContent('校园身份校验未通过')
+  })
+
   it('shows nothing for an error that is not a code', async () => {
     await renderScreen({
       client: fakeClient({

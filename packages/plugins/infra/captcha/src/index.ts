@@ -1,5 +1,4 @@
 import { Plugin } from '@qualy/plugin-kit'
-import { Ui } from '@qualy/plugin-ui-registry/plugin'
 import { Captcha } from './plugin.ts'
 import { barrierLayer, registryLayer, serviceLayer } from './server/index.ts'
 
@@ -18,7 +17,6 @@ const plugin = Plugin.define(
   '@qualy/plugin-captcha',
   { dependsOn: ['@qualy/plugin-secrets', '@qualy/plugin-ui-registry'] },
   Captcha.owner,
-  Ui.i18n('./client/i18n'),
   Plugin.layer(registryLayer),
   Plugin.layer(serviceLayer),
   Plugin.layer(barrierLayer),

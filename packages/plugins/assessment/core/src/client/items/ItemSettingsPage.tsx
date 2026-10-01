@@ -1,17 +1,20 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useLocation } from 'react-router'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import * as stylex from '@stylexjs/stylex'
-import { PencilIcon } from 'lucide-react'
+import { scoringIncompatibleValues } from './scoring-refusals.ts'
+import { assertNever, formatPlatformFailure as formatError } from '@qualy/web-i18n'
+import { Effect } from 'effect'
+
 import {
+  useApiMutation,
   useApi,
   useApiQuery,
   useLoadFailure,
   usePageQueryState,
   usePageQueryUpdate,
-  useRunApi,
 } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useLocation } from 'react-router'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import * as stylex from '@stylexjs/stylex'
+import { PencilIcon } from 'lucide-react'
 
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { AsyncSection, ConfirmDialog } from '@qualy/ui/admin'
@@ -29,8 +32,14 @@ import { GroupEditor } from './GroupEditor.tsx'
 import { PaperStart } from './PaperStart.tsx'
 import { StructureTable } from './StructureTable.tsx'
 import { itemCeiling, sortOrdersAfterDrop, structureRows, type StructureRow } from './structure.ts'
-import type { GroupTarget, Placement, TreeDraft, TreeGroup, TreeSelection } from './paper.ts'
-import type { Draft as QuestionDraft } from './editor/model.ts'
+import {
+  type GroupTarget,
+  type Placement,
+  type TreeDraft,
+  type TreeGroup,
+  type TreeSelection,
+} from './paper.ts'
+import { type Draft as QuestionDraft } from './editor/model.ts'
 import { ReasonDialog } from './ReasonDialog.tsx'
 import { ReviewGapNotice } from './ReviewGapNotice.tsx'
 import { VoidQuestionDialog } from './VoidQuestionDialog.tsx'
@@ -491,9 +500,8 @@ function Editor({
 }) {
   const query = useApiQuery(assessmentApi)
   const api = useApi(assessmentApi)
-  const run = useRunApi()
   const queryClient = useQueryClient()
-  const { formatError } = useI18n()
+
   const failures = useLoadFailure()
   const groups = useQuery(query.assessment.listScoreGroups.queryOptions({ params: { batchId } }))
   const items = useQuery(query.assessment.listItems.queryOptions({ params: { batchId } }))
@@ -590,18 +598,18 @@ function Editor({
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: query.assessment.key() })
 
-  const restore = useMutation({
+  const restore = useApiMutation({
     mutationFn: (itemId: string) =>
-      run(api.assessment.setItemStatus({ params: { itemId }, payload: { status: 'active' } })),
+      api.assessment.setItemStatus({ params: { itemId }, payload: { status: 'active' } }),
     onSuccess: () => void refresh(),
     onError: (error) => toast.error(refusedPublish(error, formatError)),
   })
 
   // publishing and restoring are the same write; they are separate here
   // because they answer different questions and say different things
-  const publish = useMutation({
+  const publish = useApiMutation({
     mutationFn: (itemId: string) =>
-      run(api.assessment.setItemStatus({ params: { itemId }, payload: { status: 'active' } })),
+      api.assessment.setItemStatus({ params: { itemId }, payload: { status: 'active' } }),
     onSuccess: () => {
       toast.success(m.items_published())
       void refresh()
@@ -609,13 +617,27 @@ function Editor({
     onError: (error) => toast.error(refusedPublish(error, formatError)),
   })
 
-  const remove = useMutation({
-    mutationFn: (itemId: string) => run(api.assessment.deleteItem({ params: { itemId } })),
+  const remove = useApiMutation({
+    mutationFn: (itemId: string) => api.assessment.deleteItem({ params: { itemId } }),
     onSuccess: () => {
       close()
       void refresh()
     },
-    onError: (error) => toast.error(formatError(error)),
+    onError: (error) => {
+      switch (error._tag) {
+        case 'ASSESSMENT_BATCH_READ_ONLY':
+          toast.error(m.error_batchReadOnly())
+          return
+        case 'ASSESSMENT_ITEM_ACTION_REFUSED':
+          toast.error(m.error_itemActionRefused())
+          return
+        case 'ASSESSMENT_ITEM_NOT_FOUND':
+          toast.error(m.error_itemNotFound())
+          return
+        default:
+          assertNever(error)
+      }
+    },
   })
 
   const allGroups = groups.data?.groups ?? []
@@ -626,31 +648,31 @@ function Editor({
 
   // a drop, made durable: only the rows whose place actually changed are
   // written, so an idle drag costs nothing
-  const moveItem = useMutation({
-    mutationFn: async (input: {
+  const moveItem = useApiMutation({
+    mutationFn: (input: {
       itemId: string
       groupId: string
       orderedItemIds: readonly string[]
       reason: string | null
-    }) => {
-      const sequence = input.orderedItemIds.flatMap((id) => {
-        const current = allItems.find((item) => item.id === id)
-        return current === undefined
-          ? []
-          : [{ id, sortOrder: current.sortOrder, voided: current.status === 'voided' }]
-      })
-      // a voided question keeps the place it had: nothing about it may be
-      // written any more, its place in the order included, so the live ones
-      // are numbered around it
-      const placed = sortOrdersAfterDrop(sequence)
-      for (const id of input.orderedItemIds) {
-        const current = allItems.find((item) => item.id === id)
-        const sortOrder = placed.get(id)
-        if (current === undefined || sortOrder === undefined) continue
-        const movedGroup = id === input.itemId && current.scoreGroupId !== input.groupId
-        if (current.sortOrder !== sortOrder || movedGroup) {
-          await run(
-            api.assessment.updateItem({
+    }) =>
+      Effect.gen(function* () {
+        const sequence = input.orderedItemIds.flatMap((id) => {
+          const current = allItems.find((item) => item.id === id)
+          return current === undefined
+            ? []
+            : [{ id, sortOrder: current.sortOrder, voided: current.status === 'voided' }]
+        })
+        // a voided question keeps the place it had: nothing about it may be
+        // written any more, its place in the order included, so the live ones
+        // are numbered around it
+        const placed = sortOrdersAfterDrop(sequence)
+        for (const id of input.orderedItemIds) {
+          const current = allItems.find((item) => item.id === id)
+          const sortOrder = placed.get(id)
+          if (current === undefined || sortOrder === undefined) continue
+          const movedGroup = id === input.itemId && current.scoreGroupId !== input.groupId
+          if (current.sortOrder !== sortOrder || movedGroup) {
+            yield* api.assessment.updateItem({
               params: { itemId: id },
               payload: {
                 sortOrder,
@@ -659,42 +681,82 @@ function Editor({
                 // api refuses to move one on a running round unsaid
                 ...(movedGroup && input.reason !== null ? { reason: input.reason } : {}),
               },
-            }),
-          )
+            })
+          }
         }
-      }
-    },
+      }),
     onSuccess: () => void refresh(),
     onError: (error) => {
-      toast.error(formatError(error))
+      let failure: string
+      switch (error._tag) {
+        case 'ASSESSMENT_BATCH_NOT_FOUND':
+          failure = m.error_batchNotFound()
+          break
+        case 'ASSESSMENT_BATCH_READ_ONLY':
+          failure = m.error_batchReadOnly()
+          break
+        case 'ASSESSMENT_ITEM_CHANGE_DECISION_REQUIRED':
+          failure = m.error_itemChangeDecisionRequired()
+          break
+        case 'ASSESSMENT_ITEM_CONFIG_INVALID':
+          failure = m.error_itemConfigInvalid()
+          break
+        case 'ASSESSMENT_ITEM_NOT_FOUND':
+          failure = m.error_itemNotFound()
+          break
+        case 'ASSESSMENT_ITEM_SCORING_INCOMPATIBLE':
+          failure = m.error_itemScoringIncompatible(scoringIncompatibleValues(error))
+          break
+        case 'ASSESSMENT_SCORING_UNAVAILABLE':
+          failure = m.error_scoringUnavailable()
+          break
+        default:
+          assertNever(error)
+      }
+      toast.error(failure)
       void refresh()
     },
   })
 
-  const reorderGroups = useMutation({
+  const reorderGroups = useApiMutation({
     mutationFn: (input: { parentId: string | null; orderedGroupIds: readonly string[] }) =>
-      run(
-        api.assessment.replaceScoreGroups({
-          params: { batchId },
-          payload: {
-            groups: allGroups.map((group) => ({
-              id: group.id,
-              parentGroupId: group.parentGroupId,
-              name: group.name,
-              cap: group.cap,
-              floor: group.floor,
-              sortOrder:
-                group.parentGroupId === input.parentId
-                  ? input.orderedGroupIds.indexOf(group.id)
-                  : group.sortOrder,
-            })),
-            expectedVersion: groupsVersion ?? 0,
-          },
-        }),
-      ),
+      api.assessment.replaceScoreGroups({
+        params: { batchId },
+        payload: {
+          groups: allGroups.map((group) => ({
+            id: group.id,
+            parentGroupId: group.parentGroupId,
+            name: group.name,
+            cap: group.cap,
+            floor: group.floor,
+            sortOrder:
+              group.parentGroupId === input.parentId
+                ? input.orderedGroupIds.indexOf(group.id)
+                : group.sortOrder,
+          })),
+          expectedVersion: groupsVersion ?? 0,
+        },
+      }),
     onSuccess: () => void refresh(),
     onError: (error) => {
-      toast.error(formatError(error))
+      let failure: string
+      switch (error._tag) {
+        case 'ASSESSMENT_BATCH_NOT_FOUND':
+          failure = m.error_batchNotFound()
+          break
+        case 'ASSESSMENT_BATCH_READ_ONLY':
+          failure = m.error_batchReadOnly()
+          break
+        case 'ASSESSMENT_SCORE_GROUP_INVALID':
+          failure = m.error_scoreGroupInvalid()
+          break
+        case 'ASSESSMENT_SCORE_GROUP_VERSION_CONFLICT':
+          failure = m.error_scoreGroupVersionConflict()
+          break
+        default:
+          assertNever(error)
+      }
+      toast.error(failure)
       void refresh()
     },
   })

@@ -1,8 +1,7 @@
+import { assertNever } from '@qualy/web-i18n'
+import { useApiMutation, useApi, useRunApi } from '@qualy/web-runtime'
 import { useState } from 'react'
-import { useMutation } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
-import { useApi, useRunApi } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
 
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { Feedback, FormDialog } from '@qualy/ui/admin'
@@ -12,7 +11,7 @@ import { assessmentApi } from '../api.ts'
 
 import { EvidenceForm, type EvidenceFieldSpec, type EvidencePayload } from './EvidenceForm.tsx'
 import { entryRefusalMessage } from './refusals.ts'
-import type { EntryDto, EntrySupplementDto } from './model.ts'
+import { type EntryDto, type EntrySupplementDto } from './model.ts'
 import * as commonMessages from '@qualy/web-i18n/messages'
 import * as m from '#messages'
 
@@ -57,7 +56,7 @@ export function SupplementAnswerDialog({
 }) {
   const api = useApi(assessmentApi)
   const run = useRunApi()
-  const { formatError } = useI18n()
+
   const [payload, setPayload] = useState<EvidencePayload>({})
   const [problem, setProblem] = useState<string | null>(null)
 
@@ -83,22 +82,40 @@ export function SupplementAnswerDialog({
       run(api.assessment.completeAttachmentUpload({ params: { reservationId } })),
   }
 
-  const send = useMutation({
+  const send = useApiMutation({
     mutationFn: () =>
-      run(
-        api.assessment.answerSupplement({
-          params: { requestId: supplement.requestId },
-          payload: { payload },
-        }),
-      ),
+      api.assessment.answerSupplement({
+        params: { requestId: supplement.requestId },
+        payload: { payload },
+      }),
     onMutate: () => setProblem(null),
     onSuccess: () => {
       toast.success(m.entry_supplementSent())
       onDone()
     },
-    onError: (error: unknown) => {
+    onError: (error) => {
+      let failure: string
+      switch (error._tag) {
+        case 'ASSESSMENT_BATCH_READ_ONLY':
+          failure = m.error_batchReadOnly()
+          break
+        case 'ASSESSMENT_ENTRY_ACTION_REFUSED':
+          failure = m.error_entryActionRefused()
+          break
+        case 'ASSESSMENT_ENTRY_PAYLOAD_INVALID':
+          failure = m.error_entryPayloadInvalid()
+          break
+        case 'ASSESSMENT_REVIEW_CONFLICT':
+          failure = m.error_reviewConflict()
+          break
+        case 'ASSESSMENT_REVIEW_NOT_FOUND':
+          failure = m.error_reviewNotFound()
+          break
+        default:
+          assertNever(error)
+      }
       const refusal = entryRefusalMessage(error)
-      setProblem(refusal === null ? formatError(error) : refusal())
+      setProblem(refusal === null ? failure : refusal())
     },
   })
 

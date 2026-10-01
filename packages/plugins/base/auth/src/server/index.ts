@@ -1,9 +1,9 @@
 import { Context, Effect, Layer } from 'effect'
 import { UserProvisioning } from '@qualy/auth-contract/provisioning'
 import { Placement, UserPlacement } from '@qualy/auth-contract'
-import type { Principal } from '@qualy/rbac-contract'
+import { type Principal } from '@qualy/rbac-contract'
 import { withDatabase, type Orm } from '@qualy/plugin-database/server'
-import type { Secrets } from '@qualy/plugin-secrets/plugin'
+import { type Secrets } from '@qualy/plugin-secrets/plugin'
 import { HttpApiBuilder } from 'effect/http-api'
 import {
   DEFAULT_PAGE_SIZE,
@@ -259,7 +259,7 @@ export const sessionApiHandlers = HttpApiBuilder.group(local, 'auth', (handlers)
       'listLoginMethods',
       Effect.fn('auth.listLoginMethods.handler')(function* () {
         const signIn = yield* SignIn
-        return yield* signIn.loginContext()
+        return renderTexts(yield* signIn.loginContext(), { locale: yield* requestLocale })
       }),
     )
     .handle(

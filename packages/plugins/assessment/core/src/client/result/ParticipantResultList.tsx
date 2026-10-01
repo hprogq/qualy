@@ -1,11 +1,9 @@
+import { Effect } from 'effect'
+import { useApiMutation, UiSlot, useApi, useApiQuery, useLoadFailure } from '@qualy/web-runtime'
+import { assertNever, formatPlatformFailure as formatError } from '@qualy/web-i18n'
+
 import { useEffect, useMemo, useRef, useState } from 'react'
-import {
-  keepPreviousData,
-  useMutation,
-  useQuery,
-  useQueryClient,
-  type QueryKey,
-} from '@tanstack/react-query'
+import { keepPreviousData, useQuery, useQueryClient, type QueryKey } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import {
   ChevronRightIcon,
@@ -14,13 +12,12 @@ import {
   PanelLeftCloseIcon,
   PanelLeftOpenIcon,
 } from 'lucide-react'
-import { UiSlot, useApi, useApiQuery, useLoadFailure, useRunApi } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
+
 import { useTerm } from '@qualy/plugin-settings/client/terms'
 import { authTerms } from '@qualy/auth-contract/terms'
 
 import { orgNodePickerView } from '@qualy/ui-contract'
-import { AsyncSection, Feedback } from '@qualy/ui/admin'
+import { AsyncSection, Feedback, ConfirmDialog } from '@qualy/ui/admin'
 import {
   Card,
   CardEmpty,
@@ -44,7 +41,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@qualy/ui/dropdown-menu'
-import { ConfirmDialog } from '@qualy/ui/admin'
+
 import { Pager } from '@qualy/ui/pager'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@qualy/ui/select'
 import { Skeleton } from '@qualy/ui/skeleton'
@@ -59,7 +56,7 @@ import { ImportDialog } from '../roster/ImportDialog.tsx'
 import { PlacementDialog, type PlacementDecision } from '../roster/PlacementDialog.tsx'
 import { RosterNotices } from '../roster/RosterNotices.tsx'
 import { UnreachableDialog } from '../roster/UnreachableDialog.tsx'
-import type { AdmissionOutcomeFacts } from '../roster/AdmissionOutcome.tsx'
+import { type AdmissionOutcomeFacts } from '../roster/AdmissionOutcome.tsx'
 import { RosterFilings } from '../roster/RosterFilings.tsx'
 import { useWaitingColumn, waitsOnAnything } from '../roster/filings.ts'
 import { RosterScore } from '../roster/RosterScore.tsx'
@@ -78,7 +75,7 @@ import { assessmentApi } from '../api.ts'
 import { useBatchLive } from '../live.ts'
 import { ROSTER_MAX_WAIT, ROSTER_SETTLE, settler, SYNC_FRESH } from '../roster/live-settle.ts'
 import { ScoresNotice } from '../roster/ScoresNotice.tsx'
-import type { BatchLiveEvent } from '../../api.ts'
+import { type BatchLiveEvent } from '../../api.ts'
 import * as commonMessages from '@qualy/web-i18n/messages'
 import * as m from '#messages'
 
@@ -381,9 +378,9 @@ export function ParticipantResultList({
 }) {
   const query = useApiQuery(assessmentApi)
   const api = useApi(assessmentApi)
-  const run = useRunApi()
+
   const queryClient = useQueryClient()
-  const { formatError } = useI18n()
+
   const failures = useLoadFailure()
   const [failure, setFailure] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
@@ -577,14 +574,12 @@ export function ParticipantResultList({
   const [imported, setImported] = useState<AdmissionOutcomeFacts | null>(null)
   const warns = (facts: AdmissionOutcomeFacts) =>
     (facts.cannotSubmit ?? 0) > 0 || (facts.systemAccounts ?? 0) > 0
-  const addPeople = useMutation({
+  const addPeople = useApiMutation({
     mutationFn: (userIds: readonly string[]) =>
-      run(
-        api.assessment.addParticipants({
-          params: { batchId },
-          payload: { userIds: [...userIds] },
-        }),
-      ),
+      api.assessment.addParticipants({
+        params: { batchId },
+        payload: { userIds: [...userIds] },
+      }),
     onMutate: () => setFailure(null),
     onSuccess: (result: AdmissionOutcomeFacts) => {
       if (warns(result)) setAdded(result)
@@ -596,17 +591,15 @@ export function ParticipantResultList({
     },
     onError,
   })
-  const importPeople = useMutation({
+  const importPeople = useApiMutation({
     mutationFn: (selection: { orgNodeIds: readonly string[]; userTypeIds: readonly string[] }) =>
-      run(
-        api.assessment.importParticipants({
-          params: { batchId },
-          payload: {
-            orgNodeIds: [...selection.orgNodeIds],
-            userTypeIds: [...selection.userTypeIds],
-          },
-        }),
-      ),
+      api.assessment.importParticipants({
+        params: { batchId },
+        payload: {
+          orgNodeIds: [...selection.orgNodeIds],
+          userTypeIds: [...selection.userTypeIds],
+        },
+      }),
     onMutate: () => setFailure(null),
     onSuccess: (result: AdmissionOutcomeFacts) => {
       if (warns(result)) setImported(result)
@@ -633,14 +626,14 @@ export function ParticipantResultList({
     setUnreachableOpen(true)
   }
 
-  const setStatus = useMutation({
+  const setStatus = useApiMutation({
     mutationFn: (input: { participantId: string; status: 'active' | 'excluded' }) =>
-      run(
-        api.assessment.setParticipantStatus({
+      api.assessment
+        .setParticipantStatus({
           params: { batchId, participantId: input.participantId },
           payload: { status: input.status },
-        }),
-      ).then((answer) => ({ ...answer, status: input.status })),
+        })
+        .pipe(Effect.map((answer) => ({ ...answer, status: input.status }))),
     onMutate: () => setFailure(null),
     onSuccess: (result: { status: 'active' | 'excluded' }) => {
       setExcluding(null)
@@ -650,25 +643,43 @@ export function ParticipantResultList({
     onError,
   })
 
-  const reconcile = useMutation({
+  const reconcile = useApiMutation({
     mutationFn: (input: { decisions: readonly PlacementDecision[]; reason: string }) =>
-      run(
-        api.assessment.reconcileParticipantPlacements({
-          params: { batchId },
-          payload: {
-            decisions: [...input.decisions],
-            ...(input.reason !== '' ? { reason: input.reason } : {}),
-          },
-        }),
-      ),
+      api.assessment.reconcileParticipantPlacements({
+        params: { batchId },
+        payload: {
+          decisions: [...input.decisions],
+          ...(input.reason !== '' ? { reason: input.reason } : {}),
+        },
+      }),
     onSuccess: (result: { synced: number; kept: number }) => {
       toast.success(m.placement_settled({ count: result.synced + result.kept }))
       void invalidate()
     },
     // a refusal is about what the dialog shows, so it is said there and the
     // differences are read again: one that moved on is shown as it is now
-    onError: (error: unknown) => {
-      toast.error(formatError(error))
+    onError: (error) => {
+      let failure: string
+      switch (error._tag) {
+        case 'ASSESSMENT_BATCH_NOT_FOUND':
+          failure = m.error_batchNotFound()
+          break
+        case 'ASSESSMENT_BATCH_READ_ONLY':
+          failure = m.error_batchReadOnly()
+          break
+        case 'ASSESSMENT_PARTICIPANT_INVALID':
+          failure = m.error_participantInvalid()
+          break
+        case 'ASSESSMENT_PARTICIPANT_NOT_FOUND':
+          failure = m.error_participantNotFound()
+          break
+        case 'ASSESSMENT_PARTICIPANT_PLACEMENT_CHANGED':
+          failure = m.error_participantPlacementChanged()
+          break
+        default:
+          assertNever(error)
+      }
+      toast.error(failure)
       void invalidate()
     },
   })

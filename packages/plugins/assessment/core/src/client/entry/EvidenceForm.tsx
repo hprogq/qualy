@@ -1,9 +1,10 @@
+import { formatPlatformFailure as formatError, useLocale } from '@qualy/web-i18n'
+
 import { useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { DownloadIcon, FileTextIcon, UploadIcon, XIcon } from 'lucide-react'
 import { useApiQuery } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
 import { entryRefusalMessage } from './refusals.ts'
 import { parseDecimal } from '@qualy/value-schema'
 import { VisuallyHidden } from '@qualy/ui/visually-hidden'
@@ -223,7 +224,7 @@ export function EvidenceForm({
    */
   advice?: Readonly<Record<string, string>>
 }) {
-  const { formatError, locale } = useI18n()
+  const locale = useLocale()
   const words = usePickerWords()
   const [uploaded, setUploaded] = useState<Record<string, UploadedFile>>({})
   const [uploading, setUploading] = useState<{ field: string; names: readonly string[] } | null>(

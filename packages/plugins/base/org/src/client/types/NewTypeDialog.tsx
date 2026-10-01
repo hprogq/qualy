@@ -1,11 +1,11 @@
+import { formatPlatformFailure as formatError, getApiErrorCode } from '@qualy/web-i18n'
 import { useState } from 'react'
-import { getApiErrorCode, useI18n } from '@qualy/web-i18n'
 
 import { Field, FormDialog } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
 
-import type { Api, Run } from '../shape.ts'
+import { type Api, type Run } from '../shape.ts'
 import * as commonMessages from '@qualy/web-i18n/messages'
 import * as m from '#messages'
 
@@ -23,7 +23,6 @@ export function NewTypeDialog({
   onCreated: (id: string) => void
   onClose: () => void
 }) {
-  const { formatError } = useI18n()
   const [name, setName] = useState('')
   // a name another kind already has is the name's to fix, said under it
   const [taken, setTaken] = useState<string | null>(null)

@@ -182,5 +182,6 @@
   "error_planChanged": "Something changed since the check. Check the file again.",
   "error_sourceUnavailable": "The uploaded file is no longer available. Upload it again.",
   "error_busy": "Other files are being read right now. Try again in a moment.",
-  "error_sourceUsed": "This file was already imported. Upload it again to import it once more."
+  "error_sourceUsed": "This file was already imported. Upload it again to import it once more.",
+  "error_lastAdministrator": "The tenant would be left without an administrator who can still sign in."
 }

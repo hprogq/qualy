@@ -1,9 +1,15 @@
+import { assertNever } from '@qualy/web-i18n'
+import {
+  useApiMutation,
+  LoadFailure,
+  useApi,
+  useApiQuery,
+  useLoadFailure,
+} from '@qualy/web-runtime'
 import { useId, useState, type FormEvent } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { ShieldOffIcon } from 'lucide-react'
-import { LoadFailure, useApi, useApiQuery, useLoadFailure, useRunApi } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
 
 import { Feedback, Field, FormDialog } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
@@ -89,10 +95,9 @@ function ReauthenticationDialog({
   onDone: () => void
 }) {
   const api = useApi(authApi)
-  const run = useRunApi()
   const query = useApiQuery(authApi)
   const queryClient = useQueryClient()
-  const { formatError } = useI18n()
+
   const describe = useLoadFailure()
   const formId = useId()
   const state = useQuery(query.self.getSelfReauthentication.queryOptions())
@@ -100,30 +105,67 @@ function ReauthenticationDialog({
   const [password, setPassword] = useState('')
   const [code, setCode] = useState('')
   const [sent, setSent] = useState(false)
-  const prove = useMutation({
+  const [refused, setRefused] = useState<string | null>(null)
+  const prove = useApiMutation({
     mutationFn: (
       proof: { method: 'password'; password: string } | { method: 'code'; code: string },
     ) =>
-      run(
-        // one call per shape, so each is the payload the contract names
-        proof.method === 'password'
-          ? api.self.putSelfReauthentication({ payload: proof })
-          : api.self.putSelfReauthentication({ payload: proof }),
-      ),
+      proof.method === 'password'
+        ? api.self.putSelfReauthentication({ payload: proof })
+        : api.self.putSelfReauthentication({ payload: proof }),
+    onMutate: () => setRefused(null),
+    onError: (error) => {
+      switch (error._tag) {
+        case 'USER_NOT_FOUND':
+          setRefused(m.error_userNotFound())
+          return
+        case 'AUTH_PASSWORD_INCORRECT':
+          setRefused(m.error_passwordIncorrect())
+          return
+        case 'AUTH_REAUTHENTICATION_REQUIRED':
+          setRefused(m.error_reauthenticationRequired())
+          return
+        case 'AUTH_REAUTHENTICATION_CODE_INVALID':
+          setRefused(m.error_reauthenticationCodeInvalid())
+          return
+        case 'AUTH_REAUTHENTICATION_METHOD_UNAVAILABLE':
+          setRefused(m.error_reauthenticationMethodUnavailable())
+          return
+        default:
+          assertNever(error)
+      }
+    },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: query.self.getSelfReauthentication.key() })
       clear()
       onDone()
     },
   })
-  const send = useMutation({
-    mutationFn: () => run(api.self.createSelfReauthenticationCode({})),
+  const send = useApiMutation({
+    mutationFn: () => api.self.createSelfReauthenticationCode({}),
     onSuccess: () => setSent(true),
+    onMutate: () => setRefused(null),
+    onError: (error) => {
+      switch (error._tag) {
+        case 'USER_NOT_FOUND':
+          setRefused(m.error_userNotFound())
+          return
+        case 'AUTH_REAUTHENTICATION_METHOD_UNAVAILABLE':
+          setRefused(m.error_reauthenticationMethodUnavailable())
+          return
+        case 'AUTH_MAIL_NOT_SENT':
+          setRefused(m.error_mailNotSent())
+          return
+        default:
+          assertNever(error)
+      }
+    },
   })
   const clear = () => {
     setPassword('')
     setCode('')
     setSent(false)
+    setRefused(null)
     prove.reset()
     send.reset()
   }
@@ -133,7 +175,6 @@ function ReauthenticationDialog({
   }
   const method = state.data?.method
   // what a press was refused, said in the form beside it
-  const refused = prove.error ?? send.error
   // Nothing in the dialog can be done: there is no way of showing it is
   // them from here, or the question of how could not be asked. The one
   // press left is the way out.
@@ -264,7 +305,7 @@ function ReauthenticationDialog({
             retrying={state.isFetching}
           />
         )}
-        <Feedback message={refused === null ? null : formatError(refused)} />
+        <Feedback message={refused} />
       </form>
     </FormDialog>
   )

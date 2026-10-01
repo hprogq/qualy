@@ -1,12 +1,12 @@
+import { useLocale } from '@qualy/web-i18n'
 import * as stylex from '@stylexjs/stylex'
 import { ChevronRightIcon } from 'lucide-react'
-import { useI18n } from '@qualy/web-i18n'
 import { VisuallyHidden } from '@qualy/ui/visually-hidden'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 
 import { useBatchZone } from '../../batch/zone.ts'
 import { EntryStanding } from '../EntryStanding.tsx'
-import type { EntryDto } from '../model.ts'
+import { type EntryDto } from '../model.ts'
 import { UnreadDot } from './marks.tsx'
 import { LineParts } from './LineText.tsx'
 import { momentOf, standingOf, type EntryLine } from './model.ts'
@@ -204,7 +204,7 @@ export function EntryRow({
   selected: boolean
   onOpen: () => void
 }) {
-  const { locale } = useI18n()
+  const locale = useLocale()
   const zone = useBatchZone()
   const [lead, ...rest] = line.parts
   const when = momentOf(line.at, locale, zone)

@@ -1,8 +1,9 @@
+import { assertNever, useLocale } from '@qualy/web-i18n'
+import { Effect } from 'effect'
+import { useApiMutation, useApi, useRunApi } from '@qualy/web-runtime'
+
 import { useEffect, useRef, useState } from 'react'
-import { useMutation } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
-import { useApi, useRunApi } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
 
 import { ConfirmDialog, Feedback, Field, FormDialog } from '@qualy/ui/admin'
 import { ClockIcon, RefreshCwIcon } from 'lucide-react'
@@ -378,7 +379,7 @@ function EntryDialogBody({
 }: EntryDialogProps) {
   const api = useApi(assessmentApi)
   const run = useRunApi()
-  const { formatError, locale } = useI18n()
+  const locale = useLocale()
   // the stage the round is in, for saying which one holds handing it on
   const round = useRound(batchId)
   const [payload, setPayload] = useState<EvidencePayload>(
@@ -477,45 +478,43 @@ function EntryDialogBody({
   const [openedOn] = useState(() => entry?.currentRevision?.id)
   const [lastWritten, setLastWritten] = useState<string | null>(null)
 
-  const save = useMutation({
-    mutationFn: async (andSubmit: boolean) => {
-      // every call names the question this screen was drawn from, submission
-      // included: handing it on is a decision about the rules in front of
-      // the person pressing, not about the ones the draft was written under
-      const seen = asked.currentRevision?.id
-      sent.current = payload
-      const body = {
-        payload,
-        ...(seen === undefined ? {} : { expectedItemRevisionId: seen }),
-        ...(note.trim() === '' ? {} : { note: note.trim() }),
-      }
-      const writing = entry?.id ?? created
-      const drawn = lastWritten ?? openedOn
-      const saved =
-        writing === null || writing === undefined
-          ? await run(
-              api.assessment.createEntry({ payload: { itemId: asked.id, participantId, ...body } }),
-            )
-          : await run(
-              api.assessment.reviseEntry({
+  const save = useApiMutation({
+    mutationFn: (andSubmit: boolean) =>
+      Effect.gen(function* () {
+        // every call names the question this screen was drawn from, submission
+        // included: handing it on is a decision about the rules in front of
+        // the person pressing, not about the ones the draft was written under
+        const seen = asked.currentRevision?.id
+        sent.current = payload
+        const body = {
+          payload,
+          ...(seen === undefined ? {} : { expectedItemRevisionId: seen }),
+          ...(note.trim() === '' ? {} : { note: note.trim() }),
+        }
+        const writing = entry?.id ?? created
+        const drawn = lastWritten ?? openedOn
+        const saved =
+          writing === null || writing === undefined
+            ? yield* api.assessment.createEntry({
+                payload: { itemId: asked.id, participantId, ...body },
+              })
+            : yield* api.assessment.reviseEntry({
                 params: { entryId: writing },
                 payload: {
                   ...body,
                   ...(drawn === undefined ? {} : { expectedEntryRevisionId: drawn }),
                 },
-              }),
-            )
-      const written = (
-        saved as { entry?: { id?: string; currentRevision?: { id?: string } | null } }
-      ).entry
-      const entryId = written?.id ?? writing ?? null
-      if (entryId !== null) setCreated(entryId)
-      const handed = written?.currentRevision?.id
-      if (handed !== undefined) setLastWritten(handed)
-      if (!andSubmit) return saved
-      if (entryId === null) return saved
-      return run(
-        api.assessment.setEntryStatus({
+              })
+        const written = (
+          saved as { entry?: { id?: string; currentRevision?: { id?: string } | null } }
+        ).entry
+        const entryId = written?.id ?? writing ?? null
+        if (entryId !== null) setCreated(entryId)
+        const handed = written?.currentRevision?.id
+        if (handed !== undefined) setLastWritten(handed)
+        if (!andSubmit) return saved
+        if (entryId === null) return saved
+        return yield* api.assessment.setEntryStatus({
           params: { entryId },
           payload: {
             status: 'in_review',
@@ -523,9 +522,8 @@ function EntryDialogBody({
             // exactly the version just written goes to the reviewers
             ...(handed === undefined ? {} : { expectedEntryRevisionId: handed }),
           },
-        }),
-      )
-    },
+        })
+      }),
     onMutate: () => {
       setProblem(null)
       setIssues([])
@@ -535,7 +533,41 @@ function EntryDialogBody({
       toast.success((andSubmit ? m.entry_submittedToast : m.entry_draftSavedToast)())
       onSaved()
     },
-    onError: (error: unknown) => {
+    onError: (error) => {
+      let failure: string
+      switch (error._tag) {
+        case 'ASSESSMENT_BATCH_NOT_FOUND':
+          failure = m.error_batchNotFound()
+          break
+        case 'ASSESSMENT_BATCH_READ_ONLY':
+          failure = m.error_batchReadOnly()
+          break
+        case 'ASSESSMENT_DETERMINATION_REFUSED':
+          failure = m.error_determinationRefused(
+            ((data: typeof error) => ({ reason: data.reason }))(error),
+          )
+          break
+        case 'ASSESSMENT_ENTRY_ACTION_REFUSED':
+          failure = m.error_entryActionRefused()
+          break
+        case 'ASSESSMENT_ENTRY_NOT_FOUND':
+          failure = m.error_entryNotFound()
+          break
+        case 'ASSESSMENT_ENTRY_PAYLOAD_INVALID':
+          failure = m.error_entryPayloadInvalid()
+          break
+        case 'ASSESSMENT_ITEM_NOT_FOUND':
+          failure = m.error_itemNotFound()
+          break
+        case 'ASSESSMENT_ITEM_REVISION_CONFLICT':
+          failure = m.error_itemRevisionConflict()
+          break
+        case 'ASSESSMENT_SCORING_UNAVAILABLE':
+          failure = m.error_scoringUnavailable()
+          break
+        default:
+          assertNever(error)
+      }
       // The question moved while this was being written. Nothing was saved
       // and nothing here is thrown away: the dialog says so where the work
       // is, and the way on is the reader's press, not a reload.
@@ -559,7 +591,7 @@ function EntryDialogBody({
         onChangedElsewhere?.()
       }
       // a stage holding the act says which act and which stage
-      const said = sayOwnRefusal(error, round, { locale }) ?? formatError(error)
+      const said = sayOwnRefusal(error, round, { locale }) ?? failure
       // the write went through and the handing on did not: say so, or the
       // screen reads as though nothing was kept
       setProblem(

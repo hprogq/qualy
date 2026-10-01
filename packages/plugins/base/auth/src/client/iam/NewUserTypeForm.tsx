@@ -1,9 +1,9 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { assertNever, getApiErrorCode } from '@qualy/web-i18n'
+import { useApiMutation, useApi, useApiQuery, useLoadFailure } from '@qualy/web-runtime'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { useState } from 'react'
-import { useApi, useRunApi, useApiQuery, useLoadFailure } from '@qualy/web-runtime'
-import { getApiErrorCode, useI18n } from '@qualy/web-i18n'
 
 import { AsyncSection, Feedback, Field, FormDialog } from '@qualy/ui/admin'
 import { ModeChoice, PickGrid } from '@qualy/ui/screen'
@@ -37,10 +37,9 @@ export function NewUserTypeForm({
   onCreated: (userTypeId: string) => void
 }) {
   const api = useApi(authApi)
-  const run = useRunApi()
   const query = useApiQuery(authApi)
   const queryClient = useQueryClient()
-  const { formatError } = useI18n()
+
   const describe = useLoadFailure()
   const [feedback, setFeedback] = useState<string | null>(null)
   // a name another type already has is the name's to fix, said under it
@@ -50,19 +49,15 @@ export function NewUserTypeForm({
   const [orgTypeIds, setOrgTypeIds] = useState<string[]>([])
   const catalog = useQuery(query.identity.getUserTypeOptions.queryOptions())
 
-  const create = useMutation({
+  const create = useApiMutation({
     mutationFn: () =>
-      run(
-        api.identity.createUserType({
-          payload: {
-            name,
-            placementPolicy:
-              mode === 'unrestricted'
-                ? { mode: 'unrestricted' }
-                : { mode: 'allow-list', orgTypeIds },
-          },
-        }),
-      ),
+      api.identity.createUserType({
+        payload: {
+          name,
+          placementPolicy:
+            mode === 'unrestricted' ? { mode: 'unrestricted' } : { mode: 'allow-list', orgTypeIds },
+        },
+      }),
     onMutate: () => {
       setFeedback(null)
       setTaken(null)
@@ -74,10 +69,22 @@ export function NewUserTypeForm({
       await queryClient.invalidateQueries({ queryKey: query.identity.key() })
       onCreated(result.id)
     },
-    onError: (error: unknown) =>
-      getApiErrorCode(error) === 'USER_TYPE_CONFLICT'
-        ? setTaken(formatError(error))
-        : setFeedback(formatError(error)),
+    onError: (error) => {
+      let failure: string
+      switch (error._tag) {
+        case 'USER_TYPE_CONFLICT':
+          failure = m.error_userTypeConflict()
+          break
+        case 'USER_TYPE_ORG_TYPE_NOT_FOUND':
+          failure = m.error_userTypeOrgTypeNotFound()
+          break
+        default:
+          assertNever(error)
+      }
+      return getApiErrorCode(error) === 'USER_TYPE_CONFLICT'
+        ? setTaken(failure)
+        : setFeedback(failure)
+    },
   })
 
   return (

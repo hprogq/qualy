@@ -1,9 +1,9 @@
+import { useLocale } from '@qualy/web-i18n'
 import { useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { ChevronRightIcon, UploadIcon } from 'lucide-react'
 import { useApiQuery, useLoadFailure } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { AsyncSection } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
@@ -105,7 +105,7 @@ export function ImportRecords({
   /** the other half of the same errand: import again, from where the history is */
   onImport: () => void
 }) {
-  const { locale } = useI18n()
+  const locale = useLocale()
   const failures = useLoadFailure()
   const phone = useIsBelow(PHONE)
   const query = useApiQuery(directoryApi)

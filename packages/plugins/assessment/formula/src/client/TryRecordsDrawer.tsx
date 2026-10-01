@@ -1,15 +1,15 @@
+import { useLocale } from '@qualy/web-i18n'
 import { Fragment, useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
-import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { EmptyRow } from '@qualy/ui/empty-row'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@qualy/ui/sheet'
-import type { NormalizedInputSchema } from '@qualy/value-schema'
+import { type NormalizedInputSchema } from '@qualy/value-schema'
 
 import { shortTime } from './library-styles.ts'
 import { inputFactsOf, type InputFact } from './report-words.ts'
-import type { TryRecord } from './try-records.ts'
+import { type TryRecord } from './try-records.ts'
 import { workbenchStyles as w } from './workbench-styles.ts'
 import * as m from '#messages'
 
@@ -188,7 +188,7 @@ export function TryRecordsDrawer({
   readonly onPick: (record: TryRecord) => void
   readonly onClear: () => void
 }) {
-  const { locale } = useI18n()
+  const locale = useLocale()
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side={narrow ? 'bottom' : 'right'} xstyle={styles.panel}>

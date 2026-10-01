@@ -1,7 +1,7 @@
+import { formatPlatformFailure as formatError } from '@qualy/web-i18n'
 import { LogOutIcon } from 'lucide-react'
 import { useApi, useRunApi, useSessionTransition } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
-import type { DrawerSignOutContext } from '@qualy/ui-contract'
+import { type DrawerSignOutContext } from '@qualy/ui-contract'
 import * as stylex from '@stylexjs/stylex'
 import { Button } from '@qualy/ui/button'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
@@ -42,7 +42,6 @@ export default function DrawerSignOut({ context }: { context?: DrawerSignOutCont
   const api = useApi(authApi)
   const run = useRunApi()
 
-  const { formatError } = useI18n()
   const endSession = useSessionTransition()
   const me = useIdentity()
   if (!me.isSuccess) return null

@@ -1,7 +1,8 @@
+import { useLocale, useList } from '@qualy/web-i18n'
 import { useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { LinkIcon, LockIcon } from 'lucide-react'
-import { useI18n, useList } from '@qualy/web-i18n'
+
 import {
   choiceLabel,
   kindOf,
@@ -159,7 +160,7 @@ export function RecognitionSheet({
   onPage: (handle: string) => void
   onClose: () => void
 }) {
-  const { locale } = useI18n()
+  const locale = useLocale()
   const listJoin = useList()
   const [choosing, setChoosing] = useState(false)
   const row =
@@ -391,7 +392,7 @@ export function RangeEditor({
   onRefinement: (next: AtomicSchema | null) => void
   title?: string
 }) {
-  const { locale } = useI18n()
+  const locale = useLocale()
   const words = usePickerWords()
   const kind = kindOf(parameter)
   const admitted = admittedSchemaOf(recognition, parameter)

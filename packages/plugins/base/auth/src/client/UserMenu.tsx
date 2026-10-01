@@ -1,7 +1,8 @@
+import { formatPlatformFailure as formatError, isAuthenticationError } from '@qualy/web-i18n'
 import { useChooseLocale } from './locale-choice.tsx'
 import { useState, type ReactNode } from 'react'
 import { PageLink, useApi, useRunApi, useSessionTransition } from '@qualy/web-runtime'
-import { isAuthenticationError, useI18n } from '@qualy/web-i18n'
+
 import { useTerm } from '@qualy/plugin-settings/client/terms'
 import { authTerms } from '@qualy/auth-contract/terms'
 import * as stylex from '@stylexjs/stylex'
@@ -212,7 +213,6 @@ export default function UserMenu() {
   const api = useApi(authApi)
   const run = useRunApi()
 
-  const { formatError } = useI18n()
   const businessNo = useTerm(authTerms.businessNumber)
   const endSession = useSessionTransition()
   const [menuOpen, setMenuOpen] = useState(false)

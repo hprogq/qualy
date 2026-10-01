@@ -1,7 +1,7 @@
+import { useLocale } from '@qualy/web-i18n'
 import { useState, type ReactNode } from 'react'
 import { CheckIcon, CopyIcon } from 'lucide-react'
 import * as stylex from '@stylexjs/stylex'
-import { useI18n } from '@qualy/web-i18n'
 import { CardEmpty, Status } from '@qualy/ui/screen'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
@@ -225,7 +225,7 @@ export function EventTable({
   /** every row is about the same object, which the page already names */
   hideTarget?: boolean
 }) {
-  const { locale } = useI18n()
+  const locale = useLocale()
   const [openId, setOpenId] = useState('')
   const when = (iso: string) =>
     new Date(iso).toLocaleString(locale, { dateStyle: 'medium', timeStyle: 'medium' })

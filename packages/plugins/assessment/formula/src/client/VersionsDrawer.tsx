@@ -1,3 +1,4 @@
+import { useLocale } from '@qualy/web-i18n'
 import * as stylex from '@stylexjs/stylex'
 import { useMemo } from 'react'
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
@@ -9,7 +10,6 @@ import {
   useLoadFailure,
   useRunApi,
 } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { EmptyRow } from '@qualy/ui/empty-row'
 import { Spinner } from '@qualy/ui/spinner'
@@ -20,7 +20,7 @@ import { formulaApi } from './api.ts'
 
 import { shortWhen } from './library-styles.ts'
 import { ReleaseInfoPopover, type ReleaseInfo } from './ReleaseInfoPopover.tsx'
-import type { WorkbenchView } from './workbench-view.ts'
+import { type WorkbenchView } from './workbench-view.ts'
 import { workbenchStyles as w } from './workbench-styles.ts'
 import * as m from '#messages'
 
@@ -244,7 +244,7 @@ export function VersionsDrawer({
   const api = useApi(formulaApi)
   const runApi = useRunApi()
   const query = useApiQuery(formulaApi)
-  const { locale } = useI18n()
+  const locale = useLocale()
   const loadFailure = useLoadFailure()
 
   // where this author holds the sharing permission, asked once for the list:

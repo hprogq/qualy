@@ -1,7 +1,15 @@
-import * as stylex from '@stylexjs/stylex'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import {
+  assertNever,
+  isUseCaseApiFailure,
+  formatPlatformFailure,
+  formatPlatformFailure as formatError,
+  useLocale,
+} from '@qualy/web-i18n'
+import { Effect } from 'effect'
+
+import {
+  useApiMutation,
   LoadFailure,
   isRecordId,
   useApi,
@@ -15,7 +23,10 @@ import {
   usePageTitle,
   useRunApi,
 } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
+import * as stylex from '@stylexjs/stylex'
+
+import { Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { layout } from '@qualy/ui/theme/layout.stylex'
@@ -59,7 +70,7 @@ import {
   SigmaIcon,
   UploadIcon,
 } from 'lucide-react'
-import type { AtomicSchema } from '@qualy/value-schema'
+import { type AtomicSchema } from '@qualy/value-schema'
 import { validateValue } from '@qualy/value-schema/validate'
 import { formulaApi } from './api.ts'
 
@@ -743,7 +754,7 @@ export default function FormulaEditorPage() {
   const run = useRunApi()
   const query = useApiQuery(formulaApi)
   const queryClient = useQueryClient()
-  const { formatError, locale } = useI18n()
+  const locale = useLocale()
   const words = usePickerWords()
   // the live check is the form's; the words for what it finds are this
   // screen's, and they are the same ones a run reports
@@ -1392,18 +1403,16 @@ export default function FormulaEditorPage() {
   // a real PATCH: only what changed travels, so a clean save is a business
   // no-op instead of a new revision and a new audit row
   const saveEffect = (patch: SavePatch) =>
-    run(
-      api.assessmentFormula.updateFormulaDraft({
-        params: { functionId },
-        payload: {
-          expectedDraftRevision: baseRevision ?? fn!.draftRevision,
-          ...(patch.source === null ? {} : { draftSourceTs: patch.source }),
-          ...(patch.tests === null ? {} : { draftTests: patch.tests }),
-        },
-      }),
-    )
+    api.assessmentFormula.updateFormulaDraft({
+      params: { functionId },
+      payload: {
+        expectedDraftRevision: baseRevision ?? fn!.draftRevision,
+        ...(patch.source === null ? {} : { draftSourceTs: patch.source }),
+        ...(patch.tests === null ? {} : { draftTests: patch.tests }),
+      },
+    })
 
-  const save = useMutation({
+  const save = useApiMutation({
     mutationFn: (patch: SavePatch) => saveEffect(patch),
     onMutate: () => setFailure(null),
     onSuccess: async (result: { function: SavedDraft }) => {
@@ -1414,7 +1423,33 @@ export default function FormulaEditorPage() {
       toast.success(m.editor_saved())
       await refresh()
     },
-    onError: (error: unknown) => setFailure(formatError(error)),
+    onError: (error) => {
+      switch (error._tag) {
+        case 'ASSESSMENT_FORMULA_FUNCTION_NOT_FOUND':
+          setFailure(m.error_functionNotFound())
+          return
+        case 'ASSESSMENT_FORMULA_FUNCTION_ARCHIVED':
+          setFailure(m.error_functionArchived())
+          return
+        case 'ASSESSMENT_FORMULA_DRAFT_CONFLICT':
+          setFailure(m.error_draftConflict())
+          return
+        case 'ASSESSMENT_FORMULA_DETAILS_CONFLICT':
+          setFailure(m.error_detailsConflict())
+          return
+        case 'ASSESSMENT_FORMULA_SOURCE_TOO_LARGE':
+          setFailure(m.error_sourceTooLarge())
+          return
+        case 'ASSESSMENT_FORMULA_TESTS_TOO_LARGE':
+          setFailure(m.error_testsTooLarge())
+          return
+        case 'ASSESSMENT_FORMULA_AUTHORING_BUSY':
+          setFailure(m.error_authoringBusy())
+          return
+        default:
+          assertNever(error)
+      }
+    },
   })
 
   // local validation stays OUT of the mutation: a malformed example is this
@@ -1528,7 +1563,13 @@ export default function FormulaEditorPage() {
     return () => window.removeEventListener('beforeunload', onBeforeUnload)
   }, [])
 
-  const publish = useMutation({
+  const publish = useMutation<
+    Effect.Success<ReturnType<typeof api.assessmentFormula.publishFormulaVersion>>,
+    | Effect.Error<ReturnType<typeof saveEffect>>
+    | Effect.Error<ReturnType<typeof api.assessmentFormula.publishFormulaVersion>>
+    | LocalFinding,
+    { readonly name: string; readonly notes: string }
+  >({
     // publishing compiles the draft the SERVER holds, so unsaved edits are
     // saved first - otherwise the button quietly proves yesterday's bytes.
     // The dialog says so before it is pressed.
@@ -1536,20 +1577,19 @@ export default function FormulaEditorPage() {
       publishedSource.current = source
       let revision = baseRevision ?? fn!.draftRevision
       if (dirty()) {
-        if (remoteMoved) return Promise.reject(new LocalFinding(m.editor_remoteMovedSaveHeld()))
+        if (remoteMoved) throw new LocalFinding(m.editor_remoteMovedSaveHeld())
         // publication needs the whole draft coherent: tests that changed
         // must be checkable against the CURRENT buffer's contract
-        if (testsDirty() && !testsSaveable())
-          return Promise.reject(new LocalFinding(m.editor_testsHeldBack()))
+        if (testsDirty() && !testsSaveable()) throw new LocalFinding(m.editor_testsHeldBack())
         const parsed = parsedTests()
         if ('invalidLabel' in parsed)
-          return Promise.reject(
-            new LocalFinding(m.editor_testInputInvalid({ label: parsed.invalidLabel })),
-          )
-        const savedNow = (await saveEffect({
-          source: sourceChanged() ? source : null,
-          tests: testsDirty() ? parsed.tests : null,
-        })) as { function: SavedDraft }
+          throw new LocalFinding(m.editor_testInputInvalid({ label: parsed.invalidLabel }))
+        const savedNow = await run(
+          saveEffect({
+            source: sourceChanged() ? source : null,
+            tests: testsDirty() ? parsed.tests : null,
+          }),
+        )
         revision = savedNow.function.draftRevision
         baseFingerprint.current = serverFingerprint(savedNow.function)
         setBaseRevision(revision)
@@ -1577,16 +1617,79 @@ export default function FormulaEditorPage() {
       toast.success(m.editor_publishedAs({ name: result.version.releaseName ?? '' }))
       await refresh()
     },
-    onError: async (error: unknown) => {
+    onError: async (error) => {
+      if (error instanceof LocalFinding) {
+        setFailure(error.message)
+        setPublishOpen(false)
+        return
+      }
+      const domain = isUseCaseApiFailure(error) ? error : undefined
+      let failure: string
+      if (domain === undefined) failure = formatPlatformFailure(error)
+      else
+        switch (domain._tag) {
+          case 'ASSESSMENT_FORMULA_AUTHORING_BUSY':
+            failure = m.error_authoringBusy()
+            break
+          case 'ASSESSMENT_FORMULA_BUNDLE_FAILED':
+            failure = m.error_bundleFailed()
+            break
+          case 'ASSESSMENT_FORMULA_COMPILE_UNAVAILABLE':
+            failure = m.error_compileUnavailable()
+            break
+          case 'ASSESSMENT_FORMULA_CONTRACT_INVALID':
+            failure = m.error_contractInvalid()
+            break
+          case 'ASSESSMENT_FORMULA_DETAILS_CONFLICT':
+            failure = m.error_detailsConflict()
+            break
+          case 'ASSESSMENT_FORMULA_TESTS_TOO_LARGE':
+            failure = m.error_testsTooLarge()
+            break
+          case 'ASSESSMENT_FORMULA_DRAFT_CONFLICT':
+            failure = m.error_draftConflict()
+            break
+          case 'ASSESSMENT_FORMULA_EXECUTION_LIMIT_EXCEEDED':
+            failure = m.error_executionLimit()
+            break
+          case 'ASSESSMENT_FORMULA_FUNCTION_ARCHIVED':
+            failure = m.error_functionArchived()
+            break
+          case 'ASSESSMENT_FORMULA_FUNCTION_NOT_FOUND':
+            failure = m.error_functionNotFound()
+            break
+          case 'ASSESSMENT_FORMULA_RELEASE_NAME_TAKEN':
+            failure = m.error_releaseNameTaken()
+            break
+          case 'ASSESSMENT_FORMULA_SOURCE_REFUSED':
+            failure = m.error_sourceRefused()
+            break
+          case 'ASSESSMENT_FORMULA_SOURCE_TOO_LARGE':
+            failure = m.error_sourceTooLarge()
+            break
+          case 'ASSESSMENT_FORMULA_TEST_FAILED':
+            failure = m.error_testFailed()
+            break
+          case 'ASSESSMENT_FORMULA_TYPECHECK_FAILED':
+            failure = m.error_typecheckFailed()
+            break
+          case 'ASSESSMENT_FORMULA_VERSION_UNCHANGED':
+            failure = m.error_versionUnchanged(
+              ((data: typeof domain) => ({ versionNo: data.versionNo }))(domain),
+            )
+            break
+          default:
+            assertNever(domain)
+        }
       // a name somebody else's publication wears is the dialog's to answer:
       // it stays open on the name to change
       if (tagOf(error) === 'ASSESSMENT_FORMULA_RELEASE_NAME_TAKEN') {
-        setNameProblem(formatError(error))
+        setNameProblem(failure)
         await refresh()
         return
       }
       setPublishOpen(false)
-      setFailure(error instanceof LocalFinding ? error.message : formatError(error))
+      setFailure(failure)
       const carried = findingsOf(error)
       setFindings(carried)
       setFindingsFor(publishedSource.current)
@@ -1635,14 +1738,12 @@ export default function FormulaEditorPage() {
     },
   })
 
-  const restore = useMutation({
+  const restore = useApiMutation({
     mutationFn: (from: RestoreFrom) =>
-      run(
-        api.assessmentFormula.restoreFormulaDraft({
-          params: { functionId },
-          payload: { expectedDraftRevision: baseRevision ?? fn!.draftRevision, from },
-        }),
-      ),
+      api.assessmentFormula.restoreFormulaDraft({
+        params: { functionId },
+        payload: { expectedDraftRevision: baseRevision ?? fn!.draftRevision, from },
+      }),
     onMutate: () => setFailure(null),
     onSuccess: async (result: { function: NonNullable<typeof fn> }) => {
       adopt(result.function)
@@ -1653,7 +1754,36 @@ export default function FormulaEditorPage() {
     },
     // restoring is pressed from a piece of history, which has no notice
     // line of its own
-    onError: (error: unknown) => toast.error(formatError(error)),
+    onError: (error) => {
+      switch (error._tag) {
+        case 'ASSESSMENT_FORMULA_AUTHORING_BUSY':
+          toast.error(m.error_authoringBusy())
+          return
+        case 'ASSESSMENT_FORMULA_DRAFT_CONFLICT':
+          toast.error(m.error_draftConflict())
+          return
+        case 'ASSESSMENT_FORMULA_DRAFT_REVISION_NOT_FOUND':
+          toast.error(m.error_draftRevisionNotFound())
+          return
+        case 'ASSESSMENT_FORMULA_FUNCTION_ARCHIVED':
+          toast.error(m.error_functionArchived())
+          return
+        case 'ASSESSMENT_FORMULA_FUNCTION_NOT_FOUND':
+          toast.error(m.error_functionNotFound())
+          return
+        case 'ASSESSMENT_FORMULA_SOURCE_TOO_LARGE':
+          toast.error(m.error_sourceTooLarge())
+          return
+        case 'ASSESSMENT_FORMULA_TESTS_TOO_LARGE':
+          toast.error(m.error_testsTooLarge())
+          return
+        case 'ASSESSMENT_FORMULA_VERSION_NOT_FOUND':
+          toast.error(m.error_versionNotFound())
+          return
+        default:
+          assertNever(error)
+      }
+    },
   })
 
   /**
@@ -1700,35 +1830,39 @@ export default function FormulaEditorPage() {
     toast.success(m.editor_downloaded({ file: filename }))
   }
 
-  const setStatus = useMutation({
+  const setStatus = useApiMutation({
     mutationFn: (status: 'active' | 'archived') =>
-      run(
-        api.assessmentFormula.setFormulaFunctionStatus({
-          params: { functionId },
-          payload: { status },
-        }),
-      ),
+      api.assessmentFormula.setFormulaFunctionStatus({
+        params: { functionId },
+        payload: { status },
+      }),
     onSuccess: async (_result: unknown, status: 'active' | 'archived') => {
       toast.success((status === 'archived' ? m.editor_archived : m.editor_unarchived)())
       await refresh()
     },
-    onError: (error: unknown) => setFailure(formatError(error)),
+    onError: (error) => {
+      switch (error._tag) {
+        case 'ASSESSMENT_FORMULA_FUNCTION_NOT_FOUND':
+          setFailure(m.error_functionNotFound())
+          return
+        default:
+          assertNever(error._tag)
+      }
+    },
   })
 
   // A formula nobody has published is the author's own draft and nothing
   // else - a copy taken from a template and thought better of, most often -
   // so it can be taken away. Once a version exists it is what questions are
   // scored by, and archiving is what stops it being used from here on.
-  const remove = useMutation({
+  const remove = useApiMutation({
     mutationFn: () =>
-      run(
-        api.assessmentFormula.deleteFormulaFunction({
-          params: { functionId },
-          // the revision this screen is looking at: deleting takes the draft
-          // and its whole history, and must not take a save this tab never saw
-          query: { expectedDraftRevision: String(baseRevision ?? fn?.draftRevision ?? 1) },
-        }),
-      ),
+      api.assessmentFormula.deleteFormulaFunction({
+        params: { functionId },
+        // the revision this screen is looking at: deleting takes the draft
+        // and its whole history, and must not take a save this tab never saw
+        query: { expectedDraftRevision: String(baseRevision ?? fn?.draftRevision ?? 1) },
+      }),
     onSuccess: async () => {
       toast.success(m.editor_deleted())
       // the formula is gone for good, so what this browser kept for it goes
@@ -1742,7 +1876,21 @@ export default function FormulaEditorPage() {
       goto('assessment-formula/list')
       void refresh()
     },
-    onError: (error: unknown) => setFailure(formatError(error)),
+    onError: (error) => {
+      switch (error._tag) {
+        case 'ASSESSMENT_FORMULA_DRAFT_CONFLICT':
+          setFailure(m.error_draftConflict())
+          return
+        case 'ASSESSMENT_FORMULA_FUNCTION_NOT_FOUND':
+          setFailure(m.error_functionNotFound())
+          return
+        case 'ASSESSMENT_FORMULA_FUNCTION_PUBLISHED':
+          setFailure(m.error_functionPublished())
+          return
+        default:
+          assertNever(error)
+      }
+    },
   })
 
   const deleteFormula = () =>

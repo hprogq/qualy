@@ -1,7 +1,16 @@
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { isText, literal, render, renderTexts, term, text, type MessageRef } from '../src/index.ts'
+import {
+  createTextRenderer,
+  isText,
+  literal,
+  render,
+  renderTexts,
+  term,
+  text,
+  type MessageRef,
+} from '../src/index.ts'
 import { loadMessageTable, messageRefs } from '../src/node.ts'
 
 // What the server says, said: against the product's own compiled messages,
@@ -89,4 +98,36 @@ describe('a message that cannot be said', () => {
       /pnpm i18n/,
     )
   })
+})
+
+describe('declaration validation', () => {
+  it('rejects incomplete references and malformed nested inputs', () => {
+    for (const value of [
+      { kind: 'message', ref: {} },
+      { kind: 'message', ref: { namespace: 'n', key: 'k' }, inputs: [] },
+      { kind: 'message', ref: { namespace: 'n', key: 'k' }, inputs: { value: null } },
+      { kind: 'term', term: { id: 42 } },
+    ])
+      expect(isText(value)).toBe(false)
+    const cycle = {
+      kind: 'message',
+      ref: { namespace: 'n', key: 'k' },
+      inputs: {} as Record<string, unknown>,
+    }
+    cycle.inputs.self = cycle
+    expect(isText(cycle)).toBe(false)
+  })
+})
+
+it('isolates explicit renderers and their nested texts', () => {
+  const a = createTextRenderer({
+    lookup: () => (inputs) => `a:${(inputs as { value?: string }).value ?? ''}`,
+  })
+  const b = createTextRenderer({
+    lookup: () => (inputs) => `b:${(inputs as { value?: string }).value ?? ''}`,
+  })
+  const ref: MessageRef<{ value: string }> = { namespace: 'n', key: 'k' }
+  const said = text(ref, { value: text(ref, { value: 'x' }) })
+  expect(a.render(said, { locale: 'en-US' })).toBe('a:a:x')
+  expect(b.renderTexts({ said }, { locale: 'en-US' })).toEqual({ said: 'b:b:x' })
 })

@@ -1,12 +1,12 @@
+import { assertNever } from '@qualy/web-i18n'
+import { useApiMutation, useApi, useApiQuery, useLoadFailure, UiSlot } from '@qualy/web-runtime'
 import * as stylex from '@stylexjs/stylex'
 import { useEffect, useState } from 'react'
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { Share2Icon } from 'lucide-react'
-import { useApi, useApiQuery, useLoadFailure, useRunApi } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
 
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { UiSlot } from '@qualy/web-runtime'
+
 import { orgNodePicker } from '@qualy/ui-contract'
 import { Button } from '@qualy/ui/button'
 import { Checkbox } from '@qualy/ui/checkbox'
@@ -86,9 +86,8 @@ export function VersionSharingDialog({
   readonly onSaved: () => void
 }) {
   const api = useApi(formulaApi)
-  const run = useRunApi()
   const query = useApiQuery(formulaApi)
-  const { formatError } = useI18n()
+
   const loadFailure = useLoadFailure()
   const [chosen, setChosen] = useState<readonly string[]>([])
   const [failure, setFailure] = useState<string | null>(null)
@@ -140,14 +139,12 @@ export function VersionSharingDialog({
     setChosen(sharing.data?.scopes.map((scope) => scope.orgNodeId) ?? [])
   }, [open, sharing.data])
 
-  const replace = useMutation({
+  const replace = useApiMutation({
     mutationFn: (orgNodeIds: readonly string[]) =>
-      run(
-        api.assessmentFormula.replaceFormulaVersionSharing({
-          params,
-          payload: { expectedToken: sharing.data?.token ?? '', orgNodeIds },
-        }),
-      ),
+      api.assessmentFormula.replaceFormulaVersionSharing({
+        params,
+        payload: { expectedToken: sharing.data?.token ?? '', orgNodeIds },
+      }),
     onMutate: () => setFailure(null),
     onSuccess: async () => {
       toast.success(m.sharing_saved())
@@ -155,7 +152,21 @@ export function VersionSharingDialog({
       onSaved()
       onClose()
     },
-    onError: (error: unknown) => setFailure(formatError(error)),
+    onError: (error) => {
+      switch (error._tag) {
+        case 'ASSESSMENT_FORMULA_FUNCTION_NOT_FOUND':
+          setFailure(m.error_functionNotFound())
+          return
+        case 'ASSESSMENT_FORMULA_SHARING_CONFLICT':
+          setFailure(m.error_sharingConflict())
+          return
+        case 'ASSESSMENT_FORMULA_VERSION_NOT_FOUND':
+          setFailure(m.error_versionNotFound())
+          return
+        default:
+          assertNever(error)
+      }
+    },
   })
 
   return (

@@ -1,12 +1,12 @@
 import { Effect } from 'effect'
 import { HttpApiBuilder } from 'effect/http-api'
-import type { LoginDriver } from '@qualy/auth-contract/login'
+import { type LoginDriver, LoginSessions } from '@qualy/auth-contract/login'
 import { Login } from '@qualy/auth-contract/plugin'
 import { normalizeEmail } from '@qualy/auth-contract/email'
 import { Ui } from '@qualy/plugin-ui-registry/plugin'
 import { Api } from '@qualy/api-kit/plugin'
 import { Plugin } from '@qualy/plugin-kit'
-import { LoginSessions } from '@qualy/auth-contract/login'
+
 import { CaptchaRequired } from '@qualy/plugin-captcha/contract'
 import { authLocalApiGroup, InvalidCredentials } from './api.ts'
 import {
@@ -193,7 +193,6 @@ const plugin = Plugin.define(
   '@qualy/plugin-auth-local',
   // the captcha contract is read here directly, so it is named here too
   { dependsOn: ['@qualy/plugin-auth', '@qualy/plugin-captcha'] },
-  Ui.i18n('./client/i18n'),
   Login.driver(driver),
   Api.group(authLocalApiGroup, handlers),
 )

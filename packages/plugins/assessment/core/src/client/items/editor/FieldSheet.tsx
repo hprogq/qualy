@@ -1,7 +1,8 @@
+import { useLocale, useList } from '@qualy/web-i18n'
 import * as stylex from '@stylexjs/stylex'
 import { ChevronRightIcon, LinkIcon } from 'lucide-react'
-import { useI18n, useList } from '@qualy/web-i18n'
-import type { AtomicSchema } from '@qualy/value-schema'
+
+import { type AtomicSchema } from '@qualy/value-schema'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { Field } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
@@ -113,7 +114,7 @@ export function FieldSheet({
   onPage: (key: string) => void
   onClose: () => void
 }) {
-  const { locale } = useI18n()
+  const locale = useLocale()
   const listJoin = useList()
   const field = draft.fields.find((one) => one.key === fieldKey)
   if (field === undefined) return null

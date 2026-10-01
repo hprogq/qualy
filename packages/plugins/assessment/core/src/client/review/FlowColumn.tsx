@@ -1,7 +1,7 @@
+import { useLocale } from '@qualy/web-i18n'
 import { memo } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { ChevronRightIcon } from 'lucide-react'
-import { useI18n } from '@qualy/web-i18n'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
 import { Kbd } from '@qualy/ui/kbd'
@@ -320,7 +320,7 @@ export const FlowColumn = memo(function FlowColumn({
   /** whether the escalation notice stands outside the pager instead of here */
   lifted: boolean
 }) {
-  const { locale } = useI18n()
+  const locale = useLocale()
   const zone = useBatchZone()
   const fine = useFinePointer()
   const previous = review.context?.previous ?? null

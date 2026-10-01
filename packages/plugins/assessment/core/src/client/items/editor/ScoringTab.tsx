@@ -1,8 +1,8 @@
+import { useLocale } from '@qualy/web-i18n'
 import { useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { ChevronRightIcon, InfoIcon, PlusIcon } from 'lucide-react'
 import { UiSlot } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
 import { usePickerWords } from '@qualy/web-i18n/picker-words'
 import {
   choiceLabel,
@@ -12,7 +12,7 @@ import {
   type ChoiceSchema,
 } from '@qualy/value-schema'
 import { draftFromValue, type FieldDraft as ValueDraft } from '@qualy/web-value-form/model'
-import type { Message } from '@qualy/i18n-contract'
+import { type Message } from '@qualy/i18n-contract'
 import { Feedback } from '@qualy/ui/admin'
 import { DatePicker } from '@qualy/ui/date-picker'
 import { Input } from '@qualy/ui/input'
@@ -21,7 +21,7 @@ import { calculatorEditorSlot, calculatorSummarySlot } from '../../../surfaces.t
 
 import { trimAmount } from '../../entry/model.ts'
 import { Choice } from '../Choice.tsx'
-import type { Placement } from '../paper.ts'
+import { type Placement } from '../paper.ts'
 import {
   DragHandle,
   EditorSection,
@@ -221,7 +221,7 @@ export function ScoringTab({
   /** which fields name a record in a list, in order */
   onSummary: (fieldIds: string[]) => void
 }) {
-  const { locale } = useI18n()
+  const locale = useLocale()
   const words = usePickerWords()
   const [choosing, setChoosing] = useState(false)
   const automatic = draft.mode === 'automatic'

@@ -1,5 +1,8 @@
+import { isUseCaseApiFailure, type UseCaseApiFailure } from '@qualy/web-i18n'
+import { Effect } from 'effect'
+import { type ApiError } from '@qualy/web-runtime/api'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useApi, useRunApi } from '@qualy/web-runtime'
+import { useApi, useApiMutation } from '@qualy/web-runtime'
 import { assessmentApi, assessmentUrls } from '../api.ts'
 
 // The five-second window between deciding and having decided.
@@ -59,6 +62,10 @@ export type StagedDecision =
       readonly participantName: string
     }
 
+export type DeferredDecisionFailure =
+  | ApiError<typeof assessmentApi, 'assessment', 'decideReview'>
+  | ApiError<typeof assessmentApi, 'assessment', 'requestSupplement'>
+
 const WINDOW_MS = 5_000
 
 /** the wire path whatever is waiting goes out on, for the send that outlives the page */
@@ -70,14 +77,16 @@ const beaconPath = (staged: StagedDecision) =>
 export function useDeferredDecision({
   onCommitted,
   onFailed,
+  onRejected,
 }: {
   /** the decision reached the server; refresh whatever shows it */
   onCommitted: (staged: StagedDecision) => void
-  /** it did not go through - somebody else got there first, or the wire broke */
-  onFailed: (staged: StagedDecision, error: unknown) => void
+  /** The endpoint refused the decision; the review use case explains why. */
+  onFailed: (staged: StagedDecision, error: UseCaseApiFailure<DeferredDecisionFailure>) => void
+  /** Platform policy presents the failure; restore the staged review locally. */
+  onRejected: (staged: StagedDecision) => void
 }) {
   const api = useApi(assessmentApi)
-  const run = useRunApi()
   const [pending, setPending] = useState<StagedDecision | null>(null)
   const [deadline, setDeadline] = useState(0)
   const waiting = useRef<StagedDecision | null>(null)
@@ -85,29 +94,31 @@ export function useDeferredDecision({
   // the callbacks live in refs so a staged decision from one render commits
   // through the handlers of the latest one
   const committed = useRef(onCommitted)
+  const rejected = useRef(onRejected)
+  rejected.current = onRejected
   const failed = useRef(onFailed)
   committed.current = onCommitted
   failed.current = onFailed
 
-  const send = useCallback(
-    (staged: StagedDecision) => {
-      void run(
-        staged.kind === 'supplement'
-          ? api.assessment.requestSupplement({
-              params: { instanceId: staged.instanceId },
-              payload: staged.payload,
-            })
-          : api.assessment.decideReview({
-              params: { instanceId: staged.instanceId },
-              payload: staged.payload,
-            }),
-      ).then(
-        () => committed.current(staged),
-        (error: unknown) => failed.current(staged, error),
-      )
+  const { mutate: sendDecision } = useApiMutation({
+    mutationFn: (staged: StagedDecision): Effect.Effect<void, DeferredDecisionFailure> =>
+      (staged.kind === 'supplement'
+        ? api.assessment.requestSupplement({
+            params: { instanceId: staged.instanceId },
+            payload: staged.payload,
+          })
+        : api.assessment.decideReview({
+            params: { instanceId: staged.instanceId },
+            payload: staged.payload,
+          })
+      ).pipe(Effect.asVoid),
+    onSuccess: (_answer, staged) => committed.current(staged),
+    onError: (error, staged) => failed.current(staged, error),
+    onSettled: (_answer, error, staged) => {
+      if (error !== null && !isUseCaseApiFailure(error)) rejected.current(staged)
     },
-    [api, run],
-  )
+  })
+  const send = useCallback((staged: StagedDecision) => sendDecision(staged), [sendDecision])
 
   const stopTimer = () => {
     if (timer.current !== null) {

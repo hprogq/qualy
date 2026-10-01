@@ -9,7 +9,6 @@
     ".": "./src/index.ts",
     "./api": "./src/api.ts",
     "./client/LoginMethod": "./src/client/LoginMethod.tsx",
-    "./client/i18n": "./src/client/i18n.ts",
     "./package.json": "./package.json",
     "./password": "./src/password.ts"
   },

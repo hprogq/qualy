@@ -103,7 +103,6 @@ const plugin = Plugin.define(
     context: 'runtime',
     load: () => import('./cli/audit-scoring.ts'),
   }),
-  Ui.i18n('./client/i18n'),
   // what this browser keeps of a reviewer's unsent words goes when they sign out
   Browser.module('./client/browser'),
   // the sidebar section this domain owns; its pages file under it by id

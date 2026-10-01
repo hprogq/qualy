@@ -1,8 +1,7 @@
+import { assertNever } from '@qualy/web-i18n'
+import { useApiMutation, useApi } from '@qualy/web-runtime'
 import { useState } from 'react'
-import { useMutation } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
-import { useApi, useRunApi } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
 
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { Field, FormDialog } from '@qualy/ui/admin'
@@ -200,34 +199,48 @@ function PaperWizard({
   onCreated: () => void
 }) {
   const api = useApi(assessmentApi)
-  const run = useRunApi()
-  const { formatError } = useI18n()
+
   const [name, setName] = useState(m.items_paperDefaultName())
   const [cap, setCap] = useState(capped ? '100.00' : '')
 
-  const create = useMutation({
+  const create = useApiMutation({
     mutationFn: () =>
-      run(
-        api.assessment.replaceScoreGroups({
-          params: { batchId },
-          payload: {
-            groups: [
-              {
-                parentGroupId: null,
-                name: name.trim(),
-                cap: cap.trim() === '' ? null : cap.trim(),
-                floor: null,
-              },
-            ],
-            expectedVersion: version,
-          },
-        }),
-      ),
+      api.assessment.replaceScoreGroups({
+        params: { batchId },
+        payload: {
+          groups: [
+            {
+              parentGroupId: null,
+              name: name.trim(),
+              cap: cap.trim() === '' ? null : cap.trim(),
+              floor: null,
+            },
+          ],
+          expectedVersion: version,
+        },
+      }),
     onSuccess: () => {
       onCreated()
       onClose()
     },
-    onError: (error) => toast.error(formatError(error)),
+    onError: (error) => {
+      switch (error._tag) {
+        case 'ASSESSMENT_BATCH_NOT_FOUND':
+          toast.error(m.error_batchNotFound())
+          return
+        case 'ASSESSMENT_BATCH_READ_ONLY':
+          toast.error(m.error_batchReadOnly())
+          return
+        case 'ASSESSMENT_SCORE_GROUP_INVALID':
+          toast.error(m.error_scoreGroupInvalid())
+          return
+        case 'ASSESSMENT_SCORE_GROUP_VERSION_CONFLICT':
+          toast.error(m.error_scoreGroupVersionConflict())
+          return
+        default:
+          assertNever(error)
+      }
+    },
   })
 
   return (

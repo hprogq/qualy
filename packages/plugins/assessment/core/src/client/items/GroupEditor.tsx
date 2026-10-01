@@ -1,20 +1,19 @@
+import { useApiMutation, useApi } from '@qualy/web-runtime'
+import { formatPlatformFailure as formatError } from '@qualy/web-i18n'
 import { useState } from 'react'
-import { useMutation } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
-import { useApi, useRunApi } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
 
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { ConfirmDialog, Field, SidePanel } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
 import { toast } from '@qualy/ui/toast'
-import type { Message } from '@qualy/i18n-contract'
+import { type Message } from '@qualy/i18n-contract'
 import { assessmentApi } from '../api.ts'
 
 import { Choice } from './Choice.tsx'
 import { trimAmount } from '../entry/model.ts'
-import type { TreeGroup } from './paper.ts'
+import { type TreeGroup } from './paper.ts'
 import * as commonMessages from '@qualy/web-i18n/messages'
 import * as m from '#messages'
 
@@ -79,8 +78,7 @@ export function GroupEditor({
   onDone: (groupId: string | null) => void
 }) {
   const api = useApi(assessmentApi)
-  const run = useRunApi()
-  const { formatError } = useI18n()
+
   // a group holds questions; taking it away is not a keystroke
   const [removing, setRemoving] = useState(false)
   const [name, setName] = useState(editing?.name ?? '')
@@ -137,7 +135,7 @@ export function GroupEditor({
     else toast.error(formatError(error))
   }
 
-  const save = useMutation({
+  const save = useApiMutation({
     mutationFn: () => {
       const values = {
         name: name.trim(),
@@ -153,16 +151,14 @@ export function GroupEditor({
       // written: as part of the whole set the api replaces
       const created =
         editing === null ? [{ parentGroupId: parent === '' ? null : parent, ...values }] : []
-      return run(
-        api.assessment.replaceScoreGroups({
-          params: { batchId },
-          payload: {
-            groups: [...edited, ...created],
-            expectedVersion: version,
-            ...(reason.trim() === '' ? {} : { reason: reason.trim() }),
-          },
-        }),
-      )
+      return api.assessment.replaceScoreGroups({
+        params: { batchId },
+        payload: {
+          groups: [...edited, ...created],
+          expectedVersion: version,
+          ...(reason.trim() === '' ? {} : { reason: reason.trim() }),
+        },
+      })
     },
     onMutate: () => setRefusals([]),
     onSuccess: (result: { groups: readonly { id: string; name: string }[] }) => {
@@ -174,18 +170,16 @@ export function GroupEditor({
     onError,
   })
 
-  const remove = useMutation({
+  const remove = useApiMutation({
     mutationFn: () =>
-      run(
-        api.assessment.replaceScoreGroups({
-          params: { batchId },
-          payload: {
-            groups: groups.filter((group) => group.id !== editing?.id).map(specOf),
-            expectedVersion: version,
-            ...(reason.trim() === '' ? {} : { reason: reason.trim() }),
-          },
-        }),
-      ),
+      api.assessment.replaceScoreGroups({
+        params: { batchId },
+        payload: {
+          groups: groups.filter((group) => group.id !== editing?.id).map(specOf),
+          expectedVersion: version,
+          ...(reason.trim() === '' ? {} : { reason: reason.trim() }),
+        },
+      }),
     onMutate: () => setRefusals([]),
     onSuccess: () => {
       toast.success(m.items_groupsSaved())

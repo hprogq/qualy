@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CheckIcon, CornerUpLeftIcon, InfoIcon } from 'lucide-react'
+import { assertNever, formatPlatformFailure as formatError, isApiErrorCode } from '@qualy/web-i18n'
+
 import {
+  useApiMutation,
   isRecordId,
   LoadFailure,
   useApi,
@@ -12,10 +12,12 @@ import {
   useClaimScreenFoot,
   usePageQueryState,
   usePageRouteParams,
-  useRunApi,
 } from '@qualy/web-runtime'
-import { isApiErrorCode, useI18n } from '@qualy/web-i18n'
-import type { Message } from '@qualy/i18n-contract'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { CheckIcon, CornerUpLeftIcon, InfoIcon } from 'lucide-react'
+
+import { type Message } from '@qualy/i18n-contract'
 
 import { AsyncSection, ConfirmDialog } from '@qualy/ui/admin'
 import { Badge } from '@qualy/ui/badge'
@@ -32,10 +34,10 @@ import { BatchScreen } from '../batch/BatchScreen.tsx'
 import { entryStatusMessage, type EntryDto } from '../entry/model.ts'
 import { sayEntryFailure } from '../entry/refusals.ts'
 import { reviewOutcomeMessage } from './events.ts'
-import { readRunScope, runRows, type InboxItemDto } from './model.ts'
+import { readRunScope, runRows, type InboxItemDto, type ReviewDto } from './model.ts'
 import { useQueueRefresh, useReviewQueueQuery } from './queue.ts'
-import type { BatchDto } from '../phase/model.ts'
-import type { ReviewDto } from './model.ts'
+import { type BatchDto } from '../phase/model.ts'
+
 import {
   ApproveDialog,
   EscalateDialog,
@@ -52,14 +54,14 @@ import { EscalationNotice } from './EscalationNotice.tsx'
 import { FlowColumn } from './FlowColumn.tsx'
 import { FilingColumn } from './FilingColumn.tsx'
 import { ContextRail } from './ContextRail.tsx'
-import { useBeside } from './pointer.ts'
+import { useBeside, useFinePointer } from './pointer.ts'
 import { useDeferredDecision, type StagedDecision } from './useDeferredDecision.ts'
 import { useDraftSweep } from './use-draft.ts'
 import { VersionPicker } from './history.tsx'
 import { EntryHistory } from '../entry/EntryHistory.tsx'
 import { useLingering } from '@qualy/ui/use-lingering'
 import { Appear, CountdownRing, DoneMark, Drill, Stagger } from '@qualy/ui/reveal'
-import { useFinePointer } from './pointer.ts'
+
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
@@ -691,10 +693,8 @@ function Workbench({ batch }: { batch: BatchDto }) {
   const scope = readRunScope(runRaw)
   const query = useApiQuery(assessmentApi)
   const api = useApi(assessmentApi)
-  const run = useRunApi()
   const navigate = usePageNavigate()
   const queryClient = useQueryClient()
-  const { formatError } = useI18n()
 
   // The live channel carries wake-ups, never data: on each one the screen
   // re-reads whichever authorized query the wake-up names. While the channel
@@ -787,6 +787,11 @@ function Workbench({ batch }: { batch: BatchDto }) {
       mark(staged.instanceId, 'sent')
       refresh()
     },
+    onRejected: (staged) => {
+      setLog((current) => current.filter((entry) => entry.instanceId !== staged.instanceId))
+      hold(staged)
+      refresh()
+    },
     onFailed: (staged, error) => {
       // A round somebody else settled or moved first is not this reader's
       // any more: it stays off the queue, and out of what this sitting
@@ -804,7 +809,34 @@ function Workbench({ batch }: { batch: BatchDto }) {
         setLog((current) => current.filter((entry) => entry.instanceId !== staged.instanceId))
         hold(staged)
       }
-      toast.error(sayEntryFailure(error, { formatError }))
+      switch (error._tag) {
+        case 'ASSESSMENT_DETERMINATION_REFUSED':
+          toast.error(m.error_determinationRefused({ reason: error.reason }))
+          break
+        case 'ASSESSMENT_REVIEW_NOT_FOUND':
+          toast.error(m.error_reviewNotFound())
+          break
+        case 'ASSESSMENT_REVIEW_CONFLICT':
+          toast.error(m.error_reviewConflict())
+          break
+        case 'ASSESSMENT_ITEM_REVISION_CONFLICT':
+          toast.error(m.error_itemRevisionConflict())
+          break
+        case 'ASSESSMENT_BATCH_READ_ONLY':
+          toast.error(m.error_batchReadOnly())
+          break
+        case 'ASSESSMENT_ENTRY_ACTION_REFUSED':
+          toast.error(sayEntryFailure(error, { formatError: () => m.error_entryActionRefused() }))
+          break
+        case 'ASSESSMENT_ENTRY_PAYLOAD_INVALID':
+          toast.error(m.error_entryPayloadInvalid())
+          break
+        case 'ASSESSMENT_SCORING_UNAVAILABLE':
+          toast.error(m.error_scoringUnavailable())
+          break
+        default:
+          assertNever(error)
+      }
       refresh()
     },
   })
@@ -1063,14 +1095,12 @@ function Workbench({ batch }: { batch: BatchDto }) {
   }
 
   /** taking the ask back; the round returns to the queue as it stood */
-  const withdrawSupplement = useMutation({
+  const withdrawSupplement = useApiMutation({
     mutationFn: (requestId: string) =>
-      run(
-        api.assessment.cancelSupplement({
-          params: { requestId },
-          payload: { status: 'cancelled' },
-        }),
-      ),
+      api.assessment.cancelSupplement({
+        params: { requestId },
+        payload: { status: 'cancelled' },
+      }),
     onSuccess: () => {
       toast.success(m.supplement_withdrawn())
       refresh()

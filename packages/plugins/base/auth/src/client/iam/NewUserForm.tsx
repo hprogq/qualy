@@ -1,8 +1,9 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { assertNever } from '@qualy/web-i18n'
+import { useApiMutation, PageLink, UiSlot, useApi, useApiQuery } from '@qualy/web-runtime'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
 import { orgNodePicker, type OrgNodePickerContext } from '@qualy/ui-contract'
-import { PageLink, UiSlot, useApi, useRunApi, useApiQuery } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
+
 import { useTerm } from '@qualy/plugin-settings/client/terms'
 import { authTerms } from '@qualy/auth-contract/terms'
 import * as stylex from '@stylexjs/stylex'
@@ -15,7 +16,7 @@ import { Input } from '@qualy/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@qualy/ui/select'
 
 import { authApi } from '../api.ts'
-import { emailShaped, refusedField, type PersonField } from './users/field-refusals.ts'
+import { emailShaped, type PersonField } from './users/field-refusals.ts'
 import * as m from '#messages'
 
 // Making one person. Four answers: their name, their number, what kind of
@@ -78,10 +79,9 @@ export function NewUserForm({
   userTypesAt: (orgNodeId: string) => readonly { id: string; code: string; name: string }[]
 }) {
   const api = useApi(authApi)
-  const run = useRunApi()
   const query = useApiQuery(authApi)
   const queryClient = useQueryClient()
-  const { formatError } = useI18n()
+
   const businessNoWord = useTerm(authTerms.businessNumber)
   const [feedback, setFeedback] = useState<string | null>(null)
   // a value somebody else already holds, said under the field it was typed in
@@ -109,19 +109,17 @@ export function NewUserForm({
     if (userTypeId !== '' && !options.some((type) => type.id === userTypeId)) setUserTypeId('')
   }, [options, userTypeId])
 
-  const create = useMutation({
+  const create = useApiMutation({
     mutationFn: () =>
-      run(
-        api.identity.createUser({
-          payload: {
-            displayName,
-            userTypeId,
-            primaryOrgNodeId: unit,
-            businessNo: businessNo.trim() === '' ? undefined : businessNo.trim(),
-            email: email.trim() === '' ? undefined : email.trim(),
-          },
-        }),
-      ),
+      api.identity.createUser({
+        payload: {
+          displayName,
+          userTypeId,
+          primaryOrgNodeId: unit,
+          businessNo: businessNo.trim() === '' ? undefined : businessNo.trim(),
+          email: email.trim() === '' ? undefined : email.trim(),
+        },
+      }),
     onMutate: () => {
       setFeedback(null)
       setTaken(null)
@@ -133,10 +131,29 @@ export function NewUserForm({
       onClose()
       await queryClient.invalidateQueries({ queryKey: query.identity.key() })
     },
-    onError: (error: unknown) => {
-      const field = refusedField(error)
-      if (field === undefined) setFeedback(formatError(error))
-      else setTaken({ field, said: formatError(error) })
+    onError: (error) => {
+      switch (error._tag) {
+        case 'USER_CONFLICT':
+          setTaken({ field: 'businessNo', said: m.error_userConflict() })
+          return
+        case 'USER_EMAIL_CONFLICT':
+          setTaken({ field: 'email', said: m.error_userEmailConflict() })
+          return
+        case 'USER_TYPE_NOT_FOUND':
+          setFeedback(m.error_userTypeNotFound())
+          return
+        case 'USER_TYPE_DISABLED':
+          setFeedback(m.error_userTypeDisabled())
+          return
+        case 'USER_PLACEMENT_NOT_FOUND':
+          setFeedback(m.error_userPlacementNotFound())
+          return
+        case 'USER_TYPE_PLACEMENT_NOT_ALLOWED':
+          setFeedback(m.error_userTypePlacementNotAllowed())
+          return
+        default:
+          assertNever(error)
+      }
     },
   })
 

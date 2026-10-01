@@ -1,6 +1,6 @@
+import { formatPlatformFailure as formatError, getApiErrorCode } from '@qualy/web-i18n'
 import { useId, useMemo, useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
-import { getApiErrorCode, useI18n } from '@qualy/web-i18n'
 
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { ConfirmDialog } from '@qualy/ui/admin'
@@ -22,7 +22,7 @@ import {
   UnsavedMark,
 } from '@qualy/ui/screen'
 
-import type { Api, OrgShape, OrgTypeDto, Run } from '../shape.ts'
+import { type Api, type OrgShape, type OrgTypeDto, type Run } from '../shape.ts'
 import * as commonMessages from '@qualy/web-i18n/messages'
 import * as m from '#messages'
 
@@ -76,7 +76,6 @@ export function TypeSheet({
   canManage: boolean
   onClose: () => void
 }) {
-  const { formatError } = useI18n()
   const [renaming, setRenaming] = useState(false)
   const [name, setName] = useState(type.name)
   // a name another kind already has is the name's to fix, said under it

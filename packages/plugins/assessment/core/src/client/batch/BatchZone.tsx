@@ -1,6 +1,6 @@
-import type { ReactNode } from 'react'
+import { useLocale } from '@qualy/web-i18n'
+import { type ReactNode } from 'react'
 import * as stylex from '@stylexjs/stylex'
-import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 
 import {
@@ -46,7 +46,7 @@ function useZoneLabel(
   zone: string | undefined,
   at?: number,
 ): { readonly label: string; readonly offset: string } | null {
-  const { locale } = useI18n()
+  const locale = useLocale()
   if (zone === undefined) return null
   const { name, offset } = zoneNameOf(zone, locale, at)
   return { label: name === undefined ? offset : m.zone_named({ name, offset }), offset }

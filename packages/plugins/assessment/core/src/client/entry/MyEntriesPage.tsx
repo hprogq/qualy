@@ -1,15 +1,17 @@
-import { useEffect, useMemo, useState } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import * as stylex from '@stylexjs/stylex'
+import { Effect } from 'effect'
 import {
+  useApiMutation,
   useApi,
   useApiQuery,
   useClaimScreenFill,
   useLoadFailure,
   usePageQueryState,
   usePageQueryUpdate,
-  useRunApi,
 } from '@qualy/web-runtime'
+import { useEffect, useMemo, useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import * as stylex from '@stylexjs/stylex'
+
 import { useList } from '@qualy/web-i18n'
 
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
@@ -28,7 +30,7 @@ import { EntrySheet } from './EntrySheet.tsx'
 import { MissingClaimSheet } from './MissingClaimSheet.tsx'
 import { useMarkEntryRead, useOwnClaimActs, useOwnFailure } from './own-acts.ts'
 import { standingRows } from './standing.ts'
-import type { EntryDto, FilingGateDto, ItemDto } from './model.ts'
+import { type EntryDto, type FilingGateDto, type ItemDto } from './model.ts'
 import { EntriesWorkspace } from './workspace/EntriesWorkspace.tsx'
 import { WorkspaceSkeleton } from './workspace/WorkspaceSkeleton.tsx'
 import { StandingNotice } from './workspace/StandingNotice.tsx'
@@ -94,7 +96,6 @@ function Body({
 }) {
   const query = useApiQuery(assessmentApi)
   const api = useApi(assessmentApi)
-  const run = useRunApi()
 
   const failures = useLoadFailure()
   const queryClient = useQueryClient()
@@ -245,40 +246,37 @@ function Body({
    * breath. The dialog never opens - there is nothing in it to fill - and
    * the toast says what the press amounted to.
    */
-  const declare = useMutation({
-    mutationFn: async (input: { itemId: string }) => {
-      if (mine.data === undefined) throw new Error('roster not loaded')
-      // a declaration has no fields, but its worth and its route are still
-      // the question's current version - the press names what it saw
-      const seen = questions.find((one) => one.id === input.itemId)?.currentRevision?.id
-      const created = await run(
-        api.assessment.createEntry({
+  const declare = useApiMutation({
+    mutationFn: (input: { itemId: string }) =>
+      Effect.gen(function* () {
+        if (mine.data === undefined) throw new Error('roster not loaded')
+        // a declaration has no fields, but its worth and its route are still
+        // the question's current version - the press names what it saw
+        const seen = questions.find((one) => one.id === input.itemId)?.currentRevision?.id
+        const created = yield* api.assessment.createEntry({
           payload: {
             itemId: input.itemId,
             participantId: mine.data.participantId,
             payload: {},
             ...(seen === undefined ? {} : { expectedItemRevisionId: seen }),
           },
-        }),
-      )
-      const sent = await run(
-        api.assessment.setEntryStatus({
+        })
+        const sent = yield* api.assessment.setEntryStatus({
           params: { entryId: created.entry.id },
           payload: {
             status: 'in_review',
             ...(seen === undefined ? {} : { expectedItemRevisionId: seen }),
           },
-        }),
-      )
-      return sent.entry
-    },
+        })
+        return sent.entry
+      }),
     onSuccess: (entry) => {
       toast.success(
         (entry.status === 'approved' ? m.entry_declaredCounted : m.entry_declaredFiled)(),
       )
       refresh()
     },
-    onError: (error: unknown, input) => toast.error(sayFailure(error, input.itemId)),
+    onError: (error, input) => toast.error(sayFailure(error, input.itemId)),
   })
 
   // Every question of the round this person takes part in, whoever fills it

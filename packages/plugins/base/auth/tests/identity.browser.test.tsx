@@ -6,9 +6,9 @@ import UsersPage from '../src/client/iam/UsersPage.tsx'
 import UserDetailHeader from '../src/client/iam/UserDetailHeader.tsx'
 import { describe, expect, it, vi } from 'vitest'
 import { page, userEvent } from 'vitest/browser'
-import type { ApiResult, ClientOf } from '@qualy/web-runtime/api'
-import type { authApi } from '@qualy/plugin-auth/client/api'
-import type { accessApi } from '@qualy/plugin-rbac/client/api'
+import { type ApiResult, type ClientOf } from '@qualy/web-runtime/api'
+import { type authApi } from '@qualy/plugin-auth/client/api'
+import { type accessApi } from '@qualy/plugin-rbac/client/api'
 
 // the rows as the api answers them: a fixture typed from a hand-written copy
 // kept compiling after the api's own shape moved
@@ -403,8 +403,8 @@ describe('user types screen', () => {
 
   it('localizes a typed refusal instead of showing the protocol message', async () => {
     const save = vi.fn(() =>
-      // the backend says LAST_ADMINISTRATOR in english; the reader must not
-      Effect.fail(apiError('LAST_ADMINISTRATOR', undefined)),
+      // the backend says USER_TYPE_VERSION_CONFLICT in english; the reader must not
+      Effect.fail(apiError('USER_TYPE_VERSION_CONFLICT', undefined)),
     )
     await renderScreen({
       client: fakeClient(
@@ -440,11 +440,10 @@ describe('user types screen', () => {
     // The refusal reaches the reader as a sentence rather than as a code,
     // which is the subject here. Asserted as: something was said, it was
     // said as a refusal, and it was not the protocol word. Not as the
-    // sentence itself - that one belongs to rbac's catalog, and an auth
-    // test quoting it went red whenever rbac reworded.
+    // sentence itself: that belongs to this endpoint's message source.
     await expect.element(page.getByTestId('feedback')).toHaveAttribute('data-tone', 'error')
     expect(page.getByTestId('feedback').element().textContent ?? '').not.toBe('')
-    expect(page.getByText('LAST_ADMINISTRATOR').elements()).toHaveLength(0)
+    expect(page.getByText('USER_TYPE_VERSION_CONFLICT').elements()).toHaveLength(0)
     // the row is versioned as a whole, and a save that cannot say which
     // version it read is one that overwrites whoever went second
     expect(save).toHaveBeenCalledWith(

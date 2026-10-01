@@ -1,9 +1,9 @@
+import { useLocale } from '@qualy/web-i18n'
 import { useEffect, useId, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { ChevronDownIcon, CircleCheckIcon } from 'lucide-react'
 import { PageLink, useApiQuery, useLoadFailure, usePageHref } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
 
 import { AsyncSection } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
@@ -198,7 +198,7 @@ function QuestionRow({
   onUnfold: () => void
   onOpenPerson: (participantId: string) => void
 }) {
-  const { locale } = useI18n()
+  const locale = useLocale()
   const peopleId = useId()
   // a reader who cannot open the question's settings is not led to a closed door
   const settings = usePageHref('assessment/batch-items', {

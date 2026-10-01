@@ -1,3 +1,4 @@
+import { useLocale } from '@qualy/web-i18n'
 import * as stylex from '@stylexjs/stylex'
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
@@ -11,7 +12,6 @@ import {
   usePageRouteParams,
   usePageTitle,
 } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
 
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
@@ -28,7 +28,7 @@ import { TemplateExamplesSheet } from './TemplateExamplesSheet.tsx'
 import { ParameterChips } from './library.tsx'
 import { fullWhen, libraryStyles as l } from './library-styles.ts'
 import { SourceView } from './SourceView.tsx'
-import type { NormalizedInputSchema } from '@qualy/value-schema'
+import { type NormalizedInputSchema } from '@qualy/value-schema'
 import * as commonMessages from '@qualy/web-i18n/messages'
 import * as m from '#messages'
 
@@ -146,7 +146,7 @@ const styles = stylex.create({
 export default function FormulaTemplatePage() {
   const { versionId } = usePageRouteParams('versionId')
   const query = useApiQuery(formulaApi)
-  const { locale } = useI18n()
+  const locale = useLocale()
   const navigate = usePageNavigate()
   const [copying, setCopying] = useState(false)
   const [readingExamples, setReadingExamples] = useState(false)

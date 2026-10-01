@@ -1,4 +1,5 @@
 import { sql } from 'kysely'
+import { text, renderTexts } from '@qualy/text'
 import { Effect, Exit, Layer, Scope } from 'effect'
 import { describe, expect, it } from 'vitest'
 import { authClosure } from './support/closure.ts'
@@ -34,6 +35,9 @@ import { singleOriginLayer } from '../src/server/public-origin.ts'
 const drivers: readonly LoginDriver[] = [
   {
     type: 'redirecting',
+    failures: {
+      CAMPUS_PROOF_REJECTED: text({ namespace: 'qualy-plugin-auth-github', key: 'error_rejected' }),
+    },
     presentation: {
       mode: 'redirect',
       href: (provider) => HREFS[provider.code] ?? '/fallback',
@@ -91,7 +95,7 @@ describe.runIf(postgresAvailable).concurrent('the ways in a deployment offers', 
     const db = await createTestContext('effect-login-methods')
     const scope = await Effect.runPromise(Scope.make())
     try {
-      const methods = await Effect.runPromise(
+      const context = await Effect.runPromise(
         Effect.gen(function* () {
           const tenant = (
             (yield* runSql(
@@ -104,12 +108,20 @@ describe.runIf(postgresAvailable).concurrent('the ways in a deployment offers', 
               values (${tenant}, ${code}, 'redirecting', ${code}, true, ${index})`)
           }
           const signIn = yield* SignIn
-          return yield* signIn.loginMethods()
+          return yield* signIn.loginContext()
         }).pipe(Effect.provide(stack(db.url)), Scope.provide(scope)),
       )
       // only the same-origin one survives; the other three are dropped rather
       // than rewritten, because a driver that names another origin has said
       // something this application cannot honour
+      const methods = context.methods
+      if (!('failureMessages' in context)) throw new Error('login failure projection missing')
+      const zh = renderTexts(context, { locale: 'zh-CN' }).failureMessages
+      const en = renderTexts(context, { locale: 'en-US' }).failureMessages
+      expect(zh.CAMPUS_PROOF_REJECTED).toContain('GitHub')
+      expect(en.CAMPUS_PROOF_REJECTED).toContain('GitHub')
+      expect(zh.CAMPUS_PROOF_REJECTED).not.toBe(en.CAMPUS_PROOF_REJECTED)
+      expect(Object.keys(zh)).toEqual(['CAMPUS_PROOF_REJECTED'])
       expect(methods.map((method) => method.code)).toEqual(['good'])
       expect(methods[0]).toMatchObject({
         mode: 'redirect',

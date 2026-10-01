@@ -12,12 +12,13 @@ import {
   runSql,
 } from '@qualy/plugin-database/testkit'
 import { type Orm } from '@qualy/plugin-database/server'
-import type { Principal } from '@qualy/rbac-contract'
+import { type Principal } from '@qualy/rbac-contract'
 import { serviceLayer as rbacLayer } from '@qualy/plugin-rbac/server'
 import { serviceLayer as auditLayer } from '@qualy/plugin-audit/server'
 import { AuditActionCatalog } from '@qualy/audit-contract/effect'
 import { compileActionCatalog } from '@qualy/audit-contract/plugin'
 import {
+  LoginDrivers,
   driverContradiction,
   loginDriversLayer,
   registerLoginDriver,
@@ -161,6 +162,54 @@ const seed = (url: string) =>
   )
 
 describe('a driver declaration', () => {
+  it('refuses redirect failures that override platform codes or have malformed Text', () => {
+    expect(
+      driverContradiction({
+        ...campus,
+        failures: { ACCESS_DENIED: { kind: 'literal', value: 'override' } },
+      }),
+    ).toMatch(/invalid redirect failure/)
+    expect(
+      driverContradiction({
+        ...campus,
+        failures: { CAMPUS_REJECTED: { kind: 'literal', value: 1 } as never },
+      }),
+    ).toMatch(/invalid redirect failure/)
+  })
+
+  it('refuses redirect codes already interpreted by the login shell', () => {
+    for (const code of [
+      'AUTH_FLOW_REJECTED',
+      'AUTH_EXTERNAL_ACCOUNT_UNBOUND',
+      'AUTH_PERSON_NOT_FOUND',
+      'AUTH_METHOD_UNAVAILABLE',
+      'TOO_MANY_ATTEMPTS',
+    ]) {
+      expect(
+        driverContradiction({
+          ...campus,
+          failures: { [code]: { kind: 'literal', value: 'hidden' } },
+        }),
+      ).toMatch(/invalid redirect failure/)
+    }
+  })
+
+  it('refuses two drivers claiming the same redirect failure', async () => {
+    const a = { ...campus, failures: { CAMPUS_REJECTED: { kind: 'literal' as const, value: 'a' } } }
+    const b = { ...a, type: 'other-campus' }
+    const exit = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const drivers = yield* LoginDrivers
+          yield* drivers.register(a)
+          yield* drivers.register(b)
+        }),
+      ).pipe(Effect.provide(loginDriversLayer), Effect.exit),
+    )
+    expect(Exit.isFailure(exit)).toBe(true)
+    expect(String(exit)).toContain('CAMPUS_REJECTED')
+  })
+
   it('is refused when its door could never let anybody in', () => {
     const base = { ...campus }
     expect(driverContradiction(base)).toBeUndefined()

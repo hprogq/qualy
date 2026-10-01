@@ -4,7 +4,7 @@
 import * as stylexUnpluginModule from '@stylexjs/unplugin/vite'
 import react from '@vitejs/plugin-react'
 import { playwright } from '@vitest/browser-playwright'
-import type { BrowserCommand } from 'vitest/node'
+import { type BrowserCommand } from 'vitest/node'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vitest/config'
@@ -49,6 +49,7 @@ export default defineConfig({
     // every package's messages, compiled before anything resolves #messages,
     // and the one outside plugin's whose own test runs here
     qualyMessages({
+      all: true,
       extraPackages: [path.join(repoRoot, 'tools/fixtures/acme-browser-probe')],
     }),
     stylexUnplugin({
@@ -70,7 +71,7 @@ export default defineConfig({
     // harness that mounts each test, never by a plugin module. Found late,
     // it made Vite re-bundle and reload mid-run, and on a cold cache - every
     // CI run - the files in flight at that moment failed to import.
-    include: ['react-dom/client'],
+    include: ['react-dom/client', 'effect/http/HttpServerRequest'],
   },
   test: {
     // measured only when asked (`pnpm test:browser:coverage`); Chromium only -

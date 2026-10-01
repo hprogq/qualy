@@ -1,15 +1,16 @@
+import { assertNever, getApiErrorCode } from '@qualy/web-i18n'
+import { useApiMutation, useApi, useApiQuery } from '@qualy/web-runtime'
 import { useEffect, useState } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
-import { useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
-import { getApiErrorCode, useI18n } from '@qualy/web-i18n'
+
 import { Feedback, Field, FormDialog, useSettledCheck } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@qualy/ui/select'
 
 import { authApi } from '../../api.ts'
-import type { EntranceKind } from './form-values.ts'
+import { type EntranceKind } from './form-values.ts'
 import * as m from '#messages'
 
 // A new entrance: which kind, what it is called and where it answers. What
@@ -37,10 +38,9 @@ export function NewMethodDialog({
   onCreated: (providerId: string) => void
 }) {
   const api = useApi(authApi)
-  const run = useRunApi()
   const query = useApiQuery(authApi)
   const queryClient = useQueryClient()
-  const { formatError } = useI18n()
+
   const [type, setType] = useState('')
   const [name, setName] = useState('')
   const [code, setCode] = useState('')
@@ -63,13 +63,11 @@ export function NewMethodDialog({
     setTaken(null)
   }, [open])
 
-  const create = useMutation({
+  const create = useApiMutation({
     mutationFn: () =>
-      run(
-        api.identity.createAuthProvider({
-          payload: { type: kind!.type, code: code.trim(), name: name.trim() },
-        }),
-      ),
+      api.identity.createAuthProvider({
+        payload: { type: kind!.type, code: code.trim(), name: name.trim() },
+      }),
     onMutate: () => {
       setFeedback(null)
       setTaken(null)
@@ -78,10 +76,22 @@ export function NewMethodDialog({
       await queryClient.invalidateQueries({ queryKey: query.identity.key() })
       onCreated(created.id)
     },
-    onError: (error: unknown) =>
-      getApiErrorCode(error) === 'AUTH_PROVIDER_CONFLICT'
-        ? setTaken(formatError(error))
-        : setFeedback(formatError(error)),
+    onError: (error) => {
+      let failure: string
+      switch (error._tag) {
+        case 'AUTH_PROVIDER_CONFLICT':
+          failure = m.error_providerConflict()
+          break
+        case 'AUTH_PROVIDER_KIND_UNAVAILABLE':
+          failure = m.error_providerKindUnavailable()
+          break
+        default:
+          assertNever(error)
+      }
+      return getApiErrorCode(error) === 'AUTH_PROVIDER_CONFLICT'
+        ? setTaken(failure)
+        : setFeedback(failure)
+    },
   })
 
   const ready = kind !== undefined && name.trim() !== '' && ADDRESS.test(code.trim())

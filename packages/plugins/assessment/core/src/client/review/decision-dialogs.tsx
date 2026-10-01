@@ -1,9 +1,9 @@
+import { useLocale, useList } from '@qualy/web-i18n'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { CircleAlertIcon } from 'lucide-react'
 import * as stylex from '@stylexjs/stylex'
 import { useQuery } from '@tanstack/react-query'
 import { useApi, useRunApi } from '@qualy/web-runtime'
-import { useI18n, useList } from '@qualy/web-i18n'
 
 import { Field, FormDialog, RequiredMark } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
@@ -19,9 +19,9 @@ import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { assessmentApi } from '../api.ts'
 
-import { answerOf, displayValueOf, fieldsOf } from '../entry/model.ts'
-import type { EvidenceFieldSpec } from '../entry/EvidenceForm.tsx'
-import { offeredOptions } from '../entry/model.ts'
+import { answerOf, displayValueOf, fieldsOf, offeredOptions } from '../entry/model.ts'
+import { type EvidenceFieldSpec } from '../entry/EvidenceForm.tsx'
+
 import { AttachmentLink } from '../entry/AttachmentLink.tsx'
 import { Choice } from '../items/Choice.tsx'
 import { DraftNote } from './DraftNote.tsx'
@@ -764,7 +764,7 @@ export function ApproveDialog({
   onClose: () => void
   onConfirm: (decision: WordedDecision) => void
 }) {
-  const { locale } = useI18n()
+  const locale = useLocale()
   const listJoin = useList()
   const words = usePickerWords()
   const fine = useFinePointer()
@@ -1458,7 +1458,7 @@ export function RejectDialog({
   onClose: () => void
   onConfirm: (decision: WordedDecision) => void
 }) {
-  const { locale } = useI18n()
+  const locale = useLocale()
   const pickerWords = usePickerWords()
   const fine = useFinePointer()
   const [reason, setReason] = useState(initial?.reason ?? '')

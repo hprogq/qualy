@@ -1,7 +1,7 @@
+import { assertNever } from '@qualy/web-i18n'
+import { useApiMutation, useApi } from '@qualy/web-runtime'
 import { useEffect, useState } from 'react'
-import { useMutation } from '@tanstack/react-query'
-import { useApi, useRunApi } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
+
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { Button } from '@qualy/ui/button'
@@ -54,8 +54,7 @@ export function FormulaDetailsDialog({
   readonly onSaved: () => void
 }) {
   const api = useApi(formulaApi)
-  const run = useRunApi()
-  const { formatError } = useI18n()
+
   const [written, setWritten] = useState(name)
   const [about, setAbout] = useState(description ?? '')
   const [failure, setFailure] = useState<string | null>(null)
@@ -68,26 +67,50 @@ export function FormulaDetailsDialog({
     setFailure(null)
   }, [open, name, description])
 
-  const save = useMutation({
+  const save = useApiMutation({
     mutationFn: () =>
-      run(
-        api.assessmentFormula.updateFormulaDraft({
-          params: { functionId },
-          payload: {
-            expectedDraftRevision: draftRevision,
-            expectedDetailsRevision: detailsRevision,
-            name: written.trim(),
-            description: about.trim() === '' ? null : about.trim(),
-          },
-        }),
-      ),
+      api.assessmentFormula.updateFormulaDraft({
+        params: { functionId },
+        payload: {
+          expectedDraftRevision: draftRevision,
+          expectedDetailsRevision: detailsRevision,
+          name: written.trim(),
+          description: about.trim() === '' ? null : about.trim(),
+        },
+      }),
     onMutate: () => setFailure(null),
     onSuccess: () => {
       toast.success(m.editor_detailsSaved())
       onSaved()
       onClose()
     },
-    onError: (error: unknown) => setFailure(formatError(error)),
+    onError: (error) => {
+      switch (error._tag) {
+        case 'ASSESSMENT_FORMULA_AUTHORING_BUSY':
+          setFailure(m.error_authoringBusy())
+          return
+        case 'ASSESSMENT_FORMULA_DETAILS_CONFLICT':
+          setFailure(m.error_detailsConflict())
+          return
+        case 'ASSESSMENT_FORMULA_DRAFT_CONFLICT':
+          setFailure(m.error_draftConflict())
+          return
+        case 'ASSESSMENT_FORMULA_FUNCTION_ARCHIVED':
+          setFailure(m.error_functionArchived())
+          return
+        case 'ASSESSMENT_FORMULA_FUNCTION_NOT_FOUND':
+          setFailure(m.error_functionNotFound())
+          return
+        case 'ASSESSMENT_FORMULA_SOURCE_TOO_LARGE':
+          setFailure(m.error_sourceTooLarge())
+          return
+        case 'ASSESSMENT_FORMULA_TESTS_TOO_LARGE':
+          setFailure(m.error_testsTooLarge())
+          return
+        default:
+          assertNever(error)
+      }
+    },
   })
 
   return (

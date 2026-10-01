@@ -1,9 +1,10 @@
+import { assertNever, useLocale } from '@qualy/web-i18n'
+
+import { useApiMutation, PageLink, useApi, useApiQuery, useLoadFailure } from '@qualy/web-runtime'
 import { useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 import { UserRoundCheckIcon } from 'lucide-react'
-import { PageLink, useApi, useApiQuery, useLoadFailure, useRunApi } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
 
 import { useTerm } from '@qualy/plugin-settings/client/terms'
 import { authTerms } from '@qualy/auth-contract/terms'
@@ -133,12 +134,11 @@ export function ImportRecordSheet({
   open: boolean
   onClose: () => void
 }) {
-  const { formatError, locale } = useI18n()
+  const locale = useLocale()
   const businessNo = useTerm(authTerms.businessNumber)
   const phone = useIsBelow(768)
   const api = useApi(directoryApi)
   const query = useApiQuery(directoryApi)
-  const run = useRunApi()
   const queryClient = useQueryClient()
   const detail = useQuery(query.directory.getUserImport.queryOptions({ params: { importId } }))
   const [rowPage, setRowPage] = useState(1)
@@ -164,29 +164,46 @@ export function ImportRecordSheet({
   const refresh = () => {
     void queryClient.invalidateQueries({ queryKey: query.directory.key() })
   }
-  const reverse = useMutation({
+  const reverse = useApiMutation({
     mutationFn: () =>
-      run(
-        api.directory.reverseUserImport({
-          params: { importId },
-          payload: { reason: reason.trim() },
-        }),
-      ),
+      api.directory.reverseUserImport({
+        params: { importId },
+        payload: { reason: reason.trim() },
+      }),
     onSuccess: (outcome) => {
       toast.success(m.reverse_done({ retired: outcome.retired }))
       setReversing(false)
       refresh()
     },
-    onError: (error) => toast.error(formatError(error)),
+    onError: (error) => {
+      switch (error._tag) {
+        case 'LAST_ADMINISTRATOR':
+          toast.error(m.error_lastAdministrator())
+          return
+        case 'USER_IMPORT_NOT_FOUND':
+          toast.error(m.error_notFound())
+          return
+        default:
+          assertNever(error)
+      }
+    },
   })
-  const clean = useMutation({
-    mutationFn: () => run(api.directory.cleanUserImportNodes({ params: { importId } })),
+  const clean = useApiMutation({
+    mutationFn: () => api.directory.cleanUserImportNodes({ params: { importId } }),
     onSuccess: (outcome) => {
       toast.success(m.clean_done({ deleted: outcome.deleted, retained: outcome.retained.length }))
       setCleaning(false)
       refresh()
     },
-    onError: (error) => toast.error(formatError(error)),
+    onError: (error) => {
+      switch (error._tag) {
+        case 'USER_IMPORT_NOT_FOUND':
+          toast.error(m.error_notFound())
+          return
+        default:
+          assertNever(error._tag)
+      }
+    },
   })
 
   const found = detail.data

@@ -1,7 +1,8 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { assertNever, getApiErrorCode } from '@qualy/web-i18n'
+import { useApiMutation, useApi, useApiQuery } from '@qualy/web-runtime'
+import { useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
-import { useApi, useRunApi, useApiQuery } from '@qualy/web-runtime'
-import { getApiErrorCode, useI18n } from '@qualy/web-i18n'
+
 import * as stylex from '@stylexjs/stylex'
 import { Feedback, Field, FormDialog, RadioGroup } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
@@ -36,18 +37,17 @@ export function NewRoleForm({
   onCreated: (roleId: string) => void
 }) {
   const api = useApi(accessApi)
-  const run = useRunApi()
   const query = useApiQuery(accessApi)
   const queryClient = useQueryClient()
-  const { formatError } = useI18n()
+
   const [feedback, setFeedback] = useState<string | null>(null)
   // a name another role already has is the name's to fix, said under it
   const [taken, setTaken] = useState<string | null>(null)
   const [name, setName] = useState('')
   const [kind, setKind] = useState<'tenant' | 'org'>('org')
 
-  const create = useMutation({
-    mutationFn: () => run(api.access.createRole({ payload: { name, kind } })),
+  const create = useApiMutation({
+    mutationFn: () => api.access.createRole({ payload: { name, kind } }),
     onMutate: () => {
       setFeedback(null)
       setTaken(null)
@@ -57,10 +57,17 @@ export function NewRoleForm({
       await queryClient.invalidateQueries({ queryKey: query.access.key() })
       onCreated(result.id)
     },
-    onError: (error: unknown) =>
-      getApiErrorCode(error) === 'ROLE_CONFLICT'
-        ? setTaken(formatError(error))
-        : setFeedback(formatError(error)),
+    onError: (error) => {
+      let failure: string
+      switch (error._tag) {
+        case 'ROLE_CONFLICT':
+          failure = m.error_roleConflict()
+          break
+        default:
+          assertNever(error._tag)
+      }
+      return getApiErrorCode(error) === 'ROLE_CONFLICT' ? setTaken(failure) : setFeedback(failure)
+    },
   })
 
   return (

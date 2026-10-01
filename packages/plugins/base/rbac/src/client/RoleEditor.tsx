@@ -1,16 +1,18 @@
-import type { ApiResult } from '@qualy/web-runtime/api'
-import type { Effect } from 'effect'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useMemo, useState } from 'react'
+import { assertNever, getApiErrorCode, useList } from '@qualy/web-i18n'
 import {
+  useApiMutation,
   PageLink,
   useApi,
-  useRunApi,
   useApiQuery,
   useLoadFailure,
   usePageNavigate,
 } from '@qualy/web-runtime'
-import { getApiErrorCode, useI18n, useList } from '@qualy/web-i18n'
+
+import { type ApiResult } from '@qualy/web-runtime/api'
+
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useEffect, useMemo, useState } from 'react'
+
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
@@ -165,10 +167,10 @@ const styles = stylex.create({
 
 export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: boolean }) {
   const api = useApi(accessApi)
-  const runApi = useRunApi()
+
   const query = useApiQuery(accessApi)
   const queryClient = useQueryClient()
-  const { formatError } = useI18n()
+
   const describe = useLoadFailure()
   const listJoin = useList()
   const navigate = usePageNavigate()
@@ -249,19 +251,9 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
   }, [grantable.data])
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: query.access.key() })
-  // the one crossing from an effect to a promise on this screen: TanStack
-  // needs a promise, and doing it here keeps every call site an effect
-  const run = <Variables,>(call: (input: Variables) => Effect.Effect<unknown, unknown>) => ({
-    mutationFn: (input: Variables) => runApi(call(input)),
-    onMutate: () => setFeedback(null),
-    onSuccess: async () => {
-      await refresh()
-    },
-    onError: (error: unknown) => setFeedback(formatError(error)),
-  })
 
-  const saveProfile = useMutation({
-    ...run(() =>
+  const saveProfile = useApiMutation({
+    mutationFn: () =>
       // the version this editor read: a save that cannot say what it saw is
       // a save that silently overwrites whoever went second
       api.access.updateRole({
@@ -272,33 +264,109 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
           description: description.trim() === '' ? null : description,
         },
       }),
-    ),
     onMutate: () => setRenameRefusal(null),
     onSuccess: async () => {
       setRenaming(false)
       await refresh()
     },
-    onError: (error: unknown) =>
+    onError: (error) => {
+      let failure: string
+      switch (error._tag) {
+        case 'ROLE_CONFLICT':
+          failure = m.error_roleConflict()
+          break
+        case 'ROLE_IS_SYSTEM':
+          failure = m.error_roleIsSystem()
+          break
+        case 'ROLE_NOT_FOUND':
+          failure = m.error_roleNotFound()
+          break
+        case 'ROLE_VERSION_CONFLICT':
+          failure = m.error_roleVersionConflict()
+          break
+        default:
+          assertNever(error)
+      }
       setRenameRefusal({
         taken: getApiErrorCode(error) === 'ROLE_CONFLICT',
-        said: formatError(error),
-      }),
+        said: failure,
+      })
+    },
   })
   const closeRename = () => {
     setRenaming(false)
     setRenameRefusal(null)
   }
-  const savePermissions = useMutation({
-    ...run(() =>
+  const savePermissions = useApiMutation({
+    mutationFn: () =>
       api.access.setRolePermissions({
         params: { roleId: role.id },
         payload: { version: role.version, codes: permissions },
       }),
-    ),
+    onMutate: () => setFeedback(null),
+    onSuccess: async () => {
+      await refresh()
+    },
+    onError: (error) => {
+      switch (error._tag) {
+        case 'LAST_ADMINISTRATOR':
+          setFeedback(m.error_lastAdministrator())
+          return
+        case 'PERMISSION_NOT_FOUND':
+          setFeedback(
+            m.error_permissionNotFound(
+              ((data: typeof error) => ({ count: data.permissions.length }))(error),
+            ),
+          )
+          return
+        case 'ROLE_APPOINTMENT_INVALID':
+          setFeedback(
+            m.error_roleAppointmentInvalid(
+              ((data: typeof error) => ({ reason: data.reason }))(error),
+            ),
+          )
+          return
+        case 'ROLE_CONFLICT':
+          setFeedback(m.error_roleConflict())
+          return
+        case 'ROLE_ESCALATION_REFUSED':
+          setFeedback(
+            m.error_roleEscalationRefused(
+              ((data: typeof error) => ({ count: data.permissions.length }))(error),
+            ),
+          )
+          return
+        case 'ROLE_INCOMPLETE':
+          setFeedback(
+            m.error_roleIncomplete(
+              ((data: typeof error) => ({ missing: data.missing.join(', ') }))(error),
+            ),
+          )
+          return
+        case 'ROLE_IS_SYSTEM':
+          setFeedback(m.error_roleIsSystem())
+          return
+        case 'ROLE_NOT_FOUND':
+          setFeedback(m.error_roleNotFound())
+          return
+        case 'ROLE_TARGET_MISMATCH':
+          setFeedback(
+            m.error_roleTargetMismatch(
+              ((data: typeof error) => ({ count: data.permissions.length }))(error),
+            ),
+          )
+          return
+        case 'ROLE_VERSION_CONFLICT':
+          setFeedback(m.error_roleVersionConflict())
+          return
+        default:
+          assertNever(error)
+      }
+    },
     onSettled: () => setConfirmingPermissions(false),
   })
-  const saveEligibility = useMutation(
-    run(() =>
+  const saveEligibility = useApiMutation({
+    mutationFn: () =>
       api.access.setRoleEligibility({
         params: { roleId: role.id },
         payload: {
@@ -316,39 +384,197 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
               : null,
         },
       }),
-    ),
-  )
-  const saveGrantable = useMutation(
-    run(() =>
+    onMutate: () => setFeedback(null),
+    onSuccess: async () => {
+      await refresh()
+    },
+    onError: (error) => {
+      switch (error._tag) {
+        case 'GRANT_STRANDED':
+          setFeedback(
+            m.error_grantStranded(
+              ((data: typeof error) => ({ assignmentCount: data.grantCount }))(error),
+            ),
+          )
+          return
+        case 'ROLE_ANCHOR_MISMATCH':
+          setFeedback(m.error_roleAnchorMismatch())
+          return
+        case 'ROLE_CONFLICT':
+          setFeedback(m.error_roleConflict())
+          return
+        case 'ROLE_IS_SYSTEM':
+          setFeedback(m.error_roleIsSystem())
+          return
+        case 'ROLE_NEEDS_ELIGIBILITY':
+          setFeedback(m.error_roleNeedsEligibility())
+          return
+        case 'ROLE_NOT_FOUND':
+          setFeedback(m.error_roleNotFound())
+          return
+        case 'ROLE_ORG_TYPE_NOT_FOUND':
+          setFeedback(m.error_roleOrgTypeNotFound())
+          return
+        case 'ROLE_USER_TYPE_NOT_FOUND':
+          setFeedback(m.error_roleUserTypeNotFound())
+          return
+        case 'ROLE_VERSION_CONFLICT':
+          setFeedback(m.error_roleVersionConflict())
+          return
+        default:
+          assertNever(error)
+      }
+    },
+  })
+  const saveGrantable = useApiMutation({
+    mutationFn: () =>
       api.access.setRoleGrantableRoles({
         params: { roleId: role.id },
         payload: { version: role.version, roleIds: grantableIds },
       }),
-    ),
-  )
-  const setAssignable = useMutation(
-    run((assignable: boolean) =>
+    onMutate: () => setFeedback(null),
+    onSuccess: async () => {
+      await refresh()
+    },
+    onError: (error) => {
+      switch (error._tag) {
+        case 'ROLE_APPOINTMENT_INVALID':
+          setFeedback(
+            m.error_roleAppointmentInvalid(
+              ((data: typeof error) => ({ reason: data.reason }))(error),
+            ),
+          )
+          return
+        case 'ROLE_CONFLICT':
+          setFeedback(m.error_roleConflict())
+          return
+        case 'ROLE_ESCALATION_REFUSED':
+          setFeedback(
+            m.error_roleEscalationRefused(
+              ((data: typeof error) => ({ count: data.permissions.length }))(error),
+            ),
+          )
+          return
+        case 'ROLE_IS_SYSTEM':
+          setFeedback(m.error_roleIsSystem())
+          return
+        case 'ROLE_NOT_FOUND':
+          setFeedback(m.error_roleNotFound())
+          return
+        case 'ROLE_VERSION_CONFLICT':
+          setFeedback(m.error_roleVersionConflict())
+          return
+        default:
+          assertNever(error)
+      }
+    },
+  })
+  const setAssignable = useApiMutation({
+    mutationFn: (assignable: boolean) =>
       api.access.updateRole({
         params: { roleId: role.id },
         payload: { version: role.version, assignable },
       }),
-    ),
-  )
-  const setStatus = useMutation(
-    run((status: 'active' | 'disabled') =>
+    onMutate: () => setFeedback(null),
+    onSuccess: async () => {
+      await refresh()
+    },
+    onError: (error) => {
+      switch (error._tag) {
+        case 'ROLE_CONFLICT':
+          setFeedback(m.error_roleConflict())
+          return
+        case 'ROLE_IS_SYSTEM':
+          setFeedback(m.error_roleIsSystem())
+          return
+        case 'ROLE_NOT_FOUND':
+          setFeedback(m.error_roleNotFound())
+          return
+        case 'ROLE_VERSION_CONFLICT':
+          setFeedback(m.error_roleVersionConflict())
+          return
+        default:
+          assertNever(error)
+      }
+    },
+  })
+  const setStatus = useApiMutation({
+    mutationFn: (status: 'active' | 'disabled') =>
       api.access.setRoleStatus({
         params: { roleId: role.id },
         payload: { version: role.version, status },
       }),
-    ),
-  )
-  const remove = useMutation({
-    ...run(() =>
+    onMutate: () => setFeedback(null),
+    onSuccess: async () => {
+      await refresh()
+    },
+    onError: (error) => {
+      switch (error._tag) {
+        case 'LAST_ADMINISTRATOR':
+          setFeedback(m.error_lastAdministrator())
+          return
+        case 'ROLE_CONFLICT':
+          setFeedback(m.error_roleConflict())
+          return
+        case 'ROLE_ESCALATION_REFUSED':
+          setFeedback(
+            m.error_roleEscalationRefused(
+              ((data: typeof error) => ({ count: data.permissions.length }))(error),
+            ),
+          )
+          return
+        case 'ROLE_INCOMPLETE':
+          setFeedback(
+            m.error_roleIncomplete(
+              ((data: typeof error) => ({ missing: data.missing.join(', ') }))(error),
+            ),
+          )
+          return
+        case 'ROLE_IS_SYSTEM':
+          setFeedback(m.error_roleIsSystem())
+          return
+        case 'ROLE_NOT_DRAFT':
+          setFeedback(m.error_roleNotDraft())
+          return
+        case 'ROLE_NOT_FOUND':
+          setFeedback(m.error_roleNotFound())
+          return
+        case 'ROLE_VERSION_CONFLICT':
+          setFeedback(m.error_roleVersionConflict())
+          return
+        default:
+          assertNever(error)
+      }
+    },
+  })
+  const remove = useApiMutation({
+    mutationFn: () =>
       api.access.deleteRole({
         params: { roleId: role.id },
         query: { version: String(role.version) },
       }),
-    ),
+    onMutate: () => setFeedback(null),
+    onError: (error) => {
+      switch (error._tag) {
+        case 'ROLE_CONFLICT':
+          setFeedback(m.error_roleConflict())
+          return
+        case 'ROLE_HAS_GRANT_HISTORY':
+          setFeedback(m.error_roleHasGrantHistory())
+          return
+        case 'ROLE_IS_SYSTEM':
+          setFeedback(m.error_roleIsSystem())
+          return
+        case 'ROLE_NOT_FOUND':
+          setFeedback(m.error_roleNotFound())
+          return
+        case 'ROLE_VERSION_CONFLICT':
+          setFeedback(m.error_roleVersionConflict())
+          return
+        default:
+          assertNever(error)
+      }
+    },
     onSuccess: async () => {
       setConfirmingDelete(false)
       await refresh()

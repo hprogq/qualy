@@ -3,16 +3,7 @@
 // message compiler. What a server says is a Text (@qualy/text), said into a
 // string before it leaves; nothing on the wire names a message.
 
-export type MessageValues = Record<string, unknown>
-
-/**
- * A message held as a value: a compiled message function (a package's
- * `#messages`), passed along until something says it.
- *
- * Its inputs are loose here because a table of messages of different shapes
- * is exactly what this type is for; a message called where it is imported
- * keeps the exact inputs its facade declares.
- */
+/** A compiled message held as a value; direct calls keep their facade's exact inputs. */
 export type Message = (inputs?: any, options?: { readonly locale?: SupportedLocale }) => string
 
 /**
@@ -29,134 +20,19 @@ export const selectKey = (value: string): string =>
 export type SupportedLocale = 'zh-CN' | 'en-US'
 export const supportedLocales: readonly SupportedLocale[] = ['zh-CN', 'en-US']
 export const defaultLocale: SupportedLocale = 'zh-CN'
-// --- typed api error localization ---
-
-/**
- * The failures a module declares, keyed by the code they travel under.
- *
- * Written as `ErrorsByCode<typeof import('../src/server/errors.ts')>`, so a
- * translation table is checked against the classes themselves: a new failure
- * is a missing key, a deleted one is an excess key, and neither can be
- * declared anywhere else.
- *
- * There used to be a second table - the same codes, statuses and messages
- * written again in a second schema language, for the contract layer that no
- * longer exists - and by
- * the time it was only feeding these types it had drifted: two codes nothing
- * could raise were still being translated into two languages.
- *
- * The value is the error instance, because that is what the client receives
- * and hands to `values()`: an http error decodes back into its class, fields
- * and all.
- */
-export type ErrorsByCode<Module> = {
-  [Name in keyof Module as ErrorCodeOf<Module[Name]>]: ErrorPayloadOf<Module[Name]>
-}
-
-/** the tag a tagged error class carries, or never for anything else exported */
-type ErrorCodeOf<Exported> = Exported extends abstract new (...args: never[]) => {
-  readonly _tag: infer Code extends string
-}
-  ? Code
-  : never
-
-type ErrorPayloadOf<Exported> = Exported extends abstract new (...args: never[]) => infer Instance
-  ? Instance
-  : never
-
-// values() receives the data of its own code, never `unknown`
-export interface ErrorMessageRegistration<Data = unknown> {
-  message: Message
-  values?: (data: Data) => MessageValues
-}
-
-// the erased aggregate the runtime holds: values() is contravariant in its
-// data, so `never` is the supertype every typed registration fits into. The
-// runtime pays one documented cast for this at the point of call, instead
-// of every plugin casting its own data.
-export type ErrorMessageMap = Record<string, ErrorMessageRegistration<never>>
-
-/** a message that reads nothing, the only kind registered bare */
-type PlainMessage = (
-  inputs?: Record<string, never>,
-  options?: { readonly locale?: SupportedLocale },
-) => string
-
-// a translation entry is either a message that reads nothing, or a message
-// plus the projection from the error's typed data to what it reads. A
-// message that reads something cannot take the plain form: its inputs are
-// required, and a required parameter does not fit an optional one.
-export type ErrorTranslation<Data> =
-  | PlainMessage
-  | { message: (inputs: any) => string; values: (data: Data) => MessageValues }
-
-// second pass over the table the compiler already inferred: now that each
-// entry's message type is concrete, the projection's return type can be
-// pinned to what that message reads. A single-pass parameter cannot express
-// this - an object literal has no way to say "my values returns whatever my
-// sibling message reads".
-type CheckedTranslations<Table, Errors> = {
-  [Code in keyof Table]: Code extends keyof Errors
-    ? Table[Code] extends { message: infer Said extends (inputs: never) => string }
-      ? { message: Said; values: (data: Errors[Code]) => Parameters<Said>[0] }
-      : Table[Code]
-    : // a code nothing can raise has no valid translation
-      never
-}
-
-export interface ErrorTranslationSet {
-  registry: ErrorMessageMap
-}
-
-// translations for one module's failures: every code must be translated, a
-// code the module cannot raise is rejected by excess property checking, and
-// each values() receives exactly the error it belongs to. The parameter is
-// the mapped type itself (not an inferred subtype): that is what gives
-// values(data) its contextual type and makes extra keys fail.
-//
-// Curried because the error set is named rather than passed. The classes live
-// in a server module, and the browser needs nothing from it but the types -
-// `import type` costs no bytes, while a value parameter would have pulled the
-// whole module into the bundle to be read once and discarded.
-export const defineErrorTranslations =
-  <Errors>() =>
-  <const Table extends { [Code in keyof Errors]: ErrorTranslation<Errors[Code]> }>(
-    translations: Table & CheckedTranslations<Table, Errors>,
-  ): ErrorTranslationSet => {
-    const registry: Record<string, ErrorMessageRegistration<never>> = {}
-    for (const [code, entry] of Object.entries(translations) as [
-      string,
-      ErrorTranslation<unknown>,
-    ][]) {
-      registry[code] = typeof entry === 'function' ? { message: entry } : entry
-    }
-    return { registry }
-  }
-
-// a plugin may translate errors from more than one declaration set - its own
-// and a shared invariant it can raise - so they are joined here rather than
-// by hand at each call site
-export function mergeErrorTranslations(
-  ...sets: readonly ErrorTranslationSet[]
-): ErrorTranslationSet {
-  const registry: ErrorMessageMap = {}
-  for (const set of sets) {
-    for (const code of Object.keys(set.registry)) {
-      if (Object.hasOwn(registry, code)) {
-        throw new Error(`error code ${code} is translated twice`)
-      }
-      registry[code] = set.registry[code]!
-    }
-  }
-  return { registry }
-}
-
 // codes owned by the runtime; a plugin localizes its own codes only
 export const commonErrorCodes = [
   'AUTH_REQUIRED',
   'SESSION_EXPIRED',
   'ACCESS_DENIED',
   'BAD_REQUEST',
+  'TOO_MANY_ATTEMPTS',
+  'REQUEST_ORIGIN_REFUSED',
+  'API_ROUTE_NOT_FOUND',
+  'QUALY_CLIENT_PROTOCOL_UNSUPPORTED',
+  'QUALY_CLIENT_ASSEMBLY_UNSUPPORTED',
+  'QUALY_CLIENT_RELEASE_UNSUPPORTED',
+  'SERVICE_UNAVAILABLE',
 ] as const
 
 export type CommonErrorCode = (typeof commonErrorCodes)[number]

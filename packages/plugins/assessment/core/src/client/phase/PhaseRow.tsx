@@ -1,3 +1,4 @@
+import { useLocale, useList } from '@qualy/web-i18n'
 import { useId, type ReactNode } from 'react'
 import {
   ArrowDownIcon,
@@ -10,12 +11,12 @@ import {
 } from 'lucide-react'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { useI18n, useList } from '@qualy/web-i18n'
+
 import { Button } from '@qualy/ui/button'
 import { Cell, Status, Tag, TableRow } from '@qualy/ui/screen'
 
-import type { PlanRefusalLike } from '../refusals.ts'
-import type { PhaseDraft, PhaseDto, PlanShape } from './model.ts'
+import { type PlanRefusalLike } from '../refusals.ts'
+import { type PhaseDraft, type PhaseDto, type PlanShape } from './model.ts'
 import { inZone, useBatchZone } from '../batch/zone.ts'
 import * as m from '#messages'
 
@@ -375,7 +376,7 @@ export interface PhaseRowProps {
 
 /** the parts a row and a card both show, so neither can drift from the other */
 function useParts(props: PhaseRowProps) {
-  const { locale } = useI18n()
+  const locale = useLocale()
   const listOf = useList()
   const zone = useBatchZone()
   const { draft, phase, index, shape, total, editing, readOnly } = props

@@ -1,10 +1,12 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { selectKey } from '@qualy/i18n-contract'
+import { assertNever } from '@qualy/web-i18n'
+import { useApiMutation, UiSlot, useApi, useApiQuery } from '@qualy/web-runtime'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useId, useState } from 'react'
 import { ShieldOffIcon } from 'lucide-react'
 import { orgNodePicker, type OrgNodePickerContext } from '@qualy/ui-contract'
-import { UiSlot, useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
-import type { ApiResult } from '@qualy/web-runtime/api'
-import { useI18n } from '@qualy/web-i18n'
+
+import { type ApiResult } from '@qualy/web-runtime/api'
 
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
@@ -134,10 +136,9 @@ export function GrantRoleDialog({
   grantable: { tenant: boolean; organization: boolean }
 }) {
   const api = useApi(accessApi)
-  const run = useRunApi()
   const query = useApiQuery(accessApi)
   const queryClient = useQueryClient()
-  const { formatError } = useI18n()
+
   const formId = useId()
   const [feedback, setFeedback] = useState<string | null>(null)
   // a unit first where the reader may give there at all: that is where
@@ -181,20 +182,18 @@ export function GrantRoleDialog({
   const [confirming, setConfirming] = useState(false)
   const loaded = targeted && options.data !== undefined
 
-  const grant = useMutation({
+  const grant = useApiMutation({
     mutationFn: () =>
-      run(
-        api.access.createRoleGrant({
-          payload: {
-            userId,
-            roleId: selected,
-            target:
-              anchor !== undefined
-                ? { kind: 'org-node', orgNodeId: anchor, coverage }
-                : { kind: 'tenant' },
-          },
-        }),
-      ),
+      api.access.createRoleGrant({
+        payload: {
+          userId,
+          roleId: selected,
+          target:
+            anchor !== undefined
+              ? { kind: 'org-node', orgNodeId: anchor, coverage }
+              : { kind: 'tenant' },
+        },
+      }),
     onMutate: () => setFeedback(null),
     onSuccess: async () => {
       const name = chosen?.name ?? ''
@@ -202,7 +201,40 @@ export function GrantRoleDialog({
       toast.success(m.grants_done({ role: name }))
       onClose()
     },
-    onError: (error: unknown) => setFeedback(formatError(error)),
+    onError: (error) => {
+      switch (error._tag) {
+        case 'GRANT_ESCALATION_REFUSED':
+          setFeedback(m.error_grantEscalationRefused())
+          return
+        case 'GRANT_EXISTS':
+          setFeedback(m.error_grantExists())
+          return
+        case 'GRANT_NODE_NOT_FOUND':
+          setFeedback(m.error_grantNodeNotFound())
+          return
+        case 'GRANT_NOT_ELIGIBLE':
+          setFeedback(
+            m.error_grantNotEligible(
+              ((data: typeof error) => ({ reason: selectKey(data.reason) }))(error),
+            ),
+          )
+          return
+        case 'GRANT_RULE_REFUSED':
+          setFeedback(m.error_grantRuleRefused())
+          return
+        case 'GRANT_USER_NOT_FOUND':
+          setFeedback(m.error_grantUserNotFound())
+          return
+        case 'ROLE_NOT_FOUND':
+          setFeedback(m.error_roleNotFound())
+          return
+        case 'TENANT_ADMIN_REQUIRED':
+          setFeedback(m.error_tenantAdminRequired())
+          return
+        default:
+          assertNever(error)
+      }
+    },
   })
 
   const picker: OrgNodePickerContext = {

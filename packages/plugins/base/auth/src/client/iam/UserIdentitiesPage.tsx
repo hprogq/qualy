@@ -1,17 +1,20 @@
-import { useState } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import * as stylex from '@stylexjs/stylex'
-import type { ApiResult } from '@qualy/web-runtime/api'
+import { assertNever, useLocale } from '@qualy/web-i18n'
+
 import {
+  useRunApi,
+  useApiMutation,
   PageLink,
   useApi,
   useApiQuery,
   usePageHref,
   usePageRouteParams,
-  useRunApi,
   useLoadFailure,
 } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
+
+import { useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import * as stylex from '@stylexjs/stylex'
+import { type ApiResult } from '@qualy/web-runtime/api'
 
 import { useTerm } from '@qualy/plugin-settings/client/terms'
 import { authTerms } from '@qualy/auth-contract/terms'
@@ -76,10 +79,9 @@ const styles = stylex.create({
 export default function UserIdentitiesPage() {
   const { userId } = usePageRouteParams('userId')
   const api = useApi(authApi)
-  const run = useRunApi()
   const query = useApiQuery(authApi)
   const queryClient = useQueryClient()
-  const { formatError, locale } = useI18n()
+  const locale = useLocale()
   // a reading of this section that failed; the person not being there is the banner's to say
   const describe = useLoadFailure()
   const entrancesHref = usePageHref('auth/login-methods')
@@ -99,15 +101,27 @@ export default function UserIdentitiesPage() {
   // the system account's fields are provisioned, and never missing
   const system = person.data?.placement.mode === 'tenant-root'
 
-  const revoke = useMutation({
+  const revoke = useApiMutation({
     mutationFn: (entrance: Entrance) =>
-      run(
-        api.identity.deleteUserAuthBinding({ params: { userId, providerId: entrance.providerId } }),
-      ),
+      api.identity.deleteUserAuthBinding({ params: { userId, providerId: entrance.providerId } }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: query.identity.key() })
     },
-    onError: (error: unknown) => toast.error(formatError(error)),
+    onError: (error) => {
+      switch (error._tag) {
+        case 'AUTH_BINDING_NOT_FOUND':
+          toast.error(m.error_bindingNotFound())
+          return
+        case 'AUTH_DEMO_ACCOUNT_LOCKED':
+          toast.error(m.error_demoAccountLocked())
+          return
+        case 'SYSTEM_ACCOUNT_PROTECTED':
+          toast.error(m.error_systemAccountProtected())
+          return
+        default:
+          assertNever(error)
+      }
+    },
   })
 
   /** the value of the person's own field a door finds them by, if they have it */
@@ -315,15 +329,15 @@ function PasswordDialog({
   onClose: () => void
 }) {
   const api = useApi(authApi)
-  const run = useRunApi()
   const query = useApiQuery(authApi)
   const queryClient = useQueryClient()
-  const { formatError } = useI18n()
+
   const binding = entrance.binding?.mode === 'managed' ? entrance.binding : null
   const [secret, setSecret] = useState('')
   const [feedback, setFeedback] = useState<string | null>(null)
   // said in red once a press found something wrong, for as long as it is
   const [refused, setRefused] = useState(false)
+  const run = useRunApi()
   const checks = usePasswordChecks({
     password: secret,
     min: binding?.secret.minLength ?? 0,
@@ -339,26 +353,55 @@ function PasswordDialog({
   })
 
   const reauthentication = useReauthentication(undefined)
-  const save = useMutation({
+  const save = useApiMutation({
     mutationFn: () =>
-      run(
-        api.identity.putUserAuthBinding({
-          params: { userId, providerId: entrance.providerId },
-          payload: { secret },
-        }),
-      ),
+      api.identity.putUserAuthBinding({
+        params: { userId, providerId: entrance.providerId },
+        payload: { secret },
+      }),
     onMutate: () => setFeedback(null),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: query.identity.key() })
       toast.success(m.feedback_saved())
       onClose()
     },
-    onError: (error: unknown) => {
+    onError: (error) => {
+      let failure: string
+      switch (error._tag) {
+        case 'AUTH_BINDING_AUDIENCE_EXCLUDED':
+          failure = m.error_bindingAudienceExcluded()
+          break
+        case 'AUTH_BINDING_CREDENTIAL_INVALID':
+          failure = m.error_bindingCredentialInvalid()
+          break
+        case 'AUTH_BINDING_UNSUPPORTED':
+          failure = m.error_bindingUnsupported()
+          break
+        case 'AUTH_BINDING_USER_FIELD_MISSING':
+          failure = m.error_bindingUserFieldMissing(
+            ((data: typeof error) => ({ field: data.field }))(error),
+          )
+          break
+        case 'AUTH_DEMO_ACCOUNT_LOCKED':
+          failure = m.error_demoAccountLocked()
+          break
+        case 'AUTH_PROVIDER_NOT_FOUND':
+          failure = m.error_providerNotFound()
+          break
+        case 'AUTH_REAUTHENTICATION_REQUIRED':
+          failure = m.error_reauthenticationRequired()
+          break
+        case 'SYSTEM_ACCOUNT_PROTECTED':
+          failure = m.error_systemAccountProtected()
+          break
+        default:
+          assertNever(error)
+      }
       // a refused secret is said by the list under it
       if ((error as { _tag?: unknown })._tag === 'AUTH_BINDING_CREDENTIAL_INVALID') setRefused(true)
       // a way into one's own account is set once the session shows it is its owner's
       else if (needsReauthentication(error)) reauthentication.ask(() => save.mutate())
-      else setFeedback(formatError(error))
+      else setFeedback(failure)
     },
   })
 

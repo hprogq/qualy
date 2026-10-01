@@ -20,7 +20,6 @@
     "./client/account/AccountProfilePage": "./src/client/account/AccountProfilePage.tsx",
     "./client/account/AccountSecurityPage": "./src/client/account/AccountSecurityPage.tsx",
     "./client/api": "./src/client/api.ts",
-    "./client/i18n": "./src/client/i18n.ts",
     "./client/iam/LoginMethodsPage": "./src/client/iam/LoginMethodsPage.tsx",
     "./client/iam/OrgNodePicker": "./src/client/iam/OrgNodePicker.tsx",
     "./client/iam/OrgNodePickerView": "./src/client/iam/OrgNodePickerView.tsx",

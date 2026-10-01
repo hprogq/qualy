@@ -1,8 +1,9 @@
+import { formatPlatformFailure as formatError, useLocale } from '@qualy/web-i18n'
+
 import * as stylex from '@stylexjs/stylex'
 import { Suspense, useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { LoadFailure, useApi, useApiQuery, useLoadFailure, useRunApi } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { Button } from '@qualy/ui/button'
 import { EmptyRow } from '@qualy/ui/empty-row'
@@ -15,7 +16,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@qualy/ui/dropdown-menu'
-import type { NormalizedInputSchema } from '@qualy/value-schema'
+import { type NormalizedInputSchema } from '@qualy/value-schema'
 import { draftsFromStored, materializeInput, type FieldDraft } from '@qualy/web-value-form/model'
 import { useTryRecords } from './try-records.ts'
 import { DownloadIcon, HistoryIcon, LockIcon, MoreHorizontalIcon } from 'lucide-react'
@@ -99,7 +100,7 @@ export function RevisionView({
   const api = useApi(formulaApi)
   const run = useRunApi()
   const query = useApiQuery(formulaApi)
-  const { formatError, locale } = useI18n()
+  const locale = useLocale()
   const [panelTab, setPanelTab] = useState('examples')
   const [phoneTab, setPhoneTab] = useState('source')
   const [drafts, setDrafts] = useState<Record<string, FieldDraft>>({})

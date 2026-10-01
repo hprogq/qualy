@@ -1,8 +1,13 @@
-import { supportedLocales, type Message } from '@qualy/i18n-contract'
+import { supportedLocales } from '@qualy/i18n-contract'
 import { afterEach, describe, expect, it } from 'vitest'
-import { installMessages, resolveLocale } from '../src/index.tsx'
+import { resolveLocale } from '../src/index.tsx'
 import { bootstrapMessages } from '../src/bootstrap.ts'
-import { formatApiError, isTransportError } from '../src/format.ts'
+import {
+  assertNever,
+  isUseCaseApiFailure,
+  formatPlatformFailure,
+  isTransportError,
+} from '../src/format.ts'
 import * as commonMessages from '#messages'
 
 // A page's language is marked on its root, and a message reads it there;
@@ -15,7 +20,6 @@ const onPage = (locale: string) => {
 
 afterEach(() => {
   delete (globalThis as { document?: unknown }).document
-  installMessages({})
 })
 
 // what an http api error decodes back into: the tagged class itself, its
@@ -42,7 +46,9 @@ describe('web i18n runtime', () => {
   it('resolves api errors by code, data and transport failure', () => {
     onPage('zh-CN')
     // network failures never carry a code
-    expect(formatApiError(new TypeError('fetch failed'))).toBe(commonMessages.error_network())
+    expect(formatPlatformFailure(new TypeError('fetch failed'))).toBe(
+      commonMessages.error_network(),
+    )
     // and what a screen actually receives is the http client's wrapper, not
     // the fetch's own TypeError: the runtime turns every browser call into an
     // effect, and this shape is what its failure squashes to
@@ -51,27 +57,16 @@ describe('web i18n runtime', () => {
       reason: { _tag: 'TransportError' },
     })
     expect(isTransportError(unreachable)).toBe(true)
-    expect(formatApiError(unreachable)).toBe(commonMessages.error_network())
+    expect(formatPlatformFailure(unreachable)).toBe(commonMessages.error_network())
     // a refusal that DID reach the server is not a transport failure
     expect(isTransportError(apiError('ACCESS_DENIED'))).toBe(false)
     // common codes are owned by the runtime
-    expect(formatApiError(apiError('ACCESS_DENIED'))).toBe(commonMessages.error_accessDenied())
-    // a plugin registry wins over the common map and projects typed data
-    const incompatible: Message = (inputs?: { count?: number }) =>
-      `${String(inputs?.count)} blocked`
-    const registry = {
-      DEMO_INCOMPATIBLE: {
-        message: incompatible,
-        values: (data: never) => ({ count: (data as { count: number }).count }),
-      },
-      ACCESS_DENIED: { message: () => 'Plugin says no' },
-    }
-    expect(formatApiError(apiError('DEMO_INCOMPATIBLE', { count: 3 }), registry)).toBe('3 blocked')
-    expect(formatApiError(apiError('ACCESS_DENIED'), registry)).toBe('Plugin says no')
-    // an unmapped code degrades to the backend english message
-    expect(formatApiError(apiError('SOMETHING_NEW'), registry)).toBe('backend fallback message')
+    expect(formatPlatformFailure(apiError('ACCESS_DENIED'))).toBe(
+      commonMessages.error_accessDenied(),
+    )
+    expect(formatPlatformFailure(apiError('SOMETHING_NEW'))).toBe(commonMessages.error_unexpected())
     // a non-api throwable degrades to the generic message
-    expect(formatApiError({ oops: true })).toBe(commonMessages.error_unexpected())
+    expect(formatPlatformFailure({ oops: true })).toBe(commonMessages.error_unexpected())
   })
 
   it('resolves the locale through the documented preference chain', () => {
@@ -97,4 +92,30 @@ describe('web i18n runtime', () => {
       commonMessages.action_retry({}, { locale: 'en-US' }),
     )
   })
+})
+
+it('separates platform failures while preserving exhaustive domain payloads', () => {
+  type Failure =
+    | { _tag: 'EXAMPLE_MISSING'; id: string }
+    | { _tag: 'EXAMPLE_CONFLICT'; count: number }
+    | { _tag: 'ACCESS_DENIED' }
+  const say = (error: Failure) => {
+    const domain = isUseCaseApiFailure(error) ? error : undefined
+    if (domain === undefined) return 'platform'
+    switch (domain._tag) {
+      case 'EXAMPLE_MISSING':
+        return domain.id
+      case 'EXAMPLE_CONFLICT':
+        return `${domain.count} conflicts`
+      default:
+        return assertNever(domain)
+    }
+  }
+  expect(say({ _tag: 'EXAMPLE_CONFLICT', count: 3 })).toBe('3 conflicts')
+  expect(say({ _tag: 'ACCESS_DENIED' })).toBe('platform')
+  const domain = { _tag: 'EXAMPLE_MISSING', id: 'x' } as Failure
+  if (domain && domain._tag === 'EXAMPLE_MISSING') {
+    // @ts-expect-error another endpoint failure's payload is inaccessible
+    void domain.count
+  }
 })

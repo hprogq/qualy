@@ -1,11 +1,12 @@
+import { formatPlatformFailure as formatError, isApiErrorCode } from '@qualy/web-i18n'
 import { useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { useQuery } from '@tanstack/react-query'
-import type { PersonCardContext } from '@qualy/ui-contract'
+import { type PersonCardContext } from '@qualy/ui-contract'
 import { useApiQuery } from '@qualy/web-runtime'
-import { isApiErrorCode, useI18n } from '@qualy/web-i18n'
+
 import { useTerm } from '@qualy/plugin-settings/client/terms'
 import { authTerms } from '@qualy/auth-contract/terms'
 
@@ -95,7 +96,7 @@ export default function PersonCard({ context }: { context: PersonCardContext }) 
   const [hovered, setHovered] = useState(false)
   const [open, setOpen] = useState(false)
   const query = useApiQuery(authApi)
-  const { formatError } = useI18n()
+
   const businessNo = useTerm(authTerms.businessNumber)
 
   const detail = useQuery({

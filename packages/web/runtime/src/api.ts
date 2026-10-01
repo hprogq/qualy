@@ -282,3 +282,12 @@ export type ApiResult<
 > = ClientOf<Api>[Group][Endpoint] extends (...args: never[]) => Effect.Effect<infer A, unknown>
   ? A
   : never
+
+/** The declared endpoint and transport failures, preserved through the client. */
+export type ApiError<
+  Api extends HttpApi.Constraint,
+  Group extends keyof ClientOf<Api>,
+  Endpoint extends keyof ClientOf<Api>[Group],
+> = ClientOf<Api>[Group][Endpoint] extends (...args: never[]) => Effect.Effect<unknown, infer E>
+  ? E
+  : never

@@ -1,9 +1,9 @@
+import { formatPlatformFailure as formatError } from '@qualy/web-i18n'
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { ShieldQuestionIcon } from 'lucide-react'
 import { peoplePickerView } from '@qualy/ui-contract'
 import { UiSlot, useApiQuery } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
 import { assessmentApi } from '../api.ts'
 
 import { DialogBlank } from '../DialogBlank.tsx'
@@ -48,7 +48,6 @@ export function RosterPeoplePicker({
   disabledLabel?: string
 }) {
   const query = useApiQuery(assessmentApi)
-  const { formatError } = useI18n()
 
   const [nodeId, setNodeId] = useState<string | null>(null)
   const [scope, setScope] = useState<'self' | 'subtree'>('subtree')

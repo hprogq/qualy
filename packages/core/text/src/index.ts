@@ -1,5 +1,5 @@
 import { Schema } from 'effect'
-import type { SupportedLocale } from '@qualy/i18n-contract'
+import { type SupportedLocale } from '@qualy/i18n-contract'
 
 // What the server says, before it is said in anybody's language
 // (docs/adr/0011-i18n-paraglide.md).
@@ -8,8 +8,8 @@ import type { SupportedLocale } from '@qualy/i18n-contract'
 // what fills it, a term the tenant may have renamed, or business data said as
 // it stands. Nothing on the wire is a Text - an answer renders every one it
 // carries into a string, in the language of the page that asked, when it
-// answers. Rendering is synchronous and pure over its context; the compiled
-// messages it reads are the process's own (./node installs them at start).
+// answers. Rendering is synchronous. Explicit renderers carry their message table;
+// Node startup also installs a default table for existing service contexts.
 //
 // Server-side: a browser says its own sentences through its package's
 // #messages. This root imports nothing of Node, so a contract that declares a
@@ -56,14 +56,59 @@ export const term = (ref: TermRef): Text => ({ kind: 'term', term: ref })
 
 export const literal = (value: string): Text => ({ kind: 'literal', value })
 
-export const isText = (value: unknown): value is Text => {
+export const isText = (value: unknown): value is Text => validText(value, new Set())
+
+const validText = (value: unknown, ancestors: Set<object>): value is Text => {
   if (value === null || typeof value !== 'object') return false
-  const candidate = value as { kind?: unknown; ref?: unknown; term?: unknown; value?: unknown }
+  if (!isPlainObject(value) || ancestors.has(value)) return false
+  const candidate = value as {
+    kind?: unknown
+    ref?: unknown
+    inputs?: unknown
+    term?: unknown
+    value?: unknown
+  }
   switch (candidate.kind) {
-    case 'message':
-      return typeof candidate.ref === 'object' && candidate.ref !== null
-    case 'term':
-      return typeof candidate.term === 'object' && candidate.term !== null
+    case 'message': {
+      const ref = candidate.ref
+      const inputs = candidate.inputs
+      if (
+        !ref ||
+        typeof ref !== 'object' ||
+        !isPlainObject(ref) ||
+        !('namespace' in ref) ||
+        typeof ref.namespace !== 'string' ||
+        ref.namespace === '' ||
+        !('key' in ref) ||
+        typeof ref.key !== 'string' ||
+        ref.key === '' ||
+        !inputs ||
+        typeof inputs !== 'object' ||
+        !isPlainObject(inputs)
+      )
+        return false
+      ancestors.add(value)
+      const valid = Object.values(inputs).every(
+        (input) =>
+          typeof input === 'string' ||
+          typeof input === 'number' ||
+          input instanceof Date ||
+          validText(input, ancestors),
+      )
+      ancestors.delete(value)
+      return valid
+    }
+    case 'term': {
+      const ref = candidate.term
+      return (
+        !!ref &&
+        typeof ref === 'object' &&
+        isPlainObject(ref) &&
+        'id' in ref &&
+        typeof ref.id === 'string' &&
+        ref.id !== ''
+      )
+    }
     case 'literal':
       return typeof candidate.value === 'string'
     default:
@@ -90,13 +135,23 @@ export const installMessageTable = (table: MessageTable): void => {
 
 export interface RenderContext {
   readonly locale: SupportedLocale
+  /** Explicit message table for independently composed renderers. */
+  readonly messages?: MessageTable
   /** the tenant's words for its terms, in this locale */
   readonly terms?: ReadonlyMap<string, string>
   /** a term's own words where the tenant has not renamed it */
   readonly termDefault?: (term: TermRef, locale: SupportedLocale) => string
 }
 
-/** a text in one language: synchronous, pure, and never cached */
+/** A renderer whose table is explicit and independent of process installation. */
+export const createTextRenderer = (messages: MessageTable) => ({
+  render: (said: Text, context: Omit<RenderContext, 'messages'>) =>
+    render(said, { ...context, messages }),
+  renderTexts: <T>(value: T, context: Omit<RenderContext, 'messages'>) =>
+    renderTexts(value, { ...context, messages }),
+})
+
+/** A synchronous rendering; the Node startup table is the default context. */
 export const render = (said: Text, context: RenderContext): string => {
   switch (said.kind) {
     case 'literal':
@@ -109,10 +164,11 @@ export const render = (said: Text, context: RenderContext): string => {
       return context.termDefault(said.term, context.locale)
     }
     case 'message': {
-      if (installed === undefined) {
+      const table = context.messages ?? installed
+      if (table === undefined) {
         throw new Error('no compiled messages are installed in this process')
       }
-      const say = installed.lookup(said.ref.namespace, said.ref.key)
+      const say = table.lookup(said.ref.namespace, said.ref.key)
       if (say === undefined) throw new Error(`${said.ref.namespace} has no message ${said.ref.key}`)
       const inputs: Record<string, unknown> = {}
       for (const [name, value] of Object.entries(said.inputs)) {

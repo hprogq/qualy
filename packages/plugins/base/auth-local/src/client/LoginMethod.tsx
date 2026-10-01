@@ -1,24 +1,19 @@
+import { assertNever, formatPlatformFailure } from '@qualy/web-i18n'
 import { useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react'
 import { useLocation } from 'react-router'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import * as stylex from '@stylexjs/stylex'
 import { EyeIcon, EyeOffIcon } from 'lucide-react'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { PageLink, useApi, useRunApi } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
+import { PageLink, useApi, useApiMutation } from '@qualy/web-runtime'
 import { Button } from '@qualy/ui/button'
 import { deviceOfCookieHeader } from '@qualy/auth-contract/device'
 import { Checkbox } from '@qualy/ui/checkbox'
 import { Input } from '@qualy/ui/input'
 import { Label } from '@qualy/ui/label'
 import { normalizeEmail } from '@qualy/auth-contract/email'
-import type { LoginMethodRendererProps } from '@qualy/auth-contract/login'
-import { retryAfterOf } from '@qualy/auth-contract/session'
-import {
-  CaptchaRequired,
-  type CaptchaPrompt,
-  type CaptchaProof,
-} from '@qualy/plugin-captcha/contract'
+import { type LoginMethodRendererProps } from '@qualy/auth-contract/login'
+import { type CaptchaPrompt, type CaptchaProof } from '@qualy/plugin-captcha/contract'
 import { CaptchaChallenge, useCaptchaGate } from '@qualy/plugin-captcha/client'
 import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH, passwordLength } from '../rules.ts'
 import { clock, PAUSE_MS, useHold } from './hold.ts'
@@ -168,9 +163,8 @@ export default function LocalLoginMethod({
   prefill,
 }: LoginMethodRendererProps) {
   const api = useApi(authLocalApi)
-  const run = useRunApi()
   const here = useLocation()
-  const { formatError } = useI18n()
+
   const [email, setEmail] = useState(() => prefill?.email ?? remembered())
   const [keep, setKeep] = useState(() => prefill === undefined && remembered() !== '')
   const [password, setPassword] = useState(prefill?.password ?? '')
@@ -209,38 +203,58 @@ export default function LocalLoginMethod({
         : null
   const ready = address !== null && typed >= PASSWORD_MIN_LENGTH && typed <= PASSWORD_MAX_LENGTH
 
-  /** one attempt at the door, with the proof a met challenge produced when there is one */
-  const attempt = async (proof?: CaptchaProof) => {
+  const login = useApiMutation(
+    {
+      mutationFn: (input: { email: string; proof?: CaptchaProof }) =>
+        api.authLocal.login({
+          params: { providerCode: method.code },
+          payload: {
+            email: input.email,
+            password,
+            ...(input.proof === undefined ? {} : { captcha: input.proof }),
+          },
+        }),
+      onSuccess: () => {
+        remember(keep && !onSharedDevice() ? address : null)
+        onAuthenticated()
+      },
+      onSettled: () => {
+        setBusy(false)
+        sending.current = false
+      },
+      onRateLimited: ({ retryAfterSeconds }) => {
+        setLimited(true)
+        hold(retryAfterSeconds * 1000)
+        setRefusal(formatPlatformFailure({ _tag: 'TOO_MANY_ATTEMPTS', retryAfterSeconds }))
+        setShaking(true)
+      },
+      onError: (failure) => {
+        if (failure._tag === 'CAPTCHA_REQUIRED') {
+          setPrompt({ provider: failure.provider, challenge: failure.challenge })
+          return
+        }
+        setLimited(false)
+        hold(PAUSE_MS)
+        switch (failure._tag) {
+          case 'INVALID_CREDENTIALS':
+            setRefusal(m.error_invalidCredentials())
+            break
+          default:
+            assertNever(failure)
+        }
+        setShaking(true)
+      },
+    },
+    { recoverSession: false },
+  )
+
+  /** One guarded attempt, repeated with proof after a challenge is met. */
+  const attempt = (proof?: CaptchaProof) => {
     if (sending.current || held || address === null) return
     sending.current = true
     setBusy(true)
     setRefusal(null)
-    try {
-      await run(
-        api.authLocal.login({
-          params: { providerCode: method.code },
-          payload: { email: address, password, ...(proof === undefined ? {} : { captcha: proof }) },
-        }),
-      )
-      // a computer others use keeps nobody's address, whatever the box said
-      remember(keep && !onSharedDevice() ? address : null)
-      onAuthenticated()
-    } catch (failure: unknown) {
-      setBusy(false)
-      sending.current = false
-      if (failure instanceof CaptchaRequired) {
-        // not a refusal: nothing was judged yet. No pause, no shake, no
-        // words - the button says it is checking, and the same attempt goes
-        // again by itself once the challenge is met
-        setPrompt({ provider: failure.provider, challenge: failure.challenge })
-        return
-      }
-      const wait = retryAfterOf(failure)
-      setLimited(wait !== undefined)
-      hold(wait === undefined ? PAUSE_MS : wait * 1000)
-      setRefusal(formatError(failure))
-      setShaking(true)
-    }
+    login.mutate({ email: address, ...(proof === undefined ? {} : { proof }) })
   }
 
   const gate = useCaptchaGate({
@@ -251,13 +265,13 @@ export default function LocalLoginMethod({
     // behind to send twice, and the next attempt is asked afresh
     onSolved: (proof) => {
       setPrompt(null)
-      void attempt(proof)
+      attempt(proof)
     },
     // the challenge itself is spent: the same attempt, without a proof,
     // brings a new one
     onRefresh: () => {
       setPrompt(null)
-      void attempt()
+      attempt()
     },
   })
   const challenging = prompt !== null && gate.state !== 'failed'
@@ -270,7 +284,7 @@ export default function LocalLoginMethod({
       setShaking(true)
       return
     }
-    void attempt()
+    attempt()
   }
 
   return (

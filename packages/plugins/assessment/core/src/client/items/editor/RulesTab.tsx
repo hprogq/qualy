@@ -1,9 +1,9 @@
-import type { ReactNode } from 'react'
+import { useLocale } from '@qualy/web-i18n'
+import { type ReactNode } from 'react'
 import { useQueries } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { CheckIcon, ChevronRightIcon, PlusIcon } from 'lucide-react'
 import { useApiQuery } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { Input } from '@qualy/ui/input'
@@ -12,9 +12,9 @@ import { MAX_STAGES_PER_ROUTE } from '../../../api.ts'
 import { assessmentApi } from '../../api.ts'
 
 import { amountOf, trimAmount, unitsOf } from '../../entry/model.ts'
-import type { ItemOptions } from '../options.ts'
-import type { Placement } from '../paper.ts'
-import type { StageDraft } from '../StageSheet.tsx'
+import { type ItemOptions } from '../options.ts'
+import { type Placement } from '../paper.ts'
+import { type StageDraft } from '../StageSheet.tsx'
 import { countedEntries } from '../structure.ts'
 import { EditorSection, SectionCount, Tag } from './Rows.tsx'
 import {
@@ -451,7 +451,7 @@ function RulesCard({
   problem: EditorProblem | undefined
   onPatch: (next: Partial<Draft>) => void
 }) {
-  const { locale } = useI18n()
+  const locale = useLocale()
   const entries = draft.maxEntries.trim() === '' ? null : Number(draft.maxEntries)
   const folding = foldingOf(draft)
   const each = Number(draft.fixedValue.trim())

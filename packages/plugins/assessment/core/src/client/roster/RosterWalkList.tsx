@@ -1,3 +1,4 @@
+import { formatPlatformFailure as formatError } from '@qualy/web-i18n'
 import {
   useCallback,
   useEffect,
@@ -11,7 +12,6 @@ import { useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { SearchIcon } from 'lucide-react'
 import { useApiQuery } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
 
 import { useTerm } from '@qualy/plugin-settings/client/terms'
 import { authTerms } from '@qualy/auth-contract/terms'
@@ -31,7 +31,7 @@ import {
   useRosterSearch,
   type RosterView,
 } from './roster-view.ts'
-import type { RosterWalk, WalkRow } from './roster-walk.ts'
+import { type RosterWalk, type WalkRow } from './roster-walk.ts'
 import * as commonMessages from '@qualy/web-i18n/messages'
 import * as m from '#messages'
 
@@ -259,7 +259,6 @@ export function RosterWalkList({
   /** in the column beside the account, or in a sheet over it */
   seat: 'column' | 'sheet'
 }) {
-  const { formatError } = useI18n()
   const query = useApiQuery(assessmentApi)
   const businessNo = useTerm(authTerms.businessNumber)
   const headingId = useId()

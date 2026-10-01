@@ -1,7 +1,7 @@
+import { useLocale } from '@qualy/web-i18n'
 import { useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { useApiQuery } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
 
 import { Button } from '@qualy/ui/button'
 import { Skeleton } from '@qualy/ui/skeleton'
@@ -9,7 +9,7 @@ import { CardEmpty, DetailSheet, Tag } from '@qualy/ui/screen'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 
 import { orgApi } from '../api.ts'
-import type { Api, OrgShape, Run } from '../shape.ts'
+import { type Api, type OrgShape, type Run } from '../shape.ts'
 import * as commonMessages from '@qualy/web-i18n/messages'
 import * as m from '#messages'
 
@@ -55,7 +55,7 @@ export function RecycleBin({
   run: Run
   onClose: () => void
 }) {
-  const { locale } = useI18n()
+  const locale = useLocale()
   const query = useApiQuery(orgApi)
   const binned = useQuery({
     ...query.org.listDeletedNodes.queryOptions({}),

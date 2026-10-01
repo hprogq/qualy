@@ -1,9 +1,8 @@
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { commonErrorCodes } from '@qualy/i18n-contract'
 import { isPluginDescriptor, Plugin, type PluginDescriptor } from '@qualy/plugin-kit'
 import { BrowserModules } from '@qualy/plugin-kit/browser'
-import { I18nCatalogs, uiSurfacesOf } from '@qualy/plugin-ui-registry/plugin'
+import { uiSurfacesOf } from '@qualy/plugin-ui-registry/plugin'
 import { loginSurfacesOf } from '@qualy/auth-contract/plugin'
 import { surfaceLabel, type BrowserSurface, type ClientComponentRef } from '@qualy/ui-contract'
 import { currentResolution, readEntries, resolvePluginExport } from '@qualy/assembly/host'
@@ -37,9 +36,6 @@ import { manifestPath } from './manifest.ts'
 // WOULD have implemented a surface nobody built - and answering it by
 // guessing is what the chunk sentinel stopped doing.
 //
-// Localisation assets still come from the declared i18n module, and every
-// other identity - catalog namespace, message id, error code - is claimed
-// here for the same reason.
 
 /** one public surface and the module this build resolved behind it */
 export interface SurfaceBinding {
@@ -55,9 +51,6 @@ export interface WebPluginEntry {
   name: string
   /** what this plugin puts on screen, by the address the browser uses */
   surfaces: SurfaceBinding[]
-  /** the declared localisation module, absolute, when the plugin ships one */
-  i18nModule?: string
-  hasErrorMessages: boolean
   /** the modules whose default export is this plugin's browser half, absolute */
   browserModules: string[]
 }
@@ -80,8 +73,6 @@ export async function collectWebPlugins(
   const resolution = await currentResolution(manifest)
   const found: WebPluginEntry[] = []
   const claimedSurfaces = new Map<string, string>()
-  const claimedErrorCodes = new Map<string, string>()
-  const COMMON_ERROR_CODES = new Set<string>(commonErrorCodes)
   const claim = (registry: Map<string, string>, key: string, owner: string, what: string) => {
     const existing = registry.get(key)
     if (existing) throw new Error(`${what} conflict: ${key} claimed by ${existing} and ${owner}`)
@@ -112,46 +103,15 @@ export async function collectWebPlugins(
       surfaces.push({ surface, module: ref.module, export: ref.export, file })
     }
 
-    // localization assets are optional per plugin: a plugin without user
-    // facing text declares no module, and the host aggregates whatever exists
-    const declaredI18n = Plugin.contributionsOf(descriptor, I18nCatalogs)
-    if (declaredI18n.length > 1) {
-      throw new Error(`${entry.name} declares Ui.i18n twice; one module carries everything`)
-    }
-    let hasErrorMessages = false
-    let i18nModule: string | undefined
-    if (declaredI18n.length === 1) {
-      i18nModule = moduleOf(declaredI18n[0]!.module)
-      const module = (await import(pathToFileURL(i18nModule).href)) as {
-        errorMessages?: unknown
-      }
-      if (module.errorMessages) {
-        for (const code of Object.keys(module.errorMessages)) {
-          if (COMMON_ERROR_CODES.has(code)) {
-            throw new Error(
-              `${entry.name}: ${code} is a common error code and cannot be overridden`,
-            )
-          }
-          claim(claimedErrorCodes, code, entry.name, 'error code')
-        }
-        hasErrorMessages = true
-      }
-      if (!module.errorMessages) {
-        throw new Error(`${entry.name}: the declared i18n module exports nothing to say`)
-      }
-    }
-
     const browserModules: string[] = []
     for (const declared of Plugin.contributionsOf(descriptor, BrowserModules)) {
       browserModules.push(moduleOf(declared.module))
     }
 
-    if (surfaces.length > 0 || hasErrorMessages || browserModules.length > 0) {
+    if (surfaces.length > 0 || browserModules.length > 0) {
       found.push({
         name: entry.name,
         surfaces,
-        ...(i18nModule === undefined ? {} : { i18nModule }),
-        hasErrorMessages,
         browserModules,
       })
     }
@@ -191,9 +151,7 @@ export async function buildPluginModuleSource(
   const slotEntries = new Map<string, string[]>()
   const loginEntries: string[] = []
   const browserEntries: string[] = []
-  const errorSpreads: string[] = []
   for (const entry of await collectWebPlugins(options)) {
-    const ns = entry.name.split('/').pop()!.replace('plugin-', '').replaceAll('-', '_')
     for (const module of entry.browserModules) {
       // a value with a lifecycle, not an import for its side effect: the
       // host decides when it sets up, when it starts and when it stops
@@ -214,12 +172,6 @@ export async function buildPluginModuleSource(
         items.push(loader(surface.id, file, options.fromDir, '    '))
         slotEntries.set(surface.slot, items)
       }
-    }
-    if (entry.hasErrorMessages) {
-      imports.push(
-        `import { errorMessages as ${ns}ErrorMessages } from ${JSON.stringify(specifier(entry.i18nModule!, options.fromDir))}`,
-      )
-      errorSpreads.push(`  ...${ns}ErrorMessages,`)
     }
   }
   const slotTable = [...slotEntries].flatMap(([key, items]) => [
@@ -249,10 +201,6 @@ export async function buildPluginModuleSource(
     'export const browserPlugins = [',
     ...browserEntries,
     ']',
-    '',
-    'export const errorMessages = {',
-    ...errorSpreads,
-    '}',
     '',
   ].join('\n')
 }
@@ -308,7 +256,6 @@ export async function buildPluginScanSource(
   const modules = new Set<string>()
   for (const entry of await collectWebPlugins(options)) {
     for (const binding of entry.surfaces) modules.add(specifier(binding.file, options.fromDir))
-    if (entry.i18nModule) modules.add(specifier(entry.i18nModule, options.fromDir))
     for (const module of entry.browserModules) modules.add(specifier(module, options.fromDir))
   }
   return [...modules].map((file) => `import ${JSON.stringify(file)}`).join('\n') + '\n'

@@ -1,3 +1,4 @@
+import { useLocale } from '@qualy/web-i18n'
 import * as stylex from '@stylexjs/stylex'
 import { useMemo } from 'react'
 import { useInfiniteQuery } from '@tanstack/react-query'
@@ -11,7 +12,6 @@ import {
   usePageTitle,
   useRunApi,
 } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
 
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
@@ -61,7 +61,7 @@ export default function FormulaTemplatesPage() {
   const api = useApi(formulaApi)
   const runApi = useRunApi()
   const query = useApiQuery(formulaApi)
-  const { locale } = useI18n()
+  const locale = useLocale()
   const failure = useLoadFailure()
   const titleRef = usePageTitle(m.templates_title())
   const navigate = usePageNavigate()

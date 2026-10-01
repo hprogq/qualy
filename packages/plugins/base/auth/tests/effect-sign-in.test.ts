@@ -168,6 +168,7 @@ describe.runIf(postgresAvailable)('signing in', () => {
     // a sign-in form nothing can answer. The workspace goes by name and by
     // nothing else, and a door with no icon chosen is drawn by its kind's own.
     expect(body).toEqual({
+      failureMessages: {},
       tenant: { name: 'Default' },
       methods: [
         {

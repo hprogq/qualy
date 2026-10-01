@@ -2,7 +2,6 @@ import { StrictMode, type ReactNode } from 'react'
 import { Route, Routes, useLocation } from 'react-router'
 import { render } from 'vitest-browser-react'
 import { locators, type Locator } from 'vitest/browser'
-import { installMessages } from '@qualy/web-i18n'
 import {
   GuardedMemoryRouter,
   ThemeProvider,
@@ -14,8 +13,6 @@ import {
 import { UiProvider } from '@qualy/ui/provider'
 import { Effect } from 'effect'
 import { toast } from '@qualy/ui/toast'
-
-import type { ErrorMessageMap } from '@qualy/i18n-contract'
 
 declare module 'vitest/browser' {
   interface LocatorSelectors {
@@ -142,7 +139,6 @@ export function apiError(code: string, data?: Record<string, unknown>) {
 
 export function renderScreen({
   client,
-  errorMessages,
   registry,
   children,
   routes,
@@ -160,7 +156,6 @@ export function renderScreen({
    * the whole aggregate's, for a test about the product. Everything else a
    * screen says itself, and what its server sends arrives already said.
    */
-  errorMessages?: ErrorMessageMap
   /**
    * The renderers this screen may resolve, by surface.
    *
@@ -197,7 +192,6 @@ export function renderScreen({
   // the shell's boot script marks the root with the locale it resolved and
   // every message reads the mark; here the harness stands in for the script
   document.documentElement.dataset['locale'] = locale
-  installMessages({ errorMessages: errorMessages ?? {} })
   // the toast queue is module-global: a success said in one test would
   // replay into the next screen's toaster and stand over its top bar
   toast.dismiss()

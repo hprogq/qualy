@@ -1,8 +1,8 @@
+import { useLocale } from '@qualy/web-i18n'
 import { useState } from 'react'
 import { CircleAlertIcon } from 'lucide-react'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { useI18n } from '@qualy/web-i18n'
 
 import { ConfirmDialog, Field, FormDialog, RadioGroup } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
@@ -63,7 +63,7 @@ export function ScheduleDialog({
   onSchedule: () => void
   onStartNow: () => void
 }) {
-  const { locale } = useI18n()
+  const locale = useLocale()
   // the time is typed on the batch's clock: "00:00" is the school's midnight
   // whatever zone the device keeps
   const zone = useBatchZone()

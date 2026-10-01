@@ -1,9 +1,9 @@
+import { formatPlatformFailure as formatError } from '@qualy/web-i18n'
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { CircleAlertIcon, UsersIcon } from 'lucide-react'
 import { useApiQuery } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
 
 import { Button } from '@qualy/ui/button'
 import { CursorPager } from '@qualy/ui/pager'
@@ -109,7 +109,7 @@ export function UnitRoster({
   userTypeIds: readonly string[]
 }) {
   const query = useApiQuery(assessmentApi)
-  const { formatError } = useI18n()
+
   const question = `${[...orgNodeIds].sort().join(',')}:${[...userTypeIds].sort().join(',')}`
   // the cursor stack carries the question it belongs to: a cursor from one
   // selection applied to another silently skips or repeats people

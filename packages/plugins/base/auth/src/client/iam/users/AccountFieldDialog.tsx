@@ -1,8 +1,9 @@
+import { assertNever } from '@qualy/web-i18n'
+import { useApiMutation, useApi, useApiQuery } from '@qualy/web-runtime'
 import { useId, useState, type FormEvent } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
-import { useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
+
 import { useTerm } from '@qualy/plugin-settings/client/terms'
 import { authTerms } from '@qualy/auth-contract/terms'
 import { Feedback, Field, FormDialog, useSettledCheck } from '@qualy/ui/admin'
@@ -40,10 +41,9 @@ export function AccountFieldDialog({
   onClose: () => void
 }) {
   const api = useApi(authApi)
-  const run = useRunApi()
   const query = useApiQuery(authApi)
   const queryClient = useQueryClient()
-  const { formatError } = useI18n()
+
   const businessNoWord = useTerm(authTerms.businessNumber)
   const formId = useId()
   const [value, setValue] = useState(current ?? '')
@@ -59,14 +59,12 @@ export function AccountFieldDialog({
   )
   const writable = typed !== '' && typed !== current && (field !== 'email' || emailShaped(typed))
 
-  const save = useMutation({
+  const save = useApiMutation({
     mutationFn: () =>
-      run(
-        api.identity.updateUser({
-          params: { userId },
-          payload: { version, ...(field === 'email' ? { email: typed } : { businessNo: typed }) },
-        }),
-      ),
+      api.identity.updateUser({
+        params: { userId },
+        payload: { version, ...(field === 'email' ? { email: typed } : { businessNo: typed }) },
+      }),
     onMutate: () => {
       setFeedback(null)
       setTaken(null)
@@ -76,10 +74,53 @@ export function AccountFieldDialog({
       toast.success(m.feedback_saved())
       onClose()
     },
-    onError: (error: unknown) => {
+    onError: (error) => {
+      let failure: string
+      switch (error._tag) {
+        case 'AUTH_DEMO_ACCOUNT_LOCKED':
+          failure = m.error_demoAccountLocked()
+          break
+        case 'AUTH_REAUTHENTICATION_REQUIRED':
+          failure = m.error_reauthenticationRequired()
+          break
+        case 'GRANT_INCOMPATIBLE':
+          failure = m.error_grantIncompatible(
+            ((data: typeof error) => ({ grantCount: data.grantCount }))(error),
+          )
+          break
+        case 'LAST_ADMINISTRATOR':
+          failure = m.error_lastAdministrator()
+          break
+        case 'SYSTEM_ACCOUNT_PROTECTED':
+          failure = m.error_systemAccountProtected()
+          break
+        case 'USER_CONFLICT':
+          failure = m.error_userConflict()
+          break
+        case 'USER_EMAIL_CONFLICT':
+          failure = m.error_userEmailConflict()
+          break
+        case 'USER_PLACEMENT_NOT_FOUND':
+          failure = m.error_userPlacementNotFound()
+          break
+        case 'USER_TYPE_DISABLED':
+          failure = m.error_userTypeDisabled()
+          break
+        case 'USER_TYPE_NOT_FOUND':
+          failure = m.error_userTypeNotFound()
+          break
+        case 'USER_TYPE_PLACEMENT_NOT_ALLOWED':
+          failure = m.error_userTypePlacementNotAllowed()
+          break
+        case 'USER_VERSION_CONFLICT':
+          failure = m.error_userVersionConflict()
+          break
+        default:
+          assertNever(error)
+      }
       if (needsReauthentication(error)) reauthentication.ask(() => save.mutate())
-      else if (refusedField(error) === field) setTaken(formatError(error))
-      else setFeedback(formatError(error))
+      else if (refusedField(error) === field) setTaken(failure)
+      else setFeedback(failure)
     },
   })
 

@@ -60,7 +60,6 @@ const plugin = Plugin.define(
   }),
   Access.permissions('settings', permissions),
   Audit.actions('settings', settingsActions),
-  Ui.i18n('./client/i18n'),
   // Filed in the library beside the formulas rather than in a settings
   // section of its own: what a tenant calls a thing is material the product
   // is assembled from, like a formula, not a switch on how the system runs.

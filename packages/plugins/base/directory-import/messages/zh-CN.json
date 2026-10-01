@@ -182,5 +182,6 @@
   "error_planChanged": "预检后相关数据发生了变化，请重新预检。",
   "error_sourceUnavailable": "上传的文件已不可用，请重新上传。",
   "error_busy": "其他文件正在读取中，请稍后重试。",
-  "error_sourceUsed": "该文件已经导入过。如需再次导入，请重新上传。"
+  "error_sourceUsed": "该文件已经导入过。如需再次导入，请重新上传。",
+  "error_lastAdministrator": "租户将失去最后一个还能登录的管理员。"
 }

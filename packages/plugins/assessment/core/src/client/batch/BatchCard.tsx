@@ -1,8 +1,8 @@
+import { useLocale } from '@qualy/web-i18n'
 import { useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { ArrowRightIcon, ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
 import { PageLink } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { Button } from '@qualy/ui/button'
@@ -615,7 +615,7 @@ function useLaneFit(lanes: RefObject<HTMLDivElement | null>, count: number): Lan
 
 function StageLanes({ timeline, now }: { timeline: readonly TimelineLike[]; now: number }) {
   const zone = useBatchZone()
-  const { locale } = useI18n()
+  const locale = useLocale()
   const markOf = useZoneMark(locale)
   const plan = planOf(timeline, now)
   // Each end of the axis is marked with the batch's offset on its own day:
@@ -921,7 +921,7 @@ function CardBody({
   entered = null,
   now = Date.now(),
 }: BatchCardProps): ReactNode {
-  const { locale } = useI18n()
+  const locale = useLocale()
   const zone = useBatchZone()
   const markOf = useZoneMark(locale)
   // the card's own shape changes, not just its width, so the choice is made

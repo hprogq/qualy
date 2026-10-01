@@ -6,6 +6,8 @@ import {
   QueryClient,
   QueryClientProvider,
   useQuery,
+  useMutation,
+  type UseMutationOptions,
   useQueryClient,
   type QueryKey,
 } from '@tanstack/react-query'
@@ -28,11 +30,13 @@ import {
   type Runtime,
 } from './runtime-context.tsx'
 import { Effect } from 'effect'
-import type { ClientUnsupportedReason } from '@qualy/release-contract'
+import { type ClientUnsupportedReason } from '@qualy/release-contract'
 import { matchPath, useNavigate, useParams, useSearchParams } from 'react-router'
-import type { UiCollectionToken, UiSlotToken } from '@qualy/ui-contract'
-import { Toaster } from '@qualy/ui/toast'
-import { isAuthenticationError } from '@qualy/web-i18n'
+import { type UiCollectionToken, type UiSlotToken, type NamespacedId } from '@qualy/ui-contract'
+import { Toaster, toast } from '@qualy/ui/toast'
+import { isAuthenticationError, isUseCaseApiFailure, type UseCaseApiFailure } from '@qualy/web-i18n'
+import { captureDiagnostic } from '@qualy/browser-observability'
+import { handlePlatformFailure, type RateLimit } from './mutation-failure.ts'
 
 import { LoadingScreen } from '@qualy/ui/spinner'
 import { afterFlight } from '@qualy/ui/flight'
@@ -51,8 +55,8 @@ import {
   unrecoveredRuntime,
   type QueryUtils,
 } from './api-query.ts'
-import type { HttpApi } from 'effect/http-api'
-import type { NamespacedId } from '@qualy/ui-contract'
+import { type HttpApi } from 'effect/http-api'
+
 import {
   buildPageHref,
   sessionDestinationHref,
@@ -553,6 +557,88 @@ export function useApi<Api extends HttpApi.Constraint>(api: Api): ClientOf<Api> 
  */
 export const useRunApi = (options: { recoverSession?: boolean } = {}) =>
   runMutation(options.recoverSession === false ? unrecoveredRuntime : browserRuntime)
+
+export type ApiMutationOptions<A, E, V = void, C = unknown> = Omit<
+  UseMutationOptions<A, E, V, C>,
+  'mutationFn' | 'onError'
+> & {
+  mutationFn: (variables: V) => Effect.Effect<A, E>
+  /** Explicit opt-in for forms that disable an action during its cooldown. */
+  onRateLimited?: (limit: RateLimit) => void
+} & ([UseCaseApiFailure<NoInfer<E>>] extends [never]
+    ? { onError?: never }
+    : {
+        onError: NonNullable<UseMutationOptions<A, UseCaseApiFailure<NoInfer<E>>, V, C>['onError']>
+      })
+
+/** Platform policy lives here; use cases receive only their declared failures. */
+export function useApiMutation<A, E, V = void, C = unknown>(
+  options: ApiMutationOptions<A, E, V, C>,
+  runtimeOptions: { recoverSession?: boolean } = {},
+) {
+  const runtime = runtimeOptions.recoverSession === false ? unrecoveredRuntime : browserRuntime
+  const { onError, onRateLimited, ...mutation } = options
+  const result = useMutation<A, E, V, C>({
+    ...mutation,
+    mutationFn: (variables) => runtime.runPromise(options.mutationFn(variables)),
+    onError: (error, variables, result, context) => {
+      if (
+        handlePlatformFailure(error, {
+          notify: (message, code) => {
+            toast.error(message, { id: `platform:${code}` })
+          },
+          diagnose: (code) => captureDiagnostic(code),
+          ...(onRateLimited === undefined ? {} : { onRateLimited }),
+        })
+      )
+        return
+      // Preserve the real failure in mutation state/onSettled. Only the use
+      // case callback receives the union filtered at this runtime boundary.
+      return onError?.(error as UseCaseApiFailure<E>, variables, result, context)
+    },
+  })
+  // TanStack also accepts callbacks on mutate/mutateAsync. Keep that entry
+  // point behind the same filter; platform policy still runs only once above.
+  type CallOptions = Omit<import('@tanstack/react-query').MutateOptions<A, E, V, C>, 'onError'> & {
+    onError?: import('@tanstack/react-query').MutateOptions<
+      A,
+      UseCaseApiFailure<E>,
+      V,
+      C
+    >['onError']
+  }
+  const callbacks = useCallback(
+    (call?: CallOptions) =>
+      call === undefined
+        ? undefined
+        : {
+            ...call,
+            onError: (
+              error: E,
+              variables: V,
+              value: C | undefined,
+              context: import('@tanstack/react-query').MutationFunctionContext,
+            ) => {
+              if (isUseCaseApiFailure(error)) call.onError?.(error, variables, value, context)
+            },
+          },
+    [],
+  )
+  const { mutate, mutateAsync } = result
+  const invoke = useCallback(
+    (variables: V, call?: CallOptions) => mutate(variables, callbacks(call)),
+    [mutate, callbacks],
+  )
+  const invokeAsync = useCallback(
+    (variables: V, call?: CallOptions) => mutateAsync(variables, callbacks(call)),
+    [mutateAsync, callbacks],
+  )
+  return {
+    ...result,
+    mutate: invoke,
+    mutateAsync: invokeAsync,
+  }
+}
 /**
  * One surface of this build, rendered: isolated, reported, and drawn with the
  * caller's own states for loading, failing and not being here at all.

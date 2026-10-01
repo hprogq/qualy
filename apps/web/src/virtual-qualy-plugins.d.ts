@@ -5,7 +5,6 @@
 declare module 'virtual:qualy/plugins' {
   import type { ComponentType } from 'react'
   import type { BrowserPlugin } from '@qualy/plugin-kit/browser'
-  import type { ErrorMessageMap } from '@qualy/i18n-contract'
 
   // the tables are heterogeneous by nature; the shell wraps every entry in
   // React.lazy, which is where the per-screen prop types stop mattering
@@ -21,5 +20,4 @@ declare module 'virtual:qualy/plugins' {
   export const loginComponents: Record<string, Loader>
   /** every active plugin's browser half, in the assembly's own order */
   export const browserPlugins: readonly BrowserPlugin[]
-  export const errorMessages: ErrorMessageMap
 }

@@ -1,18 +1,19 @@
-import { useState } from 'react'
-import { useSearchParams } from 'react-router'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import * as stylex from '@stylexjs/stylex'
-import type { ApiResult } from '@qualy/web-runtime/api'
+import { assertNever, formatPlatformFailure as formatError, useLocale } from '@qualy/web-i18n'
+
 import {
+  useApiMutation,
   PageLink,
   useApi,
   useApiQuery,
   useLoadFailure,
   usePageHref,
-  useRunApi,
   useSessionTransition,
 } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
+import { useState } from 'react'
+import { useSearchParams } from 'react-router'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import * as stylex from '@stylexjs/stylex'
+import { type ApiResult } from '@qualy/web-runtime/api'
 
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
@@ -61,11 +62,10 @@ const styles = stylex.create({
 
 export default function AccountLoginsPage() {
   const api = useApi(authApi)
-  const run = useRunApi()
   const query = useApiQuery(authApi)
   const queryClient = useQueryClient()
   const endSession = useSessionTransition()
-  const { formatError, locale } = useI18n()
+  const locale = useLocale()
   const describe = useLoadFailure()
   const [releasing, setReleasing] = useState<Entrance | null>(null)
   const [searchParams, setSearchParams] = useSearchParams()
@@ -91,9 +91,9 @@ export default function AccountLoginsPage() {
     window.location.assign(`${target.pathname}${target.search}`)
   }
 
-  const release = useMutation({
+  const release = useApiMutation({
     mutationFn: (entrance: Entrance) =>
-      run(api.self.deleteSelfAuthBinding({ params: { providerId: entrance.providerId } })),
+      api.self.deleteSelfAuthBinding({ params: { providerId: entrance.providerId } }),
     onSuccess: async (answer) => {
       // the session this page runs in signed in that way, and is over
       if (answer.signedOut) {
@@ -102,7 +102,27 @@ export default function AccountLoginsPage() {
       }
       await queryClient.invalidateQueries({ queryKey: query.self.key() })
     },
-    onError: (error: unknown) => toast.error(formatError(error)),
+    onError: (error) => {
+      switch (error._tag) {
+        case 'AUTH_BINDING_NOT_FOUND':
+          toast.error(m.error_bindingNotFound())
+          return
+        case 'AUTH_BINDING_UNSUPPORTED':
+          toast.error(m.error_bindingUnsupported())
+          return
+        case 'AUTH_DEMO_ACCOUNT_LOCKED':
+          toast.error(m.error_demoAccountLocked())
+          return
+        case 'AUTH_LAST_WAY_IN':
+          toast.error(m.error_lastWayIn())
+          return
+        case 'USER_NOT_FOUND':
+          toast.error(m.error_userNotFound())
+          return
+        default:
+          assertNever(error)
+      }
+    },
   })
 
   return (

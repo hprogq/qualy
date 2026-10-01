@@ -1,3 +1,4 @@
+import { useLocale, useList } from '@qualy/web-i18n'
 import { useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import {
@@ -9,7 +10,7 @@ import {
   PlusIcon,
   XIcon,
 } from 'lucide-react'
-import { useI18n, useList } from '@qualy/web-i18n'
+
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { Field } from '@qualy/ui/admin'
 import { Field as FieldRow, FieldContent, FieldDescription, FieldLabel } from '@qualy/ui/field'
@@ -312,7 +313,7 @@ function TypeSettings({
   onChange: (next: FieldDraft) => void
   onDisableOption?: ((optionId: string) => void) | undefined
 }) {
-  const { locale } = useI18n()
+  const locale = useLocale()
   const words = usePickerWords()
   // the pattern is the one setting most fields never need: folded until it
   // holds something, and remembered open once it has been looked at

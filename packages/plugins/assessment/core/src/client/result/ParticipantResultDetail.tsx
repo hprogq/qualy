@@ -1,19 +1,28 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import * as stylex from '@stylexjs/stylex'
-import { ArrowLeftIcon, ChevronDownIcon } from 'lucide-react'
 import {
+  assertNever,
+  formatPlatformFailure as formatError,
+  useLocale,
+  isApiErrorCode,
+} from '@qualy/web-i18n'
+import { Effect } from 'effect'
+import {
+  useApiMutation,
   isRecordId,
   LoadFailure,
   ScreenAside,
   useApi,
   useApiQuery,
   useLoadFailure,
-  useRunApi,
   useScreenAsideOffered,
 } from '@qualy/web-runtime'
-import type { ApiResult } from '@qualy/web-runtime/api'
-import { isApiErrorCode, useI18n } from '@qualy/web-i18n'
+
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import * as stylex from '@stylexjs/stylex'
+import { ArrowLeftIcon, ChevronDownIcon } from 'lucide-react'
+
+import { type ApiResult } from '@qualy/web-runtime/api'
+
 import { useTerm } from '@qualy/plugin-settings/client/terms'
 import { authTerms } from '@qualy/auth-contract/terms'
 
@@ -450,7 +459,7 @@ export function ParticipantResultDetail({
 }) {
   const query = useApiQuery(assessmentApi)
   const api = useApi(assessmentApi)
-  const run = useRunApi()
+
   const queryClient = useQueryClient()
   // Both belong to one person. The page stays as the reader steps from one
   // person to the next - back and forward included, which a modal question
@@ -462,7 +471,7 @@ export function ParticipantResultDetail({
   if (excluding !== null && excluding !== participantId) setExcluding(null)
   if (unfoldedFor !== null && unfoldedFor !== participantId) setUnfoldedFor(null)
   const unfolded = unfoldedFor === participantId
-  const { formatError, locale } = useI18n()
+  const locale = useLocale()
   const zone = useBatchZone()
   const phone = useIsMobile()
   // beside the work, where the shell lends its column; over it otherwise
@@ -645,7 +654,7 @@ export function ParticipantResultDetail({
   // this is the page that says what taking them off would leave behind.
   // The page stays as the reader steps from one person to the next, so a
   // change still on its way belongs to whoever it was asked for.
-  const setStatus = useMutation({
+  const setStatus = useApiMutation({
     mutationFn: ({
       status,
       participantId: who,
@@ -653,18 +662,35 @@ export function ParticipantResultDetail({
       status: 'active' | 'excluded'
       participantId: string
     }) =>
-      run(
-        api.assessment.setParticipantStatus({
+      api.assessment
+        .setParticipantStatus({
           params: { batchId, participantId: who },
           payload: { status },
-        }),
-      ).then((answer) => ({ ...answer, status })),
+        })
+        .pipe(Effect.map((answer) => ({ ...answer, status }))),
     onSuccess: (answer: { status: 'active' | 'excluded' }) => {
       setExcluding(null)
       toast.success((answer.status === 'excluded' ? m.toast_excluded : m.toast_restored)())
       void queryClient.invalidateQueries({ queryKey: query.assessment.key() })
     },
-    onError: (error) => toast.error(formatError(error)),
+    onError: (error) => {
+      switch (error._tag) {
+        case 'ASSESSMENT_BATCH_NOT_FOUND':
+          toast.error(m.error_batchNotFound())
+          return
+        case 'ASSESSMENT_BATCH_READ_ONLY':
+          toast.error(m.error_batchReadOnly())
+          return
+        case 'ASSESSMENT_PARTICIPANT_INVALID':
+          toast.error(m.error_participantInvalid())
+          return
+        case 'ASSESSMENT_PARTICIPANT_NOT_FOUND':
+          toast.error(m.error_participantNotFound())
+          return
+        default:
+          assertNever(error)
+      }
+    },
   })
 
   const excluded = participant?.status === 'excluded'

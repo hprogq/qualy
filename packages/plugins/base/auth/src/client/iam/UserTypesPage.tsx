@@ -1,7 +1,7 @@
+import { useLocale, useList } from '@qualy/web-i18n'
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useApiQuery, useLoadFailure, usePageNavigate } from '@qualy/web-runtime'
-import { useI18n, useList } from '@qualy/web-i18n'
 
 import { AsyncSection } from '@qualy/ui/admin'
 import {
@@ -35,7 +35,7 @@ const COLUMNS = 'minmax(0, 0.9fr) 6rem minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1
 
 export default function UserTypesPage() {
   const query = useApiQuery(authApi)
-  const { locale } = useI18n()
+  const locale = useLocale()
   const describe = useLoadFailure()
   const figure = new Intl.NumberFormat(locale)
   const listJoin = useList()

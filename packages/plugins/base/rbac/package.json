@@ -15,7 +15,6 @@
     "./client/RolesPage": "./src/client/RolesPage.tsx",
     "./client/UserRoleGrantsPage": "./src/client/UserRoleGrantsPage.tsx",
     "./client/api": "./src/client/api.ts",
-    "./client/i18n": "./src/client/i18n.ts",
     "./db": "./src/db/entities.ts",
     "./package.json": "./package.json",
     "./permissions": "./src/permissions.ts",

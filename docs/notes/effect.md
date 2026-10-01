@@ -45,3 +45,15 @@ schema 体)不做对象结构解析,不受影响——恰好实现「envelope �
   的依赖不进请求上下文,会 `Service not found`;插件的 handler 在构建期取服务并捕获,不受影响。
 - 全量 node 套件 403 个文件 3049 条通过,含 effect-source-policy 点名的两条承重测试(OTLP span 改名、
   数据库追踪与事务传播)和冻结 OpenAPI 的全量比对,均未改动。
+
+## rc.118 API 错误装配检查的内部辅助导出(2026-10-01)
+
+- 实查 `node -e "import('effect/SchemaAST').then(m=>console.log(Object.keys(m).filter(x=>/entinel|onstruct/.test(x))))"`
+  得到 `collectSentinels`, `getConstructorDescriptor`, `withConstructorDefault`;`effect/http-api/HttpApiEndpoint`
+  实际导出 `getErrorSchemas`。前两项与后一项均在源码标 `@internal`,发布的 `.d.ts` 去掉了这些声明。
+- 实读 `repos/effect/packages/effect/src/SchemaAST.ts` 的 collectSentinels/getConstructorDescriptor,
+  `repos/effect/packages/effect/src/http-api/HttpApiEndpoint.ts` 的 getErrorSchemas:
+  HttpApi response encoding 保留 TaggedError 类的 constructor descriptor;middleware 错误也须按 endpoint 收集。
+- 适配仅放在 `packages/core/api-kit/src/error-codes.ts` 的装配边界,不把内部 API 暴露给插件。
+  `tools/tests/error-codes.test.ts` 真正走 response encoding,断言同一类跨 endpoint 可复用、不同类同码必拒绝,
+  同时检查实际 selected assembly。升级 Effect 时必须随这些测试核对内部导出。

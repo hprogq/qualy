@@ -90,7 +90,6 @@ const plugin = Plugin.define(
     categories: Object.values(authTermCategories),
     settings: Object.values(authTermDefinitions),
   }),
-  Ui.i18n('./client/i18n'),
   Ui.page({
     // the page the browser sends an anonymous visitor to sign in at, by id
     id: SIGN_IN_PAGE,

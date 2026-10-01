@@ -649,5 +649,6 @@
   "mail_emailChangedByAdministrator_footer": "如对此有疑问，请尽快联系管理员。",
   "preference_localeConfirmTitle": "切换界面语言？",
   "preference_localeConfirmHint": "切换语言需要重新载入页面，未保存的表单内容可能丢失。请先取消并保存内容，或确认切换。",
-  "preference_localeConfirmAction": "切换并重新载入"
+  "preference_localeConfirmAction": "切换并重新载入",
+  "error_lastAdministrator": "租户将失去最后一个还能登录的管理员。"
 }

@@ -15,7 +15,6 @@ import { text } from '@qualy/text'
 import { messageRefs } from '@qualy/text/node'
 import type * as M from '#messages'
 import { Plugin } from '@qualy/plugin-kit'
-import { Ui } from '@qualy/plugin-ui-registry/plugin'
 import {
   authCasApiGroup,
   CasResponseInvalid,
@@ -154,6 +153,11 @@ const fields: readonly EntranceField[] = [
 ]
 
 export const driver: LoginDriver = {
+  failures: {
+    AUTH_CAS_TICKET_REJECTED: text(m.error_ticketRejected),
+    AUTH_CAS_UPSTREAM_UNAVAILABLE: text(m.error_upstreamUnavailable),
+    AUTH_CAS_RESPONSE_INVALID: text(m.error_responseInvalid),
+  },
   type: 'cas',
   icon: 'campus',
   presentation: {
@@ -329,7 +333,6 @@ const handlers = HttpApiBuilder.group(local, 'authCas', (handlers) =>
 const plugin = Plugin.define(
   '@qualy/plugin-auth-cas',
   { dependsOn: ['@qualy/plugin-auth'] },
-  Ui.i18n('./client/i18n'),
   Login.driver(driver),
   ApiFeature.group(authCasApiGroup, handlers),
 )

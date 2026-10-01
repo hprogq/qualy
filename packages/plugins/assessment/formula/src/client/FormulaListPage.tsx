@@ -1,7 +1,8 @@
-import * as stylex from '@stylexjs/stylex'
-import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useMemo, useState } from 'react'
+import { assertNever, useLocale } from '@qualy/web-i18n'
+
 import {
+  useRunApi,
+  useApiMutation,
   PageLink,
   cursorPages,
   useApi,
@@ -9,9 +10,11 @@ import {
   useLoadFailure,
   usePageNavigate,
   usePageTitle,
-  useRunApi,
 } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
+
+import * as stylex from '@stylexjs/stylex'
+import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query'
+import { useMemo, useState } from 'react'
 
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
@@ -94,10 +97,8 @@ function NewFormulaDialog({
   onCreated: (functionId: string) => void
 }) {
   const api = useApi(formulaApi)
-  const run = useRunApi()
   const query = useApiQuery(formulaApi)
   const queryClient = useQueryClient()
-  const { formatError } = useI18n()
 
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
@@ -109,23 +110,32 @@ function NewFormulaDialog({
     setFailure(null)
   }
 
-  const create = useMutation({
+  const create = useApiMutation({
     mutationFn: () =>
-      run(
-        api.assessmentFormula.createFormulaFunction({
-          payload: {
-            name: name.trim(),
-            ...(description.trim() === '' ? {} : { description: description.trim() }),
-          },
-        }),
-      ),
+      api.assessmentFormula.createFormulaFunction({
+        payload: {
+          name: name.trim(),
+          ...(description.trim() === '' ? {} : { description: description.trim() }),
+        },
+      }),
     onMutate: () => setFailure(null),
     onSuccess: async (result: { function: { id: string } }) => {
       reset()
       await queryClient.invalidateQueries({ queryKey: query.assessmentFormula.key() })
       onCreated(result.function.id)
     },
-    onError: (error: unknown) => setFailure(formatError(error)),
+    onError: (error) => {
+      switch (error._tag) {
+        case 'ASSESSMENT_FORMULA_AUTHORING_BUSY':
+          setFailure(m.error_authoringBusy())
+          return
+        case 'ASSESSMENT_FORMULA_SOURCE_TOO_LARGE':
+          setFailure(m.error_sourceTooLarge())
+          return
+        default:
+          assertNever(error)
+      }
+    },
   })
 
   const ready = name.trim() !== ''
@@ -173,7 +183,7 @@ export default function FormulaListPage() {
   const api = useApi(formulaApi)
   const runApi = useRunApi()
   const query = useApiQuery(formulaApi)
-  const { locale } = useI18n()
+  const locale = useLocale()
   const failure = useLoadFailure()
   const titleRef = usePageTitle(m.list_title())
   const navigate = usePageNavigate()

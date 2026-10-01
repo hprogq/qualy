@@ -1,14 +1,16 @@
-import { useState } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { assertNever, useLocale } from '@qualy/web-i18n'
+import { Effect } from 'effect'
 import {
+  useApiMutation,
   PageLink,
   useApi,
   useApiQuery,
   useLoadFailure,
   usePageRouteParams,
-  useRunApi,
 } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
+
+import { useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { useTerm } from '@qualy/plugin-settings/client/terms'
 import { authTerms } from '@qualy/auth-contract/terms'
@@ -110,10 +112,10 @@ const styles = stylex.create({
 export default function UserProfilePage() {
   const { userId } = usePageRouteParams('userId')
   const api = useApi(authApi)
-  const run = useRunApi()
+
   const query = useApiQuery(authApi)
   const queryClient = useQueryClient()
-  const { formatError, locale } = useI18n()
+  const locale = useLocale()
   const businessNoWord = useTerm(authTerms.businessNumber)
   // a reading of this section that failed; the person not being there is the banner's to say
   const describe = useLoadFailure()
@@ -126,12 +128,14 @@ export default function UserProfilePage() {
   const system = user.data?.placement.mode === 'tenant-root'
   const accountFields = (user.data?.accountManageable ?? false) && !system
   const [setting, setSetting] = useState<'email' | 'businessNo' | null>(null)
-  const sendVerification = useMutation({
+  const sendVerification = useApiMutation({
     mutationFn: (email: string) =>
-      run(api.identity.createUserEmailVerification({ params: { userId } })).then((answer) => ({
-        ...answer,
-        email,
-      })),
+      api.identity.createUserEmailVerification({ params: { userId } }).pipe(
+        Effect.map((answer) => ({
+          ...answer,
+          email,
+        })),
+      ),
     onSuccess: async ({ sent, email }) => {
       if (sent) toast.success(m.person_verificationSent({ email }))
       else {
@@ -140,7 +144,18 @@ export default function UserProfilePage() {
         await queryClient.invalidateQueries({ queryKey: query.identity.key() })
       }
     },
-    onError: (error: unknown) => toast.error(formatError(error)),
+    onError: (error) => {
+      switch (error._tag) {
+        case 'AUTH_EMAIL_MISSING':
+          toast.error(m.error_emailMissing())
+          return
+        case 'AUTH_MAIL_NOT_SENT':
+          toast.error(m.error_mailNotSent())
+          return
+        default:
+          assertNever(error)
+      }
+    },
   })
   const when = (iso: string) =>
     new Intl.DateTimeFormat(locale, {

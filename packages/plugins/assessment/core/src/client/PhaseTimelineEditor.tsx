@@ -1,8 +1,15 @@
+import { assertNever, formatPlatformFailure as formatError } from '@qualy/web-i18n'
+
+import {
+  useApiMutation,
+  useApi,
+  useApiQuery,
+  useLeaveGuard,
+  useLoadFailure,
+} from '@qualy/web-runtime'
 import { Fragment, useMemo, useState } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { PencilLineIcon, PlusIcon } from 'lucide-react'
-import { useApi, useApiQuery, useLeaveGuard, useLoadFailure, useRunApi } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
 
 import { AsyncSection, ConfirmDialog, Feedback } from '@qualy/ui/admin'
 import { Card, Table, TableHead, TableSkeleton, UnsavedMark } from '@qualy/ui/screen'
@@ -254,10 +261,9 @@ function Seam({
 
 export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
   const api = useApi(assessmentApi)
-  const run = useRunApi()
   const query = useApiQuery(assessmentApi)
   const queryClient = useQueryClient()
-  const { formatError } = useI18n()
+
   const loadFailure = useLoadFailure()
 
   const phases = useQuery(
@@ -361,7 +367,7 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
   }
   const sentenceOf = (refusal: PlanRefusalLike) => planRefusalWords(refusal.reason)
 
-  const savePlan = useMutation({
+  const savePlan = useApiMutation({
     mutationFn: ({
       submitted,
       expected,
@@ -371,23 +377,21 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
       /** saved on the way to something else, which the editing carries on into */
       keepEditing?: boolean
     }) =>
-      run(
-        api.assessment.putPhases({
-          params: { batchId: batch.id },
-          payload: {
-            ...(expected !== undefined ? { expectedPlanFingerprint: expected } : {}),
-            phases: submitted.map((row) => ({
-              ...(row.id !== undefined ? { id: row.id } : {}),
-              phaseKey: row.phaseKey,
-              displayName: row.displayName,
-              description: row.description,
-              entryNote: row.entryNote,
-              permissionProfile: row.permissionProfile,
-              ...scopesToSend(row, row.id !== undefined ? storedById.get(row.id) : undefined),
-            })),
-          },
-        }),
-      ),
+      api.assessment.putPhases({
+        params: { batchId: batch.id },
+        payload: {
+          ...(expected !== undefined ? { expectedPlanFingerprint: expected } : {}),
+          phases: submitted.map((row) => ({
+            ...(row.id !== undefined ? { id: row.id } : {}),
+            phaseKey: row.phaseKey,
+            displayName: row.displayName,
+            description: row.description,
+            entryNote: row.entryNote,
+            permissionProfile: row.permissionProfile,
+            ...scopesToSend(row, row.id !== undefined ? storedById.get(row.id) : undefined),
+          })),
+        },
+      }),
     onMutate: clear,
     onSuccess: async (_, { keepEditing }) => {
       toast.success(m.toast_planSaved())
@@ -398,14 +402,12 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
     onError: failed,
   })
 
-  const addFromTemplate = useMutation({
+  const addFromTemplate = useApiMutation({
     mutationFn: (id: string) =>
-      run(
-        api.assessment.putPhases({
-          params: { batchId: batch.id },
-          payload: { fromTemplateId: id },
-        }),
-      ),
+      api.assessment.putPhases({
+        params: { batchId: batch.id },
+        payload: { fromTemplateId: id },
+      }),
     onMutate: clear,
     onSuccess: async () => {
       toast.success(m.toast_templateAdded())
@@ -416,7 +418,7 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
       setTemplateOpen(false)
       setTemplateId('')
     },
-    onError: (error: unknown) => {
+    onError: (error) => {
       // the reason is said on the page, which the dialog would cover
       setTemplateOpen(false)
       failed(error)
@@ -425,14 +427,12 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
   /** saving and then adding is two writes; the dialog holds still across both */
   const [addingAfterSave, setAddingAfterSave] = useState(false)
 
-  const schedule = useMutation({
+  const schedule = useApiMutation({
     mutationFn: (input: { phaseId: string; at: string | null }) =>
-      run(
-        api.assessment.schedulePhase({
-          params: { batchId: batch.id, phaseId: input.phaseId },
-          payload: { plannedEntryAt: input.at },
-        }),
-      ),
+      api.assessment.schedulePhase({
+        params: { batchId: batch.id, phaseId: input.phaseId },
+        payload: { plannedEntryAt: input.at },
+      }),
     onMutate: clear,
     onSuccess: async () => {
       toast.success(m.toast_phaseScheduled())
@@ -441,30 +441,42 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
       setUnscheduling(null)
       setPlannedAt(null)
     },
-    onError: (error: unknown) => {
+    onError: (error) => {
       setScheduling(null)
       setUnscheduling(null)
       failed(error)
     },
   })
 
-  const advance = useMutation({
+  const advance = useApiMutation({
     mutationFn: (phaseId: string) =>
-      run(
-        api.assessment.advancePhase({
-          params: { batchId: batch.id },
-          payload: { to: phaseId },
-        }),
-      ),
+      api.assessment.advancePhase({
+        params: { batchId: batch.id },
+        payload: { to: phaseId },
+      }),
     onMutate: clear,
     onSuccess: async () => {
       toast.success(m.toast_phaseAdvanced())
       await settle()
       setScheduling(null)
     },
-    onError: (error: unknown) => {
+    onError: (error) => {
+      let failure: string
+      switch (error._tag) {
+        case 'ASSESSMENT_ADVANCE_INVALID':
+          failure = m.error_advanceInvalid()
+          break
+        case 'ASSESSMENT_BATCH_NOT_FOUND':
+          failure = m.error_batchNotFound()
+          break
+        case 'ASSESSMENT_PHASE_NOT_FOUND':
+          failure = m.error_phaseNotFound()
+          break
+        default:
+          assertNever(error)
+      }
       setScheduling(null)
-      setFailure(formatError(error))
+      setFailure(failure)
     },
   })
 

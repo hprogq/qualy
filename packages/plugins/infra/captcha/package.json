@@ -8,7 +8,6 @@
   "exports": {
     ".": "./src/index.ts",
     "./client": "./src/client/index.ts",
-    "./client/i18n": "./src/client/i18n.ts",
     "./contract": "./src/contract.ts",
     "./package.json": "./package.json",
     "./plugin": "./src/plugin.ts",

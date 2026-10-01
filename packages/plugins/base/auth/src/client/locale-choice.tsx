@@ -1,8 +1,9 @@
+import { formatPlatformFailure as formatError, reopenInLocale, useLocale } from '@qualy/web-i18n'
 import { useRef, useState } from 'react'
 import { ConfirmDialog } from '@qualy/ui/admin'
 import * as m from '#messages'
-import type { SupportedLocale } from '@qualy/i18n-contract'
-import { reopenInLocale, useI18n, useLocale } from '@qualy/web-i18n'
+import { type SupportedLocale } from '@qualy/i18n-contract'
+
 import { toast } from '@qualy/ui/toast'
 import { useApi, useRunApi } from '@qualy/web-runtime'
 import { authApi } from './api.ts'
@@ -12,7 +13,7 @@ export function useChooseLocale() {
   const locale = useLocale()
   const api = useApi(authApi)
   const run = useRunApi()
-  const { formatError } = useI18n()
+
   const [chosen, setChosen] = useState<SupportedLocale>()
   const [pending, setPending] = useState(false)
   const saving = useRef(false)

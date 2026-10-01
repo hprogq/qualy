@@ -1062,6 +1062,7 @@ export const sessionApiGroup = HttpApiGroup.make('auth')
     // its ways in. Null when there is no workspace to sign in to here.
     HttpApiEndpoint.get('listLoginMethods', '/auth/login-methods', {
       success: Schema.Struct({
+        failureMessages: Schema.optional(Schema.Record(Schema.String, Schema.String)),
         tenant: Schema.NullOr(Schema.Struct({ name: Schema.String })),
         methods: Schema.Array(loginMethod),
         // what a password here has to be, where a door keeps passwords

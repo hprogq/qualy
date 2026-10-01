@@ -1,16 +1,17 @@
-import { Fragment, useState } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import * as stylex from '@stylexjs/stylex'
-import { ChevronRightIcon } from 'lucide-react'
+import { formatPlatformFailure as formatError } from '@qualy/web-i18n'
 import {
+  useApiMutation,
   LoadFailure,
   isRecordId,
   useApi,
   useApiQuery,
   useLoadFailure,
-  useRunApi,
 } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
+import { Fragment, useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import * as stylex from '@stylexjs/stylex'
+import { ChevronRightIcon } from 'lucide-react'
+
 import { useTerm } from '@qualy/plugin-settings/client/terms'
 import { authTerms } from '@qualy/auth-contract/terms'
 
@@ -140,10 +141,9 @@ export function AdministrativeActDetail({
   onOpenEntry: (entryId: string) => void
 }) {
   const api = useApi(assessmentApi)
-  const run = useRunApi()
   const query = useApiQuery(assessmentApi)
   const queryClient = useQueryClient()
-  const { formatError } = useI18n()
+
   const businessNo = useTerm(authTerms.businessNumber)
   const whenOf = useWhen()
   const [asking, setAsking] = useState(false)
@@ -162,14 +162,12 @@ export function AdministrativeActDetail({
     enabled: named,
   })
 
-  const reverse = useMutation({
+  const reverse = useApiMutation({
     mutationFn: (reason: string) =>
-      run(
-        api.assessment.reverseAdministrativeRecord({
-          params: { operationId },
-          payload: { reason },
-        }),
-      ),
+      api.assessment.reverseAdministrativeRecord({
+        params: { operationId },
+        payload: { reason },
+      }),
     onSuccess: (done) => {
       toast.success(m.record_actReversed({ count: done.affectedCount }))
       // what the score is made of just changed: the act, the acts list and

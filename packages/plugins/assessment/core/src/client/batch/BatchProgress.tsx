@@ -1,8 +1,8 @@
+import { useLocale } from '@qualy/web-i18n'
 import { useEffect, useRef, useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
-import { useI18n } from '@qualy/web-i18n'
 import { Badge } from '@qualy/ui/badge'
 import { Ticker } from '@qualy/ui/ticker'
 import { useIsMobile } from '@qualy/ui/use-mobile'
@@ -16,7 +16,7 @@ import {
   toneOf,
   type TimelineLike,
 } from './progress.ts'
-import type { Message } from '@qualy/i18n-contract'
+import { type Message } from '@qualy/i18n-contract'
 import * as m from '#messages'
 
 // Where a batch is right now, in one line: the stage it is in, and how long
@@ -215,7 +215,7 @@ export function BatchProgress({
   flat?: boolean
   xstyle?: stylex.StyleXStyles
 }) {
-  const { locale } = useI18n()
+  const locale = useLocale()
   const zone = useBatchZone()
   const markOf = useZoneMark(locale)
   // One threshold: under a tablet the bar has no room for the stage, so the

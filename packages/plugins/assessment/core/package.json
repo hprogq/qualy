@@ -20,7 +20,6 @@
     "./client/batch/BatchContextBar": "./src/client/batch/BatchContextBar.tsx",
     "./client/browser": "./src/client/browser.ts",
     "./client/entry/MyEntriesPage": "./src/client/entry/MyEntriesPage.tsx",
-    "./client/i18n": "./src/client/i18n.ts",
     "./client/items/FixedCalculatorEditor": "./src/client/items/FixedCalculatorEditor.tsx",
     "./client/items/ItemSettingsPage": "./src/client/items/ItemSettingsPage.tsx",
     "./client/person/MyBatchesPage": "./src/client/person/MyBatchesPage.tsx",

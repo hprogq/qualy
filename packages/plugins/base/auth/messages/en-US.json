@@ -649,5 +649,6 @@
   "mail_emailChangedByAdministrator_footer": "If you have questions about this change, contact your administrator.",
   "preference_localeConfirmTitle": "Change the interface language?",
   "preference_localeConfirmHint": "Changing the language reloads this page. Unsaved form changes may be lost. Cancel to save your work first, or confirm to continue.",
-  "preference_localeConfirmAction": "Change language and reload"
+  "preference_localeConfirmAction": "Change language and reload",
+  "error_lastAdministrator": "The tenant would be left without an administrator who can still sign in."
 }

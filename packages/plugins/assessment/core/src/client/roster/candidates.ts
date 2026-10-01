@@ -1,8 +1,8 @@
+import { formatPlatformFailure as formatError } from '@qualy/web-i18n'
 import { useEffect, useState } from 'react'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
-import type { PeoplePickerViewContext } from '@qualy/ui-contract'
+import { type PeoplePickerViewContext } from '@qualy/ui-contract'
 import { useApiQuery } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
 import { assessmentApi } from '../api.ts'
 
 // The people a round's administrator may bring into it, paged for the
@@ -19,7 +19,7 @@ const PAGE = 20
 
 export function useCandidates(batchId: string, open: boolean) {
   const query = useApiQuery(assessmentApi)
-  const { formatError } = useI18n()
+
   const [nodeId, setNodeId] = useState<string | null>(null)
   const [scope, setScope] = useState<'self' | 'subtree'>('subtree')
   const [userTypeId, setUserTypeId] = useState('')

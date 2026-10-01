@@ -1,3 +1,4 @@
+import { useLocale } from '@qualy/web-i18n'
 import * as stylex from '@stylexjs/stylex'
 import {
   displayTitle,
@@ -7,7 +8,6 @@ import {
   type NormalizedAtomicSchema,
   type NormalizedInputSchema,
 } from '@qualy/value-schema'
-import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 
 import { kindWords } from './kind-words.ts'
@@ -62,7 +62,7 @@ export function ContractTable({
   readonly inputSchema: NormalizedInputSchema
   readonly outputSchema: NormalizedAtomicSchema
 }) {
-  const { locale } = useI18n()
+  const locale = useLocale()
   const rules = (schema: AtomicSchema) => {
     const said = constraintRules(schema, locale)
     return said.length === 0 ? (
