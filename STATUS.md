@@ -21427,3 +21427,15 @@ metadataUnchanged:true; reactDomClientKnown:true; HttpStatus-1qu7jGzr.js status:
     check-public-web（350 served files无泄漏）全部exit0。
 - 下一步：推送修复提交，等待main完整CI及release-eligible；构建新immutable版本并按digest部署，
   再核对公网release id、健康探针和登录页。rc.23保持未部署。
+
+### 绑定回调的补充核对
+
+- CAS/GitHub/OIDC 的绑定失败也会通过returnPath回到账号页；只修核心绑定码仍遗漏driver-owned失败。
+  AccountLoginsPage在收到非核心回调码时读取现有listLoginMethods的failureMessages localized DTO，
+  正常账号页及已知核心失败不增加请求；读取期间显示加载状态，核心失败由账号用例立即解释。
+  不新增API、全局错误表或第三方driver静态import。
+- 补第三方ACME_BINDING_REFUSED的真实浏览器回归：account.browser 1 file/11 tests passed，exit0。
+  `pnpm typecheck`、`pnpm lint:types`均exit0；`pnpm build`18.04s、350 assets，
+  release r_aXoeC8DUChIO68YZOZvw-w；staged/CSP/public资源门禁均exit0。
+- 主修复176236817的CI 36923186306已通过static/Chromium/WebKit/image，Node覆盖率当时仍运行。
+  正式发布必须等待包含本补丁的最终commit通过完整CI，不发布较早的半截验收。

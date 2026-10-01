@@ -2,6 +2,7 @@ import { assertNever, formatPlatformFailure as formatError, useLocale } from '@q
 
 import {
   useApiMutation,
+  useRunApi,
   PageLink,
   useApi,
   useApiQuery,
@@ -62,6 +63,7 @@ const styles = stylex.create({
 
 export default function AccountLoginsPage() {
   const api = useApi(authApi)
+  const run = useRunApi()
   const query = useApiQuery(authApi)
   const queryClient = useQueryClient()
   const endSession = useSessionTransition()
@@ -77,6 +79,25 @@ export default function AccountLoginsPage() {
   // only something shaped like a code is read from the address
   const failure = searchParams.get('error')
   const failed = failure !== null && /^[A-Z][A-Z0-9_]{2,63}$/.test(failure) ? failure : undefined
+  const coreFailure =
+    failed === 'AUTH_BINDING_SUBJECT_TAKEN'
+      ? m.error_bindingSubjectTaken()
+      : failed === 'AUTH_BINDING_ALREADY_BOUND'
+        ? m.error_bindingAlreadyBound()
+        : failed === 'AUTH_FLOW_REJECTED'
+          ? m.error_flowRejected()
+          : failed === 'AUTH_METHOD_UNAVAILABLE'
+            ? m.error_methodUnavailable()
+            : failed === 'AUTH_REAUTHENTICATION_REQUIRED'
+              ? m.error_reauthenticationRequired()
+              : undefined
+  // Driver-owned callback failures also return here after binding. Their
+  // localized copy comes from the same active-driver projection as login.
+  const redirectContext = useQuery({
+    queryKey: ['auth', 'binding-redirect-failure', failed],
+    queryFn: () => run(api.auth.listLoginMethods({})),
+    enabled: failed !== undefined && coreFailure === undefined,
+  })
   const found = useQuery(query.self.listSelfEntrances.queryOptions())
   const self = useQuery(query.self.getSelf.queryOptions())
   const entrances = found.data?.entrances ?? []
@@ -133,15 +154,11 @@ export default function AccountLoginsPage() {
         // put away, it leaves the address too, so a reload does not say it again
         <Alert variant="destructive" data-testid="account-failure" data-code={failed}>
           <AlertTitle>
-            {failed === 'AUTH_BINDING_SUBJECT_TAKEN'
-              ? m.error_bindingSubjectTaken()
-              : failed === 'AUTH_BINDING_ALREADY_BOUND'
-                ? m.error_bindingAlreadyBound()
-                : failed === 'AUTH_FLOW_REJECTED'
-                  ? m.error_flowRejected()
-                  : failed === 'AUTH_METHOD_UNAVAILABLE'
-                    ? m.error_methodUnavailable()
-                    : formatError({ _tag: failed })}
+            {coreFailure ??
+              redirectContext.data?.failureMessages?.[failed] ??
+              (redirectContext.isPending
+                ? commonMessages.state_loading()
+                : formatError({ _tag: failed }))}
           </AlertTitle>
           <AlertAction>
             <Button

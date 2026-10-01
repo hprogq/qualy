@@ -344,6 +344,28 @@ describe('binding an account of your own', () => {
     expect(addressNow()).not.toContain('error=')
   })
 
+  it('shows a third-party binding callback failure from the localized driver projection', async () => {
+    await renderScreen({
+      client: fakeClient({
+        ...stubs([password, hub()]),
+        auth: {
+          listLoginMethods: () =>
+            Effect.succeed({
+              tenant: null,
+              methods: [],
+              passwordRule: null,
+              failureMessages: { ACME_BINDING_REFUSED: '外部登录服务拒绝了此次绑定。' },
+            }),
+        },
+      }),
+      route: '/account/logins?error=ACME_BINDING_REFUSED',
+      children: <AccountLoginsPage />,
+    })
+    await expect
+      .element(page.getByTestId('account-failure'))
+      .toMatchTextContent('外部登录服务拒绝了此次绑定。')
+  })
+
   it('asks to sign in again first where that is how the account shows it is theirs', async () => {
     const campus = 'ffffffff-ffff-4fff-8fff-ffffffffffff'
     await renderScreen({
