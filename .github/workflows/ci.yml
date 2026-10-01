@@ -36,7 +36,7 @@ jobs:
       - run: pnpm lint:types
 
   ci:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     # the one token Codecov accepts from this job: an OIDC identity for the
     # upload below, nothing that can write to the repository
@@ -213,7 +213,14 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-${{ steps.playwright.outputs.version }}
       - name: install chromium
-        run: pnpm exec playwright install --with-deps chromium
+        timeout-minutes: 8
+        # The browser cache does not contain apt dependencies. The Azure
+        # mirror fetched 32.1 MB at 91.1 kB/s on 2026-10-02; use Ubuntu's
+        # official HTTPS mirror and bound stalled connections instead.
+        run: |
+          printf '%s\n' 'https://archive.ubuntu.com/ubuntu/' | sudo tee /etc/apt/apt-mirrors.txt > /dev/null
+          printf '%s\n' 'Acquire::Retries "2";' 'Acquire::http::Timeout "20";' 'Acquire::https::Timeout "20";' | sudo tee /etc/apt/apt.conf.d/80qualy-ci > /dev/null
+          pnpm exec playwright install --with-deps chromium
       - name: the content security policy can be enforced
         env:
           DATABASE_URL: postgres://qualy:qualy@localhost:5432/qualy
@@ -229,7 +236,7 @@ jobs:
   # machine almost never is. No postgres: components talk to stubbed
   # clients, so this leg runs parallel to the integration job.
   browser:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     # the one token Codecov accepts from this job: an OIDC identity for the
     # upload below, nothing that can write to the repository
@@ -252,7 +259,11 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-${{ steps.playwright.outputs.version }}
       - name: install chromium
-        run: pnpm exec playwright install --with-deps chromium
+        timeout-minutes: 8
+        run: |
+          printf '%s\n' 'https://archive.ubuntu.com/ubuntu/' | sudo tee /etc/apt/apt-mirrors.txt > /dev/null
+          printf '%s\n' 'Acquire::Retries "2";' 'Acquire::http::Timeout "20";' 'Acquire::https::Timeout "20";' | sudo tee /etc/apt/apt.conf.d/80qualy-ci > /dev/null
+          pnpm exec playwright install --with-deps chromium
       # One line per test as it finishes, not per file: a file whose page
       # stops answering never finishes, and the default reporter then says
       # nothing about which of its tests was running.
@@ -277,7 +288,7 @@ jobs:
   # focus and selection differ from Chromium. A focused leg rather than the
   # whole suite - see vitest.browser.webkit.config.ts.
   browser-webkit:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
@@ -295,7 +306,11 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-webkit-${{ steps.playwright.outputs.version }}
       - name: install webkit
-        run: pnpm exec playwright install --with-deps webkit
+        timeout-minutes: 8
+        run: |
+          printf '%s\n' 'https://archive.ubuntu.com/ubuntu/' | sudo tee /etc/apt/apt-mirrors.txt > /dev/null
+          printf '%s\n' 'Acquire::Retries "2";' 'Acquire::http::Timeout "20";' 'Acquire::https::Timeout "20";' | sudo tee /etc/apt/apt.conf.d/80qualy-ci > /dev/null
+          pnpm exec playwright install --with-deps webkit
       - run: pnpm test:browser:webkit
 
   # The release, built the way a release is built - the server image and the

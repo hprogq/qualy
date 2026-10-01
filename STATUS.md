@@ -21374,3 +21374,18 @@ metadataUnchanged:true; reactDomClientKnown:true; HttpStatus-1qu7jGzr.js status:
 - `check-staged-web`→`351 assets, production, protocol 2`；`check-csp-build`→`no code from strings`；
   `check-public-web`→`discloses nothing it should not (351 served files)`，全部exit0。
 - 下一步：新main CI全部通过后创建rc.23，等待GitHub正式构建并按digest部署。
+
+## 2026-10-02：浏览器 CI 安装慢的实测与修复
+
+- 修复后main CI 36914693151全部通过，release-eligible成功；服务端413文件通过、
+  3097测试通过/29跳过；Chromium125文件/1598测试通过；WebKit5文件/50测试通过。
+  CSP在login/batches/formulas均0 violation。rc.23 tag指向7ee5c8845，正式release运行36917462194。
+- CI日志：runner为ubuntu-24.04、镜像20260927.320.1，Playwright固定1.62.1且browser cache命中。
+  慢的是apt而非Chromium二进制：4包升级/10包新装，32.1MB从Azure镜像耗时5min52s、91.1kB/s；
+  apt索引12.6MB只花1s。上一轮WebKit亦因同镜像下载超时取消。
+- 三个browser安装步骤固定ubuntu-24.04，apt mirrorlist改为官方archive.ubuntu.com HTTPS；
+  连接超时20s、Retries=2、安装步骤8min上限。仍执行完整--with-deps，失败仍阻断CI。
+  浏览器版本与缓存保持，不手工维护系统依赖清单、不复用上一次runner的系统状态。
+- 实测验收：YAML解析输出三个job均ubuntu-24.04/8；三个实际run脚本`bash -n`通过；
+  `release-inputs.test.ts`→`1 passed; 3 passed`,exit0；工作流oxfmt与diff检查exit0。
+- 下一步：在新CI日志核对源地址与安装耗时；同时完成已经验收的rc.23构建、部署与公网核验。
