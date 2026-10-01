@@ -21439,3 +21439,25 @@ metadataUnchanged:true; reactDomClientKnown:true; HttpStatus-1qu7jGzr.js status:
   release r_aXoeC8DUChIO68YZOZvw-w；staged/CSP/public资源门禁均exit0。
 - 主修复176236817的CI 36923186306已通过static/Chromium/WebKit/image，Node覆盖率当时仍运行。
   正式发布必须等待包含本补丁的最终commit通过完整CI，不发布较早的半截验收。
+
+## 2026-10-02：rc.24 正式发布与生产验收
+
+- 修复提交176236817与绑定补丁7ceb08ca8已推送，均无Co-Authored-By。
+  最终代码CI 36924654216全部成功（static/ci/Chromium/WebKit/image/release-eligible）：
+  Node413文件/3098测试通过、29跳过；Chromium125文件/1605测试通过；WebKit5文件/50测试通过。
+  主修复CI 36923186306亦全部成功。Chromium安装在该主修复CI仅17s、WebKit47s，apt慢源修复复验有效。
+- v0.1.0-rc.24固定在7ceb08ca8fe230654790f4dbc26e094b16fbbbc7；正式release运行36926331266
+  COS、release、sourcemaps全部success。release.json严格核对schema/revision/linux-amd64平台、
+  三个固定CNB镜像名及sha256 digest，webRelease=r__Fq1eZUUtLTnqB2igCmiaQ。
+- production运行36927585864成功，maintenance=false，按已授权的digest部署：
+  rc.22在blue继续服务 → green拉取rc.24并就绪 → Caddy切green → blue排空20s并全部停止。
+  日志摘录：`green is ready, serving web release r__Fq1eZUUtLTnqB2igCmiaQ`；
+  `the edge serves green`；`blue stopped`；`upgraded to v0.1.0-rc.24 on green`。
+  rc.23只构建未部署，生产直接从rc.22切到包含完整修复的rc.24。
+- 独立公网真实Chromium验收exit0：/__qualy/release准确等于rc.24元数据；/health/ready=200；
+  /login标题Sign in to Qualy可见；login-methods=200且1个方法；所有检查到的JS/CSS=200；
+  pageErrors=[]、serverErrors=[]，登录页只加载1个shell CSS。
+- CI：https://github.com/hprogq/qualy/actions/runs/36924654216
+  Release：https://github.com/hprogq/qualy/actions/runs/36926331266
+  Deploy：https://github.com/hprogq/qualy/actions/runs/36927585864
+- 下一步：按实际反馈观察新版本的业务操作与诊断；本轮修复、验收、发布和部署完成。
