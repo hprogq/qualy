@@ -1,4 +1,4 @@
-import { formatPlatformFailure as formatError, getApiErrorCode } from '@qualy/web-i18n'
+import { getApiErrorCode } from '@qualy/web-i18n'
 import { useId, useMemo, useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 
@@ -195,7 +195,7 @@ export function TypeSheet({
               )
                 .then(() => setRenaming(false))
                 .catch((error: unknown) => {
-                  if (nameTaken(error)) setTaken(formatError(error))
+                  if (nameTaken(error)) setTaken(m.error_typeConflict())
                 })
             }}
           >

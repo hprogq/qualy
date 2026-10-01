@@ -4,6 +4,7 @@ import { Effect } from 'effect'
 
 import {
   useApiMutation,
+  useRunApi,
   useApi,
   useApiQuery,
   useLoadFailure,
@@ -500,6 +501,7 @@ function Editor({
 }) {
   const query = useApiQuery(assessmentApi)
   const api = useApi(assessmentApi)
+  const run = useRunApi()
   const queryClient = useQueryClient()
 
   const failures = useLoadFailure()
@@ -648,31 +650,35 @@ function Editor({
 
   // a drop, made durable: only the rows whose place actually changed are
   // written, so an idle drag costs nothing
-  const moveItem = useApiMutation({
-    mutationFn: (input: {
+  const moveItem = useApiMutation<
+    void,
+    Effect.Error<ReturnType<typeof api.assessment.updateItem>>,
+    {
       itemId: string
       groupId: string
       orderedItemIds: readonly string[]
       reason: string | null
-    }) =>
-      Effect.gen(function* () {
-        const sequence = input.orderedItemIds.flatMap((id) => {
-          const current = allItems.find((item) => item.id === id)
-          return current === undefined
-            ? []
-            : [{ id, sortOrder: current.sortOrder, voided: current.status === 'voided' }]
-        })
-        // a voided question keeps the place it had: nothing about it may be
-        // written any more, its place in the order included, so the live ones
-        // are numbered around it
-        const placed = sortOrdersAfterDrop(sequence)
-        for (const id of input.orderedItemIds) {
-          const current = allItems.find((item) => item.id === id)
-          const sortOrder = placed.get(id)
-          if (current === undefined || sortOrder === undefined) continue
-          const movedGroup = id === input.itemId && current.scoreGroupId !== input.groupId
-          if (current.sortOrder !== sortOrder || movedGroup) {
-            yield* api.assessment.updateItem({
+    }
+  >({
+    mutationFn: async (input) => {
+      const sequence = input.orderedItemIds.flatMap((id) => {
+        const current = allItems.find((item) => item.id === id)
+        return current === undefined
+          ? []
+          : [{ id, sortOrder: current.sortOrder, voided: current.status === 'voided' }]
+      })
+      // a voided question keeps the place it had: nothing about it may be
+      // written any more, its place in the order included, so the live ones
+      // are numbered around it
+      const placed = sortOrdersAfterDrop(sequence)
+      for (const id of input.orderedItemIds) {
+        const current = allItems.find((item) => item.id === id)
+        const sortOrder = placed.get(id)
+        if (current === undefined || sortOrder === undefined) continue
+        const movedGroup = id === input.itemId && current.scoreGroupId !== input.groupId
+        if (current.sortOrder !== sortOrder || movedGroup) {
+          await run(
+            api.assessment.updateItem({
               params: { itemId: id },
               payload: {
                 sortOrder,
@@ -681,11 +687,12 @@ function Editor({
                 // api refuses to move one on a running round unsaid
                 ...(movedGroup && input.reason !== null ? { reason: input.reason } : {}),
               },
-            })
-          }
+            }),
+          )
         }
-      }),
-    onSuccess: () => void refresh(),
+      }
+    },
+    onSettled: () => void refresh(),
     onError: (error) => {
       let failure: string
       switch (error._tag) {

@@ -359,9 +359,7 @@ export function RecordSteps({
           failure = m.error_batchReadOnly()
           break
         case 'ASSESSMENT_DETERMINATION_REFUSED':
-          failure = m.error_determinationRefused(
-            ((data: typeof error) => ({ reason: data.reason }))(error),
-          )
+          failure = m.error_determinationRefused({ reason: error.reason })
           break
         case 'ASSESSMENT_ENTRY_PAYLOAD_INVALID':
           failure = m.error_entryPayloadInvalid()
@@ -421,9 +419,7 @@ export function RecordSteps({
           failure = m.error_batchReadOnly()
           break
         case 'ASSESSMENT_DETERMINATION_REFUSED':
-          failure = m.error_determinationRefused(
-            ((data: typeof error) => ({ reason: data.reason }))(error),
-          )
+          failure = m.error_determinationRefused({ reason: error.reason })
           break
         case 'ASSESSMENT_ENTRY_PAYLOAD_INVALID':
           failure = m.error_entryPayloadInvalid()

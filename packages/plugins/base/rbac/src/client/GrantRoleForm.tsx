@@ -213,11 +213,7 @@ export function GrantRoleDialog({
           setFeedback(m.error_grantNodeNotFound())
           return
         case 'GRANT_NOT_ELIGIBLE':
-          setFeedback(
-            m.error_grantNotEligible(
-              ((data: typeof error) => ({ reason: selectKey(data.reason) }))(error),
-            ),
-          )
+          setFeedback(m.error_grantNotEligible({ reason: selectKey(error.reason) }))
           return
         case 'GRANT_RULE_REFUSED':
           setFeedback(m.error_grantRuleRefused())

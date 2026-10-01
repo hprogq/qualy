@@ -1,4 +1,4 @@
-import { formatPlatformFailure as formatError } from '@qualy/web-i18n'
+import { assertNever, formatPlatformFailure } from '@qualy/web-i18n'
 import {
   useApiMutation,
   PageLink,
@@ -17,11 +17,7 @@ import { ArrowLeftIcon, CheckIcon, CircleAlertIcon, EyeIcon, MailCheckIcon } fro
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { normalizeEmail } from '@qualy/auth-contract/email'
 import { retryAfterOf } from '@qualy/auth-contract/session'
-import {
-  CaptchaRequired,
-  type CaptchaPrompt,
-  type CaptchaProof,
-} from '@qualy/plugin-captcha/contract'
+import { type CaptchaPrompt, type CaptchaProof } from '@qualy/plugin-captcha/contract'
 import { CaptchaChallenge, useCaptchaGate } from '@qualy/plugin-captcha/client'
 
 import { authApi } from '../api.ts'
@@ -354,7 +350,7 @@ function Ask() {
   })
   const challenging = prompt !== null && gate.state !== 'failed'
   const refused =
-    ask.isError && !(ask.error instanceof CaptchaRequired) ? formatError(ask.error) : null
+    ask.isError && retryAfterOf(ask.error) !== undefined ? formatPlatformFailure(ask.error) : null
   const limited = held && ask.isError && retryAfterOf(ask.error) !== undefined
   if (sentTo !== null) {
     return (
@@ -487,11 +483,23 @@ function SetNew({ token, onAskAgain }: { token: string; onAskAgain: () => void }
         (answer) => answer.checks,
       ),
   })
+  const [failure, setFailure] = useState<string | null>(null)
   const set = useApiMutation({
     mutationFn: () => api.auth.createPasswordResetRedemption({ payload: { token, password } }),
+    onMutate: () => setFailure(null),
     onError: (error) => {
-      if (tagOf(error) === 'AUTH_BINDING_CREDENTIAL_INVALID') setRefused(true)
       hold(PAUSE_MS)
+      switch (error._tag) {
+        case 'AUTH_BINDING_CREDENTIAL_INVALID':
+          setRefused(true)
+          setFailure(m.error_bindingCredentialInvalid())
+          return
+        case 'AUTH_CHALLENGE_INVALID':
+          setFailure(m.error_challengeInvalid())
+          return
+        default:
+          assertNever(error)
+      }
     },
     onSettled: () => {
       sending.current = false
@@ -532,7 +540,7 @@ function SetNew({ token, onAskAgain }: { token: string; onAskAgain: () => void }
             <CircleAlertIcon size={22} strokeWidth={1.9} />
           </Badge>
           <h1 {...stylex.props(styles.title)}>{m.reset_expiredTitle()}</h1>
-          <p {...stylex.props(styles.hint)}>{formatError(lapsed)}</p>
+          <p {...stylex.props(styles.hint)}>{m.error_challengeInvalid()}</p>
           <div {...stylex.props(styles.pair)}>
             <button
               type="button"
@@ -636,9 +644,11 @@ function SetNew({ token, onAskAgain }: { token: string; onAskAgain: () => void }
             )}
           </div>
           {/* a refused password is said by the list above */}
-          {set.isError && tagOf(set.error) !== 'AUTH_BINDING_CREDENTIAL_INVALID' && (
-            <p {...stylex.props(styles.refusal)}>{formatError(set.error)}</p>
-          )}
+          {set.isError &&
+            failure !== null &&
+            tagOf(set.error) !== 'AUTH_BINDING_CREDENTIAL_INVALID' && (
+              <p {...stylex.props(styles.refusal)}>{failure}</p>
+            )}
           <button type="submit" disabled={set.isPending || held} {...stylex.props(styles.primary)}>
             {(set.isPending ? m.reset_setting : m.reset_submit)()}
           </button>

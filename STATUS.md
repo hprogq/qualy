@@ -21389,3 +21389,41 @@ metadataUnchanged:true; reactDomClientKnown:true; HttpStatus-1qu7jGzr.js status:
 - 实测验收：YAML解析输出三个job均ubuntu-24.04/8；三个实际run脚本`bash -n`通过；
   `release-inputs.test.ts`→`1 passed; 3 passed`,exit0；工作流oxfmt与diff检查exit0。
 - 下一步：在新CI日志核对源地址与安装耗时；同时完成已经验收的rc.23构建、部署与公网核验。
+
+## 2026-10-02：迁移行为回归修复与验收
+
+- 安装速度修复 CI 36917797786 全部成功（static/ci/browser/browser-webkit/image/release-eligible）。
+  Chromium install 约38s、WebKit约96s；WebKit apt日志为125MB/36s/3497kB/s。
+  原慢日志确认 Chromium cache 命中，慢在 Azure apt 系统包下载，完整 --with-deps 保留。
+- rc.23（7ee5c8845）正式构建36917462194成功，但收到迁移评审后停止部署；生产未切换到rc.23。
+  下述修复须随新版本发布，不能用已经构建的rc.23替代。
+- `useApiMutation` 支持显式错误联合的 Promise 工作流；工作流逐个 `useRunApi` 请求恢复。
+  EntryDialog/MyEntries的一键写入与提交、事项排序和批量权限修改不再恢复整个多写 Effect。
+  已成功写入不会因后续会话恢复被重放；onSettled仍覆盖平台失败、更新部分成功缓存。
+  草稿保存后提交失败会留在表单并明确说明尚未提交，再次尝试修订同一草稿。
+- 一次性核对 c77fc915 的178个旧错误码及实际调用点，补齐组织/术语/目录读取/行政导入、
+  账号安全/恢复/邮件确认/绑定重定向、公式试运行与若干共享 mutation 回调的领域提示。
+  不恢复全局表、plugin presenter或组件配套errors文件；文件级导入说明仅共享同一预览/提交用例。
+  清除旧values回调立即调用包装、EntryDialog已可由严格联合直接读取的断言。
+- 未知程序异常经现有captureException保留原始异常；裸TypeError不再按网络失败分类。
+  网络失败依据Effect HTTP适配层的HttpClientError/TransportError；更新相关资源状态测试。
+  AGENTS.md与ADR原有规范对齐当前mutation、平台policy、onSettled、逐请求恢复及active-only边界。
+- Effect依据实际读取：repos/effect/packages/effect/src/Effect.ts（Error/isEffect/runPromise），
+  repos/effect/packages/effect/src/http/FetchHttpClient.ts（fetch异常包装），
+  repos/effect/packages/effect/src/http/HttpClientError.ts（TransportError与错误形状）。
+- 真实验收输出：
+  - `pnpm typecheck` exit0；`pnpm lint:types` exit0；oxfmt --check与git diff --check exit0。
+  - 平台/i18n单元：2 files/11 tests passed；错误码/sideEffects/mutation类型及异常门禁：5 files/19 tests passed。
+  - Chromium申报、恢复、组织、目录、术语、公式回归：9 files/107 tests passed。
+  - Chromium账号与行政导入：6 files/81 tests passed；补行政导入忙碌文案后1 file/38 tests passed。
+  - WebKit：5 files/50 tests passed。
+  - 全量`pnpm test:coverage`（本地TMPDIR=/tmp）：413 files passed/3 skipped，3100 tests passed/27 skipped；
+    Statements80.36%、Branches73.47%、Functions82.38%、Lines82.37%，exit0。
+    本地初次失败含6个沙箱套件：执行环境TMPDIR过长超过Unix socket限制；env-file不覆盖既有TMPDIR，
+    实际export短路径后这6套件53测试通过，再完整重跑通过。另一个旧裸TypeError离线预期已更新。
+    27个跳过均为真实COS集成，正式release仍执行COS job。
+  - `pnpm build`：18.13s，web release r_eJZXgen7Td_kHaF-PRuGKA，350 assets，exit0；
+    check-staged-web（production/protocol2）、check-csp-build（no code from strings）、
+    check-public-web（350 served files无泄漏）全部exit0。
+- 下一步：推送修复提交，等待main完整CI及release-eligible；构建新immutable版本并按digest部署，
+  再核对公网release id、健康探针和登录页。rc.23保持未部署。

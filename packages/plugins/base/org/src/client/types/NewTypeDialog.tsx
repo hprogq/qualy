@@ -1,4 +1,4 @@
-import { formatPlatformFailure as formatError, getApiErrorCode } from '@qualy/web-i18n'
+import { getApiErrorCode } from '@qualy/web-i18n'
 import { useState } from 'react'
 
 import { Field, FormDialog } from '@qualy/ui/admin'
@@ -45,7 +45,7 @@ export function NewTypeDialog({
         if (id) onCreated(id)
       })
       .catch((error: unknown) => {
-        if (nameTaken(error)) setTaken(formatError(error))
+        if (nameTaken(error)) setTaken(m.error_typeConflict())
       })
       .finally(() => setBusy(false))
   }

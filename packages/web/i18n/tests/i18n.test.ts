@@ -45,9 +45,9 @@ describe('web i18n runtime', () => {
 
   it('resolves api errors by code, data and transport failure', () => {
     onPage('zh-CN')
-    // network failures never carry a code
+    // A bare TypeError can be a programming defect, not a failed request.
     expect(formatPlatformFailure(new TypeError('fetch failed'))).toBe(
-      commonMessages.error_network(),
+      commonMessages.error_unexpected(),
     )
     // and what a screen actually receives is the http client's wrapper, not
     // the fetch's own TypeError: the runtime turns every browser call into an

@@ -1,4 +1,4 @@
-import { formatPlatformFailure as formatError } from '@qualy/web-i18n'
+import { assertNever, formatPlatformFailure, isUseCaseApiFailure } from '@qualy/web-i18n'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import { PlusIcon, Trash2Icon } from 'lucide-react'
@@ -103,8 +103,71 @@ export default function OrgPage() {
         await refresh()
         return answer
       })
-      .catch((error: unknown) => {
-        if (own?.(error) !== true) toast.error(formatError(error))
+      .catch((error: import('./shape.ts').OrgFailure) => {
+        if (own?.(error) === true) throw error
+        if (!isUseCaseApiFailure(error)) {
+          toast.error(formatPlatformFailure(error))
+          throw error
+        }
+        let failure: string
+        switch (error._tag) {
+          case 'ORG_TYPE_NOT_FOUND':
+            failure = m.error_typeNotFound()
+            break
+          case 'ORG_RULE_NOT_FOUND':
+            failure = m.error_ruleNotFound()
+            break
+          case 'ORG_NODE_NOT_FOUND':
+            failure = m.error_nodeNotFound()
+            break
+          case 'ORG_TYPE_CONFLICT':
+            failure = m.error_typeConflict()
+            break
+          case 'ORG_NODE_CONFLICT':
+            failure = m.error_nodeConflict()
+            break
+          case 'ORG_TYPE_IN_USE':
+            failure = m.error_typeInUse({
+              where: error.reason === 'deleted-nodes' ? 'bin' : 'tree',
+            })
+            break
+          case 'ORG_RULE_IN_USE':
+            failure = m.error_ruleInUse()
+            break
+          case 'ORG_NODE_IN_USE':
+            failure = m.error_nodeInUse()
+            break
+          case 'ORG_NODE_IS_ROOT':
+            failure = m.error_nodeIsRoot()
+            break
+          case 'ORG_NODE_PARENT_DELETED':
+            failure = m.error_nodeParentDeleted()
+            break
+          case 'ORG_NODE_HAS_CHILDREN':
+            failure = m.error_nodeHasChildren()
+            break
+          case 'ORG_NODE_PLACEMENT_INCOMPATIBLE':
+            failure = m.error_placementIncompatible({ userCount: error.userCount })
+            break
+          case 'ORG_NODE_ASSIGNMENT_INCOMPATIBLE':
+            failure = m.error_assignmentIncompatible({ assignmentCount: error.assignmentCount })
+            break
+          case 'ORG_RULE_INVALID':
+            failure = m.error_ruleInvalid()
+            break
+          case 'ORG_RULE_CYCLE':
+            failure = m.error_ruleCycle()
+            break
+          case 'ORG_NODE_RULE_VIOLATION':
+            failure = m.error_ruleViolation()
+            break
+          case 'ORG_NODE_INVALID_MOVE':
+            failure = m.error_invalidMove()
+            break
+          default:
+            assertNever(error)
+        }
+        toast.error(failure)
         throw error
       })
 

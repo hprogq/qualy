@@ -1,9 +1,9 @@
-import { formatPlatformFailure as formatError, useLocale } from '@qualy/web-i18n'
+import { assertNever, useLocale } from '@qualy/web-i18n'
 
 import { useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
-import { useApi, useLoadFailure, useManifestRefresh, useRunApi } from '@qualy/web-runtime'
+import { useApi, useApiMutation, useLoadFailure, useManifestRefresh } from '@qualy/web-runtime'
 import { supportedLocales, type SupportedLocale } from '@qualy/i18n-contract'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { AsyncSection, Field, FormDialog } from '@qualy/ui/admin'
@@ -159,29 +159,25 @@ type Term = NonNullable<ReturnType<typeof useTerminology>['data']>['terms'][numb
 /** the drafts for one term, and the one write that saves or clears them */
 function useTermDraft(term: Term) {
   const api = useApi(settingsApi)
-  const run = useRunApi()
   const queryClient = useQueryClient()
   const refreshManifest = useManifestRefresh()
   const [drafts, setDrafts] = useState<Record<SupportedLocale, string>>(() => ({
     'zh-CN': term.override['zh-CN'] ?? '',
     'en-US': term.override['en-US'] ?? '',
   }))
-  const [saving, setSaving] = useState(false)
   const customised = supportedLocales.some((locale) => (term.override[locale] ?? '') !== '')
   const dirty = supportedLocales.some(
     (locale) => drafts[locale].trim() !== (term.override[locale] ?? ''),
   )
   const [namespace, name] = term.id.split('/') as [string, string]
 
-  const write = async (override: Record<SupportedLocale, string>) => {
-    setSaving(true)
-    try {
-      await run(
-        api.settings.putTerm({
-          params: { namespace, name },
-          payload: { version: term.version, override },
-        }),
-      )
+  const save = useApiMutation({
+    mutationFn: (override: Record<SupportedLocale, string>) =>
+      api.settings.putTerm({
+        params: { namespace, name },
+        payload: { version: term.version, override },
+      }),
+    onSuccess: async () => {
       // the screen's own list, and the words every other screen reads with
       // the manifest
       await Promise.all([
@@ -189,16 +185,34 @@ function useTermDraft(term: Term) {
         refreshManifest(),
       ])
       toast.success(m.terminology_saved())
+    },
+    onError: (error) => {
+      switch (error._tag) {
+        case 'SETTING_NOT_FOUND':
+          toast.error(m.error_notFound())
+          return
+        case 'SETTING_VERSION_CONFLICT':
+          toast.error(m.error_versionConflict())
+          void queryClient.invalidateQueries({ queryKey: TERMINOLOGY_KEY })
+          return
+        case 'SETTING_VALUE_INVALID':
+          toast.error(m.error_valueInvalid())
+          return
+        default:
+          assertNever(error)
+      }
+    },
+  })
+  const write = async (override: Record<SupportedLocale, string>) => {
+    try {
+      await save.mutateAsync(override)
       return true
-    } catch (error) {
-      toast.error(formatError(error))
+    } catch {
       return false
-    } finally {
-      setSaving(false)
     }
   }
 
-  return { drafts, setDrafts, saving, customised, dirty, write }
+  return { drafts, setDrafts, saving: save.isPending, customised, dirty, write }
 }
 
 /** a box per language, with the default written under it */

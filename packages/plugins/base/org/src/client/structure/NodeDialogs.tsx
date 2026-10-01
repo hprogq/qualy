@@ -1,4 +1,4 @@
-import { formatPlatformFailure as formatError, getApiErrorCode } from '@qualy/web-i18n'
+import { getApiErrorCode } from '@qualy/web-i18n'
 import { useEffect, useMemo, useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { orgNodePicker, type OrgNodePickerContext } from '@qualy/ui-contract'
@@ -147,7 +147,7 @@ export function NodeDialogs({
     void run(work, nameTaken)
       .then(onDone)
       .catch((error: unknown) => {
-        if (nameTaken(error)) setTaken(formatError(error))
+        if (nameTaken(error)) setTaken(m.error_nodeConflict())
       })
       .finally(() => setBusy(false))
   }

@@ -1,6 +1,10 @@
 import { Effect } from 'effect'
 import { useApiMutation, UiSlot, useApi, useApiQuery, useLoadFailure } from '@qualy/web-runtime'
-import { assertNever, formatPlatformFailure as formatError } from '@qualy/web-i18n'
+import {
+  assertNever,
+  formatPlatformFailure as formatError,
+  type UseCaseApiFailure,
+} from '@qualy/web-i18n'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { keepPreviousData, useQuery, useQueryClient, type QueryKey } from '@tanstack/react-query'
@@ -566,7 +570,37 @@ export function ParticipantResultList({
 
   // targeted invalidation: only this plugin's reads, never the whole cache
   const invalidate = () => queryClient.invalidateQueries({ queryKey: query.assessment.key() })
-  const onError = (error: unknown) => setFailure(formatError(error))
+  const onError = (
+    error: UseCaseApiFailure<
+      Effect.Error<
+        ReturnType<
+          | typeof api.assessment.addParticipants
+          | typeof api.assessment.importParticipants
+          | typeof api.assessment.setParticipantStatus
+        >
+      >
+    >,
+  ) => {
+    switch (error._tag) {
+      case 'ASSESSMENT_BATCH_NOT_FOUND':
+        setFailure(m.error_batchNotFound())
+        return
+      case 'ASSESSMENT_BATCH_READ_ONLY':
+        setFailure(m.error_batchReadOnly())
+        return
+      case 'ASSESSMENT_BATCH_REFERENCE_INVALID':
+        setFailure(m.error_batchReferenceInvalid())
+        return
+      case 'ASSESSMENT_PARTICIPANT_INVALID':
+        setFailure(m.error_participantInvalid())
+        return
+      case 'ASSESSMENT_PARTICIPANT_NOT_FOUND':
+        setFailure(m.error_participantNotFound())
+        return
+      default:
+        assertNever(error)
+    }
+  }
   // What people put on the roster leave it with, where there is something
   // to say, stays in the dialog that put them there until the reader is done
   // with it; otherwise the dialog closes on a toast, as it always has.

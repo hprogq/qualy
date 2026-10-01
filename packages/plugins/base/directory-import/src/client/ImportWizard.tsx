@@ -7,12 +7,7 @@ import {
   useLoadFailure,
 } from '@qualy/web-runtime'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import {
-  assertNever,
-  formatPlatformFailure,
-  formatPlatformFailure as formatError,
-  getApiErrorCode,
-} from '@qualy/web-i18n'
+import { assertNever, formatPlatformFailure, getApiErrorCode } from '@qualy/web-i18n'
 
 import { useMemo, useState, type ReactNode } from 'react'
 import * as stylex from '@stylexjs/stylex'
@@ -629,7 +624,7 @@ export function ImportWizard({
       return {
         kind: 'failed',
         title: m.sheet_unreadableTitle(),
-        description: first === undefined ? formatError(error) : issueText(first, businessNo),
+        description: first === undefined ? m.error_invalid() : issueText(first, businessNo),
         retryable: false,
       }
     }
@@ -637,7 +632,7 @@ export function ImportWizard({
       return {
         kind: 'missing',
         title: m.sheet_sourceGoneTitle(),
-        description: formatError(error),
+        description: m.error_sourceUnavailable(),
         retryable: false,
       }
     }
@@ -645,7 +640,7 @@ export function ImportWizard({
       return {
         ...failures.of(error),
         kind: 'unavailable',
-        description: formatError(error),
+        description: m.error_busy(),
         retryable: true,
       }
     }

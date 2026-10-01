@@ -55,3 +55,53 @@ it('filters platform failures, preserves payloads and settles every action once'
   expect(notify).toHaveBeenCalledTimes(1)
   notify.mockRestore()
 })
+
+it('recovers only the refused request after an earlier workflow write succeeded', async () => {
+  const { installSessionRecovery } =
+    await import('../../../packages/web/runtime/src/session-recovery.ts')
+  const { useRunApi } = await import('@qualy/web-runtime')
+  const created = vi.fn(() => 'saved-id')
+  const submitted = vi.fn()
+  const settled = vi.fn()
+  const recovery = vi.fn(async () => true)
+  const uninstall = installSessionRecovery({
+    wait: recovery,
+    frozen: () => false,
+    lost: () => false,
+  })
+  function Workflow() {
+    const run = useRunApi()
+    const mutation = useApiMutation<string, { readonly _tag: 'SESSION_EXPIRED' }>({
+      mutationFn: async () => {
+        const id = await run(Effect.sync(created))
+        await run(
+          Effect.suspend(() => {
+            submitted(id)
+            return submitted.mock.calls.length === 1
+              ? Effect.fail({ _tag: 'SESSION_EXPIRED' as const })
+              : Effect.void
+          }),
+        )
+        return id
+      },
+      onSettled: settled,
+    })
+    return <button onClick={() => mutation.mutate()}>Submit workflow</button>
+  }
+  try {
+    await render(
+      <QueryClientProvider client={new QueryClient()}>
+        <Workflow />
+      </QueryClientProvider>,
+    )
+    await page.getByRole('button', { name: 'Submit workflow' }).click()
+    await expect.poll(() => settled.mock.calls.length).toBe(1)
+    expect(created).toHaveBeenCalledOnce()
+    expect(submitted).toHaveBeenCalledTimes(2)
+    expect(submitted.mock.calls).toEqual([['saved-id'], ['saved-id']])
+    expect(recovery).toHaveBeenCalledOnce()
+    expect(settled.mock.calls[0]?.[0]).toBe('saved-id')
+  } finally {
+    uninstall()
+  }
+})

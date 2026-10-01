@@ -1,4 +1,10 @@
-import { formatPlatformFailure as formatError, useLocale } from '@qualy/web-i18n'
+import type { Effect } from 'effect'
+import {
+  assertNever,
+  isUseCaseApiFailure,
+  formatPlatformFailure as formatError,
+  useLocale,
+} from '@qualy/web-i18n'
 
 import { useApiMutation, useApi, useApiQuery, useLoadFailure, useRunApi } from '@qualy/web-runtime'
 import { useMemo, useState } from 'react'
@@ -291,6 +297,43 @@ export function AdministrativeImportView({
     onError: (error) => toast.error(sayEntryFailure(error, { formatError })),
   })
 
+  // Preview and commit explain the same file-level refusals. Uploading keeps
+  // its separate transport workflow and entry-action semantics.
+  const importFailure = (
+    error: Effect.Error<
+      ReturnType<
+        | typeof api.assessment.previewAdministrativeImport
+        | typeof api.assessment.commitAdministrativeImport
+      >
+    >,
+  ) => {
+    if (!isUseCaseApiFailure(error)) return formatError(error)
+    switch (error._tag) {
+      case 'ASSESSMENT_ADMINISTRATIVE_IMPORT_BUSY':
+        return m.error_administrativeImportBusy()
+      case 'ASSESSMENT_ADMINISTRATIVE_IMPORT_INVALID':
+        return m.error_administrativeImportInvalid()
+      case 'ASSESSMENT_BATCH_NOT_FOUND':
+        return m.error_batchNotFound()
+      case 'ASSESSMENT_BATCH_READ_ONLY':
+        return m.error_batchReadOnly()
+      case 'ASSESSMENT_ITEM_NOT_FOUND':
+        return m.error_itemNotFound()
+      case 'ASSESSMENT_ITEM_REVISION_CONFLICT':
+        return m.error_itemRevisionConflict()
+      case 'ASSESSMENT_SCORING_UNAVAILABLE':
+        return m.error_scoringUnavailable()
+      case 'ASSESSMENT_ATTACHMENT_NOT_FOUND':
+        return m.error_attachmentNotFound()
+      case 'ASSESSMENT_DETERMINATION_REFUSED':
+        return m.error_determinationRefused({ reason: error.reason })
+      case 'ASSESSMENT_ENTRY_ACTION_REFUSED':
+        return sayEntryFailure(error, { formatError })
+      default:
+        return assertNever(error)
+    }
+  }
+
   const check = useApiMutation({
     mutationFn: (input: { attachmentId: string; basis: string }) =>
       api.assessment.previewAdministrativeImport({
@@ -341,7 +384,7 @@ export function AdministrativeImportView({
       })
       onImported(done.importId)
     },
-    onError: (error) => toast.error(sayEntryFailure(error, { formatError })),
+    onError: (error) => toast.error(importFailure(error)),
   })
 
   const choose = (next: string) => {
@@ -361,7 +404,7 @@ export function AdministrativeImportView({
     }
     return {
       issues: [] as readonly ImportIssue[],
-      sentence: sayEntryFailure(check.error, { formatError }),
+      sentence: importFailure(check.error!),
     }
   })()
   const stale = preview !== null && checkedBasis !== basis

@@ -378,9 +378,7 @@ function PasswordDialog({
           failure = m.error_bindingUnsupported()
           break
         case 'AUTH_BINDING_USER_FIELD_MISSING':
-          failure = m.error_bindingUserFieldMissing(
-            ((data: typeof error) => ({ field: data.field }))(error),
-          )
+          failure = m.error_bindingUserFieldMissing({ field: error.field })
           break
         case 'AUTH_DEMO_ACCOUNT_LOCKED':
           failure = m.error_demoAccountLocked()

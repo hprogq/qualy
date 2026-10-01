@@ -1,5 +1,6 @@
 import { useApiMutation, useApi } from '@qualy/web-runtime'
-import { formatPlatformFailure as formatError } from '@qualy/web-i18n'
+import { assertNever, type UseCaseApiFailure } from '@qualy/web-i18n'
+import type { Effect } from 'effect'
 import { useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 
@@ -129,10 +130,26 @@ export function GroupEditor({
     floor: group.floor,
   })
 
-  const onError = (error: unknown) => {
-    const invalid = error as { refusals?: readonly { reason: string; groupId: string | null }[] }
-    if (Array.isArray(invalid.refusals)) setRefusals(invalid.refusals)
-    else toast.error(formatError(error))
+  const onError = (
+    error: UseCaseApiFailure<Effect.Error<ReturnType<typeof api.assessment.replaceScoreGroups>>>,
+  ) => {
+    switch (error._tag) {
+      case 'ASSESSMENT_BATCH_NOT_FOUND':
+        toast.error(m.error_batchNotFound())
+        return
+      case 'ASSESSMENT_BATCH_READ_ONLY':
+        toast.error(m.error_batchReadOnly())
+        return
+      case 'ASSESSMENT_SCORE_GROUP_VERSION_CONFLICT':
+        toast.error(m.error_scoreGroupVersionConflict())
+        return
+      case 'ASSESSMENT_SCORE_GROUP_INVALID':
+        setRefusals(error.refusals)
+        if (error.refusals.length === 0) toast.error(m.error_scoreGroupInvalid())
+        return
+      default:
+        assertNever(error)
+    }
   }
 
   const save = useApiMutation({

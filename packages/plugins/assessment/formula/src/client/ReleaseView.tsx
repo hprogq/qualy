@@ -1,9 +1,15 @@
-import { formatPlatformFailure as formatError, useLocale } from '@qualy/web-i18n'
+import { assertNever, useLocale } from '@qualy/web-i18n'
 
 import * as stylex from '@stylexjs/stylex'
 import { Suspense, useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { LoadFailure, useApi, useApiQuery, useLoadFailure, useRunApi } from '@qualy/web-runtime'
+import {
+  LoadFailure,
+  useApi,
+  useApiQuery,
+  useLoadFailure,
+  useApiMutation,
+} from '@qualy/web-runtime'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { Button } from '@qualy/ui/button'
 import { EmptyRow } from '@qualy/ui/empty-row'
@@ -176,7 +182,6 @@ export function ReleaseView({
   readonly restoring: boolean
 }) {
   const api = useApi(formulaApi)
-  const run = useRunApi()
   const query = useApiQuery(formulaApi)
   const locale = useLocale()
   const words = usePickerWords()
@@ -233,6 +238,31 @@ export function ReleaseView({
   const restore = () => onRestore({ versionNo, name: displayName })
 
   // a try runs the artifact the publication froze, never a new compile
+  const evaluation = useApiMutation({
+    mutationFn: (input: Parameters<typeof api.assessmentFormula.evaluateFormulaVersion>[0]) =>
+      api.assessmentFormula.evaluateFormulaVersion(input),
+    onError: (error) => {
+      switch (error._tag) {
+        case 'ASSESSMENT_FORMULA_FUNCTION_NOT_FOUND':
+          toast.error(m.error_functionNotFound())
+          return
+        case 'ASSESSMENT_FORMULA_COMPILE_UNAVAILABLE':
+          toast.error(m.error_compileUnavailable())
+          return
+        case 'ASSESSMENT_FORMULA_AUTHORING_BUSY':
+          toast.error(m.error_authoringBusy())
+          return
+        case 'ASSESSMENT_FORMULA_VERSION_NOT_FOUND':
+          toast.error(m.error_versionNotFound())
+          return
+        case 'ASSESSMENT_FORMULA_VERSION_UNRUNNABLE':
+          toast.error(m.error_versionUnrunnable())
+          return
+        default:
+          assertNever(error)
+      }
+    },
+  })
   const runTry = async () => {
     if (inputSchema === null) return
     const frozenDrafts = { ...drafts }
@@ -249,19 +279,16 @@ export function ReleaseView({
     setIssues(undefined)
     setRunning(true)
     try {
-      const answered = (await run(
-        api.assessmentFormula.evaluateFormulaVersion({
-          params: { functionId, versionNo: String(versionNo) },
-          payload: { cases: [{ clientId: 'try', input: materialized.value }] },
-        }),
-      )) as { cases: readonly TryOutcome[] }
-      const outcome = answered.cases[0] ?? {}
+      const answered = await evaluation.mutateAsync({
+        params: { functionId, versionNo: String(versionNo) },
+        payload: { cases: [{ clientId: 'try', input: materialized.value }] },
+      })
+      const outcome: TryOutcome = answered.cases[0] ?? {}
       tryRecords.add({ input: materialized.value, outcome })
       setRanAt(Date.now())
       setResult({ outcome, forCase: JSON.stringify(frozenDrafts) })
       setVerdict({ at: Date.now(), kind: outcome.actual === undefined ? 'failed' : 'ran' })
-    } catch (error) {
-      toast.error(formatError(error))
+    } catch {
       setVerdict({ at: Date.now(), kind: 'failed' })
     } finally {
       setRunning(false)

@@ -34,7 +34,7 @@ import { matchPath, useNavigate, useParams, useSearchParams } from 'react-router
 import { type UiCollectionToken, type UiSlotToken, type NamespacedId } from '@qualy/ui-contract'
 import { Toaster, toast } from '@qualy/ui/toast'
 import { isAuthenticationError, isUseCaseApiFailure, type UseCaseApiFailure } from '@qualy/web-i18n'
-import { captureDiagnostic } from '@qualy/browser-observability'
+import { captureDiagnostic, captureException } from '@qualy/browser-observability'
 import { handlePlatformFailure, type RateLimit } from './mutation-failure.ts'
 
 import { LoadingScreen } from '@qualy/ui/spinner'
@@ -557,13 +557,16 @@ export type ApiMutationOptions<A, E, V = void, C = unknown> = Omit<
   UseMutationOptions<A, E, V, C>,
   'mutationFn' | 'onError'
 > & {
-  mutationFn: (variables: V) => Effect.Effect<A, E>
+  /** One request Effect, or a Promise workflow running each request through useRunApi.
+   * Promise workflows declare E explicitly because Promise has no rejection type.
+   */
+  mutationFn: (variables: V) => Effect.Effect<A, E> | Promise<A>
   /** Explicit opt-in for forms that disable an action during its cooldown. */
   onRateLimited?: (limit: RateLimit) => void
-} & ([UseCaseApiFailure<NoInfer<E>>] extends [never]
+} & ([NoInfer<UseCaseApiFailure<E>>] extends [never]
     ? { onError?: never }
     : {
-        onError: NonNullable<UseMutationOptions<A, UseCaseApiFailure<NoInfer<E>>, V, C>['onError']>
+        onError: NonNullable<UseMutationOptions<A, NoInfer<UseCaseApiFailure<E>>, V, C>['onError']>
       })
 
 /** Platform policy lives here; use cases receive only their declared failures. */
@@ -575,7 +578,12 @@ export function useApiMutation<A, E, V = void, C = unknown>(
   const { onError, onRateLimited, ...mutation } = options
   const result = useMutation<A, E, V, C>({
     ...mutation,
-    mutationFn: (variables) => runtime.runPromise(options.mutationFn(variables)),
+    mutationFn: (variables) => {
+      const work = options.mutationFn(variables)
+      // A Promise workflow owns its individual request crossings. Recovering
+      // the whole workflow would replay writes that already succeeded.
+      return Effect.isEffect(work) ? runtime.runPromise(work) : work
+    },
     onError: (error, variables, result, context) => {
       if (
         handlePlatformFailure(error, {
@@ -583,6 +591,7 @@ export function useApiMutation<A, E, V = void, C = unknown>(
             toast.error(message, { id: `platform:${code}` })
           },
           diagnose: (code) => captureDiagnostic(code),
+          capture: (error) => captureException(error),
           ...(onRateLimited === undefined ? {} : { onRateLimited }),
         })
       )

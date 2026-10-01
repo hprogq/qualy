@@ -56,7 +56,7 @@ const open = (task: NodeTask, onOpenRules = vi.fn()) =>
       <NodeDialogs
         task={task}
         shape={shape}
-        api={{}}
+        api={fakeClient({}) as unknown as Parameters<typeof NodeDialogs>[0]['api']}
         run={() => Promise.resolve()}
         onDone={() => {}}
         onOpenRules={onOpenRules}
@@ -92,4 +92,29 @@ describe('a unit task with nothing to do', () => {
       'compact',
     )
   })
+})
+
+it('explains a conflicting name beside the name field', async () => {
+  const client = fakeClient({
+    app: { getManifest: () => Effect.succeed(emptyManifest()) },
+    org: { updateNode: () => Effect.void },
+  })
+  await renderScreen({
+    client,
+    children: (
+      <NodeDialogs
+        task={{ kind: 'rename', nodeId: ROOT }}
+        shape={shape}
+        api={client as unknown as Parameters<typeof NodeDialogs>[0]['api']}
+        run={() => Promise.reject({ _tag: 'ORG_NODE_CONFLICT' })}
+        onDone={() => {}}
+        onOpenRules={() => {}}
+      />
+    ),
+  })
+  await page.getByRole('textbox').fill('同名大学')
+  await page.getByRole('button', { name: '保存', exact: true }).click()
+  await expect
+    .element(page.getByText('同一上级下已存在同名或相同 code 的组织。', { exact: true }))
+    .toBeVisible()
 })

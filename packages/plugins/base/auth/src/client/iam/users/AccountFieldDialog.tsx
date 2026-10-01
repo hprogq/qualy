@@ -84,9 +84,7 @@ export function AccountFieldDialog({
           failure = m.error_reauthenticationRequired()
           break
         case 'GRANT_INCOMPATIBLE':
-          failure = m.error_grantIncompatible(
-            ((data: typeof error) => ({ grantCount: data.grantCount }))(error),
-          )
+          failure = m.error_grantIncompatible({ grantCount: error.grantCount })
           break
         case 'LAST_ADMINISTRATOR':
           failure = m.error_lastAdministrator()

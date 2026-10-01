@@ -113,11 +113,7 @@ export default function UserRoleGrantsPage() {
           setFeedback(m.error_grantNotFound())
           return
         case 'GRANT_RESOURCE_BOUND':
-          setFeedback(
-            m.error_grantResourceBound(
-              ((data: typeof error) => ({ namespace: data.namespace, type: data.type }))(error),
-            ),
-          )
+          setFeedback(m.error_grantResourceBound({ namespace: error.namespace, type: error.type }))
           return
         case 'GRANT_RULE_REFUSED':
           setFeedback(m.error_grantRuleRefused())

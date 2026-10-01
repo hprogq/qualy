@@ -1,4 +1,6 @@
-import { formatPlatformFailure as formatError, useLocale } from '@qualy/web-i18n'
+import { selectKey } from '@qualy/i18n-contract'
+import { assertNever, useLocale, type UseCaseApiFailure } from '@qualy/web-i18n'
+import type { Effect } from 'effect'
 
 import {
   useApiMutation,
@@ -453,11 +455,41 @@ export function BatchSettingsForm({ batch }: { batch: BatchDto }) {
   const settle = () => queryClient.invalidateQueries({ queryKey: query.assessment.key() })
   // the plan answers with its own reasons; anything else is a sentence the
   // error catalog already has
-  const said = (error: unknown) => {
+  const said = (
+    error: UseCaseApiFailure<
+      Effect.Error<
+        ReturnType<
+          | typeof api.assessment.updateBatch
+          | typeof api.assessment.setBatchStatus
+          | typeof api.assessment.deleteBatch
+        >
+      >
+    >,
+  ) => {
     const refusals = refusalsOf(error)
-    return refusals.length > 0
-      ? refusals.map((refusal) => planRefusalWords(refusal.reason)).join(' ')
-      : formatError(error)
+    if (refusals.length > 0)
+      return refusals.map((refusal) => planRefusalWords(refusal.reason)).join(' ')
+    switch (error._tag) {
+      case 'ASSESSMENT_BATCH_NOT_FOUND':
+        return m.error_batchNotFound()
+      case 'ASSESSMENT_BATCH_READ_ONLY':
+        return m.error_batchReadOnly()
+      case 'ASSESSMENT_BATCH_REFERENCE_INVALID':
+        return m.error_batchReferenceInvalid()
+      case 'ASSESSMENT_BATCH_NO_PARTICIPANTS':
+        return m.error_batchNoParticipants()
+      case 'ASSESSMENT_BATCH_STATUS_INVALID':
+        return m.error_batchStatusInvalid({
+          refusal: selectKey(error.refusal ?? 'other'),
+          openRounds: error.openRounds ?? 0,
+        })
+      case 'ASSESSMENT_PLAN_INVALID':
+        return m.error_planInvalid()
+      case 'ASSESSMENT_MATERIAL_RANGE_INVALID':
+        return m.error_materialRangeInvalid()
+      default:
+        return assertNever(error)
+    }
   }
 
   const save = useApiMutation({

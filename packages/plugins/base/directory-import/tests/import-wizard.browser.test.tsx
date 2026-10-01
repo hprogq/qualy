@@ -297,12 +297,18 @@ describe('importing users from a spreadsheet', () => {
 
   it('offers another file, not a retry, for an upload that is gone', async () => {
     const keys = await refusedWith(apiError('USER_IMPORT_SOURCE_UNAVAILABLE'), 'missing')
+    await expect
+      .element(page.getByText('上传的文件已不可用，请重新上传。', { exact: true }))
+      .toBeVisible()
     expect(keys).not.toContain('重试')
     expect(keys).toContain('更换文件')
   })
 
   it('offers a retry while other files are being read', async () => {
     const keys = await refusedWith(apiError('USER_IMPORT_BUSY'), 'unavailable')
+    await expect
+      .element(page.getByText('其他文件正在读取中，请稍后重试。', { exact: true }))
+      .toBeVisible()
     expect(keys).toContain('重试')
     expect(keys).not.toContain('更换文件')
   })

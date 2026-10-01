@@ -95,10 +95,9 @@ function asApiError(error: unknown): ApiErrorShape | undefined {
 // says which stage failed. Checking only for TypeError therefore matched
 // nothing a screen actually sees, and every unreachable server rendered as
 // the generic "something went wrong" - the one distinction these helpers
-// exist to make. The bare forms stay for callers outside that runtime.
+// exist to make. Bare TypeError can be a programming defect, so only the
+// adapter's explicit transport failure is classified as a network error.
 function isNetworkError(error: unknown): boolean {
-  if (error instanceof TypeError) return true
-  if (error instanceof Error && error.name === 'AbortError') return true
   const candidate = error as { _tag?: unknown; reason?: { _tag?: unknown } } | null
   if (!candidate || typeof candidate !== 'object') return false
   return candidate._tag === 'HttpClientError' && candidate.reason?._tag === 'TransportError'

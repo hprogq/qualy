@@ -237,11 +237,7 @@ export function UserTypeConfig({
           setFeedback(m.error_userTypeOrgTypeNotFound())
           return
         case 'USER_TYPE_PLACEMENT_IN_USE':
-          setFeedback(
-            m.error_userTypePlacementInUse(
-              ((data: typeof error) => ({ userCount: data.userCount }))(error),
-            ),
-          )
+          setFeedback(m.error_userTypePlacementInUse({ userCount: error.userCount }))
           return
         case 'USER_TYPE_VERSION_CONFLICT':
           setFeedback(m.error_userTypeVersionConflict())
@@ -271,9 +267,7 @@ export function UserTypeConfig({
           setFeedback(m.error_userTypeConflict())
           return
         case 'USER_TYPE_IN_USE':
-          setFeedback(
-            m.error_userTypeInUse(((data: typeof error) => ({ userCount: data.userCount }))(error)),
-          )
+          setFeedback(m.error_userTypeInUse({ userCount: error.userCount }))
           return
         case 'USER_TYPE_NOT_FOUND':
           setFeedback(m.error_userTypeNotFound())
@@ -302,19 +296,13 @@ export function UserTypeConfig({
           setFeedback(m.error_userTypeConflict())
           return
         case 'USER_TYPE_IN_USE':
-          setFeedback(
-            m.error_userTypeInUse(((data: typeof error) => ({ userCount: data.userCount }))(error)),
-          )
+          setFeedback(m.error_userTypeInUse({ userCount: error.userCount }))
           return
         case 'USER_TYPE_IS_SYSTEM':
           setFeedback(m.error_userTypeIsSystem())
           return
         case 'USER_TYPE_LAST_FOR_ROLE':
-          setFeedback(
-            m.error_userTypeLastForRole(
-              ((data: typeof error) => ({ roleCount: data.roleCount }))(error),
-            ),
-          )
+          setFeedback(m.error_userTypeLastForRole({ roleCount: error.roleCount }))
           return
         case 'USER_TYPE_NOT_FOUND':
           setFeedback(m.error_userTypeNotFound())

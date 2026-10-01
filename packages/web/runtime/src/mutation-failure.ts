@@ -12,6 +12,7 @@ export interface RateLimit {
 export interface MutationFailurePolicy {
   notify(message: string, code: string): void
   diagnose(code: string): void
+  capture(error: unknown): void
   onRateLimited?: (limit: RateLimit) => unknown
 }
 
@@ -38,6 +39,6 @@ export function handlePlatformFailure(error: unknown, policy: MutationFailurePol
     policy.diagnose(code)
   }
   policy.notify(formatPlatformFailure(error), code ?? 'UNEXPECTED_FAILURE')
-  if (code === undefined && !isTransportError(error)) policy.diagnose('MUTATION_FAILURE')
+  if (code === undefined && !isTransportError(error)) policy.capture(error)
   return true
 }

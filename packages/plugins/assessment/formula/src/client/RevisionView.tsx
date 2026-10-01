@@ -1,9 +1,16 @@
-import { formatPlatformFailure as formatError, useLocale } from '@qualy/web-i18n'
+import { assertNever, useLocale } from '@qualy/web-i18n'
 
 import * as stylex from '@stylexjs/stylex'
 import { Suspense, useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { LoadFailure, useApi, useApiQuery, useLoadFailure, useRunApi } from '@qualy/web-runtime'
+import {
+  LoadFailure,
+  useApi,
+  useApiQuery,
+  useLoadFailure,
+  useApiMutation,
+  useRunApi,
+} from '@qualy/web-runtime'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { Button } from '@qualy/ui/button'
 import { EmptyRow } from '@qualy/ui/empty-row'
@@ -97,8 +104,8 @@ export function RevisionView({
   readonly onRestore: (revisionNo: number) => void
   readonly restoring: boolean
 }) {
-  const api = useApi(formulaApi)
   const run = useRunApi()
+  const api = useApi(formulaApi)
   const query = useApiQuery(formulaApi)
   const locale = useLocale()
   const [panelTab, setPanelTab] = useState('examples')
@@ -150,6 +157,43 @@ export function RevisionView({
     toast.success(m.editor_downloaded({ file: filename }))
   }
 
+  const evaluation = useApiMutation({
+    mutationFn: (input: Parameters<typeof api.assessmentFormula.evaluateFormulaDraft>[0]) =>
+      api.assessmentFormula.evaluateFormulaDraft(input),
+    onError: (error) => {
+      switch (error._tag) {
+        case 'ASSESSMENT_FORMULA_FUNCTION_NOT_FOUND':
+          toast.error(m.error_functionNotFound())
+          return
+        case 'ASSESSMENT_FORMULA_SOURCE_TOO_LARGE':
+          toast.error(m.error_sourceTooLarge())
+          return
+        case 'ASSESSMENT_FORMULA_SOURCE_REFUSED':
+          toast.error(m.error_sourceRefused())
+          return
+        case 'ASSESSMENT_FORMULA_TYPECHECK_FAILED':
+          toast.error(m.error_typecheckFailed())
+          return
+        case 'ASSESSMENT_FORMULA_BUNDLE_FAILED':
+          toast.error(m.error_bundleFailed())
+          return
+        case 'ASSESSMENT_FORMULA_EXECUTION_LIMIT_EXCEEDED':
+          toast.error(m.error_executionLimit())
+          return
+        case 'ASSESSMENT_FORMULA_CONTRACT_INVALID':
+          toast.error(m.error_contractInvalid())
+          return
+        case 'ASSESSMENT_FORMULA_COMPILE_UNAVAILABLE':
+          toast.error(m.error_compileUnavailable())
+          return
+        case 'ASSESSMENT_FORMULA_AUTHORING_BUSY':
+          toast.error(m.error_authoringBusy())
+          return
+        default:
+          assertNever(error)
+      }
+    },
+  })
   const runTry = async () => {
     const schema = compiled.data?.inputSchema
     if (schema === undefined || revision === undefined) return
@@ -167,22 +211,19 @@ export function RevisionView({
     setIssues(undefined)
     setRunning(true)
     try {
-      const answered = (await run(
-        api.assessmentFormula.evaluateFormulaDraft({
-          params: { functionId },
-          payload: {
-            sourceTs: revision.sourceTs,
-            cases: [{ clientId: 'try', input: materialized.value }],
-          },
-        }),
-      )) as { cases: readonly TryOutcome[] }
-      const outcome = answered.cases[0] ?? {}
+      const answered = await evaluation.mutateAsync({
+        params: { functionId },
+        payload: {
+          sourceTs: revision.sourceTs,
+          cases: [{ clientId: 'try', input: materialized.value }],
+        },
+      })
+      const outcome: TryOutcome = answered.cases[0] ?? {}
       tryRecords.add({ input: materialized.value, outcome })
       setRanAt(Date.now())
       setResult({ outcome, forCase: JSON.stringify(frozenDrafts) })
       setVerdict({ at: Date.now(), kind: outcome.actual === undefined ? 'failed' : 'ran' })
-    } catch (error) {
-      toast.error(formatError(error))
+    } catch {
       setVerdict({ at: Date.now(), kind: 'failed' })
     } finally {
       setRunning(false)

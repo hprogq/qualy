@@ -186,11 +186,15 @@ chunk 环继续零容忍、boot 原始 2 MiB 上限与现有隔离检查保留�
   Mutation 的 `onError` 以及每次 `mutate`/`mutateAsync` 的回调只接收 `UseCaseApiFailure<E>`;
   只有平台错误的 endpoint 禁止声明业务 `onError`,有用例错误的 endpoint 必须声明。
   `mutation.error` 与 `onSettled` 保留真实 E,供本地清理,不伪造成功状态;延迟审核在平台失败后恢复暂存决定。
+  多请求写入以显式 E 的 Promise 工作流逐个 `useRunApi` 请求运行,不恢复整个组合 Effect;
+  会话过期只重做被认证中间件拒绝的请求,不重放此前已成功的写入。保存成功但提交失败时,
+  `onSettled` 保留草稿并更新缓存,平台负责解释失败原因。未知程序异常调用现有 `captureException`,
+  只有 HTTP 适配层的 TransportError 按网络失败处理,裸 TypeError 不代表离线。
   调用处直接更新字段、反馈、验证码或重认证状态,没有逐页平台判断。
   多成员联合用 `assertNever(error)` 检查;五个单一 TaggedError 类由于 TS 不收窄整个对象,
   只检查 `assertNever(error._tag)`,新增遗漏成员仍触发编译错误,不用 `as never` 掩盖。
   现有字段归属、录入拒绝理由、评分影响数量等真实共享语义仍用原有 helper。
-  103 处 `useApiMutation` 保留 Effect 的 E,包含条件请求、纯 API 顺序工作流与延迟审核决定。
+  `useApiMutation` 保留 Effect 的 E,包含条件请求、纯 API 顺序工作流与延迟审核决定。
   目录上传、登录图标上传、公式发布本地校验与顺序保存、行政附件上传保留 Promise mutation 边界;
   预期会 reject 的上传不包进 `Effect.promise`。LocalFinding 是同文件普通 Error,首先由 instanceof 处理。
   Query 继续按 resource state 呈现,平台格式化函数明确命名 `formatPlatformFailure`。

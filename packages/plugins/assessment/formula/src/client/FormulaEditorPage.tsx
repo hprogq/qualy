@@ -1064,25 +1064,51 @@ export default function FormulaEditorPage() {
     return { sourceTs: fresh.source, contract: fresh.contract }
   }
 
+  const evaluation = useApiMutation({
+    mutationFn: (input: Parameters<typeof api.assessmentFormula.evaluateFormulaDraft>[0]) =>
+      api.assessmentFormula.evaluateFormulaDraft(input),
+    onError: (error) => {
+      switch (error._tag) {
+        case 'ASSESSMENT_FORMULA_FUNCTION_NOT_FOUND':
+          setFailure(m.error_functionNotFound())
+          return
+        case 'ASSESSMENT_FORMULA_SOURCE_TOO_LARGE':
+          setFailure(m.error_sourceTooLarge())
+          return
+        case 'ASSESSMENT_FORMULA_SOURCE_REFUSED':
+          setFailure(m.error_sourceRefused())
+          return
+        case 'ASSESSMENT_FORMULA_TYPECHECK_FAILED':
+          setFailure(m.error_typecheckFailed())
+          return
+        case 'ASSESSMENT_FORMULA_BUNDLE_FAILED':
+          setFailure(m.error_bundleFailed())
+          return
+        case 'ASSESSMENT_FORMULA_EXECUTION_LIMIT_EXCEEDED':
+          setFailure(m.error_executionLimit())
+          return
+        case 'ASSESSMENT_FORMULA_CONTRACT_INVALID':
+          setFailure(m.error_contractInvalid())
+          return
+        case 'ASSESSMENT_FORMULA_COMPILE_UNAVAILABLE':
+          setFailure(m.error_compileUnavailable())
+          return
+        case 'ASSESSMENT_FORMULA_AUTHORING_BUSY':
+          setFailure(m.error_authoringBusy())
+          return
+        default:
+          assertNever(error)
+      }
+    },
+  })
   const evaluate = async (
     sourceTs: string,
     cases: readonly { clientId: string; input: unknown; expected?: string }[],
   ) => {
-    const outcome = (await run(
-      api.assessmentFormula.evaluateFormulaDraft({
-        params: { functionId },
-        payload: { sourceTs, cases },
-      }),
-    )) as {
-      cases: readonly {
-        clientId: string
-        passed?: boolean
-        actual?: string
-        refusal?: string
-        defect?: string
-        problems?: unknown
-      }[]
-    }
+    const outcome = await evaluation.mutateAsync({
+      params: { functionId },
+      payload: { sourceTs, cases },
+    })
     return outcome.cases
   }
 
@@ -1128,8 +1154,8 @@ export default function FormulaEditorPage() {
         }
         return next
       })
-    } catch (error) {
-      setFailure(formatError(error))
+    } catch {
+      // The evaluation boundary has already presented the failure.
     } finally {
       setRunning(false)
       setRunningKeys([])
@@ -1180,8 +1206,8 @@ export default function FormulaEditorPage() {
         at: Date.now(),
         kind: answer.actual === undefined ? 'failed' : 'ran',
       })
-    } catch (error) {
-      setFailure(formatError(error))
+    } catch {
+      // The evaluation boundary has already presented the failure.
       setTryVerdict({ at: Date.now(), kind: 'failed' })
     } finally {
       setRunning(false)
@@ -1674,9 +1700,7 @@ export default function FormulaEditorPage() {
             failure = m.error_typecheckFailed()
             break
           case 'ASSESSMENT_FORMULA_VERSION_UNCHANGED':
-            failure = m.error_versionUnchanged(
-              ((data: typeof domain) => ({ versionNo: data.versionNo }))(domain),
-            )
+            failure = m.error_versionUnchanged({ versionNo: domain.versionNo })
             break
           default:
             assertNever(domain)

@@ -1,4 +1,5 @@
-import { assertNever, formatPlatformFailure as formatError } from '@qualy/web-i18n'
+import { assertNever, type UseCaseApiFailure } from '@qualy/web-i18n'
+import type { Effect } from 'effect'
 
 import {
   useApiMutation,
@@ -360,10 +361,37 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
   useBatchLive(batch.id, ({ kinds }) => {
     if (kinds.has('plan-changed') || kinds.has('phase-changed') || kinds.has('sync')) void settle()
   })
-  const failed = (error: unknown) => {
+  const failed = (
+    error: UseCaseApiFailure<
+      Effect.Error<
+        ReturnType<typeof api.assessment.putPhases | typeof api.assessment.schedulePhase>
+      >
+    >,
+  ) => {
     const refusals = refusalsOf(error)
     setPlanRefusals(refusals)
-    setFailure(refusals.length > 0 ? null : formatError(error))
+    switch (error._tag) {
+      case 'ASSESSMENT_BATCH_NOT_FOUND':
+        setFailure(m.error_batchNotFound())
+        return
+      case 'ASSESSMENT_BATCH_READ_ONLY':
+        setFailure(m.error_batchReadOnly())
+        return
+      case 'ASSESSMENT_BATCH_NO_PARTICIPANTS':
+        setFailure(m.error_batchNoParticipants())
+        return
+      case 'ASSESSMENT_PHASE_NOT_FOUND':
+        setFailure(m.error_phaseNotFound())
+        return
+      case 'ASSESSMENT_TEMPLATE_NOT_FOUND':
+        setFailure(m.error_templateNotFound())
+        return
+      case 'ASSESSMENT_PLAN_INVALID':
+        setFailure(refusals.length > 0 ? null : m.error_planInvalid())
+        return
+      default:
+        assertNever(error)
+    }
   }
   const sentenceOf = (refusal: PlanRefusalLike) => planRefusalWords(refusal.reason)
 

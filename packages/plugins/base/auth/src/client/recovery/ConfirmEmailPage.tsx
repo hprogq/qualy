@@ -1,4 +1,4 @@
-import { formatPlatformFailure as formatError } from '@qualy/web-i18n'
+import { formatPlatformFailure as formatError, getApiErrorCode } from '@qualy/web-i18n'
 import { type ReactNode } from 'react'
 import { useLocation } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
@@ -109,7 +109,16 @@ export default function ConfirmEmailPage() {
             said: (purpose === 'change' ? m.confirm_changed : m.confirm_verified)(),
           }
         : confirm.isError
-          ? { state: 'refused', tone: 'danger' as const, said: formatError(confirm.error) }
+          ? {
+              state: 'refused',
+              tone: 'danger' as const,
+              said:
+                getApiErrorCode(confirm.error) === 'AUTH_CHALLENGE_INVALID'
+                  ? m.error_challengeInvalid()
+                  : getApiErrorCode(confirm.error) === 'USER_EMAIL_CONFLICT'
+                    ? m.error_userEmailConflict()
+                    : formatError(confirm.error),
+            }
           : null
 
   return (

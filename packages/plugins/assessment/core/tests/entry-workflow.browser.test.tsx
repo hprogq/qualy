@@ -716,6 +716,77 @@ describe('filing a claim', () => {
     expect(created).toHaveBeenCalledOnce()
   })
 
+  it('does not create the draft again when submission recovers an expired session', async () => {
+    const { installSessionRecovery } =
+      await import('../../../../web/runtime/src/session-recovery.ts')
+    const created = vi.fn(() => Effect.succeed({ entry: entry() }))
+    let attempts = 0
+    const submitted = vi.fn(() =>
+      Effect.suspend(() => {
+        attempts += 1
+        return attempts === 1
+          ? Effect.fail(apiError('SESSION_EXPIRED'))
+          : Effect.succeed({ entry: entry({ status: 'in_review' }) })
+      }),
+    )
+    await screen(
+      {
+        listItems: () => Effect.succeed({ items: [item()], capabilities: { canManage: false } }),
+        createEntry: created,
+        setEntryStatus: submitted,
+      },
+      `/assessment/batches/${BATCH_ID}/my-entries?open=${ITEM_ID}`,
+      [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
+    )
+    await expect.element(page.getByRole('heading', { name: '退役复学' })).toBeVisible()
+    const wait = vi.fn(async () => true)
+    const uninstall = installSessionRecovery({ wait, frozen: () => false, lost: () => false })
+    try {
+      await clickVisible('file-claim')
+      await page.getByLabelText('事项说明', { exact: false }).fill('2024 年入伍，2026 年退役复学')
+      await page.getByRole('button', { name: '保存并提交审核', exact: false }).click()
+      await page.getByTestId('confirm-accept').click()
+      await vi.waitFor(() => expect(attempts).toBe(2))
+      expect(created).toHaveBeenCalledOnce()
+      expect(submitted).toHaveBeenCalledOnce()
+      expect(wait).toHaveBeenCalledOnce()
+    } finally {
+      uninstall()
+    }
+  })
+
+  it('keeps the saved draft visible when submitting fails at the platform boundary', async () => {
+    const created = vi.fn(() => Effect.succeed({ entry: entry() }))
+    const revised = vi.fn(() => Effect.succeed({ entry: entry() }))
+    const submitted = vi.fn(() => Effect.fail(apiError('SERVICE_UNAVAILABLE')))
+    await screen(
+      {
+        listItems: () => Effect.succeed({ items: [item()], capabilities: { canManage: false } }),
+        createEntry: created,
+        reviseEntry: revised,
+        setEntryStatus: submitted,
+      },
+      `/assessment/batches/${BATCH_ID}/my-entries?open=${ITEM_ID}`,
+      [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
+    )
+    await expect.element(page.getByRole('heading', { name: '退役复学' })).toBeVisible()
+    await clickVisible('file-claim')
+    await page.getByLabelText('事项说明', { exact: false }).fill('2024 年入伍，2026 年退役复学')
+    const press = async () => {
+      await page.getByRole('button', { name: '保存并提交审核', exact: false }).click()
+      await page.getByTestId('confirm-accept').click()
+    }
+    await press()
+    await expect
+      .element(page.getByTestId('feedback'))
+      .toMatchTextContent(zhCN.entry_savedNotSubmitted)
+    expect(created).toHaveBeenCalledOnce()
+    await press()
+    await vi.waitFor(() => expect(revised).toHaveBeenCalledOnce())
+    expect(created).toHaveBeenCalledOnce()
+    expect(submitted).toHaveBeenCalledTimes(2)
+  })
+
   it('turns an oversized file away at the picker instead of at the save', async () => {
     const prepared = vi.fn(() => Effect.succeed({}))
     // the same question, with a file field the administrator capped

@@ -428,6 +428,18 @@ describe('importing a workbook of administrative records', () => {
     expect(Math.abs((said.top + said.bottom) / 2 - (box.top + box.bottom) / 2)).toBeLessThan(1.5)
   })
 
+  it('explains that another workbook is being read instead of showing an unexpected error', async () => {
+    await open(`${base}?mode=import`, {
+      previewAdministrativeImport: () =>
+        Effect.fail(apiError('ASSESSMENT_ADMINISTRATIVE_IMPORT_BUSY')),
+    })
+    await chooseItem()
+    await pickWorkbook()
+    await expect
+      .element(page.getByText('其他文件正在读取中，请稍后重试。', { exact: true }))
+      .toBeVisible()
+  })
+
   it('offers no import while the server found errors in the file', async () => {
     const commit = vi.fn(() => Effect.succeed({ importId: NEW_IMPORT_ID, importedCount: 1 }))
     await open(`${base}?mode=import`, {

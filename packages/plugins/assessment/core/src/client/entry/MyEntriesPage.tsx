@@ -1,6 +1,7 @@
 import { Effect } from 'effect'
 import {
   useApiMutation,
+  useRunApi,
   useApi,
   useApiQuery,
   useClaimScreenFill,
@@ -96,6 +97,7 @@ function Body({
 }) {
   const query = useApiQuery(assessmentApi)
   const api = useApi(assessmentApi)
+  const run = useRunApi()
 
   const failures = useLoadFailure()
   const queryClient = useQueryClient()
@@ -246,37 +248,46 @@ function Body({
    * breath. The dialog never opens - there is nothing in it to fill - and
    * the toast says what the press amounted to.
    */
-  const declare = useApiMutation({
-    mutationFn: (input: { itemId: string }) =>
-      Effect.gen(function* () {
-        if (mine.data === undefined) throw new Error('roster not loaded')
-        // a declaration has no fields, but its worth and its route are still
-        // the question's current version - the press names what it saw
-        const seen = questions.find((one) => one.id === input.itemId)?.currentRevision?.id
-        const created = yield* api.assessment.createEntry({
+  const declare = useApiMutation<
+    Effect.Success<ReturnType<typeof api.assessment.setEntryStatus>>['entry'],
+    | Effect.Error<ReturnType<typeof api.assessment.createEntry>>
+    | Effect.Error<ReturnType<typeof api.assessment.setEntryStatus>>,
+    { itemId: string }
+  >({
+    mutationFn: async (input) => {
+      if (mine.data === undefined) throw new Error('roster not loaded')
+      // a declaration has no fields, but its worth and its route are still
+      // the question's current version - the press names what it saw
+      const seen = questions.find((one) => one.id === input.itemId)?.currentRevision?.id
+      const created = await run(
+        api.assessment.createEntry({
           payload: {
             itemId: input.itemId,
             participantId: mine.data.participantId,
             payload: {},
             ...(seen === undefined ? {} : { expectedItemRevisionId: seen }),
           },
-        })
-        const sent = yield* api.assessment.setEntryStatus({
+        }),
+      )
+      const sent = await run(
+        api.assessment.setEntryStatus({
           params: { entryId: created.entry.id },
           payload: {
             status: 'in_review',
             ...(seen === undefined ? {} : { expectedItemRevisionId: seen }),
           },
-        })
-        return sent.entry
-      }),
+        }),
+      )
+      return sent.entry
+    },
     onSuccess: (entry) => {
       toast.success(
         (entry.status === 'approved' ? m.entry_declaredCounted : m.entry_declaredFiled)(),
       )
-      refresh()
     },
     onError: (error, input) => toast.error(sayFailure(error, input.itemId)),
+    // A draft can exist even when handing it on fails, including platform failures.
+    onSettled: () => refresh(),
   })
 
   // Every question of the round this person takes part in, whoever fills it

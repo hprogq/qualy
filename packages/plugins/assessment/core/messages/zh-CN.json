@@ -955,6 +955,7 @@
   "entry_submittedToast": "已提交审核。",
   "entry_draftSavedToast": "草稿已保存。",
   "entry_submitFailedDraftKept": "草稿已保存，但未能提交：{said}",
+  "entry_savedNotSubmitted": "草稿已保存，但尚未提交。可以重试提交。",
   "entry_withdrawnToast": "已撤回，该条目已恢复为草稿状态。",
   "entry_abandonedToast": "已放弃申报。",
   "review_tipApproveMid": "通过当前审核环节，交由下一复核节点处理",

@@ -9,7 +9,7 @@ const policy = () => {
   ;(globalThis as { document?: unknown }).document = {
     documentElement: { dataset: { locale: 'zh-CN' } },
   }
-  return { notify: vi.fn(), diagnose: vi.fn() }
+  return { notify: vi.fn(), diagnose: vi.fn(), capture: vi.fn() }
 }
 
 it('leaves endpoint failures and their payloads to the use case', () => {
@@ -23,9 +23,20 @@ it('presents access and network failures in the document language', () => {
   const ports = policy()
   expect(handlePlatformFailure({ _tag: 'ACCESS_DENIED' }, ports)).toBe(true)
   expect(ports.notify).toHaveBeenCalledWith(m.error_accessDenied(), 'ACCESS_DENIED')
-  expect(handlePlatformFailure(new TypeError('fetch failed'), ports)).toBe(true)
+  expect(
+    handlePlatformFailure({ _tag: 'HttpClientError', reason: { _tag: 'TransportError' } }, ports),
+  ).toBe(true)
   expect(ports.notify).toHaveBeenCalledWith(m.error_network(), 'UNEXPECTED_FAILURE')
   expect(ports.diagnose).not.toHaveBeenCalled()
+  expect(ports.capture).not.toHaveBeenCalled()
+})
+
+it('captures programming failures without misreporting them as network errors', () => {
+  const ports = policy()
+  const failure = new TypeError('Cannot read properties of undefined')
+  handlePlatformFailure(failure, ports)
+  expect(ports.notify).toHaveBeenCalledWith(m.error_unexpected(), 'UNEXPECTED_FAILURE')
+  expect(ports.capture).toHaveBeenCalledWith(failure)
 })
 
 it('reports contract failures and avoids duplicating the release prompt', () => {

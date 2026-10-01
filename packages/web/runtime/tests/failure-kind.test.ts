@@ -18,7 +18,7 @@ const restarting = {
 describe('why a reading failed', () => {
   it('tells the network, the server and the thing itself apart', () => {
     expect(loadFailureKind(unreachable)).toBe('offline')
-    expect(loadFailureKind(new TypeError('Failed to fetch'))).toBe('offline')
+    expect(loadFailureKind(new TypeError('Failed to fetch'))).toBe('failed')
     expect(loadFailureKind(declared('SERVICE_UNAVAILABLE'))).toBe('unavailable')
     expect(loadFailureKind(restarting)).toBe('unavailable')
     expect(loadFailureKind(declared('ACCESS_DENIED'))).toBe('denied')

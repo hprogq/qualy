@@ -1,6 +1,5 @@
 import type { Effect } from 'effect'
-import type { useApi } from '@qualy/web-runtime'
-import type { ApiResult } from '@qualy/web-runtime/api'
+import type { ApiResult, ClientOf } from '@qualy/web-runtime/api'
 import type { orgApi } from './api.ts'
 
 // The organization as this screen holds it: the tree, the kinds a unit can
@@ -9,15 +8,16 @@ import type { orgApi } from './api.ts'
 export type OrgTreeNodeDto = ApiResult<typeof orgApi, 'org', 'getTree'>['nodes'][number]
 export type OrgTypeDto = ApiResult<typeof orgApi, 'org', 'listTypes'>['types'][number]
 export type OrgRuleDto = ApiResult<typeof orgApi, 'org', 'listRules'>['rules'][number]
-export type Api = ReturnType<typeof useApi>
+export type Api = ClientOf<typeof orgApi>
+export type OrgFailure = Effect.Error<ReturnType<Api['org'][keyof Api['org']]>>
 /**
  * A write, with its refusal said for it - unless `own` claims the refusal,
  * because the caller says it where it belongs: a name another unit has, under
  * the name.
  */
 export type Run = (
-  work: Effect.Effect<unknown, unknown>,
-  own?: (error: unknown) => boolean,
+  work: Effect.Effect<unknown, OrgFailure>,
+  own?: (error: OrgFailure) => boolean,
 ) => Promise<unknown>
 
 export interface OrgShape {

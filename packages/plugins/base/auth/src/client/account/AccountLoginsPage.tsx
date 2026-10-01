@@ -132,7 +132,17 @@ export default function AccountLoginsPage() {
         // what came back from the other side, until the reader has read it:
         // put away, it leaves the address too, so a reload does not say it again
         <Alert variant="destructive" data-testid="account-failure" data-code={failed}>
-          <AlertTitle>{formatError({ _tag: failed })}</AlertTitle>
+          <AlertTitle>
+            {failed === 'AUTH_BINDING_SUBJECT_TAKEN'
+              ? m.error_bindingSubjectTaken()
+              : failed === 'AUTH_BINDING_ALREADY_BOUND'
+                ? m.error_bindingAlreadyBound()
+                : failed === 'AUTH_FLOW_REJECTED'
+                  ? m.error_flowRejected()
+                  : failed === 'AUTH_METHOD_UNAVAILABLE'
+                    ? m.error_methodUnavailable()
+                    : formatError({ _tag: failed })}
+          </AlertTitle>
           <AlertAction>
             <Button
               size="icon-xs"

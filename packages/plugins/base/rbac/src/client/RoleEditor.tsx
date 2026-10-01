@@ -313,35 +313,19 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
           setFeedback(m.error_lastAdministrator())
           return
         case 'PERMISSION_NOT_FOUND':
-          setFeedback(
-            m.error_permissionNotFound(
-              ((data: typeof error) => ({ count: data.permissions.length }))(error),
-            ),
-          )
+          setFeedback(m.error_permissionNotFound({ count: error.permissions.length }))
           return
         case 'ROLE_APPOINTMENT_INVALID':
-          setFeedback(
-            m.error_roleAppointmentInvalid(
-              ((data: typeof error) => ({ reason: data.reason }))(error),
-            ),
-          )
+          setFeedback(m.error_roleAppointmentInvalid({ reason: error.reason }))
           return
         case 'ROLE_CONFLICT':
           setFeedback(m.error_roleConflict())
           return
         case 'ROLE_ESCALATION_REFUSED':
-          setFeedback(
-            m.error_roleEscalationRefused(
-              ((data: typeof error) => ({ count: data.permissions.length }))(error),
-            ),
-          )
+          setFeedback(m.error_roleEscalationRefused({ count: error.permissions.length }))
           return
         case 'ROLE_INCOMPLETE':
-          setFeedback(
-            m.error_roleIncomplete(
-              ((data: typeof error) => ({ missing: data.missing.join(', ') }))(error),
-            ),
-          )
+          setFeedback(m.error_roleIncomplete({ missing: error.missing.join(', ') }))
           return
         case 'ROLE_IS_SYSTEM':
           setFeedback(m.error_roleIsSystem())
@@ -350,11 +334,7 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
           setFeedback(m.error_roleNotFound())
           return
         case 'ROLE_TARGET_MISMATCH':
-          setFeedback(
-            m.error_roleTargetMismatch(
-              ((data: typeof error) => ({ count: data.permissions.length }))(error),
-            ),
-          )
+          setFeedback(m.error_roleTargetMismatch({ count: error.permissions.length }))
           return
         case 'ROLE_VERSION_CONFLICT':
           setFeedback(m.error_roleVersionConflict())
@@ -391,11 +371,7 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
     onError: (error) => {
       switch (error._tag) {
         case 'GRANT_STRANDED':
-          setFeedback(
-            m.error_grantStranded(
-              ((data: typeof error) => ({ assignmentCount: data.grantCount }))(error),
-            ),
-          )
+          setFeedback(m.error_grantStranded({ assignmentCount: error.grantCount }))
           return
         case 'ROLE_ANCHOR_MISMATCH':
           setFeedback(m.error_roleAnchorMismatch())
@@ -439,21 +415,13 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
     onError: (error) => {
       switch (error._tag) {
         case 'ROLE_APPOINTMENT_INVALID':
-          setFeedback(
-            m.error_roleAppointmentInvalid(
-              ((data: typeof error) => ({ reason: data.reason }))(error),
-            ),
-          )
+          setFeedback(m.error_roleAppointmentInvalid({ reason: error.reason }))
           return
         case 'ROLE_CONFLICT':
           setFeedback(m.error_roleConflict())
           return
         case 'ROLE_ESCALATION_REFUSED':
-          setFeedback(
-            m.error_roleEscalationRefused(
-              ((data: typeof error) => ({ count: data.permissions.length }))(error),
-            ),
-          )
+          setFeedback(m.error_roleEscalationRefused({ count: error.permissions.length }))
           return
         case 'ROLE_IS_SYSTEM':
           setFeedback(m.error_roleIsSystem())
@@ -517,18 +485,10 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
           setFeedback(m.error_roleConflict())
           return
         case 'ROLE_ESCALATION_REFUSED':
-          setFeedback(
-            m.error_roleEscalationRefused(
-              ((data: typeof error) => ({ count: data.permissions.length }))(error),
-            ),
-          )
+          setFeedback(m.error_roleEscalationRefused({ count: error.permissions.length }))
           return
         case 'ROLE_INCOMPLETE':
-          setFeedback(
-            m.error_roleIncomplete(
-              ((data: typeof error) => ({ missing: data.missing.join(', ') }))(error),
-            ),
-          )
+          setFeedback(m.error_roleIncomplete({ missing: error.missing.join(', ') }))
           return
         case 'ROLE_IS_SYSTEM':
           setFeedback(m.error_roleIsSystem())

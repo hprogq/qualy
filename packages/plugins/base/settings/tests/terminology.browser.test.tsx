@@ -143,3 +143,29 @@ describe('the terminology screen on a phone', () => {
     await page.viewport(1280, 800)
   })
 })
+
+it('keeps the edited word and explains a concurrent terminology change', async () => {
+  const { toast } = await import('@qualy/ui/toast')
+  const notify = vi.spyOn(toast, 'error').mockReturnValue('test')
+  const read = vi.fn(() => Effect.succeed(terminology({}, 2)))
+  const put = vi.fn(() => Effect.fail(apiError('SETTING_VERSION_CONFLICT')))
+  try {
+    await renderScreen({
+      client: fakeClient({
+        app: { getManifest: () => Effect.succeed(emptyManifest()) },
+        settings: { getTerminology: read, putTerm: put },
+      }),
+      children: <TerminologyPage />,
+    })
+    const box = page.getByLabelText('简体中文')
+    await box.fill('保留我的修改')
+    await page.getByRole('button', { name: '保存' }).click()
+    await vi.waitFor(() =>
+      expect(notify).toHaveBeenCalledWith('该术语刚被其他人修改，请刷新后重试。'),
+    )
+    await expect.element(box).toHaveValue('保留我的修改')
+    await vi.waitFor(() => expect(read.mock.calls.length).toBeGreaterThan(1))
+  } finally {
+    notify.mockRestore()
+  }
+})

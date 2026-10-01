@@ -1,6 +1,14 @@
 import { Effect } from 'effect'
-import { formatPlatformFailure as formatError } from '@qualy/web-i18n'
-import { useApiMutation, UiSlot, useApi, useApiQuery, useLoadFailure } from '@qualy/web-runtime'
+import { selectKey } from '@qualy/i18n-contract'
+import { assertNever, type UseCaseApiFailure } from '@qualy/web-i18n'
+import {
+  useApiMutation,
+  UiSlot,
+  useApi,
+  useApiQuery,
+  useLoadFailure,
+  useRunApi,
+} from '@qualy/web-runtime'
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
@@ -329,6 +337,7 @@ export function AccessPanel({
   archived: boolean
 }) {
   const api = useApi(assessmentApi)
+  const run = useRunApi()
   const query = useApiQuery(assessmentApi)
   const queryClient = useQueryClient()
 
@@ -384,7 +393,32 @@ export function AccessPanel({
   )
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: query.assessment.key() })
-  const onError = (error: unknown) => setFailure(formatError(error))
+  const onError = (
+    error: UseCaseApiFailure<
+      Effect.Error<
+        ReturnType<
+          | typeof api.assessment.applyAccessSync
+          | typeof api.assessment.setAccessDeny
+          | typeof api.assessment.addStaff
+          | typeof api.assessment.removeStaff
+        >
+      >
+    >,
+  ) => {
+    switch (error._tag) {
+      case 'ASSESSMENT_BATCH_NOT_FOUND':
+        setFailure(m.error_batchNotFound())
+        return
+      case 'ASSESSMENT_BATCH_READ_ONLY':
+        setFailure(m.error_batchReadOnly())
+        return
+      case 'ASSESSMENT_ACCESS_INVALID':
+        setFailure(m.error_accessInvalid({ reason: selectKey(error.reason) }))
+        return
+      default:
+        assertNever(error)
+    }
+  }
   const onMutate = () => setFailure(null)
 
   const sync = useApiMutation({
@@ -405,24 +439,33 @@ export function AccessPanel({
   // The dialog decides as a whole; the api states one capability at a time.
   // The difference is sent, so a dialog closed without changing anything
   // sends nothing at all.
-  const setDeny = useApiMutation({
-    mutationFn: (input: { userId: string; was: readonly string[]; now: readonly string[] }) =>
-      Effect.gen(function* () {
-        const changes = [
-          ...input.now
-            .filter((code) => !input.was.includes(code))
-            .map((code) => [code, true] as const),
-          ...input.was
-            .filter((code) => !input.now.includes(code))
-            .map((code) => [code, false] as const),
-        ]
-        for (const [permission, denied] of changes) {
-          yield* api.assessment.setAccessDeny({
+  const setDeny = useApiMutation<
+    void,
+    Effect.Error<ReturnType<typeof api.assessment.setAccessDeny>>,
+    {
+      userId: string
+      was: readonly string[]
+      now: readonly string[]
+    }
+  >({
+    mutationFn: async (input) => {
+      const changes = [
+        ...input.now
+          .filter((code) => !input.was.includes(code))
+          .map((code) => [code, true] as const),
+        ...input.was
+          .filter((code) => !input.now.includes(code))
+          .map((code) => [code, false] as const),
+      ]
+      for (const [permission, denied] of changes) {
+        await run(
+          api.assessment.setAccessDeny({
             params: { batchId, userId: input.userId, permission },
             payload: { denied },
-          })
-        }
-      }),
+          }),
+        )
+      }
+    },
     onMutate,
     onSuccess: () => {
       setAdjusting(null)
@@ -430,6 +473,7 @@ export function AccessPanel({
       void invalidate()
     },
     onError,
+    onSettled: () => void invalidate(),
   })
   const addStaff = useApiMutation({
     mutationFn: (input: {

@@ -955,6 +955,7 @@
   "entry_submittedToast": "Submitted for review.",
   "entry_draftSavedToast": "Draft saved.",
   "entry_submitFailedDraftKept": "Your draft was saved but not submitted: {said}",
+  "entry_savedNotSubmitted": "Your draft was saved but not submitted. You can try submitting again.",
   "entry_withdrawnToast": "Submission withdrawn; it is a draft again.",
   "entry_abandonedToast": "Claim abandoned.",
   "review_tipApproveMid": "Pass this step; the next step of the route takes over",

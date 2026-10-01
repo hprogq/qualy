@@ -1,4 +1,4 @@
-import { assertNever, formatPlatformFailure as formatError, getApiErrorCode } from '@qualy/web-i18n'
+import { assertNever, getApiErrorCode } from '@qualy/web-i18n'
 
 import {
   useRunApi,
@@ -188,6 +188,7 @@ function PasswordSetting({
     setMismatch(false)
     setRefused(false)
   }
+  const [failure, setFailure] = useState<string | null>(null)
   const save = useApiMutation({
     mutationFn: () =>
       api.self.putSelfPassword({
@@ -201,14 +202,36 @@ function PasswordSetting({
       toast.success(m.account_passwordChanged())
       await queryClient.invalidateQueries({ queryKey: query.self.key() })
     },
+    onMutate: () => setFailure(null),
     onError: (error) => {
-      if ((error as { _tag?: unknown })._tag === 'AUTH_BINDING_CREDENTIAL_INVALID') setRefused(true)
-      // it lapsed while the form was open: shown again, and sent again
-      if (needsReauthentication(error)) reauthentication.ask(() => save.mutate())
+      switch (error._tag) {
+        case 'AUTH_BINDING_CREDENTIAL_INVALID':
+          setRefused(true)
+          return
+        case 'AUTH_REAUTHENTICATION_REQUIRED':
+          reauthentication.ask(() => save.mutate())
+          return
+        case 'AUTH_PASSWORD_INCORRECT':
+          setFailure(m.error_passwordIncorrect())
+          return
+        case 'AUTH_EMAIL_UNVERIFIED':
+          setFailure(m.error_emailUnverified())
+          return
+        case 'AUTH_PASSWORD_UNAVAILABLE':
+          setFailure(m.error_passwordUnavailable())
+          return
+        case 'AUTH_DEMO_ACCOUNT_LOCKED':
+          setFailure(m.error_demoAccountLocked())
+          return
+        case 'USER_NOT_FOUND':
+          setFailure(m.error_userNotFound())
+          return
+        default:
+          assertNever(error)
+      }
     },
   })
-  const refusedByList =
-    save.isError && (save.error as { _tag?: unknown })._tag === 'AUTH_BINDING_CREDENTIAL_INVALID'
+  const refusedByList = save.isError && save.error._tag === 'AUTH_BINDING_CREDENTIAL_INVALID'
   const settable = standing === 'set' || (standing === 'unset' && emailVerified)
   const said =
     standing === 'unavailable'
@@ -331,9 +354,12 @@ function PasswordSetting({
               {m.reset_mismatch()}
             </p>
           )}
-          {save.isError && !refusedByList && !needsReauthentication(save.error) && (
-            <p {...stylex.props(styles.refusal)}>{formatError(save.error)}</p>
-          )}
+          {save.isError &&
+            failure !== null &&
+            !refusedByList &&
+            !needsReauthentication(save.error) && (
+              <p {...stylex.props(styles.refusal)}>{failure}</p>
+            )}
         </form>
       </FormDialog>
     </Setting>
@@ -374,14 +400,37 @@ function EmailSetting({ email, verified }: { email: string | null; verified: boo
       }
     },
   })
+  const [failure, setFailure] = useState<string | null>(null)
   const change = useApiMutation({
     mutationFn: () => api.self.createSelfEmailChange({ payload: { newEmail: next } }),
     onSuccess: () => {
       close()
       toast.success(m.account_changeSent())
     },
+    onMutate: () => setFailure(null),
     onError: (error) => {
-      if (needsReauthentication(error)) reauthentication.ask(() => change.mutate())
+      switch (error._tag) {
+        case 'AUTH_REAUTHENTICATION_REQUIRED':
+          reauthentication.ask(() => change.mutate())
+          return
+        case 'USER_EMAIL_CONFLICT':
+          setFailure(m.error_userEmailConflict())
+          return
+        case 'SYSTEM_ACCOUNT_PROTECTED':
+          setFailure(m.error_systemAccountProtected())
+          return
+        case 'AUTH_MAIL_NOT_SENT':
+          setFailure(m.error_mailNotSent())
+          return
+        case 'AUTH_DEMO_ACCOUNT_LOCKED':
+          setFailure(m.error_demoAccountLocked())
+          return
+        case 'USER_NOT_FOUND':
+          setFailure(m.error_userNotFound())
+          return
+        default:
+          assertNever(error)
+      }
     },
   })
   // an address somebody else holds is the field's to say; the rest the form's
@@ -445,7 +494,7 @@ function EmailSetting({ email, verified }: { email: string | null; verified: boo
             label={m.account_newEmail()}
             required
             hint={(email === null ? m.account_changeHint : m.account_changeConsequence)()}
-            error={taken ? formatError(change.error) : shape.error}
+            error={taken ? m.error_userEmailConflict() : shape.error}
           >
             {(id, control) => (
               <Input
@@ -463,8 +512,8 @@ function EmailSetting({ email, verified }: { email: string | null; verified: boo
               />
             )}
           </Field>
-          {change.isError && !taken && !needsReauthentication(change.error) && (
-            <p {...stylex.props(styles.refusal)}>{formatError(change.error)}</p>
+          {change.isError && failure !== null && !taken && !needsReauthentication(change.error) && (
+            <p {...stylex.props(styles.refusal)}>{failure}</p>
           )}
         </form>
       </FormDialog>
