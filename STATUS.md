@@ -21221,3 +21221,28 @@ metadataUnchanged:true; reactDomClientKnown:true; HttpStatus-1qu7jGzr.js status:
   开发态组织页Chromium验收 → `Test Files 1 passed; Tests 16 passed`,exit0。
   格式检查2文件通过,git diff --check通过。只写本地产物,不推送、不部署。
 - 下一步:Monaco功能裁剪应先定义编辑器功能验收清单再做独立实验;当前没有首屏泄漏证据。
+
+## Lighthouse冷启动动画与查询呈现优化(2026-10-02)
+
+- 用户报告localhost批次页:关键请求链66ms、CLS0.005、LCP TTFB30ms/render delay510ms,
+  主线程Other1489ms/script628ms,flight-layer动画left/top/width/height被点名。
+  报告数字不当作新生产/手机基线,没有完整trace不归因Unattributable/Other长任务。
+- 实读spinner.tsx、ui/lib/flight.ts和runtime/index.tsx:logo此前逐帧几何动画是为规避WebKit
+  缩放纹理清晰度跳变的取舍;同时runtime全局Query通知等待logo落地约320ms(兜底800ms)。
+  改为目标原尺寸SVG,仅transform平移缩放、终点none;删除Query等待scheduler/helper/export及旧测试,
+  查询完成即可按TanStack默认调度通知。不新增LCP内容显示门槛,保留减少动态效果行为。
+- 增加浏览器起终点/动画属性验证(1280×800、390×844)及实际runtime中动画暂停时查询200ms内呈现测试。
+  新query测试首跑失败:StrictMode effect重放重复增加episode计数、走了淡出而非首次飞入;
+  修正为提交前幂等进入一次后,完整Chromium冷启动13项通过。
+- 未使用JS调查:sourcemap c-DLecuz5f.js含381个Mantine/7个Floating UI模块(共417);
+  c-BMxlEDpH.js为Motion(共254源模块)。这些是本次录制未执行代码,不等于可直接删除的死代码。
+  当前dist无报告c-kdFOs8p6.js的map,不猜该历史hash长任务模块。
+- 验收实际输出:最终`pnpm test:browser apps/web/tests/cold-start.browser.test.tsx --maxWorkers=1`
+  →`Test Files 1 passed; Tests 13 passed`,exit0。最初几何修复WebKit桌面/手机2项通过,
+  最终WebKit同两视口2项通过/11项未选,exit0;最终typecheck完成client component references,exit0。
+  最终lint、6文件格式检查、git diff --check均exit0。
+  `pnpm build` → `built in 19.65s; installed web release r_uklCFOPb0ztLMMjCbLrteQ (349 assets)`,exit0,
+  首屏分包预算通过;staged检查`349 assets, production, protocol 2`,CSP检查`no code from strings`,
+  public检查`discloses nothing it should not (349 served files)`,均exit0。
+- 下一步:同一生产预览、同一CPU/网络条件重测Lighthouse并保留trace;未声称CLS归零或LCP固定提升320ms。
+  仍不为同源资源加preconnect、不盲拆widget池、不抬预算;全部只本地提交,不推送、不部署。

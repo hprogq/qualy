@@ -1,5 +1,4 @@
 import {
-  defaultScheduler,
   MutationCache,
   notifyManager,
   QueryCache,
@@ -39,7 +38,6 @@ import { captureDiagnostic } from '@qualy/browser-observability'
 import { handlePlatformFailure, type RateLimit } from './mutation-failure.ts'
 
 import { LoadingScreen } from '@qualy/ui/spinner'
-import { afterFlight } from '@qualy/ui/flight'
 import { clientFor, type ClientIdentity, type ClientOf, type TransportOptions } from './api.ts'
 import { signingOut } from './identity.ts'
 import { announceSessionChanged, changingIdentity, presentedManifest } from './session-recovery.ts'
@@ -264,9 +262,6 @@ export function RuntimeProvider({
 }: RuntimeProviderProps) {
   const [manifestKey] = useState(() => ({ current: undefined as QueryKey | undefined }))
   const [queryClient] = useState(() => {
-    // The page's first answers wait for the wordmark to land: a render in
-    // the middle of its flight froze it mid-air (see @qualy/ui/flight).
-    notifyManager.setScheduler((callback) => defaultScheduler(() => afterFlight(callback)))
     const lost = identityLostHandler(
       () => made,
       () => manifestKey.current ?? [],

@@ -16,8 +16,8 @@
 /* While the wordmark flies from the loading screen into the top bar, the
    top bar's own stands hidden under the copy in flight. The flight itself
    is the loading screen's (ColdStart in @qualy/ui), made with the drawing
-   and the Web Animations API on its geometry, not the browser's view
-   transition and not a transform: see that file. */
+   and the Web Animations API using a transform, without handing the page
+   to the browser's view transition: see that file. */
 html[data-cold-start-flight] [data-brand-wordmark] {
   visibility: hidden;
 }

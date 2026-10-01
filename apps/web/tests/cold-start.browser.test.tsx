@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { commands, page } from 'vitest/browser'
 import { render } from 'vitest-browser-react'
+import { useQuery } from '@tanstack/react-query'
+import { emptyManifest, fakeClient, renderScreen } from '@qualy/testkit/browser'
 import { BOOT_COPY_ID, bootFrame } from '@qualy/brand/boot'
 import { Wordmark } from '@qualy/brand/wordmark'
 import { ColdStart, LoadingScreen, PageLoading } from '@qualy/ui/spinner'
@@ -191,6 +193,64 @@ describe('the cold start', () => {
     expect(document.documentElement.hasAttribute('data-cold-start')).toBe(false)
   })
 
+  it('delivers query results while the wordmark is still in flight', async () =>
+    withMotion(async () => {
+      let finish!: () => void
+      let answer!: (value: string) => void
+      function Screen() {
+        const [done, setDone] = useState(false)
+        finish = () => setDone(true)
+        const query = useQuery({
+          queryKey: ['answer-during-flight'],
+          queryFn: () =>
+            new Promise<string>((resolve) => {
+              answer = resolve
+            }),
+        })
+        return (
+          <ColdStart copy={copy}>
+            {done ? (
+              <main>
+                <Wordmark height={14} title="Qualy" data-brand-wordmark="" />
+                <p data-testid="flight-answer">{query.data ?? 'waiting'}</p>
+              </main>
+            ) : (
+              <LoadingScreen />
+            )}
+          </ColdStart>
+        )
+      }
+      await renderScreen({
+        client: fakeClient({ app: { getManifest: emptyManifest() } }),
+        children: <Screen />,
+      })
+      await vi.waitFor(() => expect(overlay()).not.toBeNull())
+      finish()
+      let animation!: Animation
+      try {
+        await vi.waitFor(() => {
+          const layer = document.querySelector('[data-cold-start-flight-layer]')
+          expect(layer).not.toBeNull()
+          animation = layer!.getAnimations()[0]!
+          animation.pause()
+        })
+        answer('arrived')
+        await vi.waitFor(
+          () =>
+            expect(document.querySelector('[data-testid="flight-answer"]')?.textContent).toBe(
+              'arrived',
+            ),
+          { timeout: 200 },
+        )
+        expect(document.documentElement.hasAttribute('data-cold-start-flight')).toBe(true)
+      } finally {
+        animation?.finish()
+        await vi.waitFor(() =>
+          expect(document.documentElement.hasAttribute('data-cold-start-flight')).toBe(false),
+        )
+      }
+    }))
+
   it('says so at six seconds and offers a way out at thirty, with the loop at rest', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     await render(<Booting done={false} />)
@@ -214,9 +274,16 @@ describe('the cold start', () => {
     })
   })
 
-  it('flies the wordmark by its geometry on the first screen, and never hands the page to the browser', async () =>
+  it.each([
+    { width: 1280, height: 800 },
+    { width: 390, height: 844 },
+  ])('flies the wordmark using only transforms at $width × $height', async ({ width, height }) =>
     withMotion(async () => {
-      const transitions = vi.spyOn(document, 'startViewTransition')
+      await page.viewport(width, height)
+      const transitions =
+        typeof document.startViewTransition === 'function'
+          ? vi.spyOn(document, 'startViewTransition')
+          : vi.fn()
       // every layer that carries a wordmark in flight, as it is added
       const flights: HTMLElement[] = []
       const observer = new MutationObserver((records) => {
@@ -248,20 +315,35 @@ describe('the cold start', () => {
         // the copy takes off from exactly where the screen drew the wordmark,
         // over the page - the screen is already gone - with the top bar's
         // own wordmark hidden under it
-        expect(parseFloat(layer!.style.left)).toBeCloseTo(drawn.left, 1)
-        expect(parseFloat(layer!.style.top)).toBeCloseTo(drawn.top, 1)
-        expect(parseFloat(layer!.style.width)).toBeCloseTo(drawn.width, 1)
         expect(overlay()).toBeNull()
         expect(document.documentElement.hasAttribute('data-cold-start-flight')).toBe(true)
         expect(getComputedStyle(destination()).visibility).toBe('hidden')
-        // moved by its geometry, never by a transform: a transform is a
-        // texture scaled on the compositor, drawn soft until the frame the
-        // animation ends
+        // Only compositor properties animate. The layer is laid out at its
+        // final native size, and its starting transform reproduces the
+        // loading screen's measured rectangle.
         const [flight] = layer!.getAnimations()
         expect(flight).toBeDefined()
+        flight!.pause()
+        flight!.currentTime = 0
         const keyframes = (flight!.effect as KeyframeEffect).getKeyframes()
-        for (const keyframe of keyframes) expect(keyframe['transform']).toBeUndefined()
-        expect(parseFloat(String(keyframes[0]!['width']))).toBeCloseTo(drawn.width, 1)
+        for (const keyframe of keyframes) {
+          expect(keyframe['transform']).toBeDefined()
+          for (const property of ['left', 'top', 'width', 'height']) {
+            expect(keyframe[property]).toBeUndefined()
+          }
+        }
+        const takingOff = rectOf(layer!)
+        for (const property of ['left', 'top', 'width', 'height'] as const) {
+          expect(takingOff[property]).toBeCloseTo(drawn[property], 1)
+        }
+        flight!.currentTime = Number((flight!.effect as KeyframeEffect).getTiming().duration)
+        const landed = rectOf(layer!)
+        const target = rectOf(destination())
+        for (const property of ['left', 'top', 'width', 'height'] as const) {
+          expect(landed[property]).toBeCloseTo(target[property], 1)
+        }
+        expect(keyframes.at(-1)!['transform']).toBe('none')
+        flight!.play()
         // it lands on the top bar's wordmark's own rectangle, and only then
         // gives way to it
         await vi.waitFor(
@@ -271,10 +353,10 @@ describe('the cold start', () => {
         expect(layer!.isConnected).toBe(false)
         const at = rectOf(destination())
         expect(getComputedStyle(destination()).visibility).toBe('visible')
-        expect(parseFloat(String(keyframes.at(-1)!['left']))).toBeCloseTo(at.left, 1)
-        expect(parseFloat(String(keyframes.at(-1)!['top']))).toBeCloseTo(at.top, 1)
-        expect(parseFloat(String(keyframes.at(-1)!['width']))).toBeCloseTo(at.width, 1)
-        expect(parseFloat(String(keyframes.at(-1)!['height']))).toBeCloseTo(at.height, 1)
+        expect(parseFloat(layer!.style.left)).toBeCloseTo(at.left, 1)
+        expect(parseFloat(layer!.style.top)).toBeCloseTo(at.top, 1)
+        expect(parseFloat(layer!.style.width)).toBeCloseTo(at.width, 1)
+        expect(parseFloat(layer!.style.height)).toBeCloseTo(at.height, 1)
         // the browser's own transition machinery is never handed the page:
         // what it captured of it was wrong at every zoom but one
         expect(transitions).not.toHaveBeenCalled()
@@ -295,8 +377,10 @@ describe('the cold start', () => {
       } finally {
         observer.disconnect()
         transitions.mockRestore()
+        await page.viewport(1280, 800)
       }
-    }))
+    }),
+  )
 
   it('offers a reload from the first frame when nothing takes it over in time', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })

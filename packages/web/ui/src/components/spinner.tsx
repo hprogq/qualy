@@ -17,7 +17,6 @@ import { Wordmark } from '@qualy/brand/wordmark'
 import { VisuallyHidden } from '../lib/visually-hidden.tsx'
 import { seatOf } from '../lib/xstyle.ts'
 import { tokens } from '../theme/tokens.stylex.ts'
-import { flightDeparted, flightLanded } from '../lib/flight.ts'
 import { useBandFootHold } from './screen/band-foot.tsx'
 
 // Work in progress, wherever a screen has to wait.
@@ -327,7 +326,7 @@ const flightFrom = (screen: HTMLElement): Flight | null => {
   if (typeof Element.prototype.animate !== 'function') return null
   const from = source.getBoundingClientRect()
   const to = destination.getBoundingClientRect()
-  if (from.width === 0 || to.width === 0) return null
+  if (from.width === 0 || from.height === 0 || to.width === 0 || to.height === 0) return null
   return { from, to, ink: getComputedStyle(destination).color }
 }
 
@@ -335,18 +334,13 @@ const flightFrom = (screen: HTMLElement): Flight | null => {
  * The wordmark's flight from the screen into the top bar, made with the
  * drawing itself, by its geometry.
  *
- * A still copy of the wordmark is laid over the screen's own, at the place
- * and size the screen drew it; the top bar's is hidden; the screen leaves;
- * the copy's left, top, width and height are animated onto the top bar's
- * rectangle; the copy leaves and the top bar's stands. Geometry, not a
- * transform: a transform is a texture scaled on the compositor, and WebKit
- * draws text and paths on such a texture soft, then sharp again the frame
- * the animation ends - the "settling" a slowed-down flight showed to be
- * not a movement at all but a change of rendering. Laid out at every
- * size, the drawing is rasterised at that size each frame and ends as
- * exactly the drawing the top bar shows, so the hand-over is between two
- * identical pictures. The cost is a layout and paint of one small element
- * per frame for a third of a second, contained to itself.
+ * A copy is laid out once at the destination's native size. A transform
+ * places it over the loading screen's wordmark, then moves and scales it
+ * back to its own rectangle. Only the transform changes during the flight:
+ * changing left/top/width/height each frame forced layout and paint and
+ * was counted as a layout shift even though this is a decorative overlay.
+ * At landing the copy is unscaled, so the top bar takes over from a drawing
+ * at its native size rather than from a permanently scaled texture.
  *
  * The view transition this all replaces asked the browser to capture the
  * page and the wordmark, and WebKit answered wrongly at every zoom but
@@ -354,15 +348,19 @@ const flightFrom = (screen: HTMLElement): Flight | null => {
  * is captured.
  */
 const fly = ({ from, to, ink }: Flight, leave: () => void) => {
+  const takeoff = `translate(${String(from.left - to.left)}px, ${String(from.top - to.top)}px) scale(${String(from.width / to.width)}, ${String(from.height / to.height)})`
   const layer = document.createElement('div')
   layer.setAttribute(FLIGHT_LAYER, '')
   layer.setAttribute('aria-hidden', 'true')
   Object.assign(layer.style, {
     position: 'fixed',
-    left: `${String(from.left)}px`,
-    top: `${String(from.top)}px`,
-    width: `${String(from.width)}px`,
-    height: `${String(from.height)}px`,
+    left: `${String(to.left)}px`,
+    top: `${String(to.top)}px`,
+    width: `${String(to.width)}px`,
+    height: `${String(to.height)}px`,
+    transformOrigin: '0 0',
+    transform: takeoff,
+    willChange: 'transform',
     color: ink,
     pointerEvents: 'none',
     zIndex: '1000',
@@ -379,32 +377,18 @@ const fly = ({ from, to, ink }: Flight, leave: () => void) => {
   // and the top bar's wordmark is hidden before either
   document.documentElement.setAttribute(FLIGHT, '')
   document.body.append(layer)
-  flightDeparted()
   leave()
-  const animation = layer.animate(
-    [
-      {
-        left: `${String(from.left)}px`,
-        top: `${String(from.top)}px`,
-        width: `${String(from.width)}px`,
-        height: `${String(from.height)}px`,
-      },
-      {
-        left: `${String(to.left)}px`,
-        top: `${String(to.top)}px`,
-        width: `${String(to.width)}px`,
-        height: `${String(to.height)}px`,
-      },
-    ],
-    { duration: FLIGHT_MS, easing: FLIGHT_EASE, fill: 'forwards' },
-  )
+  const animation = layer.animate([{ transform: takeoff }, { transform: 'none' }], {
+    duration: FLIGHT_MS,
+    easing: FLIGHT_EASE,
+    fill: 'forwards',
+  })
   // the landed copy is painted before the top bar's own takes its place
   const land = () =>
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         layer.remove()
         document.documentElement.removeAttribute(FLIGHT)
-        flightLanded()
       })
     })
   animation.finished.then(land, land)
@@ -448,6 +432,7 @@ function ColdStart({ copy, children }: { copy: ColdStartCopy; children?: React.R
   // the top bar is the first screen's gesture, and a screen that comes
   // back later - the manifest reloading after a sign-in - leaves by a fade
   const episodes = useRef(0)
+  const entering = useRef(false)
   // the loop's delay: on the first screen the threshold counts from the
   // first frame index.html painted, so the time the scripts took to arrive
   // is already spent; a later screen counts from when it goes up
@@ -456,7 +441,11 @@ function ColdStart({ copy, children }: { copy: ColdStartCopy; children?: React.R
   // a claim while nothing is up: the overlay goes up, in the placeholder's
   // place, its loop set to begin 400ms from now
   useLayoutEffect(() => {
-    if (pending > 0 && phase === 'idle') {
+    if (phase !== 'idle') entering.current = false
+    if (pending > 0 && phase === 'idle' && !entering.current) {
+      // StrictMode may replay this effect before the state update commits.
+      // Both runs belong to the same loading episode.
+      entering.current = true
       episodes.current += 1
       setDelay(
         episodes.current === 1
