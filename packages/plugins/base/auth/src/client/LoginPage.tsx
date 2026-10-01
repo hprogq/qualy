@@ -789,17 +789,18 @@ export default function LoginPage() {
         </AnimatePresence>
       }
     >
-      {/* One view at a time: the one leaving fades out quickly, then the
-          next comes in from the side it is reached from. Nothing is scaled
-          or stretched on the way - a height that changes simply changes. */}
+      {/* Animate a change of address, not a query becoming ready. The initial
+          skeleton gives way to its answer in place, without holding the ready
+          page behind an exit and entrance. A method named in the initial
+          address keeps the same key while its context is being fetched. */}
       <AnimatePresence initial={false} mode="wait" custom={direction}>
         <motion.div
           key={
-            context.isPending
-              ? 'waiting'
-              : context.isSuccess && methods.length > 0
-                ? `${view}:${chosen?.code ?? ''}`
-                : 'state'
+            params.has('method')
+              ? `method:${params.get('method')}`
+              : params.get('view') === 'more'
+                ? 'more'
+                : 'home'
           }
           custom={direction}
           variants={{

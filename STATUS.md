@@ -21246,3 +21246,35 @@ metadataUnchanged:true; reactDomClientKnown:true; HttpStatus-1qu7jGzr.js status:
   public检查`discloses nothing it should not (349 served files)`,均exit0。
 - 下一步:同一生产预览、同一CPU/网络条件重测Lighthouse并保留trace;未声称CLS归零或LCP固定提升320ms。
   仍不为同源资源加preconnect、不盲拆widget池、不抬预算;全部只本地提交,不推送、不部署。
+
+## 登录页Lighthouse与全局CSS构成(2026-10-02)
+
+- 实读用户`localhost_3000-20261002T014835.json`:匿名最终URL为login而非已登录批次页,
+  mobile/simulate、RTT150ms、CPU4倍;模拟FCP2257ms/LCP4845ms/TBT60ms/CLS0/perf80,
+  observed FCP34ms/LCP584ms。LCP是登录标题,实际render delay579ms;不把29ms本地请求链
+  当成模拟移动网络耗时,不凭Other1702ms归因业务代码。
+- 实际壳CSS380749bytes:PostCSS顶层layer统计Mantine260046(68.3%),StyleX94013(24.7%),
+  其他26685;整表Brotli54630bytes。theme.css全量导入core/dates,
+  StyleX unplugin则全构建聚合追加壳CSS;不是StyleX必然只能输出一张全局表。
+  其他三张CSS为Monaco/ALTCHA,报告登录页面没有请求它们。调查与实验顺序记录在
+  docs/notes/login-css-performance.md;未未经组件依赖审计就删Mantine总表。
+- 登录上下文ready此前改变AnimatePresence key,先退出140ms再进入220ms。
+  改成只随登录方式/列表地址变化,首次答案直接替换骨架;初始method地址同样保持稳定key。
+  新增实际延迟query返回的浏览器验证,原动画容器保留且正式内容opacity1。
+  测试非拒绝Promise的Effect.promise用法依据repos/effect/packages/effect/src/Effect.ts。
+- 对用户已运行localhost:3000做新建无登录Chromium只读探针,英文LCP392ms;
+  仍提供旧e-NCyELQh7入口,不作为修复后成绩。CSS coverage把338876/380749记为使用,
+  @layer粒度不足以证明所有内部选择器都被使用,不据此认定全量CSS必需。
+- 验收真实输出:
+  - `pnpm test:browser packages/plugins/base/auth/tests/sign-in.browser.test.tsx --maxWorkers=1`
+    →`Test Files 1 passed; Tests 32 passed`,exit0。
+  - `pnpm typecheck` →完成`typecheck client component references`,无错误,exit0。
+  - `pnpm lint` →`oxlint`,exit0;3文件oxfmt完成,exit0。
+  - `pnpm build` →`built in 18.00s; installed web release r_4kTgXR3q2P_7XawJBeGsJA (349 assets)`,
+    exit0;entry57154Brotli bytes,四页67/102/131/92 JS请求,分包门禁通过。
+  - `check-staged-web` →`349 assets, production, protocol 2`;
+    `check-csp-build` →`no code from strings in the bundle`;
+    `check-public-web` →`discloses nothing it should not (349 served files)`,均exit0。
+- 下一步:优先独立测量Mantine分组件layer样式与懒加载日期/图片样式,再考虑StyleX路由CSS,
+  同一生产预览录三次mobile报告与trace比较中位数。不宣称修复后Lighthouse已提高,
+  不推送、不部署,不重启用户服务;用户AGENTS改名及未跟踪配置保留。

@@ -63,6 +63,28 @@ const screen = (login: Record<string, ReturnType<typeof lazy>>) =>
   })
 
 describe('the sign-in screen', () => {
+  it('replaces the initial skeleton in place as soon as the login context arrives', async () => {
+    let answer!: (value: ReturnType<typeof context>) => void
+    const waiting = new Promise<ReturnType<typeof context>>((resolve) => {
+      answer = resolve
+    })
+    await renderScreen({
+      client: fakeClient({
+        app: { getManifest: emptyManifest() },
+        auth: { ...anonymous, listLoginMethods: () => Effect.promise(() => waiting) },
+      }),
+      route: '/login',
+      children: <LoginPage />,
+    })
+    await expect.element(page.getByTestId('sign-in-waiting')).toBeVisible()
+    const column = page.getByTestId('sign-in-waiting').element().parentElement!
+    answer(context([password]))
+    await expect.element(page.getByTestId('sign-in-tenant')).toBeVisible()
+    expect(page.getByTestId('sign-in-tenant').element().parentElement!.parentElement).toBe(column)
+    expect(getComputedStyle(column).opacity).toBe('1')
+    expect(document.querySelector('[data-testid="sign-in-waiting"]')).toBeNull()
+  })
+
   it('renders the driver filed under the type the method names', async () => {
     await screen({ local: lazy(() => import('@qualy/plugin-auth-local/client/LoginMethod')) })
     // the local driver's own form, which is the only thing that proves the
