@@ -21121,3 +21121,32 @@ job 后通过。阶段 3、4 在 worktree 上完成,拆成三个功能提交与�
 - 本轮未重测手机Lighthouse/真人时间轴,未构建Docker镜像或跑镜像E2E;当前门禁基于构建图,旧LCP对照仍属历史测量。
 - 下一步:审阅本地三个提交;后续合法功能越界时先检查依赖图再讨论预算。全部未推送、未部署;
   用户的CLAUDE→AGENTS改名、.codex与根project.inlang保持未暂存,未修改。
+
+## 开发态预优化旧 chunk 与宿主扫描入口(2026-10-02)
+
+- 用户报 HttpStatus-DPWqT-rK.js 缺失;当前磁盘与服务已使用 HttpStatus-1qu7jGzr.js,旧 URL 不在当前产物。
+  不按通用报错建议排除整个 Effect。检查确认 qualyPlugins 的 optimizeDeps.entries 覆盖默认HTML推断,
+  原列表只有 plugins.ts/scan.ts,遗漏宿主 index.html → main.tsx → react-dom/client。
+- apps/web/vite.config.ts 显式加入 index.html,与插件扫描入口合并。其余模块通过源图发现,
+  不新增手工依赖清单;配置变更已由原开发监督器重启 web 服务,未另开长期开发服务器。
+- 实际冷缓存两组createServer探针(随机本地端口与独立临时缓存,读完关闭):补入口前发现30依赖、
+  react-dom/client=false;补入口后31依赖、react-dom/client=true。两组HttpServerRequest均已发现。
+  避免宿主首次加载时才发现依赖而重新优化共享图;已开页面的旧模块URL仍需手动刷新到新图。
+- 调查初期怀疑 browser suite 覆盖开发缓存,随后实读Vitest resolveTestCacheDir并观察实际目录,
+  确认Vitest已追加vitest/项目hash子目录,证据不足,撤掉全部cacheDir隔离试改;不将该猜测写成根因。
+  这次无法还原用户报错时的旧图,因此不宣称已证明那个具体旧hash由哪一次重新优化产生。
+- 验收真实输出:
+  - `pnpm test tools/tests/dev-server-files.test.ts` → `Test Files 1 passed (1); Tests 3 passed (3)`,exit 0;
+    保留文件权限门禁,新增宿主HTML扫描入口回归。
+  - Node fetch 当前5173服务的main.tsx与优化产物图 → `mainStatus:200; resources:41; failures:[];
+metadataUnchanged:true; reactDomClientKnown:true; HttpStatus-1qu7jGzr.js status:200`。
+    读取41个预优化资源期间metadata保持不变,全部资源可读。
+  - `pnpm lint` → exit 0。首次定向tsc引用不存在的tools/tests/tsconfig.json而exit 1,
+    改用仓库正式`pnpm typecheck` → exit 0,最后`typecheck client component references`。
+  - `oxfmt --check STATUS.md apps/web/vite.config.ts tools/tests/dev-server-files.test.ts`
+    → `All matched files use the correct format`,3文件,exit 0;`git diff --check` exit 0。
+- 依据:Vite官方optimizeDeps.entries文档(自定义入口覆盖默认HTML扫描);实际安装vite的
+  dist/node/chunks/node.js(discoverProjectDependencies、缓存目录替换),Vitest的
+  dist/chunks/index.DzobfTyw.js(resolveTestCacheDir)。本轮未修改Effect代码。
+- 下一步:存好开发页草稿后刷新一次,使用新预优化图;若新图仍重复报缺失,保留当时URL与metadata追查。
+  只提交本地,不推送、不部署;用户的改名与本地配置仍未暂存。

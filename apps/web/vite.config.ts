@@ -91,6 +91,11 @@ export default defineConfig(({ mode }) => ({
     // one react instance for the host and every plugin chunk
     dedupe: ['react', 'react-dom'],
   },
+  optimizeDeps: {
+    // Plugin scan entries replace Vite's default HTML crawl. Keep the host
+    // entry in that crawl too, so its dependencies are known before loading.
+    entries: ['index.html'],
+  },
   build: {
     // Written, and never pointed at: `hidden` emits the maps without the
     // `sourceMappingURL` comment, so no browser ever asks for one. They are

@@ -13,10 +13,10 @@ import { isFileServingAllowed, resolveConfig, loadConfigFromFile } from 'vite'
 
 const repo = fileURLToPath(new URL('../..', import.meta.url))
 
-const served = async () => {
+const resolved = async (file = 'apps/web/vite.config.ts') => {
   const loaded = await loadConfigFromFile(
     { command: 'serve', mode: 'development' },
-    `${repo}apps/web/vite.config.ts`,
+    path.join(repo, file),
     `${repo}apps/web`,
     'silent',
   )
@@ -34,8 +34,18 @@ const served = async () => {
     'serve',
     'development',
   )
+  return config
+}
+
+const served = async () => {
+  const config = await resolved()
   return (file: string) => isFileServingAllowed(config, `/@fs${repo}${file}`)
 }
+
+it('includes the host HTML entry in dependency discovery alongside plugin entries', async () => {
+  const config = await resolved()
+  expect(config.optimizeDeps.entries).toContain('index.html')
+})
 
 describe('what the development server serves from the file system', () => {
   it('serves the application, the workspace packages and the installed dependencies', async () => {
