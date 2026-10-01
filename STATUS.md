@@ -21193,3 +21193,31 @@ metadataUnchanged:true; reactDomClientKnown:true; HttpStatus-1qu7jGzr.js status:
     不修改以免损坏补丁。非patch文件严格检查,patch仅豁免blank-at-eol检查。
 - 下一步:在实际开发会话比较首次与再次进入相同路由;若仍有3–4秒,分离模块transform、API与绘制。
   依赖patch已变化,本地开发服务需重启才使用新版;不推送、不部署,用户的改名与配置保留。
+
+## Monaco大chunk与消息插件耗时调查(2026-10-02)
+
+- 实读用户指定产物sourcemap: c-DlVHURaX2.js=2,737,229bytes,648/648源模块属于Monaco;
+  c-CkRzSrlO2.js=1,085,959bytes,259源模块中252属于Monaco,主要是features/register.all。
+  后者gzip276.49kB,前者705.30kB。不是错误文案全集或Paraglide消息全集。
+- 追踪static import与模板字符串dynamic import:入口、登录、批次、我的申报、org/page静态closure
+  均无这两块;公式编辑页static closure也无,由lazy-editors.ts渲染代码面板时加载。
+  旧release r_nzpEJylwS5Ef7SuR5HLHIw及r_wIcUpQpizmVuiILRB5TcWA的完整懒加载图
+  已引用两个相同hash文件,所以不是此次StyleX改动新增。初版诊断脚本遗漏模板字符串动态import,
+  校正后确认历史图334chunks含二者;不以初版缺失当结论。
+- 真实构建钩子计时(实际配置,write:false):优化前resolveId调用33,249次,仅260次#messages,
+  handler内部总17.66ms;config31.94ms,总构建22,759ms,警告qualy-messages89%。
+  packages/build/messages/src/vite.ts为resolveId加入原生filter /^#messages$/,
+  避免全部无关import跨入JS;保留handler防御校验,不改变消息源码、编译器或chunk策略。
+  优化后resolveId=260次/8.85ms,config1,834.99ms(编译器源指纹变化导致重编),总21,135ms。
+  警告不再列qualy-messages,剩StyleX95%/release4%;比例不是Paraglide编译占总墙钟时间的证明,
+  这两次编译缓存状态不同,不宣称固定百分比构建提速。
+- 不提高500kB警告阈值,不拆Monaco核心或随意删编辑功能;实际首屏预算/环门禁仍开启。
+- 验收:前后profile探针exit0;`pnpm lint`exit0;`pnpm typecheck`完成client component references;
+  正式`pnpm build` → `built in 19.14s; installed web release r_WdugrcZezJdQ4pmmpTQ04Q (349 assets)`,exit0;
+  两个Monaco文件名/大小不变,四页请求67/102/131/92,entry57,139 Brotli bytes,预算通过。
+  `check-staged-web` → `349 assets, production, protocol 2`;
+  `check-csp-build` → `no code from strings in the bundle`;
+  `check-public-web` → `discloses nothing it should not (349 served files)`,均exit0。
+  开发态组织页Chromium验收 → `Test Files 1 passed; Tests 16 passed`,exit0。
+  格式检查2文件通过,git diff --check通过。只写本地产物,不推送、不部署。
+- 下一步:Monaco功能裁剪应先定义编辑器功能验收清单再做独立实验;当前没有首屏泄漏证据。

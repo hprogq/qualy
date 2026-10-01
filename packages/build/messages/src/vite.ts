@@ -68,13 +68,18 @@ export const qualyMessages = (options: QualyMessagesOptions = {}): Plugin => {
       ].map((source) => ({ ...source, real: realOf(source.packageRoot) }))
       await compile(env.command === 'build' ? 'message-modules' : 'locale-modules')
     },
-    resolveId(source, importer) {
-      if (source !== '#messages' || importer === undefined) return undefined
-      const owner = ownerOf(importer)
-      if (owner === undefined) {
-        this.error(`${importer} imports #messages, but no package that ships messages holds it`)
-      }
-      return facadeFor(productRootFor(manifest), owner.namespace)
+    resolveId: {
+      // Filter before Rolldown crosses into JavaScript for every import in
+      // the graph. Only package-private message imports belong to this hook.
+      filter: { id: /^#messages$/ },
+      handler(source, importer) {
+        if (source !== '#messages' || importer === undefined) return undefined
+        const owner = ownerOf(importer)
+        if (owner === undefined) {
+          this.error(`${importer} imports #messages, but no package that ships messages holds it`)
+        }
+        return facadeFor(productRootFor(manifest), owner.namespace)
+      },
     },
     configureServer(server: ViteDevServer) {
       const watched = sources.map((source) => path.join(source.packageRoot, 'messages'))
