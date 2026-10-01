@@ -4,7 +4,7 @@
 
 import '@mantine/dates/styles.layer.css'
 
-import { useState } from 'react'
+import { useState, type MouseEvent } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { DateTimePicker as MDateTimePicker } from '@mantine/dates'
 
@@ -32,6 +32,16 @@ const styles = stylex.create({
     width: '100%',
   },
 })
+
+// SpinInput selects on focus/click, but WebKit's pointer default can collapse
+// that selection afterwards. Own the pointer focus so the first digit replaces
+// the whole field, just as it does when Tab brings the keyboard here.
+function selectTimeField(event: MouseEvent<HTMLInputElement>) {
+  event.preventDefault()
+  event.stopPropagation()
+  event.currentTarget.focus()
+  event.currentTarget.select()
+}
 
 export function DateTimePicker({
   id,
@@ -115,6 +125,9 @@ export function DateTimePicker({
         hoursInputLabel: hourLabel,
         minutesInputLabel: minuteLabel,
         secondsInputLabel: secondLabel,
+        hoursInputProps: { onMouseDown: selectTimeField },
+        minutesInputProps: { onMouseDown: selectTimeField },
+        secondsInputProps: { onMouseDown: selectTimeField },
       }}
       valueFormat={(local) => {
         const at = localToInstant(local, timeZone)

@@ -41,6 +41,9 @@ describe('the checkbox owns its state', () => {
     await agree.click()
     await expect.element(agree).toBeChecked()
     await expect.element(page.getByTestId('state')).toHaveTextContent('true')
+    // Pointer clicks do not imply keyboard focus on WebKit.
+    agree.element().focus()
+    expect(document.activeElement).toBe(agree.element())
     await userEvent.keyboard(' ')
     await expect.element(agree).not.toBeChecked()
     await expect.element(page.getByTestId('state')).toHaveTextContent('false')
@@ -168,13 +171,18 @@ describe('the input is a native form citizen', () => {
   })
 
   it('marks invalid through aria-invalid, the accessibility fact', async () => {
-    await mount(<Input aria-label="broken" aria-invalid readOnly value="x" />)
+    await mount(
+      <>
+        <Input aria-label="broken" aria-invalid readOnly value="x" />
+        <span data-testid="danger-token" style={{ color: 'var(--q-danger)' }} />
+      </>,
+    )
     const field = page.getByRole('textbox', { name: 'broken' })
     await expect.element(field).toHaveAttribute('aria-invalid', 'true')
     // the invalid state is painted from the product danger token
     await expect
       .poll(() => getComputedStyle(field.element()).borderColor, { timeout: 5000 })
-      .toBe('oklch(0.577 0.245 27.325)')
+      .toBe(getComputedStyle(page.getByTestId('danger-token').element()).color)
   })
 })
 

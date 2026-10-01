@@ -21319,3 +21319,29 @@ metadataUnchanged:true; reactDomClientKnown:true; HttpStatus-1qu7jGzr.js status:
 - 后续：以一致真实后端响应或生产RUM验证登录与已登录批次页；目前localhost:3000未运行，
   不宣称完成真实后端/RUM验收。StyleX路由CSS若再实验应单独测量，不先引入维护机制。
   不推送、不部署；用户AGENTS改名与未跟踪配置不纳入本次提交。
+
+## 2026-10-02：修复 WebKit 时间输入与嵌套 Escape
+
+- 用户要求继续处理上一轮的7项既有WebKit失败；“非CSS回归”只作归因，不作为免修理由。
+- 实读安装的Mantine9.6.1 SpinInput/SpinInput.mjs、TimePicker/TimePicker.mjs。
+  WebKit点击小时后选区实际[1,1]，第一个0触发自动进位，093045写成00:09:45。
+  DateTimePicker通过公开hours/minutes/secondsInputProps，在mousedown阻止默认光标调整、
+  显式focus/select；保持既有时间解析、自动进位与DST政策，不加延时、不改上游。
+- WebKit点击combobox按钮不自动focus，Escape未经过trigger就关闭modal。
+  SelectTrigger点击打开前显式focus，原键盘导航与Escape拦截在各引擎统一生效。
+- Checkbox Space测试先取得键盘焦点；保留原生checkbox行为。颜色断言比较同一引擎的
+  danger token与错误边框，不再把CSSOM浮点字符串序列化当视觉契约。
+- 增强选区、小时/分钟/秒指针替换、实际trigger焦点回归；3文件加入现有WebKit CI门禁，
+  原cold-start/brand继续保留。没有skip或按浏览器放宽行为断言。
+- 已真实执行输出：
+  - `pnpm test:browser:webkit`→`Test Files 5 passed; Tests 50 passed`,exit0。
+  - Chromium全部host/widget配置→`Test Files 53 passed; Tests 330 passed`,exit0。
+  - 最初失败的6文件WebKit配置重跑→`Test Files 6 passed; Tests 56 passed`,exit0。
+  - `pnpm typecheck`→`typecheck client component references`,exit0；既有Effect建议不为错误。
+  - `pnpm lint`→`oxlint`,exit0。
+  - `pnpm build`→`built in 18.17s; installed web release r_jgqyipLyRBpUxuZCi4emgg (351 assets)`,exit0，原JS门禁通过。
+  - `check-staged-web`→`351 assets, production, protocol 2`；`check-csp-build`→`no code from strings`；
+    `check-public-web`→`discloses nothing it should not (351 served files)`，全部exit0。
+  - 9文件`oxfmt --check`、`git diff --check`全部exit0。
+- 七项原失败全部修复并有持续WebKit门禁。下一步回到真实后端/RUM性能验证，不继续扩造样式机制。
+  不推送、不部署；用户AGENTS改名与未跟踪配置保留。

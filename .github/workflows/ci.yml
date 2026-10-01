@@ -273,9 +273,9 @@ jobs:
       - if: steps.codecov.outcome == 'failure'
         run: echo "::warning::Codecov did not take the Chromium coverage report"
 
-  # The cold start and the brand once more in WebKit: the two screens whose
-  # defects were engine timing, not logic, and which Chromium hid. A smoke
-  # leg of two files, not the suite - see vitest.browser.webkit.config.ts.
+  # WebKit covers cold-start timing and shared keyboard controls whose pointer
+  # focus and selection differ from Chromium. A focused leg rather than the
+  # whole suite - see vitest.browser.webkit.config.ts.
   browser-webkit:
     runs-on: ubuntu-latest
     timeout-minutes: 15

@@ -147,3 +147,30 @@ localhost:3000 未运行，本次没有真实后端或线上 RUM 验证；后续
 Select/Dialog Escape，以及 `oklch(...27.325)` 与 `oklch(...27.325001)` 精度断言。
 图片查看器新测试在 WebKit 通过。这些既有失败没有被称为本轮通过，也没有混入 CSS 改动
 修改交互或放宽断言。
+
+## WebKit 失败后续修复
+
+用户要求继续处理上述既有失败，2026-10-02 单独修复交互与跨引擎测试假设。
+“不是 CSS 回归”只说明归因，不意味着可以永久留下失败。
+
+- 时间输入是实际缺陷。读取安装的 Mantine 9.6.1
+  `@mantine/dates/esm/components/SpinInput/SpinInput.mjs` 与
+  `TimePicker/TimePicker.mjs`，确认内部 focus/click 会 select，但 WebKit 点击后选区
+  实际是 `[1,1]`；事件探针中第一个 `0` 触发 zero 自动进位，后续输入落在分钟/秒。
+  [DateTimePicker](../../packages/web/ui/src/components/date-time-picker.tsx) 通过公开
+  hours/minutes/secondsInputProps，在 mousedown 阻止默认光标调整并明确 focus/select。
+  不修改上游、不引入延时，也不重写时间解析或自动进位。
+  回归测试直接验证完整选区、三字段指针替换、连续输入、跨时区与 DST 跳时结果。
+- 嵌套 Escape 是实际缺陷。WebKit 指针点击 button 不自动 focus，事件未经过 combobox
+  trigger 就到达 modal 监听器。
+  [SelectTrigger](../../packages/web/ui/src/components/select.tsx) 在点击打开前明确取得焦点，
+  使既有键盘导航与 stopPropagation 逻辑在所有引擎工作；测试断言实际焦点及一键一层。
+- Checkbox Space 的测试先明确取得键盘焦点再发送按键；保持原生 checkbox 平台语义，
+  不为指针点击改写浏览器的原生焦点策略。
+- 颜色断言比较同一引擎渲染的 danger token 与 invalid 输入框边框，保持视觉契约，
+  不要求 CSSOM 序列化的 `27.325` 与 `27.325001` 字符串逐字相同。
+
+将 date-time-picker、form-controls、overlay-widgets 三文件纳入现有
+[WebKit 配置](../../vitest.browser.webkit.config.ts)，与 cold-start/brand 一起作为 CI
+固定门禁。`pnpm test:browser:webkit` 实际输出 `5 passed; 50 passed`，exit0。
+原七项均通过；没有 skip、没有按浏览器放宽行为断言。

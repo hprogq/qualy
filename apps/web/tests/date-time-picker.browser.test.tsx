@@ -63,6 +63,8 @@ describe('choosing an instant', () => {
     await open()
 
     await userEvent.click(hourBox())
+    const input = hourBox().element() as HTMLInputElement
+    expect([input.selectionStart, input.selectionEnd]).toEqual([0, input.value.length])
     await userEvent.keyboard('093045')
 
     expect([written().getHours(), written().getMinutes(), written().getSeconds()]).toEqual([
@@ -71,6 +73,26 @@ describe('choosing an instant', () => {
     // each pair moved on by itself; nothing was tabbed
     expect(document.activeElement).toBe(secondBox().element())
     expect(written().getDate()).toBe(25)
+  })
+
+  it('pointer edits replace each time field without keeping the old digits', async () => {
+    await render(<Harness initial={new Date(2026, 7, 25, 9, 30, 50).toISOString()} />)
+    await open()
+
+    for (const [field, digits] of [
+      [hourBox(), '14'],
+      [minuteBox(), '45'],
+      [secondBox(), '12'],
+    ] as const) {
+      await userEvent.click(field)
+      const input = field.element() as HTMLInputElement
+      expect(document.activeElement).toBe(input)
+      expect([input.selectionStart, input.selectionEnd]).toEqual([0, input.value.length])
+      await userEvent.keyboard(digits)
+    }
+    expect([written().getHours(), written().getMinutes(), written().getSeconds()]).toEqual([
+      14, 45, 12,
+    ])
   })
 
   it('finishes a box early when no second digit could follow', async () => {

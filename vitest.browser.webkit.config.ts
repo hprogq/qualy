@@ -1,19 +1,22 @@
 import { defineConfig } from 'vitest/config'
 import base from './vitest.browser.config.ts'
 
-// The few screens whose defects are engine timing rather than logic - the
-// cold start's hand-over, the brand's drawing - run once more in WebKit.
-// Not the whole suite: that would buy every engine difference in every
-// component for a class of bug that lives in two files. The hand-over's
-// double wordmark and its doubled flight were both WebKit findings that
-// Chromium hid, and this leg is what keeps them found.
+// Engine-sensitive cold-start timing and shared keyboard controls also run in
+// WebKit. Pointer focus and text selection differ from Chromium; these tests
+// guard the actual time-entry and nested Escape regressions found there.
 
 const test = base.test!
 export default defineConfig({
   ...base,
   test: {
     ...test,
-    include: ['tests/cold-start.browser.test.tsx', 'tests/brand.browser.test.tsx'],
+    include: [
+      'tests/cold-start.browser.test.tsx',
+      'tests/brand.browser.test.tsx',
+      'tests/date-time-picker.browser.test.tsx',
+      'tests/form-controls.browser.test.tsx',
+      'tests/overlay-widgets.browser.test.tsx',
+    ],
     browser: {
       ...test.browser!,
       instances: [{ browser: 'webkit' }],

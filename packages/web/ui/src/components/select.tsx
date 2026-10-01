@@ -478,7 +478,12 @@ function SelectTrigger({
               rightSectionPointerEvents: 'none' as const,
             })}
         disabled={disabled}
-        onClick={toggle}
+        onClick={(event) => {
+          // WebKit does not focus buttons on pointer clicks. The combobox
+          // keeps keyboard navigation and Escape on this trigger in every engine.
+          event.currentTarget.focus()
+          toggle()
+        }}
         onKeyDown={(event) => {
           onKeyDown?.(event)
           // while the list is open the Escape answered here must not also
