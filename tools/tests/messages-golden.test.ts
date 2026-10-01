@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import type { SupportedLocale } from '@qualy/i18n-contract'
+import { type SupportedLocale } from '@qualy/i18n-contract'
 import {
   compileMessages,
   messagesOutDir,
@@ -27,7 +27,7 @@ const golden = JSON.parse(
   fs.readFileSync(path.join(repoRoot, 'tools/tests/fixtures/messages-golden.json'), 'utf8'),
 ) as Record<string, [hash: string, rows?: Row[]]>
 
-const result = await compileMessages({})
+const result = await compileMessages({ all: true })
 // every package's messages merged under their namespaces, as the compiler reads them
 const merged = readMessages(result.sources).byLocale as Record<
   SupportedLocale,

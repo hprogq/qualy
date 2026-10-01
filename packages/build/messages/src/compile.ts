@@ -1,15 +1,18 @@
 // eslint-disable-next-line typescript/triple-slash-reference -- the ICU plugin ships no types, and every program that reaches this file needs the declaration beside it
 /// <reference path="./inlang-plugin-icu1.d.ts" />
+import { createRequire } from 'node:module'
 import { createHash } from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { parse, type Token } from '@messageformat/parser'
 import { compileProject } from '@inlang/paraglide-js'
 import icu1 from '@inlang/plugin-icu1'
 import { loadProjectFromDirectory, type InlangPlugin } from '@inlang/sdk'
-import { productRootFor } from '@qualy/assembly'
+import { productRootFor, readManifest } from '@qualy/assembly'
 import { resolvePackageDir } from '@qualy/assembly/host'
 import { supportedLocales } from '@qualy/i18n-contract'
+import { namespaceOf } from '@qualy/i18n-contract/namespace'
 import { manifestPath as defaultManifestPath, repoRoot } from './manifest.ts'
 
 // The message compiler (docs/adr/0011-i18n-paraglide.md).
@@ -64,12 +67,7 @@ const KEY = /^[a-z][a-zA-Z0-9]*(?:_[a-z][a-zA-Z0-9]*)*$/
  * so nothing has to agree with anything, and two packages cannot collide
  * because two packages cannot share a name.
  */
-export const namespaceOf = (packageName: string): string =>
-  packageName
-    .replace(/^@/, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
+export { namespaceOf } from '@qualy/i18n-contract/namespace'
 
 /** a package that ships `messages/`, as a source */
 export const messageSourceAt = (packageRoot: string): MessageSource => {
@@ -79,28 +77,32 @@ export const messageSourceAt = (packageRoot: string): MessageSource => {
   return { namespace: namespaceOf(name), packageRoot, owner: name }
 }
 
-const shipsMessages = (packageRoot: string) =>
-  fs.existsSync(path.join(packageRoot, 'messages', 'en-US.json'))
+const shipsMessages = (packageRoot: string) => fs.existsSync(path.join(packageRoot, 'messages'))
 
 /**
- * Every package whose messages this product compiles: the ones the product
- * installs (its package.json dependencies, where plugins are installed) that
- * ship `messages/`, and the platform's own. Found from the packages as
- * installed, without running any of their code: the compiled messages are
- * what that code imports, so they have to exist before it can run.
+ * Release messages follow the active manifest selection. Repository checks
+ * explicitly request installed packages too, so disabled sources still typecheck.
+ * Discover JSON inputs without executing plugin descriptors.
  */
-export async function messageSources(manifest = defaultManifestPath()): Promise<MessageSource[]> {
+export async function messageSources(
+  manifest = defaultManifestPath(),
+  all = false,
+): Promise<MessageSource[]> {
   const productRoot = productRootFor(manifest)
   const product = JSON.parse(fs.readFileSync(path.join(productRoot, 'package.json'), 'utf8')) as {
     dependencies?: Record<string, string>
   }
   const found: MessageSource[] = []
-  for (const name of Object.keys(product.dependencies ?? {}).sort()) {
+  const active = readManifest(manifest).plugins
+  const names = all
+    ? Object.keys(product.dependencies ?? {})
+    : [...active].filter(([, entry]) => entry.enabled).map(([name]) => name)
+  for (const name of names.sort()) {
     let packageRoot: string
     try {
       packageRoot = resolvePackageDir(name, manifest)
-    } catch {
-      continue
+    } catch (cause) {
+      throw new Error(`cannot find message source package ${name}`, { cause })
     }
     if (shipsMessages(packageRoot)) found.push(messageSourceAt(packageRoot))
   }
@@ -110,6 +112,12 @@ export async function messageSources(manifest = defaultManifestPath()): Promise<
 }
 
 type Kind = 'number' | 'date' | 'select' | 'plain'
+
+const mergeKind = (left: Kind, right: Kind, where: string): Kind => {
+  if (left === right || right === 'plain') return left
+  if (left === 'plain') return right
+  throw new Error(`${where} has incompatible input kinds: ${left} and ${right}`)
+}
 
 /** what each argument of one ICU message is, as the grammar itself says */
 const argumentsOf = (source: string, where: string): Map<string, Kind> => {
@@ -122,10 +130,9 @@ const argumentsOf = (source: string, where: string): Map<string, Kind> => {
     })
   }
   const found = new Map<string, Kind>()
-  const rank: Record<Kind, number> = { date: 3, number: 2, select: 1, plain: 0 }
   const note = (name: string, kind: Kind) => {
     const known = found.get(name)
-    if (known === undefined || rank[kind] > rank[known]) found.set(name, kind)
+    found.set(name, known === undefined ? kind : mergeKind(known, kind, `${where} ${name}`))
   }
   const walk = (list: readonly Token[]) => {
     for (const token of list) {
@@ -195,7 +202,19 @@ export function readMessages(sources: readonly MessageSource[]): {
         tables[locale] = {}
         continue
       }
-      tables[locale] = JSON.parse(fs.readFileSync(file, 'utf8')) as Record<string, string>
+      const raw: unknown = JSON.parse(fs.readFileSync(file, 'utf8'))
+      if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
+        problems.push(`${source.owner} ${locale} must be a JSON object of strings`)
+        tables[locale] = {}
+        continue
+      }
+      const table: Record<string, string> = {}
+      for (const [key, value] of Object.entries(raw)) {
+        if (typeof value !== 'string')
+          problems.push(`${source.namespace}.${key} (${locale}) must be a string`)
+        else table[key] = value
+      }
+      tables[locale] = table
     }
     const keys = Object.keys(tables['en-US'] ?? {})
     for (const locale of supportedLocales) {
@@ -241,10 +260,18 @@ export function readMessages(sources: readonly MessageSource[]): {
               .join(' and ')}`,
           )
         }
-        const rank: Record<Kind, number> = { date: 3, number: 2, select: 1, plain: 0 }
         for (const [name, kind] of found) {
           const known = inputs.get(name)
-          if (known !== undefined && rank[kind] > rank[known]) inputs.set(name, kind)
+          if (known !== undefined) {
+            try {
+              inputs.set(
+                name,
+                mergeKind(known, kind, `${source.namespace}.${key} (${locale}) ${name}`),
+              )
+            } catch (error) {
+              problems.push((error as Error).message)
+            }
+          }
         }
       }
       compiled.push({ namespace: source.namespace, key, english: tables['en-US']![key]!, inputs })
@@ -372,8 +399,6 @@ const drop = (file: string, written: Set<string>) => {
   fs.rmSync(file, { force: true })
 }
 
-const GENERATOR_VERSION = '2'
-
 export interface CompileOptions {
   readonly manifestPath?: string
   /**
@@ -386,6 +411,8 @@ export interface CompileOptions {
   readonly sources?: readonly MessageSource[]
   /** compiles even when nothing it reads has changed */
   readonly force?: boolean
+  /** Repository checks include installed packages; releases compile the active selection only. */
+  readonly all?: boolean
 }
 
 export interface CompileResult {
@@ -404,29 +431,61 @@ export async function compileMessages(options: CompileOptions): Promise<CompileR
   const manifest = options.manifestPath ?? defaultManifestPath()
   const productRoot = productRootFor(manifest)
   const outDir = messagesOutDir(productRoot)
-  const sources = options.sources ?? (await messageSources(manifest))
-  const { byLocale, compiled } = readMessages(sources)
+  const sources = options.sources ?? (await messageSources(manifest, options.all))
 
   const stampFile = path.join(outDir, 'stamp.json')
   const stamp = fs.existsSync(stampFile)
     ? (JSON.parse(fs.readFileSync(stampFile, 'utf8')) as {
         fingerprint?: string
         structure?: OutputStructure
+        messages?: number
+        outputs?: { file: string; size: number }[]
       })
     : {}
   const structure = options.outputStructure ?? stamp.structure ?? 'message-modules'
-  const fingerprint = createHash('sha256')
-    .update(JSON.stringify({ GENERATOR_VERSION, structure, byLocale }))
-    .update(JSON.stringify(sources.map((source) => [source.namespace, source.packageRoot])))
-    .digest('hex')
-  const facadesPresent = sources.every(
-    (source) =>
-      !keepsLocalFacade(source.packageRoot, productRoot) ||
-      fs.existsSync(path.join(source.packageRoot, '.qualy', 'messages.js')),
-  )
-  if (!options.force && stamp.fingerprint === fingerprint && facadesPresent) {
-    return { outDir, sources, messages: compiled.length, compiled: false }
+  const hash = createHash('sha256').update(structure)
+  // Raw inputs first: the unchanged path never parses ICU or builds the merged project.
+  for (const source of sources) {
+    hash.update(JSON.stringify([source.namespace, source.packageRoot]))
+    for (const locale of supportedLocales) {
+      const file = path.join(source.packageRoot, 'messages', `${locale}.json`)
+      if (!fs.existsSync(file)) readMessages(sources) // report the owner and missing language
+      hash.update(fs.readFileSync(file))
+    }
   }
+  for (const file of [...walkFiles(path.dirname(fileURLToPath(import.meta.url)))].sort())
+    hash.update(fs.readFileSync(file))
+  for (const name of [
+    '@inlang/paraglide-js',
+    '@inlang/plugin-icu1',
+    '@inlang/sdk',
+    '@messageformat/parser',
+  ]) {
+    let directory = path.dirname(createRequire(import.meta.url).resolve(name))
+    while (!fs.existsSync(path.join(directory, 'package.json'))) directory = path.dirname(directory)
+    hash.update(fs.readFileSync(path.join(directory, 'package.json')))
+  }
+  hash.update(JSON.stringify(supportedLocales))
+  const fingerprint = hash.digest('hex')
+  const outputsPresent =
+    stamp.outputs !== undefined &&
+    stamp.outputs.length > 0 &&
+    stamp.outputs.every(({ file, size }) => {
+      try {
+        return fs.statSync(file).size === size
+      } catch {
+        return false
+      }
+    })
+  if (
+    !options.force &&
+    stamp.fingerprint === fingerprint &&
+    outputsPresent &&
+    stamp.messages !== undefined
+  ) {
+    return { outDir, sources, messages: stamp.messages, compiled: false }
+  }
+  const { byLocale, compiled } = readMessages(sources)
 
   // the project the compiler reads: merged, never edited, never written back,
   // and this process's own, so a compile beside it cannot pull it away
@@ -474,7 +533,7 @@ export async function compileMessages(options: CompileOptions): Promise<CompileR
           emitGitIgnore: false,
           emitPrettierIgnore: false,
           emitReadme: false,
-          includeEslintDisableComment: true,
+          includeEslintDisableComment: false,
         },
       })
       delete output['server.js']
@@ -501,7 +560,7 @@ export async function compileMessages(options: CompileOptions): Promise<CompileR
       return output
     }
     const output = await compileAs(structure)
-    const serverOutput = await compileAs('locale-modules')
+    const serverOutput = structure === 'locale-modules' ? output : await compileAs('locale-modules')
     const written = new Set<string>()
     const compiledDir = path.join(outDir, 'paraglide')
     for (const [file, text] of Object.entries(output))
@@ -540,7 +599,12 @@ export async function compileMessages(options: CompileOptions): Promise<CompileR
     }
     // a facade for a package no longer compiled goes with it
     for (const stale of walkFiles(path.join(outDir, 'facades'))) drop(stale, written)
-    put(stampFile, `${JSON.stringify({ fingerprint, structure }, null, 2)}\n`, written)
+    const outputs = [...written].sort().map((file) => ({ file, size: fs.statSync(file).size }))
+    put(
+      stampFile,
+      `${JSON.stringify({ fingerprint, structure, messages: compiled.length, outputs }, null, 2)}\n`,
+      written,
+    )
   } finally {
     await project.close()
     fs.rmSync(projectDir, { recursive: true, force: true })

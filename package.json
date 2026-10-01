@@ -44,7 +44,6 @@
     "@effect/platform-node": "catalog:",
     "@effect/tsgo": "catalog:",
     "@effect/vitest": "catalog:",
-    "@lingui/message-utils": "catalog:",
     "@qualy/api-kit": "workspace:*",
     "@qualy/app-contract": "workspace:*",
     "@qualy/assembly": "workspace:*",

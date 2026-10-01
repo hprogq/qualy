@@ -21033,3 +21033,24 @@ job 后通过。阶段 3、4 在 worktree 上完成,拆成三个功能提交与�
 - 验收复用上一节实际 Vite generateBundle 图采集与 Brotli q11 计算输出;`oxfmt --check` 的项目文件检查通过,
   `git diff --check` 通过。**这里只提出阈值,尚未启用新的构建门禁**。
 - 下一步:用户审阅预算口径后再接入 qualyChunkGraph。语言修复提交 3323540e8,本轮仍仅本地提交。
+
+
+## 消息编译与 IDE 工程收敛(2026-10-01 晚)
+
+- release 消息按 active selection 编译;仓库 typecheck、Node 与 browser 检查显式 all,disabled 的源消息仍受检查。
+  unchanged 在 ICU 解析前按 raw JSON、编译器源码与实际工具链 identity 判断,并验证全部输出存在与大小;
+  丢失输出会重建。dev locale-modules 只编译一次,server 复用,watcher 75ms 合并 change/add/unlink。
+- JSON 必须是 string catalog,number/date/select 冲突拒绝而非按优先级升级。namespace 算法集中到同一个零依赖子路径。
+  不开 Paraglide experimental flags,保留已验证的 ICU 兼容规范化。
+- 16 个拥有 messages 的包各有 project.inlang/settings.json,版本与相对路径由 gate 校验;plugin:add 初始化配置。
+  生产编译仍用临时 merged project。删除 Lingui 残余依赖,保留 migration golden 数据。
+- 验收命令与真实输出摘录(在本轮完整工作目录上执行):
+  - `pnpm test packages/core/text/tests/text.test.ts packages/build/web/tests/chunk-graph.test.ts packages/build/messages/tests/compiler.test.ts packages/web/i18n/tests/i18n.test.ts packages/web/runtime/tests/mutation-failure.test.ts packages/web/runtime/tests/mutation-types.test.ts packages/web/runtime/tests/session-recovery.test.ts packages/web/runtime/tests/release.test.ts packages/web/runtime/tests/transport.test.ts packages/plugins/base/auth/tests/effect-login-methods.test.ts packages/plugins/base/auth/tests/recovery.test.ts packages/plugins/assessment/core/tests/scoring-incompatible-words.test.ts tools/tests/messages-ide.test.ts tools/tests/workspace-deps.test.ts tools/tests/open-world.test.ts tools/tests/messages-golden.test.ts tools/tests/dist-only-plugin.test.ts tools/tests/error-codes.test.ts tools/tests/dev-server-files.test.ts tools/tests/plugin-isolation.test.ts tools/tests/product-dependencies.test.ts`
+    → `Test Files 21 passed (21); Tests 161 passed (161)`;compiler 11 条通过,golden 11014 次差分通过。
+  - `pnpm typecheck` → exit 0,最后 `typecheck client component references`;Effect suggestion 不影响通过。
+  - `pnpm lint` → exit 0;`pnpm lint:types` → `messages: 4299 compiled from 16 packages (1.3s)`,exit 0。
+  - `./node_modules/.bin/oxfmt --check . '!.codex/**' '!AGENTS.md' '!project.inlang/**'`
+    → `All matched files use the correct format`,2127 文件,exit 0;排除用户本地配置与改名文件,未替用户格式化。
+- 首次组合 Node 验收因 dev-server-files 测试运行 Vite 消息插件,与其他 worker 的编译格式冲突而缺文件;
+  改为只载入真实配置并关闭该权限测试不需要的插件后,整组复跑通过。后续编译/构建/测试串行执行。
+- 下一步:本地审阅错误边界与性能提交;IDE 可 Reload Window 重新发现各包工程。本轮不推送、不部署。

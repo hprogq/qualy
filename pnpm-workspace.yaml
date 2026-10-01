@@ -89,8 +89,6 @@ catalog:
   # not the repository's formatter (that is oxfmt): the formula editor's
   # language server in sandbox-authoring formats documents with it at runtime
   prettier: 3.9.6
-  '@lingui/core': 6.6.0
-  '@lingui/message-utils': 6.6.0
   # the message compiler (docs/adr/0011-i18n-paraglide.md): build-time only,
   # pinned exactly and upgraded on their own, since the ICU plugin is young
   # and a range would move the compiler of every sentence silently

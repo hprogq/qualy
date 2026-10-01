@@ -30,9 +30,6 @@ catalogs:
     '@jitl/quickjs-wasmfile-release-sync':
       specifier: 0.32.0
       version: 0.32.0
-    '@lingui/message-utils':
-      specifier: 6.6.0
-      version: 6.6.0
     '@mantine/core':
       specifier: 9.6.1
       version: 9.6.1
@@ -318,9 +315,6 @@ importers:
       '@effect/vitest':
         specifier: 'catalog:'
         version: 4.0.0-rc.118(effect@4.0.0-rc.118)(vitest@5.0.1)
-      '@lingui/message-utils':
-        specifier: 'catalog:'
-        version: 6.6.0
       '@qualy/api-kit':
         specifier: workspace:*
         version: link:packages/core/api-kit
@@ -3353,10 +3347,6 @@ packages:
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
 
-  '@lingui/message-utils@6.6.0':
-    resolution: {integrity: sha512-XkEcuMjIUjq7KZfTe83jP6UWQvKskpae/Ve7E8M8HEJ3TujHIPLzKn/quEmot6pKRtGwYxQzktGRfs2sPcZaqg==}
-    engines: {node: '>=22.19.0'}
-
   '@lix-js/sdk-darwin-arm64@0.17.0':
     resolution: {integrity: sha512-+r74U7uBNfzgHEkxJAo4VkwQugqfk3MYZ5GHUIZnWZyyU1+oecXTmeepiaMnmHuflMPVv6ZfE4Yl8eM0Wyn+lw==}
     cpu: [arm64]
@@ -3400,9 +3390,6 @@ packages:
     resolution: {integrity: sha512-pfxM95WozngB0ZALw6h99QV1TQ0qniOkFhzi0+dmSnKpxkVSR0xeNsvPpGDj9Teu+M69fRoE4IkzyMnu5Xld3w==}
     peerDependencies:
       react: ^19.2.0
-
-  '@messageformat/date-skeleton@1.1.0':
-    resolution: {integrity: sha512-rmGAfB1tIPER+gh3p/RgA+PVeRE/gxuQ2w4snFWPF5xtb5mbWR7Cbw7wCOftcUypbD6HVoxrVdyyghPm3WzP5A==}
 
   '@messageformat/parser@5.1.1':
     resolution: {integrity: sha512-3p0YRGCcTUCYvBKLIxtDDyrJ0YijGIwrTRu1DT8gIviIDZru8H23+FkY6MJBzM1n9n20CiM4VeDYuBsrrwnLjg==}
@@ -4919,9 +4906,6 @@ packages:
 
   jose@6.2.12:
     resolution: {integrity: sha512-9NiFmJEex0sy2Dk58j2UGBSHgUs2ypF9eZSu4L6vjOX3Dp96Sw1F3uL+H+D1sx02jZZdzUT0HgvCy59CuvXcWw==}
-
-  js-sha256@0.10.1:
-    resolution: {integrity: sha512-5obBtsz9301ULlsgggLg542s/jqtddfOpV5KJc4hajc9JV8GeY2gZHSVpYBn4nWqAUTJ9v+xwtbJ1mIBgIH5Vw==}
 
   js-tokens@10.0.0:
     resolution: {integrity: sha512-lM/UBzQmfJRo9ABXbPWemivdCW8V2G8FHaHdypQaIy523snUjog0W71ayWXTjiR+ixeMyVHN2XcpnTd/liPg/Q==}
@@ -6494,12 +6478,6 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
 
-  '@lingui/message-utils@6.6.0':
-    dependencies:
-      '@messageformat/date-skeleton': 1.1.0
-      '@messageformat/parser': 5.1.1
-      js-sha256: 0.10.1
-
   '@lix-js/sdk-darwin-arm64@0.17.0':
     optional: true
 
@@ -6548,8 +6526,6 @@ snapshots:
   '@mantine/hooks@9.6.1(react@19.2.8)':
     dependencies:
       react: 19.2.8
-
-  '@messageformat/date-skeleton@1.1.0': {}
 
   '@messageformat/parser@5.1.1':
     dependencies:
@@ -7792,8 +7768,6 @@ snapshots:
   jiti@2.7.0: {}
 
   jose@6.2.12: {}
-
-  js-sha256@0.10.1: {}
 
   js-tokens@10.0.0: {}
 

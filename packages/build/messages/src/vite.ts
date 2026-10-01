@@ -1,6 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import type { Plugin, ViteDevServer } from 'vite'
+import { type Plugin, type ViteDevServer } from 'vite'
 import { productRootFor } from '@qualy/assembly'
 import { manifestPath as defaultManifestPath } from './manifest.ts'
 import {
@@ -29,6 +29,8 @@ export interface QualyMessagesOptions {
   readonly manifestPath?: string
   /** packages outside the product whose messages a run also needs (a test fixture), by directory */
   readonly extraPackages?: readonly string[]
+  /** Node/browser repository suites check installed source packages too. */
+  readonly all?: boolean
 }
 
 export const qualyMessages = (options: QualyMessagesOptions = {}): Plugin => {
@@ -61,7 +63,7 @@ export const qualyMessages = (options: QualyMessagesOptions = {}): Plugin => {
     enforce: 'pre',
     async config(_config, env) {
       sources = [
-        ...(await messageSources(manifest)),
+        ...(await messageSources(manifest, options.all)),
         ...(options.extraPackages ?? []).map(messageSourceAt),
       ].map((source) => ({ ...source, real: realOf(source.packageRoot) }))
       await compile(env.command === 'build' ? 'message-modules' : 'locale-modules')
@@ -77,20 +79,49 @@ export const qualyMessages = (options: QualyMessagesOptions = {}): Plugin => {
     configureServer(server: ViteDevServer) {
       const watched = sources.map((source) => path.join(source.packageRoot, 'messages'))
       server.watcher.add(watched)
-      let running: Promise<unknown> = Promise.resolve()
+      let dirty = false
+      let running = false
+      let closed = false
+      let timer: ReturnType<typeof setTimeout> | undefined
+      const flush = async () => {
+        timer = undefined
+        if (closed || running || !dirty) return
+        dirty = false
+        running = true
+        try {
+          await compile('locale-modules')
+        } catch (error) {
+          server.config.logger.error(`[messages] ${(error as Error).message}`)
+          server.ws.send({ type: 'error', err: { message: (error as Error).message, stack: '' } })
+        } finally {
+          running = false
+          if (dirty && !closed)
+            timer = setTimeout(() => {
+              void flush()
+            }, 75)
+        }
+      }
       const recompile = (file: string) => {
-        if (!file.endsWith('.json') || !watched.some((directory) => file.startsWith(directory)))
+        if (
+          !file.endsWith('.json') ||
+          !watched.some((directory) => file.startsWith(`${directory}${path.sep}`))
+        )
           return
-        running = running
-          .then(() => compile('locale-modules'))
-          .catch((error: unknown) => {
-            // a message that does not compile is said where the author looks,
-            // and the page keeps the last messages that did
-            server.config.logger.error(`[messages] ${(error as Error).message}`)
-          })
+        dirty = true
+        if (running) return
+        if (timer !== undefined) clearTimeout(timer)
+        timer = setTimeout(() => {
+          void flush()
+        }, 75)
       }
       server.watcher.on('change', recompile)
       server.watcher.on('add', recompile)
+      server.watcher.on('unlink', recompile)
+      server.httpServer?.once('close', () => {
+        closed = true
+        if (timer !== undefined) clearTimeout(timer)
+        for (const event of ['change', 'add', 'unlink']) server.watcher.off(event, recompile)
+      })
     },
   }
 }

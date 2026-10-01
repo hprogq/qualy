@@ -15,6 +15,7 @@ const started = performance.now()
 const result = await compileMessages({
   ...(structure === undefined ? {} : { outputStructure: structure }),
   force: process.argv.includes('--force'),
+  all: !process.argv.includes('--build'),
 })
 const seconds = ((performance.now() - started) / 1000).toFixed(1)
 console.log(

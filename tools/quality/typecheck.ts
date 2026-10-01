@@ -106,7 +106,7 @@ const LANES = Math.max(2, Math.min(8, Math.floor((os.availableParallelism?.() ??
 
 // every package's #messages facade is generated from its messages/*.json,
 // and a program cannot be checked against facades that are not there
-const messages = await compileMessages({})
+const messages = await compileMessages({ all: true })
 if (messages.compiled) console.log(`typecheck: ${messages.messages} messages compiled`)
 
 const failed: string[] = []

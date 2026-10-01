@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import type { SupportedLocale } from '@qualy/i18n-contract'
+import { type SupportedLocale } from '@qualy/i18n-contract'
 import { installMessageTable, type MessageRef, type MessageTable } from './index.ts'
 
 // The half of the server's texts that needs Node: naming a package's messages
@@ -12,13 +12,8 @@ type InputsOf<Said> = Said extends (inputs: infer Inputs, ...rest: never[]) => s
   ? Exclude<Inputs, undefined>
   : never
 
-/** the namespace the message compiler merged a package's keys under, from its name */
-export const namespaceOf = (packageName: string): string =>
-  packageName
-    .replace(/^@/, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
+import { namespaceOf } from '@qualy/i18n-contract/namespace'
+export { namespaceOf } from '@qualy/i18n-contract/namespace'
 
 const namespaceOfModule = (moduleUrl: string): string => {
   for (let dir = path.dirname(fileURLToPath(moduleUrl)); ; dir = path.dirname(dir)) {

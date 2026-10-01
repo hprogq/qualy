@@ -126,3 +126,7 @@ qualy.supervisor-test.lock.json
 qualy.benchmark.yml
 qualy.benchmark.lock.json
 .qualy/e2e/
+
+# Sherlock local project state; settings.json remains authored and committed.
+**/project.inlang/*.sqlite*
+**/project.inlang/cache/
