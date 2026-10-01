@@ -1,0 +1,5 @@
+# Shared Mantine documentation tools; project trust is required by Codex.
+# The server package is pinned; its upstream documentation data can still update.
+[mcp_servers.mantine]
+command = "npx"
+args = ["-y", "@mantine/mcp-server@9.6.1"]

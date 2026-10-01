@@ -24,6 +24,9 @@ coverage
 data
 db/data
 .claude
+.codex
+AGENTS.md
+CLAUDE.md
 .agents
 .mcp.json
 .vscode

@@ -1,4 +1,4 @@
-# CLAUDE.md
+# AGENTS.md
 
 毕设项目「Qualy · 插件化综合素质测评系统」。后端与前端 API 已整体迁到 **Effect 作为唯一运行时**(cordis 与 oRPC 完全离场,裁决见 docs/adr/0001-0003;迁移主计划与进度见 docs/effect-migration.md)。工作直接在 main。
 

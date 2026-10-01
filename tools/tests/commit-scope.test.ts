@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest'
 // belongs and becomes a summary of the file list. A change across modules
 // that is one capability takes its main module; one that belongs nowhere
 // takes no scope; several unrelated changes are several commits. See the
-// commit rules in CLAUDE.md.
+// commit rules in AGENTS.md.
 //
 // Checked from `SINCE` onward: the listed scopes after it were rewritten to
 // one when the rule came in; the history before it is left as it was.

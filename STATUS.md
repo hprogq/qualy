@@ -21345,3 +21345,18 @@ metadataUnchanged:true; reactDomClientKnown:true; HttpStatus-1qu7jGzr.js status:
   - 9文件`oxfmt --check`、`git diff --check`全部exit0。
 - 七项原失败全部修复并有持续WebKit门禁。下一步回到真实后端/RUM性能验证，不继续扩造样式机制。
   不推送、不部署；用户AGENTS改名与未跟踪配置保留。
+
+## 2026-10-02：发布准备与共享代理配置
+
+- 用户已授权推送、构建、部署，并明确要求提交CLAUDE.md→AGENTS.md改名。
+  改名前内容SHA-256相同，仅把标题对齐为AGENTS.md，提交规则注释同步。
+- .codex/config.toml作为共享Mantine文档MCP配置提交：没有secret或机器路径，
+  官方包固定9.6.1；`pnpm view @mantine/mcp-server@9.6.1 version --json`→`"9.6.1"`,exit0。
+  Codex项目trust控制加载；server版本固定不代表上游在线文档数据固定。
+  .codex与代理指引排除Docker context，不属于生产镜像运行依赖。
+- 根project.inlang仅en、modules为空，无消息源，删除不提交；各消息包的IDE项目保持。
+- `git fetch origin main --tags`完成；远端与本地比较0落后/13领先，最新release为rc.22。
+  GitHub身份与发布工作流已核对。按main CI→release-eligible→v0.1.0-rc.23→release→
+  production部署执行，不跳过CI、不本机另建正式发布镜像、不默认停机迁移。
+- 验收：指引diff仅标题；`commit-scope.test.ts`→`1 passed; 2 passed`,exit0；
+  `oxfmt`完成、`git diff --check`无输出，exit0。
