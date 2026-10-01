@@ -3,7 +3,6 @@ import { ToggleGroup, ToggleGroupItem } from '@qualy/ui/toggle-group'
 import { MonitorIcon, MoonIcon, SunIcon } from 'lucide-react'
 import { useTheme, type ThemeChoice } from '@qualy/web-runtime'
 import { localeNames, useLocale } from '@qualy/web-i18n'
-import { useChooseLocale } from './locale-choice.ts'
 import { supportedLocales, type SupportedLocale } from '@qualy/i18n-contract'
 import * as m from '#messages'
 
@@ -42,12 +41,11 @@ export function ThemeChoicePicker() {
  * product runs out of translators. Each option names itself in its own
  * language, which is the one label its reader is sure to know.
  */
-export function LocaleChoicePicker() {
+export function LocaleChoicePicker({ onChoose }: { onChoose: (locale: SupportedLocale) => void }) {
   const locale = useLocale()
-  const setLocale = useChooseLocale()
 
   return (
-    <Select value={locale} onValueChange={(next) => setLocale(next as SupportedLocale)}>
+    <Select value={locale} onValueChange={(next) => onChoose(next as SupportedLocale)}>
       <SelectTrigger size="sm" aria-label={m.preference_language()}>
         <SelectValue />
       </SelectTrigger>

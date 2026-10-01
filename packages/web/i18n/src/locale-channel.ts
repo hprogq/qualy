@@ -5,6 +5,9 @@ import { supportedLocales, type SupportedLocale } from '@qualy/i18n-contract'
 // localization runtime has loaded.
 
 const LOCALE_CHANNEL = 'qualy.locale'
+// Separate channel instances in the same document also hear one another.
+// Identify the document so its reload never flashes the other-page notice.
+const source = globalThis.crypto?.randomUUID?.() ?? `${String(Date.now())}-${String(Math.random())}`
 
 /**
  * After a new language was chosen and kept: the other pages open in this
@@ -16,7 +19,7 @@ const LOCALE_CHANNEL = 'qualy.locale'
 export function reopenInLocale(locale: SupportedLocale): void {
   if (typeof BroadcastChannel !== 'undefined') {
     const channel = new BroadcastChannel(LOCALE_CHANNEL)
-    channel.postMessage({ locale })
+    channel.postMessage({ locale, source })
     channel.close()
   }
   window.location.reload()
@@ -27,7 +30,9 @@ export function onLocaleChosenElsewhere(listener: (locale: SupportedLocale) => v
   if (typeof BroadcastChannel === 'undefined') return () => {}
   const channel = new BroadcastChannel(LOCALE_CHANNEL)
   channel.addEventListener('message', (event: MessageEvent<unknown>) => {
-    const locale = (event.data as { locale?: unknown } | null)?.locale
+    const choice = event.data as { locale?: unknown; source?: unknown } | null
+    if (choice?.source === source) return
+    const locale = choice?.locale
     if (typeof locale === 'string' && (supportedLocales as readonly string[]).includes(locale))
       listener(locale as SupportedLocale)
   })

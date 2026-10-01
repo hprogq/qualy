@@ -6,7 +6,7 @@ import { useTheme, type ThemeChoice } from '@qualy/web-runtime'
 import { Mark } from '@qualy/brand/mark'
 import { Wordmark } from '@qualy/brand/wordmark'
 import { localeNames, useLocale } from '@qualy/web-i18n'
-import { useChooseLocale } from '../locale-choice.ts'
+import { useChooseLocale } from '../locale-choice.tsx'
 import { supportedLocales } from '@qualy/i18n-contract'
 import {
   DropdownMenu,
@@ -149,28 +149,33 @@ const styles = stylex.create({
 /** the language, chosen from the corner, each named in its own language */
 function LanguageMenu() {
   const locale = useLocale()
-  const setLocale = useChooseLocale()
+  const { choose: setLocale, confirmation } = useChooseLocale()
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button type="button" {...stylex.props(styles.language)}>
-          <GlobeIcon size={15} strokeWidth={1.8} aria-hidden />
-          {/* named by what it is and then by the language it shows */}
-          <VisuallyHidden>{m.preference_language()}</VisuallyHidden>
-          {localeNames[locale]}
-          <ChevronDownIcon size={13} aria-hidden />
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        {supportedLocales.map((candidate) => (
-          <DropdownMenuItem key={candidate} onSelect={() => setLocale(candidate)}>
-            {localeNames[candidate]}
-            {candidate === locale && <CheckIcon aria-hidden {...stylex.props(styles.itemCheck)} />}
-          </DropdownMenuItem>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button type="button" {...stylex.props(styles.language)}>
+            <GlobeIcon size={15} strokeWidth={1.8} aria-hidden />
+            {/* named by what it is and then by the language it shows */}
+            <VisuallyHidden>{m.preference_language()}</VisuallyHidden>
+            {localeNames[locale]}
+            <ChevronDownIcon size={13} aria-hidden />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          {supportedLocales.map((candidate) => (
+            <DropdownMenuItem key={candidate} onSelect={() => setLocale(candidate)}>
+              {localeNames[candidate]}
+              {candidate === locale && (
+                <CheckIcon aria-hidden {...stylex.props(styles.itemCheck)} />
+              )}
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+      {confirmation}
+    </>
   )
 }
 

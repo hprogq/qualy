@@ -130,3 +130,26 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
     })
   })
 }
+
+it('offers a reload for another tab language without changing this document or its copy', async () => {
+  document.documentElement.dataset['locale'] = 'zh-CN'
+  const { coordinator, reload } = setUp(probeFor('A'))
+  await render(
+    <ReleaseRecoveryGate coordinator={coordinator} copy={bootstrapMessages}>
+      <main>the page</main>
+    </ReleaseRecoveryGate>,
+  )
+  const other = new BroadcastChannel('qualy.locale')
+  try {
+    other.postMessage({ locale: 'en-US', source: 'tab-a' })
+    await expect.element(page.getByRole('status')).toHaveAttribute('data-locale-changed', 'en-US')
+    expect(document.documentElement.dataset['locale']).toBe('zh-CN')
+    await expect.element(page.getByText(bootstrapMessages['zh-CN'].localeChangedHint)).toBeVisible()
+    await page.getByRole('button', { name: bootstrapMessages['zh-CN'].later }).click()
+    await expect.element(page.getByRole('status')).not.toBeInTheDocument()
+    await expect.element(page.getByRole('main')).toBeVisible()
+    expect(reload).not.toHaveBeenCalled()
+  } finally {
+    other.close()
+  }
+})

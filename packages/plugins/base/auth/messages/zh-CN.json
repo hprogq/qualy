@@ -646,5 +646,8 @@
   "mail_emailChangedByAdministrator_title": "账号邮箱已更改",
   "mail_emailChangedByAdministrator_lead": "管理员已将您账号的邮箱更改为新地址，此邮箱将不再用于登录和找回密码。",
   "mail_emailChangedByAdministrator_note": "该账号在各设备上的登录已全部退出。",
-  "mail_emailChangedByAdministrator_footer": "如对此有疑问，请尽快联系管理员。"
+  "mail_emailChangedByAdministrator_footer": "如对此有疑问，请尽快联系管理员。",
+  "preference_localeConfirmTitle": "切换界面语言？",
+  "preference_localeConfirmHint": "切换语言需要重新载入页面，未保存的表单内容可能丢失。请先取消并保存内容，或确认切换。",
+  "preference_localeConfirmAction": "切换并重新载入"
 }

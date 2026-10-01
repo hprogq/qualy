@@ -646,5 +646,8 @@
   "mail_emailChangedByAdministrator_title": "Your account email was changed",
   "mail_emailChangedByAdministrator_lead": "An administrator changed the email for your account to a new address. This address is no longer used to sign in or to reset the password.",
   "mail_emailChangedByAdministrator_note": "Every device signed in to the account was signed out.",
-  "mail_emailChangedByAdministrator_footer": "If you have questions about this change, contact your administrator."
+  "mail_emailChangedByAdministrator_footer": "If you have questions about this change, contact your administrator.",
+  "preference_localeConfirmTitle": "Change the interface language?",
+  "preference_localeConfirmHint": "Changing the language reloads this page. Unsaved form changes may be lost. Cancel to save your work first, or confirm to continue.",
+  "preference_localeConfirmAction": "Change language and reload"
 }

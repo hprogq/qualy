@@ -1,3 +1,4 @@
+import { useChooseLocale } from './locale-choice.tsx'
 import { useState, type ReactNode } from 'react'
 import { PageLink, useApi, useRunApi, useSessionTransition } from '@qualy/web-runtime'
 import { isAuthenticationError, useI18n } from '@qualy/web-i18n'
@@ -217,6 +218,7 @@ export default function UserMenu() {
   const [menuOpen, setMenuOpen] = useState(false)
   // one identity, told once: surfaces that remount (the drawer, this menu
   // after a layout change) read the cached answer instead of asking again
+  const { choose, confirmation } = useChooseLocale()
   const me = useIdentity()
 
   if (me.isPending) return null
@@ -303,15 +305,15 @@ export default function UserMenu() {
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
           {/* appearance and language are personal preferences, so they live
-              with the account rather than in the page chrome. Both are held
-              by the browser: nothing about them reaches the server. */}
+              with the account rather than in the page chrome. Language is also saved
+              for the signed-in account, after confirming the page reload. */}
           <PreferenceRow label={m.preference_appearance()}>
             <ThemeChoicePicker />
           </PreferenceRow>
-          {/* the same row shape as the appearance above: chosen in place,
-              nothing opens over the menu */}
+          {/* the same row shape as the appearance above: the confirmation is held outside the menu
+              so closing it cannot dismiss the question */}
           <PreferenceRow label={m.preference_language()}>
-            <LocaleChoicePicker />
+            <LocaleChoicePicker onChoose={choose} />
           </PreferenceRow>
           <DropdownMenuSeparator />
           <DropdownMenuItem
@@ -330,6 +332,7 @@ export default function UserMenu() {
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+      {confirmation}
     </div>
   )
 }

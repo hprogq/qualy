@@ -8,6 +8,7 @@ import {
   QUALY_CLIENT_UNSUPPORTED_HEADER,
 } from '@qualy/release-contract'
 import { getApiErrorCode, isBackendUnavailable } from '@qualy/web-i18n'
+import { localeOfRequest } from '@qualy/api-kit/locale'
 import { QUALY_ACTIVITY_HEADER } from '@qualy/api-kit'
 import { clientFor } from '../src/api.ts'
 
@@ -317,4 +318,33 @@ describe('the fetch a request goes through', () => {
     expect(monitored).toEqual(['http://qualy.test/ping/hello'])
     expect(answered).toHaveLength(2)
   })
+})
+
+it('keeps an open document language on new reads and writes after another tab changes the cookie', async () => {
+  const document = {
+    documentElement: { dataset: { locale: 'zh-CN' } },
+    cookie: 'qualy.locale=zh-CN',
+  }
+  vi.stubGlobal('document', document)
+  const seen: Record<string, string>[] = []
+  try {
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const client = yield* clientFor(api, 'http://qualy.test')
+        yield* client.ping.hello()
+        // Tab A saved English. Tab B stays open in Chinese, including its next API calls.
+        document.cookie = 'qualy.locale=en-US'
+        yield* client.ping.hello()
+        yield* client.ping.send()
+      }).pipe(Effect.provideService(FetchHttpClient.Fetch, answering(seen, pong))),
+    )
+    expect(seen).toHaveLength(3)
+    for (const headers of seen) {
+      expect(headers['x-qualy-locale']).toBe('zh-CN')
+      expect(localeOfRequest({ headers, cookies: { 'qualy.locale': 'en-US' } })).toBe('zh-CN')
+    }
+    expect(document.documentElement.dataset.locale).toBe('zh-CN')
+  } finally {
+    vi.unstubAllGlobals()
+  }
 })

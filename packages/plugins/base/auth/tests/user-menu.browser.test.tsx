@@ -87,3 +87,22 @@ describe('the account menu', () => {
     expect(name.scrollWidth).toBeGreaterThan(name.clientWidth)
   })
 })
+
+it('keeps the reload confirmation outside the account menu until answered', async () => {
+  const save = vi.fn(() => Effect.succeed({ locale: 'en-US' as const }))
+  await renderScreen({
+    client: fakeClient({
+      app: { getManifest: () => Effect.succeed(emptyManifest()) },
+      auth: { getSession: () => Effect.succeed(session('示例学院')), putLocale: save },
+    }),
+    children: <UserMenu />,
+  })
+  await page.getByRole('button', { name: /张三/ }).click()
+  await page.getByRole('combobox', { name: '语言' }).click()
+  await page.getByRole('option', { name: 'English' }).click()
+  await expect.element(page.getByRole('alertdialog')).toBeVisible()
+  expect(save).not.toHaveBeenCalled()
+  await page.getByTestId('confirm-dismiss').click()
+  await expect.element(page.getByRole('alertdialog')).not.toBeInTheDocument()
+  expect(save).not.toHaveBeenCalled()
+})

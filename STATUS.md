@@ -20995,3 +20995,30 @@ job 后通过。阶段 3、4 在 worktree 上完成,拆成三个功能提交与�
   重跑后通过。
 - **下一步**:无阻塞。`qualyChunkGraph` 的结果检查若要进门禁,先定阈值口径;两次 CI 偶发(storage-local 的 route
   mock、shell 滚动)各出现一次,再现时再查。
+
+## 语言切换前确认与文档语言连续性(2026-10-01 下午)
+
+- 登录页、账户菜单和抽屉切换语言先弹出模态确认,明确整页重载与未保存内容可能丢失;确认后才保存设备/账户偏好。
+  取消不写偏好、不重载,保存失败提示错误并保留确认供重试,保存期间拒绝重复确认。原有 beforeunload 保护保留。
+- 账户菜单的确认挂在菜单外,菜单关闭后问题仍在。BroadcastChannel 消息携带文档 source,本页忽略自己的广播,
+  避免重载前闪出“刷新查看新语言”;其他标签仍只收到轻提示,由用户决定刷新。兼容旧消息与不支持 BroadcastChannel 的环境。
+- 核对 typed client 从 data-locale 送 x-qualy-locale,服务端 header 优先于 Cookie;新增 GET/POST 回归,证明 A 修改 Cookie
+  后 B 新请求与服务端 locale 判定仍为 B 的原语言。RUM 配置与附件二进制直接 fetch 不返回展示文案。
+- 实读 Effect 源:repos/effect/packages/effect/src/Effect.ts(succeed/fail/gen/provideService/runPromise)、
+  repos/effect/packages/effect/src/http-api/HttpApiClient.ts(make)。生产 Effect 逻辑未修改。
+- 验收命令与真实输出摘录:
+  - `pnpm test:browser packages/plugins/base/auth/tests/locale-choice.browser.test.tsx packages/plugins/base/auth/tests/user-menu.browser.test.tsx apps/web/tests/release-recovery.browser.test.tsx`
+    → `Test Files 3 passed (3); Tests 19 passed (19)`。三个语言入口、取消保留草稿、确认保存重载、失败重试、另一标签不改文档语言均通过。
+  - `pnpm test packages/web/runtime/tests/transport.test.ts packages/core/api-kit/tests/locale.test.ts packages/web/i18n/tests/locale-channel.test.ts packages/web/i18n/tests/i18n.test.ts packages/build/web/tests/chunk-graph.test.ts`
+    → `Test Files 5 passed (5); Tests 32 passed (32)`。
+  - `pnpm typecheck` → exit 0,最后 `typecheck client component references`(已有 suggestion 不影响通过)。
+  - `pnpm lint` → `$ oxlint`,exit 0;`pnpm lint:types` → `messages: 4297 unchanged`,exit 0。
+  - `pnpm format:check` → exit 1,仅未跟踪的用户本地 `.codex/config.toml` 格式不符;未改该配置。
+    `./node_modules/.bin/oxfmt --check . '!.codex/**'` → `All matched files use the correct format`,2115 文件,exit 0。
+  - Vite Node API `build({ root: 'apps/web', plugins: [measure-closure] })`(插件只采集 generateBundle 图到 /tmp)
+    → `9368 modules transformed; built in 11.52s`,exit 0;内置 qualyChunkGraph 环与 boot 预算检查通过。
+  - `node packages/build/web/src/stage.ts` → `installed web release r_7o6_lv_G-hxuMHBrAp3zSQ`(348 assets,本地验收 store)。
+    `node tools/quality/check-staged-web.ts` → `348 assets, production, protocol 2`;`node tools/quality/check-csp-build.ts`
+    → `no code from strings in the bundle`;`node tools/quality/check-public-web.ts` → `discloses nothing it should not`,全部 exit 0。
+- 验收中首次并行跑构建与两个测试进程,读消息编译目录时出现缺文件;改串行后构建通过。未将失败运行记成通过。
+- 下一步:审阅本地提交;本轮未推送、未部署,未跑全量业务数据库或 E2E 套件。
