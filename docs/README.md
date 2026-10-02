@@ -6,8 +6,6 @@
 
 1. [系统概览](architecture/overview.md)：Qualy 解决的问题、主要业务流程、代码边界和关键取舍。
 2. [综测领域入口](domain/README.md)：批次、填报、审核、认定、计分和公示的权威规则。
-3. [项目亮点](resume-highlights.md)：面向答辩和求职材料的技术证据索引；它不是运行规范。
-4. [项目面试模拟转写稿](qualy-interview-transcript.md)：从项目介绍进入代码展示，再沿不同面试官兴趣深入到插件、Effect、业务、安全、计分和发布。
 
 ## 本地开发与验证
 
