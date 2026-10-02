@@ -5,6 +5,7 @@ import {
   useApi,
   useApiQuery,
   useLoadFailure,
+  useHandlePlatformFailure,
 } from '@qualy/web-runtime'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { assertNever, formatPlatformFailure, getApiErrorCode } from '@qualy/web-i18n'
@@ -648,6 +649,7 @@ export function ImportWizard({
   }
 
   const run = useRunApi()
+  const handlePlatformFailure = useHandlePlatformFailure()
   const uploading = useMutation({
     mutationFn: async (file: File) => {
       const ticket = await run(
@@ -695,7 +697,7 @@ export function ImportWizard({
           toast.error(m.error_sourceUnavailable())
           return
         default:
-          toast.error(formatPlatformFailure(error))
+          if (!handlePlatformFailure(error)) toast.error(formatPlatformFailure(error))
       }
     },
   })

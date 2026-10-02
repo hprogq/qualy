@@ -1,0 +1,3 @@
+# Rollout metadata for an already-committed migration that cannot be edited.
+# <filename> <expand|maintenance>; new migrations put the marker in their SQL.
+20260928014855_attachment-storage-version.sql expand

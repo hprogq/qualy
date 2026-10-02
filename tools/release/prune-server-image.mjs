@@ -53,9 +53,11 @@ const remove = (target) => fs.rmSync(target, { recursive: true, force: true })
 for (const entry of fs.readdirSync(root)) {
   if (!TOP_KEEP.has(entry)) remove(path.join(root, entry))
 }
-// the lineage, and only the lineage, under db/
+// The lineage and the external rollout metadata for the one historical
+// migration that cannot be edited in place.
+const DB_KEEP = new Set(['migrations', 'migration-rollout-overrides.txt'])
 for (const entry of fs.readdirSync(path.join(root, 'db'))) {
-  if (entry !== 'migrations') remove(path.join(root, 'db', entry))
+  if (!DB_KEEP.has(entry)) remove(path.join(root, 'db', entry))
 }
 
 // Workspace packages outside the closure. A directory with a package.json is

@@ -783,7 +783,7 @@ describe('a computer others use', () => {
       expect(said()).toBe(`${COOKIE}=shared`)
       await box.click()
       await expect.element(box).not.toBeChecked()
-      expect(said()).toBeUndefined()
+      expect(said()).toBe(`${COOKIE}=personal`)
     } finally {
       forget()
     }

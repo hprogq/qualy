@@ -65,8 +65,9 @@ expectOut('runs as the unprivileged node user', 'id -u', '1000')
 // the two sides cannot differ in how they read, sort or hash. A lineage with
 // the right names and different SQL is a different release; deploy/ is what
 // the deployment host runs as root to move onto it. A deployment's own env
-// files are left out of the walk here (a developer's deploy/.env is not
-// part of the checkout) and refused inside the image below.
+// files and Finder metadata are left out of the walk here (a developer's
+// deploy/.env and .DS_Store are not Docker build inputs) and env files are
+// refused inside the image below.
 const RELEASE_DIGEST = `
 const fs = require('node:fs')
 const path = require('node:path')
@@ -83,13 +84,16 @@ const walk = (dir) => {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, entry.name)
     if (entry.isDirectory()) walk(full)
-    else if (!entry.name.endsWith('.env')) deploy[path.relative(root, full)] = sha(full)
+    else if (!entry.name.endsWith('.env') && entry.name !== '.DS_Store') {
+      deploy[path.relative(root, full)] = sha(full)
+    }
   }
 }
 walk(path.join(root, 'deploy'))
 process.stdout.write(JSON.stringify({
   'qualy.yml': sha(path.join(root, 'qualy.yml')),
   'qualy.lock.json': sha(path.join(root, 'qualy.lock.json')),
+  'migration-rollout-overrides.txt': sha(path.join(root, 'db/migration-rollout-overrides.txt')),
   migrations,
   deploy: Object.fromEntries(Object.entries(deploy).sort()),
 }))
@@ -97,6 +101,7 @@ process.stdout.write(JSON.stringify({
 interface ReleaseDigest {
   readonly 'qualy.yml': string
   readonly 'qualy.lock.json': string
+  readonly 'migration-rollout-overrides.txt': string
   readonly migrations: Readonly<Record<string, string>>
   readonly deploy: Readonly<Record<string, string>>
 }
@@ -118,7 +123,11 @@ interface ReleaseDigest {
     )
   }
   if (shipped !== undefined) {
-    for (const file of ['qualy.yml', 'qualy.lock.json'] as const) {
+    for (const file of [
+      'qualy.yml',
+      'qualy.lock.json',
+      'migration-rollout-overrides.txt',
+    ] as const) {
       if (shipped[file] === local[file])
         ok(`${file} is this checkout's (sha256 ${local[file].slice(0, 12)})`)
       else fail(`${file} in the image differs from the checkout`)

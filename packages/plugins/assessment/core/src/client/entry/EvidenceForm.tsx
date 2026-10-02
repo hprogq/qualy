@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { DownloadIcon, FileTextIcon, UploadIcon, XIcon } from 'lucide-react'
-import { useApiQuery } from '@qualy/web-runtime'
+import { useApiQuery, useHandlePlatformFailure } from '@qualy/web-runtime'
 import { entryRefusalMessage } from './refusals.ts'
 import { parseDecimal } from '@qualy/value-schema'
 import { VisuallyHidden } from '@qualy/ui/visually-hidden'
@@ -224,6 +224,7 @@ export function EvidenceForm({
    */
   advice?: Readonly<Record<string, string>>
 }) {
+  const handlePlatformFailure = useHandlePlatformFailure()
   const locale = useLocale()
   const words = usePickerWords()
   const [uploaded, setUploaded] = useState<Record<string, UploadedFile>>({})
@@ -562,8 +563,14 @@ export function EvidenceForm({
             // for this field, a type it does not take, a quota reached. The
             // bare catch threw all ten of them away and said "try again",
             // which is advice that cannot work.
-            const refusal = entryRefusalMessage(error)
-            setUploadError(refusal === null ? formatError(error) : refusal())
+            if (
+              !handlePlatformFailure(error, {
+                notify: (message) => setUploadError(message),
+              })
+            ) {
+              const refusal = entryRefusalMessage(error)
+              setUploadError(refusal === null ? formatError(error) : refusal())
+            }
           } finally {
             setUploading(null)
             if (landed.length > 0) {

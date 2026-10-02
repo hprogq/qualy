@@ -2,7 +2,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   assertNever,
   isUseCaseApiFailure,
-  formatPlatformFailure,
   formatPlatformFailure as formatError,
   useLocale,
 } from '@qualy/web-i18n'
@@ -16,6 +15,7 @@ import {
   useApiQuery,
   useClaimScreenFill,
   useLoadFailure,
+  useHandlePlatformFailure,
   usePageHref,
   usePageNavigate,
   usePageQueryState,
@@ -752,6 +752,7 @@ export default function FormulaEditorPage() {
   const { functionId } = usePageRouteParams('functionId')
   const api = useApi(formulaApi)
   const run = useRunApi()
+  const handlePlatformFailure = useHandlePlatformFailure()
   const query = useApiQuery(formulaApi)
   const queryClient = useQueryClient()
   const locale = useLocale()
@@ -1649,9 +1650,27 @@ export default function FormulaEditorPage() {
         setPublishOpen(false)
         return
       }
+      let platformMessage: string | null = null
+      if (
+        handlePlatformFailure(error, {
+          notify: (message) => {
+            platformMessage = message
+          },
+        })
+      ) {
+        if (platformMessage !== null) {
+          setPublishOpen(false)
+          setFailure(platformMessage)
+        }
+        // Saving the dirty draft is the first request in this workflow and
+        // may already have succeeded. Re-read it even when publication met a
+        // platform failure, or the cache keeps calling the saved bytes dirty.
+        await refresh()
+        return
+      }
       const domain = isUseCaseApiFailure(error) ? error : undefined
       let failure: string
-      if (domain === undefined) failure = formatPlatformFailure(error)
+      if (domain === undefined) return
       else
         switch (domain._tag) {
           case 'ASSESSMENT_FORMULA_AUTHORING_BUSY':

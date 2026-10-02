@@ -258,6 +258,21 @@ describe('one deployment step at a time', () => {
   })
 })
 
+describe('an append-only offsite backup command', () => {
+  it('refuses the documented COS client when overwrite protection is absent', () => {
+    const unsafe = run(
+      'assert_immutable_offsite \'coscli -c /etc/qualy/coscli.yaml cp -r "$1" cos://backup/qualy/\'',
+    )
+    expect(unsafe.status).toBe(1)
+    expect(unsafe.stderr).toContain('without --forbid-overwrite true')
+
+    const safe = run(
+      'assert_immutable_offsite \'coscli -c /etc/qualy/coscli.yaml cp -r --forbid-overwrite true "$1" cos://backup/qualy/\'',
+    )
+    expect(safe.status, safe.stderr).toBe(0)
+  })
+})
+
 describe("a pending migration's rollout", () => {
   it('holds back every migration that does not say expand, the silent ones included', () => {
     const migrations = path.join(fake, 'images', 'r2', 'db', 'migrations')
@@ -272,6 +287,11 @@ describe("a pending migration's rollout", () => {
     )
     fs.writeFileSync(path.join(migrations, '3_silent.sql'), 'create table c (id int);\n')
     fs.writeFileSync(path.join(migrations, '4_mention.sql'), 'select 1; -- rollout: expand\n')
+    fs.writeFileSync(path.join(migrations, '5_legacy.sql'), 'alter table a add column c int;\n')
+    fs.writeFileSync(
+      path.join(migrations, '..', 'migration-rollout-overrides.txt'),
+      '5_legacy.sql expand\n',
+    )
     const ran = run('not_expand_in r2')
     expect(ran.status, ran.stderr).toBe(0)
     expect(ran.stdout.trim().split('\n').sort()).toEqual([

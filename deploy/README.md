@@ -202,11 +202,18 @@ the local storage backend keeps in the `storage` volume - into a directory of
 its own under the root you give it, checks what it wrote, keeps the newest 14
 (`QUALY_BACKUP_KEEP`), and copies the new one off this machine when
 `QUALY_BACKUP_OFFSITE` says how (a command run with the directory as `$1`).
+The destination is append-only: the command must refuse an existing object,
+and the remote writer's policy must require that refusal independently of the
+host. For COS use a dedicated unversioned backup bucket, `coscli cp -r
+--forbid-overwrite true`, and a CAM condition requiring
+`cos:x-cos-forbid-overwrite = true`; a versioned bucket only preserves an old
+version while a compromised writer can still put a forged version in front of
+it.
 Run it daily:
 
 ```sh
 # crontab of the deployment's operator
-17 3 * * * QUALY_BACKUP_OFFSITE='rclone copy "$1" remote:qualy-backups/"$(basename "$1")"' /opt/qualy/deploy/backup.sh /var/backups/qualy >> /var/log/qualy-backup.log 2>&1
+17 3 * * * QUALY_BACKUP_OFFSITE='rclone copy --immutable "$1" remote:qualy-backups/"$(basename "$1")"' /opt/qualy/deploy/backup.sh /var/backups/qualy >> /var/log/qualy-backup.log 2>&1
 ```
 
 `/var/backups/qualy/last-success` names the newest whole backup; a monitor

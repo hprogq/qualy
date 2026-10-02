@@ -4,6 +4,7 @@ import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import {
   deviceOfCookieHeader,
+  SECURE_SIGN_IN_DEVICE_COOKIE,
   SIGN_IN_DEVICE_COOKIE,
   SIGN_IN_DEVICE_MAX_AGE_SECONDS,
 } from '@qualy/auth-contract/device'
@@ -25,8 +26,15 @@ const remembered = (): boolean => {
 }
 
 const remember = (shared: boolean) => {
-  const secure = location.protocol === 'https:' ? '; Secure' : ''
-  document.cookie = `${SIGN_IN_DEVICE_COOKIE}=${shared ? 'shared' : ''}; Path=/; SameSite=Lax; Max-Age=${shared ? SIGN_IN_DEVICE_MAX_AGE_SECONDS : 0}${secure}`
+  const https = location.protocol === 'https:'
+  const name = https ? SECURE_SIGN_IN_DEVICE_COOKIE : SIGN_IN_DEVICE_COOKIE
+  const secure = https ? '; Secure' : ''
+  // Write both answers. Removing the host cookie for "personal" would let a
+  // sibling's older Domain cookie become authoritative again.
+  document.cookie = `${name}=${shared ? 'shared' : 'personal'}; Path=/; SameSite=Lax; Max-Age=${SIGN_IN_DEVICE_MAX_AGE_SECONDS}${secure}`
+  // Remove the old host-scoped spelling during the HTTPS migration. A
+  // sibling's Domain cookie cannot be removed here, but the __Host value wins.
+  if (https) document.cookie = `${SIGN_IN_DEVICE_COOKIE}=; Path=/; SameSite=Lax; Max-Age=0; Secure`
 }
 
 const styles = stylex.create({

@@ -12,7 +12,7 @@
 # QUALY_BACKUP_OFFSITE, when set, is run by sh with the new directory as $1
 # to copy it off this machine, for example
 #
-#   QUALY_BACKUP_OFFSITE='rclone copy "$1" remote:qualy-backups/"$(basename "$1")"'
+#   QUALY_BACKUP_OFFSITE='rclone copy --immutable "$1" remote:qualy-backups/"$(basename "$1")"'
 #
 # and the run fails if it does. On success the stamp is written to
 # <backup-root>/last-success, and - when QUALY_BACKUP_STATUS_DIR is set - to
@@ -43,6 +43,17 @@ keep=$(setting QUALY_BACKUP_KEEP 14)
 offsite=$(setting QUALY_BACKUP_OFFSITE)
 status=$(setting QUALY_BACKUP_STATUS_DIR)
 
+# Backups are deployment steps too. An upgrade and cron firing together used
+# to share the same second-stamped partial directory, deleting or moving it
+# from underneath the other process.
+take_lock
+partial=
+cleanup() {
+  if [ -n "$partial" ]; then rm -rf "$partial"; fi
+  release_lock
+}
+trap cleanup EXIT INT TERM
+
 case $keep in '' | *[!0-9]* | 0)
   echo "QUALY_BACKUP_KEEP must be a whole number above 0, not $keep" >&2
   exit 1
@@ -55,10 +66,10 @@ sums() {
 
 stamp=$(date -u +%Y%m%dT%H%M%SZ)
 mkdir -p "$root"
-partial="$root/.$stamp.partial"
-rm -rf "$partial"
+destination="$root/$stamp"
+[ ! -e "$destination" ] || refuse "backup $destination already exists; wait one second and run this again"
+partial="$root/.$stamp.$$.partial"
 mkdir "$partial"
-trap 'rm -rf "$partial"' EXIT
 
 # The database first, and checked: a dump pg_restore cannot list is not one.
 # The commands run inside the postgres container, which knows the user and
@@ -84,11 +95,15 @@ rm -rf "$partial/attachments"
 gzip -t "$partial/attachments.tar.gz"
 
 (cd "$partial" && sums qualy.dump storage.tar.gz attachments.tar.gz > SHA256SUMS)
-mv "$partial" "$root/$stamp"
-trap - EXIT
+mv "$partial" "$destination"
 
 if [ -n "$offsite" ]; then
-  sh -c "$offsite" offsite "$root/$stamp"
+  # COS overwrites an existing key unless both the request and the writer's
+  # CAM policy require the forbid-overwrite header. Refuse the known unsafe
+  # form; other backends have the same immutable-destination contract, which
+  # deploy/.env.example and docs/deployment.md spell out.
+  assert_immutable_offsite "$offsite"
+  sh -c "$offsite" offsite "$destination"
 fi
 
 # the newest few stay; stamps sort as they were taken
@@ -103,4 +118,4 @@ if [ -n "$status" ]; then
   printf '%s\n' "$stamp" > "$status/last-success"
   chmod 644 "$status/last-success"
 fi
-echo "backed up to $root/$stamp"
+echo "backed up to $destination"

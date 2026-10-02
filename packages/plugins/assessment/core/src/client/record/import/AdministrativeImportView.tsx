@@ -6,7 +6,14 @@ import {
   useLocale,
 } from '@qualy/web-i18n'
 
-import { useApiMutation, useApi, useApiQuery, useLoadFailure, useRunApi } from '@qualy/web-runtime'
+import {
+  useApiMutation,
+  useApi,
+  useApiQuery,
+  useHandlePlatformFailure,
+  useLoadFailure,
+  useRunApi,
+} from '@qualy/web-runtime'
 import { useMemo, useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -232,6 +239,7 @@ export function AdministrativeImportView({
 }) {
   const api = useApi(assessmentApi)
   const run = useRunApi()
+  const handlePlatformFailure = useHandlePlatformFailure()
   const query = useApiQuery(assessmentApi)
   const queryClient = useQueryClient()
   const locale = useLocale()
@@ -294,7 +302,9 @@ export function AdministrativeImportView({
         file,
       ),
     onSuccess: (file) => setUploaded(file),
-    onError: (error) => toast.error(sayEntryFailure(error, { formatError })),
+    onError: (error) => {
+      if (!handlePlatformFailure(error)) toast.error(sayEntryFailure(error, { formatError }))
+    },
   })
 
   // Preview and commit explain the same file-level refusals. Uploading keeps

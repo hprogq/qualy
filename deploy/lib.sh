@@ -116,6 +116,21 @@ release_lock() {
   held_lock=
 }
 
+# The documented COS sink has a request-level overwrite guard. Its CAM policy
+# independently requires the same header; this check keeps a mistyped host
+# command from silently weakening that half of the contract.
+assert_immutable_offsite() {
+  local command="$1"
+  case $command in
+    *coscli*)
+      case $command in
+        *'--forbid-overwrite true'* | *'--forbid-overwrite=true'*) ;;
+        *) refuse "QUALY_BACKUP_OFFSITE uses coscli without --forbid-overwrite true" ;;
+      esac
+      ;;
+  esac
+}
+
 # a setting the operator's environment gives, else .env, else the default
 setting() {
   local given
@@ -221,7 +236,14 @@ lineage_of() {
 # (packages/plugins/infra/database/src/assembly/rollout.ts).
 not_expand_in() {
   docker run --rm --entrypoint sh "qualy-server:$1" -c \
-    'cd db/migrations && grep -L -E "^--[[:space:]]*rollout:[[:space:]]*expand[[:space:]]*$" *.sql || true'
+    'cd db/migrations && for name in *.sql; do
+      if grep -q -E "^--[[:space:]]*rollout:[[:space:]]*expand[[:space:]]*$" "$name"; then continue; fi
+      override=
+      if [ -f ../migration-rollout-overrides.txt ]; then
+        override=$(awk -v name="$name" "\$1 == name { print \$2 }" ../migration-rollout-overrides.txt)
+      fi
+      [ "$override" = expand ] || printf "%s\\n" "$name"
+    done'
 }
 
 # names in the first list that the second does not hold

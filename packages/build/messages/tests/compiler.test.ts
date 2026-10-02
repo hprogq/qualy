@@ -2,7 +2,13 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, expect, it } from 'vitest'
-import { compileMessages, messageSourceAt, messageSources, readMessages } from '../src/compile.ts'
+import {
+  compileMessages,
+  messageSourceAt,
+  messageSources,
+  messagesOutDir,
+  readMessages,
+} from '../src/compile.ts'
 
 const directories: string[] = []
 const source = (en: unknown, zh: unknown) => {
@@ -81,6 +87,36 @@ it('compiles once, skips unchanged inputs, and repairs missing browser/server/fa
     JSON.stringify({ example: 'Hi {name}' }),
   )
   expect((await compileMessages(options)).compiled).toBe(true)
+})
+it('serializes concurrent writers to one product output tree', async () => {
+  const s = source({ example: 'Hello {name}' }, { example: '你好{name}' })
+  const options = {
+    manifestPath: path.join(s.packageRoot, 'qualy.yml'),
+    sources: [s],
+    outputStructure: 'locale-modules' as const,
+    force: true,
+  }
+  const [first, second] = await Promise.all([compileMessages(options), compileMessages(options)])
+  expect(first.compiled).toBe(true)
+  expect(second.compiled).toBe(true)
+  expect(fs.existsSync(path.join(first.outDir, 'stamp.json'))).toBe(true)
+  expect(fs.existsSync(path.join(first.outDir, 'compile.lock'))).toBe(false)
+})
+it('refuses a stale lock instead of racing another waiter to delete it', async () => {
+  const s = source({ example: 'Hello {name}' }, { example: '你好{name}' })
+  const lock = path.join(messagesOutDir(s.packageRoot), 'compile.lock')
+  fs.mkdirSync(path.dirname(lock), { recursive: true })
+  fs.writeFileSync(lock, `${JSON.stringify({ pid: 2_147_483_647, token: 'stale-owner' })}\n`)
+
+  await expect(
+    compileMessages({
+      manifestPath: path.join(s.packageRoot, 'qualy.yml'),
+      sources: [s],
+      outputStructure: 'locale-modules',
+      force: true,
+    }),
+  ).rejects.toThrow(/found stale lock/)
+  expect(fs.readFileSync(lock, 'utf8')).toContain('stale-owner')
 })
 it('finds only active sources for releases, and validates a package with only one locale', async () => {
   const s = source({}, {})

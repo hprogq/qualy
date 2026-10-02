@@ -1,7 +1,7 @@
 // eslint-disable-next-line typescript/triple-slash-reference -- the ICU plugin ships no types, and every program that reaches this file needs the declaration beside it
 /// <reference path="./inlang-plugin-icu1.d.ts" />
 import { createRequire } from 'node:module'
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -55,6 +55,80 @@ export interface MessageSource {
 
 /** where the compiled messages and the generated facades live, under the product */
 export const messagesOutDir = (productRoot: string) => path.join(productRoot, '.qualy', 'i18n')
+
+const COMPILE_LOCK_WAIT_MS = 300_000
+const COMPILE_LOCK_RETRY_MS = 25
+const MALFORMED_LOCK_STALE_MS = 30_000
+
+/**
+ * One product has one generated message tree. Vite, the message CLI and a
+ * build can reach it from separate processes, so a PID-named input project
+ * alone does not protect the shared outputs and stamp. Keep the lock beside
+ * those outputs: it is product-scoped, never published, and disappears even
+ * when compilation fails.
+ */
+const acquireCompileLock = async (outDir: string): Promise<() => void> => {
+  fs.mkdirSync(outDir, { recursive: true })
+  const file = path.join(outDir, 'compile.lock')
+  const token = `${String(process.pid)}:${randomUUID()}`
+  const deadline = Date.now() + COMPILE_LOCK_WAIT_MS
+
+  for (;;) {
+    try {
+      const descriptor = fs.openSync(file, 'wx', 0o600)
+      try {
+        fs.writeFileSync(descriptor, `${JSON.stringify({ pid: process.pid, token })}\n`)
+      } finally {
+        fs.closeSync(descriptor)
+      }
+      return () => {
+        try {
+          const owner = JSON.parse(fs.readFileSync(file, 'utf8')) as { token?: string }
+          if (owner.token === token) fs.unlinkSync(file)
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+        }
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
+    }
+
+    let staleReason: string | null = null
+    try {
+      const owner = JSON.parse(fs.readFileSync(file, 'utf8')) as { pid?: unknown }
+      if (typeof owner.pid === 'number' && Number.isInteger(owner.pid) && owner.pid > 0) {
+        try {
+          process.kill(owner.pid, 0)
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code === 'ESRCH') {
+            staleReason = `owner pid ${String(owner.pid)} no longer exists`
+          }
+        }
+      } else {
+        if (Date.now() - fs.statSync(file).mtimeMs > MALFORMED_LOCK_STALE_MS) {
+          staleReason = 'its owner record is malformed'
+        }
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue
+      if (Date.now() - fs.statSync(file).mtimeMs > MALFORMED_LOCK_STALE_MS) {
+        staleReason = 'its owner record cannot be read'
+      }
+    }
+    if (staleReason !== null) {
+      // Removing a stale path here is not an atomic compare-and-swap: two
+      // waiters can both inspect the old owner, then one can unlink the
+      // other's newly acquired lock. Refuse instead. The generated output
+      // tree is disposable, but concurrent writers are not safe.
+      throw new Error(
+        `message compilation found stale lock ${file}: ${staleReason}; remove that lock after verifying no compiler is running`,
+      )
+    }
+    if (Date.now() >= deadline)
+      throw new Error(`message compilation waited five minutes for ${file}`)
+    await new Promise((resolve) => setTimeout(resolve, COMPILE_LOCK_RETRY_MS))
+  }
+}
 
 /** the platform's own sentences, compiled beside every plugin's */
 const PLATFORM_PACKAGES = ['packages/web/i18n']
@@ -428,6 +502,18 @@ export interface CompileResult {
  * each workspace package's `#messages` facade into its own `.qualy/`.
  */
 export async function compileMessages(options: CompileOptions): Promise<CompileResult> {
+  const manifest = options.manifestPath ?? defaultManifestPath()
+  const productRoot = productRootFor(manifest)
+  const outDir = messagesOutDir(productRoot)
+  const releaseLock = await acquireCompileLock(outDir)
+  try {
+    return await compileMessagesUnlocked(options)
+  } finally {
+    releaseLock()
+  }
+}
+
+const compileMessagesUnlocked = async (options: CompileOptions): Promise<CompileResult> => {
   const manifest = options.manifestPath ?? defaultManifestPath()
   const productRoot = productRootFor(manifest)
   const outDir = messagesOutDir(productRoot)

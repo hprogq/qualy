@@ -1,13 +1,16 @@
 import { useLocale } from '@qualy/web-i18n'
 import { useEffect, useState, type MouseEvent } from 'react'
-import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import {
   PageLink,
+  cursorPages,
+  useApi,
   useApiQuery,
   useLoadFailure,
   usePageNavigate,
   usePageTitle,
+  useRunApi,
 } from '@qualy/web-runtime'
 
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
@@ -572,6 +575,8 @@ function RowTime({ time }: { time: { text: string; mark: string | null } }) {
 }
 
 export default function BatchListPage() {
+  const api = useApi(assessmentApi)
+  const run = useRunApi()
   const query = useApiQuery(assessmentApi)
   // the page changes shape, not just its measurements, so the choice is
   // made here rather than in a media query
@@ -626,14 +631,37 @@ export default function BatchListPage() {
     placeholderData: keepPreviousData,
   })
 
-  // the card's own question, untouched by the filter and the page: the
-  // running batches, first page - past twenty running rounds the card's
-  // picker is the wrong control anyway
-  const runningQuery = useQuery(
-    query.assessment.listBatches.queryOptions({
-      query: { status: 'active', limit: String(PAGE_SIZE) },
-    }),
-  )
+  // The card's own question, untouched by the table filter and page. Stored
+  // "active" also includes a round waiting for its first/current phase, and
+  // the server derives that standing only after it reads a page. Walk the
+  // paged API to exhaustion so newer pending rounds cannot hide an older
+  // round that is truly under way.
+  const runningQuery = useInfiniteQuery({
+    queryKey: [
+      ...query.assessment.listBatches.key({
+        query: { status: 'active', limit: String(PAGE_SIZE) },
+      }),
+      'running-card',
+    ],
+    queryFn: ({ pageParam }) =>
+      run(
+        api.assessment.listBatches({
+          query: {
+            status: 'active',
+            limit: String(PAGE_SIZE),
+            ...(pageParam === undefined ? {} : { cursor: pageParam }),
+          },
+        }),
+      ),
+    ...cursorPages,
+  })
+  const { fetchNextPage, hasNextPage, isFetchingNextPage, isFetchNextPageError } = runningQuery
+  useEffect(() => {
+    // A failed next page keeps the last successful page and therefore keeps
+    // hasNextPage true. Do not turn Query's bounded retry into an unbounded
+    // effect loop by immediately starting the same failed fetch again.
+    if (hasNextPage && !isFetchingNextPage && !isFetchNextPageError) void fetchNextPage()
+  }, [fetchNextPage, hasNextPage, isFetchingNextPage, isFetchNextPageError])
 
   // What this reader has to do in the rounds under way, for the card's
   // right column. Its own question rather than a column on the list: the
@@ -649,7 +677,10 @@ export default function BatchListPage() {
   // not drawn, and this reader's own list is still theirs to read
   const canCreate = batches.data?.capabilities.create ?? false
   const counts = batches.data?.statusCounts
-  const nextCursor = batches.data?.nextCursor ?? null
+  // keepPreviousData deliberately carries capabilities while a re-keyed
+  // filter loads. Its cursor belongs to the old fingerprint and must never
+  // be offered as the new filter's next page.
+  const nextCursor = batches.isPlaceholderData ? null : (batches.data?.nextCursor ?? null)
   useEffect(() => {
     // remember where the next page starts, the moment this one says
     if (nextCursor === null || cursors[pageIndex + 1] === nextCursor) return
@@ -667,10 +698,11 @@ export default function BatchListPage() {
   const [piles, setPiles] = useState<Readonly<Record<string, readonly (typeof rows)[number][]>>>({})
   const pileKey = cursors[pageIndex] ?? ''
   useEffect(() => {
+    if (batches.isPlaceholderData) return
     const items = batches.data?.items
     if (items === undefined) return
     setPiles((held) => (held[pileKey] === items ? held : { ...held, [pileKey]: items }))
-  }, [batches.data, pileKey])
+  }, [batches.data, batches.isPlaceholderData, pileKey])
   const piled = cursors.slice(0, pageIndex + 1).flatMap((cursor) => piles[cursor ?? ''] ?? [])
   const shownRows = narrow ? piled : rows
   const total = batches.data?.total ?? 0
@@ -685,7 +717,9 @@ export default function BatchListPage() {
   const searching = search.trim() !== ''
   const running = searching
     ? []
-    : (runningQuery.data?.items ?? []).filter((row) => standing(row) === 'active')
+    : (runningQuery.data?.pages.flatMap((page) => page.items) ?? []).filter(
+        (row) => standing(row) === 'active',
+      )
   const runningKey = running.map((row) => row.id).join('\n')
   const [hero, setHero] = useState<{
     key: string
@@ -762,7 +796,8 @@ export default function BatchListPage() {
   // the card's question is open until the running rounds are known, and
   // so is this reader's part in them, which the card draws too; its room
   // is kept meanwhile, so neither answer pushes the list down
-  const heroPending = (runningQuery.isPending || agendas.isPending) && !searching
+  const heroPending =
+    (runningQuery.isPending || runningQuery.isFetchingNextPage || agendas.isPending) && !searching
   // the list's name tells it apart from the cards above it; a phone with no
   // card above has nothing to tell it from, and the page's own title
   // already says what it lists
@@ -853,52 +888,70 @@ export default function BatchListPage() {
             its own questions, and a card that came and went with the list
             would move the list twice. */}
         <div {...stylex.props(styles.results)}>
-          {heroPending ? (
-            <HeroSkeleton />
-          ) : narrow ? (
-            // On a phone every running round is a card in a row that
-            // snaps, rather than one card with a way to step between
-            // them: a thumb already knows how to do this, and arrows
-            // would be two more targets on the busiest part of the page.
-            running.length > 0 && (
-              <div {...stylex.props(styles.list)}>
-                <div {...stylex.props(styles.deck)}>
-                  {running.map((one) => (
-                    <div key={one.id} {...stylex.props(styles.deckCard)}>
-                      <BatchCard
-                        row={one}
-                        agenda={agendaOf(agendas.data?.items ?? [], one.id)}
-                        frame={{ kind: 'single' }}
-                      />
+          <AsyncSection
+            pending={heroPending}
+            error={
+              !searching && runningQuery.isError && !(batches.isError && batches.data === undefined)
+                ? failure.of(runningQuery.error)
+                : null
+            }
+            framed
+            retrying={runningQuery.isFetching}
+            loadingLabel={commonMessages.state_loading()}
+            retryLabel={commonMessages.action_retry()}
+            onRetry={() =>
+              void (runningQuery.isFetchNextPageError
+                ? runningQuery.fetchNextPage()
+                : runningQuery.refetch())
+            }
+            skeleton={<HeroSkeleton />}
+          >
+            {narrow
+              ? // On a phone every running round is a card in a row that
+                // snaps, rather than one card with a way to step between
+                // them: a thumb already knows how to do this, and arrows
+                // would be two more targets on the busiest part of the page.
+                running.length > 0 && (
+                  <div {...stylex.props(styles.list)}>
+                    <div {...stylex.props(styles.deck)}>
+                      {running.map((one) => (
+                        <div key={one.id} {...stylex.props(styles.deckCard)}>
+                          <BatchCard
+                            row={one}
+                            agenda={agendaOf(agendas.data?.items ?? [], one.id)}
+                            frame={{ kind: 'single' }}
+                          />
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
-                {/* one card is not a choice, so it gets no marks */}
-                {running.length > 1 && (
-                  <div aria-hidden {...stylex.props(styles.deckDots)}>
-                    {running.map((one, index) => (
-                      <span
-                        key={one.id}
-                        {...stylex.props(styles.deckDot, index === heroIndex && styles.deckDotHere)}
-                      />
-                    ))}
+                    {/* one card is not a choice, so it gets no marks */}
+                    {running.length > 1 && (
+                      <div aria-hidden {...stylex.props(styles.deckDots)}>
+                        {running.map((one, index) => (
+                          <span
+                            key={one.id}
+                            {...stylex.props(
+                              styles.deckDot,
+                              index === heroIndex && styles.deckDotHere,
+                            )}
+                          />
+                        ))}
+                      </div>
+                    )}
                   </div>
+                )
+              : shown !== undefined && (
+                  // keyed by the batch, so a change of batch is a new card
+                  // arriving rather than the old one's words swapped in place
+                  <BatchCard
+                    key={shown.id}
+                    row={shown}
+                    agenda={agenda}
+                    frame={frame}
+                    entered={hero.entered}
+                  />
                 )}
-              </div>
-            )
-          ) : (
-            shown !== undefined && (
-              // keyed by the batch, so a change of batch is a new card
-              // arriving rather than the old one's words swapped in place
-              <BatchCard
-                key={shown.id}
-                row={shown}
-                agenda={agenda}
-                frame={frame}
-                entered={hero.entered}
-              />
-            )
-          )}
+          </AsyncSection>
 
           <AsyncSection
             pending={batches.isPending}
@@ -908,7 +961,13 @@ export default function BatchListPage() {
             retrying={batches.isFetching}
             loadingLabel={commonMessages.state_loading()}
             retryLabel={commonMessages.action_retry()}
-            onRetry={() => void batches.refetch()}
+            onRetry={() => {
+              void batches.refetch()
+              // When both page questions failed together, the list owns the
+              // single visible retry. Recover its suppressed hero failure in
+              // the same action so it does not surface only after the list.
+              if (runningQuery.isError) void runningQuery.refetch()
+            }}
             skeleton={<ListSkeleton labelled={listLabelled} />}
           >
             <section {...stylex.props(styles.list)}>

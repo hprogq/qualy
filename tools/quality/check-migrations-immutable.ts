@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process'
+import fs from 'node:fs'
 import path from 'node:path'
 import { MIGRATION_FILE } from '../../packages/plugins/infra/database/src/defaults.ts'
 import { rolloutOf } from '../../packages/plugins/infra/database/src/assembly/rollout.ts'
@@ -47,6 +48,24 @@ if (!base) {
 const git = (args: readonly string[]) =>
   execFileSync('git', [...args], { cwd: repoRoot, encoding: 'utf8' }).trim()
 
+const rolloutOverrides = new Map(
+  fs
+    .readFileSync(path.join(repoRoot, 'db/migration-rollout-overrides.txt'), 'utf8')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line !== '' && !line.startsWith('#'))
+    .map((line) => {
+      const [name, rollout, ...extra] = line.split(/\s+/)
+      if (
+        name === undefined ||
+        (rollout !== 'expand' && rollout !== 'maintenance') ||
+        extra.length > 0
+      )
+        throw new Error(`invalid db/migration-rollout-overrides.txt line: ${line}`)
+      return [name, rollout] as const
+    }),
+)
+
 if (/^0+$/.test(base)) {
   console.log('check-migrations-immutable: no base commit to compare against; nothing to check')
   process.exit(0)
@@ -75,6 +94,29 @@ const ACKNOWLEDGED_RENAMES: readonly { from: string; to: string; why: string }[]
     why: "the only migration committed without a name. No deployment had applied it; a development database that did runs: update mikro_orm_migrations set name = '20260916143334_administrative-imports.sql' where name = '20260916143334.sql'",
   },
 ]
+
+/**
+ * Rollout metadata repaired after these migrations were committed. New
+ * migrations cannot use the external file: they still put the marker in SQL.
+ */
+const ACKNOWLEDGED_ROLLOUT_OVERRIDES: ReadonlyMap<string, 'expand' | 'maintenance'> = new Map([
+  ['20260928014855_attachment-storage-version.sql', 'expand'],
+])
+
+for (const [name, rollout] of rolloutOverrides) {
+  if (ACKNOWLEDGED_ROLLOUT_OVERRIDES.get(name) !== rollout) {
+    console.error(`check-migrations-immutable: unacknowledged rollout override: ${name} ${rollout}`)
+    process.exit(1)
+  }
+}
+for (const [name, rollout] of ACKNOWLEDGED_ROLLOUT_OVERRIDES) {
+  if (rolloutOverrides.get(name) !== rollout) {
+    console.error(
+      `check-migrations-immutable: acknowledged rollout override is missing or changed: ${name} ${rollout}`,
+    )
+    process.exit(1)
+  }
+}
 
 const acknowledged = (line: string) => {
   const [status, from, to] = line.split('\t')
@@ -124,6 +166,26 @@ const blobsAt = (ref: string) =>
   )
 const atBase = blobsAt(base)
 const atHead = blobsAt('HEAD')
+
+for (const [name] of rolloutOverrides) {
+  const migration = `db/migrations/${name}`
+  if (!atHead.has(migration)) {
+    console.error(`check-migrations-immutable: rollout override names no HEAD migration: ${name}`)
+    process.exit(1)
+  }
+  if (rolloutOf(git(['show', `HEAD:${migration}`])) !== undefined) {
+    console.error(
+      `check-migrations-immutable: ${name} has rollout metadata in both its SQL and the legacy override file`,
+    )
+    process.exit(1)
+  }
+  if (!atBase.has(migration) && !ACKNOWLEDGED_ROLLOUT_OVERRIDES.has(name)) {
+    console.error(
+      `check-migrations-immutable: ${name} is new since ${base}; new migrations put rollout metadata in their SQL, not the legacy override file`,
+    )
+    process.exit(1)
+  }
+}
 
 const addedPaths = git([
   'diff',
@@ -178,7 +240,9 @@ if (early.length > 0) {
 }
 
 const silent = added.filter(
-  (name) => rolloutOf(git(['show', `HEAD:db/migrations/${name}`])) === undefined,
+  (name) =>
+    rolloutOf(git(['show', `HEAD:db/migrations/${name}`])) === undefined &&
+    rolloutOverrides.get(name) === undefined,
 )
 if (silent.length > 0) {
   console.error(
@@ -189,5 +253,5 @@ if (silent.length > 0) {
 }
 
 console.log(
-  `check-migrations-immutable: the lineage only grew since ${base}, at its end (${String(added.length)} migration(s) added after ${head ?? 'nothing'}, each saying how it rolls out)`,
+  `check-migrations-immutable: the lineage only grew since ${base}, at its end (${String(added.length)} migration(s) added after ${head ?? 'nothing'}, each carrying rollout metadata)`,
 )

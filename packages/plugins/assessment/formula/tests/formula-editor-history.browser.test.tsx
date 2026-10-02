@@ -103,6 +103,8 @@ const savedRevision = {
 }
 
 interface Wire {
+  reads: number
+  saves: unknown[]
   previews: string[]
   publishes: unknown[]
   restores: unknown[]
@@ -131,6 +133,8 @@ const open = ({
   saves?: () => Effect.Effect<unknown, unknown>
 } = {}) => {
   const wire: Wire = {
+    reads: 0,
+    saves: [],
     previews: [],
     publishes: [],
     restores: [],
@@ -142,8 +146,22 @@ const open = ({
     client: fakeClient({
       app: { getManifest: emptyManifest() },
       assessmentFormula: {
-        getFormulaFunction: () =>
-          Effect.succeed({ function: draft, versions: [release], copiedFrom: null }),
+        getFormulaFunction: () => {
+          wire.reads += 1
+          return Effect.succeed({ function: draft, versions: [release], copiedFrom: null })
+        },
+        updateFormulaDraft: (request: {
+          payload: { draftSourceTs?: string; draftTests?: typeof examples }
+        }) => {
+          wire.saves.push(request.payload)
+          draft = {
+            ...draft,
+            draftRevision: draft.draftRevision + 1,
+            draftSourceTs: request.payload.draftSourceTs ?? draft.draftSourceTs,
+            draftTests: request.payload.draftTests ?? draft.draftTests,
+          }
+          return Effect.succeed({ function: draft })
+        },
         previewFormulaDraft: (request: { payload: { sourceTs: string } }) => {
           wire.previews.push(request.payload.sourceTs)
           return Effect.succeed(contract)
@@ -273,6 +291,47 @@ describe('a formula’s draft and its history', () => {
         () => expect(document.querySelector('[data-testid="formula-publish-confirm"]')).toBeNull(),
         { timeout: 5_000 },
       )
+    } finally {
+      await view.unmount()
+    }
+  }, 60_000)
+
+  it('refreshes a successfully saved draft when publication then meets a platform failure', async () => {
+    const { wire, screen } = open({
+      publish: () => Effect.fail({ _tag: 'ACCESS_DENIED' }),
+    })
+    const view = await screen
+    try {
+      const model = await vi.waitFor(
+        () => {
+          const found = monaco.editor
+            .getEditors()
+            .map((editor) => editor.getModel())
+            .find((one) => one?.uri.toString().endsWith('/draft/formula.ts') === true)
+          if (found === undefined || found === null) throw new Error('no draft editor yet')
+          return found
+        },
+        { timeout: 20_000 },
+      )
+      model.pushEditOperations(
+        null,
+        [{ range: model.getFullModelRange(), text: `${model.getValue()}// revised\n` }],
+        () => null,
+      )
+      await vi.waitFor(() => expect(wire.previews.length).toBeGreaterThan(0), {
+        timeout: 10_000,
+      })
+
+      await page.getByTestId('formula-publish-open').click()
+      await page.getByRole('textbox', { name: '版本名称' }).fill('平台失败前保存')
+      const readsBeforePublish = wire.reads
+      await page.getByTestId('formula-publish-confirm').click()
+
+      await vi.waitFor(() => expect(wire.saves).toHaveLength(1), { timeout: 10_000 })
+      await vi.waitFor(() => expect(wire.publishes).toHaveLength(1), { timeout: 10_000 })
+      await vi.waitFor(() => expect(wire.reads).toBeGreaterThan(readsBeforePublish), {
+        timeout: 10_000,
+      })
     } finally {
       await view.unmount()
     }

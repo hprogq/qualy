@@ -345,6 +345,151 @@ describe('the batch list', () => {
     })
   })
 
+  it('does not reuse the previous filter cursor while the new filter is loading', async () => {
+    let finishDraft: (() => void) | undefined
+    const listBatches = vi.fn((request: Request) => {
+      if (request.query?.['status'] === 'draft') {
+        return Effect.promise(
+          () =>
+            new Promise((resolve) => {
+              finishDraft = () =>
+                resolve({
+                  items: [],
+                  nextCursor: null,
+                  total: 0,
+                  capabilities: { create: true },
+                })
+            }),
+        )
+      }
+      return Effect.succeed({
+        items: [listRow()],
+        nextCursor: request.query?.['status'] === 'active' ? null : 'old-filter-cursor',
+        total: 21,
+        capabilities: { create: true },
+      })
+    })
+    await screen({ listBatches }, '/assessment/batches')
+    await expect.element(page.getByRole('button', { name: '下一页' })).toBeEnabled()
+
+    await page.getByRole('radio', { name: '草稿' }).click()
+    await vi.waitFor(() =>
+      expect(page.getByRole('button', { name: '下一页' }).elements()).toHaveLength(0),
+    )
+    expect(
+      listBatches.mock.calls.some(
+        ([request]) =>
+          request.query?.['cursor'] === 'old-filter-cursor' &&
+          request.query?.['status'] === 'draft',
+      ),
+    ).toBe(false)
+    finishDraft?.()
+  })
+
+  it('finds a running batch beyond newer active batches that have not started', async () => {
+    const pending = Array.from({ length: 20 }, (_, index) =>
+      listRow({
+        id: `pending-${String(index)}`,
+        name: `Pending ${String(index)}`,
+        currentPhaseId: null,
+      }),
+    )
+    const running = listRow({
+      id: 'older-running',
+      name: '较早的进行中批次',
+      status: 'active',
+      currentPhaseId: ENTRY_PHASE_ID,
+    })
+    const listBatches = vi.fn((request: Request) => {
+      if (request.query?.['status'] !== 'active') {
+        return Effect.succeed({
+          items: pending,
+          nextCursor: null,
+          total: pending.length,
+          capabilities: { create: true },
+        })
+      }
+      if (request.query?.['cursor'] === 'active-page-2') {
+        return Effect.succeed({
+          items: [running],
+          nextCursor: null,
+          total: 21,
+          capabilities: { create: true },
+        })
+      }
+      return Effect.succeed({
+        items: pending,
+        nextCursor: 'active-page-2',
+        total: 21,
+        capabilities: { create: true },
+      })
+    })
+
+    await screen({ listBatches }, '/assessment/batches')
+    await expect.element(page.getByRole('heading', { name: '较早的进行中批次' })).toBeVisible()
+    expect(
+      listBatches.mock.calls.some(([request]) => request.query?.['cursor'] === 'active-page-2'),
+    ).toBe(true)
+  })
+
+  it('stops walking running pages after a next page fails', async () => {
+    let reachable = false
+    let failedPageRequests = 0
+    const running = listRow({
+      id: 'hidden-running',
+      name: '稍后恢复的进行中批次',
+      status: 'active',
+      currentPhaseId: ENTRY_PHASE_ID,
+    })
+    const listBatches = vi.fn((request: Request) => {
+      if (request.query?.['status'] !== 'active') {
+        return Effect.succeed({
+          items: [],
+          nextCursor: null,
+          total: 0,
+          capabilities: { create: true },
+        })
+      }
+      if (request.query?.['cursor'] === 'refused-page') {
+        if (!reachable) {
+          failedPageRequests += 1
+          return Effect.fail(apiError('SERVICE_UNAVAILABLE'))
+        }
+        return Effect.succeed({
+          items: [running],
+          nextCursor: null,
+          total: 21,
+          capabilities: { create: true },
+        })
+      }
+      return Effect.succeed({
+        items: Array.from({ length: 20 }, (_, index) =>
+          listRow({ id: `pending-${String(index)}`, currentPhaseId: null }),
+        ),
+        nextCursor: 'refused-page',
+        total: 21,
+        capabilities: { create: true },
+      })
+    })
+
+    const view = await screen({ listBatches }, '/assessment/batches')
+    try {
+      await vi.waitFor(() => expect(failedPageRequests).toBeGreaterThan(0), { timeout: 5_000 })
+      const afterBoundedRetry = failedPageRequests
+      await new Promise((resolve) => setTimeout(resolve, 500))
+      expect(failedPageRequests).toBe(afterBoundedRetry)
+      const state = () => document.querySelector('[data-slot="resource-state"]')
+      expect(state()?.getAttribute('data-state')).toBe('unavailable')
+
+      reachable = true
+      await page.getByRole('button', { name: '重试' }).click()
+      await expect.element(page.getByRole('heading', { name: running.name })).toBeVisible()
+      expect(state()).toBeNull()
+    } finally {
+      await view.unmount()
+    }
+  })
+
   it('offers neither creation nor drafts to somebody who administers nothing', async () => {
     await screen(
       {

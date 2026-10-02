@@ -1,4 +1,4 @@
-import { assertNever, formatPlatformFailure, isUseCaseApiFailure } from '@qualy/web-i18n'
+import { assertNever, isUseCaseApiFailure } from '@qualy/web-i18n'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import { PlusIcon, Trash2Icon } from 'lucide-react'
@@ -6,6 +6,7 @@ import {
   useApi,
   useApiQuery,
   useLoadFailure,
+  useHandlePlatformFailure,
   usePageQueryState,
   usePageQueryUpdate,
   useRunApi,
@@ -54,6 +55,7 @@ const styles = stylex.create({
 export default function OrgPage() {
   const api = useApi(orgApi)
   const runApi = useRunApi()
+  const handlePlatformFailure = useHandlePlatformFailure()
   const query = useApiQuery(orgApi)
 
   const failures = useLoadFailure()
@@ -106,7 +108,7 @@ export default function OrgPage() {
       .catch((error: import('./shape.ts').OrgFailure) => {
         if (own?.(error) === true) throw error
         if (!isUseCaseApiFailure(error)) {
-          toast.error(formatPlatformFailure(error))
+          handlePlatformFailure(error)
           throw error
         }
         let failure: string

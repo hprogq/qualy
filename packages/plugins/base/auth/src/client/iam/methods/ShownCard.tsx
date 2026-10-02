@@ -4,7 +4,13 @@ import {
   formatPlatformFailure,
   formatPlatformFailure as formatError,
 } from '@qualy/web-i18n'
-import { useRunApi, useApiMutation, useApi, useApiQuery } from '@qualy/web-runtime'
+import {
+  useRunApi,
+  useApiMutation,
+  useApi,
+  useApiQuery,
+  useHandlePlatformFailure,
+} from '@qualy/web-runtime'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { selectKey, type Message } from '@qualy/i18n-contract'
 
@@ -159,6 +165,7 @@ export function ShownCard({
     | { kind: 'clear'; surface: 'dark' }
     | { kind: 'file'; file: File; surface: IconSurface }
   const run = useRunApi()
+  const handlePlatformFailure = useHandlePlatformFailure()
   const choose = useMutation({
     mutationFn: async (choice: Choice) => {
       const params = { providerId: provider.id }
@@ -228,7 +235,7 @@ export function ShownCard({
           toast.error(m.error_providerNotFound())
           return
         default:
-          toast.error(formatPlatformFailure(error))
+          if (!handlePlatformFailure(error)) toast.error(formatPlatformFailure(error))
       }
     },
   })

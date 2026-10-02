@@ -569,6 +569,31 @@ export type ApiMutationOptions<A, E, V = void, C = unknown> = Omit<
         onError: NonNullable<UseMutationOptions<A, NoInfer<UseCaseApiFailure<E>>, V, C>['onError']>
       })
 
+export interface PlatformFailureOptions {
+  /** Put the platform message in the surface instead of the default toast. */
+  readonly notify?: (message: string, code: string) => void
+  readonly onRateLimited?: (limit: RateLimit) => void
+}
+
+const presentPlatformFailure = (error: unknown, options: PlatformFailureOptions = {}) =>
+  handlePlatformFailure(error, {
+    notify:
+      options.notify ??
+      ((message, code) => {
+        toast.error(message, { id: `platform:${code}` })
+      }),
+    diagnose: (code) => captureDiagnostic(code),
+    capture: (failure) => captureException(failure),
+    ...(options.onRateLimited === undefined ? {} : { onRateLimited: options.onRateLimited }),
+  })
+
+/** Platform policy for a Promise workflow that cannot use useApiMutation. */
+export const useHandlePlatformFailure = () =>
+  useCallback(
+    (error: unknown, options?: PlatformFailureOptions) => presentPlatformFailure(error, options),
+    [],
+  )
+
 /** Platform policy lives here; use cases receive only their declared failures. */
 export function useApiMutation<A, E, V = void, C = unknown>(
   options: ApiMutationOptions<A, E, V, C>,
@@ -586,14 +611,7 @@ export function useApiMutation<A, E, V = void, C = unknown>(
     },
     onError: (error, variables, result, context) => {
       if (
-        handlePlatformFailure(error, {
-          notify: (message, code) => {
-            toast.error(message, { id: `platform:${code}` })
-          },
-          diagnose: (code) => captureDiagnostic(code),
-          capture: (error) => captureException(error),
-          ...(onRateLimited === undefined ? {} : { onRateLimited }),
-        })
+        presentPlatformFailure(error, { ...(onRateLimited === undefined ? {} : { onRateLimited }) })
       )
         return
       // Preserve the real failure in mutation state/onSettled. Only the use

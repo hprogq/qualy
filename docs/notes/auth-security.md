@@ -48,7 +48,9 @@ Cookie + 不透明 session token(库存 sha256),不用 JWT/localStorage:
   机房、共用电脑上关掉浏览器而会话还在,是这条要挡的;
 - last_used_at 节流 300s 才写(`TOUCH_INTERVAL_MS`),所以空闲判定有 5 分钟松弛:1 小时 55 分前记下的使用仍有效,2 小时 05 分前的一定过期;
 - **公用设备会话**(2026-09-29,用户裁决):登录页三处(入口首页、表单页、更多方式)都有「在公用设备上使用」(小字「30 分钟无操作后自动退出登录」;2026-09-30 由「这是公用电脑」改名,手机上看到的也是它),答案写进页面自己的
-  cookie `qualy_sign_in_device=shared`(`@qualy/auth-contract/device`,半年,记在这台浏览器上,下一个人也看到已勾选)。
+  cookie(生产 HTTPS 为 host-bound `__Host-qualy_sign_in_device=shared`,本地 HTTP 为 `qualy_sign_in_device=shared`;
+  `@qualy/auth-contract/device`,半年,记在这台浏览器上,下一个人也看到已勾选)。HTTPS 解析优先 `__Host-` 值;
+  旧名重复时向 `shared` 失效安全,避免兄弟域预植的 Domain cookie 把公用设备降级为持久个人会话。
   **每个会话自己知道自己的模式**:`sessions.device` 与 `auth_flows.device`(`personal` | `shared`,迁移
   `20260929144138_session-device`,expand)。公用会话空闲 30 分钟、绝对 8 小时(不超过普通会话的绝对期限),两者都在服务端判定;
   固定常量(`SHARED_DEVICE_IDLE_SECONDS` / `SHARED_DEVICE_TTL_SECONDS`)而非部署变量,因为这是登录页对勾选者的承诺;部署把普通空闲
