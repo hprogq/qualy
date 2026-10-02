@@ -20,6 +20,7 @@ const LIB = path.join(ROOT, 'deploy/lib.sh')
 const FAKE_DOCKER = `#!/bin/sh
 # docker, as far as lib.sh asks it
 printf '%s\\n' "$*" >> "$FAKE/docker.log"
+if [ -n "$FAKE_STDOUT" ]; then printf '%s' "$FAKE_STDOUT"; fi
 if [ "$1" = compose ]; then
   service=; saw_ps=
   for arg in "$@"; do
@@ -247,6 +248,12 @@ describe('one deployment step at a time', () => {
     const ran = run("run_interruptible sh -c 'sleep 0.1; printf complete'")
     expect(ran.status, ran.stderr).toBe(0)
     expect(ran.stdout).toBe('complete')
+  })
+
+  it('waits for cancellable compose and preserves the dump on stdout', () => {
+    const ran = run('compose_interruptible exec -T postgres pg_dump', { FAKE_STDOUT: 'dump' })
+    expect(ran.status, ran.stderr).toBe(0)
+    expect(ran.stdout).toBe('dump')
   })
 
   it('refuses a second step while the first holds the lock', async () => {

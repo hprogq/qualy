@@ -79,13 +79,13 @@ mkdir "$partial"
 # The database first, and checked: a dump pg_restore cannot list is not one.
 # The commands run inside the postgres container, which knows the user and
 # the database already; .env is compose's to read, not the shell's.
-run_interruptible compose exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" -Fc "$POSTGRES_DB"' > "$partial/qualy.dump"
-run_interruptible compose exec -T postgres pg_restore --list < "$partial/qualy.dump" > /dev/null
+compose_interruptible exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" -Fc "$POSTGRES_DB"' > "$partial/qualy.dump"
+compose_interruptible exec -T postgres pg_restore --list < "$partial/qualy.dump" > /dev/null
 
 # Then the attachments, after the database: a file the dump names may be
 # newer than the dump, which a restore survives; a row naming a file that the
 # archive lacks it would not.
-run_interruptible compose run --rm --no-deps -T --user 0:0 --entrypoint sh tools \
+compose_interruptible run --rm --no-deps -T --user 0:0 --entrypoint sh tools \
   -c 'tar -czf - -C /var/lib/qualy/storage .' > "$partial/storage.tar.gz"
 run_interruptible gzip -t "$partial/storage.tar.gz"
 
@@ -93,7 +93,7 @@ run_interruptible gzip -t "$partial/storage.tar.gz"
 # bucket that keeps versions reads back the newest write to a key, which is
 # not always the one an attachment names, so a copy of the bucket would not
 # do. Written as this script's own user, so it can archive and remove them.
-run_interruptible compose run --rm --no-deps -T --user "$(id -u):$(id -g)" -v "$partial:/backup" tools \
+compose_interruptible run --rm --no-deps -T --user "$(id -u):$(id -g)" -v "$partial:/backup" tools \
   node apps/cli/src/main.ts storage export --to /backup/attachments --except local < /dev/null
 run_interruptible tar -czf "$partial/attachments.tar.gz" -C "$partial/attachments" .
 rm -rf "$partial/attachments"

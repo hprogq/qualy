@@ -37,6 +37,21 @@ compose() {
   fi
 }
 
+# The same command shape for a backup step that must be cancellable as one
+# process group. Build the argv here, then let run_interruptible execute the
+# real docker binary; do not carry this shell function through another shell.
+compose_interruptible() {
+  local overlay
+  QUALY_COLLECTOR_ENV_FILE=${QUALY_COLLECTOR_ENV_FILE:-$(dirname "$env_file")/collector.env}
+  export QUALY_COLLECTOR_ENV_FILE
+  overlay=${QUALY_COMPOSE_OVERLAY:-$(sed -n 's/^QUALY_COMPOSE_OVERLAY=//p' "$env_file" 2> /dev/null | tail -n 1)}
+  if [ -n "$overlay" ]; then
+    run_interruptible docker compose -f "$here/compose.yaml" -f "$here/$overlay" --env-file "$env_file" "$@"
+  else
+    run_interruptible docker compose -f "$here/compose.yaml" --env-file "$env_file" "$@"
+  fi
+}
+
 say() {
   printf '%s\n' "$*"
 }
@@ -124,12 +139,7 @@ active_step=
 run_interruptible() {
   local code
   if command -v setsid > /dev/null 2>&1; then
-    if [ "$1" = compose ]; then
-      shift
-      setsid --wait sh -c 'here="$1"; shift; . "$here/lib.sh"; compose "$@"' qualy-compose "$here" "$@" &
-    else
-      setsid --wait "$@" &
-    fi
+    setsid --wait "$@" &
   else
     # Darwin has no setsid command; its /bin/sh can still give a monitored
     # background job a group. Production Linux takes the explicit path above.
