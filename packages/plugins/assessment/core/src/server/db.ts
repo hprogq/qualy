@@ -432,29 +432,35 @@ export const countBatchesByStatus = (
     )
 
 /**
- * The rounds under way this person may see, all of them.
+ * The stored-active rounds this person may see, all of them, newest first.
  *
- * The same reach as the list above, narrowed to the rounds that are
- * running: what a reader has to do is asked of those and no others, and a
- * page that paged this answer would leave the card on page two guessing.
- * Unpaged because the set is what a tenant runs at once - the list's own
- * card stops offering to switch between them past twenty.
+ * The same reach as the list above. Stored active includes a round waiting
+ * for its first/current phase; the service derives which rows are truly under
+ * way against the clock before it projects the bounded home-page card set.
+ * This query was already unpaged for the cross-round standing calculation;
+ * returning the rows lets that one service own both answers without a second
+ * browser-side walk through the paged list API.
  */
-export const activeBatchIdsVisibleTo = (
+export const activeBatchesVisibleTo = (
   tenantId: string,
   viewer: { held: AuthorizationScope; userId: string },
 ) =>
   db
     .query((k) =>
-      k
-        .selectFrom('AssessmentBatch')
-        .select('id')
+      batchSelection(k)
+        .select(withinReach(viewer.held).as('manageable'))
         .where('tenantId', '=', tenantId)
         .where('status', '=', 'active')
         .where(visibleTo(viewer))
+        .orderBy('createdAt', 'desc')
+        .orderBy('id', 'desc')
         .execute(),
     )
-    .pipe(Effect.map((rows) => rows.map((row) => row.id)))
+    .pipe(
+      Effect.map((rows) =>
+        (rows as unknown as Record<string, unknown>[]).map((row) => toBatchRow(row)),
+      ),
+    )
 
 /**
  * One page of the batches this person may see, newest first. The

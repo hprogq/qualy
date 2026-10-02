@@ -95,6 +95,8 @@
   "batch_previous": "上一个批次",
   "batch_next": "下一个批次",
   "batch_pick": "选择批次",
+  "batch_runningMore": "还有更多进行中的批次未显示在这里。",
+  "batch_runningShowAll": "在列表中查看",
   "batch_awaitingReview": "等待你审核",
   "batch_startReview": "开始审核",
   "batch_reviewsClear": "暂无待审",

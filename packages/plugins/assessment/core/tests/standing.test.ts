@@ -42,6 +42,19 @@ describe.runIf(postgresAvailable)('the standing of a reader across the rounds un
           const judge = f.principal(f.reviewer)
           const admin = f.principal(f.admin)
 
+          // The home projection uses the clock-authoritative stage, not the
+          // sweeper-maintained column. Reproduce the short projection lag a
+          // real boundary can have, read it, then restore the stored pointer
+          // for the rest of this workflow.
+          const plan = yield* assessment.getPlan(f.t, g.batch.id, admin)
+          yield* runSql(sql`
+            update assessment_batches set current_phase_id = null
+            where tenant_id = ${f.t} and id = ${g.batch.id}`)
+          const lagged = yield* assessment.listMyStanding(f.t, s1)
+          yield* runSql(sql`
+            update assessment_batches set current_phase_id = ${plan[0]!.id}
+            where tenant_id = ${f.t} and id = ${g.batch.id}`)
+
           // filed and not yet sent: the owner's own, nothing anybody else
           // is waiting on
           const entry = yield* assessment.createEntry(
@@ -83,6 +96,7 @@ describe.runIf(postgresAvailable)('the standing of a reader across the rounds un
             emptied,
             outside,
             submitted,
+            lagged,
           }
         }),
       ),
@@ -104,6 +118,8 @@ describe.runIf(postgresAvailable)('the standing of a reader across the rounds un
     // the round under way is there for both readers, and it is the only one
     expect(result.drafted.items).toHaveLength(1)
     expect(result.waiting.items).toHaveLength(1)
+    expect(result.lagged.running.items.map((batch) => batch.id)).toEqual([result.batchId])
+    expect(result.lagged.running.hasMore).toBe(false)
 
     // the student: their own filing moves between the buckets, and
     // nobody's work ever waits on them

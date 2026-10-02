@@ -95,6 +95,8 @@
   "batch_previous": "Previous batch",
   "batch_next": "Next batch",
   "batch_pick": "Choose a batch",
+  "batch_runningMore": "More batches are under way than this card can show.",
+  "batch_runningShowAll": "View them in the list",
   "batch_awaitingReview": "Awaiting your review",
   "batch_startReview": "Start reviewing",
   "batch_reviewsClear": "Nothing waiting",

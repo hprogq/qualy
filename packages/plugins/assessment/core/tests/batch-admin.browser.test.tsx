@@ -187,55 +187,62 @@ const listRow = (over: Partial<BatchDto> = {}, timeline: unknown[] = []) => ({
   timeline,
 })
 
-const assessmentStubs = (over: Stubs = {}): Stubs => ({
-  listBatches: () =>
-    Effect.succeed({
-      items: [listRow()],
-      nextCursor: null,
-      total: 1,
-      capabilities: { create: true },
-    }),
-  getBatch: () => Effect.succeed({ batch: batch() }),
-  getPhases: () => Effect.succeed({ phases: [], planFingerprint: 'plan-empty' }),
-  getTimeline: () => Effect.succeed({ timeline: [] }),
-  // the participant's desk on the overview: this harness plays an
-  // administrator, whose desk is empty by design
-  getMyOverview: () => Effect.succeed({ participant: null, reviewer: null }),
-  // and nothing of their own to do in any round under way, so the card's
-  // right column is the stage alone
-  listMyStanding: () => Effect.succeed({ items: [] }),
-  listMyActivity: () => Effect.succeed({ items: [], nextCursor: null }),
-  listTemplates: templates,
-  // the paper a stage's item allowance is chosen from
-  listItems: () => Effect.succeed({ items: [], capabilities: { canManage: true } }),
-  listScoreGroups: () =>
-    Effect.succeed({ groups: [], version: 1, capabilities: { canManage: true } }),
-  listScopeOptions: () =>
-    Effect.succeed({
-      nodes: [{ id: NODE_ID, name: '软件学院', path: 'r.se', depth: 1, orgTypeId: NODE_ID }],
-    }),
-  createBatch: () => Effect.succeed({ batch: batch() }),
-  listUserTypeOptions: () =>
-    Effect.succeed({ userTypes: [{ id: USER_ID, code: 'student', name: '学生' }] }),
-  listParticipants: () => Effect.succeed({ items: [], nextCursor: null }),
-  // the results page's own roster: its page, its totals, its units, and the
-  // people its add dialog offers
-  listParticipantAccounts: () => Effect.succeed({ items: [], total: 0, page: 1, pageSize: 20 }),
-  listParticipantScores: () => Effect.succeed({ scores: [] }),
-  listRosterUnits: () => Effect.succeed({ units: [] }),
-  listParticipantCandidates: () => Effect.succeed({ items: [], total: 0, page: 1, pageSize: 20 }),
-  listParticipantPlacements: () =>
-    Effect.succeed({ items: [], nextCursor: null, changedTotal: 0, unavailableTotal: 0 }),
-  // the roster's standing warning and the overview's administration lane:
-  // nothing stopped here
-  reviewAlerts: () =>
-    Effect.succeed({ groups: [], unreachable: { routes: [], cannotSubmit: 0, cannotAppeal: 0 } }),
-  previewImport: () => Effect.succeed({ candidates: 0 }),
-  staffOptions: () => Effect.succeed({ nodes: [], roles: [] }),
-  listAccess: () => Effect.succeed(staffPage([subject()])),
-  previewAccessSync: () => Effect.succeed(emptyPlan),
-  ...over,
-})
+const assessmentStubs = (over: Stubs = {}): Stubs => {
+  const listBatches =
+    over.listBatches ??
+    (() =>
+      Effect.succeed({
+        items: [listRow()],
+        nextCursor: null,
+        total: 1,
+        capabilities: { create: true },
+      }))
+  return {
+    listBatches,
+    listMyStanding: () => Effect.succeed({ items: [], running: { items: [], hasMore: false } }),
+    getBatch: () => Effect.succeed({ batch: batch() }),
+    getPhases: () => Effect.succeed({ phases: [], planFingerprint: 'plan-empty' }),
+    getTimeline: () => Effect.succeed({ timeline: [] }),
+    // the participant's desk on the overview: this harness plays an
+    // administrator, whose desk is empty by design
+    getMyOverview: () => Effect.succeed({ participant: null, reviewer: null }),
+    listMyActivity: () => Effect.succeed({ items: [], nextCursor: null }),
+    listTemplates: templates,
+    // the paper a stage's item allowance is chosen from
+    listItems: () => Effect.succeed({ items: [], capabilities: { canManage: true } }),
+    listScoreGroups: () =>
+      Effect.succeed({
+        groups: [],
+        version: 1,
+        capabilities: { canManage: true },
+      }),
+    listScopeOptions: () =>
+      Effect.succeed({
+        nodes: [{ id: NODE_ID, name: '软件学院', path: 'r.se', depth: 1, orgTypeId: NODE_ID }],
+      }),
+    createBatch: () => Effect.succeed({ batch: batch() }),
+    listUserTypeOptions: () =>
+      Effect.succeed({ userTypes: [{ id: USER_ID, code: 'student', name: '学生' }] }),
+    listParticipants: () => Effect.succeed({ items: [], nextCursor: null }),
+    // the results page's own roster: its page, its totals, its units, and the
+    // people its add dialog offers
+    listParticipantAccounts: () => Effect.succeed({ items: [], total: 0, page: 1, pageSize: 20 }),
+    listParticipantScores: () => Effect.succeed({ scores: [] }),
+    listRosterUnits: () => Effect.succeed({ units: [] }),
+    listParticipantCandidates: () => Effect.succeed({ items: [], total: 0, page: 1, pageSize: 20 }),
+    listParticipantPlacements: () =>
+      Effect.succeed({ items: [], nextCursor: null, changedTotal: 0, unavailableTotal: 0 }),
+    // the roster's standing warning and the overview's administration lane:
+    // nothing stopped here
+    reviewAlerts: () =>
+      Effect.succeed({ groups: [], unreachable: { routes: [], cannotSubmit: 0, cannotAppeal: 0 } }),
+    previewImport: () => Effect.succeed({ candidates: 0 }),
+    staffOptions: () => Effect.succeed({ nodes: [], roles: [] }),
+    listAccess: () => Effect.succeed(staffPage([subject()])),
+    previewAccessSync: () => Effect.succeed(emptyPlan),
+    ...over,
+  }
+}
 
 // the batch pages as the manifest carries them: a link between them resolves
 // through this, the same way it does in the running application
@@ -319,20 +326,20 @@ describe('the batch list', () => {
     await screen({ listBatches }, '/assessment/batches')
 
     // the first page knows where it sits in the whole
-    await expect.element(page.getByText('2026 春季综测')).toBeVisible()
+    await expect.element(page.getByRole('link', { name: '2026 春季综测' })).toBeVisible()
     // which page and how many, as the fact rather than as the sentence
     await expect.element(page.getByTestId('batch-pager')).toHaveAttribute('data-page', '1')
     await expect.element(page.getByTestId('batch-pager')).toHaveAttribute('data-pages', '2')
 
     await page.getByRole('button', { name: '下一页' }).click()
     // the second page replaces the first, reached by the cursor it handed out
-    await expect.element(page.getByText('2025 秋季综测')).toBeVisible()
+    await expect.element(page.getByRole('link', { name: '2025 秋季综测' })).toBeVisible()
     expect(seen.at(-1)?.query).toMatchObject({ cursor: 'next-page' })
     await expect.element(page.getByTestId('batch-pager')).toHaveAttribute('data-page', '2')
 
     // and going back is the cursor already held, not a re-count
     await page.getByRole('button', { name: '上一页' }).click()
-    await expect.element(page.getByText('2026 春季综测')).toBeVisible()
+    await expect.element(page.getByRole('link', { name: '2026 春季综测' })).toBeVisible()
 
     // a status choice and a typed name reach the server as query parameters,
     // and the chosen filter is the one that looks chosen
@@ -386,7 +393,7 @@ describe('the batch list', () => {
     finishDraft?.()
   })
 
-  it('finds a running batch beyond newer active batches that have not started', async () => {
+  it('reads the server-owned running projection without walking active list pages', async () => {
     const pending = Array.from({ length: 20 }, (_, index) =>
       listRow({
         id: `pending-${String(index)}`,
@@ -400,84 +407,56 @@ describe('the batch list', () => {
       status: 'active',
       currentPhaseId: ENTRY_PHASE_ID,
     })
-    const listBatches = vi.fn((request: Request) => {
-      if (request.query?.['status'] !== 'active') {
-        return Effect.succeed({
-          items: pending,
-          nextCursor: null,
-          total: pending.length,
-          capabilities: { create: true },
-        })
-      }
-      if (request.query?.['cursor'] === 'active-page-2') {
-        return Effect.succeed({
-          items: [running],
-          nextCursor: null,
-          total: 21,
-          capabilities: { create: true },
-        })
-      }
-      return Effect.succeed({
+    const listBatches = vi.fn((_request: Request) =>
+      Effect.succeed({
         items: pending,
-        nextCursor: 'active-page-2',
-        total: 21,
+        nextCursor: null,
+        total: pending.length,
         capabilities: { create: true },
-      })
-    })
+      }),
+    )
+    const listMyStanding = vi.fn(() =>
+      Effect.succeed({
+        items: [],
+        running: { items: [running], hasMore: false },
+      }),
+    )
 
-    await screen({ listBatches }, '/assessment/batches')
+    await screen({ listBatches, listMyStanding }, '/assessment/batches')
     await expect.element(page.getByRole('heading', { name: '较早的进行中批次' })).toBeVisible()
-    expect(
-      listBatches.mock.calls.some(([request]) => request.query?.['cursor'] === 'active-page-2'),
-    ).toBe(true)
+    expect(listBatches).toHaveBeenCalled()
+    expect(listBatches.mock.calls.some(([request]) => request.query?.['status'] === 'active')).toBe(
+      false,
+    )
+    expect(listMyStanding).toHaveBeenCalled()
   })
 
-  it('stops walking running pages after a next page fails', async () => {
+  it('retries the running projection after it fails', async () => {
     let reachable = false
-    let failedPageRequests = 0
+    let failedRequests = 0
     const running = listRow({
       id: 'hidden-running',
       name: '稍后恢复的进行中批次',
       status: 'active',
       currentPhaseId: ENTRY_PHASE_ID,
     })
-    const listBatches = vi.fn((request: Request) => {
-      if (request.query?.['status'] !== 'active') {
-        return Effect.succeed({
-          items: [],
-          nextCursor: null,
-          total: 0,
-          capabilities: { create: true },
-        })
-      }
-      if (request.query?.['cursor'] === 'refused-page') {
-        if (!reachable) {
-          failedPageRequests += 1
-          return Effect.fail(apiError('SERVICE_UNAVAILABLE'))
-        }
-        return Effect.succeed({
-          items: [running],
-          nextCursor: null,
-          total: 21,
-          capabilities: { create: true },
-        })
+    const listMyStanding = vi.fn(() => {
+      if (!reachable) {
+        failedRequests += 1
+        return Effect.fail(apiError('SERVICE_UNAVAILABLE'))
       }
       return Effect.succeed({
-        items: Array.from({ length: 20 }, (_, index) =>
-          listRow({ id: `pending-${String(index)}`, currentPhaseId: null }),
-        ),
-        nextCursor: 'refused-page',
-        total: 21,
-        capabilities: { create: true },
+        items: [],
+        running: { items: [running], hasMore: false },
       })
     })
 
-    const view = await screen({ listBatches }, '/assessment/batches')
+    const view = await screen({ listMyStanding }, '/assessment/batches')
     try {
-      await vi.waitFor(() => expect(failedPageRequests).toBeGreaterThan(0), { timeout: 5_000 })
-      const afterBoundedRetry = failedPageRequests
+      await vi.waitFor(() => expect(failedRequests).toBeGreaterThan(0), { timeout: 5_000 })
+      const afterBoundedRetry = failedRequests
       await new Promise((resolve) => setTimeout(resolve, 500))
-      expect(failedPageRequests).toBe(afterBoundedRetry)
+      expect(failedRequests).toBe(afterBoundedRetry)
       const state = () => document.querySelector('[data-slot="resource-state"]')
       expect(state()?.getAttribute('data-state')).toBe('unavailable')
 
@@ -490,6 +469,26 @@ describe('the batch list', () => {
     }
   })
 
+  it('says when the running card is bounded and opens the matching list', async () => {
+    await screen(
+      {
+        listMyStanding: () =>
+          Effect.succeed({
+            items: [],
+            running: {
+              items: [listRow({ status: 'active', currentPhaseId: ENTRY_PHASE_ID })],
+              hasMore: true,
+            },
+          }),
+      },
+      '/assessment/batches',
+    )
+
+    await expect.element(page.getByTestId('running-overflow')).toBeVisible()
+    await page.getByRole('button', { name: '在列表中查看' }).click()
+    await expect.element(page.getByRole('radio', { name: '进行中' })).toBeChecked()
+  })
+
   it('offers neither creation nor drafts to somebody who administers nothing', async () => {
     await screen(
       {
@@ -499,6 +498,14 @@ describe('the batch list', () => {
             nextCursor: null,
             total: 1,
             capabilities: { create: false },
+          }),
+        listMyStanding: () =>
+          Effect.succeed({
+            items: [],
+            running: {
+              items: [listRow({ status: 'active', currentPhaseId: ENTRY_PHASE_ID })],
+              hasMore: false,
+            },
           }),
       },
       '/assessment/batches',
@@ -539,7 +546,7 @@ describe('the batch list', () => {
     expect(state()?.querySelector('h2')).not.toBeNull()
     reachable = true
     await page.getByRole('button', { name: '重试' }).click()
-    await expect.element(page.getByText('2026 春季综测')).toBeVisible()
+    await expect.element(page.getByRole('link', { name: '2026 春季综测' })).toBeVisible()
     expect(state()).toBeNull()
   })
 
@@ -596,6 +603,10 @@ describe('the batch list', () => {
             reviewsWaiting,
           },
         ],
+        running: {
+          items: [listRow({ status: 'active', currentPhaseId: ENTRY_PHASE_ID })],
+          hasMore: false,
+        },
       }),
   })
 
@@ -853,34 +864,37 @@ describe('the batch list', () => {
   const runningIn = (
     timezone: string,
     { start = '2026-01-01T00:00:00.000Z', close = CLOSE }: { start?: string; close?: string } = {},
-  ) => ({
-    listBatches: () =>
-      Effect.succeed({
-        items: [
-          listRow({ status: 'active', currentPhaseId: ENTRY_PHASE_ID, timezone }, [
-            {
-              phaseId: ENTRY_PHASE_ID,
-              displayName: '正式填报',
-              description: '',
-              entryNote: '',
-              status: 'current',
-              entry: { kind: 'entered', at: start },
-            },
-            {
-              phaseId: REVIEW_PHASE_ID,
-              displayName: '审核',
-              description: '',
-              entryNote: '',
-              status: 'future',
-              entry: { kind: 'planned', at: close },
-            },
-          ]),
-        ],
-        nextCursor: null,
-        total: 1,
-        capabilities: { create: true },
-      }),
-  })
+  ) => {
+    const row = listRow({ status: 'active', currentPhaseId: ENTRY_PHASE_ID, timezone }, [
+      {
+        phaseId: ENTRY_PHASE_ID,
+        displayName: '正式填报',
+        description: '',
+        entryNote: '',
+        status: 'current',
+        entry: { kind: 'entered', at: start },
+      },
+      {
+        phaseId: REVIEW_PHASE_ID,
+        displayName: '审核',
+        description: '',
+        entryNote: '',
+        status: 'future',
+        entry: { kind: 'planned', at: close },
+      },
+    ])
+    return {
+      listBatches: () =>
+        Effect.succeed({
+          items: [row],
+          nextCursor: null,
+          total: 1,
+          capabilities: { create: true },
+        }),
+      listMyStanding: () =>
+        Effect.succeed({ items: [], running: { items: [row], hasMore: false } }),
+    }
+  }
 
   it("marks a round's times with its clock where the device keeps another", async () => {
     await page.viewport(1280, 800)
@@ -1362,6 +1376,14 @@ describe('the batch lifecycle', () => {
             nextCursor: null,
             total: 1,
             capabilities: { create: true },
+          }),
+        listMyStanding: () =>
+          Effect.succeed({
+            items: [],
+            running: {
+              items: [listRow({ status: 'active', currentPhaseId: ENTRY_PHASE_ID })],
+              hasMore: false,
+            },
           }),
       },
       '/assessment/batches',

@@ -1,16 +1,13 @@
 import { useLocale } from '@qualy/web-i18n'
 import { useEffect, useState, type MouseEvent } from 'react'
-import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import {
   PageLink,
-  cursorPages,
-  useApi,
   useApiQuery,
   useLoadFailure,
   usePageNavigate,
   usePageTitle,
-  useRunApi,
 } from '@qualy/web-runtime'
 
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
@@ -176,6 +173,14 @@ const styles = stylex.create({
       default: 28,
       [breakpoints.phone]: 20,
     },
+  },
+  runningOverflow: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 8,
+    color: tokens.mutedForeground,
+    fontSize: 13,
   },
   list: {
     display: 'flex',
@@ -575,8 +580,6 @@ function RowTime({ time }: { time: { text: string; mark: string | null } }) {
 }
 
 export default function BatchListPage() {
-  const api = useApi(assessmentApi)
-  const run = useRunApi()
   const query = useApiQuery(assessmentApi)
   // the page changes shape, not just its measurements, so the choice is
   // made here rather than in a media query
@@ -631,41 +634,10 @@ export default function BatchListPage() {
     placeholderData: keepPreviousData,
   })
 
-  // The card's own question, untouched by the table filter and page. Stored
-  // "active" also includes a round waiting for its first/current phase, and
-  // the server derives that standing only after it reads a page. Walk the
-  // paged API to exhaustion so newer pending rounds cannot hide an older
-  // round that is truly under way.
-  const runningQuery = useInfiniteQuery({
-    queryKey: [
-      ...query.assessment.listBatches.key({
-        query: { status: 'active', limit: String(PAGE_SIZE) },
-      }),
-      'running-card',
-    ],
-    queryFn: ({ pageParam }) =>
-      run(
-        api.assessment.listBatches({
-          query: {
-            status: 'active',
-            limit: String(PAGE_SIZE),
-            ...(pageParam === undefined ? {} : { cursor: pageParam }),
-          },
-        }),
-      ),
-    ...cursorPages,
-  })
-  const { fetchNextPage, hasNextPage, isFetchingNextPage, isFetchNextPageError } = runningQuery
-  useEffect(() => {
-    // A failed next page keeps the last successful page and therefore keeps
-    // hasNextPage true. Do not turn Query's bounded retry into an unbounded
-    // effect loop by immediately starting the same failed fetch again.
-    if (hasNextPage && !isFetchingNextPage && !isFetchNextPageError) void fetchNextPage()
-  }, [fetchNextPage, hasNextPage, isFetchingNextPage, isFetchNextPageError])
-
-  // What this reader has to do in the rounds under way, for the card's
-  // right column. Its own question rather than a column on the list: the
-  // list is paged and filtered, and this is not a fact about the batch.
+  // What this reader has to do in the rounds under way, and which rounds are
+  // truly under way, for the card above the paged list. The server owns that
+  // clock-authoritative cross-round projection; the browser does not exhaust
+  // list pages to reconstruct it.
   // Polled on the same beat as the review rail's badge - the queue it
   // counts is the one that badge counts.
   const agendas = useQuery({
@@ -715,11 +687,7 @@ export default function BatchListPage() {
   // status is running but whose first stage has not arrived is scheduled,
   // not running, and is not the card's.
   const searching = search.trim() !== ''
-  const running = searching
-    ? []
-    : (runningQuery.data?.pages.flatMap((page) => page.items) ?? []).filter(
-        (row) => standing(row) === 'active',
-      )
+  const running = searching ? [] : (agendas.data?.running.items ?? [])
   const runningKey = running.map((row) => row.id).join('\n')
   const [hero, setHero] = useState<{
     key: string
@@ -796,8 +764,7 @@ export default function BatchListPage() {
   // the card's question is open until the running rounds are known, and
   // so is this reader's part in them, which the card draws too; its room
   // is kept meanwhile, so neither answer pushes the list down
-  const heroPending =
-    (runningQuery.isPending || runningQuery.isFetchingNextPage || agendas.isPending) && !searching
+  const heroPending = agendas.isPending && !searching
   // the list's name tells it apart from the cards above it; a phone with no
   // card above has nothing to tell it from, and the page's own title
   // already says what it lists
@@ -891,19 +858,15 @@ export default function BatchListPage() {
           <AsyncSection
             pending={heroPending}
             error={
-              !searching && runningQuery.isError && !(batches.isError && batches.data === undefined)
-                ? failure.of(runningQuery.error)
+              !searching && agendas.isError && !(batches.isError && batches.data === undefined)
+                ? failure.of(agendas.error)
                 : null
             }
             framed
-            retrying={runningQuery.isFetching}
+            retrying={agendas.isFetching}
             loadingLabel={commonMessages.state_loading()}
             retryLabel={commonMessages.action_retry()}
-            onRetry={() =>
-              void (runningQuery.isFetchNextPageError
-                ? runningQuery.fetchNextPage()
-                : runningQuery.refetch())
-            }
+            onRetry={() => void agendas.refetch()}
             skeleton={<HeroSkeleton />}
           >
             {narrow
@@ -953,6 +916,23 @@ export default function BatchListPage() {
                 )}
           </AsyncSection>
 
+          {!searching && agendas.data?.running.hasMore === true && (
+            <div data-testid="running-overflow" {...stylex.props(styles.runningOverflow)}>
+              <span>{m.batch_runningMore()}</span>
+              <Button
+                variant="link"
+                size="sm"
+                onClick={() => {
+                  setSearch('')
+                  setSettledSearch('')
+                  setStatusFilter('active')
+                }}
+              >
+                {m.batch_runningShowAll()}
+              </Button>
+            </div>
+          )}
+
           <AsyncSection
             pending={batches.isPending}
             // a list already on the page stays through a later look that failed
@@ -966,7 +946,7 @@ export default function BatchListPage() {
               // When both page questions failed together, the list owns the
               // single visible retry. Recover its suppressed hero failure in
               // the same action so it does not surface only after the list.
-              if (runningQuery.isError) void runningQuery.refetch()
+              if (agendas.isError) void agendas.refetch()
             }}
             skeleton={<ListSkeleton labelled={listLabelled} />}
           >

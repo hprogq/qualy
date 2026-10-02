@@ -209,6 +209,9 @@ const batchListView = Schema.Struct({
   timeline: Schema.Array(batchTimelineEntry),
 })
 
+/** The home card is a bounded projection, not another unpaged batch list. */
+export const MAX_RUNNING_BATCH_CARDS = 20
+
 /**
  * A round one person is or was in, as their own record lists it.
  *
@@ -2166,6 +2169,15 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
             reviewsWaiting: Schema.NullOr(Schema.Number),
           }),
         ),
+        /**
+         * The batches truly under way, derived by the server against the same
+         * clock as a batch page. The card deliberately caps its switcher; the
+         * flag says the answer was shortened instead of silently truncating it.
+         */
+        running: Schema.Struct({
+          items: Schema.Array(batchListView).check(Schema.isMaxLength(MAX_RUNNING_BATCH_CARDS)),
+          hasMore: Schema.Boolean,
+        }),
       }),
     }).middleware(Authenticated),
   )

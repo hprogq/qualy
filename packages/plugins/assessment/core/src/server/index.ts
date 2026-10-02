@@ -20,7 +20,13 @@ import { Audit } from '@qualy/audit-contract/effect'
 import { BatchCreated, BatchDeleted } from '../actions.ts'
 import type { AuthorizationScope, Principal } from '@qualy/rbac-contract'
 import type { ApplicableAssignment } from '@qualy/rbac-contract/effect'
-import { ACCESS_LAPSES, ACCESS_STANDINGS, assessmentApiGroup, MAX_PLAN_PHASES } from '../api.ts'
+import {
+  ACCESS_LAPSES,
+  ACCESS_STANDINGS,
+  assessmentApiGroup,
+  MAX_PLAN_PHASES,
+  MAX_RUNNING_BATCH_CARDS,
+} from '../api.ts'
 import {
   applyToPlan,
   reviewInsertion,
@@ -215,7 +221,7 @@ import {
   insertTemplate,
   batchVisibleTo,
   countBatches,
-  activeBatchIdsVisibleTo,
+  activeBatchesVisibleTo,
   listBatchesPage,
   userBatchesPage,
   userEntriesPage,
@@ -374,9 +380,13 @@ const inPaperOrder = <I extends { readonly id: string; readonly scoreGroupId: st
   return [...ordered, ...items.filter((item) => !placed.has(item.id))]
 }
 
-/** a batch as a list shows it: the row, plus where the batch has got to */
-export interface BatchListRow extends BatchRow {
+/** a batch as a card shows it: the row, plus where the batch has got to */
+export interface BatchCardRow extends BatchRow {
   readonly timeline: readonly TimelineEntry[]
+}
+
+/** a batch in the keyset list, carrying its exact resume point too */
+export interface BatchListRow extends BatchCardRow {
   /** where a page resumes, at the precision the column is actually stored at */
   readonly cursorAt: string
 }
@@ -1000,6 +1010,10 @@ export interface MyStanding {
     readonly myEntries: MyFilings | null
     readonly reviewsWaiting: number | null
   }[]
+  readonly running: {
+    readonly items: readonly BatchCardRow[]
+    readonly hasMore: boolean
+  }
 }
 
 /**
@@ -3463,6 +3477,52 @@ export const make = Effect.fn('Assessment.make')(function* () {
     parseRange,
   })
 
+  /**
+   * Derive the clock-authoritative standing for several batch rows in two
+   * batched queries, preserving caller-specific fields such as a keyset
+   * cursor. The ordinary list and home projection must not disagree during
+   * the sweeper's projection lag.
+   */
+  const batchesWithStanding = <Row extends BatchRow>(tenantId: string, rows: readonly Row[]) =>
+    Effect.gen(function* () {
+      if (rows.length === 0) return [] as readonly (Row & BatchCardRow)[]
+      const now = yield* Clock.currentTimeMillis
+      const phases = yield* dieQuery(
+        withDb(
+          phaseRowsForBatches(
+            tenantId,
+            rows.map((row) => row.id),
+          ),
+        ),
+      )
+      const byBatch = groupBy(
+        phases,
+        (phase) => phase.batchId,
+        (phase) => phase,
+      )
+      const closures = new Map(
+        (yield* dieQuery(
+          withDb(
+            lastArchivedFor(
+              tenantId,
+              rows.map((row) => row.id),
+            ),
+          ),
+        )).map((row) => [row.batchId, row.occurredAt]),
+      )
+      return rows.map((row) => {
+        const plan = toSnapshots(byBatch.get(row.id) ?? [])
+        const here = effectiveIndexOf(row.status, plan, now, closures.get(row.id) ?? null)
+        const phase = here === null ? null : plan[here]
+        return {
+          ...row,
+          currentPhaseId: phase?.id ?? null,
+          currentPhaseName: phase?.displayName ?? null,
+          timeline: deriveTimeline(plan, now, here),
+        }
+      })
+    })
+
   return Assessment.of({
     ...itemMethods,
     ...entryMethods,
@@ -3584,49 +3644,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
     listBatches: Effect.fn('Assessment.listBatches')(function* (tenantId, filter, as) {
       const viewer = yield* viewerOf(as)
       const rows = yield* dieQuery(withDb(listBatchesPage(tenantId, viewer, filter)))
-      // where each batch has got to, derived the same way the batch's own
-      // timeline is: a list that says "in progress" and stops there is a list
-      // nobody can read without opening every row
-      const now = yield* Clock.currentTimeMillis
-      const phases = yield* dieQuery(
-        withDb(
-          phaseRowsForBatches(
-            tenantId,
-            rows.map((row) => row.id),
-          ),
-        ),
-      )
-      const byBatch = groupBy(
-        phases,
-        (phase) => phase.batchId,
-        (phase) => phase,
-      )
-      // one more query for the whole page rather than a different rule here:
-      // a round reopened for a date still to come has nothing in hand, and a
-      // list that said otherwise would contradict the round's own page
-      const closures = new Map(
-        (yield* dieQuery(
-          withDb(
-            lastArchivedFor(
-              tenantId,
-              rows.map((row) => row.id),
-            ),
-          ),
-        )).map((row) => [row.batchId, row.occurredAt]),
-      )
-      return rows.map((row) => {
-        const plan = toSnapshots(byBatch.get(row.id) ?? [])
-        const here = effectiveIndexOf(row.status, plan, now, closures.get(row.id) ?? null)
-        const phase = here === null ? null : plan[here]
-        return {
-          ...row,
-          // the same derivation the batch's own page uses, so a card and the
-          // page it opens never disagree about where the round has got to
-          currentPhaseId: phase?.id ?? null,
-          currentPhaseName: phase?.displayName ?? null,
-          timeline: deriveTimeline(plan, now, here),
-        }
-      })
+      return yield* batchesWithStanding(tenantId, rows)
     }),
 
     countBatches: Effect.fn('Assessment.countBatches')(function* (tenantId, filter, as) {
@@ -3697,8 +3715,16 @@ export const make = Effect.fn('Assessment.make')(function* () {
       as: Principal,
     ) {
       const viewer = yield* viewerOf(as)
-      const batchIds = yield* dieQuery(withDb(activeBatchIdsVisibleTo(tenantId, viewer)))
-      if (batchIds.length === 0) return { items: [] }
+      const activeBatches = yield* dieQuery(withDb(activeBatchesVisibleTo(tenantId, viewer)))
+      const batchIds = activeBatches.map((batch) => batch.id)
+      const allRunning = (yield* batchesWithStanding(tenantId, activeBatches)).filter(
+        (batch) => batch.currentPhaseId !== null,
+      )
+      const running = {
+        items: allRunning.slice(0, MAX_RUNNING_BATCH_CARDS),
+        hasMore: allRunning.length > MAX_RUNNING_BATCH_CARDS,
+      }
+      if (batchIds.length === 0) return { items: [], running }
       const filings = yield* dieQuery(
         withDb(entryCountsByBatchOf({ tenantId, userId: as.userId, batchIds })),
       )
@@ -3849,7 +3875,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
         }),
         { concurrency: 8 },
       )
-      return { items }
+      return { items, running }
     }),
 
     listMyActivity: Effect.fn('Assessment.listMyActivity')(function* (
@@ -6705,6 +6731,30 @@ const toBatchDto = (detail: BatchDetail) => ({
   createdAt: new Date(detail.createdAt).toISOString(),
 })
 
+const toBatchListDto = (row: BatchCardRow) => ({
+  id: row.id,
+  name: row.name,
+  descriptionMd: row.descriptionMd,
+  participantCount: row.participantCount,
+  materialRange: parseRange(row.materialRange),
+  timezone: row.timezone,
+  status: row.status as 'draft' | 'active' | 'archived',
+  configRevision: row.configRevision,
+  manageable: row.manageable,
+  currentPhaseId: row.currentPhaseId,
+  currentPhaseName: row.currentPhaseName,
+  timeline: row.timeline.map((entry) => ({
+    phaseId: entry.phaseId,
+    displayName: entry.displayName,
+    status: entry.status,
+    entry: {
+      kind: entry.entry.kind,
+      at: entry.entry.kind === 'pending' ? null : new Date(entry.entry.at).toISOString(),
+    },
+  })),
+  createdAt: new Date(row.createdAt).toISOString(),
+})
+
 const toPhaseDto = (row: PlanPhase) => ({
   id: row.id,
   ordinal: row.ordinal,
@@ -6879,29 +6929,7 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
           total,
           statusCounts,
           capabilities: { create: yield* assessment.canCreateBatch(principal) },
-          items: page.map((row) => ({
-            id: row.id,
-            name: row.name,
-            descriptionMd: row.descriptionMd,
-            participantCount: row.participantCount,
-            materialRange: parseRange(row.materialRange),
-            timezone: row.timezone,
-            status: row.status as 'draft' | 'active' | 'archived',
-            configRevision: row.configRevision,
-            manageable: row.manageable,
-            currentPhaseId: row.currentPhaseId,
-            currentPhaseName: row.currentPhaseName,
-            timeline: row.timeline.map((entry) => ({
-              phaseId: entry.phaseId,
-              displayName: entry.displayName,
-              status: entry.status,
-              entry: {
-                kind: entry.entry.kind,
-                at: entry.entry.kind === 'pending' ? null : new Date(entry.entry.at).toISOString(),
-              },
-            })),
-            createdAt: new Date(row.createdAt).toISOString(),
-          })),
+          items: page.map(toBatchListDto),
           nextCursor:
             found.length > limit && last
               ? encodeQueryCursor(fingerprint, [last.cursorAt, last.id])
@@ -8468,7 +8496,14 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
       Effect.fn('assessment.listMyStanding.handler')(function* () {
         const assessment = yield* Assessment
         const principal = yield* CurrentUser
-        return yield* assessment.listMyStanding(principal.tenantId, principal)
+        const standing = yield* assessment.listMyStanding(principal.tenantId, principal)
+        return {
+          ...standing,
+          running: {
+            ...standing.running,
+            items: standing.running.items.map(toBatchListDto),
+          },
+        }
       }),
     )
     .handle(
