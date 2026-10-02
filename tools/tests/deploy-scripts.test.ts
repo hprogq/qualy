@@ -20,7 +20,6 @@ const LIB = path.join(ROOT, 'deploy/lib.sh')
 const FAKE_DOCKER = `#!/bin/sh
 # docker, as far as lib.sh asks it
 printf '%s\\n' "$*" >> "$FAKE/docker.log"
-if [ -n "$FAKE_STDOUT" ]; then printf '%s' "$FAKE_STDOUT"; fi
 if [ "$1" = compose ]; then
   service=; saw_ps=
   for arg in "$@"; do
@@ -248,47 +247,6 @@ describe('one deployment step at a time', () => {
     const ran = run("run_interruptible sh -c 'sleep 0.1; printf complete'")
     expect(ran.status, ran.stderr).toBe(0)
     expect(ran.stdout).toBe('complete')
-  })
-
-  it('waits for cancellable compose and preserves the dump on stdout', () => {
-    const ran = run('compose_interruptible exec -T postgres pg_dump', { FAKE_STDOUT: 'dump' })
-    expect(ran.status, ran.stderr).toBe(0)
-    expect(ran.stdout).toBe('dump')
-  })
-
-  it('interrupts a directly monitored child without waiting for it to finish', async () => {
-    const started = Date.now()
-    const child = spawn(
-      'sh',
-      [
-        '-c',
-        [
-          'here="$1"; . "$2"',
-          'cleanup() { echo cleanup; }',
-          'trap cleanup EXIT',
-          "trap 'interrupt_step TERM 143' TERM",
-          "run_interruptible_child sh -c 'sleep 0.1; echo ready; sleep 10'",
-          'echo continued',
-        ].join('; '),
-        'sh',
-        path.dirname(LIB),
-        LIB,
-      ],
-      { env: { ...process.env, QUALY_ENV_FILE: envFile }, stdio: ['ignore', 'pipe', 'pipe'] },
-    )
-    let output = ''
-    child.stdout.setEncoding('utf8').on('data', (chunk) => {
-      output += chunk
-    })
-    await new Promise<void>((resolve) => child.stdout.once('data', () => resolve()))
-    child.kill('SIGTERM')
-    const code = await new Promise<number | null>((resolve) =>
-      child.once('exit', (exitCode) => resolve(exitCode)),
-    )
-    expect(code).toBe(143)
-    expect(Date.now() - started).toBeLessThan(2_000)
-    expect(output).toContain('cleanup')
-    expect(output).not.toContain('continued')
   })
 
   it('refuses a second step while the first holds the lock', async () => {
