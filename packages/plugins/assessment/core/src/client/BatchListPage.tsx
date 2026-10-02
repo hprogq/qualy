@@ -641,7 +641,11 @@ export default function BatchListPage() {
   // Polled on the same beat as the review rail's badge - the queue it
   // counts is the one that badge counts.
   const agendas = useQuery({
-    ...query.assessment.listMyStanding.queryOptions({}),
+    ...query.assessment.listMyStanding.queryOptions({
+      query: {
+        batchIds: (batches.data?.items ?? []).map((batch) => batch.id),
+      },
+    }),
     refetchInterval: 30_000,
   })
 

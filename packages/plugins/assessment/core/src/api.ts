@@ -2117,7 +2117,8 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
   )
   .add(
     /**
-     * What this reader has to do in every round under way, one row each.
+     * What this reader has to do in the bounded home-card rounds and the
+     * current batch-list page, one row each.
      *
      * Its own endpoint rather than a column on the batch list: that list is
      * paged and filtered, and a reader's standing is not a fact about the
@@ -2131,11 +2132,14 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
      * who does not judge in that round, and `myEntries` is null for
      * somebody who is not on its roster; a participant who has filed
      * nothing yet gets all noughts, which is a line worth drawing. The
-     * path carries no batch and no user for the same reason the review
-     * queue's does not: there is nothing here to ask on somebody else's
-     * behalf.
+     * query may name only the current paged-list batch ids; the server still
+     * intersects them with this reader's visibility, and no user id is
+     * accepted, so there is no way to ask on somebody else's behalf.
      */
     HttpApiEndpoint.get('listMyStanding', '/assessment/standing', {
+      query: Schema.Struct({
+        batchIds: Schema.optional(idListUpTo(MAX_RUNNING_BATCH_CARDS)),
+      }),
       success: Schema.Struct({
         items: Schema.Array(
           Schema.Struct({
@@ -2168,7 +2172,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
             ),
             reviewsWaiting: Schema.NullOr(Schema.Number),
           }),
-        ),
+        ).check(Schema.isMaxLength(MAX_RUNNING_BATCH_CARDS * 2)),
         /**
          * The batches truly under way, derived by the server against the same
          * clock as a batch page. The card deliberately caps its switcher; the

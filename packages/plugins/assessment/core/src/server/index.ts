@@ -221,7 +221,8 @@ import {
   insertTemplate,
   batchVisibleTo,
   countBatches,
-  activeBatchesVisibleTo,
+  activeBatchesVisibleByIds,
+  runningBatchesVisibleTo,
   listBatchesPage,
   userBatchesPage,
   userEntriesPage,
@@ -1850,7 +1851,11 @@ export class Assessment extends Context.Service<
      * The same question as `getMyOverview`'s reviewer branch, asked of every
      * round under way at once: what is waiting for this reader where.
      */
-    readonly listMyStanding: (tenantId: string, as: Principal) => Effect.Effect<MyStanding>
+    readonly listMyStanding: (
+      tenantId: string,
+      as: Principal,
+      pageBatchIds?: readonly string[],
+    ) => Effect.Effect<MyStanding>
     /** the user's own recent story across their standings, newest first */
     readonly listMyActivity: (
       tenantId: string,
@@ -3483,10 +3488,14 @@ export const make = Effect.fn('Assessment.make')(function* () {
    * cursor. The ordinary list and home projection must not disagree during
    * the sweeper's projection lag.
    */
-  const batchesWithStanding = <Row extends BatchRow>(tenantId: string, rows: readonly Row[]) =>
+  const batchesWithStanding = <Row extends BatchRow>(
+    tenantId: string,
+    rows: readonly Row[],
+    at?: number,
+  ) =>
     Effect.gen(function* () {
       if (rows.length === 0) return [] as readonly (Row & BatchCardRow)[]
-      const now = yield* Clock.currentTimeMillis
+      const now = at ?? (yield* Clock.currentTimeMillis)
       const phases = yield* dieQuery(
         withDb(
           phaseRowsForBatches(
@@ -3713,17 +3722,37 @@ export const make = Effect.fn('Assessment.make')(function* () {
     listMyStanding: Effect.fn('Assessment.listMyStanding')(function* (
       tenantId: string,
       as: Principal,
+      pageBatchIds: readonly string[] = [],
     ) {
       const viewer = yield* viewerOf(as)
-      const activeBatches = yield* dieQuery(withDb(activeBatchesVisibleTo(tenantId, viewer)))
-      const batchIds = activeBatches.map((batch) => batch.id)
-      const allRunning = (yield* batchesWithStanding(tenantId, activeBatches)).filter(
-        (batch) => batch.currentPhaseId !== null,
+      const now = yield* Clock.currentTimeMillis
+      // Fetch one sentinel row beyond the card cap so both the expensive
+      // standing calculation and the response stay bounded while `hasMore`
+      // remains truthful.
+      const candidates = yield* dieQuery(
+        withDb(runningBatchesVisibleTo(tenantId, viewer, now, MAX_RUNNING_BATCH_CARDS + 1)),
+      )
+      const requested = yield* dieQuery(
+        withDb(activeBatchesVisibleByIds(tenantId, viewer, pageBatchIds)),
+      )
+      const rows = new Map(
+        [...candidates, ...requested].map((batch) => [batch.id, batch] as const),
+      ).values()
+      const projected = yield* batchesWithStanding(tenantId, [...rows], now)
+      const candidateIds = new Set(candidates.map((batch) => batch.id))
+      const allRunning = projected.filter(
+        (batch) => candidateIds.has(batch.id) && batch.currentPhaseId !== null,
       )
       const running = {
         items: allRunning.slice(0, MAX_RUNNING_BATCH_CARDS),
         hasMore: allRunning.length > MAX_RUNNING_BATCH_CARDS,
       }
+      const activeBatches = projected.filter(
+        (batch) =>
+          pageBatchIds.includes(batch.id) ||
+          running.items.some((running) => running.id === batch.id),
+      )
+      const batchIds = activeBatches.map((batch) => batch.id)
       if (batchIds.length === 0) return { items: [], running }
       const filings = yield* dieQuery(
         withDb(entryCountsByBatchOf({ tenantId, userId: as.userId, batchIds })),
@@ -3818,7 +3847,6 @@ export const make = Effect.fn('Assessment.make')(function* () {
       const taking = new Set(
         yield* dieQuery(withDb(participatingBatchIdsOf({ tenantId, userId: as.userId, batchIds }))),
       )
-      const now = yield* Clock.currentTimeMillis
       const filingFor = Effect.fn(function* (batchId: string) {
         const batch = yield* dieQuery(withDb(oneBatch(tenantId, batchId)))
         const participant = yield* dieQuery(
@@ -8493,10 +8521,16 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
     )
     .handle(
       'listMyStanding',
-      Effect.fn('assessment.listMyStanding.handler')(function* () {
+      Effect.fn('assessment.listMyStanding.handler')(function* ({ query }) {
         const assessment = yield* Assessment
         const principal = yield* CurrentUser
-        const standing = yield* assessment.listMyStanding(principal.tenantId, principal)
+        const batchIds =
+          query.batchIds === undefined
+            ? []
+            : typeof query.batchIds === 'string'
+              ? [query.batchIds]
+              : query.batchIds
+        const standing = yield* assessment.listMyStanding(principal.tenantId, principal, batchIds)
         return {
           ...standing,
           running: {

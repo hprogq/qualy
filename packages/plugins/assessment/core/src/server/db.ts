@@ -432,18 +432,19 @@ export const countBatchesByStatus = (
     )
 
 /**
- * The stored-active rounds this person may see, all of them, newest first.
+ * At most `limit` clock-active rounds this person may see, newest first.
  *
- * The same reach as the list above. Stored active includes a round waiting
- * for its first/current phase; the service derives which rows are truly under
- * way against the clock before it projects the bounded home-page card set.
- * This query was already unpaged for the cross-round standing calculation;
- * returning the rows lets that one service own both answers without a second
- * browser-side walk through the paged list API.
+ * A round is in hand only when a phase began after its most recent closure.
+ * Keeping that predicate and the limit in SQL makes the home projection a
+ * bounded query rather than fetching every stored-active round and trimming
+ * the encoded answer afterwards. The service still derives the exact phase
+ * and timeline from the selected rows so it agrees with the ordinary list.
  */
-export const activeBatchesVisibleTo = (
+export const runningBatchesVisibleTo = (
   tenantId: string,
   viewer: { held: AuthorizationScope; userId: string },
+  now: number,
+  limit: number,
 ) =>
   db
     .query((k) =>
@@ -452,8 +453,22 @@ export const activeBatchesVisibleTo = (
         .where('tenantId', '=', tenantId)
         .where('status', '=', 'active')
         .where(visibleTo(viewer))
+        .where(sql<boolean>`exists (
+          select 1 from batch_phases ph
+          where ph.tenant_id = assessment_batches.tenant_id
+            and ph.batch_id = assessment_batches.id
+            and coalesce(ph.actual_entry_at, ph.planned_entry_at) <= ${new Date(now)}
+            and coalesce(ph.actual_entry_at, ph.planned_entry_at) > coalesce((
+              select max(event.occurred_at)
+              from batch_lifecycle_events event
+              where event.tenant_id = assessment_batches.tenant_id
+                and event.batch_id = assessment_batches.id
+                and event.kind = 'archived'
+            ), '-infinity'::timestamptz)
+        )`)
         .orderBy('createdAt', 'desc')
         .orderBy('id', 'desc')
+        .limit(limit)
         .execute(),
     )
     .pipe(
@@ -461,6 +476,30 @@ export const activeBatchesVisibleTo = (
         (rows as unknown as Record<string, unknown>[]).map((row) => toBatchRow(row)),
       ),
     )
+
+/** The requested active page rows, still authorization-filtered in SQL. */
+export const activeBatchesVisibleByIds = (
+  tenantId: string,
+  viewer: { held: AuthorizationScope; userId: string },
+  batchIds: readonly string[],
+) =>
+  batchIds.length === 0
+    ? Effect.succeed([] as BatchRow[])
+    : db
+        .query((k) =>
+          batchSelection(k)
+            .select(withinReach(viewer.held).as('manageable'))
+            .where('tenantId', '=', tenantId)
+            .where('status', '=', 'active')
+            .where('id', 'in', batchIds as string[])
+            .where(visibleTo(viewer))
+            .execute(),
+        )
+        .pipe(
+          Effect.map((rows) =>
+            (rows as unknown as Record<string, unknown>[]).map((row) => toBatchRow(row)),
+          ),
+        )
 
 /**
  * One page of the batches this person may see, newest first. The

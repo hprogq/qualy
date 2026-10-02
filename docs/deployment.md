@@ -427,8 +427,11 @@ current,旧镜像的 server 要这一步才肯启动;旧 release 已被保留策
   `attachments.tar.gz`,任何一个取不回或对不上整次失败——开了版本控制的桶,「拷一份桶」拿到的是每个 key 的最新写入,不一定是附件读的那个版本;
   写 `SHA256SUMS`;整个目录写完才改名就位(以时间戳命名的目录一定是完整备份);保留最近 `QUALY_BACKUP_KEEP`(默认 14)份;
   `QUALY_BACKUP_OFFSITE` 设了就以新目录为 `$1` 执行(rclone / scp / coscli 由运维选),失败则整次失败;异地副本必须是 append-only：复制命令遇到同名对象必须失败，远端权限也必须独立强制这一点。COS 使用另建的**未开版本控制**备份桶,
-  与只能写的独立账号(`PutObject`,以及大文件分块上传要的 `InitiateMultipartUpload` / `UploadPart` / `CompleteMultipartUpload`,
-  没有读与删)；CAM 条件要求 `cos:x-cos-forbid-overwrite = true`，主机命令同时携带该头。例如 `QUALY_BACKUP_OFFSITE=coscli -c /etc/qualy/coscli.yaml cp -r --forbid-overwrite=true "$1" cos://<备份桶>/qualy/`。只开版本控制不够：被盗的写账号仍可以写入一个新的当前版本，遮住原备份。(`cp -r` 把目录本身放进目标下,
+  与独立备份账号。按 COSCLI `cp` 的权限要求，账号授予 `HeadBucket` / `GetBucket` / `HeadObject`（只读桶列表与对象元数据，
+  不授予 `GetObject`）、`PutObject`，以及大文件分块上传需要的 `InitiateMultipartUpload` / `UploadPart` /
+  `CompleteMultipartUpload` / `ListMultipartUploads` / `ListParts`；不授予对象内容读取与任何删除权限。CAM 中只给支持该条件键的
+  `PutObject` / `InitiateMultipartUpload` / `CompleteMultipartUpload` 加 `cos:x-cos-forbid-overwrite = true` 条件；`UploadPart` 与只读元数据/列表动作
+  放在不带该条件的独立 statement，避免把不支持此键的动作一并拒绝。主机命令同时携带该头。例如 `QUALY_BACKUP_OFFSITE=coscli -c /etc/qualy/coscli.yaml cp -r --forbid-overwrite=true "$1" cos://<备份桶>/qualy/`。只开版本控制不够：被盗的写账号仍可以写入一个新的当前版本，遮住原备份。(`cp -r` 把目录本身放进目标下,
   目标只写到 `qualy/`;再拼一层目录名会得到 `qualy/<stamp>/<stamp>/`,2026-09-28 实测);成功后写 `<root>/last-success`,
   供监控按时间判断备份是否停了。主密钥不进备份,与备份分开保管。
 - `deploy/restore.sh <dir>`:先核对 `SHA256SUMS`;导入临时库(`--exit-on-error`,全有或全无,期间照常服务)→ 停服务中的那一色 → 换名(旧库留作

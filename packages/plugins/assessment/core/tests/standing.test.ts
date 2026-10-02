@@ -2,6 +2,7 @@ import { Effect } from 'effect'
 import { sql } from 'kysely'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createTestContext, postgresAvailable, runSql } from '@qualy/plugin-database/testkit'
+import { MAX_RUNNING_BATCH_CARDS } from '../src/api.ts'
 import { Assessment, type MyStanding } from '../src/server/index.ts'
 import { GATED, ok, phase, run, runningBatch, seed } from './support/round.ts'
 
@@ -87,6 +88,38 @@ describe.runIf(postgresAvailable)('the standing of a reader across the rounds un
             where tenant_id = ${f.t} and batch_id = ${g.batch.id} and user_id = ${f.admin}`)
           const outside = yield* assessment.listMyStanding(f.t, admin)
 
+          // More running rounds than the home card can draw stay bounded at
+          // the database boundary. Leave their materialized phase pointers
+          // null as a projection-lag check: the clock query still finds them.
+          yield* runSql(sql`
+            insert into assessment_batches (
+              id, tenant_id, name, description_md, material_range, timezone,
+              status, config_revision, score_groups_version, current_phase_id,
+              review_reasons, created_at, updated_at
+            )
+            select
+              uuidv7(), tenant_id, 'Bounded running ' || n, description_md,
+              material_range, timezone, 'active', config_revision,
+              score_groups_version, null, review_reasons,
+              now() + n * interval '1 second', now()
+            from assessment_batches
+            cross join generate_series(1, ${MAX_RUNNING_BATCH_CARDS + 1}) n
+            where tenant_id = ${f.t} and id = ${g.batch.id}`)
+          yield* runSql(sql`
+            insert into batch_phases (
+              id, tenant_id, batch_id, ordinal, phase_key, display_name,
+              description, planned_entry_at, entry_note, actual_entry_at,
+              permission_profile, source_template_id, source_template_version,
+              created_at, updated_at
+            )
+            select
+              uuidv7(), tenant_id, id, 0, 'bounded', 'Bounded phase', '',
+              now() - interval '1 day', '', now() - interval '1 day',
+              '[]'::jsonb, null, null, now(), now()
+            from assessment_batches
+            where tenant_id = ${f.t} and name like 'Bounded running %'`)
+          const bounded = yield* assessment.listMyStanding(f.t, admin)
+
           return {
             batchId: g.batch.id,
             drafted,
@@ -97,6 +130,7 @@ describe.runIf(postgresAvailable)('the standing of a reader across the rounds un
             outside,
             submitted,
             lagged,
+            bounded,
           }
         }),
       ),
@@ -120,6 +154,9 @@ describe.runIf(postgresAvailable)('the standing of a reader across the rounds un
     expect(result.waiting.items).toHaveLength(1)
     expect(result.lagged.running.items.map((batch) => batch.id)).toEqual([result.batchId])
     expect(result.lagged.running.hasMore).toBe(false)
+    expect(result.bounded.running.items).toHaveLength(MAX_RUNNING_BATCH_CARDS)
+    expect(result.bounded.items).toHaveLength(MAX_RUNNING_BATCH_CARDS)
+    expect(result.bounded.running.hasMore).toBe(true)
 
     // the student: their own filing moves between the buckets, and
     // nobody's work ever waits on them
@@ -563,7 +600,7 @@ describe.runIf(postgresAvailable)('the standing of a reader across the rounds un
           const admin = f.principal(f.admin)
           const filingOf = (batchId: string, userId: string) =>
             Effect.map(
-              assessment.listMyStanding(f.t, f.principal(userId)),
+              assessment.listMyStanding(f.t, f.principal(userId), [batchId]),
               (standing) =>
                 standing.items.find((item) => item.batchId === batchId)?.myEntries?.filing,
             )
