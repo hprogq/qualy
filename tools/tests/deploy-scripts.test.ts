@@ -243,6 +243,12 @@ describe('moving the edge from one color to the other', () => {
 })
 
 describe('one deployment step at a time', () => {
+  it('waits for an interruptible step and preserves all of its output', () => {
+    const ran = run("run_interruptible sh -c 'sleep 0.1; printf complete'")
+    expect(ran.status, ran.stderr).toBe(0)
+    expect(ran.stdout).toBe('complete')
+  })
+
   it('refuses a second step while the first holds the lock', async () => {
     const holder = spawn(
       'sh',

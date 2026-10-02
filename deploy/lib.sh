@@ -126,9 +126,9 @@ run_interruptible() {
   if command -v setsid > /dev/null 2>&1; then
     if [ "$1" = compose ]; then
       shift
-      setsid sh -c 'here="$1"; shift; . "$here/lib.sh"; compose "$@"' qualy-compose "$here" "$@" &
+      setsid --wait sh -c 'here="$1"; shift; . "$here/lib.sh"; compose "$@"' qualy-compose "$here" "$@" &
     else
-      setsid "$@" &
+      setsid --wait "$@" &
     fi
   else
     # Darwin has no setsid command; its /bin/sh can still give a monitored
