@@ -45,6 +45,7 @@ RUN pnpm install --frozen-lockfile --ignore-scripts
 # the lock must describe this tree before anything is built from it; frozen
 # writes nothing, and a stale lock is a build failure rather than a repair
 RUN node apps/cli/src/main.ts resolve --frozen-lockfile \
+ && node packages/build/messages/src/cli.ts \
  && pnpm --filter @qualy/web-app build \
  && node packages/build/web/src/stage.ts \
  && node tools/quality/check-staged-web.ts

@@ -53,19 +53,23 @@ export interface MessageSource {
   readonly owner: string
 }
 
-/** where the compiled messages and the generated facades live, under the product */
-export const messagesOutDir = (productRoot: string) => path.join(productRoot, '.qualy', 'i18n')
+/** where one compiled message profile and its facades live, under the product */
+export const messagesOutDir = (productRoot: string, profile?: string) =>
+  profile === undefined
+    ? path.join(productRoot, '.qualy', 'i18n')
+    : path.join(productRoot, '.qualy', 'i18n-profiles', profile)
 
 const COMPILE_LOCK_WAIT_MS = 300_000
 const COMPILE_LOCK_RETRY_MS = 25
 const MALFORMED_LOCK_STALE_MS = 30_000
 
 /**
- * One product has one generated message tree. Vite, the message CLI and a
- * build can reach it from separate processes, so a PID-named input project
- * alone does not protect the shared outputs and stamp. Keep the lock beside
- * those outputs: it is product-scoped, never published, and disappears even
- * when compilation fails.
+ * One source profile has one generated message tree. Vite, the message CLI
+ * and a build can reach a profile from separate processes, so a PID-named
+ * input project alone does not protect its outputs and stamp. Keep the lock
+ * beside those outputs: it is profile-scoped, never published, and disappears
+ * even when compilation fails. Callers with different source sets use
+ * different profiles instead of serially replacing one another's tree.
  */
 const acquireCompileLock = async (outDir: string): Promise<() => void> => {
   fs.mkdirSync(outDir, { recursive: true })
@@ -487,6 +491,12 @@ export interface CompileOptions {
   readonly force?: boolean
   /** Repository checks include installed packages; releases compile the active selection only. */
   readonly all?: boolean
+  /**
+   * An isolated output tree for a caller with a different source set, such as
+   * browser tests that add an external fixture package. The default product
+   * profile stays at `.qualy/i18n` for Node and release consumers.
+   */
+  readonly outputProfile?: string
 }
 
 export interface CompileResult {
@@ -504,7 +514,7 @@ export interface CompileResult {
 export async function compileMessages(options: CompileOptions): Promise<CompileResult> {
   const manifest = options.manifestPath ?? defaultManifestPath()
   const productRoot = productRootFor(manifest)
-  const outDir = messagesOutDir(productRoot)
+  const outDir = messagesOutDir(productRoot, options.outputProfile)
   const releaseLock = await acquireCompileLock(outDir)
   try {
     return await compileMessagesUnlocked(options)
@@ -516,7 +526,7 @@ export async function compileMessages(options: CompileOptions): Promise<CompileR
 const compileMessagesUnlocked = async (options: CompileOptions): Promise<CompileResult> => {
   const manifest = options.manifestPath ?? defaultManifestPath()
   const productRoot = productRootFor(manifest)
-  const outDir = messagesOutDir(productRoot)
+  const outDir = messagesOutDir(productRoot, options.outputProfile)
   const sources = options.sources ?? (await messageSources(manifest, options.all))
 
   const stampFile = path.join(outDir, 'stamp.json')
@@ -674,7 +684,8 @@ const compileMessagesUnlocked = async (options: CompileOptions): Promise<Compile
         written,
       )
       put(path.join(outDir, 'facades', `${source.namespace}.d.ts`), declarationSource(own), written)
-      if (!keepsLocalFacade(source.packageRoot, productRoot)) continue
+      if (options.outputProfile !== undefined || !keepsLocalFacade(source.packageRoot, productRoot))
+        continue
       const facadeDir = path.join(source.packageRoot, '.qualy')
       put(
         path.join(facadeDir, 'messages.js'),
@@ -726,5 +737,5 @@ const keepsLocalFacade = (packageRoot: string, productRoot: string): boolean => 
 }
 
 /** the facade `#messages` names for a package of the product, published or not */
-export const facadeFor = (productRoot: string, namespace: string): string =>
-  path.join(messagesOutDir(productRoot), 'facades', `${namespace}.js`)
+export const facadeFor = (productRoot: string, namespace: string, profile?: string): string =>
+  path.join(messagesOutDir(productRoot, profile), 'facades', `${namespace}.js`)

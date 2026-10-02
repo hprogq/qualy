@@ -11,14 +11,14 @@ import {
 } from '../src/compile.ts'
 
 const directories: string[] = []
-const source = (en: unknown, zh: unknown) => {
+const source = (en: unknown, zh: unknown, owner = '@acme/example') => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-messages-'))
   directories.push(root)
   fs.mkdirSync(path.join(root, 'messages'))
   fs.writeFileSync(
     path.join(root, 'package.json'),
     JSON.stringify({
-      name: '@acme/example',
+      name: owner,
       type: 'module',
       imports: { '#messages': './.qualy/messages.js' },
     }),
@@ -101,6 +101,57 @@ it('serializes concurrent writers to one product output tree', async () => {
   expect(second.compiled).toBe(true)
   expect(fs.existsSync(path.join(first.outDir, 'stamp.json'))).toBe(true)
   expect(fs.existsSync(path.join(first.outDir, 'compile.lock'))).toBe(false)
+})
+it('isolates a Vite source profile from the default compiler output', async () => {
+  const core = source({ example: 'Core' }, { example: '核心' })
+  const fixture = source({ probe: 'Probe' }, { probe: '探针' }, '@acme/probe')
+  const manifestPath = path.join(core.packageRoot, 'qualy.yml')
+  const profile = 'extra-test-fixture'
+
+  await compileMessages({
+    manifestPath,
+    sources: [core, fixture],
+    outputStructure: 'locale-modules',
+    outputProfile: profile,
+  })
+  const fixtureFacade = path.join(
+    messagesOutDir(core.packageRoot, profile),
+    'facades/acme-probe.js',
+  )
+  expect(fs.existsSync(fixtureFacade)).toBe(true)
+
+  await compileMessages({
+    manifestPath,
+    sources: [core],
+    outputStructure: 'locale-modules',
+    force: true,
+  })
+  expect(fs.existsSync(fixtureFacade)).toBe(true)
+  expect(fs.readFileSync(fixtureFacade, 'utf8')).toContain('probe')
+})
+it('keeps Vite build and dev output structures in separate profiles', async () => {
+  const s = source({ one: 'One', two: 'Two' }, { one: '一', two: '二' })
+  const manifestPath = path.join(s.packageRoot, 'qualy.yml')
+  const built = await compileMessages({
+    manifestPath,
+    sources: [s],
+    outputStructure: 'message-modules',
+    outputProfile: 'vite-build',
+  })
+  const buildOutputs = (
+    JSON.parse(fs.readFileSync(path.join(built.outDir, 'stamp.json'), 'utf8')) as {
+      outputs: { file: string }[]
+    }
+  ).outputs.map(({ file }) => file)
+
+  const served = await compileMessages({
+    manifestPath,
+    sources: [s],
+    outputStructure: 'locale-modules',
+    outputProfile: 'vite-dev',
+  })
+  expect(served.outDir).not.toBe(built.outDir)
+  expect(buildOutputs.every((file) => fs.existsSync(file))).toBe(true)
 })
 it('refuses a stale lock instead of racing another waiter to delete it', async () => {
   const s = source({ example: 'Hello {name}' }, { example: '你好{name}' })

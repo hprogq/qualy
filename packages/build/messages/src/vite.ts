@@ -1,5 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import { createHash } from 'node:crypto'
 import { type Plugin, type ViteDevServer } from 'vite'
 import { productRootFor } from '@qualy/assembly'
 import { manifestPath as defaultManifestPath } from './manifest.ts'
@@ -36,6 +37,7 @@ export interface QualyMessagesOptions {
 export const qualyMessages = (options: QualyMessagesOptions = {}): Plugin => {
   const manifest = options.manifestPath ?? defaultManifestPath()
   let sources: readonly (MessageSource & { readonly real: string })[] = []
+  let outputProfile: string | undefined
   const realOf = (file: string) => {
     try {
       return fs.realpathSync(file)
@@ -56,8 +58,28 @@ export const qualyMessages = (options: QualyMessagesOptions = {}): Plugin => {
     }
     return found
   }
-  const compile = (structure: 'message-modules' | 'locale-modules') =>
-    compileMessages({ manifestPath: manifest, sources, outputStructure: structure })
+  const compile = (structure: 'message-modules' | 'locale-modules') => {
+    // A Vite caller consumes these modules after config() returns, so a lock
+    // around writing alone cannot let build and dev share one mutable layout.
+    // Give every source set and output structure an immutable profile of its
+    // own; the default tree remains the CLI/Node compiler's.
+    outputProfile = `vite-${structure}-${createHash('sha256')
+      .update(
+        JSON.stringify(
+          sources
+            .map(({ namespace, real }) => [namespace, real] as const)
+            .sort((left, right) => left[0].localeCompare(right[0])),
+        ),
+      )
+      .digest('hex')
+      .slice(0, 16)}`
+    return compileMessages({
+      manifestPath: manifest,
+      sources,
+      outputStructure: structure,
+      outputProfile,
+    })
+  }
   return {
     name: 'qualy-messages',
     enforce: 'pre',
@@ -78,7 +100,7 @@ export const qualyMessages = (options: QualyMessagesOptions = {}): Plugin => {
         if (owner === undefined) {
           this.error(`${importer} imports #messages, but no package that ships messages holds it`)
         }
-        return facadeFor(productRootFor(manifest), owner.namespace)
+        return facadeFor(productRootFor(manifest), owner.namespace, outputProfile)
       },
     },
     configureServer(server: ViteDevServer) {

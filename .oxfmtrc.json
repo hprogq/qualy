@@ -11,6 +11,7 @@
     "cordis.gen.yml",
     "repos/",
     "apps/web/.qualy/",
+    ".qualy/i18n-profiles/",
     "qualy.lock.json",
     "docs/seed/",
     "tools/tests/fixtures/messages-golden.json"

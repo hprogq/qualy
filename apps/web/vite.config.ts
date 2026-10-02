@@ -151,7 +151,7 @@ export default defineConfig(({ mode }) => ({
             // can close no ring.
             {
               name: 'messages',
-              test: /[\\/]\.qualy[\\/](?:i18n[\\/]|messages\.js$)/,
+              test: /[\\/]\.qualy[\\/](?:i18n(?:-profiles)?[\\/]|messages\.js$)/,
               priority: 1,
               minShareCount: 2,
               entriesAware: true,
