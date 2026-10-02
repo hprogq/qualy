@@ -205,7 +205,7 @@ its own under the root you give it, checks what it wrote, keeps the newest 14
 The destination is append-only: the command must refuse an existing object,
 and the remote writer's policy must require that refusal independently of the
 host. For COS use a dedicated unversioned backup bucket, `coscli cp -r
---forbid-overwrite true`, and a CAM condition requiring
+--forbid-overwrite=true`, and a CAM condition requiring
 `cos:x-cos-forbid-overwrite = true`; a versioned bucket only preserves an old
 version while a compromised writer can still put a forged version in front of
 it.

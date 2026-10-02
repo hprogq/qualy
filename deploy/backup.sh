@@ -52,7 +52,12 @@ cleanup() {
   if [ -n "$partial" ]; then rm -rf "$partial"; fi
   release_lock
 }
-trap cleanup EXIT INT TERM
+trap cleanup EXIT
+# A signal trap that merely returns makes POSIX sh continue after the
+# interrupted command. Exit explicitly; the EXIT trap above then cleans the
+# partial directory and releases the deployment lock exactly once.
+trap 'interrupt_step INT 130' INT
+trap 'interrupt_step TERM 143' TERM
 
 case $keep in '' | *[!0-9]* | 0)
   echo "QUALY_BACKUP_KEEP must be a whole number above 0, not $keep" >&2
@@ -74,25 +79,25 @@ mkdir "$partial"
 # The database first, and checked: a dump pg_restore cannot list is not one.
 # The commands run inside the postgres container, which knows the user and
 # the database already; .env is compose's to read, not the shell's.
-compose exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" -Fc "$POSTGRES_DB"' > "$partial/qualy.dump"
-compose exec -T postgres pg_restore --list < "$partial/qualy.dump" > /dev/null
+run_interruptible compose exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" -Fc "$POSTGRES_DB"' > "$partial/qualy.dump"
+run_interruptible compose exec -T postgres pg_restore --list < "$partial/qualy.dump" > /dev/null
 
 # Then the attachments, after the database: a file the dump names may be
 # newer than the dump, which a restore survives; a row naming a file that the
 # archive lacks it would not.
-compose run --rm --no-deps -T --user 0:0 --entrypoint sh tools \
+run_interruptible compose run --rm --no-deps -T --user 0:0 --entrypoint sh tools \
   -c 'tar -czf - -C /var/lib/qualy/storage .' > "$partial/storage.tar.gz"
-gzip -t "$partial/storage.tar.gz"
+run_interruptible gzip -t "$partial/storage.tar.gz"
 
 # And the attachments kept anywhere but the volume, each as it completed: a
 # bucket that keeps versions reads back the newest write to a key, which is
 # not always the one an attachment names, so a copy of the bucket would not
 # do. Written as this script's own user, so it can archive and remove them.
-compose run --rm --no-deps -T --user "$(id -u):$(id -g)" -v "$partial:/backup" tools \
+run_interruptible compose run --rm --no-deps -T --user "$(id -u):$(id -g)" -v "$partial:/backup" tools \
   node apps/cli/src/main.ts storage export --to /backup/attachments --except local < /dev/null
-tar -czf "$partial/attachments.tar.gz" -C "$partial/attachments" .
+run_interruptible tar -czf "$partial/attachments.tar.gz" -C "$partial/attachments" .
 rm -rf "$partial/attachments"
-gzip -t "$partial/attachments.tar.gz"
+run_interruptible gzip -t "$partial/attachments.tar.gz"
 
 (cd "$partial" && sums qualy.dump storage.tar.gz attachments.tar.gz > SHA256SUMS)
 mv "$partial" "$destination"
@@ -103,7 +108,7 @@ if [ -n "$offsite" ]; then
   # form; other backends have the same immutable-destination contract, which
   # deploy/.env.example and docs/deployment.md spell out.
   assert_immutable_offsite "$offsite"
-  sh -c "$offsite" offsite "$destination"
+  run_interruptible sh -c "$offsite" offsite "$destination"
 fi
 
 # the newest few stay; stamps sort as they were taken

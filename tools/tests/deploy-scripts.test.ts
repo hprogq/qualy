@@ -256,6 +256,42 @@ describe('one deployment step at a time', () => {
     expect(second.status).toBe(1)
     expect(second.stderr).toContain('another deployment step holds')
   })
+
+  it('stops a backup after TERM instead of continuing outside its released lock', async () => {
+    const started = Date.now()
+    const child = spawn(
+      'sh',
+      [
+        '-c',
+        [
+          'here="$1"; . "$2"',
+          'cleanup() { echo cleanup; }',
+          'trap cleanup EXIT',
+          "trap 'interrupt_step INT 130' INT",
+          "trap 'interrupt_step TERM 143' TERM",
+          "run_interruptible sh -c 'sleep 0.1; echo ready; sleep 10'",
+          'echo continued',
+        ].join('; '),
+        'sh',
+        path.dirname(LIB),
+        LIB,
+      ],
+      { env: { ...process.env, QUALY_ENV_FILE: envFile }, stdio: ['ignore', 'pipe', 'pipe'] },
+    )
+    let output = ''
+    child.stdout.setEncoding('utf8').on('data', (chunk) => {
+      output += chunk
+    })
+    await new Promise<void>((resolve) => child.stdout.once('data', () => resolve()))
+    child.kill('SIGTERM')
+    const code = await new Promise<number | null>((resolve) =>
+      child.once('exit', (exitCode) => resolve(exitCode)),
+    )
+    expect(code).toBe(143)
+    expect(Date.now() - started).toBeLessThan(2_000)
+    expect(output).toContain('cleanup')
+    expect(output).not.toContain('continued')
+  })
 })
 
 describe('an append-only offsite backup command', () => {
@@ -264,12 +300,51 @@ describe('an append-only offsite backup command', () => {
       'assert_immutable_offsite \'coscli -c /etc/qualy/coscli.yaml cp -r "$1" cos://backup/qualy/\'',
     )
     expect(unsafe.status).toBe(1)
-    expect(unsafe.stderr).toContain('without --forbid-overwrite true')
+    expect(unsafe.stderr).toContain('without --forbid-overwrite=true')
 
     const safe = run(
-      'assert_immutable_offsite \'coscli -c /etc/qualy/coscli.yaml cp -r --forbid-overwrite true "$1" cos://backup/qualy/\'',
+      'assert_immutable_offsite \'coscli -c /etc/qualy/coscli.yaml cp -r --forbid-overwrite=true "$1" cos://backup/qualy/\'',
     )
     expect(safe.status, safe.stderr).toBe(0)
+
+    for (const disguised of [
+      'coscli -c /etc/qualy/coscli.yaml cp -r "$1" cos://backup/qualy/ # --forbid-overwrite true',
+      'coscli -c /etc/qualy/coscli.yaml cp -r "$1" cos://backup/qualy/ --meta "--forbid-overwrite true"',
+      'coscli -c /etc/qualy/coscli.yaml cp -r "$1" cos://backup/qualy/\nprintf -- "--forbid-overwrite true"',
+    ]) {
+      const ran = run('assert_immutable_offsite "$OFFSITE"', { OFFSITE: disguised })
+      expect(ran.status).toBe(1)
+      expect(ran.stderr).toContain('unsupported shell syntax')
+    }
+
+    for (const invalidBoolean of [
+      'coscli cp -r --forbid-overwrite true "$1" cos://backup/qualy/',
+      'coscli cp -r --forbid-overwrite=true "$1" cos://backup/qualy/ --forbid-overwrite=false',
+    ]) {
+      const ran = run('assert_immutable_offsite "$OFFSITE"', { OFFSITE: invalidBoolean })
+      expect(ran.status).toBe(1)
+      expect(ran.stderr).toContain('must pass coscli --forbid-overwrite=true')
+    }
+
+    const unrelated = run(
+      'assert_immutable_offsite \'rclone copy --immutable "$1" remote:coscli-backups/\'',
+    )
+    expect(unrelated.status, unrelated.stderr).toBe(0)
+
+    const hidden = run(
+      'assert_immutable_offsite \'sh -c "coscli cp --forbid-overwrite=true source target"\'',
+    )
+    expect(hidden.status).toBe(1)
+    expect(hidden.stderr).toContain('must execute coscli directly')
+
+    for (const quoted of [
+      '"coscli" cp -r "$1" cos://backup/qualy/',
+      '"/usr/local/bin/coscli" cp -r "$1" cos://backup/qualy/',
+    ]) {
+      const ran = run('assert_immutable_offsite "$OFFSITE"', { OFFSITE: quoted })
+      expect(ran.status).toBe(1)
+      expect(ran.stderr).toContain('unsupported shell syntax')
+    }
   })
 })
 

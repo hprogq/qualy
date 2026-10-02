@@ -116,16 +116,94 @@ release_lock() {
   held_lock=
 }
 
+# Run a backup step in its own process group. A shell defers INT/TERM traps
+# while it waits on a foreground child; a monitored background group lets the
+# trap stop docker, tar or an offsite uploader immediately instead of waiting
+# for that step to finish on its own.
+active_step=
+run_interruptible() {
+  local code
+  if command -v setsid > /dev/null 2>&1; then
+    if [ "$1" = compose ]; then
+      shift
+      setsid sh -c 'here="$1"; shift; . "$here/lib.sh"; compose "$@"' qualy-compose "$here" "$@" &
+    else
+      setsid "$@" &
+    fi
+  else
+    # Darwin has no setsid command; its /bin/sh can still give a monitored
+    # background job a group. Production Linux takes the explicit path above.
+    set -m
+    "$@" &
+  fi
+  active_step=$!
+  set +e
+  wait "$active_step"
+  code=$?
+  set -e
+  active_step=
+  if ! command -v setsid > /dev/null 2>&1; then set +m; fi
+  return "$code"
+}
+interrupt_step() {
+  local signal="$1" code="$2"
+  trap - INT TERM
+  if [ -n "$active_step" ]; then
+    kill "-$signal" "-$active_step" 2> /dev/null || true
+    wait "$active_step" 2> /dev/null || true
+    active_step=
+  fi
+  exit "$code"
+}
+
 # The documented COS sink has a request-level overwrite guard. Its CAM policy
 # independently requires the same header; this check keeps a mistyped host
 # command from silently weakening that half of the contract.
 assert_immutable_offsite() {
-  local command="$1"
-  case $command in
-    *coscli*)
-      case $command in
-        *'--forbid-overwrite true'* | *'--forbid-overwrite=true'*) ;;
-        *) refuse "QUALY_BACKUP_OFFSITE uses coscli without --forbid-overwrite true" ;;
+  local command="$1" trimmed simple first found
+  trimmed=$(printf '%s' "$command" | sed 's/^[[:space:]]*//')
+  first=${trimmed%%[[:space:]]*}
+  case $first in
+    \"*\") first=${first#\"}; first=${first%\"} ;;
+    \'*\') first=${first#\'}; first=${first%\'} ;;
+  esac
+  case ${first##*/} in
+    coscli)
+      # This is later executed by `sh -c`. Do not mistake text in a comment,
+      # another command, a quoted value or a substitution for an argument the
+      # coscli process actually receives. COS configurations deliberately use
+      # one simple command; other shell programs remain supported as before.
+      simple=$(printf '%s' "$command" | sed 's/"\$1"/__QUALY_BACKUP_DIRECTORY__/g')
+      case $simple in
+        *'
+'* | *''* | *\#* | *\;* | *\|* | *\&* | *\<* | *\>* | *\(* | *\)* | *\`* | *'$('* | *\'* | *\"* | *'$'* | *\\*)
+          refuse "QUALY_BACKUP_OFFSITE uses coscli through unsupported shell syntax; use one simple coscli command"
+          ;;
+      esac
+      set -f
+      # shellcheck disable=SC2086 -- splitting the validated simple command is the check
+      set -- $simple
+      set +f
+      found=
+      while [ $# -gt 0 ]; do
+        case $1 in
+          --forbid-overwrite=true) found=1 ;;
+          --forbid-overwrite*)
+            refuse "QUALY_BACKUP_OFFSITE must pass coscli --forbid-overwrite=true"
+            ;;
+        esac
+        shift
+      done
+      [ -n "$found" ] || refuse "QUALY_BACKUP_OFFSITE uses coscli without --forbid-overwrite=true"
+      ;;
+    *)
+      # A destination such as remote:coscli-backups is only a name. Refuse a
+      # real coscli token hidden behind another shell command, but leave other
+      # immutable backends and their own command syntax alone.
+      case " $trimmed " in
+        *' coscli '* | *'/coscli '* | *'"coscli '* | *'"/coscli '* | *"'coscli "* | *"'/coscli "*)
+          refuse "QUALY_BACKUP_OFFSITE must execute coscli directly"
+          ;;
       esac
       ;;
   esac
