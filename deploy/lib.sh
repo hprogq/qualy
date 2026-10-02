@@ -46,9 +46,9 @@ compose_interruptible() {
   export QUALY_COLLECTOR_ENV_FILE
   overlay=${QUALY_COMPOSE_OVERLAY:-$(sed -n 's/^QUALY_COMPOSE_OVERLAY=//p' "$env_file" 2> /dev/null | tail -n 1)}
   if [ -n "$overlay" ]; then
-    run_interruptible docker compose -f "$here/compose.yaml" -f "$here/$overlay" --env-file "$env_file" "$@"
+    run_interruptible_child docker compose -f "$here/compose.yaml" -f "$here/$overlay" --env-file "$env_file" "$@"
   else
-    run_interruptible docker compose -f "$here/compose.yaml" --env-file "$env_file" "$@"
+    run_interruptible_child docker compose -f "$here/compose.yaml" --env-file "$env_file" "$@"
   fi
 }
 
@@ -136,32 +136,58 @@ release_lock() {
 # trap stop docker, tar or an offsite uploader immediately instead of waiting
 # for that step to finish on its own.
 active_step=
-run_interruptible() {
+active_step_group=
+wait_for_active_step() {
   local code
+  wait "$active_step"
+  code=$?
+  active_step=
+  active_step_group=
+  return "$code"
+}
+run_interruptible() {
+  local code job_control
   if command -v setsid > /dev/null 2>&1; then
     setsid --wait "$@" &
+    active_step_group=1
   else
     # Darwin has no setsid command; its /bin/sh can still give a monitored
     # background job a group. Production Linux takes the explicit path above.
     set -m
+    job_control=1
     "$@" &
   fi
   active_step=$!
   set +e
-  wait "$active_step"
+  wait_for_active_step
   code=$?
   set -e
-  active_step=
-  if ! command -v setsid > /dev/null 2>&1; then set +m; fi
+  if [ -n "$job_control" ]; then set +m; fi
+  return "$code"
+}
+run_interruptible_child() {
+  local code
+  "$@" &
+  active_step=$!
+  active_step_group=
+  set +e
+  wait_for_active_step
+  code=$?
+  set -e
   return "$code"
 }
 interrupt_step() {
   local signal="$1" code="$2"
   trap - INT TERM
   if [ -n "$active_step" ]; then
-    kill "-$signal" "-$active_step" 2> /dev/null || true
+    if [ -n "$active_step_group" ]; then
+      kill "-$signal" "-$active_step" 2> /dev/null || true
+    else
+      kill "-$signal" "$active_step" 2> /dev/null || true
+    fi
     wait "$active_step" 2> /dev/null || true
     active_step=
+    active_step_group=
   fi
   exit "$code"
 }

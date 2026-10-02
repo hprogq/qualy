@@ -256,6 +256,41 @@ describe('one deployment step at a time', () => {
     expect(ran.stdout).toBe('dump')
   })
 
+  it('interrupts a directly monitored child without waiting for it to finish', async () => {
+    const started = Date.now()
+    const child = spawn(
+      'sh',
+      [
+        '-c',
+        [
+          'here="$1"; . "$2"',
+          'cleanup() { echo cleanup; }',
+          'trap cleanup EXIT',
+          "trap 'interrupt_step TERM 143' TERM",
+          "run_interruptible_child sh -c 'sleep 0.1; echo ready; sleep 10'",
+          'echo continued',
+        ].join('; '),
+        'sh',
+        path.dirname(LIB),
+        LIB,
+      ],
+      { env: { ...process.env, QUALY_ENV_FILE: envFile }, stdio: ['ignore', 'pipe', 'pipe'] },
+    )
+    let output = ''
+    child.stdout.setEncoding('utf8').on('data', (chunk) => {
+      output += chunk
+    })
+    await new Promise<void>((resolve) => child.stdout.once('data', () => resolve()))
+    child.kill('SIGTERM')
+    const code = await new Promise<number | null>((resolve) =>
+      child.once('exit', (exitCode) => resolve(exitCode)),
+    )
+    expect(code).toBe(143)
+    expect(Date.now() - started).toBeLessThan(2_000)
+    expect(output).toContain('cleanup')
+    expect(output).not.toContain('continued')
+  })
+
   it('refuses a second step while the first holds the lock', async () => {
     const holder = spawn(
       'sh',
