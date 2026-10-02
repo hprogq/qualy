@@ -129,7 +129,7 @@ wait_for_active_step() {
   return "$code"
 }
 run_interruptible() {
-  local code job_control
+  local code job_control=
   if command -v setsid > /dev/null 2>&1; then
     setsid --wait "$@" &
   else
