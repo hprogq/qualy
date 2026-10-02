@@ -197,12 +197,20 @@ assert_immutable_offsite() {
       executable=$1
       shift
       config=
-      if [ "${1:-}" = -c ]; then
-        [ $# -ge 2 ] || refuse "QUALY_BACKUP_OFFSITE gives coscli -c no configuration path"
-        config=$2
-        shift 2
-      fi
-      [ "${1:-}" = cp ] || refuse "QUALY_BACKUP_OFFSITE must use the supported coscli cp command"
+      case ${1:-} in
+        -c | --config-path)
+          [ $# -ge 2 ] || refuse "QUALY_BACKUP_OFFSITE gives coscli $1 no configuration path"
+          config=$2
+          shift 2
+          ;;
+        -c=* | --config-path=*)
+          config=${1#*=}
+          [ -n "$config" ] || refuse "QUALY_BACKUP_OFFSITE gives coscli an empty configuration path"
+          shift
+          ;;
+      esac
+      [ "${1:-}" = cp ] ||
+        refuse "QUALY_BACKUP_OFFSITE must use coscli cp after its optional config path"
       shift
       recursive=
       found=

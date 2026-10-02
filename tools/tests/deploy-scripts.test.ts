@@ -321,6 +321,31 @@ describe('an append-only offsite backup command', () => {
       'coscli -c /etc/qualy/coscli.yaml cp -r --forbid-overwrite=true "$1" cos://backup/qualy/',
     )
 
+    for (const configFlag of [
+      '--config-path /etc/qualy/coscli.yaml',
+      '--config-path=/etc/qualy/coscli.yaml',
+      '-c=/etc/qualy/coscli.yaml',
+    ]) {
+      const compatible = run(
+        'assert_immutable_offsite "$OFFSITE"; printf "%s" "$immutable_offsite_command"',
+        {
+          OFFSITE: `coscli ${configFlag} cp -r --forbid-overwrite true "$1" cos://backup/qualy/`,
+        },
+      )
+      expect(compatible.status, compatible.stderr).toBe(0)
+      expect(compatible.stdout).toBe(
+        'coscli -c /etc/qualy/coscli.yaml cp -r --forbid-overwrite=true "$1" cos://backup/qualy/',
+      )
+    }
+
+    const credential = run('assert_immutable_offsite "$OFFSITE"', {
+      OFFSITE:
+        'coscli --secret-key=supersecret cp -r --forbid-overwrite=true "$1" cos://backup/qualy/',
+    })
+    expect(credential.status).toBe(1)
+    expect(credential.stderr).toContain('must use coscli cp after its optional config path')
+    expect(credential.stderr).not.toContain('supersecret')
+
     for (const disguised of [
       'coscli -c /etc/qualy/coscli.yaml cp -r "$1" cos://backup/qualy/ # --forbid-overwrite true',
       'coscli -c /etc/qualy/coscli.yaml cp -r "$1" cos://backup/qualy/ --meta "--forbid-overwrite true"',
