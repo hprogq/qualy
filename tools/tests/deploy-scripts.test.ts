@@ -318,7 +318,7 @@ describe('an append-only offsite backup command', () => {
     )
     expect(productionCompatible.status, productionCompatible.stderr).toBe(0)
     expect(productionCompatible.stdout).toBe(
-      'coscli -c /etc/qualy/coscli.yaml cp -r --forbid-overwrite=true "$1" cos://backup/qualy/',
+      'coscli -c=/etc/qualy/coscli.yaml cp -r --forbid-overwrite=true "$1" cos://backup/qualy/',
     )
 
     for (const configFlag of [
@@ -334,17 +334,37 @@ describe('an append-only offsite backup command', () => {
       )
       expect(compatible.status, compatible.stderr).toBe(0)
       expect(compatible.stdout).toBe(
-        'coscli -c /etc/qualy/coscli.yaml cp -r --forbid-overwrite=true "$1" cos://backup/qualy/',
+        `coscli ${configFlag.startsWith('-c') ? '-c' : '--config-path'}=/etc/qualy/coscli.yaml cp -r --forbid-overwrite=true "$1" cos://backup/qualy/`,
       )
     }
 
+    const inlineCredentials = run(
+      'assert_immutable_offsite "$OFFSITE"; printf "%s" "$immutable_offsite_command"',
+      {
+        OFFSITE:
+          'coscli --init-skip true -i secret-id -k secret-key -e cos.ap-shanghai.myqcloud.com cp -r --forbid-overwrite true "$1" cos://backup/qualy/',
+      },
+    )
+    expect(inlineCredentials.status, inlineCredentials.stderr).toBe(0)
+    expect(inlineCredentials.stdout).toBe(
+      'coscli --init-skip=true -i=secret-id -k=secret-key -e=cos.ap-shanghai.myqcloud.com cp -r --forbid-overwrite=true "$1" cos://backup/qualy/',
+    )
+
     const credential = run('assert_immutable_offsite "$OFFSITE"', {
       OFFSITE:
-        'coscli --secret-key=supersecret cp -r --forbid-overwrite=true "$1" cos://backup/qualy/',
+        'coscli --unknown=supersecret cp -r --forbid-overwrite=true "$1" cos://backup/qualy/',
     })
     expect(credential.status).toBe(1)
-    expect(credential.stderr).toContain('must use coscli cp after its optional config path')
+    expect(credential.stderr).toContain('must use coscli cp after supported global options')
     expect(credential.stderr).not.toContain('supersecret')
+
+    const misplacedCredential = run('assert_immutable_offsite "$OFFSITE"', {
+      OFFSITE:
+        'coscli cp --secret-key=supersecret -r --forbid-overwrite=true "$1" cos://backup/qualy/',
+    })
+    expect(misplacedCredential.status).toBe(1)
+    expect(misplacedCredential.stderr).toContain('uses an unsupported coscli cp option')
+    expect(misplacedCredential.stderr).not.toContain('supersecret')
 
     for (const disguised of [
       'coscli -c /etc/qualy/coscli.yaml cp -r "$1" cos://backup/qualy/ # --forbid-overwrite true',

@@ -162,7 +162,7 @@ interrupt_step() {
 # independently requires the same header; this check keeps a mistyped host
 # command from silently weakening that half of the contract.
 assert_immutable_offsite() {
-  local command="$1" trimmed simple first executable config recursive found source destination
+  local command="$1" trimmed simple first executable global flag value recursive found source destination
   immutable_offsite_command=$command
   trimmed=$(printf '%s' "$command" | sed 's/^[[:space:]]*//')
   first=${trimmed%%[[:space:]]*}
@@ -196,21 +196,39 @@ assert_immutable_offsite() {
       set +f
       executable=$1
       shift
-      config=
-      case ${1:-} in
-        -c | --config-path)
-          [ $# -ge 2 ] || refuse "QUALY_BACKUP_OFFSITE gives coscli $1 no configuration path"
-          config=$2
-          shift 2
-          ;;
-        -c=* | --config-path=*)
-          config=${1#*=}
-          [ -n "$config" ] || refuse "QUALY_BACKUP_OFFSITE gives coscli an empty configuration path"
-          shift
-          ;;
-      esac
-      [ "${1:-}" = cp ] ||
-        refuse "QUALY_BACKUP_OFFSITE must use coscli cp after its optional config path"
+      global=
+      while [ $# -gt 0 ] && [ "$1" != cp ]; do
+        case $1 in
+          -c | --config-path | -i | --secret-id | -k | --secret-key | --token | -e | --endpoint | -p | --protocol | --log-path | --close_auto_switch_host | --bucket-type | --proxy)
+            flag=$1
+            [ $# -ge 2 ] || refuse "QUALY_BACKUP_OFFSITE gives a COSCLI global option no value"
+            value=$2
+            [ -n "$value" ] && [ "$value" != cp ] ||
+              refuse "QUALY_BACKUP_OFFSITE gives a COSCLI global option no value"
+            shift 2
+            ;;
+          -c=* | --config-path=* | -i=* | --secret-id=* | -k=* | --secret-key=* | --token=* | -e=* | --endpoint=* | -p=* | --protocol=* | --log-path=* | --close_auto_switch_host=* | --bucket-type=* | --proxy=*)
+            flag=${1%%=*}
+            value=${1#*=}
+            [ -n "$value" ] || refuse "QUALY_BACKUP_OFFSITE gives a COSCLI global option an empty value"
+            shift
+            ;;
+          --customized | --init-skip | --disable-log)
+            flag=$1
+            value=true
+            shift
+            if [ "${1:-}" = true ]; then shift; fi
+            ;;
+          --customized=true | --init-skip=true | --disable-log=true)
+            flag=${1%%=*}
+            value=true
+            shift
+            ;;
+          *) refuse "QUALY_BACKUP_OFFSITE must use coscli cp after supported global options" ;;
+        esac
+        global="$global $flag=$value"
+      done
+      [ "${1:-}" = cp ] || refuse "QUALY_BACKUP_OFFSITE must use coscli cp"
       shift
       recursive=
       found=
@@ -237,7 +255,7 @@ assert_immutable_offsite() {
           --forbid-overwrite*)
             refuse "QUALY_BACKUP_OFFSITE must enable coscli --forbid-overwrite"
             ;;
-          --*) refuse "QUALY_BACKUP_OFFSITE uses an unsupported coscli cp option: $1" ;;
+          --*) refuse "QUALY_BACKUP_OFFSITE uses an unsupported coscli cp option" ;;
           *)
             if [ -z "$source" ]; then
               [ "$1" = __QUALY_BACKUP_DIRECTORY__ ] ||
@@ -259,11 +277,7 @@ assert_immutable_offsite() {
       [ -n "$found" ] || refuse "QUALY_BACKUP_OFFSITE uses coscli without --forbid-overwrite"
       [ -n "$source" ] || refuse "QUALY_BACKUP_OFFSITE does not name the new backup directory"
       [ -n "$destination" ] || refuse "QUALY_BACKUP_OFFSITE does not name a cos:// destination"
-      if [ -n "$config" ]; then
-        immutable_offsite_command="$executable -c $config cp -r --forbid-overwrite=true \"\$1\" $destination"
-      else
-        immutable_offsite_command="$executable cp -r --forbid-overwrite=true \"\$1\" $destination"
-      fi
+      immutable_offsite_command="$executable$global cp -r --forbid-overwrite=true \"\$1\" $destination"
       ;;
     *)
       # A destination such as remote:coscli-backups is only a name. Refuse a
