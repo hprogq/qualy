@@ -108,7 +108,7 @@ if [ -n "$offsite" ]; then
   # form; other backends have the same immutable-destination contract, which
   # deploy/.env.example and docs/deployment.md spell out.
   assert_immutable_offsite "$offsite"
-  run_interruptible sh -c "$offsite" offsite "$destination"
+  run_interruptible sh -c "$immutable_offsite_command" offsite "$destination"
 fi
 
 # the newest few stay; stamps sort as they were taken

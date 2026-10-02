@@ -162,14 +162,22 @@ interrupt_step() {
 # independently requires the same header; this check keeps a mistyped host
 # command from silently weakening that half of the contract.
 assert_immutable_offsite() {
-  local command="$1" trimmed simple first found
+  local command="$1" trimmed simple first executable config recursive found source destination
+  immutable_offsite_command=$command
   trimmed=$(printf '%s' "$command" | sed 's/^[[:space:]]*//')
   first=${trimmed%%[[:space:]]*}
   case $first in
-    \"*\") first=${first#\"}; first=${first%\"} ;;
-    \'*\') first=${first#\'}; first=${first%\'} ;;
+    *\'* | *\"* | *'$'*)
+      refuse "QUALY_BACKUP_OFFSITE uses unsupported executable syntax; name the uploader directly"
+      ;;
   esac
-  case ${first##*/} in
+  case $first in
+    */coscli | coscli)
+      executable=$first
+      ;;
+    *) executable= ;;
+  esac
+  case ${executable##*/} in
     coscli)
       # This is later executed by `sh -c`. Do not mistake text in a comment,
       # another command, a quoted value or a substitution for an argument the
@@ -186,17 +194,68 @@ assert_immutable_offsite() {
       # shellcheck disable=SC2086 -- splitting the validated simple command is the check
       set -- $simple
       set +f
+      executable=$1
+      shift
+      config=
+      if [ "${1:-}" = -c ]; then
+        [ $# -ge 2 ] || refuse "QUALY_BACKUP_OFFSITE gives coscli -c no configuration path"
+        config=$2
+        shift 2
+      fi
+      [ "${1:-}" = cp ] || refuse "QUALY_BACKUP_OFFSITE must use the supported coscli cp command"
+      shift
+      recursive=
       found=
+      source=
+      destination=
       while [ $# -gt 0 ]; do
         case $1 in
-          --forbid-overwrite=true) found=1 ;;
+          -r | --recursive)
+            [ -z "$recursive" ] || refuse "QUALY_BACKUP_OFFSITE must pass coscli recursion exactly once"
+            recursive=1
+            ;;
+          --forbid-overwrite=true)
+            [ -z "$found" ] || refuse "QUALY_BACKUP_OFFSITE must pass coscli overwrite protection exactly once"
+            found=1
+            ;;
+          --forbid-overwrite)
+            [ -z "$found" ] || refuse "QUALY_BACKUP_OFFSITE must pass coscli overwrite protection exactly once"
+            found=1
+            # Older host configuration wrote an explicit truth token after
+            # this boolean flag. pflag itself treats that token as an operand;
+            # consume it here and emit the unambiguous =true form below.
+            if [ "${2:-}" = true ]; then shift; fi
+            ;;
           --forbid-overwrite*)
-            refuse "QUALY_BACKUP_OFFSITE must pass coscli --forbid-overwrite=true"
+            refuse "QUALY_BACKUP_OFFSITE must enable coscli --forbid-overwrite"
+            ;;
+          --*) refuse "QUALY_BACKUP_OFFSITE uses an unsupported coscli cp option: $1" ;;
+          *)
+            if [ -z "$source" ]; then
+              [ "$1" = __QUALY_BACKUP_DIRECTORY__ ] ||
+                refuse "QUALY_BACKUP_OFFSITE must copy the new backup directory as coscli's source"
+              source=1
+            elif [ -z "$destination" ]; then
+              case $1 in
+                cos://*) destination=$1 ;;
+                *) refuse "QUALY_BACKUP_OFFSITE must copy to a cos:// destination" ;;
+              esac
+            else
+              refuse "QUALY_BACKUP_OFFSITE gives coscli cp more than one source and one destination"
+            fi
             ;;
         esac
         shift
       done
-      [ -n "$found" ] || refuse "QUALY_BACKUP_OFFSITE uses coscli without --forbid-overwrite=true"
+      [ -n "$recursive" ] || refuse "QUALY_BACKUP_OFFSITE must pass coscli -r"
+      [ -n "$found" ] || refuse "QUALY_BACKUP_OFFSITE uses coscli without --forbid-overwrite"
+      [ -n "$source" ] || refuse "QUALY_BACKUP_OFFSITE does not name the new backup directory"
+      [ -n "$destination" ] || refuse "QUALY_BACKUP_OFFSITE does not name a cos:// destination"
+      if [ -n "$config" ]; then
+        immutable_offsite_command="$executable -c $config cp -r --forbid-overwrite=true \"\$1\" $destination"
+      else
+        immutable_offsite_command="$executable cp -r --forbid-overwrite=true \"\$1\" $destination"
+      fi
       ;;
     *)
       # A destination such as remote:coscli-backups is only a name. Refuse a

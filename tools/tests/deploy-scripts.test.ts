@@ -306,12 +306,20 @@ describe('an append-only offsite backup command', () => {
       'assert_immutable_offsite \'coscli -c /etc/qualy/coscli.yaml cp -r "$1" cos://backup/qualy/\'',
     )
     expect(unsafe.status).toBe(1)
-    expect(unsafe.stderr).toContain('without --forbid-overwrite=true')
+    expect(unsafe.stderr).toContain('without --forbid-overwrite')
 
     const safe = run(
       'assert_immutable_offsite \'coscli -c /etc/qualy/coscli.yaml cp -r --forbid-overwrite=true "$1" cos://backup/qualy/\'',
     )
     expect(safe.status, safe.stderr).toBe(0)
+
+    const productionCompatible = run(
+      'assert_immutable_offsite \'coscli -c /etc/qualy/coscli.yaml cp -r --forbid-overwrite true "$1" cos://backup/qualy/\'; printf "%s" "$immutable_offsite_command"',
+    )
+    expect(productionCompatible.status, productionCompatible.stderr).toBe(0)
+    expect(productionCompatible.stdout).toBe(
+      'coscli -c /etc/qualy/coscli.yaml cp -r --forbid-overwrite=true "$1" cos://backup/qualy/',
+    )
 
     for (const disguised of [
       'coscli -c /etc/qualy/coscli.yaml cp -r "$1" cos://backup/qualy/ # --forbid-overwrite true',
@@ -324,12 +332,14 @@ describe('an append-only offsite backup command', () => {
     }
 
     for (const invalidBoolean of [
-      'coscli cp -r --forbid-overwrite true "$1" cos://backup/qualy/',
+      'coscli cp -r --forbid-overwrite false "$1" cos://backup/qualy/',
       'coscli cp -r --forbid-overwrite=true "$1" cos://backup/qualy/ --forbid-overwrite=false',
+      'coscli cp -r --forbid-overwrite true "$1" cos://backup/qualy/ --forbid-overwrite=true',
+      'coscli cp -r --process-log-path --forbid-overwrite=true "$1" cos://backup/qualy/',
     ]) {
       const ran = run('assert_immutable_offsite "$OFFSITE"', { OFFSITE: invalidBoolean })
       expect(ran.status).toBe(1)
-      expect(ran.stderr).toContain('must pass coscli --forbid-overwrite=true')
+      expect(ran.stderr).toContain('QUALY_BACKUP_OFFSITE')
     }
 
     const unrelated = run(
@@ -346,10 +356,12 @@ describe('an append-only offsite backup command', () => {
     for (const quoted of [
       '"coscli" cp -r "$1" cos://backup/qualy/',
       '"/usr/local/bin/coscli" cp -r "$1" cos://backup/qualy/',
+      'c"oscli" cp -r --forbid-overwrite=false "$1" cos://backup/qualy/',
+      '"$COSCLI" cp -r --forbid-overwrite=false "$1" cos://backup/qualy/',
     ]) {
       const ran = run('assert_immutable_offsite "$OFFSITE"', { OFFSITE: quoted })
       expect(ran.status).toBe(1)
-      expect(ran.stderr).toContain('unsupported shell syntax')
+      expect(ran.stderr).toMatch(/unsupported (shell|executable) syntax/)
     }
   })
 })
