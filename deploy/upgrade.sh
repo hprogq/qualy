@@ -69,8 +69,9 @@ compose up -d --wait postgres
 # release keep working; nothing serves on a first deployment, so nothing is
 # asked there
 if [ -n "$active" ]; then
-  applied=$(ledger)
-  holding=$(missing_from "$(not_expand_in "$release")" "$applied")
+  applied=$(ledger) || refuse "could not read the migration ledger; upgrade refused"
+  not_expand=$(not_expand_in "$release") || refuse "could not read migration rollout rules of $release; upgrade refused"
+  holding=$(missing_from "$not_expand" "$applied")
   if [ -n "$holding" ]; then
     if [ "$maintenance" = false ]; then
       refuse "pending migrations that do not roll out as expand: $(printf '%s' "$holding" | tr '\n' ' ')

@@ -379,12 +379,13 @@ preflight() {
   fi
 }
 
-# the migrations the database has recorded, one name a line; none before the
-# first migration
+# The migrations a serving deployment has recorded, one name a line. Only
+# upgrades with an active color and rollbacks ask: their ledger must exist.
+# An unreadable ledger is not an empty one, since an empty result would let
+# a rollback skip the compatibility check for every applied migration.
 ledger() {
   compose exec -T postgres sh -c \
-    'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -At -c "select name from mikro_orm_migrations order by name"' \
-    2> /dev/null || true
+    'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -At -c "select name from mikro_orm_migrations order by name"'
 }
 
 # the migrations a release's image carries

@@ -49,11 +49,17 @@ compose up -d --wait postgres
 
 # what the database ran that the older release does not know, and whether the
 # release that brought it says all of it rolls out as expand
-ahead=$(missing_from "$(ledger)" "$(lineage_of "$release")")
+# Keep each external read in its own assignment: a nested command
+# substitution gives its failure to missing_from/printf, which succeed and
+# would silently turn an unreadable ledger or image into an empty list.
+applied=$(ledger) || refuse "could not read the migration ledger; rollback refused"
+target_lineage=$(lineage_of "$release") || refuse "could not read the migration lineage of $release; rollback refused"
+ahead=$(missing_from "$applied" "$target_lineage")
 if [ -n "$ahead" ]; then
-  known=$(lineage_of "$current")
+  known=$(lineage_of "$current") || refuse "could not read the migration lineage of $current; rollback refused"
   unknown=$(missing_from "$ahead" "$known")
-  risky=$(printf '%s\n' "$(not_expand_in "$current")" | while read -r name; do
+  not_expand=$(not_expand_in "$current") || refuse "could not read migration rollout rules of $current; rollback refused"
+  risky=$(printf '%s\n' "$not_expand" | while read -r name; do
     [ -n "$name" ] && printf '%s\n' "$ahead" | grep -qxF "$name" && printf '%s\n' "$name"
   done || true)
   say "applied since $release: $(printf '%s' "$ahead" | tr '\n' ' ')"

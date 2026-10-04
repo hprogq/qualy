@@ -21,6 +21,13 @@ const FAKE_DOCKER = `#!/bin/sh
 # docker, as far as lib.sh asks it
 printf '%s\\n' "$*" >> "$FAKE/docker.log"
 if [ "$1" = compose ]; then
+  case "$*" in
+    *'select name from mikro_orm_migrations order by name'*)
+      if [ "\${FAKE_FAIL_LEDGER:-}" = 1 ]; then echo 'ledger query failed' >&2; exit 2; fi
+      [ ! -f "$FAKE/ledger" ] || cat "$FAKE/ledger"
+      exit 0
+      ;;
+  esac
   service=; saw_ps=
   for arg in "$@"; do
     if [ -n "$saw_ps" ] && [ "$arg" != -q ]; then service=$arg; fi
@@ -45,6 +52,14 @@ if [ "$1" = run ]; then
     [ "$arg" = -c ] && next_is_command=1
     case $arg in qualy-server:*) image=\${arg#qualy-server:} ;; esac
   done
+  case "$command" in
+    *'for name in '*.sql*)
+      if [ "\${FAKE_FAIL_ROLLOUT:-}" = "$image" ]; then echo 'rollout image read failed' >&2; exit 125; fi
+      ;;
+    *)
+      if [ "\${FAKE_FAIL_LINEAGE:-}" = "$image" ]; then echo 'lineage image read failed' >&2; exit 125; fi
+      ;;
+  esac
   cd "$FAKE/images/$image" && sh -c "$command"
   exit $?
 fi
@@ -239,6 +254,107 @@ describe('moving the edge from one color to the other', () => {
     )
     expect(ran.status, ran.stderr).toBe(0)
     expect(ran.stdout).toMatch(/r9 green blue$/)
+  })
+})
+
+describe('migration safety when a prerequisite cannot be read', () => {
+  const options = { QUALY_PROXY: 'none', QUALY_DRAIN_SECONDS: '0' }
+  const image = (release: string, names: readonly string[]) => {
+    const migrations = path.join(fake, 'images', release, 'db', 'migrations')
+    fs.mkdirSync(migrations, { recursive: true })
+    for (const name of names) {
+      fs.writeFileSync(path.join(migrations, name), '-- rollout: maintenance\nselect 1;\n')
+    }
+  }
+
+  beforeEach(() => {
+    serverRuns('blue', 'r1')
+    fs.writeFileSync(path.join(fake, 'ledger'), '1_base.sql\n2_new.sql\n')
+    image('r1', ['1_base.sql', '2_new.sql'])
+    image('r2', ['1_base.sql'])
+    image('r3', ['1_base.sql', '2_new.sql', '3_next.sql'])
+  })
+
+  it.each([
+    ['ledger', { FAKE_FAIL_LEDGER: '1' }],
+    ['target lineage', { FAKE_FAIL_LINEAGE: 'r2' }],
+    ['serving lineage', { FAKE_FAIL_LINEAGE: 'r1' }],
+    ['serving rollout rules', { FAKE_FAIL_ROLLOUT: 'r1' }],
+  ])('refuses rollback before deploying when it cannot read the %s', (_name, failure) => {
+    const before = envOf()
+    const ran = run('sh "$ROLLBACK"', {
+      ...options,
+      ...failure,
+      ROLLBACK: path.join(ROOT, 'deploy/rollback.sh'),
+    })
+    expect(ran.status, ran.stdout).toBe(1)
+    expect(ran.stderr).toContain('rollback refused')
+    expect(envOf()).toBe(before)
+    const asked = fs.readFileSync(path.join(fake, 'docker.log'), 'utf8')
+    expect(asked).not.toContain('run --rm migrate')
+    expect(asked).not.toContain('up -d server-')
+    expect(asked).not.toContain('stop -t')
+  })
+
+  it.each([
+    ['ledger', { FAKE_FAIL_LEDGER: '1' }],
+    ['target rollout rules', { FAKE_FAIL_ROLLOUT: 'r3' }],
+  ])('refuses upgrade before deploying when it cannot read the %s', (_name, failure) => {
+    const before = envOf()
+    const ran = run('sh "$UPGRADE" r3', {
+      ...options,
+      ...failure,
+      UPGRADE: path.join(ROOT, 'deploy/upgrade.sh'),
+    })
+    expect(ran.status, ran.stdout).toBe(1)
+    expect(ran.stderr).toContain('upgrade refused')
+    expect(envOf()).toBe(before)
+    const asked = fs.readFileSync(path.join(fake, 'docker.log'), 'utf8')
+    expect(asked).not.toContain('run --rm migrate')
+    expect(asked).not.toContain('up -d server-')
+    expect(asked).not.toContain('stop -t')
+  })
+
+  it('still rolls back when every newer migration is known to expand', () => {
+    fs.writeFileSync(
+      path.join(fake, 'images/r1/db/migrations/2_new.sql'),
+      '-- rollout: expand\nselect 1;\n',
+    )
+    const ran = run('sh "$ROLLBACK"', {
+      ...options,
+      ROLLBACK: path.join(ROOT, 'deploy/rollback.sh'),
+    })
+    expect(ran.status, ran.stderr).toBe(0)
+    expect(envOf()).toMatch(/^QUALY_ACTIVE_COLOR=green$/m)
+    expect(envOf()).toMatch(/^QUALY_RELEASE=r2$/m)
+  })
+
+  it('still upgrades when the unread migrations all expand', () => {
+    fs.writeFileSync(
+      path.join(fake, 'images/r3/db/migrations/3_next.sql'),
+      '-- rollout: expand\nselect 1;\n',
+    )
+    const ran = run('sh "$UPGRADE" r3', {
+      ...options,
+      UPGRADE: path.join(ROOT, 'deploy/upgrade.sh'),
+    })
+    expect(ran.status, ran.stderr).toBe(0)
+    expect(envOf()).toMatch(/^QUALY_ACTIVE_COLOR=green$/m)
+    expect(envOf()).toMatch(/^QUALY_RELEASE=r3$/m)
+  })
+
+  it('does not require a migration ledger before the first deployment', () => {
+    fs.rmSync(path.join(fake, 'running/server-blue'))
+    fs.writeFileSync(envFile, 'QUALY_PORT_BLUE=3001\nQUALY_PORT_GREEN=3002\n')
+    const ran = run('sh "$UPGRADE" r3', {
+      ...options,
+      FAKE_FAIL_LEDGER: '1',
+      UPGRADE: path.join(ROOT, 'deploy/upgrade.sh'),
+    })
+    expect(ran.status, ran.stderr).toBe(0)
+    expect(envOf()).toMatch(/^QUALY_ACTIVE_COLOR=blue$/m)
+    const asked = fs.readFileSync(path.join(fake, 'docker.log'), 'utf8')
+    expect(asked).not.toContain('select name from mikro_orm_migrations')
   })
 })
 
