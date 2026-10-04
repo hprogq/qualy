@@ -37,6 +37,7 @@ const person = (
   lastSignInAt: null,
   accountManageable: true,
   ...account,
+  preferredLocale: account.preferredLocale ?? null,
 })
 
 const open = (who: Person, stubs: Record<string, unknown> = {}) =>

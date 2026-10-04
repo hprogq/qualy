@@ -176,6 +176,8 @@ const user = Schema.Struct({
  */
 const userDetail = Schema.Struct({
   user,
+  /** the language this person explicitly chose; null until they choose one */
+  preferredLocale: Schema.NullOr(Schema.Literals(supportedLocales)),
   /** the way down to where they stand, each rung with the kind of unit it is */
   orgPath: Schema.Array(
     Schema.Struct({
@@ -1225,6 +1227,8 @@ export const selfApiGroup = HttpApiGroup.make('self')
         unitLineage: Schema.Array(Schema.Struct({ id: Schema.String, name: Schema.String })),
         /** a password they hold, one they could set, or no password way in for them */
         passwordStatus: Schema.Literals(['set', 'unset', 'unavailable']),
+        /** the account preference, not necessarily this device's language */
+        preferredLocale: Schema.NullOr(Schema.Literals(supportedLocales)),
       }),
       error: [UserNotFound],
     }).middleware(Authenticated),

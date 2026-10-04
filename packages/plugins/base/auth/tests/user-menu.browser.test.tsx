@@ -101,6 +101,7 @@ it('keeps the reload confirmation outside the account menu until answered', asyn
   await page.getByRole('combobox', { name: '语言' }).click()
   await page.getByRole('option', { name: 'English' }).click()
   await expect.element(page.getByRole('alertdialog')).toBeVisible()
+  expect(document.querySelector('[data-slot="dropdown-menu-content"]')).toBeNull()
   expect(save).not.toHaveBeenCalled()
   await page.getByTestId('confirm-dismiss').click()
   await expect.element(page.getByRole('alertdialog')).not.toBeInTheDocument()

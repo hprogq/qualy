@@ -4,6 +4,7 @@ import RolesPage from '@qualy/plugin-rbac/client/RolesPage'
 import RolePage from '@qualy/plugin-rbac/client/RolePage'
 import UsersPage from '../src/client/iam/UsersPage.tsx'
 import UserDetailHeader from '../src/client/iam/UserDetailHeader.tsx'
+import UserProfilePage from '../src/client/iam/UserProfilePage.tsx'
 import { describe, expect, it, vi } from 'vitest'
 import { page, userEvent } from 'vitest/browser'
 import { type ApiResult, type ClientOf } from '@qualy/web-runtime/api'
@@ -1004,6 +1005,7 @@ describe('users workspace', () => {
 describe("a person's header", () => {
   const person = () => ({
     user: user({ email: 'zhang@example.edu' }),
+    preferredLocale: 'en-US' as const,
     orgPath: [{ id: ROOT_NODE_ID, name: '本部', orgTypeName: '学院' }],
     placement: { mode: 'unrestricted' },
     roles: [],
@@ -1046,6 +1048,17 @@ describe("a person's header", () => {
     expect(fact('email').dataset['warn']).toBe('no')
     // the unit shows its own name, the whole way down to it on hover
     expect(fact('unit').querySelector('[title]')?.getAttribute('title')).toBe('本部 / 2023级')
+  })
+
+  it('shows an administrator the person’s saved language preference', async () => {
+    await renderScreen({
+      client: fakeClient(stubs({ identity: { getUser: () => Effect.succeed(person()) } })),
+      route: `/organization/users/${USER_ID}/profile`,
+      path: '/organization/users/:userId/profile',
+      children: <UserProfilePage />,
+    })
+    await expect.element(page.getByText('语言偏好')).toBeInTheDocument()
+    await expect.element(page.getByText('English')).toBeInTheDocument()
   })
 
   it('leaves the number off the platform’s own account, which never gets one', async () => {

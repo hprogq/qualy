@@ -1531,11 +1531,15 @@ describe
           Effect.gen(function* () {
             const f = yield* withAdministrators()
             const iam = yield* Iam
+            yield* runSql(sql`
+              update users set preferred_locale = 'en-US'
+              where tenant_id = ${f.tenant} and id = ${f.onLeft}`)
             const boss = yield* iam.users.detail(f.as, f.boss)
             const ada = yield* iam.users.detail(f.as, f.onLeft)
             return {
               boss: { record: boss.user.manageable, account: boss.accountManageable },
               ada: { record: ada.user.manageable, account: ada.accountManageable },
+              adaLocale: ada.preferredLocale,
               bossDoors: (yield* iam.users.entrances(f.as, f.boss)).manageable,
               adaDoors: (yield* iam.users.entrances(f.as, f.onLeft)).manageable,
               byPeer: (yield* iam.users.detail(f.chiefAs, f.boss)).accountManageable,
@@ -1545,6 +1549,7 @@ describe
         expect(ok(exit)).toEqual({
           boss: { record: true, account: false },
           ada: { record: true, account: true },
+          adaLocale: 'en-US',
           bossDoors: false,
           adaDoors: true,
           byPeer: true,

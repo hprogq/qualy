@@ -228,6 +228,9 @@ describe.runIf(postgresAvailable)('the reader’s own account', () => {
           Effect.gen(function* () {
             const iam = yield* Iam
             const me = f.as(f.ada, f.adaByPassword)
+            yield* runSql(sql`
+              update users set preferred_locale = 'en-US'
+              where tenant_id = ${f.tenant} and id = ${f.ada}`)
             return {
               profile: yield* iam.self.profile(me),
               entrances: yield* iam.self.entrances(me),
@@ -244,6 +247,7 @@ describe.runIf(postgresAvailable)('the reader’s own account', () => {
         businessNo: null,
         userType: { name: 'Staff' },
         unit: { id: f.root, name: 'Root' },
+        preferredLocale: 'en-US',
       })
       expect(
         answer.entrances.map((entrance) => ({

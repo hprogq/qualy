@@ -1,4 +1,4 @@
-import { assertNever, useLocale } from '@qualy/web-i18n'
+import { assertNever, localeNames, useLocale } from '@qualy/web-i18n'
 import { Effect } from 'effect'
 import {
   useApiMutation,
@@ -271,6 +271,11 @@ export default function UserProfilePage() {
                     {user.data?.lastSignInAt == null
                       ? m.person_neverUsed()
                       : when(user.data.lastSignInAt)}
+                  </DefLine>
+                  <DefLine label={m.preference_languagePreferred()}>
+                    {user.data?.preferredLocale === null
+                      ? m.preference_languageNotSet()
+                      : localeNames[user.data!.preferredLocale]}
                   </DefLine>
                 </DefList>
               </Card>

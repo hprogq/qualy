@@ -32,6 +32,7 @@ const me = (over: Partial<Me> = {}): Me => ({
   ],
   passwordStatus: 'set',
   ...over,
+  preferredLocale: over.preferredLocale ?? null,
 })
 
 type Reauthentication = ApiResult<typeof authApi, 'self', 'getSelfReauthentication'>

@@ -32,6 +32,7 @@ const me = (over: Partial<Me> = {}): Me => ({
   ],
   passwordStatus: 'set',
   ...over,
+  preferredLocale: over.preferredLocale ?? null,
 })
 
 const password: Entrance = {
@@ -190,6 +191,31 @@ describe('the reader’s profile', () => {
     await expect.element(lineage).toHaveTextContent('示例大学/示例学院')
     expect(lineage.element().querySelector('[data-here]')?.textContent).toBe('示例学院')
     await expect.element(page.getByTestId('email-verified')).toHaveAttribute('data-verified', 'yes')
+    expect(card.getByRole('combobox', { name: '语言' }).elements()).toHaveLength(0)
+    const preferences = page.getByTestId('account-preferences')
+    await expect.element(preferences.getByText('选择界面和通知使用的语言')).toBeVisible()
+    await expect
+      .element(preferences.getByRole('combobox', { name: '语言' }))
+      .toHaveTextContent('选择语言')
+  })
+
+  it('offers the saved language as an account preference, using the same reload confirmation', async () => {
+    const save = vi.fn(() => Effect.succeed({ locale: 'zh-CN' as const }))
+    await renderScreen({
+      locale: 'en-US',
+      client: fakeClient(
+        stubs([], {
+          getSelf: () => Effect.succeed(me({ preferredLocale: 'en-US' })),
+          putLocale: save,
+        }),
+      ),
+      route: '/account',
+      children: <AccountProfilePage />,
+    })
+    await page.getByRole('combobox', { name: 'Language' }).click()
+    await page.getByRole('option', { name: '简体中文' }).click()
+    await expect.element(page.getByRole('alertdialog')).toBeVisible()
+    expect(save).not.toHaveBeenCalled()
   })
 })
 

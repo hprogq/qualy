@@ -41,13 +41,21 @@ export function ThemeChoicePicker() {
  * product runs out of translators. Each option names itself in its own
  * language, which is the one label its reader is sure to know.
  */
-export function LocaleChoicePicker({ onChoose }: { onChoose: (locale: SupportedLocale) => void }) {
+export function LocaleChoicePicker({
+  onChoose,
+  value,
+}: {
+  onChoose: (locale: SupportedLocale) => void
+  /** omitted follows this document; null means the account has no saved choice */
+  value?: SupportedLocale | null
+}) {
   const locale = useLocale()
+  const selected = value === null ? undefined : (value ?? locale)
 
   return (
-    <Select value={locale} onValueChange={(next) => onChoose(next as SupportedLocale)}>
+    <Select value={selected} onValueChange={(next) => onChoose(next as SupportedLocale)}>
       <SelectTrigger size="sm" aria-label={m.preference_language()}>
-        <SelectValue />
+        <SelectValue placeholder={m.preference_languageChoose()} />
       </SelectTrigger>
       <SelectContent>
         {supportedLocales.map((candidate) => (

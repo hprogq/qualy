@@ -9,7 +9,7 @@ import { useApi, useRunApi } from '@qualy/web-runtime'
 import { authApi } from './api.ts'
 
 /** Save the choice only after the reader agrees to reopen the document. */
-export function useChooseLocale() {
+export function useChooseLocale(options: { savedLocale?: SupportedLocale | null } = {}) {
   const locale = useLocale()
   const api = useApi(authApi)
   const run = useRunApi()
@@ -18,7 +18,8 @@ export function useChooseLocale() {
   const [pending, setPending] = useState(false)
   const saving = useRef(false)
   const choose = (next: SupportedLocale) => {
-    if (next !== locale && !saving.current) setChosen(next)
+    const saved = options.savedLocale === undefined ? locale : options.savedLocale
+    if (next !== saved && !saving.current) setChosen(next)
   }
   const confirm = () => {
     if (chosen === undefined || saving.current) return

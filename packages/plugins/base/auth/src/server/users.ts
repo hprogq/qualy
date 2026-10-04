@@ -51,6 +51,7 @@ import {
 import { makeDemoGuard } from './demo-guard.ts'
 import { HARD_LIMITS, makeLimiter } from './limiter.ts'
 import { TooManyAttempts } from '@qualy/auth-contract/session'
+import { preferredLocaleOf } from './locale.ts'
 
 // People, and where they stand.
 //
@@ -1189,7 +1190,7 @@ export const make = Effect.fn('Iam.users.make')(function* () {
         const held = yield* scopes(principal)
         const row = yield* oneUser(principal.tenantId, userId, held).pipe(Effect.orDie)
         if (!row) return yield* new UserNotFound()
-        const [orgPath, roles, lastSignInAt, rule, account] = yield* Effect.all([
+        const [orgPath, roles, lastSignInAt, rule, account, preferredLocale] = yield* Effect.all([
           ancestryOf(principal.tenantId, row.primaryOrgNodeId, held.read).pipe(Effect.orDie),
           rbac.listUserRoles(principal.tenantId, userId, held.read),
           lastSignInOf(principal.tenantId, userId).pipe(Effect.orDie),
@@ -1197,6 +1198,7 @@ export const make = Effect.fn('Iam.users.make')(function* () {
           row.manageable === true
             ? administersAccount(principal.tenantId, userId, principal)
             : Effect.succeed(false),
+          preferredLocaleOf(principal.tenantId, userId).pipe(Effect.orDie),
         ])
         // the type is joined in the read above, so a missing rule is a row
         // that vanished in between; it may stand nowhere new
@@ -1208,7 +1210,15 @@ export const make = Effect.fn('Iam.users.make')(function* () {
               : rule.placementMode === 'allow-list'
                 ? ({ mode: 'allow-list', orgTypeIds: rule.allowedOrgTypeIds } as const)
                 : ({ mode: 'unrestricted' } as const)
-        return { user: row, orgPath, placement, roles, lastSignInAt, accountManageable: account }
+        return {
+          user: row,
+          orgPath,
+          placement,
+          roles,
+          lastSignInAt,
+          accountManageable: account,
+          preferredLocale: preferredLocale ?? null,
+        }
       }),
     ),
 

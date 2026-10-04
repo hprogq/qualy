@@ -18,6 +18,7 @@ import { provesPresence, reauthenticatedUntil } from './reauthentication.ts'
 import { sameOriginPath } from './same-origin.ts'
 import { lineageOf } from './sign-in.ts'
 import { makeDemoGuard } from './demo-guard.ts'
+import { preferredLocaleOf } from './locale.ts'
 
 // The signed-in person's own account, as they read it.
 //
@@ -183,12 +184,13 @@ export const make = Effect.fn('Iam.self.make')(function* () {
   return {
     /** who the reader is, as the product has them on file */
     profile: Effect.fn('Iam.self.profile')(function* (principal: Principal) {
-      const { row, found } = yield* withDb(
+      const { row, found, preferredLocale } = yield* withDb(
         Effect.gen(function* () {
           const row = yield* requireSelf(principal)
           return {
             row,
             found: yield* serving(principal.tenantId, principal.userId, row.userTypeId),
+            preferredLocale: yield* preferredLocaleOf(principal.tenantId, principal.userId),
           }
         }),
       ).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error)))
@@ -206,6 +208,7 @@ export const make = Effect.fn('Iam.self.make')(function* () {
         businessNo: row.businessNo,
         email: row.email,
         emailVerified: row.emailVerifiedAt !== null,
+        preferredLocale: preferredLocale ?? null,
         // joined on, so it is there
         userType: { id: row.userTypeId!, name: row.userTypeName },
         unit: row.unitId === null ? null : { id: row.unitId, name: row.unitName! },

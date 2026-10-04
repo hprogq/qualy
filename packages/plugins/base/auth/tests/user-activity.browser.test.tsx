@@ -36,6 +36,7 @@ const person = (accountManageable = true): Person => ({
   placement: { mode: 'unrestricted' },
   roles: [],
   lastSignInAt: null,
+  preferredLocale: null,
   accountManageable,
 })
 
