@@ -2,6 +2,8 @@ import { mkdir, mkdtemp, rm, readdir, utimes, writeFile } from 'node:fs/promises
 import { randomUUID } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
+import { fork } from 'node:child_process'
+import { once } from 'node:events'
 import { Effect } from 'effect'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { backendContract } from '@qualy/plugin-storage/testkit/contract'
@@ -55,6 +57,46 @@ describe('the local backend keeps the storage contract', () => {
 })
 
 describe('the local backend on a real filesystem', () => {
+  it("never installs another process's unfinished upload on the same ticket", async () => {
+    const reservationId = randomUUID()
+    const key = `attachments/${randomUUID()}/${randomUUID()}`
+    const start = (label: string) => {
+      const child = fork(
+        new URL('./support/upload-process.ts', import.meta.url),
+        [root, reservationId, key, label],
+        { execArgv: [], stdio: ['ignore', 'pipe', 'pipe', 'ipc'] },
+      )
+      return { child, ready: once(child, 'message') }
+    }
+    const first = start('first')
+    let second: ReturnType<typeof start> | undefined
+    try {
+      expect((await first.ready)[0]).toBe('ready')
+      second = start('second')
+      expect((await second.ready)[0]).toBe('ready')
+      const firstDone = once(first.child, 'message')
+      first.child.send('finish')
+      expect((await firstDone)[0]).toBe('Success')
+      const installed = await Effect.runPromise(backend().stat(key))
+      const secondDone = once(second.child, 'message')
+      second.child.send('finish')
+      expect((await secondDone)[0]).toBe('Failure')
+      // The winner must contain its own complete bytes and remain immutable
+      // when the losing process finishes writing through its open handle.
+      expect(await Effect.runPromise(backend().stat(key))).toEqual(installed)
+      const opened = await Effect.runPromise(
+        backend().open({ key }, { filename: 'file.txt', mime: 'text/plain' }),
+      )
+      if (opened.kind !== 'stream') throw new Error('expected local stream')
+      const chunks: Uint8Array[] = []
+      for await (const chunk of opened.body) chunks.push(chunk)
+      expect(Buffer.concat(chunks).toString()).toBe('first-complete')
+    } finally {
+      first.child.kill()
+      second?.child.kill()
+    }
+  })
+
   it('leaves nothing behind when an upload runs over its reservation', async () => {
     const key = `attachments/${randomUUID()}/${randomUUID()}`
     const reservationId = randomUUID()
@@ -70,7 +112,9 @@ describe('the local backend on a real filesystem', () => {
     expect(exit._tag).toBe('Failure')
     // neither the object nor the temporary file it was accumulating in
     expect(await Effect.runPromise(backend().stat(key))).toBeNull()
-    expect(await readdir(path.join(root, '.tmp'))).not.toContain(reservationId)
+    expect(
+      (await readdir(path.join(root, '.tmp'))).some((name) => name.startsWith(reservationId)),
+    ).toBe(false)
   })
 
   it('refuses a second upload on the same ticket while the first is running', async () => {
@@ -109,7 +153,7 @@ describe('the local backend on a real filesystem', () => {
     expect((await Effect.runPromise(backend().stat(first)))?.size).toBe(12n)
   })
 
-  it('takes a ticket back from the half file a crashed upload left', async () => {
+  it('retries a ticket without reclaiming another attempt before the stale interval', async () => {
     // a process killed mid-upload leaves its temporary file, and the retry
     // on the same ticket used to find it and be refused until the ticket ran out
     const reservationId = randomUUID()
@@ -127,6 +171,12 @@ describe('the local backend on a real filesystem', () => {
     )
     const stat = await Effect.runPromise(backend().stat(key))
     expect(stat?.size).toBe(14n)
+    // The old path may belong to the other color still draining. It cannot
+    // block the retry, and only the stale-file sweep may remove it.
+    expect(await readdir(path.join(root, '.tmp'))).toContain(reservationId)
+    const longAgo = new Date(Date.now() - STALE_STAGING_MS - 60_000)
+    await utimes(path.join(root, '.tmp', reservationId), longAgo, longAgo)
+    expect(await sweepStaging(root, Date.now())).toBe(1)
     expect(await readdir(path.join(root, '.tmp'))).not.toContain(reservationId)
   })
 
@@ -159,13 +209,14 @@ describe('the local backend on a real filesystem', () => {
       }),
     )
     await new Promise((resolve) => setTimeout(resolve, 50))
-    await utimes(path.join(staging, writing), longAgo, longAgo)
+    const writingFile = (await readdir(staging)).find((name) => name.startsWith(`${writing}.`))!
+    await utimes(path.join(staging, writingFile), longAgo, longAgo)
 
     expect(await sweepStaging(root, Date.now())).toBe(1)
     const left = await readdir(staging)
     expect(left).not.toContain(abandoned)
     expect(left).toContain(recent)
-    expect(left).toContain(writing)
+    expect(left).toContain(writingFile)
 
     release()
     expect((await running)._tag).toBe('Success')

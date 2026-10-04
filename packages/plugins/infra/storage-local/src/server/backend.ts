@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { ReservationInvalid } from '@qualy/plugin-storage/errors'
 import fs from 'node:fs'
 import { constants as fsConstants } from 'node:fs'
@@ -18,21 +18,17 @@ import { localUploadUrl } from '../urls.ts'
 // an installed object is never overwritten - and never leaving a half file
 // where a whole one is expected.
 //
-// Both come from the same trick: bytes land in `.tmp` under the ticket's id
+// Both come from the same trick: bytes land in `.tmp` under a unique attempt id
 // and are installed with a hard link, which fails if anything already holds
 // the name.
 //
-// A crash mid-upload leaves that temporary file behind. It used to stay for
-// good, and it held the ticket too: the exclusive open refused every retry,
-// so the uploader got 503 until the ticket ran out. One process receives a
-// store's uploads, so which staging files are being written is known here:
-// one this process is not writing is a dead process's half file, reclaimed
-// by the next upload on its ticket, or swept once nothing could still be
-// writing it.
+// Blue and green may receive the same ticket concurrently while traffic is
+// draining. An attempt must never unlink another process's open file or
+// install it while that process can still write through its handle. A crashed
+// attempt does not block a retry; its file is swept after the stale interval.
 
 const fault = (operation: string) => (cause: unknown) => backendFailure(operation, cause)
 
-/** the temporary file an upload accumulates in, named for its ticket */
 /** the one failure that is the ticket's, not the disk's */
 class Oversized extends Error {}
 
@@ -40,8 +36,8 @@ const stagingPath = (root: string, reservationId: string) => path.join(root, '.t
 
 const objectPath = (root: string, key: string) => path.join(root, key)
 
-/** the staging files this process is writing right now, by absolute path */
-const receiving = new Set<string>()
+/** the ticket paths this process owns, and each attempt's private staging path */
+const receiving = new Map<string, string>()
 
 const EXCLUSIVE_WRITE = fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_EXCL
 
@@ -93,30 +89,25 @@ const receiveInto = async (
     body: AsyncIterable<Uint8Array>
   },
 ): Promise<ReceivedUpload> => {
-  const staging = stagingPath(root, input.reservationId)
-  // two uploads on one ticket are two writers on one file, and the second is
-  // refused rather than interleaved
-  if (receiving.has(staging)) {
+  const ticket = stagingPath(root, input.reservationId)
+  const staging = `${ticket}.${randomUUID()}`
+  // Refuse duplicate attempts in this process while the first is arriving.
+  // Across processes, the exclusive hard link chooses one complete attempt.
+  if (receiving.has(ticket)) {
     throw new Error(`an upload on ticket ${input.reservationId} is already arriving`)
   }
-  receiving.add(staging)
+  receiving.set(ticket, staging)
   try {
     return await receiveExclusively(root, staging, input)
   } finally {
-    receiving.delete(staging)
+    receiving.delete(ticket)
   }
 }
 
-/** the staging file, opened for this upload alone; a file nobody here is writing is reclaimed */
+/** an attempt only opens its own file; another process's file is never reclaimed here */
 const openStaging = async (staging: string) => {
   await mkdir(path.dirname(staging), { recursive: true })
-  try {
-    return await open(staging, EXCLUSIVE_WRITE)
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
-    await rm(staging, { force: true })
-    return open(staging, EXCLUSIVE_WRITE)
-  }
+  return open(staging, EXCLUSIVE_WRITE)
 }
 
 const receiveExclusively = async (
@@ -175,7 +166,7 @@ export const sweepStaging = async (root: string, now: number): Promise<number> =
   let removed = 0
   for (const name of names) {
     const file = path.join(directory, name)
-    if (receiving.has(file)) continue
+    if ([...receiving.values()].includes(file)) continue
     const info = await statFile(file).catch(() => undefined)
     if (info === undefined || !info.isFile() || now - info.mtimeMs < STALE_STAGING_MS) continue
     await rm(file, { force: true })
