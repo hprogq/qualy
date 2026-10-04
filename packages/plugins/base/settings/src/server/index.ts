@@ -29,7 +29,7 @@ import {
 } from '@qualy/settings-contract'
 import { settingsApiGroup } from '../api.ts'
 import { TermOverrideUpdated } from '../actions.ts'
-import { db } from './db.ts'
+import { db, lockTenant } from './db.ts'
 import {
   SettingNotFound,
   SettingValueInvalid,
@@ -201,6 +201,8 @@ const make = Effect.gen(function* () {
       return yield* withDb(
         transaction(
           Effect.gen(function* () {
+            yield* lockTenant(tenantId)
+            yield* rbac.require(as, MANAGE)
             // the row moves only from the version the writer read: a second
             // administrator saving over the first is told, not overwritten
             const version =

@@ -1,11 +1,11 @@
 import { sql } from 'kysely'
-import { Effect, Exit, Layer } from 'effect'
-import { describe, expect, it } from 'vitest'
+import { Deferred, Effect, Exit, Fiber, Layer, Result } from 'effect'
+import { describe, expect, it, vi } from 'vitest'
 import { literal, text } from '@qualy/text'
 import { booted, systemActor } from '@qualy/rbac-contract/testkit'
 import { compileCatalog } from '@qualy/rbac-contract/plugin'
 import type { Principal } from '@qualy/rbac-contract'
-import { AccessDenied } from '@qualy/rbac-contract/effect'
+import { AccessDenied, Rbac } from '@qualy/rbac-contract/effect'
 import { AuditActionCatalog } from '@qualy/audit-contract/effect'
 import { compileActionCatalog } from '@qualy/audit-contract/plugin'
 import { SettingCatalog, TenantSettings } from '@qualy/settings-contract/effect'
@@ -17,7 +17,8 @@ import {
   normalizeOverride,
 } from '@qualy/settings-contract'
 import { uiLayer } from '@qualy/plugin-ui-registry/server/registry'
-import { serviceLayer as rbacLayer } from '@qualy/plugin-rbac/server'
+import { Access, serviceLayer as rbacLayer } from '@qualy/plugin-rbac/server'
+import { accessActions } from '@qualy/plugin-rbac/actions'
 import { serviceLayer as auditLayer } from '@qualy/plugin-audit/server'
 import { entities as orgEntities } from '@qualy/plugin-org/db'
 import { entities as authEntities } from '@qualy/plugin-auth/db'
@@ -30,7 +31,7 @@ import {
   postgresAvailable,
   runSql,
 } from '@qualy/plugin-database/testkit'
-import type { Orm } from '@qualy/plugin-database/server'
+import { transaction, withDatabase, type Orm } from '@qualy/plugin-database/server'
 import { entities } from '../src/db/entities.ts'
 import { permissions } from '../src/permissions.ts'
 import { settingsActions } from '../src/actions.ts'
@@ -119,7 +120,10 @@ const stack = (url: string) =>
           Layer.provide(
             Layer.succeed(
               AuditActionCatalog,
-              compileActionCatalog([{ owner: 'settings', actions: settingsActions }]),
+              compileActionCatalog([
+                { owner: 'settings', actions: settingsActions },
+                { owner: 'rbac', actions: accessActions },
+              ]),
             ),
           ),
         ),
@@ -150,7 +154,7 @@ const stack = (url: string) =>
 
 const run = <A, E>(
   url: string,
-  effect: Effect.Effect<A, E, SettingsStore | TenantSettings | Orm>,
+  effect: Effect.Effect<A, E, SettingsStore | TenantSettings | Orm | Access | Rbac>,
 ) => Effect.runPromiseExit(Effect.provide(effect, stack(url)))
 
 const ok = <A, E>(exit: Exit.Exit<A, E>): A => {
@@ -204,14 +208,112 @@ const seed = Effect.fn('seed')(function* (slug: string) {
   yield* runSql(sql`
     insert into role_permissions (tenant_id, role_id, permission_id)
     values (${tenant}, ${role}, ${permission})`)
-  yield* runSql(sql`
-    insert into role_grants (tenant_id, user_id, role_id)
-    values (${tenant}, ${admin}, ${role})`)
+  const grant = one<{ id: string }>(
+    yield* runSql(sql`
+      insert into role_grants (tenant_id, user_id, role_id)
+      values (${tenant}, ${admin}, ${role}) returning id`),
+  ).id
   const principal = (userId: string): Principal => ({ tenantId: tenant, userId, sessionId: userId })
-  return { tenant, admin: principal(admin), reader: principal(reader) }
+  return { tenant, grant, admin: principal(admin), reader: principal(reader) }
 })
 
 describe.runIf(postgresAvailable)('tenant terminology', () => {
+  it.each([0, 1])(
+    'refuses a version %i write after its authority is withdrawn while waiting',
+    async (version) => {
+      const db = await createTestContext(`settings-revoked-${version}`)
+      try {
+        const result = ok(
+          await run(
+            db.url,
+            Effect.gen(function* () {
+              const store = yield* SettingsStore
+              const access = yield* Access
+              const rbac = yield* Rbac
+              const withDb = yield* withDatabase
+              const t = yield* seed('revoked')
+              const administrator = one<{ id: string }>(
+                yield* runSql(sql`
+          insert into roles (tenant_id, code, name, kind, status, permission_mode, system_key)
+          values (${t.tenant}, 'admin', 'Admin', 'tenant', 'active', 'all-active', 'tenant-admin')
+          returning id`),
+              ).id
+              yield* runSql(sql`insert into role_grants (tenant_id, user_id, role_id)
+          values (${t.tenant}, ${t.reader.userId}, ${administrator})`)
+              if (version === 1) {
+                yield* store.writeTerm(
+                  t.tenant,
+                  personId.id,
+                  { version: 0, override: { 'zh-CN': '原编号' } },
+                  t.admin,
+                )
+              }
+              const held = yield* Deferred.make<void>()
+              const release = yield* Deferred.make<void>()
+              const revoking = yield* withDb(
+                transaction(
+                  Effect.gen(function* () {
+                    yield* runSql(sql`select id from tenants where id = ${t.tenant} for update`)
+                    // Existing overrides wait on their row; a first override waits on
+                    // its tenant foreign key. The grant removal is still uncommitted.
+                    yield* runSql(sql`select id from tenant_setting_values
+            where tenant_id = ${t.tenant} and setting_id = ${personId.id} for update`)
+                    yield* access.grants.revoke(t.tenant, t.grant, t.reader, (tenantId) =>
+                      rbac.assertTenantKeepsAdministrator(tenantId),
+                    )
+                    yield* Deferred.succeed(held, undefined)
+                    yield* Deferred.await(release)
+                  }),
+                ),
+              ).pipe(Effect.forkChild)
+              yield* Deferred.await(held)
+              const writing = yield* Effect.result(
+                store.writeTerm(
+                  t.tenant,
+                  personId.id,
+                  { version, override: { 'zh-CN': '已失权写入' } },
+                  t.admin,
+                ),
+              ).pipe(Effect.forkChild)
+              yield* Effect.promise(() =>
+                vi.waitFor(async () => {
+                  const waiting = await db.row<{ waiting: boolean }>(`
+            select exists (select 1 from pg_stat_activity
+              where datname = current_database() and pid <> pg_backend_pid()
+                and wait_event_type = 'Lock') as waiting`)
+                  expect(waiting.waiting).toBe(true)
+                }),
+              )
+              yield* Deferred.succeed(release, undefined)
+              yield* Fiber.join(revoking)
+              const written = yield* Fiber.join(writing)
+              const read = yield* store.readTerminology(t.tenant)
+              const audits = one<{ count: number }>(
+                yield* runSql(sql`
+          select count(*)::int as count from audit_events
+                  where tenant_id = ${t.tenant} and action_code = 'settings.term.update'`),
+              ).count
+              return {
+                tag: Result.isFailure(written) ? written.failure._tag : undefined,
+                term: read.terms[0],
+                audits,
+              }
+            }),
+          ),
+        )
+        expect(result.tag).toBe('ACCESS_DENIED')
+        expect(result.term).toMatchObject({
+          version,
+          override: version === 0 ? {} : { 'zh-CN': '原编号' },
+        })
+        expect(result.audits).toBe(version)
+      } finally {
+        await db.dispose()
+      }
+    },
+    120_000,
+  )
+
   it('keeps each tenant to its own words and falls back per locale', async () => {
     const db = await createTestContext('settings-words')
     try {
