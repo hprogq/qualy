@@ -2566,18 +2566,23 @@ export const make = Effect.fn('Assessment.make')(function* () {
       })
     })
 
-  const rosterWriteGuards = (tenantId: string, batchId: string, as: Principal) =>
+  const lockManagedBatch = (tenantId: string, batchId: string, as: Principal) =>
     Effect.gen(function* () {
       const locked = yield* lockBatch(tenantId, batchId)
       if (!locked) return yield* new BatchNotFound()
-      // A roster write places anchors on units, so it queues with whoever is
-      // binning one before it reads where anybody stands. The batch's lock
-      // comes first, as in every write here: another write on this batch
-      // holds that lock while its inserts ask for a key share on the tenant
-      // row, which a tenant lock already held here would refuse, and each
-      // would wait on the other.
+      // Administrative writes share the tenant lock with changes to units,
+      // roles and appointments. Recheck the whole batch's reach only after
+      // acquiring both locks. The batch comes first: an existing write may
+      // hold it while inserting a row that needs a tenant key-share lock,
+      // so taking the tenant first would let each wait on the other.
       yield* lockTenant(tenantId)
       yield* requireRosterReach(as, tenantId, batchId)
+      return locked
+    })
+
+  const rosterWriteGuards = (tenantId: string, batchId: string, as: Principal) =>
+    Effect.gen(function* () {
+      const locked = yield* lockManagedBatch(tenantId, batchId, as)
       // A draft's roster is exactly what a draft is for. It is drawn when the
       // batch is created (§32.45), and the point of the gap before the first
       // stage is scheduled is that somebody can check it - add the person the
@@ -4450,8 +4455,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
               // fault - a 500 for having been second. What the organization
               // withdrew is revoked through rbac, which takes the tenant's lock
               // after this one, the order every write here asks in.
-              const locked = yield* lockBatch(tenantId, batchId)
-              if (!locked) return yield* new BatchNotFound()
+              const locked = yield* lockManagedBatch(tenantId, batchId, as)
               // A closed round takes on nobody new and no more of anybody:
               // accepting would widen what it hands out the day it reopens.
               // What the organization took back still goes, below - that
@@ -4550,8 +4554,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
       return yield* withDb(
         transaction(
           Effect.gen(function* () {
-            const locked = yield* lockBatch(tenantId, batchId)
-            if (!locked) return yield* new BatchNotFound()
+            const locked = yield* lockManagedBatch(tenantId, batchId, as)
             // lifting a deny on a closed round hands a capability back for
             // the day it reopens; imposing one only narrows, and stays open
             if (locked.status === 'archived' && !input.denied) {
@@ -4650,25 +4653,24 @@ export const make = Effect.fn('Assessment.make')(function* () {
       // against everybody else while it tries.
       const pairs = new Set(input.userIds).size * new Set(input.orgNodeIds).size
       if (pairs > MAX_STAFF_PAIRS) return yield* new AccessInvalid({ reason: 'too-many' })
-      // The role decides what they may do, so the role is what is checked.
-      // Anything a batch is not allowed to hand out at all - administering the
-      // batch, administering this very list - makes the whole role ineligible
-      // rather than being quietly dropped from it.
-      const carried = yield* rbac.getRolePermissions(tenantId, input.roleId)
-      if (carried.length === 0) return yield* new AccessInvalid({ reason: 'role-not-usable' })
-      for (const code of carried) {
-        if (!BATCH_STAFF_CODES.includes(code as never)) {
-          return yield* new AccessInvalid({ reason: 'permission-not-delegatable' })
-        }
-      }
       return yield* withDb(
         transaction(
           Effect.gen(function* () {
             // the lock every write on this batch takes, and the status read
             // under it: a closed round appoints nobody
-            const locked = yield* lockBatch(tenantId, batchId)
-            if (!locked) return yield* new BatchNotFound()
+            const locked = yield* lockManagedBatch(tenantId, batchId, as)
             if (locked.status === 'archived') return yield* new BatchReadOnly()
+            // The accepted ceiling and the appointment must read the same
+            // role, under the tenant lock that orders role edits as well as
+            // grants. A role changed while this request waited is not the
+            // role whose permissions it saw before waiting.
+            const carried = yield* rbac.getRolePermissions(tenantId, input.roleId)
+            if (carried.length === 0) return yield* new AccessInvalid({ reason: 'role-not-usable' })
+            for (const code of carried) {
+              if (!BATCH_STAFF_CODES.includes(code as never)) {
+                return yield* new AccessInvalid({ reason: 'permission-not-delegatable' })
+              }
+            }
             const nodes = yield* nodesByIds(tenantId, input.orgNodeIds)
             if (nodes.length !== new Set(input.orgNodeIds).size) {
               return yield* new AccessInvalid({ reason: 'node-not-found' })
@@ -4776,6 +4778,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
       return yield* withDb(
         transaction(
           Effect.gen(function* () {
+            yield* lockManagedBatch(tenantId, batchId, as)
             // Open on a closed round too. It only narrows, and an appointment
             // this batch made can be revoked nowhere else: refusing it here
             // would leave the grant standing for as long as the archive does.

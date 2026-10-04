@@ -60,7 +60,7 @@ import {
   ReviewNotFound,
   ScoringUnavailable,
 } from '../errors.ts'
-import { activeParticipantByUser, lockBatch, oneBatch } from '../server/db.ts'
+import { activeParticipantByUser, lockBatch, lockTenant, oneBatch } from '../server/db.ts'
 import { itemOf, revisionOf } from '../item/db.ts'
 import {
   advanceReviewInstance,
@@ -2869,10 +2869,20 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
     return yield* withDb(
       transaction(
         Effect.gen(function* () {
+          const found = yield* supplementRequestOf(tenantId, requestId)
+          if (found === null) return yield* new ReviewNotFound()
+          const located = yield* instanceOf(tenantId, found.reviewInstanceId)
+          if (located === null) return yield* new ReviewNotFound()
+          const locked = yield* lockBatch(tenantId, located.batchId)
+          // Batch denies and organization-side revocations are separate
+          // writes. Join both in batch-then-tenant order before reading the
+          // request or the reviewer's current authority: neither may be
+          // borrowed from before this cancellation waited for its turn.
+          yield* lockTenant(tenantId)
           const request = yield* supplementRequestOf(tenantId, requestId)
-          if (request === null) return yield* new ReviewNotFound()
-          const row = yield* instanceOf(tenantId, request.reviewInstanceId)
-          if (row === null) return yield* new ReviewNotFound()
+          const row =
+            request === null ? null : yield* instanceOf(tenantId, request.reviewInstanceId)
+          if (request === null || row === null) return yield* new ReviewNotFound()
           // the ask belongs to whoever sent it (§32.70): a colleague at the
           // same stage may not unsay it, and an administrator who wants it
           // gone intervenes as an administrator, not as its reviewer
@@ -2880,7 +2890,6 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
             return yield* refuse('supplement-cancel', 'not-requester')
           }
           yield* requireJudge(tenantId, row, as, 'supplement-cancel')
-          const locked = yield* lockBatch(tenantId, row.batchId)
           if (locked!.status === 'archived') return yield* new BatchReadOnly()
           const gate = yield* deps.reviewGate(tenantId, row.batchId)
           if (!gate.allowed) return yield* refuse('supplement-cancel', gate.reason)
