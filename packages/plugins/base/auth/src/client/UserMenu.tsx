@@ -216,6 +216,7 @@ export default function UserMenu() {
   const businessNo = useTerm(authTerms.businessNumber)
   const endSession = useSessionTransition()
   const [menuOpen, setMenuOpen] = useState(false)
+  const [menuDismissed, setMenuDismissed] = useState(false)
   // one identity, told once: surfaces that remount (the drawer, this menu
   // after a layout change) read the cached answer instead of asking again
   const { choose, confirmation } = useChooseLocale()
@@ -266,7 +267,13 @@ export default function UserMenu() {
 
   return (
     <div {...stylex.props(styles.seat)}>
-      <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+      <DropdownMenu
+        open={menuOpen}
+        onOpenChange={(open) => {
+          setMenuOpen(open)
+          if (open) setMenuDismissed(false)
+        }}
+      >
         <DropdownMenuTrigger asChild>
           {/* the bar shows who, the menu shows everything else */}
           <button type="button" {...stylex.props(styles.trigger, menuOpen && styles.triggerOpen)}>
@@ -278,59 +285,70 @@ export default function UserMenu() {
             <span {...stylex.props(styles.triggerName)}>{user.displayName}</span>
           </button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent
-          side="bottom"
-          align="end"
-          className={stylex.props(styles.menu).className}
-        >
-          <DropdownMenuLabel className={stylex.props(styles.identityRow).className}>
-            {identity}
-          </DropdownMenuLabel>
-          <DropdownMenuSeparator />
-          {/* where they stand, level by level: the tenant names each level, so
+        {!menuDismissed && (
+          <DropdownMenuContent
+            side="bottom"
+            align="end"
+            className={stylex.props(styles.menu).className}
+          >
+            <DropdownMenuLabel className={stylex.props(styles.identityRow).className}>
+              {identity}
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            {/* where they stand, level by level: the tenant names each level, so
               a student reads "College / Class" and a system account reads the
               single level it sits at */}
-          <DropdownMenuLabel className={stylex.props(styles.lineage).className}>
-            {user.primaryOrgNode.lineage.map((step) => (
-              <span key={step.id} {...stylex.props(styles.lineageStep)}>
-                {/* the level's kind is a tag, not a sentence fragment */}
-                <Badge variant="outline" className={stylex.props(styles.kindChip).className}>
-                  {step.typeName}
-                </Badge>
-                <span {...stylex.props(styles.stepName)} title={step.name}>
-                  {step.name}
+            <DropdownMenuLabel className={stylex.props(styles.lineage).className}>
+              {user.primaryOrgNode.lineage.map((step) => (
+                <span key={step.id} {...stylex.props(styles.lineageStep)}>
+                  {/* the level's kind is a tag, not a sentence fragment */}
+                  <Badge variant="outline" className={stylex.props(styles.kindChip).className}>
+                    {step.typeName}
+                  </Badge>
+                  <span {...stylex.props(styles.stepName)} title={step.name}>
+                    {step.name}
+                  </span>
                 </span>
-              </span>
-            ))}
-          </DropdownMenuLabel>
-          <DropdownMenuSeparator />
-          {/* appearance and language are personal preferences, so they live
+              ))}
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            {/* appearance and language are personal preferences, so they live
               with the account rather than in the page chrome. Language is also saved
               for the signed-in account, after confirming the page reload. */}
-          <PreferenceRow label={m.preference_appearance()}>
-            <ThemeChoicePicker />
-          </PreferenceRow>
-          {/* the same row shape as the appearance above: the confirmation is held outside the menu
+            <PreferenceRow label={m.preference_appearance()}>
+              <ThemeChoicePicker />
+            </PreferenceRow>
+            {/* the same row shape as the appearance above: the confirmation is held outside the menu
               so closing it cannot dismiss the question */}
-          <PreferenceRow label={m.preference_language()}>
-            <LocaleChoicePicker onChoose={choose} />
-          </PreferenceRow>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem
-            variant="destructive"
-            onSelect={() => {
-              // only the server can end the session: the cookie is HttpOnly,
-              // so a failed request leaves the identity intact and must say
-              // so instead of pretending to have signed the user out - as a
-              // notice of its own, not words squeezed into the top bar
-              void run(api.auth.endSession())
-                .then(() => endSession({ destination: { kind: 'page', page: 'auth/login' } }))
-                .catch((error: unknown) => toast.error(formatError(error)))
-            }}
-          >
-            {m.action_signOut()}
-          </DropdownMenuItem>
-        </DropdownMenuContent>
+            <PreferenceRow label={m.preference_language()}>
+              <LocaleChoicePicker
+                onChoose={(next) => {
+                  // Remove the menu in the same render that opens the modal.
+                  // Its exit animation otherwise sits above the modal veil for
+                  // a moment, making the old surface look interactive.
+                  setMenuDismissed(true)
+                  setMenuOpen(false)
+                  choose(next)
+                }}
+              />
+            </PreferenceRow>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              variant="destructive"
+              onSelect={() => {
+                // only the server can end the session: the cookie is HttpOnly,
+                // so a failed request leaves the identity intact and must say
+                // so instead of pretending to have signed the user out - as a
+                // notice of its own, not words squeezed into the top bar
+                void run(api.auth.endSession())
+                  .then(() => endSession({ destination: { kind: 'page', page: 'auth/login' } }))
+                  .catch((error: unknown) => toast.error(formatError(error)))
+              }}
+            >
+              {m.action_signOut()}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        )}
       </DropdownMenu>
       {confirmation}
     </div>
