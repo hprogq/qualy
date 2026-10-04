@@ -179,6 +179,7 @@ const handlers = HttpApiBuilder.group(local, 'authLocal', (handlers) =>
         providerId: resolved.providerId,
         userId: person.userId,
         bindingId: binding.id,
+        bindingCredentialHash: binding.credentialHash,
         // the password was typed just now
         present: true,
       })

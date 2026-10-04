@@ -19,6 +19,7 @@ import { sameOriginPath } from './same-origin.ts'
 import { lineageOf } from './sign-in.ts'
 import { makeDemoGuard } from './demo-guard.ts'
 import { preferredLocaleOf } from './locale.ts'
+import { retireChallenges } from './email-flows.ts'
 
 // The signed-in person's own account, as they read it.
 //
@@ -380,6 +381,9 @@ export const make = Effect.fn('Iam.self.make')(function* () {
                 .returning('id')
                 .execute(),
             )
+            // A pending address change must not survive the access withdrawn
+            // here, just as it cannot survive ending that session directly.
+            yield* retireChallenges(principal.tenantId, principal.userId, ['change'])
             yield* audit.record(BindingRevoked, {
               tenantId: principal.tenantId,
               actor: yield* actorOf(principal.tenantId, principal),

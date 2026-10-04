@@ -1289,6 +1289,81 @@ describe.runIf(postgresAvailable)('an email address', () => {
     }
   })
 
+  it('does not change after its owner unbinds the account that requested the move', async () => {
+    const db = await createTestContext('email-change-unbound')
+    const mail = memoryMailBackend()
+    const hub: LoginDriver = {
+      type: 'hub',
+      presentation: { mode: 'redirect', href: () => '/nowhere' },
+      provisioning: { mode: 'tenant-managed', entrance: { label: literal('Hub'), fields: [] } },
+      resolution: { mode: 'binding-subject' },
+      binding: { mode: 'self', start: () => '/nowhere' },
+    }
+    try {
+      const f = await seed(db.url)
+      const answer = ok(
+        await Effect.runPromiseExit(
+          Effect.gen(function* () {
+            const flows = yield* EmailFlows
+            const iam = yield* Iam
+            const provider = one<{ id: string }>(
+              yield* runSql(sql`
+              insert into auth_providers (tenant_id, code, type, name)
+              values (${f.tenant}, 'hub', 'hub', 'Hub') returning id`),
+            ).id
+            const binding = one<{ id: string }>(
+              yield* runSql(sql`
+              insert into user_auth_bindings (tenant_id, user_id, auth_provider_id, subject)
+              values (${f.tenant}, ${f.ada}, ${provider}, 'ada-external') returning id`),
+            ).id
+            const externalSession = one<{ id: string }>(
+              yield* runSql(sql`
+              insert into sessions (tenant_id, user_id, auth_provider_id, auth_binding_id, token_hash, expires_at)
+              values (${f.tenant}, ${f.ada}, ${provider}, ${binding}, repeat('e', 64), now() + interval '1 day')
+              returning id`),
+            ).id
+            yield* reauthenticated(externalSession)
+            yield* flows.requestChange(f.as(f.ada, externalSession), {
+              newEmail: 'pending@elsewhere.example',
+              locale: 'en-US',
+            })
+            const link = yield* Effect.promise(() => tokenFrom(mail, 'pending@elsewhere.example'))
+            const unbound = yield* iam.self.unbind(f.as(f.ada, f.adaHere), provider)
+            const ended = one<{ count: number }>(
+              yield* runSql(sql`
+              select count(*)::int as count from sessions where id = ${externalSession}`),
+            ).count
+            const redeemed = tagOf(yield* Effect.result(flows.redeemChange(link.token)))
+            const email = one<{ email: string }>(
+              yield* runSql(sql`
+              select email from users where id = ${f.ada}`),
+            ).email
+            return { unbound, ended, redeemed, email }
+          }).pipe(
+            Effect.provide(
+              stack(
+                db.url,
+                mail.backend,
+                captchaLayer,
+                [],
+                PUBLIC_URL,
+                Layer.merge(passwordDoor, registerLoginDriver(hub)),
+              ),
+            ),
+          ),
+        ),
+      )
+      expect(answer).toEqual({
+        unbound: { signedOut: false },
+        ended: 0,
+        redeemed: 'AUTH_CHALLENGE_INVALID',
+        email: 'ada@school.edu',
+      })
+    } finally {
+      await db.dispose()
+    }
+  })
+
   it('does not change once its owner signs that session out, even while the move is still being asked for', async () => {
     const db = await createTestContext('email-change-signed-out-racing')
     const mail = memoryMailBackend()
@@ -1833,6 +1908,134 @@ describe.runIf(postgresAvailable)('one’s own password', () => {
     }
   })
 })
+
+describe.runIf(postgresAvailable)(
+  'a password proof that changes while its digest is prepared',
+  () => {
+    it.each([
+      ['password', 'AUTH_PASSWORD_INCORRECT'],
+      ['session', 'AUTH_REAUTHENTICATION_REQUIRED'],
+      ['binding', 'AUTH_REAUTHENTICATION_REQUIRED'],
+      ['audience', 'AUTH_PASSWORD_UNAVAILABLE'],
+      ['user', 'USER_NOT_FOUND'],
+      ['reauthentication', 'AUTH_REAUTHENTICATION_REQUIRED'],
+    ] as const)('refuses the waiting write after a change to %s', async (change, refusal) => {
+      const db = await createTestContext(`email-password-proof-${change}`)
+      const mail = memoryMailBackend()
+      try {
+        const f = await seed(db.url)
+        const answer = ok(
+          await Effect.runPromiseExit(
+            Effect.gen(function* () {
+              const started = yield* Deferred.make<void>()
+              const gate = yield* Deferred.make<void>()
+              const door = registerLoginDriver({
+                ...localDriver,
+                binding: {
+                  ...localBinding,
+                  prepare: (input) =>
+                    Effect.gen(function* () {
+                      const prepared = yield* localBinding.prepare(input)
+                      if (input.secret === 'pending password') {
+                        yield* Deferred.succeed(started, undefined)
+                        yield* Deferred.await(gate)
+                      }
+                      return prepared
+                    }),
+                },
+              })
+              return yield* Effect.gen(function* () {
+                const flows = yield* EmailFlows
+                const iam = yield* Iam
+                const role = one<{ id: string }>(
+                  yield* runSql(sql`
+                  insert into roles (tenant_id, code, name, kind, status, permission_mode, system_key)
+                  values (${f.tenant}, 'admin', 'Admin', 'tenant', 'active', 'all-active', 'tenant-admin')
+                  returning id`),
+                ).id
+                yield* runSql(sql`
+                insert into role_grants (tenant_id, user_id, role_id)
+                values (${f.tenant}, ${f.admin}, ${role})`)
+                const admin = f.as(f.admin, f.adminHere)
+                const first = change === 'reauthentication'
+                const userId = first ? f.lin : f.ada
+                const sessionId = first ? f.linHere : f.adaHere
+                if (first) {
+                  yield* runSql(
+                    sql`update users set email_verified_at = now() where id = ${userId}`,
+                  )
+                }
+                const waiting = yield* flows
+                  .setPassword(f.as(userId, sessionId), {
+                    ...(first ? {} : { currentPassword: 'ada-password' }),
+                    newPassword: 'pending password',
+                  })
+                  .pipe(Effect.result, Effect.forkChild)
+                yield* Deferred.await(started)
+                switch (change) {
+                  case 'password':
+                    yield* flows.setPassword(f.as(f.ada, f.adaHere), {
+                      currentPassword: 'ada-password',
+                      newPassword: 'newer password',
+                    })
+                    break
+                  case 'session':
+                    yield* iam.selfSecurity.endSession(f.as(f.ada, f.adaElsewhere), f.adaHere)
+                    break
+                  case 'binding':
+                    yield* iam.users.revokeBinding(f.tenant, f.ada, f.local, admin)
+                    break
+                  case 'audience': {
+                    const type = one<{ user_type_id: string }>(
+                      yield* runSql(sql`select user_type_id from users where id = ${f.admin}`),
+                    ).user_type_id
+                    yield* iam.providers.setAudience(
+                      f.tenant,
+                      f.local,
+                      { mode: 'allow-list', userTypeIds: [type] },
+                      1,
+                      admin,
+                    )
+                    break
+                  }
+                  case 'user':
+                    yield* iam.users.setStatus(
+                      f.tenant,
+                      f.ada,
+                      { status: 'disabled', expectedVersion: 1 },
+                      admin,
+                    )
+                    break
+                  case 'reauthentication':
+                    yield* runSql(sql`
+                    update session_auth_grants set expires_at = now() - interval '1 second'
+                    where session_id = ${sessionId}`)
+                    break
+                }
+                yield* Deferred.succeed(gate, undefined)
+                const result = yield* Fiber.join(waiting)
+                const bindings = yield* runSql<{ credential_hash: string }>(sql`
+                select credential_hash from user_auth_bindings
+                where user_id = ${userId} and revoked_at is null`)
+                return {
+                  refusal: tagOf(result),
+                  hashes: bindings.rows.map((row) => row.credential_hash),
+                }
+              }).pipe(
+                Effect.provide(stack(db.url, mail.backend, captchaLayer, [], PUBLIC_URL, door)),
+              )
+            }),
+          ),
+        )
+        expect(answer.refusal).toBe(refusal)
+        expect(answer.hashes).not.toContain('digest:pending password')
+        if (change === 'password') expect(answer.hashes).toEqual(['digest:newer password'])
+      } finally {
+        await db.dispose()
+      }
+    })
+  },
+)
 
 describe.runIf(postgresAvailable)('one’s first password', () => {
   it('is judged only as often as a try at a current one would be', async () => {

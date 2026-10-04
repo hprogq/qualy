@@ -368,6 +368,25 @@ const servingDoor = (tenantId: string, providerId: string) =>
       .executeTakeFirst(),
   )
 
+/** The binding proved before a potentially slow password or upstream check. */
+const currentProofBinding = (input: {
+  tenantId: string
+  providerId: string
+  userId: string
+  bindingId: string
+}) =>
+  db.query((k) =>
+    k
+      .selectFrom('UserAuthBinding')
+      .select('credentialHash')
+      .where('tenantId', '=', input.tenantId)
+      .where('authProviderId', '=', input.providerId)
+      .where('userId', '=', input.userId)
+      .where('id', '=', input.bindingId)
+      .where('revokedAt', 'is', null)
+      .executeTakeFirst(),
+  )
+
 /**
  * The person a bind is for, whether they may still use this entrance, and
  * whether they already have an account bound at it.
@@ -1199,6 +1218,7 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
         providerId: string
         userId: string
         bindingId?: string
+        bindingCredentialHash?: string
         bindingDisplayLabel?: string
         grants?: readonly SessionGrantInput[]
         present?: boolean
@@ -1248,7 +1268,7 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
         // one transaction: the session, the binding's last-used stamp, what
         // the session keeps from the other side and the sign-in event exist
         // together or not at all
-        const sessionId = yield* transaction(
+        const completed = yield* transaction(
           Effect.gen(function* () {
             // The proof took time - a password hashed, a token exchanged,
             // a ticket checked upstream - and the entrance was read before
@@ -1257,7 +1277,12 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
             // outlive it, so the door is asked again, held, here.
             yield* shareTenant(input.tenantId).pipe(Effect.orDie)
             let refused: SignInFailureReason | undefined
-            if (!(yield* holdServingDoor(input.tenantId, input.providerId).pipe(Effect.orDie))) {
+            const currentUser = yield* loadUser(input.tenantId, input.userId)
+            if (currentUser === undefined) {
+              refused = yield* classifyUnusable(input.tenantId, input.userId).pipe(Effect.orDie)
+            } else if (
+              !(yield* holdServingDoor(input.tenantId, input.providerId).pipe(Effect.orDie))
+            ) {
               refused = 'provider-unavailable'
             } else if (
               !(yield* doorAdmits(input.tenantId, input.providerId, input.userId).pipe(
@@ -1265,6 +1290,21 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
               ))
             ) {
               refused = 'audience-excluded'
+            }
+            if (refused === undefined && input.bindingId !== undefined) {
+              const binding = yield* currentProofBinding({
+                tenantId: input.tenantId,
+                providerId: input.providerId,
+                userId: input.userId,
+                bindingId: input.bindingId,
+              }).pipe(Effect.orDie)
+              if (binding === undefined) refused = 'binding-not-found'
+              else if (
+                input.bindingCredentialHash !== undefined &&
+                binding.credentialHash !== input.bindingCredentialHash
+              ) {
+                refused = 'invalid-credentials'
+              }
             }
             if (refused !== undefined) {
               yield* record(provider, {
@@ -1314,12 +1354,12 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
               ...(input.bindingId === undefined ? {} : { bindingId: input.bindingId }),
               sessionId: session.id,
             })
-            return session.id
+            return { sessionId: session.id, user: currentUser! }
           }),
         )
-        if (sessionId === undefined) return undefined
+        if (completed === undefined) return undefined
         // this request now has a session, before anything else records it
-        yield* bindSessionId(sessionId)
+        yield* bindSessionId(completed.sessionId)
         yield* setCookie(token, device === 'shared' ? undefined : config.sessionTtlSeconds)
         // a secure deployment reads only the prefixed name; the bare one a
         // browser may still carry from before the rename is dropped here,
@@ -1336,7 +1376,7 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
           )
           if (preferred !== undefined) yield* setLocaleCookie(preferred, config.secureCookies)
         }
-        return user
+        return completed.user
       }),
     ),
   }

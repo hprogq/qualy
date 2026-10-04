@@ -5,7 +5,7 @@ import { uiLayer } from '@qualy/plugin-ui-registry/server/registry'
 import { sql } from 'kysely'
 import { Cause, Deferred, Effect, Exit, Fiber, Layer } from 'effect'
 import { HttpServerRequest } from 'effect/http'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   createTestContext,
   databaseFor,
@@ -34,7 +34,7 @@ import { AuthConfig } from '../src/server/auth-config.ts'
 import { Iam, serviceLayer as authLayer } from '../src/server/index.ts'
 import { SignIn } from '../src/server/sign-in.ts'
 import { entranceSecretHealth } from '../src/server/secret-health.ts'
-import { db as authDb } from '../src/server/db.ts'
+import { db as authDb, lockTenant } from '../src/server/db.ts'
 import { SYSTEM_ACCOUNT_USER_TYPE } from '../src/constants.ts'
 import { authClosure } from './support/closure.ts'
 
@@ -973,6 +973,120 @@ describe.runIf(postgresAvailable)('an entrance a tenant adds', () => {
       await db.dispose()
     }
   })
+
+  it.each(['credential', 'binding', 'user'] as const)(
+    'refuses a proved sign-in queued behind a change to its %s',
+    async (change) => {
+      const db = await createTestContext(`sign-in-current-proof-${change}`)
+      try {
+        const f = await seed(db.url)
+        const answer = ok(
+          await run(
+            db.url,
+            Effect.gen(function* () {
+              const iam = yield* Iam
+              const signIn = yield* SignIn
+              const withDb = yield* withDatabase
+              const binding = one<{ id: string; credential_hash: string }>(
+                yield* runSql(sql`
+                  insert into user_auth_bindings
+                    (tenant_id, user_id, auth_provider_id, credential_hash)
+                  values (${f.tenant}, ${f.person}, ${f.local.id}, 'already-proved-hash')
+                  returning id, credential_hash`),
+              )
+              const held = yield* Deferred.make<void>()
+              const release = yield* Deferred.make<void>()
+              const changing = yield* withDb(
+                transaction(
+                  Effect.gen(function* () {
+                    yield* lockTenant(f.tenant)
+                    if (change === 'credential') {
+                      yield* iam.users.putBinding(
+                        f.tenant,
+                        f.person,
+                        f.local.id,
+                        { secret: 'replacement holds seven islands' },
+                        f.as,
+                      )
+                    } else if (change === 'binding') {
+                      yield* iam.users.revokeBinding(f.tenant, f.person, f.local.id, f.as)
+                    } else {
+                      yield* iam.users.setStatus(
+                        f.tenant,
+                        f.person,
+                        { status: 'disabled', expectedVersion: 1 },
+                        f.as,
+                      )
+                    }
+                    yield* Deferred.succeed(held, undefined)
+                    yield* Deferred.await(release)
+                  }),
+                ),
+              ).pipe(Effect.forkChild)
+              yield* Deferred.await(held)
+              // The driver has already proved this exact binding and hash.
+              // The old user is still visible while the update is uncommitted.
+              const arriving = yield* signIn.sessions
+                .completeLogin({
+                  tenantId: f.tenant,
+                  providerId: f.local.id,
+                  userId: f.person,
+                  bindingId: binding.id,
+                  bindingCredentialHash: binding.credential_hash,
+                  present: true,
+                })
+                .pipe(
+                  Effect.provideService(
+                    HttpServerRequest.HttpServerRequest,
+                    HttpServerRequest.fromWeb(
+                      new Request('http://localhost/api/auth/local/local/login'),
+                    ),
+                  ),
+                  Effect.forkChild,
+                )
+              // Observe the lock wait instead of assuming a sleep reached it.
+              yield* Effect.promise(() =>
+                vi.waitFor(async () => {
+                  const waiting = await db.row<{ waiting: boolean }>(`
+                    select exists (
+                      select 1 from pg_stat_activity
+                      where datname = current_database() and pid <> pg_backend_pid()
+                        and wait_event_type = 'Lock' and query ilike '%for key share%'
+                    ) as waiting`)
+                  expect(waiting.waiting).toBe(true)
+                }),
+              )
+              yield* Deferred.succeed(release, undefined)
+              yield* Fiber.join(changing)
+              const opened = yield* Fiber.join(arriving)
+              const sessions = one<{ count: number }>(
+                yield* runSql(sql`
+                  select count(*)::int as count from sessions where user_id = ${f.person}`),
+              ).count
+              const records = yield* runSql<{ outcome: string; reason_code: string }>(sql`
+                select outcome, reason_code from sign_in_events where user_id = ${f.person}`)
+              return { opened: opened?.id, sessions, records: records.rows }
+            }),
+          ),
+        )
+        expect(answer.opened).toBeUndefined()
+        expect(answer.sessions).toBe(0)
+        expect(answer.records).toEqual([
+          {
+            outcome: 'failure',
+            reason_code:
+              change === 'credential'
+                ? 'invalid-credentials'
+                : change === 'binding'
+                  ? 'binding-not-found'
+                  : 'user-disabled',
+          },
+        ])
+      } finally {
+        await db.dispose()
+      }
+    },
+  )
 
   // A sign-in is proven before its session is written, and the proof takes
   // time: a password hashed, a ticket checked upstream. Taking the door out

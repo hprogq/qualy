@@ -41,7 +41,7 @@ import { makeReauthentication, requireReauthenticated } from './reauthentication
 import { PublicOriginResolver } from './public-origin.ts'
 import { AnonymousTenantResolver } from './tenancy.ts'
 import { doorsOf } from './self.ts'
-import { AuthConfig } from './auth-config.ts'
+import { AuthConfig, SHARED_DEVICE_IDLE_SECONDS } from './auth-config.ts'
 import { isDemoAccount } from './demo-accounts.ts'
 import { makeDemoGuard } from './demo-guard.ts'
 
@@ -395,7 +395,8 @@ export const emailFlowsLayer: Layer.Layer<
   Effect.gen(function* () {
     const withDb = yield* withDatabase
     const guardDemo = yield* makeDemoGuard
-    const demoAccounts = (yield* AuthConfig).demoAccounts
+    const config = yield* AuthConfig
+    const demoAccounts = config.demoAccounts
     const mailer = yield* Mailer
     const audit = yield* Audit
     const drivers = yield* LoginDrivers
@@ -1128,6 +1129,42 @@ export const emailFlowsLayer: Layer.Layer<
           Effect.gen(function* () {
             const again = yield* personOf(tenantId, person.id)
             if (again === undefined) return yield* new UserNotFound()
+            const currentDoor = yield* passwordDoor(tenantId, again)
+            if (currentDoor === undefined || currentDoor.id !== door.id)
+              return yield* new PasswordUnavailable()
+            // Hashing and checking the old password stay outside the tenant
+            // lock. Their authority does not: a reset or a session revocation
+            // that committed meanwhile must win over this waiting request.
+            const session = yield* db.query((k) =>
+              k
+                .selectFrom('Session')
+                .select('id')
+                .where('tenantId', '=', tenantId)
+                .where('userId', '=', person.id)
+                .where('id', '=', principal.sessionId)
+                .where('expiresAt', '>', sql<Date>`statement_timestamp()`)
+                .where(sql<boolean>`case when device = 'shared' then
+                  coalesce(last_used_at, created_at) > statement_timestamp() - make_interval(secs => ${SHARED_DEVICE_IDLE_SECONDS})
+                  else ${
+                    config.sessionIdleSeconds === undefined
+                      ? sql<boolean>`true`
+                      : sql<boolean>`coalesce(last_used_at, created_at) > statement_timestamp() - make_interval(secs => ${config.sessionIdleSeconds})`
+                  } end`)
+                .forShare()
+                .executeTakeFirst(),
+            )
+            if (session === undefined) return yield* new ReauthenticationRequired()
+            const current = yield* credentialOf(tenantId, person.id, door.id)
+            if (
+              current?.id !== standing?.id ||
+              current?.credentialHash !== standing?.credentialHash
+            ) {
+              return yield* new PasswordIncorrect()
+            }
+            if (standing?.credentialHash == null) {
+              if (again.emailVerifiedAt === null) return yield* new EmailUnverified()
+              yield* requireReauthenticated(tenantId, principal.sessionId)
+            }
             // every other session ends; the one that changed it goes on
             yield* writeCredential(
               tenantId,

@@ -77,7 +77,9 @@ export const reauthenticatedUntil = (tenantId: string, sessionId: string) =>
         .where('tenantId', '=', tenantId)
         .where('sessionId', '=', sessionId)
         .where('kind', '=', RECENT)
-        .where('expiresAt', '>', sql<Date>`now()`)
+        // A caller may have waited for a tenant lock since its transaction
+        // began; proof must still be recent when it is checked now.
+        .where('expiresAt', '>', sql<Date>`statement_timestamp()`)
         .executeTakeFirst(),
     )
     .pipe(Effect.map((row) => row?.expiresAt ?? undefined))

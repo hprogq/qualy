@@ -882,6 +882,8 @@ export interface LoginSessionsShape {
     providerId: string
     userId: string
     bindingId?: string
+    /** the exact credential the driver verified, rechecked before the session is written */
+    bindingCredentialHash?: string
     /** what the bound account is called over there now, when the driver learned it */
     bindingDisplayLabel?: string
     /** what the new session keeps from the other side, written with it */
