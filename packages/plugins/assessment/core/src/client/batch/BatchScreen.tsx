@@ -47,6 +47,10 @@ const styles = stylex.create({
     flexBasis: { default: '0%', [breakpoints.phone]: 'auto' },
     flexDirection: 'column',
   },
+  boundedColumn: {
+    flexShrink: 1,
+    flexBasis: '0%',
+  },
   band: {
     position: 'relative',
     flexShrink: 0,
@@ -197,6 +201,7 @@ export function BatchScreen({
   actions,
   size = 'default',
   chrome = 'band',
+  fill = false,
   banner,
   notes,
   requires,
@@ -218,6 +223,8 @@ export function BatchScreen({
    * clock - kept above it.
    */
   chrome?: 'band' | 'none' | 'bare'
+  /** Keep an internally scrolling workbench within the shell's available height. */
+  fill?: boolean
   /**
    * Which heading the band is showing. A section that opens one of its own
    * rows hands the band to it and says so here; anything it hands over is
@@ -338,7 +345,7 @@ export function BatchScreen({
         loadingLabel={commonMessages.state_loading()}
         retryLabel={commonMessages.action_retry()}
         onRetry={() => void detail.refetch()}
-        xstyle={styles.fillColumn}
+        xstyle={[styles.fillColumn, fill && styles.boundedColumn]}
       >
         {batch && <BatchZone zone={batch.timezone}>{children(batch)}</BatchZone>}
       </AsyncSection>

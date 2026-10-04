@@ -7,6 +7,7 @@ import {
   ListIcon,
   ChevronUpIcon,
   CircleArrowUpIcon,
+  FileTextIcon,
 } from 'lucide-react'
 import * as stylex from '@stylexjs/stylex'
 
@@ -28,6 +29,7 @@ import * as commonMessages from '@qualy/web-i18n/messages'
 import * as m from '#messages'
 
 const lg = '@media (min-width: 1024px)'
+const itemContextTight = '@container (max-width: 12.499rem)'
 
 const styles = stylex.create({
   // ---- where the run stands, drawn along the bar's own lower edge ----
@@ -64,14 +66,20 @@ const styles = stylex.create({
   personBar: {
     position: 'relative',
     display: 'flex',
+    gridTemplateColumns: {
+      default: null,
+      [breakpoints.phone]: '32px minmax(0, 1fr) auto',
+    },
+    gridTemplateRows: { default: null, [breakpoints.phone]: 'repeat(2, minmax(24px, auto))' },
     height: { default: 'auto', [lg]: 56 },
     minHeight: 56,
     flexShrink: 0,
     alignItems: 'center',
-    gap: {
+    columnGap: {
       default: 8,
       [lg]: 10,
     },
+    rowGap: 0,
     borderBottomWidth: 1,
     borderBottomStyle: 'solid',
     borderBottomColor: tokens.border,
@@ -81,12 +89,14 @@ const styles = stylex.create({
     },
     paddingBlock: { default: 6, [lg]: 0 },
   },
+  phoneGrid: { display: { default: 'flex', [breakpoints.phone]: 'grid' } },
+  backSeat: { gridRow: { default: null, [breakpoints.phone]: '1 / span 2' } },
   queueKey: {
     display: 'inline-flex',
-    height: 32,
+    height: { default: 32, [breakpoints.phone]: 24 },
     flexShrink: 0,
     gap: 4,
-    paddingInline: 8,
+    paddingInline: { default: 8, [breakpoints.phone]: 6 },
     fontSize: 12,
   },
   queueKeyIcon: {
@@ -115,7 +125,7 @@ const styles = stylex.create({
   // narrower, each takes a line of its own. The words take whatever the
   // bar's keys leave them.
   personWords: {
-    display: 'flex',
+    display: { default: 'flex', [breakpoints.phone]: 'contents' },
     minWidth: 0,
     flexGrow: 1,
     flexShrink: 1,
@@ -135,6 +145,27 @@ const styles = stylex.create({
       default: 8,
       [lg]: 10,
     },
+    gridColumn: { default: null, [breakpoints.phone]: 2 },
+    gridRow: { default: null, [breakpoints.phone]: 1 },
+    alignSelf: { default: null, [breakpoints.phone]: 'end' },
+  },
+  personContext: {
+    display: { default: 'flex', [breakpoints.phone]: 'grid', [lg]: 'contents' },
+    minWidth: 0,
+    alignItems: 'center',
+    gap: 6,
+    gridTemplateColumns: {
+      default: null,
+      [breakpoints.phone]: 'minmax(0, 35%) minmax(0, 1fr)',
+    },
+    gridColumn: { default: null, [breakpoints.phone]: '2 / 4' },
+    gridRow: { default: null, [breakpoints.phone]: 2 },
+    alignSelf: { default: null, [breakpoints.phone]: 'start' },
+  },
+  contextDivider: {
+    display: { default: 'inline', [breakpoints.phone]: 'none', [lg]: 'none' },
+    flexShrink: 0,
+    color: tokens.mutedForeground,
   },
   // a name longer than the bar ends in an ellipsis rather than running
   // under the keys beside it; the number after it stays whole
@@ -177,17 +208,43 @@ const styles = stylex.create({
     minWidth: 0,
     flexGrow: { default: 0, [lg]: 1 },
     flexShrink: 1,
-    flexBasis: { default: 'auto', [lg]: '0%' },
-    maxWidth: { default: '100%', [lg]: '22rem' },
+    flexBasis: { default: '67%', [breakpoints.phone]: 'auto', [lg]: '0%' },
+    maxWidth: { default: '67%', [breakpoints.phone]: '100%', [lg]: '22rem' },
+    gridColumn: { default: null, [breakpoints.phone]: 'auto' },
+    gridRow: { default: null, [breakpoints.phone]: 'auto' },
   },
   itemLine: {
-    flexBasis: { default: 'auto', [lg]: '100%' },
+    containerType: 'inline-size',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 4,
+    flexGrow: { default: 1, [lg]: 0 },
+    flexShrink: 1,
+    flexBasis: { default: '0%', [lg]: '100%' },
+    minWidth: 0,
+    fontSize: 12,
+    color: tokens.mutedForeground,
+    gridColumn: { default: null, [breakpoints.phone]: 'auto' },
+    gridRow: { default: null, [breakpoints.phone]: 'auto' },
+    textAlign: { default: null, [breakpoints.phone]: 'right' },
+  },
+  itemGlyph: {
+    width: 12,
+    height: 12,
+    flexShrink: 0,
+  },
+  itemWords: {
     minWidth: 0,
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
-    fontSize: 12,
-    color: tokens.mutedForeground,
+  },
+  itemContext: {
+    display: {
+      default: 'inline',
+      [itemContextTight]: 'none',
+    },
   },
   escalationLight: {
     flexShrink: 0,
@@ -218,6 +275,13 @@ const styles = stylex.create({
     color: tokens.mutedForeground,
     fontVariantNumeric: 'tabular-nums',
   },
+  runStandalone: { display: { default: 'block', [breakpoints.phone]: 'none' } },
+  queuePosition: {
+    display: { default: 'none', [breakpoints.phone]: 'inline' },
+    marginInlineStart: 2,
+    color: tokens.mutedForeground,
+    fontVariantNumeric: 'tabular-nums',
+  },
   edgeKeys: {
     display: {
       default: 'none',
@@ -225,6 +289,25 @@ const styles = stylex.create({
     },
     gap: 4,
   },
+  personActions: {
+    display: 'contents',
+    flexShrink: 0,
+    flexDirection: 'column',
+    alignItems: 'flex-end',
+    gap: 1,
+  },
+  actionLine: {
+    display: { default: 'contents', [breakpoints.phone]: 'flex' },
+    minHeight: { default: null, [breakpoints.phone]: 24 },
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 4,
+  },
+  actionPrimary: {
+    gridColumn: { default: null, [breakpoints.phone]: 3 },
+    gridRow: { default: null, [breakpoints.phone]: 1 },
+  },
+  actionSecondary: { display: { default: 'contents', [breakpoints.phone]: 'none' } },
   // ---- the part strip over a stacked workbench ----
   partStrip: {
     flexShrink: 0,
@@ -347,7 +430,7 @@ export function PersonStrip({
   // rather than drawn with the mark the line uses for levels it leaves off
   const { levels, gone } = namedChainOf(review.unitPath, m.review_unitGone())
   return (
-    <header {...stylex.props(styles.personBar)}>
+    <header {...stylex.props(styles.personBar, styles.phoneGrid)}>
       {/* The one way out of the run, at every width: a small key, because
           the person being judged owns this bar, named on hover for a reader
           who cannot guess where a bare arrow goes. On a phone the system
@@ -360,6 +443,7 @@ export function PersonStrip({
               size="icon-sm"
               aria-label={m.review_backToQueue()}
               data-testid="queue-back"
+              className={stylex.props(styles.backSeat).className}
               onClick={onBack}
             >
               <ChevronLeftIcon aria-hidden />
@@ -382,108 +466,146 @@ export function PersonStrip({
             <span {...stylex.props(styles.businessNo)}>{review.businessNo}</span>
           )}
         </div>
-        {review.unitPath.length > 0 ? (
-          <span data-testid="review-unit" data-gone={gone} {...stylex.props(styles.unitSeat)}>
-            <UnitPath
-              // the root everybody on the round shares is left off the
-              // line, and kept on the chain
-              steps={levels.length > 1 ? levels.slice(1) : levels}
-              chain={{
-                label: m.roster_units(),
-                closeLabel: commonMessages.action_close(),
-                levels,
-              }}
-            />
+        <div {...stylex.props(styles.personContext)}>
+          {review.unitPath.length > 0 ? (
+            <span data-testid="review-unit" data-gone={gone} {...stylex.props(styles.unitSeat)}>
+              <UnitPath
+                // the root everybody on the round shares is left off the
+                // line, and kept on the chain
+                steps={levels.length > 1 ? levels.slice(1) : levels}
+                chain={{
+                  label: m.roster_units(),
+                  closeLabel: commonMessages.action_close(),
+                  levels,
+                }}
+              />
+            </span>
+          ) : (
+            review.unitName !== null && (
+              <span {...stylex.props(styles.unitName)}>{review.unitName}</span>
+            )
+          )}
+          <span aria-hidden {...stylex.props(styles.contextDivider)}>
+            ·
           </span>
-        ) : (
-          review.unitName !== null && (
-            <span {...stylex.props(styles.unitName)}>{review.unitName}</span>
-          )
-        )}
-        <p {...stylex.props(styles.itemLine)}>
-          {round !== null && round !== undefined
-            ? `${round} › ${review.itemTitle}`
-            : review.itemTitle}
-        </p>
+          <p
+            title={
+              round !== null && round !== undefined
+                ? `${round} › ${review.itemTitle}`
+                : review.itemTitle
+            }
+            data-testid="review-item"
+            {...stylex.props(styles.itemLine)}
+          >
+            <FileTextIcon aria-hidden {...stylex.props(styles.itemGlyph)} />
+            <span {...stylex.props(styles.itemWords)}>
+              {round !== null && round !== undefined && (
+                <span data-testid="review-item-context" {...stylex.props(styles.itemContext)}>
+                  {round} ›{' '}
+                </span>
+              )}
+              {review.itemTitle}
+            </span>
+          </p>
+        </div>
       </div>
-      {review.chain.route === 'escalation' && (
-        // at every width: the mode must survive the narrowest header. In the
-        // theme's own ink rather than a borrowed hue - the workbench is
-        // greyscale but for the two verdict colours, and a third colour on
-        // it reads as something pasted on from another product
-        <Badge
-          variant="outline"
-          data-testid="escalation-light"
-          className={stylex.props(styles.escalationLight).className}
-        >
-          {/* the same mark the notice below carries: the filing climbed a
+      <div {...stylex.props(styles.personActions)}>
+        <div {...stylex.props(styles.actionLine, styles.actionPrimary)}>
+          {review.chain.route === 'escalation' && (
+            // at every width: the mode must survive the narrowest header. In the
+            // theme's own ink rather than a borrowed hue - the workbench is
+            // greyscale but for the two verdict colours, and a third colour on
+            // it reads as something pasted on from another product
+            <Badge
+              variant="outline"
+              data-testid="escalation-light"
+              className={stylex.props(styles.escalationLight).className}
+            >
+              {/* the same mark the notice below carries: the filing climbed a
               level, and one glyph says it in both places */}
-          <CircleArrowUpIcon aria-hidden />
-          {m.review_routeEscalation()}
-        </Badge>
-      )}
-      {/* this filing has been round the supplement loop before: worth knowing
+              <CircleArrowUpIcon aria-hidden />
+              {m.review_routeEscalation()}
+            </Badge>
+          )}
+          {/* this filing has been round the supplement loop before: worth knowing
           before reading it, and only the round itself can say so */}
-      {review.supplements.length > 0 && (
-        <Badge variant="outline" className={stylex.props(styles.hadSupplements).className}>
-          <AlertCircleIcon aria-hidden />
-          {m.review_hadSupplements()}
-        </Badge>
-      )}
-      {/* who else is waiting: looked up when the reviewer wants to jump, so
+          {review.supplements.length > 0 && (
+            <Badge variant="outline" className={stylex.props(styles.hadSupplements).className}>
+              <AlertCircleIcon aria-hidden />
+              {m.review_hadSupplements()}
+            </Badge>
+          )}
+          {/* who else is waiting: looked up when the reviewer wants to jump, so
           it sits with the other ways of moving about rather than by the name */}
-      <Button
-        variant="ghost"
-        size="sm"
-        data-testid="queue-key"
-        className={stylex.props(styles.queueKey).className}
-        onClick={onQueue}
-      >
-        <ListIcon aria-hidden className={stylex.props(styles.queueKeyIcon).className} />
-        {m.review_queueKey()}
-        {fine && <Kbd>Q</Kbd>}
-      </Button>
-      {/* the keys panel belongs to a keyboard; without one the letters are
+          <Button
+            variant="ghost"
+            size="sm"
+            data-testid="queue-key"
+            className={stylex.props(styles.queueKey).className}
+            onClick={onQueue}
+          >
+            <ListIcon aria-hidden className={stylex.props(styles.queueKeyIcon).className} />
+            {m.review_queueKey()}
+            {fine && <Kbd>Q</Kbd>}
+            {run !== null && (
+              <span
+                data-testid="queue-position"
+                data-at={run.at}
+                data-total={run.total}
+                {...stylex.props(styles.queuePosition)}
+              >
+                {m.review_runPositionShort({ at: run.at, count: run.total })}
+              </span>
+            )}
+          </Button>
+          {run !== null && (
+            <p
+              data-testid="run-position"
+              data-at={run.at}
+              data-total={run.total}
+              data-done={run.done}
+              {...stylex.props(styles.runAt, styles.runStandalone)}
+            >
+              <span {...stylex.props(styles.runAtWords)}>
+                {m.review_runPosition({ at: run.at, count: run.total })}
+              </span>
+              <span {...stylex.props(styles.runAtFigures)}>
+                {m.review_runPositionShort({ at: run.at, count: run.total })}
+              </span>
+            </p>
+          )}
+        </div>
+        <div {...stylex.props(styles.actionLine, styles.actionSecondary)}>
+          {/* the keys panel belongs to a keyboard; without one the letters are
           not mounted and the panel would document controls that do not
           exist here */}
-      {fine && (
-        <Button
-          variant="ghost"
-          size="sm"
-          data-testid="keys-open"
-          className={stylex.props(styles.keysHint).className}
-          onClick={onKeys}
-        >
-          {m.review_keysTitle()}
-          <Kbd>?</Kbd>
-        </Button>
-      )}
-      {run !== null && (
-        <p
-          data-testid="run-position"
-          data-at={run.at}
-          data-total={run.total}
-          data-done={run.done}
-          {...stylex.props(styles.runAt)}
-        >
-          {/* a phone's bar has the name's line to keep: there the place is
-              said as figures alone, and in words where there is room */}
-          <span {...stylex.props(styles.runAtWords)}>
-            {m.review_runPosition({ at: run.at, count: run.total })}
+          {fine && (
+            <Button
+              variant="ghost"
+              size="sm"
+              data-testid="keys-open"
+              className={stylex.props(styles.keysHint).className}
+              onClick={onKeys}
+            >
+              {m.review_keysTitle()}
+              <Kbd>?</Kbd>
+            </Button>
+          )}
+          <span {...stylex.props(styles.edgeKeys)}>
+            <EdgeButton
+              can={canPrev}
+              why={m.review_firstOne()}
+              label="K"
+              onPress={() => onMove(-1)}
+            >
+              <ChevronUpIcon aria-hidden />
+            </EdgeButton>
+            <EdgeButton can={canNext} why={m.review_lastOne()} label="J" onPress={() => onMove(1)}>
+              <ChevronDownIcon aria-hidden />
+            </EdgeButton>
           </span>
-          <span {...stylex.props(styles.runAtFigures)}>
-            {m.review_runPositionShort({ at: run.at, count: run.total })}
-          </span>
-        </p>
-      )}
-      <span {...stylex.props(styles.edgeKeys)}>
-        <EdgeButton can={canPrev} why={m.review_firstOne()} label="K" onPress={() => onMove(-1)}>
-          <ChevronUpIcon aria-hidden />
-        </EdgeButton>
-        <EdgeButton can={canNext} why={m.review_lastOne()} label="J" onPress={() => onMove(1)}>
-          <ChevronDownIcon aria-hidden />
-        </EdgeButton>
-      </span>
+        </div>
+      </div>
       {run !== null && run.total > 1 && (
         <span aria-hidden data-testid="run-track" {...stylex.props(styles.runTrack)}>
           {Array.from({ length: Math.min(run.total, 60) }, (_, index) => (

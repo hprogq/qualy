@@ -21,7 +21,6 @@ export const PART_LABEL: Record<WorkbenchPart, Message> = {
 }
 
 const belowLg = '@media (max-width: 1023.98px)'
-const lg = '@media (min-width: 1024px)'
 
 const styles = stylex.create({
   // The root stays `relative` either way - an absolutely positioned
@@ -33,10 +32,7 @@ const styles = stylex.create({
     display: 'flex',
     minWidth: 0,
     flexDirection: 'column',
-    minHeight: {
-      default: null,
-      [lg]: 0,
-    },
+    minHeight: 0,
     height: {
       default: null,
       [belowLg]: '100%',

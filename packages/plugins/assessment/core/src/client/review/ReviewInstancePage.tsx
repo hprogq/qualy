@@ -50,7 +50,6 @@ import { useBenchColumns } from './bench-columns.tsx'
 import { QueueRail } from './QueueRail.tsx'
 import { PartStrip, PersonStrip } from './WorkbenchStrips.tsx'
 import { queuePlaceOf } from './queue-place.ts'
-import { EscalationNotice } from './EscalationNotice.tsx'
 import { FlowColumn } from './FlowColumn.tsx'
 import { FilingColumn } from './FilingColumn.tsx'
 import { ContextRail } from './ContextRail.tsx'
@@ -681,7 +680,7 @@ const heldWordsOf = (staged: StagedDecision): HeldWords =>
 
 export default function ReviewInstancePage() {
   return (
-    <BatchScreen title={m.review_detailTab()} size="full" chrome="none">
+    <BatchScreen title={m.review_detailTab()} size="full" chrome="none" fill>
       {(batch) => <Workbench batch={batch} />}
     </BatchScreen>
   )
@@ -1245,7 +1244,10 @@ function Workbench({ batch }: { batch: BatchDto }) {
   // opened from elsewhere is a page to read, not a run to finish
   const done = remaining.length === 0 && log.length > 0 && !inbox.isPending
   const bar = !done && !lostTurn && review !== undefined && review.capabilities.canDecide
-  useClaimScreenFoot(bar)
+  // Hold the shell's mobile foot while the review is still resolving. An
+  // actionable review replaces it with the decision bar; waiting for the
+  // response before claiming made the shell control flash for one frame.
+  useClaimScreenFoot(bar || (addressable && review === undefined && detail.isPending))
   // a screenful at every width: the parts scroll inside it, never the page
   useClaimScreenFill(true)
 
@@ -1422,12 +1424,6 @@ function Workbench({ batch }: { batch: BatchDto }) {
                     the widest and the only one that scrolls far; the other
                     two are meant to be taken in at a glance while working
                     down it. Stacked below that, in the same reading order. */}
-                {/* the appeal or escalation the reader must meet before
-                    anything else must not live inside a side page of the
-                    pager: below lg it stands here, over the faces */}
-                {!beside && review.chain.route === 'escalation' && (
-                  <EscalationNotice review={review} />
-                )}
                 <PartStrip
                   pager={stack}
                   round={review.roundNo}
@@ -1685,7 +1681,11 @@ function DecisionBar({
       : m.review_tipReject
 
   return (
-    <footer {...stylex.props(styles.decisionFooter)} data-revisits={String(revisiting)}>
+    <footer
+      data-testid="decision-bar"
+      {...stylex.props(styles.decisionFooter)}
+      data-revisits={String(revisiting)}
+    >
       {/* All four acts, always: a workbench whose buttons come and go has no
           stable map, and "why can I not escalate this one" is a question a
           missing button cannot answer. What varies is availability, and a

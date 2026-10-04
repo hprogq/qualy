@@ -185,6 +185,8 @@ const styles = stylex.create({
   },
   headBonesStrip: {
     display: 'flex',
+    height: 47,
+    flexShrink: 0,
     alignItems: 'center',
     gap: 10,
     borderTopWidth: 1,
@@ -414,6 +416,7 @@ const styles = stylex.create({
   // from one page to the next. Only the gutter goes; a window too short for
   // the screen's own floor still scrolls.
   mainEdge: {
+    overflowY: 'hidden',
     scrollbarGutter: 'auto',
   },
   // the applications' bar at the foot of a phone, held clear of the last row

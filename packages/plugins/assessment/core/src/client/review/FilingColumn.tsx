@@ -22,8 +22,9 @@ import {
   type ReviewDto,
 } from './model.ts'
 import { useBatchZone } from '../batch/zone.ts'
-import { useFinePointer } from './pointer.ts'
+import { useBeside, useFinePointer } from './pointer.ts'
 import { PART_LABEL, Pane, type WorkbenchPart } from './Pane.tsx'
+import { EscalationNotice } from './EscalationNotice.tsx'
 import * as m from '#messages'
 
 const belowLg = '@media (max-width: 1023.98px)'
@@ -136,6 +137,9 @@ const styles = stylex.create({
     flexBasis: '0%',
     flexDirection: 'column',
     gap: 14,
+  },
+  phoneEscalation: {
+    display: { default: 'block', [lg]: 'none' },
   },
   filingHead: {
     display: 'flex',
@@ -402,6 +406,7 @@ export const FilingColumn = memo(function FilingColumn({
   const locale = useLocale()
   const zone = useBatchZone()
   const fine = useFinePointer()
+  const beside = useBeside()
   // every field the question asks, files included and in their own places:
   // a field that asks for a certificate is not "materials", it is the
   // certificate, and folding it away left the reading order with a hole
@@ -508,6 +513,11 @@ export const FilingColumn = memo(function FilingColumn({
         )
       }
     >
+      {!beside && (
+        <div {...stylex.props(styles.phoneEscalation)}>
+          <EscalationNotice review={review} />
+        </div>
+      )}
       {/* only below lg: on a desk the flow column is in the same glance */}
       <button
         type="button"

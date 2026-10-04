@@ -7,7 +7,12 @@ import { Route, Routes } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { page, userEvent } from 'vitest/browser'
 import { Effect, Stream } from 'effect'
-import { ScreenFillScope, useScreenFillClaimed } from '@qualy/web-runtime'
+import {
+  ScreenFillScope,
+  ScreenFootScope,
+  useScreenFillClaimed,
+  useScreenFootClaimed,
+} from '@qualy/web-runtime'
 import { addressNow, apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 // The only suite that needs the real stylesheet: what it asserts is which
 // parts a width shows, and without the sheet every breakpoint is the same
@@ -319,6 +324,50 @@ const parts = () =>
 afterEach(() => page.viewport(DEFAULT_VIEWPORT.width, DEFAULT_VIEWPORT.height))
 
 describe('one workbench, three widths', () => {
+  it('keeps long mobile panes inside the room above the decisions', async () => {
+    await page.viewport(390, 667)
+    await open({
+      getReviewInstance: () =>
+        Effect.succeed({
+          review: {
+            ...review,
+            revision: {
+              ...review.revision,
+              payload: { ...review.revision.payload, note: 'Long filing content. '.repeat(2000) },
+            },
+            events: Array.from({ length: 80 }, (_, index) => ({
+              ...review.events[0]!,
+              id: `event-${String(index)}`,
+            })),
+          },
+        }),
+    })
+    const bar = page.getByTestId('decision-bar')
+    await expect.element(bar).toBeVisible()
+    for (const part of ['filing', 'flow']) {
+      await page
+        .getByTestId('workbench-anchor')
+        .nth(part === 'flow' ? 0 : 1)
+        .click()
+      const viewport = document.querySelector<HTMLElement>(
+        `[data-workbench-part="${part}"] [data-slot="scroll-area-viewport"]`,
+      )!
+      expect(viewport.clientHeight).toBeGreaterThan(50)
+      expect(viewport.scrollHeight).toBeGreaterThan(viewport.clientHeight)
+      expect(bar.element().getBoundingClientRect().bottom).toBeLessThanOrEqual(
+        window.innerHeight + 1,
+      )
+      expect(viewport.getBoundingClientRect().bottom).toBeLessThanOrEqual(
+        bar.element().getBoundingClientRect().top + 1,
+      )
+      viewport.scrollTop = viewport.scrollHeight
+      await expect.poll(() => viewport.scrollTop).toBeGreaterThan(0)
+      expect(bar.element().getBoundingClientRect().bottom).toBeLessThanOrEqual(
+        window.innerHeight + 1,
+      )
+    }
+  })
+
   it('pages the parts on a phone and opens on the filing', async () => {
     await page.viewport(390, 844)
     await open()
@@ -473,6 +522,47 @@ describe('one workbench, three widths', () => {
     await expect.element(page.getByTestId('fill-claimed')).toHaveAttribute('data-claimed', 'true')
   })
 
+  it('claims the mobile foot before the review response can paint', async () => {
+    await page.viewport(390, 844)
+    let answer!: (value: { review: typeof review }) => void
+    const pending = new Promise<{ review: typeof review }>((resolve) => {
+      answer = resolve
+    })
+    function Claimed() {
+      return <span data-testid="foot-claimed" data-claimed={String(useScreenFootClaimed())} />
+    }
+    await renderScreen({
+      client: fakeClient({
+        app: { getManifest: () => Effect.succeed({ ...emptyManifest(), pages: PAGES }) },
+        assessment: {
+          getBatch: () => Effect.succeed({ batch: batch() }),
+          listReviewInbox: () =>
+            Effect.succeed({ items: [inboxRow()], nextCursor: null, handledToday: 0 }),
+          getReviewInstance: () => Effect.promise(() => pending),
+          getEntryHistory: () => Effect.succeed({ revisions: [], events: [], rounds: [] }),
+        },
+      }),
+      routes: [
+        {
+          path: '/assessment/batches/:batchId/reviews/:instanceId',
+          element: (
+            <ScreenFootScope>
+              <Claimed />
+              <div style={{ display: 'flex', height: '100dvh', flexDirection: 'column' }}>
+                <ReviewInstancePage />
+              </div>
+            </ScreenFootScope>
+          ),
+        },
+      ] as never,
+      route: `/assessment/batches/${BATCH_ID}/reviews/${INSTANCE_ID}`,
+    })
+    await expect.element(page.getByTestId('foot-claimed')).toHaveAttribute('data-claimed', 'true')
+    answer({ review })
+    await expect.element(page.getByTestId('decision-bar')).toBeVisible()
+    await expect.element(page.getByTestId('foot-claimed')).toHaveAttribute('data-claimed', 'true')
+  })
+
   // The run is said once, on the run's own terms. A strip above used to
   // count the sitting and the bar below it what was left, and "4/12" over
   // "1/9" on one screen read as two runs.
@@ -497,9 +587,9 @@ describe('one workbench, three widths', () => {
     await expect.element(place).toHaveAttribute('data-done', '1')
     await expect.element(place).toHaveAttribute('data-total', '2')
     expect(page.getByTestId('run-position').elements()).toHaveLength(1)
-    // the key to the rest of the queue is named for where it leads, and
-    // carries no second count to set against the place
-    expect(page.getByTestId('queue-key').element().textContent).not.toMatch(/\d/)
+    // On a desk the key keeps only its name; the compact figure is mounted
+    // for the phone breakpoint but does not become a second visible count.
+    await expect.element(page.getByTestId('queue-position')).not.toBeVisible()
   })
 
   // Narrow, the place is said in figures and the key keeps its name: a
@@ -509,14 +599,19 @@ describe('one workbench, three widths', () => {
       await page.viewport(width, 844)
       await open()
       await expect.element(page.getByText('中国机器人大赛').first()).toBeVisible()
-      const place = page.getByTestId('run-position')
-      await expect.element(place).toBeVisible()
-      expect(place.element().textContent).toContain('1')
       const key = page.getByTestId('queue-key')
       await expect.element(key).toBeVisible()
-      const text = key.element().textContent ?? ''
-      expect(text.trim()).not.toBe('')
-      expect(text).not.toMatch(/\d/)
+      const compactPlace = page.getByTestId('queue-position')
+      const deskPlace = page.getByTestId('run-position')
+      if (width < 768) {
+        await expect.element(compactPlace).toBeVisible()
+        await expect.element(deskPlace).not.toBeVisible()
+        expect(compactPlace.element().textContent).toContain('1')
+      } else {
+        await expect.element(compactPlace).not.toBeVisible()
+        await expect.element(deskPlace).toBeVisible()
+        expect(deskPlace.element().textContent).toContain('1')
+      }
       await key.click()
       await expect.element(page.getByTestId('queue-sheet')).toBeVisible()
     })
@@ -536,6 +631,7 @@ describe('one workbench, three widths', () => {
         // the key's own word, without the letter that presses it
         const bare = seat.cloneNode(true) as HTMLElement
         for (const letter of bare.querySelectorAll('kbd')) letter.remove()
+        for (const place of bare.querySelectorAll('[data-testid="queue-position"]')) place.remove()
         const word = (bare.textContent ?? '').trim().toLowerCase()
         expect(word).not.toBe('')
         expect(seat.scrollWidth).toBeLessThanOrEqual(seat.clientWidth + 1)
@@ -751,6 +847,23 @@ describe('the workbench inside the workspace shell', () => {
     await expect.element(page.getByRole('region', { name: '申报内容' })).toBeInTheDocument()
     const main = page.getByRole('main').element()
     await expect.poll(() => getComputedStyle(main).scrollbarGutter).toBe('auto')
+    await page.viewport(390, 844)
+    await expect.poll(() => window.innerHeight).toBe(844)
+    await expect.poll(() => getComputedStyle(main).overflowY).toBe('hidden')
+    const shell = page.getByTestId('shell-context').element().parentElement!
+    expect(Math.abs(shell.getBoundingClientRect().bottom - window.innerHeight)).toBeLessThan(2)
+    await expect
+      .poll(() =>
+        Math.abs(
+          page.getByTestId('decision-bar').element().getBoundingClientRect().bottom -
+            window.innerHeight,
+        ),
+      )
+      .toBeLessThan(10)
+    const filingViewport = document.querySelector<HTMLElement>(
+      '[data-workbench-part="filing"] [data-slot="scroll-area-viewport"]',
+    )!
+    expect(['auto', 'scroll']).toContain(getComputedStyle(filingViewport).overflowY)
   })
 
   // Beside the rail a laptop's bench is narrower than the window says; the
@@ -1134,13 +1247,18 @@ describe('the four acts, always on the bar', () => {
 })
 
 describe('the pager knows what must not be missed', () => {
-  it('lifts the escalation over the pager, dots the flow face, and guards the verdict', async () => {
+  it('keeps the escalation with the filing, dots the flow face, and guards the verdict', async () => {
     await page.viewport(390, 844)
     await open({ getReviewInstance: () => Effect.succeed({ review: onLadder() }) })
     await expect.element(page.getByText('中国机器人大赛').first()).toBeVisible()
 
-    // the notice stands over the faces, readable while the filing is up
-    await expect.element(page.getByTestId('escalation-card')).toBeVisible()
+    // The notice belongs to the filing face on a phone: it scrolls with the
+    // submitted material instead of taking fixed height above every face.
+    const notice = page.getByTestId('escalation-card')
+    await expect.element(notice).toBeVisible()
+    expect(
+      notice.element().closest('[data-workbench-part]')?.getAttribute('data-workbench-part'),
+    ).toBe('filing')
     // the filing face opens with its two-line situation strip
     await expect.element(page.getByTestId('filing-summary')).toBeVisible()
     // and the flow face wears a fact dot: something there shaped this round
@@ -1627,9 +1745,9 @@ describe('the queue, a page at a time', () => {
     await rows().first().click()
     await expect.element(page.getByTestId('run-position')).toHaveAttribute('data-total', '23')
     await expect.element(page.getByTestId('run-position')).toHaveAttribute('data-at', '11')
-    // the place is the one count on the bar, and the queue it opens lists
-    // what the place counts: the whole question, none of it dealt with yet
-    expect(page.getByTestId('queue-key').element().textContent).not.toMatch(/\d/)
+    // The desk place is the one visible count on the bar. The compact count
+    // remains mounted only for the phone breakpoint.
+    await expect.element(page.getByTestId('queue-position')).not.toBeVisible()
     await page.getByTestId('queue-key').click()
     await expect.element(page.getByTestId('queue-sheet')).toBeVisible()
     expect(page.getByTestId('queue-row').elements()).toHaveLength(23)
@@ -1702,12 +1820,11 @@ describe('where the person being judged stands', () => {
     await expect.element(page.getByTestId('unit-chain')).not.toBeInTheDocument()
   })
 
-  // On a phone the header has no room beside the name for a unit: it takes a
-  // line of its own, and the unit itself - the last step - is said whole,
-  // while nothing on the name's line runs under the key to the queue.
+  // On a phone the identity uses two balanced lines: name and number first,
+  // then the unit and item together, clear of the two-line controls at right.
   for (const width of [360, 390]) {
-    for (const name of ['周予安', '阿卜杜热合曼·买买提江·艾力']) {
-      it(`gives the unit a line of its own at ${String(width)}, clear of the queue key (${name})`, async () => {
+    for (const name of ['示例学生', '阿卜杜热合曼·买买提江·艾力']) {
+      it(`balances identity, queue and item at ${String(width)} (${name})`, async () => {
         await page.viewport(width, 844)
         await open({
           getReviewInstance: () => Effect.succeed({ review: { ...review, participantName: name } }),
@@ -1721,18 +1838,43 @@ describe('where the person being judged stands', () => {
         // on the line that shows, and all of it
         expect(box.width).toBeGreaterThan(0)
         expect(box.top).toBeLessThan(line.bottom - 1)
-        const words = last.lastElementChild as HTMLElement
-        expect(words.scrollWidth).toBeLessThanOrEqual(words.clientWidth)
-        // a line of its own: under the name, not beside it
+        // the second line: under the name, shared with the item
         const heading = page.getByRole('heading', { level: 2, name }).element()
+        const firstLine = heading.parentElement!.getBoundingClientRect()
+        if (name === '示例学生') {
+          expect(heading.scrollWidth).toBeLessThanOrEqual(heading.clientWidth)
+        }
         expect(box.top).toBeGreaterThanOrEqual(heading.getBoundingClientRect().bottom - 1)
-        // and nothing of the person runs under the key to the queue
+        expect(line.top - firstLine.bottom).toBeLessThanOrEqual(2)
+        const itemElement = page.getByTestId('review-item').element()
+        const item = itemElement.getBoundingClientRect()
+        expect(Math.abs(item.top - line.top)).toBeLessThan(3)
+        expect(line.right).toBeLessThanOrEqual(item.left - 4)
+        expect(item.width).toBeGreaterThan(line.width)
+        expect(itemElement.querySelector('svg')).not.toBeNull()
+        const itemContext = page.getByTestId('review-item-context').element()
+        if (item.width > 201) expect(getComputedStyle(itemContext).display).toBe('inline')
+        if (item.width < 199) expect(getComputedStyle(itemContext).display).toBe('none')
+        // Nothing of the identity runs under the queue state at right.
         const key = page.getByTestId('queue-key').element().getBoundingClientRect()
         const number = heading.nextElementSibling!
         expect(number.textContent).toBe(review.businessNo)
         for (const part of [heading, number, last]) {
           expect(part.getBoundingClientRect().right).toBeLessThanOrEqual(key.left)
         }
+        // Queue state and place are one line; the item gets the whole cell
+        // under them instead of sharing the unit's narrower line.
+        const place = page.getByTestId('queue-position').element()
+        expect(place.closest('[data-testid="queue-key"]')).toBe(
+          page.getByTestId('queue-key').element(),
+        )
+        const bar = page
+          .getByTestId('review-item')
+          .element()
+          .closest('header')!
+          .getBoundingClientRect()
+        expect(Math.abs(item.right - (bar.right - 8))).toBeLessThan(2)
+        expect(getComputedStyle(itemElement).textAlign).toBe('right')
       })
     }
   }

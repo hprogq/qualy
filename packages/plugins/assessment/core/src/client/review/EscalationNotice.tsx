@@ -11,22 +11,19 @@ const styles = stylex.create({
   // the escalation environment's one card: the standing colour carries the
   // asking-to-be-read-closely tone, mixed over the scheme's own ground
   escalationCard: {
-    margin: {
-      default: 12,
-      [lg]: 0,
-    },
+    margin: 0,
     display: 'flex',
     minWidth: 0,
     flexShrink: 0,
     alignItems: 'flex-start',
-    gap: 12,
+    gap: { default: 8, [lg]: 12 },
     borderRadius: `calc(${tokens.radiusLg} + 4px)`,
     borderWidth: 1,
     borderStyle: 'solid',
     borderColor: `color-mix(in oklab, ${tokens.warning} 35%, ${tokens.background})`,
     backgroundColor: `color-mix(in oklab, ${tokens.warning} 12%, ${tokens.background})`,
-    paddingInline: 16,
-    paddingBlock: 14,
+    paddingInline: { default: 12, [lg]: 16 },
+    paddingBlock: { default: 12, [lg]: 14 },
   },
   escalationIcon: {
     marginTop: 2,

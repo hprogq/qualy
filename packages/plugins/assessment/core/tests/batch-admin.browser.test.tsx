@@ -1013,6 +1013,84 @@ const running = (untilNext: number) => [
 ]
 
 describe('the countdown', () => {
+  it('reserves the mobile flow height before the context module loads', async () => {
+    await page.viewport(390, 844)
+    let load!: (value: { default: typeof BatchContextBar }) => void
+    const modulePending = new Promise<{ default: typeof BatchContextBar }>((resolve) => {
+      load = resolve
+    })
+    await renderScreen({
+      client: fakeClient({
+        app: {
+          getManifest: () =>
+            Effect.succeed({
+              ...emptyManifest(),
+              pages: PAGES,
+              slots: { 'workspace-shell/context': [{ id: 'assessment/batch-context', order: 0 }] },
+            }),
+        },
+        assessment: assessmentStubs({
+          getBatch: () => Effect.succeed({ batch: batch({ status: 'active' }) }),
+          getTimeline: () => Effect.succeed({ timeline: running(39 * 60_000) }),
+        }),
+      }),
+      registry: {
+        slots: {
+          'workspace-shell/context': {
+            'assessment/batch-context': lazy(() => modulePending),
+          },
+        },
+      },
+      route: `/assessment/batches/${BATCH_ID}/phases`,
+      children: (
+        <Routes>
+          <Route element={<WorkspaceShell />}>
+            <Route path="/assessment/batches/:batchId/phases" element={<div />} />
+          </Route>
+        </Routes>
+      ),
+    })
+    const bones = page.getByTestId('head-bones')
+    await expect.element(bones).toBeVisible()
+    expect(bones.element().lastElementChild!.getBoundingClientRect().height).toBe(47)
+    const shell = page.getByTestId('shell-context')
+    const before = shell.element().getBoundingClientRect().height
+    load({ default: BatchContextBar })
+    await expect.element(page.getByTestId('stage-clock')).toBeVisible()
+    expect(shell.element().getBoundingClientRect().height).toBe(before)
+  })
+
+  it('keeps the mobile context bar height while the batch and flow arrive', async () => {
+    await page.viewport(390, 844)
+    let answerBatch!: (value: { batch: ReturnType<typeof batch> }) => void
+    let answerTimeline!: (value: { timeline: ReturnType<typeof running> }) => void
+    const batchPending = new Promise<{ batch: ReturnType<typeof batch> }>((resolve) => {
+      answerBatch = resolve
+    })
+    const timelinePending = new Promise<{ timeline: ReturnType<typeof running> }>((resolve) => {
+      answerTimeline = resolve
+    })
+    await screen(
+      {
+        getBatch: () => Effect.promise(() => batchPending),
+        getTimeline: () => Effect.promise(() => timelinePending),
+      },
+      `/assessment/batches/${BATCH_ID}/phases`,
+    )
+    const bar = page.getByTestId('batch-context-bar')
+    await expect.element(bar).toHaveAttribute('data-loading', 'true')
+    const before = bar.element().getBoundingClientRect().height
+    const strip = bar.element().lastElementChild!
+    expect(strip.getBoundingClientRect().height).toBe(47)
+    answerBatch({ batch: batch({ status: 'active' }) })
+    await expect.element(bar.getByText(batch().name)).toBeVisible()
+    expect(strip.getBoundingClientRect().height).toBe(47)
+    answerTimeline({ timeline: running(39 * 60_000 + 13_000) })
+    await expect.element(page.getByTestId('stage-clock')).toBeVisible()
+    await expect.poll(() => bar.element().hasAttribute('data-loading')).toBe(false)
+    expect(Math.abs(bar.element().getBoundingClientRect().height - before)).toBeLessThan(1)
+  })
+
   it('says two units, and drops the smaller one when it is empty', async () => {
     // two units is what a bar with room says; the phone case is below
     await page.viewport(1280, 800)

@@ -161,8 +161,8 @@ const styles = stylex.create({
   // the strip's own outline: it has a rule and a ground of its own, so an
   // empty one is a band of nothing rather than a strip on its way
   emptyStrip: { fontSize: { default: 14, [breakpoints.phone]: 13 }, color: tokens.mutedForeground },
-  stripBone: { height: 12, width: '7rem' },
-  stripBoneEnd: { height: 12, width: '4.5rem' },
+  stripBone: { height: { default: 12, [breakpoints.phone]: 32 }, width: '7rem' },
+  stripBoneEnd: { height: { default: 12, [breakpoints.phone]: 32 }, width: '4.5rem' },
   // never shrunk and never clipped: the clock is short by design, and a
   // column that gave way would hand its own text to the name beside it.
   // On a phone it is the second row, ruled off from the head above it and
@@ -184,6 +184,7 @@ const styles = stylex.create({
     backgroundColor: { default: null, [breakpoints.phone]: tokens.background },
     paddingInline: { default: null, [breakpoints.phone]: 16 },
     paddingBlock: { default: null, [breakpoints.phone]: 7 },
+    height: { default: null, [breakpoints.phone]: 47 },
   },
   // At a desk the stage and its clock are themselves the way to the whole
   // plan: pointed at, they answer like a control; pressed, the plan opens
@@ -314,7 +315,11 @@ export default function BatchContextBar() {
   }
 
   return (
-    <div {...stylex.props(styles.bar)}>
+    <div
+      data-testid="batch-context-bar"
+      data-loading={batch === undefined || plan.isPending || undefined}
+      {...stylex.props(styles.bar)}
+    >
       <div {...stylex.props(styles.head)}>
         <div data-bar-start {...stylex.props(styles.start)}>
           {/* A named destination on a desk, where there is room to say where
@@ -348,7 +353,7 @@ export default function BatchContextBar() {
       </div>
 
       <div {...stylex.props(styles.tail)}>
-        {batch === undefined ? (
+        {batch === undefined || plan.isPending ? (
           // only where the strip is a band of its own: across a desk this
           // column is the end of a line, and a line does not need an outline
           head && (
