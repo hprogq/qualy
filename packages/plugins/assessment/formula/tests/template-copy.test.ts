@@ -86,7 +86,7 @@ describe.runIf(postgresAvailable)('forking a template', () => {
           const copied = yield* templates.copyTemplate(
             f.t,
             published.versionId,
-            { userId: f.authorB, nodeId: f.collegeA },
+            f.principal(f.authorB),
             { name: '我的副本', description: '试试' },
           )
           const draft = yield* draftOf(copied.functionId)
@@ -157,7 +157,7 @@ describe.runIf(postgresAvailable)('forking a template', () => {
           const copied = yield* templates.copyTemplate(
             f.t,
             published.versionId,
-            { userId: f.authorB, nodeId: f.collegeA },
+            f.principal(f.authorB),
             { name: '副本' },
           )
 
@@ -201,7 +201,7 @@ describe.runIf(postgresAvailable)('forking a template', () => {
           const f = yield* seedFormulaFixture('copy-visible')
           const templates = yield* FormulaTemplateLibrary
           const published = yield* publishedVersion(f.t, f.authorA, '公式')
-          const viewer = { userId: f.authorB, nodeId: f.collegeA }
+          const viewer = f.principal(f.authorB)
 
           // never offered
           const unoffered = yield* Effect.exit(
@@ -210,34 +210,29 @@ describe.runIf(postgresAvailable)('forking a template', () => {
           yield* offer(f.t, published.versionId, f.root, f.authorA)
           // their own work is not a template to them, even by id
           const own = yield* Effect.exit(
-            templates.copyTemplate(
-              f.t,
-              published.versionId,
-              { userId: f.authorA, nodeId: f.collegeA },
-              {
-                name: 'x',
-              },
-            ),
+            templates.copyTemplate(f.t, published.versionId, f.principal(f.authorA), {
+              name: 'x',
+            }),
           )
-          // standing nowhere reaches nothing
+          // A detached account cannot copy. Live users must have a placement;
+          // deletion detaches them and also removes their authoring authority.
+          yield* runSql(sql`update users
+            set primary_org_node_id = null, deleted_at = now(), enabled = false
+            where id = ${f.authorB}`)
           const nowhere = yield* Effect.exit(
-            templates.copyTemplate(
-              f.t,
-              published.versionId,
-              { userId: f.authorB, nodeId: null },
-              {
-                name: 'x',
-              },
-            ),
+            templates.copyTemplate(f.t, published.versionId, f.principal(f.authorB), {
+              name: 'x',
+            }),
           )
           return { unoffered: tagOf(unoffered), own: tagOf(own), nowhere: tagOf(nowhere) }
         }),
       ),
     )
 
-    for (const tag of [outcome.unoffered, outcome.own, outcome.nowhere]) {
+    for (const tag of [outcome.unoffered, outcome.own]) {
       expect(tag).toBe('ASSESSMENT_FORMULA_TEMPLATE_NOT_FOUND')
     }
+    expect(outcome.nowhere).toBe('ACCESS_DENIED')
   }, 120_000)
 
   it('refuses to fork a source no draft may hold today', async () => {
@@ -260,12 +255,9 @@ describe.runIf(postgresAvailable)('forking a template', () => {
             where id = ${published.versionId}`)
           return tagOf(
             yield* Effect.exit(
-              templates.copyTemplate(
-                f.t,
-                published.versionId,
-                { userId: f.authorB, nodeId: f.collegeA },
-                { name: '副本' },
-              ),
+              templates.copyTemplate(f.t, published.versionId, f.principal(f.authorB), {
+                name: '副本',
+              }),
             ),
           )
         }),
@@ -309,7 +301,7 @@ describe.runIf(postgresAvailable)('forking a template', () => {
               const made = yield* templates.copyTemplate(
                 f.t,
                 published.versionId,
-                { userId: f.authorB, nodeId: f.collegeA },
+                f.principal(f.authorB),
                 { name: '抢到的副本' },
               )
               yield* Effect.promise(() => new Promise((done) => setTimeout(done, 300)))
@@ -320,12 +312,9 @@ describe.runIf(postgresAvailable)('forking a template', () => {
 
           // and once the withdrawal lands, the same copy is refused
           const after = yield* Effect.exit(
-            templates.copyTemplate(
-              f.t,
-              published.versionId,
-              { userId: f.authorB, nodeId: f.collegeA },
-              { name: '晚到的副本' },
-            ),
+            templates.copyTemplate(f.t, published.versionId, f.principal(f.authorB), {
+              name: '晚到的副本',
+            }),
           )
           return { copied, waitedMs, after: tagOf(after) }
         }),
@@ -386,12 +375,9 @@ describe.runIf(postgresAvailable)('forking a template', () => {
           )
           yield* Deferred.await(withdrawn)
           const queued = yield* Effect.exit(
-            templates.copyTemplate(
-              f.t,
-              published.versionId,
-              { userId: f.authorB, nodeId: f.collegeA },
-              { name: '排队的副本' },
-            ),
+            templates.copyTemplate(f.t, published.versionId, f.principal(f.authorB), {
+              name: '排队的副本',
+            }),
           )
           return { queued: tagOf(queued), sawTheWaiter: yield* Fiber.join(holder) }
         }),

@@ -1049,6 +1049,17 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
         : Effect.fail(new AccessDenied({ reason: 'cannot author scoring formulas' })),
     )
 
+  /** Serialize authoring writes with role and account changes, then recheck on this connection. */
+  const holdAuthor = (as: Principal) =>
+    Effect.gen(function* () {
+      yield* db
+        .query((k) =>
+          k.selectFrom('Tenant').select('id').where('id', '=', as.tenantId).forUpdate().execute(),
+        )
+        .pipe(Effect.orDie)
+      yield* requireAuthor(as)
+    })
+
   /** one function of this author's own; somebody else's reads as absent */
   const ownedRow = (tenantId: string, functionId: string, as: Principal) =>
     foundRow(tenantId, functionId).pipe(
@@ -1650,6 +1661,7 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
     const created = yield* withDb(
       transaction(
         Effect.gen(function* () {
+          yield* holdAuthor(as)
           const row = yield* db
             .query((k) =>
               k
@@ -1820,6 +1832,7 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
     const changed = yield* withDb(
       transaction(
         Effect.gen(function* () {
+          yield* holdAuthor(as)
           const locked = yield* db
             .query((k) =>
               k
@@ -1950,6 +1963,7 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
       yield* withDb(
         transaction(
           Effect.gen(function* () {
+            yield* holdAuthor(as)
             yield* db
               .query((k) =>
                 k
@@ -2019,6 +2033,7 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
     yield* withDb(
       transaction(
         Effect.gen(function* () {
+          yield* holdAuthor(as)
           const locked = yield* db
             .query((k) =>
               k
@@ -2148,6 +2163,7 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
     const inserted = yield* withDb(
       transaction(
         Effect.gen(function* () {
+          yield* holdAuthor(as)
           const locked = yield* db
             .query((k) =>
               k
@@ -2161,8 +2177,8 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
             .pipe(Effect.orDie)
           if (locked === undefined) return yield* new FormulaFunctionNotFound()
           // The compile took real time, and what is being minted is an
-          // immutable official record - re-ask before committing (a second
-          // pool connection is fine here: one row lock, pool size above one).
+          // immutable official record - re-ask before committing on the
+          // transaction connection while the tenant and function are held.
           // Authorship is immutable and cannot have moved; the CAPABILITY
           // can have been revoked meanwhile, and that is what is re-asked.
           yield* requireAuthor(as)
@@ -2298,6 +2314,7 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
     yield* withDb(
       transaction(
         Effect.gen(function* () {
+          yield* holdAuthor(as)
           // the function row is the lock every write to this formula takes,
           // so a second window renaming another version cannot take the name
           // between this check and this update
@@ -2562,6 +2579,7 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
     yield* withDb(
       transaction(
         Effect.gen(function* () {
+          yield* holdAuthor(as)
           const locked = yield* db
             .query((k) =>
               k
@@ -3023,28 +3041,29 @@ export const formulaApiHandlers = HttpApiBuilder.group(local, 'assessmentFormula
       'copyFormulaTemplate',
       Effect.fn('assessmentFormula.copyTemplate.handler')(function* ({ params, payload }) {
         const templates = yield* FormulaTemplateLibrary
-        const placement = yield* UserPlacement
         const library = yield* FormulaLibrary
         const principal = yield* CurrentUser
         const tenantId = principal.tenantId
         yield* library.requireAuthor(principal)
         yield* library.chargeDraftWrite(principal)
-        const stands = yield* placement.primaryNode(tenantId, principal.userId)
-        const created = yield* templates.copyTemplate(
-          tenantId,
-          params.versionId,
-          { userId: principal.userId, nodeId: stands?.nodeId ?? null },
-          {
-            name: payload.name,
-            ...(payload.description === undefined ? {} : { description: payload.description }),
-          },
+        const withDb = yield* withDatabase
+        return yield* withDb(
+          transaction(
+            Effect.gen(function* () {
+              const created = yield* templates.copyTemplate(tenantId, params.versionId, principal, {
+                name: payload.name,
+                ...(payload.description === undefined ? {} : { description: payload.description }),
+              })
+              // Keep the copy's tenant lock through its response projection.
+              // A revocation must not turn a committed copy into a failed
+              // response. The new row and its author's authority are held here.
+              const detail = yield* library
+                .getFunction(tenantId, created.functionId, principal)
+                .pipe(Effect.orDie)
+              return { function: detail.function }
+            }),
+          ),
         )
-        // it was inserted a statement ago by this very caller: a function
-        // that cannot be read back is the host contradicting itself
-        const detail = yield* library
-          .getFunction(tenantId, created.functionId, principal)
-          .pipe(Effect.orDie)
-        return { function: detail.function }
       }),
     )
     .handle(

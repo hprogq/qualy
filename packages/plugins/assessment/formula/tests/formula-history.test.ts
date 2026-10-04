@@ -3,7 +3,7 @@ import { Effect, Exit, Layer, Result } from 'effect'
 import { sql } from 'kysely'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createTestContext, postgresAvailable, runSql } from '@qualy/plugin-database/testkit'
-import type { Orm } from '@qualy/plugin-database/server'
+import { transaction, type Orm } from '@qualy/plugin-database/server'
 import { sandboxLocalLayer } from '@qualy/plugin-sandbox/testkit'
 import { formulaAuthoringLocalLayer } from '@qualy/plugin-assessment-formula/testkit'
 import type { Rbac } from '@qualy/rbac-contract/effect'
@@ -64,6 +64,118 @@ describe.runIf(postgresAvailable)('a formula over its lifetime', () => {
   afterAll(async () => {
     await db?.dispose()
   })
+
+  it.each(['save', 'restore', 'archive'] as const)(
+    'refuses a queued %s after the authoring capability is withdrawn',
+    async (action) => {
+      const { f, id } = ok(
+        await run(
+          db.url,
+          Effect.gen(function* () {
+            const f = yield* seed(`fh-revoked-${action}`)
+            const library = yield* FormulaLibrary
+            const as = f.principal(f.authorA)
+            const created = yield* library.createFunction(f.t, { name: 'Before' }, as)
+            yield* library.updateDraft(
+              f.t,
+              created.id,
+              {
+                expectedDraftRevision: 1,
+                draftSourceTs: '// second revision',
+              },
+              as,
+            )
+            return { f, id: created.id }
+          }),
+        ),
+      )
+      let entered = () => {}
+      let release = () => {}
+      const holding = new Promise<void>((resolve) => {
+        entered = resolve
+      })
+      const gate = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      const revoke = run(
+        db.url,
+        transaction(
+          Effect.gen(function* () {
+            // The same tenant lock role writers take, with the function held to
+            // make the old implementation's stale authorization observable too.
+            yield* runSql(sql`select id from tenants where id = ${f.t} for update`)
+            yield* runSql(
+              sql`select id from assessment_formula_functions where id = ${id} for update`,
+            )
+            entered()
+            yield* Effect.promise(() => gate)
+            yield* f.revokeAuthoring(f.authorA)
+          }),
+        ),
+      )
+      await holding
+      const writing = run(
+        db.url,
+        Effect.gen(function* () {
+          const library = yield* FormulaLibrary
+          const as = f.principal(f.authorA)
+          if (action === 'save')
+            return yield* library.updateDraft(
+              f.t,
+              id,
+              {
+                expectedDraftRevision: 2,
+                draftSourceTs: '// unauthorized change',
+              },
+              as,
+            )
+          if (action === 'restore')
+            return yield* library.restoreDraft(
+              f.t,
+              id,
+              {
+                expectedDraftRevision: 2,
+                from: { kind: 'draft-revision', revisionNo: 1 },
+              },
+              as,
+            )
+          return yield* library.setStatus(f.t, id, 'archived', as)
+        }),
+      )
+      try {
+        await expect
+          .poll(
+            async () =>
+              (
+                await db.query(
+                  "select 1 from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock'",
+                )
+              ).rows.length,
+            { timeout: 5000 },
+          )
+          .toBeGreaterThan(0)
+      } finally {
+        release()
+      }
+      ok(await revoke)
+      const outcome = await writing
+      expect(Exit.isFailure(outcome)).toBe(true)
+      if (Exit.isFailure(outcome)) {
+        expect(
+          outcome.cause.reasons.some(
+            (reason) =>
+              reason._tag === 'Fail' && (reason.error as { _tag: string })._tag === 'ACCESS_DENIED',
+          ),
+        ).toBe(true)
+      }
+      expect(
+        await db.row(
+          'select draft_revision, draft_source_ts, archived_at from assessment_formula_functions where id = $1',
+          [id],
+        ),
+      ).toEqual({ draft_revision: 2, draft_source_ts: '// second revision', archived_at: null })
+    },
+  )
 
   it('starts empty, and leaves a revision only when what could be published moves', async () => {
     const outcome = ok(

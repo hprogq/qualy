@@ -125,11 +125,11 @@ export class FormulaTemplateLibrary extends Context.Service<
     readonly copyTemplate: (
       tenantId: string,
       versionId: string,
-      viewer: { readonly userId: string; readonly nodeId: string | null },
+      as: Principal,
       input: { readonly name: string; readonly description?: string | null },
     ) => Effect.Effect<
       { readonly functionId: string },
-      FormulaTemplateNotFound | FormulaSourceTooLarge
+      FormulaTemplateNotFound | FormulaSourceTooLarge | AccessDenied
     >
     /**
      * The units this person may offer a formula to.
@@ -224,6 +224,19 @@ export const make = Effect.fn('FormulaTemplateLibrary.make')(function* () {
   const database = yield* withDatabase
   const rbac = yield* Rbac
   const audit = yield* Audit
+
+  /** Hold authority before any version lock, matching other authoring writes. */
+  const holdAuthor = (as: Principal) =>
+    Effect.gen(function* () {
+      yield* db
+        .query((k) =>
+          k.selectFrom('Tenant').select('id').where('id', '=', as.tenantId).forUpdate().execute(),
+        )
+        .pipe(Effect.orDie)
+      if (!(yield* rbac.hasPermission(as, 'assessment.formula.author'))) {
+        return yield* new AccessDenied({ reason: 'cannot author scoring formulas' })
+      }
+    })
 
   /** the version being shared, proven to be one the caller wrote */
   const ownedVersion = (
@@ -444,13 +457,28 @@ export const make = Effect.fn('FormulaTemplateLibrary.make')(function* () {
         }
       }),
 
-    copyTemplate: (tenantId, versionId, viewer, input) =>
+    copyTemplate: (tenantId, versionId, as, input) =>
       database(
         transaction(
           Effect.gen(function* () {
-            if (viewer.nodeId === null) return yield* new FormulaTemplateNotFound()
-            const nodeId = viewer.nodeId
-            // The version row first, held FOR SHARE, and the audience asked
+            yield* holdAuthor(as)
+            // Placement changes use the same tenant lock. A node captured by
+            // the handler before this transaction cannot authorize a copy.
+            const viewer = yield* db
+              .query((k) =>
+                k
+                  .selectFrom('User')
+                  .select('primaryOrgNodeId')
+                  .where('tenantId', '=', tenantId)
+                  .where('id', '=', as.userId)
+                  .executeTakeFirst(),
+              )
+              .pipe(Effect.orDie)
+            const nodeId = viewer?.primaryOrgNodeId
+            if (nodeId === null || nodeId === undefined) {
+              return yield* new FormulaTemplateNotFound()
+            }
+            // After the tenant, the version is held FOR SHARE and the audience asked
             // afterwards in a STATEMENT OF ITS OWN - the same order every
             // writer of that audience takes, and the re-read is what makes
             // the order worth anything.
@@ -489,7 +517,7 @@ export const make = Effect.fn('FormulaTemplateLibrary.make')(function* () {
                   .select('v.id as versionId')
                   .where('v.tenantId', '=', tenantId)
                   .where('v.id', '=', versionId)
-                  .where(visibleTemplate(tenantId, viewer.userId, nodeId))
+                  .where(visibleTemplate(tenantId, as.userId, nodeId))
                   .executeTakeFirst(),
               )
               .pipe(Effect.orDie)
@@ -519,8 +547,8 @@ export const make = Effect.fn('FormulaTemplateLibrary.make')(function* () {
                     // today's world or it never runs
                     draftSourceTs: found.sourceTs,
                     draftTests: sql`${JSON.stringify(found.tests)}::jsonb`,
-                    createdBy: viewer.userId,
-                    updatedBy: viewer.userId,
+                    createdBy: as.userId,
+                    updatedBy: as.userId,
                     copiedFromVersionId: versionId,
                   } as never)
                   .returning('id')
@@ -540,7 +568,7 @@ export const make = Effect.fn('FormulaTemplateLibrary.make')(function* () {
                     sourceTs: found.sourceTs,
                     tests: sql`${JSON.stringify(found.tests)}::jsonb`,
                     sourceSha256: sha256Hex(found.sourceTs),
-                    savedBy: viewer.userId,
+                    savedBy: as.userId,
                     origin: 'copied-from-template',
                     sourceVersionId: versionId,
                   } as never)
@@ -552,7 +580,7 @@ export const make = Effect.fn('FormulaTemplateLibrary.make')(function* () {
             // same thing twice
             yield* audit.record(FormulaTemplateCopied, {
               tenantId,
-              actor: { kind: 'user', userId: viewer.userId },
+              actor: { kind: 'user', userId: as.userId },
               target: { id: functionId, label: input.name },
               details: { sourceVersionId: versionId },
             })
@@ -621,8 +649,9 @@ export const make = Effect.fn('FormulaTemplateLibrary.make')(function* () {
       database(
         transaction(
           Effect.gen(function* () {
-            // the lock order every writer of this audience takes: the
-            // version row first, then its share rows. A copy reads it FOR
+            yield* holdAuthor(as)
+            // After the tenant lock, hold the version, then its share rows.
+            // A copy reads the version FOR
             // SHARE, so the two linearize instead of racing - the database
             // runs read committed, where each statement sees its own moment
             const versionId = yield* ownedVersion(tenantId, functionId, versionNo, as, 'update')

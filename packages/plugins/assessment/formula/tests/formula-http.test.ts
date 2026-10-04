@@ -1,13 +1,13 @@
 import { createServer } from 'node:http'
 import { inspect } from 'node:util'
-import { Effect, Exit, Layer, Scope } from 'effect'
+import { Deferred, Effect, Exit, Layer, Scope } from 'effect'
 import { FetchHttpClient, HttpClient, HttpClientRequest } from 'effect/http'
 import { HttpApiClient } from 'effect/http-api'
 import { HttpRouter } from 'effect/http'
 import { NodeHttpServer } from '@effect/platform-node'
 import { HttpApiBuilder } from 'effect/http-api'
 import { sql } from 'kysely'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import {
   createTestContext,
   databaseFor,
@@ -16,13 +16,14 @@ import {
 } from '@qualy/plugin-database/testkit'
 import { Api } from '@qualy/api-kit/local'
 import { uiLayer } from '@qualy/plugin-ui-registry/server/registry'
-import { serviceLayer as rbacLayer } from '@qualy/plugin-rbac/server'
+import { Access, serviceLayer as rbacLayer } from '@qualy/plugin-rbac/server'
 import { serviceLayer as auditLayer } from '@qualy/plugin-audit/server'
 import { permissions as rbacPermissions } from '@qualy/plugin-rbac/permissions'
 import { accessActions } from '@qualy/plugin-rbac/actions'
 import { booted } from '@qualy/rbac-contract/testkit'
 import { compileCatalog } from '@qualy/rbac-contract/plugin'
 import type { ActivePermission } from '@qualy/rbac-contract'
+import { Rbac } from '@qualy/rbac-contract/effect'
 import { compileActionCatalog } from '@qualy/audit-contract/plugin'
 import { AuditActionCatalog } from '@qualy/audit-contract/effect'
 import { entities as orgEntities } from '@qualy/plugin-org/db'
@@ -46,12 +47,14 @@ import { formulaApiHandlers, layer as formulaLayer } from '../src/server/index.t
 import { configurationAccessLayer } from '@qualy/plugin-assessment/server/configuration-access'
 import { scoringAuthoringAccessLayer } from '@qualy/plugin-assessment/server/scoring-authoring-access'
 import { bindingCatalogLayer } from '../src/server/binding-catalog.ts'
-import { templateLibraryLayer } from '../src/server/template-library.ts'
+import { FormulaTemplateLibrary, templateLibraryLayer } from '../src/server/template-library.ts'
 import { UserPlacement } from '@qualy/auth-contract'
 import { formulaLanguageLayer } from '../src/server/language.ts'
 import { formulaLspQuotaLayer } from '../src/server/lsp-bridge.ts'
 import { FormulaSettings } from '../src/server/config.ts'
 import { scoringBudgetLayer } from '../src/scoring/budget.ts'
+import { seedFormulaFixture, servicesFor } from './support/stack.ts'
+import { publishedVersion } from './support/versions.ts'
 
 // The layer the service suite cannot see: the HttpApi wire itself. Every
 // request here is the byte-for-byte shape the browser client sends - method,
@@ -87,6 +90,35 @@ let scope: Scope.Scope
 let db: Awaited<ReturnType<typeof createTestContext>>
 let tenantId: string
 const token = 'formula-http-token'
+
+let copyGate:
+  | {
+      readonly copied: Deferred.Deferred<{ readonly functionId: string }>
+      readonly release: Deferred.Deferred<void>
+    }
+  | undefined
+
+// Pause the real service at its return boundary so the HTTP response's
+// subsequent projection must face the same concurrent authority change.
+const controlledTemplates = Layer.effect(
+  FormulaTemplateLibrary,
+  Effect.gen(function* () {
+    const templates = yield* FormulaTemplateLibrary
+    return {
+      ...templates,
+      copyTemplate: (...args: Parameters<typeof templates.copyTemplate>) =>
+        Effect.gen(function* () {
+          const gate = copyGate
+          const copied = yield* templates.copyTemplate(...args)
+          if (gate !== undefined) {
+            yield* Deferred.succeed(gate.copied, copied)
+            yield* Deferred.await(gate.release)
+          }
+          return copied
+        }),
+    }
+  }),
+).pipe(Layer.provide(templateLibraryLayer))
 
 const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
 
@@ -182,10 +214,9 @@ beforeAll(async () => {
     configurationAccessLayer,
     scoringAuthoringAccessLayer,
     bindingCatalogLayer.pipe(Layer.provide(configurationAccessLayer)),
-    templateLibraryLayer,
-    // this suite never asks the template surface anything - where a person
-    // stands is borne against the real placement in its own suite - so the
-    // port is answered rather than assembled
+    controlledTemplates,
+    // Template copy reads the actor's placement from the database. The
+    // library-list surface that needs this port is covered in its own suite.
     Layer.succeed(UserPlacement, { primaryNode: () => Effect.succeed(null) }),
   ).pipe(Layer.provideMerge(services), Layer.provideMerge(scoringBudgetLayer))
   // two servers over the same library and database, apart only in what the
@@ -231,11 +262,17 @@ afterAll(async () => {
   await db.dispose()
 })
 
-const callAt = async (origin: string, method: string, path: string, body?: unknown) => {
+const callAt = async (
+  origin: string,
+  method: string,
+  path: string,
+  body?: unknown,
+  sessionToken = token,
+) => {
   const response = await fetch(`${origin}${path}`, {
     method,
     headers: {
-      cookie: `${sessionCookieName}=${token}`,
+      cookie: `${sessionCookieName}=${sessionToken}`,
       ...(body === undefined ? {} : { 'content-type': 'application/json' }),
     },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
@@ -264,6 +301,108 @@ export default defineFormula({
 `
 
 describe.runIf(postgresAvailable)('the formula api over http', () => {
+  it('finishes a copied template response before a queued author revocation takes effect', async () => {
+    const services = servicesFor(db.url)
+    const sessionToken = 'formula-copy-response-token'
+    const fixture = await Effect.runPromise(
+      Effect.gen(function* () {
+        const f = yield* seedFormulaFixture('formula-copy-response')
+        const published = yield* publishedVersion(f.t, f.authorA, 'Offered template')
+        yield* runSql(sql`
+          insert into assessment_formula_share_scopes (tenant_id, version_id, org_node_id, shared_by)
+          values (${f.t}, ${published.versionId}, ${f.root}, ${f.authorA})`)
+        const providerId = one<{ id: string }>(
+          yield* runSql(sql`
+          insert into auth_providers (tenant_id, code, type, name)
+          values (${f.t}, 'local', 'local', 'Local') returning id`),
+        ).id
+        yield* runSql(sql`
+          insert into sessions (tenant_id, user_id, auth_provider_id, token_hash, expires_at)
+          values (${f.t}, ${f.authorB}, ${providerId}, ${hashSessionToken(sessionToken)}, now() + interval '1 day')`)
+        const grantId = one<{ id: string }>(
+          yield* runSql(sql`
+          select id from role_grants where tenant_id = ${f.t} and user_id = ${f.authorB}`),
+        ).id
+        return { f, published, grantId }
+      }).pipe(Effect.provide(services)),
+    )
+    const gate = {
+      copied: await Effect.runPromise(Deferred.make<{ readonly functionId: string }>()),
+      release: await Effect.runPromise(Deferred.make<void>()),
+    }
+    copyGate = gate
+    const copying = callAt(
+      base,
+      'POST',
+      `/api/assessment/formula-templates/${fixture.published.versionId}/copies`,
+      { name: 'Copied before revocation' },
+      sessionToken,
+    )
+    let revoking: Promise<void> | undefined
+    let revoked = false
+    let queued = false
+    let copied: { readonly functionId: string }
+    try {
+      copied = await Promise.race([
+        Effect.runPromise(Deferred.await(gate.copied)),
+        copying.then((response) => {
+          throw new Error(
+            `copy ended before its gate: ${response.status} ${inspect(response.body)}`,
+          )
+        }),
+      ])
+      revoking = Effect.runPromise(
+        Effect.gen(function* () {
+          const access = yield* Access
+          const rbac = yield* Rbac
+          yield* access.grants.revoke(
+            fixture.f.t,
+            fixture.grantId,
+            fixture.f.principal(fixture.f.admin),
+            (tenantId) => rbac.assertTenantKeepsAdministrator(tenantId),
+          )
+        }).pipe(Effect.provide(services)),
+      ).then(() => {
+        revoked = true
+      })
+      await vi.waitFor(
+        async () => {
+          const waiting = await db.row<{ waiting: boolean }>(`
+          select exists (select 1 from pg_stat_activity
+            where datname = current_database() and pid <> pg_backend_pid()
+              and wait_event_type = 'Lock' and query ilike '%for update%') as waiting`)
+          queued = waiting.waiting
+          // The old handler lets revocation finish here. Observe that too so
+          // its HTTP 500 is asserted instead of hanging on a missing lock.
+          expect(queued || revoked).toBe(true)
+        },
+        { timeout: 5_000 },
+      )
+    } finally {
+      await Effect.runPromise(Deferred.succeed(gate.release, undefined))
+      copyGate = undefined
+    }
+    const response = await copying
+    await revoking
+    expect(response.status, inspect(response.body)).toBe(200)
+    expect(queued, 'revocation must wait until the copy response projection finishes').toBe(true)
+    expect(response.body).toMatchObject({ function: { id: copied.functionId } })
+    const saved = await db.query<{ id: string }>(
+      `
+      select id from assessment_formula_functions where tenant_id = $1 and created_by = $2`,
+      [fixture.f.t, fixture.f.authorB],
+    )
+    expect(saved.rows).toEqual([{ id: copied.functionId }])
+    const later = await callAt(
+      base,
+      'GET',
+      `/api/assessment/formula-functions/${copied.functionId}`,
+      undefined,
+      sessionToken,
+    )
+    expect(later.status).toBe(403)
+  }, 120_000)
+
   it('refuses a malformed identifier instead of letting postgres refuse it', async () => {
     // Every identifier in this contract addresses a uuid column. Accepting
     // any short string meant a malformed one travelled to the database,
