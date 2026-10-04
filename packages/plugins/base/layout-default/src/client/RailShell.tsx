@@ -409,16 +409,14 @@ const styles = stylex.create({
     // scrollbar floats over the page - every phone - it holds nothing.
     scrollbarGutter: 'stable',
   },
-  // A screen that fills the height and scrolls inside itself - a workbench,
-  // or one standing beside a lent column - runs to the window's edge: the
-  // shell never scrolls around it, so a held gutter would only be an empty
-  // strip down the right, and there is no centred measure to keep still
-  // from one page to the next. Only the gutter goes; a window too short for
-  // the screen's own floor still scrolls.
+  // A workbench or a screen beside a lent column runs to the window's edge.
+  // Borrowing the column only gives up the gutter: a long score account
+  // beside it still scrolls as a whole. Only a screen that explicitly fills
+  // its height owns scrolling inside itself.
   mainEdge: {
-    overflowY: 'hidden',
     scrollbarGutter: 'auto',
   },
+  mainFilled: { overflowY: 'hidden' },
   // the applications' bar at the foot of a phone, held clear of the last row
   mainApps: {
     paddingBottom: {
@@ -1316,6 +1314,7 @@ function CapableRailShell({
           {...stylex.props(
             styles.personMain,
             filled && styles.mainEdge,
+            filled && styles.mainFilled,
             absent && styles.personMainBare,
             absent && styles.mainApps,
           )}
@@ -1419,6 +1418,7 @@ function CapableRailShell({
             {...stylex.props(
               styles.main,
               (lent.claimed || filled) && styles.mainEdge,
+              filled && styles.mainFilled,
               // one bar or the other at the foot, never both
               absent && styles.mainApps,
               sectionsAtFoot && styles.mainFoot,

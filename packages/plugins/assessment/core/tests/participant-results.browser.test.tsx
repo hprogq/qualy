@@ -1239,6 +1239,46 @@ describe('one account beside its person', () => {
     await page.viewport(1280, 800)
   })
 
+  it('keeps a long score account scrollable beside the borrowed person column', async () => {
+    await page.viewport(1280, 800)
+    const items = Array.from({ length: 40 }, (_, index) => ({
+      ...item,
+      id: `44444444-4444-4444-8444-${String(index).padStart(12, '0')}`,
+      scoreGroupId: `66666666-6666-4666-8666-${String(index).padStart(12, '0')}`,
+      title: `Subject ${index}`,
+    }))
+    const longAccount = {
+      ...account,
+      groups: items.map((item, index) => ({
+        ...account.groups[0],
+        groupId: item.scoreGroupId,
+        name: `Group ${index}`,
+      })),
+      lines: items.map((item, index) => ({
+        ...account.lines[0],
+        itemId: item.id,
+        lineId: `itm:${item.id}`,
+        label: `Score line ${index}`,
+      })),
+    }
+    await shelled(`${open}&view=score`, 'zh-CN', {
+      getParticipantResult: () => Effect.succeed(longAccount),
+      listItems: () => Effect.succeed({ items, version: 1 }),
+    })
+    await expect.element(page.getByTestId('participant-panel')).toBeVisible()
+    const ledger = page.getByTestId('result-ledger')
+    await expect.element(ledger).toBeVisible()
+    const main = page.getByRole('main').element() as HTMLElement
+    // Borrowing the rail does not make the account an internally scrolling
+    // workbench: its last group must remain reachable through the page.
+    expect(main.scrollHeight).toBeGreaterThan(main.clientHeight + 500)
+    expect(getComputedStyle(main).overflowY).toBe('auto')
+    main.scrollTop = main.scrollHeight
+    await expect
+      .poll(() => ledger.element().getBoundingClientRect().bottom)
+      .toBeLessThanOrEqual(main.getBoundingClientRect().bottom)
+  })
+
   it('stands the account in the middle of a wide window, not against the column', async () => {
     await page.viewport(1920, 1000)
     try {
