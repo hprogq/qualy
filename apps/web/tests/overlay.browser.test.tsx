@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { page, userEvent } from 'vitest/browser'
 import { render } from 'vitest-browser-react'
 import { ConfirmDialog, FormDialog, SidePanel } from '@qualy/ui/admin'
@@ -61,6 +61,35 @@ function DialogHarness() {
 }
 
 describe('a dialog and the page under it', () => {
+  it('moves focus out of the background before hiding it from accessibility', async () => {
+    await mount(<DialogHarness />)
+    const hiddenWithFocus: Element[] = []
+    const original = Element.prototype.setAttribute
+    const spy = vi.spyOn(Element.prototype, 'setAttribute').mockImplementation(function (
+      this: Element,
+      name,
+      value,
+    ) {
+      if (name === 'aria-hidden' && value === 'true' && this.contains(document.activeElement)) {
+        hiddenWithFocus.push(this)
+      }
+      original.call(this, name, value)
+    })
+    try {
+      await page.getByRole('button', { name: 'open dialog' }).click()
+      const dialog = page.getByRole('dialog')
+      await expect.element(dialog).toBeVisible()
+      await expect.poll(() => dialog.element().contains(document.activeElement)).toBe(true)
+      expect(hiddenWithFocus).toEqual([])
+      await userEvent.keyboard('{Escape}')
+      await expect.element(dialog).not.toBeInTheDocument()
+      await page.getByRole('button', { name: 'target' }).click()
+      expect(page.getByTestId('hits').element().textContent).toBe('1')
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
   it('opens, closes, and leaves the page clickable with focus on the trigger', async () => {
     await mount(<DialogHarness />)
     await page.getByRole('button', { name: 'open dialog' }).click()

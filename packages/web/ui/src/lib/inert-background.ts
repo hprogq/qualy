@@ -41,6 +41,11 @@ function mark(el: HTMLElement, hold: Hold): void {
   // an inert set by someone else entirely is theirs to manage
   if (count === 0 && el.hasAttribute('inert')) return
   if (count === 0) {
+    // The widget's focus trap runs on a timer. Release a background trigger
+    // synchronously before aria-hidden is applied; inert alone does not
+    // synchronously clear document.activeElement in Chromium.
+    const active = document.activeElement
+    if (active instanceof HTMLElement && el.contains(active)) active.blur()
     // both attributes: inert switches interaction off, aria-hidden takes
     // the subtree out of the accessibility tree for every tool that reads
     // aria before the browser's own tree (the previous substrate set it)
