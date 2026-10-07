@@ -923,6 +923,71 @@ describe.runIf(postgresAvailable).concurrent('changing a node type across three 
     }
   })
 
+  it('projects disjoint grants as separate roots without exposing their shared ancestor', async () => {
+    const db = await createTestContext('effect-read-forest')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
+          const sibling = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into org_nodes (tenant_id, parent_id, org_type_id, name, path, depth)
+              values (${f.tenant}, ${f.root}, ${f.collegeType}, 'Sibling', 'r.s', 1) returning id`),
+          ).id
+          const child = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into org_nodes (tenant_id, parent_id, org_type_id, name, path, depth)
+              values (${f.tenant}, ${f.node}, ${f.collegeType}, 'Child', 'r.b.c', 2) returning id`),
+          ).id
+          yield* runSql(sql`
+            insert into org_nodes (tenant_id, parent_id, org_type_id, name, path, depth)
+            values (${f.tenant}, ${f.root}, ${f.collegeType}, 'Hidden', 'r.h', 1)`)
+          const role = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into roles (tenant_id, code, name, kind, status, permission_mode, anchor_mode)
+              values (${f.tenant}, 'reader', 'Reader', 'org', 'active', 'explicit', 'allow-list') returning id`),
+          ).id
+          const permission = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into permissions (code, plugin, name, target_kind)
+              values ('org.tree.read', 'org', 'read', 'org-node')
+              on conflict (code) do update set code = excluded.code returning id`),
+          ).id
+          yield* runSql(sql`
+            insert into role_permissions (tenant_id, role_id, permission_id)
+            values (${f.tenant}, ${role}, ${permission})`)
+          const reader = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+              values (${f.tenant}, 'Reader', ${f.adminType}, ${f.node}) returning id`),
+          ).id
+          yield* runSql(sql`
+            insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
+            values (${f.tenant}, ${reader}, ${role}, ${f.node}, 'subtree'),
+                   (${f.tenant}, ${reader}, ${role}, ${sibling}, 'subtree')`)
+
+          const org = yield* Org
+          const principal = { tenantId: f.tenant, userId: reader, sessionId: 's' }
+          const forest = yield* org.readForest(f.tenant, undefined, principal)
+          const school = yield* org.readForest(f.tenant, undefined, f.principal)
+          const ancestor = yield* Effect.result(org.readForest(f.tenant, f.root, principal))
+          return { forest, school, ancestor, root: f.root, branch: f.node, sibling, child }
+        }),
+      )
+      const answer = ok(exit)
+      expect(answer.school.roots).toEqual([answer.root])
+      expect(answer.forest.roots.toSorted()).toEqual([answer.branch, answer.sibling].toSorted())
+      expect(answer.forest.nodes.map((node) => node.id).toSorted()).toEqual(
+        [answer.branch, answer.child, answer.sibling].toSorted(),
+      )
+      expect(tagOf(answer.ancestor)).toBe('ACCESS_DENIED')
+    } finally {
+      await db.dispose()
+    }
+  })
+
   it('answers a node the caller cannot see exactly as a missing one', async () => {
     const db = await createTestContext('effect-read-hidden')
     try {

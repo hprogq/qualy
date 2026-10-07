@@ -249,6 +249,9 @@ export const orgApiGroup = HttpApiGroup.make('org')
     HttpApiEndpoint.get('getTree', '/org/tree', {
       query: Schema.Struct({ nodeId: Schema.optional(uuidInput) }),
       success: Schema.Struct({
+        // Entry points of the authorized projection, not tenant roots. A tenant
+        // has one physical root; disjoint grants can expose several branches
+        // without exposing their shared ancestors.
         roots: Schema.Array(Schema.String),
         nodes: Schema.Array(orgNode),
       }),
