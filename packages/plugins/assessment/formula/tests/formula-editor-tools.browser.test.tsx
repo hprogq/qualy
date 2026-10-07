@@ -64,7 +64,7 @@ const detail = (tests: readonly { name: string; input: unknown; expected: string
     draftSourceTs: SOURCE,
     draftTests: tests,
   },
-  versions: [],
+  versionCount: 0,
 })
 
 interface Wire {
@@ -88,7 +88,8 @@ const screenFor = (
     assessmentFormula: {
       getFormulaFunction: detail(tests),
       listFormulaShareOptions: { nodes: [], truncated: false },
-      listFormulaDraftRevisions: { items: [], nextCursor: null },
+      listFormulaVersions: { items: [], total: 0, page: 1, pageSize: 50 },
+      listFormulaDraftRevisions: { items: [], total: 0, page: 1, pageSize: 50 },
       getFormulaVersion: { version: { versionNo: 1, sourceTs: '', tests: [] } },
       previewFormulaDraft: (request: { payload: { sourceTs: string } }) => {
         wire.previews.push(request.payload.sourceTs)

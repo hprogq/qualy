@@ -72,7 +72,12 @@ const open = (
       },
       assessmentFormula: {
         listFormulaTemplates: () =>
-          Effect.succeed({ items: had.items ?? [template()], nextCursor: null }),
+          Effect.succeed({
+            items: had.items ?? [template()],
+            total: (had.items ?? [template()]).length,
+            page: 1,
+            pageSize: 50,
+          }),
         getFormulaTemplate: () =>
           Effect.succeed({
             template: {

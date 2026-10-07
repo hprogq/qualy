@@ -1,11 +1,11 @@
-import { useMemo } from 'react'
-import { useInfiniteQuery } from '@tanstack/react-query'
+import { pageNumber } from '@qualy/api-kit/schema'
+import { RecordPager } from './RecordPager.tsx'
+import { useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { ChevronRightIcon } from 'lucide-react'
-import { cursorPages, useApi, useApiQuery, useLoadFailure, useRunApi } from '@qualy/web-runtime'
+import { useApiQuery, useLoadFailure, usePageQueryState } from '@qualy/web-runtime'
 
 import { AsyncSection } from '@qualy/ui/admin'
-import { Button } from '@qualy/ui/button'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { ListEmpty } from './ListEmpty.tsx'
 import { ListSkeleton } from './ListSkeleton.tsx'
@@ -151,7 +151,6 @@ const styles = stylex.create({
     boxShadow: tokens.elevation1,
     paddingBlock: 48,
   },
-  moreRow: { display: 'flex', justifyContent: 'center', paddingBlock: 8 },
 })
 
 export function AdministrativeActHistory({
@@ -161,35 +160,23 @@ export function AdministrativeActHistory({
   batchId: string
   onOpen: (operationId: string) => void
 }) {
-  const api = useApi(assessmentApi)
-  const run = useRunApi()
   const query = useApiQuery(assessmentApi)
 
   const failures = useLoadFailure()
   const whenOf = useWhen()
 
-  const history = useInfiniteQuery({
-    queryKey: [
-      ...query.assessment.listAdministrativeRecords.key({ params: { batchId }, query: {} }),
-      'infinite',
-    ],
-    queryFn: ({ pageParam }) =>
-      run(
-        api.assessment.listAdministrativeRecords({
-          params: { batchId },
-          query: {
-            limit: String(PAGE),
-            ...(pageParam !== undefined ? { cursor: pageParam } : {}),
-          },
-        }),
-      ),
-    ...cursorPages,
+  const [page, setPage] = usePageQueryState('actsPage')
+  const identity = batchId
+  const history = useQuery({
+    ...query.assessment.listAdministrativeRecords.queryOptions({
+      params: { batchId },
+      query: { page: String(pageNumber(page)), limit: String(PAGE) },
+    }),
+    meta: { administrativePage: identity },
+    placeholderData: (previous, previousQuery) =>
+      previousQuery?.meta?.['administrativePage'] === identity ? previous : undefined,
   })
-
-  const rows = useMemo(
-    () => history.data?.pages.flatMap((page) => page.items) ?? [],
-    [history.data],
-  )
+  const rows = history.data?.items ?? []
 
   return (
     <AsyncSection
@@ -209,7 +196,12 @@ export function AdministrativeActHistory({
         />
       ) : (
         <>
-          <div {...stylex.props(styles.card)} data-testid="administrative-acts">
+          <div
+            {...stylex.props(styles.card)}
+            data-testid="administrative-acts"
+            tabIndex={-1}
+            aria-busy={history.isFetching}
+          >
             <div {...stylex.props(styles.head)} aria-hidden>
               <span>{m.record_actItem()}</span>
               <span>{m.record_targets()}</span>
@@ -259,17 +251,13 @@ export function AdministrativeActHistory({
               )
             })}
           </div>
-          {history.hasNextPage && (
-            <div {...stylex.props(styles.moreRow)}>
-              <Button
-                size="sm"
-                variant="ghost"
-                disabled={history.isFetchingNextPage}
-                onClick={() => void history.fetchNextPage()}
-              >
-                {m.record_moreWho()}
-              </Button>
-            </div>
+          {history.data !== undefined && (
+            <RecordPager
+              result={history.data}
+              busy={history.isFetching}
+              target="administrative-acts"
+              onPage={(next) => setPage(String(next))}
+            />
           )}
         </>
       )}

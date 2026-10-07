@@ -97,13 +97,13 @@ describe.runIf(postgresAvailable)('the administrative record book', () => {
             f.principal(f.s1),
           )
 
-          const asRecorder = yield* assessment.listAdministrativeEntries(
+          const { items: asRecorder } = yield* assessment.listAdministrativeEntries(
             f.t,
             g.batch.id,
             { limit: 50 },
             recorder,
           )
-          const asAdmin = yield* assessment.listAdministrativeEntries(
+          const { items: asAdmin } = yield* assessment.listAdministrativeEntries(
             f.t,
             g.batch.id,
             { limit: 50 },
@@ -150,25 +150,28 @@ describe.runIf(postgresAvailable)('the administrative record book', () => {
             admin,
           )
 
-          const asRecorder = yield* assessment.listAdministrativeEntries(
-            f.t,
-            g.batch.id,
-            { limit: 50 },
-            f.principal(f.recorder),
-          )
-          const asAdmin = yield* assessment.listAdministrativeEntries(
+          const { items: asRecorder, total: recorderTotal } =
+            yield* assessment.listAdministrativeEntries(
+              f.t,
+              g.batch.id,
+              { limit: 50 },
+              f.principal(f.recorder),
+            )
+          const { items: asAdmin, total: adminTotal } = yield* assessment.listAdministrativeEntries(
             f.t,
             g.batch.id,
             { limit: 50 },
             admin,
           )
-          return { asRecorder, asAdmin, inside: g.p1 }
+          return { asRecorder, asAdmin, recorderTotal, adminTotal, inside: g.p1 }
         }),
       ),
     )
 
     // the recorder is anchored to college A: the college B record is not
     // hidden by a later filter, it never leaves sql
+    expect(found.adminTotal).toBe(2)
+    expect(found.recorderTotal).toBe(1)
     expect(found.asAdmin).toHaveLength(2)
     expect(found.asRecorder).toHaveLength(1)
     expect(found.asRecorder[0]!.participant.id).toBe(found.inside)
@@ -198,7 +201,7 @@ describe.runIf(postgresAvailable)('the administrative record book', () => {
             admin,
           )
           // what this person is offered, and what happens when they take it
-          const listed = yield* assessment.listAdministrativeEntries(
+          const { items: listed } = yield* assessment.listAdministrativeEntries(
             f.t,
             g.batch.id,
             { limit: 50 },
@@ -256,7 +259,7 @@ describe.runIf(postgresAvailable)('the administrative record book', () => {
             },
             admin,
           )
-          const book = yield* assessment.listAdministrativeEntries(
+          const { items: book } = yield* assessment.listAdministrativeEntries(
             f.t,
             g.batch.id,
             { limit: 50 },

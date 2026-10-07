@@ -174,8 +174,6 @@ export interface AdministrativeImportView {
   readonly createdAt: string
   readonly importedCount: number
   readonly standing: Standing
-  /** what the next page starts after, in the order this list is read */
-  readonly cursor: readonly [string, string]
 }
 
 /** one import, whole */
@@ -348,9 +346,12 @@ export interface AdministrativeImportMethods {
   readonly listAdministrativeImports: (
     tenantId: string,
     batchId: string,
-    page: { after?: readonly [string, string]; limit: number },
+    page: { page?: number; limit: number },
     as: Principal,
-  ) => Effect.Effect<readonly AdministrativeImportView[], BatchNotFound | AccessDenied>
+  ) => Effect.Effect<
+    { items: readonly AdministrativeImportView[]; total: number; page: number; pageSize: number },
+    BatchNotFound | AccessDenied
+  >
   /**
    * One import, by the same rule the history is read by. An import in a
    * round this reader may not record in does not exist for them: telling
@@ -365,10 +366,15 @@ export interface AdministrativeImportMethods {
   readonly listAdministrativeImportRows: (
     tenantId: string,
     importId: string,
-    page: { afterRowNo?: number; limit: number },
+    page: { page?: number; limit: number },
     as: Principal,
   ) => Effect.Effect<
-    readonly AdministrativeImportRowView[],
+    {
+      items: readonly AdministrativeImportRowView[]
+      total: number
+      page: number
+      pageSize: number
+    },
     AdministrativeImportNotFound | AccessDenied
   >
   /**
@@ -1299,17 +1305,17 @@ export const makeAdministrativeImportMethods = (
       if (!(yield* deps.holdsRecord(tenantId, batchId, as.userId))) {
         return yield* new AccessDenied({ reason: 'cannot record on this batch' })
       }
-      const rows = yield* dieQuery(
+      const { items: rows, ...pagination } = yield* dieQuery(
         withDb(
           importsOfBatchPage({
             tenantId,
             batchId,
-            ...(page.after !== undefined ? { after: page.after } : {}),
+            page: page.page ?? 1,
             limit: page.limit,
           }),
         ),
       )
-      if (rows.length === 0) return []
+      if (rows.length === 0) return { ...pagination, items: [] }
       const standing = yield* dieQuery(
         withDb(
           standingOfImports(
@@ -1338,19 +1344,21 @@ export const makeAdministrativeImportMethods = (
           ),
         )
       }
-      return rows.map((row): AdministrativeImportView => ({
-        id: row.id,
-        item: { id: row.itemId, title: row.itemTitle },
-        source:
-          reaches.get(row.id) === true
-            ? { available: true, filename: row.filename, size: row.sizeBytes, integrity: null }
-            : { available: false },
-        actor: personOf(row.actorId, row.actorName),
-        createdAt: new Date(row.createdAt).toISOString(),
-        importedCount: row.importedCount,
-        standing: standingOf(standing.get(row.id)),
-        cursor: [row.cursorAt, row.id] as const,
-      }))
+      return {
+        ...pagination,
+        items: rows.map((row): AdministrativeImportView => ({
+          id: row.id,
+          item: { id: row.itemId, title: row.itemTitle },
+          source:
+            reaches.get(row.id) === true
+              ? { available: true, filename: row.filename, size: row.sizeBytes, integrity: null }
+              : { available: false },
+          actor: personOf(row.actorId, row.actorName),
+          createdAt: new Date(row.createdAt).toISOString(),
+          importedCount: row.importedCount,
+          standing: standingOf(standing.get(row.id)),
+        })),
+      }
     })
 
   const getAdministrativeImport: AdministrativeImportMethods['getAdministrativeImport'] = Effect.fn(
@@ -1429,17 +1437,17 @@ export const makeAdministrativeImportMethods = (
   const listAdministrativeImportRows: AdministrativeImportMethods['listAdministrativeImportRows'] =
     Effect.fn('Assessment.listAdministrativeImportRows')(function* (tenantId, importId, page, as) {
       yield* reachableImport(tenantId, importId, as)
-      const rows = yield* dieQuery(
+      const { items: rows, ...pagination } = yield* dieQuery(
         withDb(
           importRowsPage({
             tenantId,
             importId,
-            ...(page.afterRowNo !== undefined ? { afterRowNo: page.afterRowNo } : {}),
+            page: page.page ?? 1,
             limit: page.limit,
           }),
         ),
       )
-      if (rows.length === 0) return []
+      if (rows.length === 0) return { ...pagination, items: [] }
       // what each fact currently stands determined as, read through the
       // question version it was judged under - the same reading the record
       // book gives, so a row here and its line there never disagree
@@ -1466,30 +1474,33 @@ export const makeAdministrativeImportMethods = (
           plan._tag === 'Some' ? (recognitionFormFields(plan.value) ?? []) : [],
         )
       }
-      return rows.map((row): AdministrativeImportRowView => {
-        const determined = byEntry.get(row.entryId)
-        return {
-          rowNo: row.rowNo,
-          entryId: row.entryId,
-          participant: {
-            id: row.participantId,
-            displayName: row.displayName,
-            businessNo: row.businessNo,
-          },
-          businessNoSnapshot: row.businessNoSnapshot,
-          displayNameSnapshot: row.displayNameSnapshot,
-          status: row.status,
-          recognition:
-            determined === undefined
-              ? null
-              : {
-                  id: determined.id,
-                  itemRevisionId: row.itemRevisionId,
-                  values: determined.values,
-                  fields: fieldsOfRevision.get(row.itemRevisionId) ?? [],
-                },
-        }
-      })
+      return {
+        ...pagination,
+        items: rows.map((row): AdministrativeImportRowView => {
+          const determined = byEntry.get(row.entryId)
+          return {
+            rowNo: row.rowNo,
+            entryId: row.entryId,
+            participant: {
+              id: row.participantId,
+              displayName: row.displayName,
+              businessNo: row.businessNo,
+            },
+            businessNoSnapshot: row.businessNoSnapshot,
+            displayNameSnapshot: row.displayNameSnapshot,
+            status: row.status,
+            recognition:
+              determined === undefined
+                ? null
+                : {
+                    id: determined.id,
+                    itemRevisionId: row.itemRevisionId,
+                    values: determined.values,
+                    fields: fieldsOfRevision.get(row.itemRevisionId) ?? [],
+                  },
+          }
+        }),
+      }
     })
 
   const openAdministrativeImportSource: AdministrativeImportMethods['openAdministrativeImportSource'] =

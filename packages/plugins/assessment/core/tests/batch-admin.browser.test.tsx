@@ -8,7 +8,7 @@ import WorkspaceShell from '@qualy/plugin-layout-default/client/WorkspaceShell'
 import { lazy, useState, type ReactNode } from 'react'
 import { ScheduleDialog } from '../src/client/phase/PhaseDialogs.tsx'
 import { BatchZone } from '../src/client/batch/BatchZone.tsx'
-import { Route, Routes } from 'react-router'
+import { Link, Route, Routes } from 'react-router'
 import { describe, expect, it, vi } from 'vitest'
 import { page, userEvent } from 'vitest/browser'
 import { Effect } from 'effect'
@@ -206,7 +206,7 @@ const assessmentStubs = (over: Stubs = {}): Stubs => {
     // the participant's desk on the overview: this harness plays an
     // administrator, whose desk is empty by design
     getMyOverview: () => Effect.succeed({ participant: null, reviewer: null }),
-    listMyActivity: () => Effect.succeed({ items: [], nextCursor: null }),
+    listMyActivity: () => Effect.succeed({ items: [], total: 0, page: 1, pageSize: 50 }),
     listTemplates: templates,
     // the paper a stage's item allowance is chosen from
     listItems: () => Effect.succeed({ items: [], capabilities: { canManage: true } }),
@@ -302,23 +302,95 @@ const offsetAt = (timeZone: string, at: string | number) =>
 const otherHalf = () =>
   offsetAt(NEW_YORK, Date.now()) === offsetAt(NEW_YORK, WINTER) ? SUMMER : WINTER
 
+describe('numbered batch activity', () => {
+  it('jumps without accumulating rows and resets the page with its perspective', async () => {
+    await page.viewport(320, 800)
+    try {
+      const seen: Request[] = []
+      await screen(
+        {
+          getMyOverview: () =>
+            Effect.succeed({
+              participant: { unreadEntryIds: [], actions: [] },
+              reviewer: { pendingCount: 0, answeredAskCount: 0, queueGroups: [], answeredAsks: [] },
+            }),
+          listMyActivity: (request: Request) => {
+            seen.push(request)
+            const number = Number(request.query?.['page'] ?? 1)
+            return Effect.succeed({
+              total: 101,
+              page: number,
+              pageSize: 50,
+              items: [
+                {
+                  id: `event-${number}`,
+                  perspective: request.query?.['perspective'] ?? 'participant',
+                  kind: 'review-approved',
+                  entryId: 'entry',
+                  itemId: 'item',
+                  itemTitle: `Activity ${number}`,
+                  subjectName: null,
+                  instanceId: null,
+                  actorName: null,
+                  reason: null,
+                  comment: null,
+                  summary: [],
+                  at: '2026-03-02T09:00:00.000Z',
+                },
+              ],
+            })
+          },
+        },
+        `/assessment/batches/${BATCH_ID}`,
+      )
+      const pager = page.getByTestId('activity-pager')
+      await expect.element(pager).toHaveAttribute('data-page', '1')
+      await pager.getByRole('button', { name: '3', exact: true }).click()
+      await expect.element(pager).toHaveAttribute('data-page', '3')
+      expect(page.getByTestId('overview-activity').element().textContent).toContain('Activity 3')
+      expect(page.getByTestId('overview-activity').element().textContent).not.toContain(
+        'Activity 1',
+      )
+      expect(addressNow()).toContain('activityPage=3')
+      expect(document.activeElement?.contains(pager.element())).toBe(true)
+      const bounds = pager.element().getBoundingClientRect()
+      expect(bounds.right).toBeLessThanOrEqual(321)
+      expect(bounds.left).toBeGreaterThanOrEqual(0)
+      await page.getByRole('tab', { name: '审核', exact: true }).click()
+      await vi.waitFor(() =>
+        expect(seen.at(-1)?.query).toMatchObject({ page: '1', perspective: 'reviewer' }),
+      )
+      expect(
+        seen.some(
+          (request) =>
+            request.query?.['perspective'] === 'reviewer' && request.query?.['page'] !== '1',
+        ),
+      ).toBe(false)
+    } finally {
+      await page.viewport(1280, 800)
+    }
+  })
+})
+
 describe('the batch list', () => {
   it('searches by name, filters by status and reads the next page', async () => {
     const seen: Request[] = []
     const listBatches = vi.fn((request: Request) => {
       seen.push(request)
-      const cursor = request.query?.['cursor']
-      if (cursor === 'next-page') {
+      const at = request.query?.['page']
+      if (at === '2') {
         return Effect.succeed({
           items: [listRow({ id: 'second', name: '2025 秋季综测' })],
-          nextCursor: null,
+          page: 2,
+          pageSize: 20,
           total: 21,
           capabilities: { create: true },
         })
       }
       return Effect.succeed({
         items: [listRow()],
-        nextCursor: 'next-page',
+        page: 1,
+        pageSize: 20,
         total: 21,
         capabilities: { create: true },
       })
@@ -332,12 +404,12 @@ describe('the batch list', () => {
     await expect.element(page.getByTestId('batch-pager')).toHaveAttribute('data-pages', '2')
 
     await page.getByRole('button', { name: '下一页' }).click()
-    // the second page replaces the first, reached by the cursor it handed out
+    // the second page replaces the first, requested by its number
     await expect.element(page.getByRole('link', { name: '2025 秋季综测' })).toBeVisible()
-    expect(seen.at(-1)?.query).toMatchObject({ cursor: 'next-page' })
+    expect(seen.at(-1)?.query).toMatchObject({ page: '2' })
     await expect.element(page.getByTestId('batch-pager')).toHaveAttribute('data-page', '2')
 
-    // and going back is the cursor already held, not a re-count
+    // and going back restores the first page
     await page.getByRole('button', { name: '上一页' }).click()
     await expect.element(page.getByRole('link', { name: '2026 春季综测' })).toBeVisible()
 
@@ -352,7 +424,82 @@ describe('the batch list', () => {
     })
   })
 
-  it('does not reuse the previous filter cursor while the new filter is loading', async () => {
+  it('respects a new search and page from navigation within the same route', async () => {
+    const seen: Request[] = []
+    await renderScreen({
+      client: fakeClient({
+        app: { getManifest: () => Effect.succeed({ ...emptyManifest(), pages: PAGES }) },
+        assessment: assessmentStubs({
+          listBatches: (request: Request) => {
+            seen.push(request)
+            return Effect.succeed({
+              items: [listRow()],
+              total: 80,
+              page: Number(request.query?.['page'] ?? 1),
+              pageSize: 20,
+              capabilities: { create: true },
+            })
+          },
+        }),
+      }),
+      routes: [
+        {
+          path: '/assessment/batches',
+          element: (
+            <>
+              <Link to="?q=Autumn&page=2">Change saved search</Link>
+              <BatchListPage />
+            </>
+          ),
+        },
+      ],
+      route: '/assessment/batches?q=Spring&page=3',
+    })
+    await expect.element(page.getByRole('textbox', { name: '搜索批次名称' })).toHaveValue('Spring')
+    await page.getByRole('link', { name: 'Change saved search' }).click()
+    await expect.element(page.getByRole('textbox', { name: '搜索批次名称' })).toHaveValue('Autumn')
+    await vi.waitFor(() => expect(seen.at(-1)?.query).toMatchObject({ q: 'Autumn', page: '2' }))
+    // Wait through the debounce window: the old draft must not overwrite navigation.
+    await new Promise((resolve) => setTimeout(resolve, 400))
+    expect(addressNow()).toContain('q=Autumn&page=2')
+  })
+
+  it('jumps straight to the last batch page on a narrow screen and keeps focus on the list', async () => {
+    await page.viewport(320, 800)
+    try {
+      const seen: number[] = []
+      await screen(
+        {
+          listBatches: (request: Request) => {
+            const number = Number(request.query?.['page'] ?? 1)
+            seen.push(number)
+            return Effect.succeed({
+              items: [listRow({ name: `Batch ${number}` })],
+              total: 141,
+              page: number,
+              pageSize: 20,
+              capabilities: { create: true },
+            })
+          },
+        },
+        '/assessment/batches?page=2',
+      )
+      const pager = page.getByTestId('batch-pager')
+      await expect.element(pager).toHaveAttribute('data-page', '2')
+      await pager.getByRole('button', { name: '8', exact: true }).click()
+      await expect.element(page.getByRole('link', { name: /^Batch 8(?: |$)/ })).toBeVisible()
+      expect(new Set(seen)).toEqual(new Set([2, 8]))
+      expect(addressNow()).toContain('page=8')
+      expect(document.activeElement).toBe(page.getByTestId('batch-list').element())
+      const bounds = pager.element().getBoundingClientRect()
+      expect(bounds.left).toBeGreaterThanOrEqual(0)
+      expect(bounds.right).toBeLessThanOrEqual(321)
+    } finally {
+      await page.viewport(1280, 800)
+    }
+  })
+
+  it('resets the page and disables navigation while a new filter is loading', async () => {
     let finishDraft: (() => void) | undefined
     const listBatches = vi.fn((request: Request) => {
       if (request.query?.['status'] === 'draft') {
@@ -362,7 +509,8 @@ describe('the batch list', () => {
               finishDraft = () =>
                 resolve({
                   items: [],
-                  nextCursor: null,
+                  page: 1,
+                  pageSize: 20,
                   total: 0,
                   capabilities: { create: true },
                 })
@@ -371,7 +519,8 @@ describe('the batch list', () => {
       }
       return Effect.succeed({
         items: [listRow()],
-        nextCursor: request.query?.['status'] === 'active' ? null : 'old-filter-cursor',
+        page: Number(request.query?.['page'] ?? 1),
+        pageSize: 20,
         total: 21,
         capabilities: { create: true },
       })
@@ -380,14 +529,10 @@ describe('the batch list', () => {
     await expect.element(page.getByRole('button', { name: '下一页' })).toBeEnabled()
 
     await page.getByRole('radio', { name: '草稿' }).click()
-    await vi.waitFor(() =>
-      expect(page.getByRole('button', { name: '下一页' }).elements()).toHaveLength(0),
-    )
+    await expect.element(page.getByRole('button', { name: '下一页' })).toBeDisabled()
     expect(
       listBatches.mock.calls.some(
-        ([request]) =>
-          request.query?.['cursor'] === 'old-filter-cursor' &&
-          request.query?.['status'] === 'draft',
+        ([request]) => request.query?.['page'] !== '1' && request.query?.['status'] === 'draft',
       ),
     ).toBe(false)
     finishDraft?.()
@@ -1743,6 +1888,70 @@ describe('the stage plan', () => {
       permissionProfile: ['assessment.entry.create', 'assessment.entry.submit'],
     })
   })
+
+  it.each(['phase', 'timeline'] as const)(
+    'offers the 51st %s template and retries a failed later page',
+    async (kind) => {
+      let failNext = true
+      const listTemplates = vi.fn((request: Request) => {
+        const requestedKind = request.query?.['kind']
+        const next = request.query?.['cursor'] !== undefined
+        if (requestedKind !== kind) return templates(request)
+        if (next && failNext) return Effect.fail(apiError('SERVICE_UNAVAILABLE'))
+        const names = next ? [51] : Array.from({ length: 50 }, (_, index) => index + 1)
+        return Effect.succeed({
+          items: names.map((number) => ({
+            id: `template-${number}`,
+            name: `Template ${number}`,
+            kind,
+            version: 1,
+            phases: [
+              {
+                phaseKey: 'entry',
+                displayName: `Template stage ${number}`,
+                description: '',
+                permissionProfile: ['assessment.entry.create'],
+                itemScope: [],
+                participantScope: [],
+              },
+            ],
+          })),
+          nextCursor: next ? null : 'next-template-page',
+        })
+      })
+      const putPhases = vi.fn((_request: Request) => Effect.succeed({ phases: [], warnings: [] }))
+      await screen({ listTemplates, putPhases, getPhases: () => Effect.succeed(twoPhases()) })
+      if (kind === 'phase') await page.getByTestId('phase-row').first().click()
+      else {
+        await page.getByRole('button', { name: '编辑阶段', exact: false }).click()
+        await page.getByRole('button', { name: '从模板添加', exact: false }).click()
+      }
+      const dialog = page.getByRole('dialog')
+      await dialog.getByRole('button', { name: '加载更多', exact: true }).click()
+      await expect.element(dialog.getByRole('button', { name: '重试', exact: true })).toBeVisible()
+      failNext = false
+      await dialog.getByRole('button', { name: '重试', exact: true }).click()
+      await dialog
+        .getByLabelText(kind === 'phase' ? '应用阶段模板' : '时间线', { exact: false })
+        .selectOptions('Template 51')
+      if (kind === 'phase') {
+        await dialog.getByRole('button', { name: '应用', exact: true }).click()
+        await expect
+          .element(dialog.getByRole('textbox', { name: '阶段名称' }))
+          .toHaveValue('Template stage 51')
+      } else {
+        await dialog.getByRole('button', { name: '从模板添加', exact: false }).click()
+        await vi.waitFor(() => expect(putPhases).toHaveBeenCalledTimes(1))
+        expect(putPhases.mock.calls[0]![0].payload).toMatchObject({ fromTemplateId: 'template-51' })
+      }
+      expect(
+        listTemplates.mock.calls.some(
+          ([request]) =>
+            request.query?.['kind'] === kind && request.query?.['cursor'] === 'next-template-page',
+        ),
+      ).toBe(true)
+    },
+  )
 
   it('adds a timeline template to the end, server-side', async () => {
     const putPhases = vi.fn((_request: Request) => Effect.succeed({ phases: [], warnings: [] }))

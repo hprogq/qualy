@@ -328,13 +328,39 @@ describe.runIf(postgresAvailable)('a formula over its lifetime', () => {
             { expectedDraftRevision: 3, releaseName: '2026 秋季正式规则' },
             as,
           )
-          const detail = yield* library.getFunction(f.t, created.id, as)
+          const detail = {
+            ...(yield* library.getFunction(f.t, created.id, as)),
+            versions: (yield* library.listVersions(f.t, created.id, {}, as)).items,
+          }
           const listed = yield* library.listFunctions(f.t, {}, as)
           const frozen = yield* library.getVersion(f.t, created.id, 1, as)
-          return { spring, retried, unchanged, renamed, taken, detail, listed, frozen }
+          const versionFirst = yield* library.listVersions(f.t, created.id, { limit: '1' }, as)
+          const versionLast = yield* library.listVersions(
+            f.t,
+            created.id,
+            { limit: '1', page: '999' },
+            as,
+          )
+          return {
+            spring,
+            retried,
+            unchanged,
+            renamed,
+            taken,
+            detail,
+            listed,
+            frozen,
+            versionFirst,
+            versionLast,
+          }
         }),
       ),
     )
+    expect(outcome.detail.versionCount).toBe(2)
+    expect(outcome.versionFirst).toMatchObject({ total: 2, page: 1, pageSize: 1 })
+    expect(outcome.versionFirst.items.map((row) => row.versionNo)).toEqual([2])
+    expect(outcome.versionLast).toMatchObject({ total: 2, page: 2, pageSize: 1 })
+    expect(outcome.versionLast.items.map((row) => row.versionNo)).toEqual([1])
     expect(outcome.spring).toMatchObject({
       versionNo: 1,
       releaseName: '2026 春季正式规则',
@@ -532,7 +558,10 @@ describe.runIf(postgresAvailable)('a formula over its lifetime', () => {
             },
             as,
           )
-          const detail = yield* library.getFunction(f.t, created.id, as)
+          const detail = {
+            ...(yield* library.getFunction(f.t, created.id, as)),
+            versions: (yield* library.listVersions(f.t, created.id, {}, as)).items,
+          }
           const trail = yield* library.getVersion(f.t, created.id, 1, as)
           return { published, fixed, stale, again, detail, trail }
         }),
@@ -805,13 +834,13 @@ describe.runIf(postgresAvailable)('a formula over its lifetime', () => {
           const second = yield* library.listDraftRevisions(
             f.t,
             created.id,
-            { limit: '2', cursor: first.nextCursor! },
+            { limit: '2', page: '2' },
             as,
           )
           const third = yield* library.listDraftRevisions(
             f.t,
             created.id,
-            { limit: '2', cursor: second.nextCursor! },
+            { limit: '2', page: '999' },
             as,
           )
           return { first, second, third }
@@ -823,7 +852,7 @@ describe.runIf(postgresAvailable)('a formula over its lifetime', () => {
         (row) => row.revisionNo,
       ),
     ).toEqual([5, 4, 3, 2, 1])
-    expect(outcome.third.nextCursor).toBeNull()
+    expect(outcome.third).toMatchObject({ page: 3, total: 5, pageSize: 2 })
   }, 120_000)
 })
 

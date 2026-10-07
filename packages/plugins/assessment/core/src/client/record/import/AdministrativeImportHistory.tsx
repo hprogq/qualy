@@ -1,8 +1,9 @@
-import { useMemo } from 'react'
-import { useInfiniteQuery } from '@tanstack/react-query'
+import { pageNumber } from '@qualy/api-kit/schema'
+import { RecordPager } from '../RecordPager.tsx'
+import { useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { ChevronRightIcon, DownloadIcon, FileSpreadsheetIcon } from 'lucide-react'
-import { cursorPages, useApi, useApiQuery, useLoadFailure, useRunApi } from '@qualy/web-runtime'
+import { useApiQuery, useLoadFailure, usePageQueryState } from '@qualy/web-runtime'
 
 import { AsyncSection } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
@@ -165,7 +166,6 @@ const styles = stylex.create({
     paddingBlock: 48,
   },
   actionIcon: { width: 15, height: 15 },
-  moreRow: { display: 'flex', justifyContent: 'center', paddingBlock: 8 },
 })
 
 export function AdministrativeImportHistory({
@@ -178,35 +178,23 @@ export function AdministrativeImportHistory({
   /** the way out of an empty page, when this reader may take one */
   onImport?: () => void
 }) {
-  const api = useApi(assessmentApi)
-  const run = useRunApi()
   const query = useApiQuery(assessmentApi)
 
   const failures = useLoadFailure()
   const whenOf = useWhen()
 
-  const history = useInfiniteQuery({
-    queryKey: [
-      ...query.assessment.listAdministrativeImports.key({ params: { batchId }, query: {} }),
-      'infinite',
-    ],
-    queryFn: ({ pageParam }) =>
-      run(
-        api.assessment.listAdministrativeImports({
-          params: { batchId },
-          query: {
-            limit: String(PAGE),
-            ...(pageParam !== undefined ? { cursor: pageParam } : {}),
-          },
-        }),
-      ),
-    ...cursorPages,
+  const [page, setPage] = usePageQueryState('importsPage')
+  const identity = batchId
+  const history = useQuery({
+    ...query.assessment.listAdministrativeImports.queryOptions({
+      params: { batchId },
+      query: { page: String(pageNumber(page)), limit: String(PAGE) },
+    }),
+    meta: { administrativePage: identity },
+    placeholderData: (previous, previousQuery) =>
+      previousQuery?.meta?.['administrativePage'] === identity ? previous : undefined,
   })
-
-  const rows = useMemo(
-    () => history.data?.pages.flatMap((page) => page.items) ?? [],
-    [history.data],
-  )
+  const rows = history.data?.items ?? []
 
   return (
     <AsyncSection
@@ -233,7 +221,12 @@ export function AdministrativeImportHistory({
         </ListEmpty>
       ) : (
         <>
-          <div {...stylex.props(styles.card)} data-testid="administrative-imports">
+          <div
+            {...stylex.props(styles.card)}
+            data-testid="administrative-imports"
+            tabIndex={-1}
+            aria-busy={history.isFetching}
+          >
             <div {...stylex.props(styles.head)} aria-hidden>
               <span>{m.record_import_columnFile()}</span>
               <span>{m.record_columnItem()}</span>
@@ -286,17 +279,13 @@ export function AdministrativeImportHistory({
               )
             })}
           </div>
-          {history.hasNextPage && (
-            <div {...stylex.props(styles.moreRow)}>
-              <Button
-                size="sm"
-                variant="ghost"
-                disabled={history.isFetchingNextPage}
-                onClick={() => void history.fetchNextPage()}
-              >
-                {m.record_moreWho()}
-              </Button>
-            </div>
+          {history.data !== undefined && (
+            <RecordPager
+              result={history.data}
+              busy={history.isFetching}
+              target="administrative-imports"
+              onPage={(next) => setPage(String(next))}
+            />
           )}
         </>
       )}

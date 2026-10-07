@@ -1,4 +1,5 @@
-import { likeContains } from '@qualy/api-kit/schema'
+import { likeContains, pageWindow } from '@qualy/api-kit/schema'
+import { transaction } from '@qualy/plugin-database/server'
 import { Effect } from 'effect'
 import { Db } from '@qualy/plugin-database/plugin'
 import { sql, type OrderByModifiers, type RawBuilder } from 'kysely'
@@ -514,6 +515,7 @@ export const listBatchesPage = (
     q?: string
     after?: { createdAt: string; id: string }
     limit: number
+    offset?: number
   },
 ) =>
   db
@@ -538,7 +540,12 @@ export const listBatchesPage = (
             < (${filter.after.createdAt}::timestamptz, ${filter.after.id}::uuid)`,
         )
       }
-      return query.orderBy('createdAt', 'desc').orderBy('id', 'desc').limit(filter.limit).execute()
+      return query
+        .orderBy('createdAt', 'desc')
+        .orderBy('id', 'desc')
+        .limit(filter.limit)
+        .offset(filter.offset ?? 0)
+        .execute()
     })
     .pipe(
       Effect.map((found) =>
@@ -562,63 +569,67 @@ export const userBatchesPage = (
   tenantId: string,
   userId: string,
   viewer: { held: AuthorizationScope; userId: string },
-  filter: { after?: { includedAt: string; id: string }; limit: number },
+  filter: { page?: number; limit: number },
 ) =>
-  db.query((k) => {
-    let query = k
-      .selectFrom('BatchParticipant as bp')
-      .innerJoin('AssessmentBatch', (join) =>
-        join
-          .onRef('AssessmentBatch.tenantId', '=', 'bp.tenantId')
-          .onRef('AssessmentBatch.id', '=', 'bp.batchId'),
-      )
-      .leftJoin('OrgNode as n', (join) =>
-        join
-          .onRef('n.tenantId', '=', 'bp.tenantId')
-          .onRef('n.id', '=', 'bp.assessmentAnchorNodeId'),
-      )
-      .select([
-        'bp.id as membershipId',
-        'bp.status as membershipStatus',
-        'bp.includedAt',
-        'bp.excludedAt',
-        'n.name as anchorNodeName',
-        'AssessmentBatch.id as batchId',
-        'AssessmentBatch.name',
-        'AssessmentBatch.status',
-        'AssessmentBatch.timezone',
-        'AssessmentBatch.currentPhaseId',
-      ])
-      .select([
-        sql<string>`material_range::text`.as('materialRange'),
-        // the column as postgres writes it, for the cursor alone
-        sql<string>`bp.included_at::text`.as('cursorAt'),
-        sql<string | null>`(
+  db
+    .query(async (k) => {
+      const query = k
+        .selectFrom('BatchParticipant as bp')
+        .innerJoin('AssessmentBatch', (join) =>
+          join
+            .onRef('AssessmentBatch.tenantId', '=', 'bp.tenantId')
+            .onRef('AssessmentBatch.id', '=', 'bp.batchId'),
+        )
+        .leftJoin('OrgNode as n', (join) =>
+          join
+            .onRef('n.tenantId', '=', 'bp.tenantId')
+            .onRef('n.id', '=', 'bp.assessmentAnchorNodeId'),
+        )
+        .select([
+          'bp.id as membershipId',
+          'bp.status as membershipStatus',
+          'bp.includedAt',
+          'bp.excludedAt',
+          'n.name as anchorNodeName',
+          'AssessmentBatch.id as batchId',
+          'AssessmentBatch.name',
+          'AssessmentBatch.status',
+          'AssessmentBatch.timezone',
+          'AssessmentBatch.currentPhaseId',
+        ])
+        .select([
+          sql<string>`material_range::text`.as('materialRange'),
+          sql<string | null>`(
           select p.display_name from batch_phases p
           where p.tenant_id = assessment_batches.tenant_id
             and p.id = assessment_batches.current_phase_id
         )`.as('currentPhaseName'),
-        withinReach(viewer.held).as('manageable'),
-      ])
-      .where('bp.tenantId', '=', tenantId)
-      .where('bp.userId', '=', userId)
-      .where(
-        userId === viewer.userId
-          ? visibleTo(viewer)
-          : sql<boolean>`(${withinReach(viewer.held)} or ${isStaff(viewer.userId)})`,
-      )
-      .orderBy('bp.includedAt', 'desc')
-      .orderBy('bp.id', 'desc')
-      .limit(filter.limit)
-    if (filter.after !== undefined) {
-      query = query.where(
-        sql<boolean>`(bp.included_at, bp.id) < (${filter.after.includedAt}::timestamptz, ${filter.after.id}::uuid)`,
-      )
-    }
-    return query.execute()
-  })
+          withinReach(viewer.held).as('manageable'),
+        ])
+        .where('bp.tenantId', '=', tenantId)
+        .where('bp.userId', '=', userId)
+        .where(
+          userId === viewer.userId
+            ? visibleTo(viewer)
+            : sql<boolean>`(${withinReach(viewer.held)} or ${isStaff(viewer.userId)})`,
+        )
+      const counted = await query
+        .clearSelect()
+        .select((eb) => eb.fn.countAll<string>().as('count'))
+        .executeTakeFirstOrThrow()
+      const total = Number(counted.count)
+      const window = pageWindow(filter.page ?? 1, filter.limit, total)
+      const items = await query
+        .orderBy('bp.includedAt', 'desc')
+        .orderBy('bp.id', 'desc')
+        .limit(filter.limit)
+        .offset(window.offset)
+        .execute()
+      return { items, total, page: window.page, pageSize: filter.limit }
+    })
+    .pipe((effect) => transaction(effect, { isolation: 'repeatable read', readOnly: true }))
 
-export type UserBatchRow = Effect.Success<ReturnType<typeof userBatchesPage>>[number]
+export type UserBatchRow = Effect.Success<ReturnType<typeof userBatchesPage>>['items'][number]
 
 /**
  * What one person filed, newest first, each claim only when the reader may
@@ -638,69 +649,74 @@ export const userEntriesPage = (
   tenantId: string,
   userId: string,
   viewer: { held: AuthorizationScope; userId: string },
-  filter: { after?: { createdAt: string; id: string }; limit: number },
+  filter: { page?: number; limit: number },
 ) =>
-  db.query((k) => {
-    let query = k
-      .selectFrom('Entry as e')
-      .innerJoin('BatchParticipant as bp', (join) =>
-        join.onRef('bp.tenantId', '=', 'e.tenantId').onRef('bp.id', '=', 'e.participantId'),
-      )
-      .innerJoin('AssessmentBatch', (join) =>
-        join
-          .onRef('AssessmentBatch.tenantId', '=', 'e.tenantId')
-          .onRef('AssessmentBatch.id', '=', 'e.batchId'),
-      )
-      .innerJoin('AssessmentItem as i', (join) =>
-        join.onRef('i.tenantId', '=', 'e.tenantId').onRef('i.id', '=', 'e.itemId'),
-      )
-      .select([
-        'e.id',
-        'e.batchId',
-        'AssessmentBatch.name as batchName',
-        'e.itemId',
-        'i.title as itemTitle',
-        'e.status',
-        'e.source',
-        'e.createdAt',
-        'e.updatedAt',
-      ])
-      .select([sql<string>`e.created_at::text`.as('cursorAt')])
-      .where('e.tenantId', '=', tenantId)
-      .where('bp.userId', '=', userId)
-      .where((eb) => {
-        const reachOver = (permissionCode: readonly string[]) =>
-          staffReachOver({
-            tenantId,
-            batchId: sql.ref('e.batch_id'),
-            userId: viewer.userId,
-            permissionCode,
-            anchorNodeId: sql.ref('bp.assessment_anchor_node_id'),
-            anchorPath: sql.ref('bp.anchor_path'),
-          })
-        return eb.or([
-          eb('bp.userId', '=', viewer.userId),
-          eb.and([
-            eb('e.lastSubmittedRevisionId', 'is not', null),
-            eb.or([
-              withinReach(viewer.held),
-              reachOver(['assessment.entry.read-all', 'assessment.entry.redetermine']),
-            ]),
-          ]),
+  db
+    .query(async (k) => {
+      const query = k
+        .selectFrom('Entry as e')
+        .innerJoin('BatchParticipant as bp', (join) =>
+          join.onRef('bp.tenantId', '=', 'e.tenantId').onRef('bp.id', '=', 'e.participantId'),
+        )
+        .innerJoin('AssessmentBatch', (join) =>
+          join
+            .onRef('AssessmentBatch.tenantId', '=', 'e.tenantId')
+            .onRef('AssessmentBatch.id', '=', 'e.batchId'),
+        )
+        .innerJoin('AssessmentItem as i', (join) =>
+          join.onRef('i.tenantId', '=', 'e.tenantId').onRef('i.id', '=', 'e.itemId'),
+        )
+        .select([
+          'e.id',
+          'e.batchId',
+          'AssessmentBatch.name as batchName',
+          'e.itemId',
+          'i.title as itemTitle',
+          'e.status',
+          'e.source',
+          'e.createdAt',
+          'e.updatedAt',
         ])
-      })
-      .orderBy('e.createdAt', 'desc')
-      .orderBy('e.id', 'desc')
-      .limit(filter.limit)
-    if (filter.after !== undefined) {
-      query = query.where(
-        sql<boolean>`(e.created_at, e.id) < (${filter.after.createdAt}::timestamptz, ${filter.after.id}::uuid)`,
-      )
-    }
-    return query.execute()
-  })
+        .where('e.tenantId', '=', tenantId)
+        .where('bp.userId', '=', userId)
+        .where((eb) => {
+          const reachOver = (permissionCode: readonly string[]) =>
+            staffReachOver({
+              tenantId,
+              batchId: sql.ref('e.batch_id'),
+              userId: viewer.userId,
+              permissionCode,
+              anchorNodeId: sql.ref('bp.assessment_anchor_node_id'),
+              anchorPath: sql.ref('bp.anchor_path'),
+            })
+          return eb.or([
+            eb('bp.userId', '=', viewer.userId),
+            eb.and([
+              eb('e.lastSubmittedRevisionId', 'is not', null),
+              eb.or([
+                withinReach(viewer.held),
+                reachOver(['assessment.entry.read-all', 'assessment.entry.redetermine']),
+              ]),
+            ]),
+          ])
+        })
+      const counted = await query
+        .clearSelect()
+        .select((eb) => eb.fn.countAll<string>().as('count'))
+        .executeTakeFirstOrThrow()
+      const total = Number(counted.count)
+      const window = pageWindow(filter.page ?? 1, filter.limit, total)
+      const items = await query
+        .orderBy('e.createdAt', 'desc')
+        .orderBy('e.id', 'desc')
+        .limit(filter.limit)
+        .offset(window.offset)
+        .execute()
+      return { items, total, page: window.page, pageSize: filter.limit }
+    })
+    .pipe((effect) => transaction(effect, { isolation: 'repeatable read', readOnly: true }))
 
-export type UserEntryRow = Effect.Success<ReturnType<typeof userEntriesPage>>[number]
+export type UserEntryRow = Effect.Success<ReturnType<typeof userEntriesPage>>['items'][number]
 
 /**
  * Whether the database knows this zone by name.

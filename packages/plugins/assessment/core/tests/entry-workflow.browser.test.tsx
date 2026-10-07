@@ -1,3 +1,4 @@
+import { reviewClient } from './support/review-client.tsx'
 import MyEntriesPage from '../src/client/entry/MyEntriesPage.tsx'
 import BatchOverviewPage from '../src/client/BatchOverviewPage.tsx'
 import ReviewInboxPage from '../src/client/review/ReviewInboxPage.tsx'
@@ -8,7 +9,7 @@ import { page, userEvent } from 'vitest/browser'
 import { Effect } from 'effect'
 import type { ApiResult, ClientOf } from '@qualy/web-runtime/api'
 import type { assessmentApi } from '@qualy/plugin-assessment/client/api'
-import { addressNow, apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
+import { addressNow, apiError, emptyManifest, renderScreen } from './support/screen.tsx'
 import zhCN from '../messages/zh-CN.json' with { type: 'json' }
 
 // The entry workflow as a person drives it: filing a claim on a question,
@@ -198,7 +199,7 @@ const ambient = {
 
 const screen = (stubs: Stubs, route: string, elements: { path: string; element: unknown }[]) =>
   renderScreen({
-    client: fakeClient({
+    client: reviewClient({
       app: { getManifest: () => Effect.succeed({ ...emptyManifest(), pages: PAGES }) },
       assessment: { ...ambient, ...stubs },
     }),
@@ -274,7 +275,9 @@ describe('the overview desk', () => {
                 at: '2026-03-02T09:00:00.000Z',
               },
             ],
-            nextCursor: null,
+            total: 2,
+            page: 1,
+            pageSize: 50,
           }),
       },
       `/assessment/batches/${BATCH_ID}`,
@@ -357,7 +360,9 @@ describe('the overview desk', () => {
               line(INSTANCE_ID, OTHER_ID, '2026-03-03T10:00:00.000Z'),
               line(REVISION_ID, OTHER_ID, '2026-03-02T10:00:00.000Z'),
             ],
-            nextCursor: null,
+            total: 3,
+            page: 1,
+            pageSize: 50,
           }),
       },
       `/assessment/batches/${BATCH_ID}`,
@@ -399,7 +404,7 @@ describe('the overview desk', () => {
             },
             reviewer: null,
           }),
-        listMyActivity: () => Effect.succeed({ items: [], nextCursor: null }),
+        listMyActivity: () => Effect.succeed({ items: [], total: 0, page: 1, pageSize: 50 }),
       },
       `/assessment/batches/${BATCH_ID}`,
       [{ path: '/assessment/batches/:batchId', element: <BatchOverviewPage /> }],
@@ -2407,25 +2412,36 @@ describe('judging a submission', () => {
   })
 
   it('walks from the queue to one submission and approves it', async () => {
+    let refreshes = 0
+    let releaseRefresh: () => void = () => undefined
+    const refreshing = new Promise<void>((resolve) => {
+      releaseRefresh = resolve
+    })
     const decided = vi.fn(() =>
       Effect.succeed({ review: { ...review, state: 'completed' as const, outcome: 'approved' } }),
     )
     await screen(
       {
         listReviewInbox: () =>
-          Effect.succeed({
-            items: [
-              inboxRow(),
-              inboxRow({
-                instanceId: '88888888-8888-4888-8888-888888888888',
-                batchId: '99999999-9999-4999-8999-999999999999',
-                batchName: '别的批次',
-                itemTitle: '不该出现',
-                participantName: '李四',
-              }),
-            ],
-            nextCursor: null,
-            handledToday: 0,
+          Effect.promise(async () => {
+            if (decided.mock.calls.length > 0) {
+              refreshes += 1
+              await refreshing
+            }
+            return {
+              items: [
+                inboxRow(),
+                inboxRow({
+                  instanceId: '88888888-8888-4888-8888-888888888888',
+                  batchId: '99999999-9999-4999-8999-999999999999',
+                  batchName: '别的批次',
+                  itemTitle: '不该出现',
+                  participantName: '李四',
+                }),
+              ],
+              nextCursor: null,
+              handledToday: 0,
+            }
           }),
         getReviewInstance: () => Effect.succeed({ review }),
         decideReview: decided,
@@ -2464,7 +2480,17 @@ describe('judging a submission', () => {
     expect(decided).not.toHaveBeenCalled()
     // the run had one submission, so the closing screen is already up
     await expect.element(page.getByTestId('run-done')).toHaveAttribute('data-handled', '1')
+    await expect.element(page.getByTestId('review-done-left')).toHaveAttribute('data-count', '0')
+    expect(page.getByTestId('review-next-run').elements()).toHaveLength(0)
+    expect(decided).not.toHaveBeenCalled()
     await vi.waitFor(() => expect(decided).toHaveBeenCalledOnce(), { timeout: 8000 })
+    await expect.poll(() => refreshes).toBeGreaterThan(0)
+    try {
+      await expect.element(page.getByTestId('run-done')).toBeVisible()
+      expect(page.getByTestId('act-approve').elements()).toHaveLength(0)
+    } finally {
+      releaseRefresh()
+    }
     expect((decided.mock.calls[0] as unknown[])[0]).toMatchObject({
       payload: { decision: 'approve' },
     })

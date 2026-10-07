@@ -321,8 +321,6 @@ interface AdministrativeEntryView {
   readonly importId: string | null
   /** the bulk act it was settled by, when it was settled by one */
   readonly operationId: string | null
-  /** what the next page starts after, in the order this list is read */
-  readonly cursor: readonly [string, string]
 }
 
 export interface MaterialRange {
@@ -1081,7 +1079,9 @@ export interface MyActivityPage {
     summary: readonly { label: string; value: string }[]
     at: string
   }[]
-  readonly nextCursor: string | null
+  readonly total: number
+  readonly page: number
+  readonly pageSize: number
 }
 
 export class Assessment extends Context.Service<
@@ -1106,6 +1106,7 @@ export class Assessment extends Context.Service<
         q?: string
         after?: { createdAt: string; id: string }
         limit: number
+        offset?: number
       },
       as: Principal,
     ) => Effect.Effect<readonly BatchListRow[]>
@@ -1114,20 +1115,41 @@ export class Assessment extends Context.Service<
       filter: { status?: 'draft' | 'active' | 'archived'; q?: string },
       as: Principal,
     ) => Effect.Effect<number>
+    readonly pageBatches: (
+      tenantId: string,
+      filter: { status?: 'draft' | 'active' | 'archived'; q?: string; page: number; limit: number },
+      as: Principal,
+    ) => Effect.Effect<{
+      items: readonly BatchListRow[]
+      total: number
+      page: number
+      pageSize: number
+      statusCounts: { draft: number; active: number; archived: number }
+    }>
     /** the rounds one person is or was in, among those the reader may see */
     readonly listUserBatches: (
       tenantId: string,
       userId: string,
-      filter: { after?: { includedAt: string; id: string }; limit: number },
+      filter: { page?: number; limit: number },
       as: Principal,
-    ) => Effect.Effect<readonly UserBatchRow[]>
+    ) => Effect.Effect<{
+      items: readonly UserBatchRow[]
+      total: number
+      page: number
+      pageSize: number
+    }>
     /** what one person filed, in the rounds the reader administers or works on */
     readonly listUserEntries: (
       tenantId: string,
       userId: string,
-      filter: { after?: { createdAt: string; id: string }; limit: number },
+      filter: { page?: number; limit: number },
       as: Principal,
-    ) => Effect.Effect<readonly UserEntryRow[]>
+    ) => Effect.Effect<{
+      items: readonly UserEntryRow[]
+      total: number
+      page: number
+      pageSize: number
+    }>
     readonly getBatch: (
       tenantId: string,
       batchId: string,
@@ -1426,20 +1448,25 @@ export class Assessment extends Context.Service<
     readonly listAdministrativeRecords: (
       tenantId: string,
       batchId: string,
-      filter: { after?: readonly [string, string] | undefined; limit: number },
+      filter: { page?: number; limit: number },
       as: Principal,
     ) => Effect.Effect<
-      readonly {
-        id: string
-        itemId: string
-        itemTitle: string
-        targetKind: string
-        targetSpec: Record<string, unknown>
-        recordedCount: number
-        voidedCount: number
-        actorName: string | null
-        createdAt: string
-      }[],
+      {
+        items: readonly {
+          id: string
+          itemId: string
+          itemTitle: string
+          targetKind: string
+          targetSpec: Record<string, unknown>
+          recordedCount: number
+          voidedCount: number
+          actorName: string | null
+          createdAt: string
+        }[]
+        total: number
+        page: number
+        pageSize: number
+      },
       AccessDenied
     >
     /** one act, what it came to, and what has been done to it */
@@ -1522,11 +1549,14 @@ export class Assessment extends Context.Service<
         status?: AdministrativeEntryRow['status']
         orgNodeIds?: readonly string[]
         orgScope?: 'self' | 'subtree'
-        after?: readonly [string, string]
+        page?: number
         limit: number
       },
       as: Principal,
-    ) => Effect.Effect<readonly AdministrativeEntryView[], BatchNotFound | AccessDenied>
+    ) => Effect.Effect<
+      { items: readonly AdministrativeEntryView[]; total: number; page: number; pageSize: number },
+      BatchNotFound | AccessDenied
+    >
     readonly listParticipants: (
       tenantId: string,
       batchId: string,
@@ -1860,7 +1890,7 @@ export class Assessment extends Context.Service<
     readonly listMyActivity: (
       tenantId: string,
       batchId: string,
-      page: { cursor?: string; limit?: string; perspective?: 'participant' | 'reviewer' },
+      page: { page?: string; limit?: string; perspective?: 'participant' | 'reviewer' },
       as: Principal,
     ) => Effect.Effect<MyActivityPage, BatchNotFound | BadRequest>
     readonly interveneOnEntry: EntryMethods['interveneOnEntry']
@@ -3665,6 +3695,37 @@ export const make = Effect.fn('Assessment.make')(function* () {
       return yield* dieQuery(withDb(countBatches(tenantId, yield* viewerOf(as), filter)))
     }),
 
+    pageBatches: Effect.fn('Assessment.pageBatches')(function* (tenantId, filter, as) {
+      const viewer = yield* viewerOf(as)
+      return yield* dieQuery(
+        withDb(
+          transaction(
+            Effect.gen(function* () {
+              const total = yield* countBatches(tenantId, viewer, filter)
+              const window = pageWindow(filter.page, filter.limit, total)
+              const rows = yield* listBatchesPage(tenantId, viewer, {
+                ...filter,
+                offset: window.offset,
+              })
+              const statusCounts = yield* countBatchesByStatus(
+                tenantId,
+                viewer,
+                filter.q === undefined ? {} : { q: filter.q },
+              )
+              return {
+                items: yield* batchesWithStanding(tenantId, rows),
+                total,
+                page: window.page,
+                pageSize: filter.limit,
+                statusCounts,
+              }
+            }),
+            { isolation: 'repeatable read', readOnly: true },
+          ),
+        ),
+      )
+    }),
+
     countBatchesByStatus: Effect.fn('Assessment.countBatchesByStatus')(function* (
       tenantId: string,
       filter: { q?: string },
@@ -3914,12 +3975,9 @@ export const make = Effect.fn('Assessment.make')(function* () {
     listMyActivity: Effect.fn('Assessment.listMyActivity')(function* (
       tenantId: string,
       batchId: string,
-      page: { cursor?: string; limit?: string; perspective?: 'participant' | 'reviewer' },
+      page: { page?: string; limit?: string; perspective?: 'participant' | 'reviewer' },
       as: Principal,
     ) {
-      const fingerprint = `me-activity:${as.userId}:${batchId}:${page.perspective ?? 'all'}`
-      const key = readQueryCursor(page.cursor, fingerprint, ['timestamp', 'text', 'uuid'])
-      if (key === null) return yield* cursorUnusable()
       const limit = pageSize(page.limit, DEFAULT_PAGE_SIZE)
       const standing = yield* deskStandingOf(tenantId, batchId, as)
       const perspectives = (['participant', 'reviewer'] as const).filter(
@@ -3935,13 +3993,12 @@ export const make = Effect.fn('Assessment.make')(function* () {
             userId: as.userId,
             participantId: standing.membership?.id ?? null,
             perspectives,
-            after: key === undefined ? undefined : [key[0]!, key[1]!, key[2]!],
-            limit: limit + 1,
+            page: pageNumber(page.page),
+            limit,
           }),
         ),
       )
-      const pageRows = rows.slice(0, limit)
-      const last = pageRows[pageRows.length - 1]
+      const pageRows = rows.items
       // the participant rows are all about the reader's own claims, and the
       // people who acted on them are kept from the reader as on every other
       // door (§32.85); the reviewer rows are the reader's own acts
@@ -3983,14 +4040,9 @@ export const make = Effect.fn('Assessment.make')(function* () {
           summary: identityOf.get(row.entryId) ?? [],
           at: row.at,
         })),
-        // the cursor carries the instant as stored, not as shown: `at` is
-        // rounded to milliseconds for the wire, and asking the next page
-        // for rows older than a rounded-down instant skips everything in
-        // between - including whatever was written alongside this row
-        nextCursor:
-          rows.length > limit && last !== undefined
-            ? encodeQueryCursor(fingerprint, [last.cursorAt, last.source, last.id])
-            : null,
+        total: rows.total,
+        page: rows.page,
+        pageSize: rows.pageSize,
       }
     }),
 
@@ -5482,7 +5534,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
           )
           if (!records) yield* requireRosterReach(as, tenantId, batchId)
         }
-        const rows = yield* dieQuery(
+        const { items: rows, ...pagination } = yield* dieQuery(
           withDb(
             listAdministrativeEntriesPage({
               tenantId,
@@ -5494,7 +5546,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
             }),
           ),
         )
-        if (rows.length === 0) return []
+        if (rows.length === 0) return { ...pagination, items: [] }
         // What each fact currently stands determined as, read through the
         // question version it was JUDGED under - never the question as it
         // stands today. A determination read through a schema it was not
@@ -5523,44 +5575,46 @@ export const make = Effect.fn('Assessment.make')(function* () {
           const fields = plan._tag === 'Some' ? recognitionFormFields(plan.value) : null
           fieldsOfRevision.set(id, fields ?? [])
         }
-        return rows.map((row): AdministrativeEntryView => {
-          const determined = byEntry.get(row.entryId)
-          return {
-            entryId: row.entryId,
-            participant: {
-              id: row.participantId,
-              userId: row.participantUserId,
-              displayName: row.participantName,
-              businessNo: row.participantBusinessNo,
-            },
-            item: { id: row.itemId, title: row.itemTitle },
-            source: row.source,
-            status: row.status,
-            revision: {
-              id: row.revisionId,
-              payload: row.payload,
-              note: row.note,
-              actorId: row.actorId,
-              actorName: row.actorName,
-              createdAt: new Date(row.recordedAt).toISOString(),
-            },
-            recognition:
-              determined === undefined
-                ? null
-                : {
-                    id: determined.id,
-                    itemRevisionId: row.itemRevisionId,
-                    values: determined.values,
-                    fields: fieldsOfRevision.get(row.itemRevisionId) ?? [],
-                    source: determined.source,
-                    actorName: determined.createdByName,
-                    createdAt: new Date(determined.createdAt).toISOString(),
-                  },
-            importId: row.importId,
-            operationId: row.operationId,
-            cursor: [row.cursorAt, row.entryId] as const,
-          }
-        })
+        return {
+          ...pagination,
+          items: rows.map((row): AdministrativeEntryView => {
+            const determined = byEntry.get(row.entryId)
+            return {
+              entryId: row.entryId,
+              participant: {
+                id: row.participantId,
+                userId: row.participantUserId,
+                displayName: row.participantName,
+                businessNo: row.participantBusinessNo,
+              },
+              item: { id: row.itemId, title: row.itemTitle },
+              source: row.source,
+              status: row.status,
+              revision: {
+                id: row.revisionId,
+                payload: row.payload,
+                note: row.note,
+                actorId: row.actorId,
+                actorName: row.actorName,
+                createdAt: new Date(row.recordedAt).toISOString(),
+              },
+              recognition:
+                determined === undefined
+                  ? null
+                  : {
+                      id: determined.id,
+                      itemRevisionId: row.itemRevisionId,
+                      values: determined.values,
+                      fields: fieldsOfRevision.get(row.itemRevisionId) ?? [],
+                      source: determined.source,
+                      actorName: determined.createdByName,
+                      createdAt: new Date(determined.createdAt).toISOString(),
+                    },
+              importId: row.importId,
+              operationId: row.operationId,
+            }
+          }),
+        }
       },
     ),
 
@@ -6920,51 +6974,20 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
         const assessment = yield* Assessment
         const principal = yield* CurrentUser
         const limit = pageSize(query.limit, DEFAULT_PAGE_SIZE)
-        const fingerprint = `assessment.batches:${query.status ?? ''}:${query.q ?? ''}`
-        const key = readQueryCursor(query.cursor, fingerprint, ['timestamp', 'uuid'])
-        if (key === null) return yield* cursorUnusable()
-        // handed on as the text it was minted from: the shape was already
-        // checked by the cursor reader, and parsing it into milliseconds here
-        // is what threw away the microseconds the column actually holds
-        const after = key === undefined ? undefined : { createdAt: key[0]!, id: key[1]! }
-        const found = yield* assessment.listBatches(
+        const found = yield* assessment.pageBatches(
           principal.tenantId,
           {
             ...(query.status !== undefined ? { status: query.status } : {}),
             ...(query.q !== undefined ? { q: query.q } : {}),
-            ...(after !== undefined ? { after } : {}),
-            limit: limit + 1,
+            page: pageNumber(query.page),
+            limit,
           },
           principal,
         )
-        // the page and how many rows the filter matches: this list is walked
-        // by page number, so it has to know how many pages there are
-        const total = yield* assessment.countBatches(
-          principal.tenantId,
-          {
-            ...(query.status !== undefined ? { status: query.status } : {}),
-            ...(query.q !== undefined ? { q: query.q } : {}),
-          },
-          principal,
-        )
-        // the filter chips say how many of each kind the search matches,
-        // whichever chip is currently pressed
-        const statusCounts = yield* assessment.countBatchesByStatus(
-          principal.tenantId,
-          query.q !== undefined ? { q: query.q } : {},
-          principal,
-        )
-        const page = found.slice(0, limit)
-        const last = page[page.length - 1]
         return {
-          total,
-          statusCounts,
+          ...found,
           capabilities: { create: yield* assessment.canCreateBatch(principal) },
-          items: page.map(toBatchListDto),
-          nextCursor:
-            found.length > limit && last
-              ? encodeQueryCursor(fingerprint, [last.cursorAt, last.id])
-              : null,
+          items: found.items.map(toBatchListDto),
         }
       }),
     )
@@ -7453,25 +7476,15 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
         const assessment = yield* Assessment
         const principal = yield* CurrentUser
         const limit = pageSize(query.limit, DEFAULT_PAGE_SIZE)
-        const fingerprint = `assessment.administrative-imports:${params.batchId}`
-        const key = readQueryCursor(query.cursor, fingerprint, ['timestamp', 'uuid'])
-        if (key === null) return yield* cursorUnusable()
-        const found = yield* assessment.listAdministrativeImports(
+        return yield* assessment.listAdministrativeImports(
           principal.tenantId,
           params.batchId,
           {
-            ...(key !== undefined ? { after: [key[0]!, key[1]!] as const } : {}),
-            limit: limit + 1,
+            page: pageNumber(query.page),
+            limit,
           },
           principal,
         )
-        const page = found.slice(0, limit)
-        const last = page[page.length - 1]
-        return {
-          items: page.map(({ cursor: _cursor, ...row }) => row),
-          nextCursor:
-            found.length > limit && last ? encodeQueryCursor(fingerprint, [...last.cursor]) : null,
-        }
       }),
     )
     .handle(
@@ -7492,30 +7505,15 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
         const assessment = yield* Assessment
         const principal = yield* CurrentUser
         const limit = pageSize(query.limit, DEFAULT_PAGE_SIZE)
-        const fingerprint = `assessment.administrative-import-rows:${params.importId}`
-        const key = readQueryCursor(query.cursor, fingerprint, ['text'])
-        if (key === null) return yield* cursorUnusable()
-        // a row number, and nothing that merely parses as one
-        const after = key === undefined ? undefined : key[0]!
-        if (after !== undefined && !/^\d{1,9}$/.test(after)) return yield* cursorUnusable()
-        const found = yield* assessment.listAdministrativeImportRows(
+        return yield* assessment.listAdministrativeImportRows(
           principal.tenantId,
           params.importId,
           {
-            ...(after !== undefined ? { afterRowNo: Number(after) } : {}),
-            limit: limit + 1,
+            page: pageNumber(query.page),
+            limit,
           },
           principal,
         )
-        const page = found.slice(0, limit)
-        const last = page[page.length - 1]
-        return {
-          items: page,
-          nextCursor:
-            found.length > limit && last
-              ? encodeQueryCursor(fingerprint, [String(last.rowNo)])
-              : null,
-        }
       }),
     )
     .handle(
@@ -7566,12 +7564,7 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
         const principal = yield* CurrentUser
         const limit = pageSize(query.limit, DEFAULT_PAGE_SIZE)
         const units = listed(query.orgNodeIds).sort()
-        // every filter in the fingerprint, or a cursor from one question
-        // applied to another silently skips or repeats rows
-        const fingerprint = `assessment.administrative-entries:${params.batchId}:${query.q ?? ''}:${query.entryId ?? ''}:${query.itemId ?? ''}:${query.source ?? ''}:${query.status ?? ''}:${units.join(',')}:${query.orgScope ?? ''}`
-        const key = readQueryCursor(query.cursor, fingerprint, ['timestamp', 'uuid'])
-        if (key === null) return yield* cursorUnusable()
-        const found = yield* assessment.listAdministrativeEntries(
+        return yield* assessment.listAdministrativeEntries(
           principal.tenantId,
           params.batchId,
           {
@@ -7582,18 +7575,11 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
             ...(query.status !== undefined ? { status: query.status } : {}),
             ...(units.length > 0 ? { orgNodeIds: units } : {}),
             ...(query.orgScope !== undefined ? { orgScope: query.orgScope } : {}),
-            ...(key !== undefined ? { after: [key[0]!, key[1]!] as const } : {}),
-            limit: limit + 1,
+            page: pageNumber(query.page),
+            limit,
           },
           principal,
         )
-        const page = found.slice(0, limit)
-        const last = page[page.length - 1]
-        return {
-          entries: page.map(({ cursor: _cursor, ...row }) => row),
-          nextCursor:
-            found.length > limit && last ? encodeQueryCursor(fingerprint, [...last.cursor]) : null,
-        }
       }),
     )
     .handle(
@@ -7602,22 +7588,18 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
         const assessment = yield* Assessment
         const principal = yield* CurrentUser
         const limit = pageSize(query.limit, DEFAULT_PAGE_SIZE)
-        const fingerprint = `assessment.user-batches:${params.userId}`
-        const key = readQueryCursor(query.cursor, fingerprint, ['timestamp', 'uuid'])
-        if (key === null) return yield* cursorUnusable()
         const found = yield* assessment.listUserBatches(
           principal.tenantId,
           params.userId,
           {
-            ...(key === undefined ? {} : { after: { includedAt: key[0]!, id: key[1]! } }),
-            limit: limit + 1,
+            page: pageNumber(query.page),
+            limit,
           },
           principal,
         )
-        const page = found.slice(0, limit)
-        const last = page[page.length - 1]
         return {
-          items: page.map((row) => ({
+          ...found,
+          items: found.items.map((row) => ({
             batch: {
               id: row.batchId,
               name: row.name,
@@ -7635,10 +7617,6 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
               anchorNodeName: row.anchorNodeName ?? null,
             },
           })),
-          nextCursor:
-            found.length > limit && last
-              ? encodeQueryCursor(fingerprint, [last.cursorAt, last.membershipId])
-              : null,
         }
       }),
     )
@@ -7648,22 +7626,18 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
         const assessment = yield* Assessment
         const principal = yield* CurrentUser
         const limit = pageSize(query.limit, DEFAULT_PAGE_SIZE)
-        const fingerprint = 'assessment.my-batches'
-        const key = readQueryCursor(query.cursor, fingerprint, ['timestamp', 'uuid'])
-        if (key === null) return yield* cursorUnusable()
         const found = yield* assessment.listUserBatches(
           principal.tenantId,
           principal.userId,
           {
-            ...(key === undefined ? {} : { after: { includedAt: key[0]!, id: key[1]! } }),
-            limit: limit + 1,
+            page: pageNumber(query.page),
+            limit,
           },
           principal,
         )
-        const page = found.slice(0, limit)
-        const last = page[page.length - 1]
         return {
-          items: page.map((row) => ({
+          ...found,
+          items: found.items.map((row) => ({
             batch: {
               id: row.batchId,
               name: row.name,
@@ -7681,10 +7655,6 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
               anchorNodeName: row.anchorNodeName ?? null,
             },
           })),
-          nextCursor:
-            found.length > limit && last
-              ? encodeQueryCursor(fingerprint, [last.cursorAt, last.membershipId])
-              : null,
         }
       }),
     )
@@ -7694,22 +7664,18 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
         const assessment = yield* Assessment
         const principal = yield* CurrentUser
         const limit = pageSize(query.limit, DEFAULT_PAGE_SIZE)
-        const fingerprint = `assessment.user-entries:${params.userId}`
-        const key = readQueryCursor(query.cursor, fingerprint, ['timestamp', 'uuid'])
-        if (key === null) return yield* cursorUnusable()
         const found = yield* assessment.listUserEntries(
           principal.tenantId,
           params.userId,
           {
-            ...(key === undefined ? {} : { after: { createdAt: key[0]!, id: key[1]! } }),
-            limit: limit + 1,
+            page: pageNumber(query.page),
+            limit,
           },
           principal,
         )
-        const page = found.slice(0, limit)
-        const last = page[page.length - 1]
         return {
-          items: page.map((row) => ({
+          ...found,
+          items: found.items.map((row) => ({
             id: row.id,
             batchId: row.batchId,
             batchName: row.batchName,
@@ -7726,10 +7692,6 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
             createdAt: new Date(row.createdAt).toISOString(),
             updatedAt: new Date(row.updatedAt).toISOString(),
           })),
-          nextCursor:
-            found.length > limit && last
-              ? encodeQueryCursor(fingerprint, [last.cursorAt, last.id])
-              : null,
         }
       }),
     )
@@ -7935,36 +7897,16 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
         const assessment = yield* Assessment
         const principal = yield* CurrentUser
         const limit = pageSize(query.limit, DEFAULT_PAGE_SIZE)
-        const fingerprint = `assessment.administrative-records:${params.batchId}`
-        const key = readQueryCursor(query.cursor, fingerprint, ['timestamp', 'uuid'])
-        if (key === null) return yield* cursorUnusable()
         const found = yield* assessment.listAdministrativeRecords(
           principal.tenantId,
           params.batchId,
           {
-            ...(key !== undefined ? { after: [key[0]!, key[1]!] as const } : {}),
-            limit: limit + 1,
+            page: pageNumber(query.page),
+            limit,
           },
           principal,
         )
-        const page = found.slice(0, limit)
-        const last = page[page.length - 1]
-        return {
-          items: page.map((row) => ({
-            id: row.id,
-            itemId: row.itemId,
-            itemTitle: row.itemTitle,
-            targetKind: row.targetKind,
-            recordedCount: row.recordedCount,
-            voidedCount: row.voidedCount,
-            actorName: row.actorName,
-            createdAt: row.createdAt,
-          })),
-          nextCursor:
-            found.length > limit && last
-              ? encodeQueryCursor(fingerprint, [last.createdAt, last.id])
-              : null,
-        }
+        return { ...found, items: found.items.map(({ targetSpec: _targetSpec, ...row }) => row) }
       }),
     )
     .handle(
@@ -8560,7 +8502,7 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
           principal.tenantId,
           params.batchId,
           {
-            ...(query.cursor !== undefined ? { cursor: query.cursor } : {}),
+            ...(query.page !== undefined ? { page: query.page } : {}),
             ...(query.limit !== undefined ? { limit: query.limit } : {}),
             ...(query.perspective !== undefined ? { perspective: query.perspective } : {}),
           },
@@ -8606,18 +8548,22 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
         const page = yield* assessment.listReviewInbox(
           principal.tenantId,
           {
-            ...(query.cursor !== undefined ? { cursor: query.cursor } : {}),
-            ...(query.limit !== undefined ? { limit: query.limit } : {}),
-            ...(query.batchId !== undefined ? { batchId: query.batchId } : {}),
+            ...query,
+            exclude:
+              query.exclude === undefined
+                ? undefined
+                : typeof query.exclude === 'string'
+                  ? [query.exclude]
+                  : query.exclude,
           },
           principal,
         )
         return {
+          ...page,
           items: page.items.map((item) => ({
             ...item,
             submittedAt: new Date(item.submittedAt).toISOString(),
           })),
-          nextCursor: page.nextCursor,
           handledToday: page.handledToday,
           judging: page.judging,
         }
@@ -8632,18 +8578,18 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
           principal.tenantId,
           {
             batchId: query.batchId,
-            ...(query.cursor !== undefined ? { cursor: query.cursor } : {}),
+            ...(query.page !== undefined ? { page: query.page } : {}),
             ...(query.limit !== undefined ? { limit: query.limit } : {}),
           },
           principal,
         )
         return {
+          ...page,
           items: page.items.map((item) => ({
             ...item,
             requestedAt: new Date(item.requestedAt).toISOString(),
             answeredAt: item.answeredAt === null ? null : new Date(item.answeredAt).toISOString(),
           })),
-          nextCursor: page.nextCursor,
         }
       }),
     )

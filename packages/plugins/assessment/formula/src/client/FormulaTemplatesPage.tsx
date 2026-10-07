@@ -1,16 +1,17 @@
+import { Input } from '@qualy/ui/input'
+import { pageNumber } from '@qualy/api-kit/schema'
+import { FormulaPager } from './FormulaPager.tsx'
 import { useLocale } from '@qualy/web-i18n'
 import * as stylex from '@stylexjs/stylex'
-import { useMemo } from 'react'
-import { useInfiniteQuery } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import {
   PageLink,
-  cursorPages,
-  useApi,
   useApiQuery,
   useLoadFailure,
+  usePageQueryState,
+  usePageQueryUpdate,
   usePageNavigate,
   usePageTitle,
-  useRunApi,
 } from '@qualy/web-runtime'
 
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
@@ -58,33 +59,38 @@ const styles = stylex.create({
 })
 
 export default function FormulaTemplatesPage() {
-  const api = useApi(formulaApi)
-  const runApi = useRunApi()
   const query = useApiQuery(formulaApi)
   const locale = useLocale()
   const failure = useLoadFailure()
   const titleRef = usePageTitle(m.templates_title())
   const navigate = usePageNavigate()
 
-  const templates = useInfiniteQuery({
-    queryKey: [...query.assessmentFormula.listFormulaTemplates.key({ query: {} }), 'infinite'],
-    queryFn: ({ pageParam }) =>
-      runApi(
-        api.assessmentFormula.listFormulaTemplates({
-          query: pageParam !== undefined ? { cursor: pageParam } : {},
-        }),
-      ),
-    ...cursorPages,
+  const [pageParam, setPageParam] = usePageQueryState('page')
+  const [search] = usePageQueryState('search')
+  const write = usePageQueryUpdate()
+  const templates = useQuery({
+    ...query.assessmentFormula.listFormulaTemplates.queryOptions({
+      query: {
+        page: String(pageNumber(pageParam)),
+        ...(search.trim() ? { search: search.trim() } : {}),
+      },
+    }),
+    meta: { formulaSearch: search },
+    placeholderData: (previous, previousQuery) =>
+      previousQuery?.meta?.['formulaSearch'] === search ? previous : undefined,
   })
-  const items = useMemo(
-    () => templates.data?.pages.flatMap((page) => page.items) ?? [],
-    [templates.data],
-  )
+  const items = templates.data?.items ?? []
 
   return (
     <Screen title={m.templates_title()} description={m.templates_hint()} titleRef={titleRef}>
       <div {...stylex.props(l.page)}>
-        <section {...stylex.props(l.section)}>
+        <section
+          data-formula-results
+          tabIndex={-1}
+          aria-label={m.pagination_label()}
+          aria-busy={templates.isFetching}
+          {...stylex.props(l.section)}
+        >
           <div {...stylex.props(l.sectionHead)}>
             <span {...stylex.props(l.sectionLabel)}>{m.templates_offered()}</span>
             <span {...stylex.props(l.spring)} />
@@ -98,13 +104,17 @@ export default function FormulaTemplatesPage() {
             </PageLink>
           </div>
 
+          <Input
+            aria-label={m.pagination_search()}
+            placeholder={m.pagination_search()}
+            maxLength={200}
+            value={search}
+            onChange={(event) => write({ search: event.target.value, page: '' })}
+          />
+
           <AsyncSection
             pending={templates.isPending}
-            // what is already listed stays through a later page that failed:
-            // its way to more is still there to press
-            error={
-              templates.isError && templates.data === undefined ? failure.of(templates.error) : null
-            }
+            error={templates.isError ? failure.of(templates.error) : null}
             framed
             retrying={templates.isFetching}
             loadingLabel={commonMessages.state_loading()}
@@ -119,8 +129,12 @@ export default function FormulaTemplatesPage() {
                     <EmptyMedia variant="icon">
                       <LibraryIcon />
                     </EmptyMedia>
-                    <EmptyTitle>{m.templates_empty()}</EmptyTitle>
-                    <EmptyDescription>{m.templates_emptyHint()}</EmptyDescription>
+                    <EmptyTitle>
+                      {search.trim() ? m.binding_noMatchTitle() : m.templates_empty()}
+                    </EmptyTitle>
+                    <EmptyDescription>
+                      {search.trim() ? m.binding_noMatchHint() : m.templates_emptyHint()}
+                    </EmptyDescription>
                   </EmptyHeader>
                 </Empty>
               ) : (
@@ -203,20 +217,17 @@ export default function FormulaTemplatesPage() {
                       </div>
                     )
                   })}
-                  {templates.hasNextPage && (
-                    <button
-                      type="button"
-                      disabled={templates.isFetchingNextPage}
-                      onClick={() => void templates.fetchNextPage()}
-                      {...stylex.props(l.more)}
-                    >
-                      {m.list_loadMore()}
-                    </button>
-                  )}
                 </>
               )}
             </div>
           </AsyncSection>
+          {templates.data && (
+            <FormulaPager
+              result={templates.data}
+              busy={templates.isFetching}
+              onPage={(page) => setPageParam(page === 1 ? '' : String(page))}
+            />
+          )}
         </section>
       </div>
     </Screen>

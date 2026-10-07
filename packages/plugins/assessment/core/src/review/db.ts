@@ -671,6 +671,7 @@ export interface InboxRow {
   batchName: string
   itemId: string
   itemTitle: string
+  participantId: string
   participantName: string
   businessNo: string | null
   unitId: string | null
@@ -760,123 +761,90 @@ export const reviewsWaitingByBatchOf = (input: {
  * stage names roles, never a person, so nothing here is assigned, only
  * answered.
  */
-export const inboxPage = (input: {
-  tenantId: string
-  userId: string
-  batchIds: readonly string[]
-  after?: readonly [string, string] | undefined
-  limit: number
-}) =>
-  input.batchIds.length === 0
-    ? Effect.succeed([] as readonly InboxRow[])
-    : db
-        .query((k) => {
-          let query = k
-            .selectFrom('ReviewInstance as ri')
-            .innerJoin('Entry as e', (join) =>
-              join.onRef('e.tenantId', '=', 'ri.tenantId').onRef('e.id', '=', 'ri.entryId'),
-            )
-            .innerJoin('AssessmentBatch as b', (join) =>
-              join.onRef('b.tenantId', '=', 'e.tenantId').onRef('b.id', '=', 'e.batchId'),
-            )
-            .innerJoin('AssessmentItem as i', (join) =>
-              join.onRef('i.tenantId', '=', 'e.tenantId').onRef('i.id', '=', 'e.itemId'),
-            )
-            .innerJoin('BatchParticipant as bp', (join) =>
-              join.onRef('bp.tenantId', '=', 'e.tenantId').onRef('bp.id', '=', 'e.participantId'),
-            )
-            .innerJoin('User as su', (join) =>
-              join.onRef('su.tenantId', '=', 'bp.tenantId').onRef('su.id', '=', 'bp.userId'),
-            )
-            .innerJoin('EntryRevision as er', (join) =>
-              join.onRef('er.tenantId', '=', 'ri.tenantId').onRef('er.id', '=', 'ri.revisionId'),
-            )
-            .innerJoin('AssessmentItemRevision as ir', (join) =>
-              join
-                .onRef('ir.tenantId', '=', 'er.tenantId')
-                .onRef('ir.id', '=', 'er.itemRevisionId'),
-            )
-            .leftJoin('OrgNode as un', (join) =>
-              join
-                .onRef('un.tenantId', '=', 'bp.tenantId')
-                .onRef('un.id', '=', 'bp.assessmentAnchorNodeId'),
-            )
-            .select([
-              'ri.id as instanceId',
-              'ri.entryId',
-              'ri.roundNo',
-              'ri.currentRoute',
-              'e.batchId',
-              'b.name as batchName',
-              'e.itemId',
-              'i.title as itemTitle',
-              'su.displayName as participantName',
-              'su.businessNo',
-              'un.id as unitId',
-              'un.name as unitName',
-              'er.payload',
-              'ir.formConfig',
-              'ir.displayConfig',
-            ])
-            .select([
-              epoch('ri.created_at').as('submittedMs'),
-              sql<string>`ri.created_at::text`.as('submittedIso'),
-              sql<string>`(
+export const inboxQuery = (
+  k: Parameters<Parameters<typeof db.query>[0]>[0],
+  input: {
+    tenantId: string
+    userId: string
+    batchIds: readonly string[]
+  },
+) => {
+  return k
+    .selectFrom('ReviewInstance as ri')
+    .innerJoin('Entry as e', (join) =>
+      join.onRef('e.tenantId', '=', 'ri.tenantId').onRef('e.id', '=', 'ri.entryId'),
+    )
+    .innerJoin('AssessmentBatch as b', (join) =>
+      join.onRef('b.tenantId', '=', 'e.tenantId').onRef('b.id', '=', 'e.batchId'),
+    )
+    .innerJoin('AssessmentItem as i', (join) =>
+      join.onRef('i.tenantId', '=', 'e.tenantId').onRef('i.id', '=', 'e.itemId'),
+    )
+    .innerJoin('BatchParticipant as bp', (join) =>
+      join.onRef('bp.tenantId', '=', 'e.tenantId').onRef('bp.id', '=', 'e.participantId'),
+    )
+    .innerJoin('User as su', (join) =>
+      join.onRef('su.tenantId', '=', 'bp.tenantId').onRef('su.id', '=', 'bp.userId'),
+    )
+    .innerJoin('EntryRevision as er', (join) =>
+      join.onRef('er.tenantId', '=', 'ri.tenantId').onRef('er.id', '=', 'ri.revisionId'),
+    )
+    .innerJoin('AssessmentItemRevision as ir', (join) =>
+      join.onRef('ir.tenantId', '=', 'er.tenantId').onRef('ir.id', '=', 'er.itemRevisionId'),
+    )
+    .leftJoin('OrgNode as un', (join) =>
+      join
+        .onRef('un.tenantId', '=', 'bp.tenantId')
+        .onRef('un.id', '=', 'bp.assessmentAnchorNodeId'),
+    )
+    .select([
+      'ri.id as instanceId',
+      'ri.entryId',
+      'ri.roundNo',
+      'ri.currentRoute',
+      'e.batchId',
+      'b.name as batchName',
+      'e.itemId',
+      'bp.id as participantId',
+      'i.title as itemTitle',
+      'su.displayName as participantName',
+      'su.businessNo',
+      'un.id as unitId',
+      'un.name as unitName',
+      'er.payload',
+      'ir.formConfig',
+      'ir.displayConfig',
+    ])
+    .select([
+      epoch('ri.created_at').as('submittedMs'),
+      sql<string>`ri.created_at::text`.as('submittedIso'),
+      sql<string>`(
                 select count(*) from entry_revision_attachments era
                 where era.tenant_id = ri.tenant_id and era.revision_id = ri.revision_id
               )`.as('attachmentCount'),
-            ])
-            .where('ri.tenantId', '=', input.tenantId)
-            .where('ri.state', '=', 'active')
-            .where('e.batchId', 'in', [...input.batchIds])
-            .where(atHeldNode(input.tenantId, input.userId))
-            .where(
-              mayActOn({
-                tenantId: sql`${input.tenantId}`,
-                batchId: sql.ref('e.batch_id'),
-                nodeId: sql.ref('ri.current_node_id'),
-                roleIds: sql.ref('ri.current_role_ids'),
-                userId: sql`${input.userId}`,
-                subjectUserId: sql.ref('bp.user_id'),
-                actorId: sql.ref('er.actor_id'),
-                instanceId: sql.ref('ri.id'),
-                route: sql.ref('ri.current_route'),
-              }),
-            )
-            .orderBy('ri.createdAt')
-            .orderBy('ri.id')
-            .limit(input.limit)
-          if (input.after !== undefined) {
-            query = query.where(
-              sql<boolean>`(ri.created_at, ri.id) > (${input.after[0]}::timestamptz, ${input.after[1]}::uuid)`,
-            )
-          }
-          return query.execute()
-        })
-        .pipe(
-          Effect.map((rows) =>
-            rows.map((row): InboxRow => ({
-              instanceId: row.instanceId,
-              entryId: row.entryId,
-              batchId: row.batchId,
-              batchName: row.batchName,
-              itemId: row.itemId,
-              itemTitle: row.itemTitle,
-              participantName: row.participantName,
-              businessNo: row.businessNo,
-              unitId: row.unitId,
-              unitName: row.unitName,
-              roundNo: row.roundNo,
-              route: row.currentRoute as InboxRow['route'],
-              payload: row.payload,
-              formConfig: row.formConfig,
-              displayConfig: row.displayConfig,
-              attachmentCount: Number(row.attachmentCount ?? 0),
-              submittedAt: msOf(row.submittedMs),
-              submittedAtIso: row.submittedIso,
-            })),
-          ),
-        )
+    ])
+    .where('ri.tenantId', '=', input.tenantId)
+    .where('ri.state', '=', 'active')
+    .where(
+      input.batchIds.length === 0
+        ? sql<boolean>`false`
+        : sql<boolean>`e.batch_id = any(${uuidArray(input.batchIds)})`,
+    )
+    .where(atHeldNode(input.tenantId, input.userId))
+    .where(
+      mayActOn({
+        tenantId: sql`${input.tenantId}`,
+        batchId: sql.ref('e.batch_id'),
+        nodeId: sql.ref('ri.current_node_id'),
+        roleIds: sql.ref('ri.current_role_ids'),
+        userId: sql`${input.userId}`,
+        subjectUserId: sql.ref('bp.user_id'),
+        actorId: sql.ref('er.actor_id'),
+        instanceId: sql.ref('ri.id'),
+        route: sql.ref('ri.current_route'),
+      }),
+    )
+}
 
 /**
  * The decision itself, first writer wins: the round closes exactly once,
@@ -2003,116 +1971,82 @@ export const reviewerDeskOf = (input: { tenantId: string; batchId: string; userI
       }),
     )
 
-export const awaitingPage = (input: {
-  tenantId: string
-  batchId: string
-  userId: string
-  after?: readonly [string, string] | undefined
-  limit: number
-}) =>
-  db
-    .query((k) => {
-      let query = k
-        .selectFrom('ReviewSupplementRequest as sr')
-        .innerJoin('ReviewInstance as ri', (join) =>
-          join.onRef('ri.tenantId', '=', 'sr.tenantId').onRef('ri.id', '=', 'sr.reviewInstanceId'),
-        )
-        .innerJoin('Entry as e', (join) =>
-          join.onRef('e.tenantId', '=', 'ri.tenantId').onRef('e.id', '=', 'ri.entryId'),
-        )
-        .innerJoin('AssessmentItem as i', (join) =>
-          join.onRef('i.tenantId', '=', 'e.tenantId').onRef('i.id', '=', 'e.itemId'),
-        )
-        .innerJoin('BatchParticipant as bp', (join) =>
-          join.onRef('bp.tenantId', '=', 'e.tenantId').onRef('bp.id', '=', 'e.participantId'),
-        )
-        .innerJoin('User as su', (join) =>
-          join.onRef('su.tenantId', '=', 'bp.tenantId').onRef('su.id', '=', 'bp.userId'),
-        )
-        .innerJoin('EntryRevision as er', (join) =>
-          join.onRef('er.tenantId', '=', 'ri.tenantId').onRef('er.id', '=', 'ri.revisionId'),
-        )
-        .select([
-          'sr.id as requestId',
-          'sr.reviewInstanceId as instanceId',
-          'ri.entryId',
-          'sr.requestNo',
-          'sr.status',
-          'sr.requirements',
-          'su.displayName as participantName',
-          'su.businessNo',
-          'i.title as itemTitle',
-        ])
-        .select([
-          epoch('sr.created_at').as('requestedMs'),
-          sql<string>`sr.created_at::text`.as('requestedIso'),
-          epoch('sr.answered_at').as('answeredMs'),
-        ])
-        .where('sr.tenantId', '=', input.tenantId)
-        .where('e.batchId', '=', input.batchId)
-        .where((eb) =>
-          eb.or([
-            // an open ask is one reviewer's unfinished business, not the
-            // stage's: only its sender is waiting on it (§32.70)
-            eb.and([
-              eb('sr.status', '=', 'open'),
-              eb('ri.state', '=', 'awaiting_supplement'),
-              eb('sr.requestedBy', '=', input.userId),
-            ]),
-            // answered, and the round it belongs to is back open here -
-            // back in the shared pool, so every eligible reviewer sees it
-            eb.and([eb('sr.status', '=', 'answered'), eb('ri.state', 'in', ['active', 'blocked'])]),
-          ]),
-        )
-        .where(atHeldNode(input.tenantId, input.userId))
-        .where(
-          mayActOn({
-            tenantId: sql`${input.tenantId}`,
-            batchId: sql.ref('e.batch_id'),
-            nodeId: sql.ref('ri.current_node_id'),
-            roleIds: sql.ref('ri.current_role_ids'),
-            userId: sql`${input.userId}`,
-            subjectUserId: sql.ref('bp.user_id'),
-            actorId: sql.ref('er.actor_id'),
-            instanceId: sql.ref('ri.id'),
-            route: sql.ref('ri.current_route'),
-          }),
-        )
-        // newest ask first: the list is read as "what did I send out lately"
-        .orderBy('sr.createdAt', 'desc')
-        .orderBy('sr.id', 'desc')
-        .limit(input.limit)
-      if (input.after !== undefined) {
-        query = query.where(
-          sql<boolean>`(sr.created_at, sr.id) < (${input.after[0]}::timestamptz, ${input.after[1]}::uuid)`,
-        )
-      }
-      return query.execute()
-    })
-    .pipe(
-      Effect.map((rows) =>
-        rows.map((row): AwaitingRow => ({
-          requestId: row.requestId,
-          instanceId: row.instanceId,
-          entryId: row.entryId,
-          requestNo: row.requestNo,
-          status: row.status as AwaitingRow['status'],
-          participantName: row.participantName,
-          businessNo: row.businessNo,
-          itemTitle: row.itemTitle,
-          asks: (requirementsOf(row.requirements) ?? []).map((asked) => asked.label),
-          requestedAt: msOf(row.requestedMs),
-          requestedAtIso: row.requestedIso,
-          answeredAt: row.answeredMs == null ? null : msOf(row.answeredMs),
-        })),
-      ),
+export const awaitingQuery = (
+  k: Parameters<Parameters<typeof db.query>[0]>[0],
+  input: {
+    tenantId: string
+    userId: string
+    batchId: string
+  },
+) => {
+  return k
+    .selectFrom('ReviewSupplementRequest as sr')
+    .innerJoin('ReviewInstance as ri', (join) =>
+      join.onRef('ri.tenantId', '=', 'sr.tenantId').onRef('ri.id', '=', 'sr.reviewInstanceId'),
     )
+    .innerJoin('Entry as e', (join) =>
+      join.onRef('e.tenantId', '=', 'ri.tenantId').onRef('e.id', '=', 'ri.entryId'),
+    )
+    .innerJoin('AssessmentItem as i', (join) =>
+      join.onRef('i.tenantId', '=', 'e.tenantId').onRef('i.id', '=', 'e.itemId'),
+    )
+    .innerJoin('BatchParticipant as bp', (join) =>
+      join.onRef('bp.tenantId', '=', 'e.tenantId').onRef('bp.id', '=', 'e.participantId'),
+    )
+    .innerJoin('User as su', (join) =>
+      join.onRef('su.tenantId', '=', 'bp.tenantId').onRef('su.id', '=', 'bp.userId'),
+    )
+    .innerJoin('EntryRevision as er', (join) =>
+      join.onRef('er.tenantId', '=', 'ri.tenantId').onRef('er.id', '=', 'ri.revisionId'),
+    )
+    .select([
+      'sr.id as requestId',
+      'sr.reviewInstanceId as instanceId',
+      'ri.entryId',
+      'sr.requestNo',
+      'sr.status',
+      'sr.requirements',
+      'su.displayName as participantName',
+      'su.businessNo',
+      'i.title as itemTitle',
+    ])
+    .select([
+      epoch('sr.created_at').as('requestedMs'),
+      sql<string>`sr.created_at::text`.as('requestedIso'),
+      epoch('sr.answered_at').as('answeredMs'),
+    ])
+    .where('sr.tenantId', '=', input.tenantId)
+    .where('e.batchId', '=', input.batchId)
+    .where((eb) =>
+      eb.or([
+        // an open ask is one reviewer's unfinished business, not the
+        // stage's: only its sender is waiting on it (§32.70)
+        eb.and([
+          eb('sr.status', '=', 'open'),
+          eb('ri.state', '=', 'awaiting_supplement'),
+          eb('sr.requestedBy', '=', input.userId),
+        ]),
+        // answered, and the round it belongs to is back open here -
+        // back in the shared pool, so every eligible reviewer sees it
+        eb.and([eb('sr.status', '=', 'answered'), eb('ri.state', 'in', ['active', 'blocked'])]),
+      ]),
+    )
+    .where(atHeldNode(input.tenantId, input.userId))
+    .where(
+      mayActOn({
+        tenantId: sql`${input.tenantId}`,
+        batchId: sql.ref('e.batch_id'),
+        nodeId: sql.ref('ri.current_node_id'),
+        roleIds: sql.ref('ri.current_role_ids'),
+        userId: sql`${input.userId}`,
+        subjectUserId: sql.ref('bp.user_id'),
+        actorId: sql.ref('er.actor_id'),
+        instanceId: sql.ref('ri.id'),
+        route: sql.ref('ri.current_route'),
+      }),
+    )
+}
 
-/**
- * Every attachment a supplement answer of this entry's rounds ever cited.
- * The reuse set beside entry_revision_attachments: a file already part of
- * this claim's story may be cited again by a later answer, and only those.
- */
 export const supplementAttachmentHistory = (tenantId: string, entryId: string) =>
   db
     .query((k) =>

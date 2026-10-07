@@ -464,5 +464,10 @@
   "error_bundleFailed": "The source could not be packaged; see the compile results.",
   "error_executionLimit": "Compiling or extracting the contract took more than the allowed resources.",
   "error_testFailed": "Publishing needs every example to pass, and at least one example.",
-  "error_compileUnavailable": "The compile service is unavailable. Try again shortly."
+  "error_compileUnavailable": "The compile service is unavailable. Try again shortly.",
+  "pagination_label": "List pages",
+  "pagination_previous": "Previous page",
+  "pagination_next": "Next page",
+  "pagination_summary": "{from}–{to} of {total}",
+  "pagination_search": "Search formula names"
 }

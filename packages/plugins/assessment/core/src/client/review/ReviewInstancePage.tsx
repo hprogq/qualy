@@ -34,7 +34,7 @@ import { BatchScreen } from '../batch/BatchScreen.tsx'
 import { entryStatusMessage, type EntryDto } from '../entry/model.ts'
 import { sayEntryFailure } from '../entry/refusals.ts'
 import { reviewOutcomeMessage } from './events.ts'
-import { readRunScope, runRows, type InboxItemDto, type ReviewDto } from './model.ts'
+import { readRunScope, type ReviewDto } from './model.ts'
 import { useQueueRefresh, useReviewQueueQuery } from './queue.ts'
 import { type BatchDto } from '../phase/model.ts'
 
@@ -707,10 +707,6 @@ function Workbench({ batch }: { batch: BatchDto }) {
     if (round || kinds.has('review-inbox-changed')) refreshQueue(stale)
   })
 
-  const inbox = useQuery({
-    ...useReviewQueueQuery(batch.id),
-    refetchInterval: live ? 60_000 : 30_000,
-  })
   // an address that cannot name a round is not asked about at all: the
   // client would refuse to send it, and say so as if the reading had failed
   const addressable = isRecordId(instanceId)
@@ -733,20 +729,21 @@ function Workbench({ batch }: { batch: BatchDto }) {
   // its decision arrived left the queue without being handled here
   const handled = useMemo(() => log.filter((entry) => entry.status !== 'gone'), [log])
 
-  const scopeRows = useMemo(
-    () =>
-      runRows(
-        (inbox.data?.items ?? []).filter((row) => row.batchId === batch.id),
-        scope,
-      ),
-    [inbox.data, batch.id, scope],
-  )
-  const remaining = useMemo(
-    () => scopeRows.filter((row) => !decidedIds.has(row.instanceId)),
-    [scopeRows, decidedIds],
-  )
+  const scopedRequest = {
+    ...(scope.kind === 'item' ? { itemId: scope.itemId } : {}),
+    ...(scope.kind === 'person' ? { person: scope.participantId } : {}),
+    // Include recent completed acts too, so a previously cached page cannot flash them back.
+    exclude: log.slice(-100).map((entry) => entry.instanceId),
+  }
+  const inbox = useQuery({
+    ...useReviewQueueQuery(batch.id, { ...scopedRequest, focus: instanceId, limit: '20' }),
+    refetchInterval: live ? 60_000 : 30_000,
+  })
+  const remaining = (inbox.data?.items ?? []).filter((row) => !decidedIds.has(row.instanceId))
+  const remainingCount = inbox.data?.total ?? 0
+  const total = handled.length + remainingCount
   const currentIndex = remaining.findIndex((row) => row.instanceId === instanceId)
-  const total = handled.length + remaining.length
+  const advanceId = inbox.data?.firstId === instanceId ? inbox.data.nextId : inbox.data?.firstId
 
   const refresh = () => {
     void queryClient.invalidateQueries({ queryKey: query.assessment.key() })
@@ -924,10 +921,9 @@ function Workbench({ batch }: { batch: BatchDto }) {
   }, [lostTurn])
   useEffect(() => {
     if (!settledHere) return
-    const next = remaining[0]
-    if (next !== undefined) goTo(next.instanceId)
+    if (inbox.data?.firstId != null) goTo(inbox.data.firstId)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settledHere, remaining.length])
+  }, [settledHere, inbox.data?.firstId])
 
   // The queue is furniture, not a layer: it stays where it was left, and a
   // reload finds it there, but pressing back should never be about it.
@@ -1056,8 +1052,7 @@ function Workbench({ batch }: { batch: BatchDto }) {
     ])
     deferred.stage(staged)
     setDialog(null)
-    const next = remaining.find((row) => row.instanceId !== instanceId)
-    if (next !== undefined) goTo(next.instanceId)
+    if (advanceId != null) goTo(advanceId)
   }
 
   /** asking for more material, through the same window everything else uses */
@@ -1120,9 +1115,8 @@ function Workbench({ batch }: { batch: BatchDto }) {
   }
 
   const move = (step: 1 | -1) => {
-    const at = currentIndex === -1 ? 0 : currentIndex + step
-    const next = remaining[Math.max(0, Math.min(remaining.length - 1, at))]
-    if (next !== undefined && next.instanceId !== instanceId) goTo(next.instanceId)
+    const next = step === 1 ? inbox.data?.nextId : inbox.data?.previousId
+    if (next != null) goTo(next)
   }
 
   // the letters are choices, never acts: only ⌘↵ submits, and while the
@@ -1242,7 +1236,7 @@ function Workbench({ batch }: { batch: BatchDto }) {
 
   // over only when this sitting decided something: an already-closed round
   // opened from elsewhere is a page to read, not a run to finish
-  const done = remaining.length === 0 && log.length > 0 && !inbox.isPending
+  const done = inbox.data?.total === 0 && log.length > 0 && !inbox.isPending
   const bar = !done && !lostTurn && review !== undefined && review.capabilities.canDecide
   // Hold the shell's mobile foot while the review is still resolving. An
   // actionable review replaces it with the decision bar; waiting for the
@@ -1322,9 +1316,11 @@ function Workbench({ batch }: { batch: BatchDto }) {
             its width as a shrink-0 flex child just as well. */}
         <div {...stylex.props(styles.benchRow)}>
           <QueueRail
+            batchId={batch.id}
+            request={scopedRequest}
             rows={remaining}
             currentId={instanceId}
-            remainingCount={remaining.length}
+            remainingCount={remainingCount}
             open={queueOpen}
             onToggle={() => setQueueOpen(false)}
             onOpen={goTo}
@@ -1340,9 +1336,7 @@ function Workbench({ batch }: { batch: BatchDto }) {
                 onBack={backToQueue}
                 log={handled}
                 startedAt={startedAt.current}
-                inboxRows={(inbox.data?.items ?? []).filter(
-                  (row) => row.batchId === batch.id && !decidedIds.has(row.instanceId),
-                )}
+                exclude={scopedRequest.exclude}
               />
             ) : review === undefined ? (
               <BenchSkeleton />
@@ -1357,13 +1351,17 @@ function Workbench({ batch }: { batch: BatchDto }) {
                     currentIndex === -1
                       ? null
                       : {
-                          at: handled.length + currentIndex + 1,
+                          at:
+                            handled.length +
+                            ((inbox.data?.page ?? 1) - 1) * (inbox.data?.pageSize ?? 20) +
+                            currentIndex +
+                            1,
                           total,
                           done: handled.length,
                         }
                   }
-                  canPrev={currentIndex > 0}
-                  canNext={currentIndex !== -1 && currentIndex < remaining.length - 1}
+                  canPrev={inbox.data?.previousId != null}
+                  canNext={inbox.data?.nextId != null}
                   onMove={move}
                   onBack={backToQueue}
                   onQueue={() => setQueueOpen(true)}
@@ -1402,12 +1400,11 @@ function Workbench({ batch }: { batch: BatchDto }) {
                       </p>
                     </div>
                     <span {...stylex.props(styles.spacer)} />
-                    {remaining.some((row) => row.instanceId !== instanceId) ? (
+                    {advanceId != null ? (
                       <Button
                         size="sm"
                         onClick={() => {
-                          const next = remaining.find((row) => row.instanceId !== instanceId)
-                          if (next !== undefined) goTo(next.instanceId)
+                          if (advanceId != null) goTo(advanceId)
                         }}
                       >
                         {m.review_goneNext()}
@@ -1978,16 +1975,20 @@ function DoneScreen({
   onBack,
   log,
   startedAt,
-  inboxRows,
+  exclude,
 }: {
   batchId: string
   /** back to the queue as it was left */
   onBack: () => void
   log: readonly SessionEntry[]
   startedAt: number
-  inboxRows: readonly InboxItemDto[]
+  exclude: readonly string[]
 }) {
   const navigate = usePageNavigate()
+  const nextQueue = useQuery({
+    ...useReviewQueueQuery(batchId, { view: 'item', groupOrder: 'largest', limit: '1', exclude }),
+    refetchInterval: 30_000,
+  })
   const counts = {
     approve: log.filter((entry) => entry.decision === 'approve').length,
     reject: log.filter((entry) => entry.decision === 'reject').length,
@@ -1995,16 +1996,7 @@ function DoneScreen({
   }
   const spent = Math.max(0, Math.round((Date.now() - startedAt) / 1000))
   const spentLabel = `${Math.floor(spent / 60)}:${String(spent % 60).padStart(2, '0')}`
-  // the nearest next run: the fullest question still waiting
-  const next = (() => {
-    const byItem = new Map<string, { title: string; rows: InboxItemDto[] }>()
-    for (const row of inboxRows) {
-      const group = byItem.get(row.itemId)
-      if (group === undefined) byItem.set(row.itemId, { title: row.itemTitle, rows: [row] })
-      else group.rows.push(row)
-    }
-    return [...byItem.entries()].sort((a, b) => b[1].rows.length - a[1].rows.length)[0] ?? null
-  })()
+  const next = nextQueue.data?.groups[0] ?? null
 
   return (
     <div
@@ -2028,21 +2020,28 @@ function DoneScreen({
         <div {...stylex.props(styles.doneActions)}>
           {next !== null && (
             <Button
+              data-testid="review-next-run"
               onClick={() =>
                 navigate('assessment/review-instance', {
-                  params: { batchId, instanceId: next[1].rows[0]!.instanceId },
-                  search: { run: `item:${next[0]}` },
+                  params: { batchId, instanceId: next.firstInstanceId },
+                  search: { run: `item:${next.key}` },
                 })
               }
             >
-              {m.review_doneNext({ title: next[1].title, count: next[1].rows.length })}
+              {m.review_doneNext({ title: next.name, count: next.count })}
             </Button>
           )}
           <Button variant="outline" onClick={onBack}>
             {m.review_doneBack()}
           </Button>
           <span {...stylex.props(styles.keysSpacer)} />
-          <p {...stylex.props(styles.doneLeft)}>{m.review_doneLeft({ count: inboxRows.length })}</p>
+          <p
+            data-testid="review-done-left"
+            data-count={nextQueue.data?.queueTotal}
+            {...stylex.props(styles.doneLeft)}
+          >
+            {m.review_doneLeft({ count: nextQueue.data?.queueTotal ?? 0 })}
+          </p>
         </div>
       </Stagger>
     </div>

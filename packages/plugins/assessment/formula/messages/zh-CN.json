@@ -464,5 +464,10 @@
   "error_bundleFailed": "代码打包失败，详情见编译结果。",
   "error_executionLimit": "编译或解析参数结构超出资源限制，请精简公式后重试。",
   "error_testFailed": "发布前至少需要一条示例，且所有示例都必须通过。",
-  "error_compileUnavailable": "编译服务暂时不可用，请稍后再试。"
+  "error_compileUnavailable": "编译服务暂时不可用，请稍后再试。",
+  "pagination_label": "列表分页",
+  "pagination_previous": "上一页",
+  "pagination_next": "下一页",
+  "pagination_summary": "第 {from}–{to} 条，共 {total} 条",
+  "pagination_search": "搜索公式名称"
 }

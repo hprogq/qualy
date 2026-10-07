@@ -1,3 +1,6 @@
+import { pageNumber } from '@qualy/api-kit/schema'
+import { Pager } from '@qualy/ui/pager'
+import { useIsMobile } from '@qualy/ui/use-mobile'
 import { useLocale, useList } from '@qualy/web-i18n'
 import {
   lazy,
@@ -9,17 +12,16 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { CheckIcon, ChevronRightIcon, HistoryIcon, RotateCwIcon } from 'lucide-react'
 import {
-  useApi,
   useApiQuery,
   useLoadFailure,
   usePageNavigate,
   usePageRouteParams,
-  useRunApi,
-  cursorPages,
+  usePageQueryState,
+  usePageQueryUpdate,
 } from '@qualy/web-runtime'
 
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
@@ -927,40 +929,37 @@ function Desk({
   note: ReactNode
 }) {
   const query = useApiQuery(assessmentApi)
-  const api = useApi(assessmentApi)
-  const run = useRunApi()
   const navigate = usePageNavigate()
   const locale = useLocale()
   const failure = useLoadFailure()
   const zone = useBatchZone()
-  const [lane, setLane] = useState<Lane>('all')
+  const [laneParam] = usePageQueryState('activityLane')
+  const lane: Lane = laneParam === 'participant' || laneParam === 'reviewer' ? laneParam : 'all'
+  const [pageParam, setPageParam] = usePageQueryState('activityPage')
+  const write = usePageQueryUpdate()
+  const setLane = (value: Lane) =>
+    write({ activityLane: value === 'all' ? '' : value, activityPage: '' })
+  const activityRef = useRef<HTMLElement>(null)
+  const compact = useIsMobile()
   // the desk's list fragments join in the reader's own punctuation
   const listJoin = useList()
 
   const perspective = lane === 'all' ? undefined : lane
-  const activity = useInfiniteQuery({
-    queryKey: [
-      ...query.assessment.listMyActivity.key({ params: { batchId }, query: {} }),
-      { lane },
-      'infinite',
-    ],
-    queryFn: ({ pageParam }) =>
-      run(
-        api.assessment.listMyActivity({
-          params: { batchId },
-          query: {
-            ...(pageParam !== undefined ? { cursor: pageParam } : {}),
-            ...(perspective !== undefined ? { perspective } : {}),
-          },
-        }),
-      ),
-    ...cursorPages,
+  const activity = useQuery({
+    ...query.assessment.listMyActivity.queryOptions({
+      params: { batchId },
+      query: {
+        page: String(pageNumber(pageParam)),
+        ...(perspective === undefined ? {} : { perspective }),
+      },
+    }),
+    meta: { lane, batchId },
+    placeholderData: (previous, previousQuery) =>
+      previousQuery?.meta?.['lane'] === lane && previousQuery.meta['batchId'] === batchId
+        ? previous
+        : undefined,
   })
-
-  const rows = useMemo(
-    () => activity.data?.pages.flatMap((page) => page.items) ?? [],
-    [activity.data],
-  )
+  const rows = useMemo(() => activity.data?.items ?? [], [activity.data])
   const groups = useMemo(() => groupByDay(rows, locale, zone), [rows, locale, zone])
   // the unread claims, marked once each: the newest row of that claim in the
   // feed carries the dot, read state stays the version pair's
@@ -1220,7 +1219,13 @@ function Desk({
       {note}
 
       {own && (
-        <section {...stylex.props(styles.activity)}>
+        <section
+          ref={activityRef}
+          tabIndex={-1}
+          aria-label={m.overview_activityTitle()}
+          aria-busy={activity.isFetching}
+          {...stylex.props(styles.activity)}
+        >
           <div {...stylex.props(styles.activityHead)}>
             <h2 {...stylex.props(styles.activityTitle)}>{m.overview_activityTitle()}</h2>
             {(desk?.participant?.unreadEntryIds.length ?? 0) > 0 && (
@@ -1397,15 +1402,31 @@ function Desk({
                   })}
                 </section>
               ))}
-              {activity.hasNextPage && (
-                <button
-                  type="button"
-                  disabled={activity.isFetchingNextPage}
-                  onClick={() => void activity.fetchNextPage()}
-                  {...stylex.props(styles.moreRow)}
-                >
-                  {m.overview_activityMore()}
-                </button>
+              {activity.data && (
+                <Pager
+                  testId="activity-pager"
+                  label={m.overview_activityTitle()}
+                  previousLabel={m.action_previousPage()}
+                  nextLabel={m.action_nextPage()}
+                  page={activity.data.page}
+                  pageSize={activity.data.pageSize}
+                  total={activity.data.total}
+                  compact={compact}
+                  disabled={activity.isFetching}
+                  summary={m.review_pageSummary({
+                    from:
+                      activity.data.total === 0
+                        ? 0
+                        : (activity.data.page - 1) * activity.data.pageSize + 1,
+                    to: (activity.data.page - 1) * activity.data.pageSize + rows.length,
+                    total: activity.data.total,
+                  })}
+                  onPage={(next) => {
+                    activityRef.current?.focus({ preventScroll: true })
+                    activityRef.current?.scrollIntoView({ block: 'start' })
+                    setPageParam(next === 1 ? '' : String(next))
+                  }}
+                />
               )}
             </div>
           )}

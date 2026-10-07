@@ -109,9 +109,11 @@ describe('the sections of a person’s record this plugin holds', () => {
         client: fakeClient({
           app: { getManifest: () => Effect.succeed(manifest()) },
           assessment: {
-            listUserBatches: () => Effect.succeed({ items: memberships(3), nextCursor: null }),
-            // a full page reads as at least that many
-            listUserEntries: () => Effect.succeed({ items: claims(20), nextCursor: 'more' }),
+            listUserBatches: () =>
+              Effect.succeed({ items: memberships(3), total: 3, page: 1, pageSize: 20 }),
+            // The rail uses the authorized total across all pages.
+            listUserEntries: () =>
+              Effect.succeed({ items: claims(1), total: 42, page: 1, pageSize: 1 }),
           },
         }),
         registry,
@@ -125,7 +127,7 @@ describe('the sections of a person’s record this plugin holds', () => {
       await expect.poll(() => counted().length, { timeout: 5_000 }).toBe(2)
       const bySection = new Map(counted().map((badge) => [badge.dataset['section'], badge]))
       expect(bySection.get('batches')?.dataset['count']).toBe('3')
-      expect(bySection.get('entries')?.dataset['count']).toBe('20')
+      expect(bySection.get('entries')?.dataset['count']).toBe('42')
       // each beside the entry it counts for
       expect(bySection.get('batches')?.closest('a')?.textContent).toContain('参评批次')
       expect(bySection.get('entries')?.closest('a')?.textContent).toContain('申报记录')

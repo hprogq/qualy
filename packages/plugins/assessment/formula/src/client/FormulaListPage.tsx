@@ -1,20 +1,22 @@
+import { pageNumber } from '@qualy/api-kit/schema'
+import { FormulaPager } from './FormulaPager.tsx'
 import { assertNever, useLocale } from '@qualy/web-i18n'
 
 import {
-  useRunApi,
   useApiMutation,
-  PageLink,
-  cursorPages,
   useApi,
+  PageLink,
   useApiQuery,
   useLoadFailure,
+  usePageQueryState,
+  usePageQueryUpdate,
   usePageNavigate,
   usePageTitle,
 } from '@qualy/web-runtime'
 
 import * as stylex from '@stylexjs/stylex'
-import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query'
-import { useMemo, useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useState } from 'react'
 
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
@@ -96,8 +98,8 @@ function NewFormulaDialog({
   onClose: () => void
   onCreated: (functionId: string) => void
 }) {
-  const api = useApi(formulaApi)
   const query = useApiQuery(formulaApi)
+  const api = useApi(formulaApi)
   const queryClient = useQueryClient()
 
   const [name, setName] = useState('')
@@ -180,8 +182,6 @@ function NewFormulaDialog({
 }
 
 export default function FormulaListPage() {
-  const api = useApi(formulaApi)
-  const runApi = useRunApi()
   const query = useApiQuery(formulaApi)
   const locale = useLocale()
   const failure = useLoadFailure()
@@ -189,20 +189,21 @@ export default function FormulaListPage() {
   const navigate = usePageNavigate()
   const [creating, setCreating] = useState(false)
 
-  const functions = useInfiniteQuery({
-    queryKey: [...query.assessmentFormula.listFormulaFunctions.key({ query: {} }), 'infinite'],
-    queryFn: ({ pageParam }) =>
-      runApi(
-        api.assessmentFormula.listFormulaFunctions({
-          query: pageParam !== undefined ? { cursor: pageParam } : {},
-        }),
-      ),
-    ...cursorPages,
+  const [pageParam, setPageParam] = usePageQueryState('page')
+  const [search] = usePageQueryState('search')
+  const write = usePageQueryUpdate()
+  const functions = useQuery({
+    ...query.assessmentFormula.listFormulaFunctions.queryOptions({
+      query: {
+        page: String(pageNumber(pageParam)),
+        ...(search.trim() ? { search: search.trim() } : {}),
+      },
+    }),
+    meta: { formulaSearch: search },
+    placeholderData: (previous, previousQuery) =>
+      previousQuery?.meta?.['formulaSearch'] === search ? previous : undefined,
   })
-  const items = useMemo(
-    () => functions.data?.pages.flatMap((page) => page.items) ?? [],
-    [functions.data],
-  )
+  const items = functions.data?.items ?? []
 
   const openEditor = (functionId: string) =>
     navigate('assessment-formula/editor', { params: { functionId } })
@@ -230,7 +231,13 @@ export default function FormulaListPage() {
       actions={newButton}
     >
       <div {...stylex.props(l.page)}>
-        <section {...stylex.props(l.section)}>
+        <section
+          data-formula-results
+          tabIndex={-1}
+          aria-label={m.pagination_label()}
+          aria-busy={functions.isFetching}
+          {...stylex.props(l.section)}
+        >
           <div {...stylex.props(l.sectionHead)}>
             <span {...stylex.props(l.sectionLabel)}>{m.list_all()}</span>
             <span {...stylex.props(l.spring)} />
@@ -244,13 +251,17 @@ export default function FormulaListPage() {
             </PageLink>
           </div>
 
+          <Input
+            aria-label={m.pagination_search()}
+            placeholder={m.pagination_search()}
+            maxLength={200}
+            value={search}
+            onChange={(event) => write({ search: event.target.value, page: '' })}
+          />
+
           <AsyncSection
             pending={functions.isPending}
-            // what is already listed stays through a later page that failed:
-            // its way to more is still there to press
-            error={
-              functions.isError && functions.data === undefined ? failure.of(functions.error) : null
-            }
+            error={functions.isError ? failure.of(functions.error) : null}
             framed
             retrying={functions.isFetching}
             loadingLabel={commonMessages.state_loading()}
@@ -265,8 +276,12 @@ export default function FormulaListPage() {
                     <EmptyMedia variant="icon">
                       <SigmaIcon />
                     </EmptyMedia>
-                    <EmptyTitle>{m.list_empty()}</EmptyTitle>
-                    <EmptyDescription>{m.list_emptyHint()}</EmptyDescription>
+                    <EmptyTitle>
+                      {search.trim() ? m.binding_noMatchTitle() : m.list_empty()}
+                    </EmptyTitle>
+                    <EmptyDescription>
+                      {search.trim() ? m.binding_noMatchHint() : m.list_emptyHint()}
+                    </EmptyDescription>
                   </EmptyHeader>
                   <EmptyContent>
                     <Button variant="outline" onClick={() => setCreating(true)}>
@@ -354,20 +369,17 @@ export default function FormulaListPage() {
                       </div>
                     )
                   })}
-                  {functions.hasNextPage && (
-                    <button
-                      type="button"
-                      disabled={functions.isFetchingNextPage}
-                      onClick={() => void functions.fetchNextPage()}
-                      {...stylex.props(l.more)}
-                    >
-                      {m.list_loadMore()}
-                    </button>
-                  )}
                 </>
               )}
             </div>
           </AsyncSection>
+          {functions.data && (
+            <FormulaPager
+              result={functions.data}
+              busy={functions.isFetching}
+              onPage={(page) => setPageParam(page === 1 ? '' : String(page))}
+            />
+          )}
         </section>
 
         <NewFormulaDialog

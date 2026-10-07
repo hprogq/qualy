@@ -41,6 +41,7 @@ import { PhaseCard, PhaseRow, type PhaseRowProps } from './phase/PhaseRow.tsx'
 import { PhaseDetailsPanel } from './phase/PhaseDetailsPanel.tsx'
 import { ScheduleDialog, TemplateDialog, UnscheduleDialog } from './phase/PhaseDialogs.tsx'
 import { ZoneNote } from './batch/BatchZone.tsx'
+import { useTemplateChoices } from './phase/template-choices.tsx'
 import * as commonMessages from '@qualy/web-i18n/messages'
 import * as m from '#messages'
 
@@ -270,12 +271,8 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
   const phases = useQuery(
     query.assessment.getPhases.queryOptions({ params: { batchId: batch.id } }),
   )
-  const timelines = useQuery(
-    query.assessment.listTemplates.queryOptions({ query: { kind: 'timeline' } }),
-  )
-  const presets = useQuery(
-    query.assessment.listTemplates.queryOptions({ query: { kind: 'phase' } }),
-  )
+  const timelines = useTemplateChoices('timeline')
+  const presets = useTemplateChoices('phase')
   // the paper an item allowance is chosen from, and the names a row's
   // allowance is said in
   const items = useQuery(query.assessment.listItems.queryOptions({ params: { batchId: batch.id } }))
@@ -290,7 +287,7 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
   // the timeline templates a plan may be added from; with none, nothing
   // offers to add from one. Only a plan nobody has entered yet takes one
   // (the server refuses the rest), so only there is it offered.
-  const hasTimelines = batch.status === 'draft' && (timelines.data?.items.length ?? 0) > 0
+  const hasTimelines = batch.status === 'draft' && timelines.available
 
   const rows = useMemo(() => phases.data?.phases ?? [], [phases.data])
   const serverDrafts = useMemo(() => rows.map(draftOf), [rows])
@@ -834,7 +831,8 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
       <PhaseDetailsPanel
         draft={opened}
         stored={opened?.id !== undefined ? storedById.get(opened.id) : undefined}
-        presets={presets.data?.items ?? []}
+        presets={presets.items}
+        presetControls={presets.controls}
         sections={scopeSections(
           groups.data?.groups ?? [],
           items.data?.items ?? [],
@@ -883,7 +881,8 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
       />
       <TemplateDialog
         open={templateOpen}
-        templates={timelines.data?.items ?? []}
+        templates={timelines.items}
+        templateControls={timelines.controls}
         value={templateId}
         unsaved={dirty}
         pending={addFromTemplate.isPending || addingAfterSave}

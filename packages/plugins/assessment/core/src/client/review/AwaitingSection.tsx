@@ -1,14 +1,17 @@
-import { useQuery } from '@tanstack/react-query'
+import { useEffect } from 'react'
+import { AsyncSection } from '@qualy/ui/admin'
+import * as commonMessages from '@qualy/web-i18n/messages'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { ClockIcon } from 'lucide-react'
-import { usePageNavigate } from '@qualy/web-runtime'
+import { useLoadFailure, usePageNavigate } from '@qualy/web-runtime'
 import { useList } from '@qualy/web-i18n'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
 import { Card } from '@qualy/ui/screen'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 
-import { pageOf, useHowLongAgo, useQueueClock, type AwaitingDto } from './model.ts'
+import { useHowLongAgo, useQueueClock, type AwaitingDto } from './model.ts'
 import { useAwaitingQuery } from './queue.ts'
 import { PagerFoot } from './QueueViews.tsx'
 import * as m from '#messages'
@@ -322,26 +325,53 @@ export function AwaitingSection({
   onPage: (page: number) => void
 }) {
   const navigate = usePageNavigate()
+  const loadFailure = useLoadFailure()
   const howLongAgo = useHowLongAgo()
   const asked = useQuery({
-    ...useAwaitingQuery(batchId),
+    ...useAwaitingQuery(batchId, page, ASKED_PAGE),
     refetchInterval: 30_000,
+    placeholderData: keepPreviousData,
   })
+  useEffect(() => {
+    if (asked.data !== undefined && !asked.isPlaceholderData && asked.data.page !== page)
+      onPage(asked.data.page)
+  }, [asked.data, asked.isPlaceholderData, page, onPage])
   const rows = asked.data?.items ?? []
+  if (asked.data === undefined)
+    return (
+      <AsyncSection
+        pending={asked.isPending}
+        error={asked.error === null ? null : loadFailure.of(asked.error)}
+        retrying={asked.isFetching}
+        loadingLabel={commonMessages.state_loading()}
+        retryLabel={commonMessages.action_retry()}
+        onRetry={() => void asked.refetch()}
+      >
+        {null}
+      </AsyncSection>
+    )
   // its own view now, so an empty one says so instead of vanishing: a tab
   // that opens onto nothing at all reads as broken, not as quiet
   if (rows.length === 0) {
     return <p {...stylex.props(styles.empty)}>{m.review_awaitingEmpty()}</p>
   }
-  const answered = rows.filter((row) => row.status === 'answered').length
-  const list = pageOf(rows, page, ASKED_PAGE)
+  const answered = asked.data?.answered ?? 0
+  const total = asked.data?.total ?? 0
+  const at = asked.data?.page ?? page
+  const list = {
+    rows,
+    page: at,
+    total,
+    from: rows.length === 0 ? 0 : (at - 1) * ASKED_PAGE + 1,
+    to: (at - 1) * ASKED_PAGE + rows.length,
+  }
 
   return (
-    <Card data-testid="awaiting-pane" data-count={rows.length}>
+    <Card data-testid="awaiting-pane" tabIndex={-1} data-count={total}>
       <header {...stylex.props(styles.head)}>
         <p {...stylex.props(styles.headTitle)}>{m.review_awaitingTitle()}</p>
         <Badge variant="outline" className={stylex.props(styles.countBadge).className}>
-          {m.review_awaitingCount({ count: rows.length })}
+          {m.review_awaitingCount({ count: total })}
         </Badge>
         {answered > 0 && (
           <p {...stylex.props(styles.quietNote)}>{m.review_awaitingBack({ count: answered })}</p>
@@ -373,7 +403,13 @@ export function AwaitingSection({
           />
         ))}
       </ul>
-      <PagerFoot list={list} size={ASKED_PAGE} onPage={onPage} anchor="awaiting-pane" />
+      <PagerFoot
+        disabled={asked.isFetching}
+        list={list}
+        size={ASKED_PAGE}
+        onPage={onPage}
+        anchor="awaiting-pane"
+      />
     </Card>
   )
 }

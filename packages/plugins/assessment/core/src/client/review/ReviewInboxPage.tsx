@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useLocation, useNavigate } from 'react-router'
-import { useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { FileTextIcon, SearchIcon, ShieldIcon } from 'lucide-react'
 import {
@@ -32,7 +32,7 @@ import { useAwaitingQuery, useQueueRefresh, useReviewQueueQuery } from './queue.
 import { useDraftSweep } from './use-draft.ts'
 import { rememberQueuePlace } from './queue-place.ts'
 import { ItemQueue, PersonQueue, QueueSkeleton, TimeQueue } from './QueueViews.tsx'
-import { matchesSearch, pageNumberOf, type InboxItemDto } from './model.ts'
+import { pageNumberOf, type InboxItemDto } from './model.ts'
 import * as commonMessages from '@qualy/web-i18n/messages'
 import * as m from '#messages'
 
@@ -226,10 +226,18 @@ const viewOf = (raw: string): View =>
 
 /**
  * Everything waiting for this reader's decision in the round, and what their
- * step has asked somebody else for: read whole, kept current by the batch's
+ * step has asked somebody else for: paged by the server, kept current by the batch's
  * wake-ups, and read at all only by somebody who reviews here.
  */
 function useQueue(batchId: string, reviewing: boolean) {
+  const [viewRaw] = usePageQueryState('view', 'item')
+  const view = viewOf(viewRaw)
+  const [item] = usePageQueryState('item')
+  const [person] = usePageQueryState('person')
+  const [unit] = usePageQueryState('unit')
+  const [search] = usePageQueryState('q')
+  const [page] = usePageQueryState('page')
+  const [groupPage] = usePageQueryState('groupPage')
   const query = useApiQuery(assessmentApi)
   // queue changes arrive as wake-ups; the poll below is the fallback pace
   const refreshQueue = useQueueRefresh(batchId)
@@ -246,7 +254,17 @@ function useQueue(batchId: string, reviewing: boolean) {
     stale(query.assessment.listAwaitingSupplements.key({ query: { batchId } }))
   })
   const inbox = useQuery({
-    ...useReviewQueueQuery(batchId),
+    ...useReviewQueueQuery(batchId, {
+      view: view === 'asked' ? 'time' : view,
+      page: page || '1',
+      limit: view === 'time' ? '20' : '10',
+      groupPage: groupPage || '1',
+      ...(item !== '' && view !== 'person' ? { itemId: item } : {}),
+      ...(person !== '' && view === 'person' ? { person } : {}),
+      ...(unit !== '' ? { unitId: unit } : {}),
+      ...(search.trim() !== '' ? { search: search.trim() } : {}),
+    }),
+    placeholderData: keepPreviousData,
     enabled: reviewing,
     refetchInterval: live ? 60_000 : 30_000,
   })
@@ -256,11 +274,7 @@ function useQueue(batchId: string, reviewing: boolean) {
     enabled: reviewing,
     refetchInterval: live ? 60_000 : 30_000,
   })
-  const all = useMemo(
-    () => (inbox.data?.items ?? []).filter((item) => item.batchId === batchId),
-    [inbox.data, batchId],
-  )
-  return { inbox, asked, all, awaiting: asked.data?.items.length ?? 0 }
+  return { inbox, asked, all: inbox.data?.items ?? [], awaiting: asked.data?.total ?? 0 }
 }
 
 type Queue = ReturnType<typeof useQueue>
@@ -269,7 +283,7 @@ type Queue = ReturnType<typeof useQueue>
 function useOpenRow(batchId: string) {
   const navigate = usePageNavigate()
   const location = useLocation()
-  return (row: InboxItemDto, run: string) => {
+  return (row: Pick<InboxItemDto, 'instanceId'>, run: string) => {
     rememberQueuePlace(batchId, location.search)
     navigate('assessment/review-instance', {
       params: { batchId, instanceId: row.instanceId },
@@ -291,7 +305,7 @@ export default function ReviewInboxPage() {
   const reviewing = standing.data?.batch.capabilities.review === true
   const queue = useQueue(batchId, reviewing)
   const open = useOpenRow(batchId)
-  const first = queue.all[0]
+  const first = queue.inbox.data?.queueFirstId
   return (
     <BatchScreen
       title={m.review_tab()}
@@ -307,8 +321,8 @@ export default function ReviewInboxPage() {
       actions={
         // the whole queue from its oldest filing: the way in for somebody
         // who only wants to get through what is waiting
-        reviewing && first !== undefined ? (
-          <Button data-testid="review-start" onClick={() => open(first, '')}>
+        reviewing && first != null ? (
+          <Button data-testid="review-start" onClick={() => open({ instanceId: first }, '')}>
             {m.review_runStart()}
           </Button>
         ) : undefined
@@ -345,7 +359,7 @@ function QueueStanding({ queue }: { queue: Queue }) {
       <Skeleton className={stylex.props(styles.standingBones).className} />
     ) : null
   }
-  const pending = queue.all.length
+  const pending = queue.inbox.data.queueTotal
   const today = queue.inbox.data.handledToday
   const parts: ReactNode[] = [
     m.review_groupCount({ count: pending }),
@@ -379,7 +393,7 @@ function QueueBody({
   batchId: string
   view: View
   queue: Queue
-  onOpen: (row: InboxItemDto, run: string) => void
+  onOpen: (row: Pick<InboxItemDto, 'instanceId'>, run: string) => void
 }) {
   const loadFailure = useLoadFailure()
   const location = useLocation()
@@ -403,7 +417,7 @@ function QueueBody({
 
   /** any narrowing of the queue starts it again from its first page */
   const narrow = (changes: Record<string, string>, history: 'replace' | 'push' = 'replace') =>
-    update({ ...changes, page: '' }, { history })
+    update({ ...changes, page: '', groupPage: '' }, { history })
 
   // Where the list and the filings are one screen after the other, picking
   // a question or a person is a step into its own screen, and the back key
@@ -429,36 +443,18 @@ function QueueBody({
     narrow({ [key]: '' })
   }
 
-  const all = queue.all
-  const rows = useMemo(
-    () =>
-      all.filter(
-        (row) =>
-          // each narrowing only where its control stands
-          (view !== 'time' || itemKey === '' || row.itemId === itemKey) &&
-          (unitFilter === '' || row.unitId === unitFilter) &&
-          matchesSearch(row, search.trim()),
-      ),
-    [all, view, itemKey, unitFilter, search],
-  )
-  const itemOptions = useMemo(
-    () =>
-      [...new Map(all.map((row) => [row.itemId, row.itemTitle])).entries()]
-        .map(([id, title]) => [id, title] as const)
-        .sort(([, a], [, b]) => a.localeCompare(b)),
-    [all],
-  )
-  const unitOptions = useMemo(
-    () =>
-      [
-        ...new Map(
-          all.flatMap((row) => (row.unitId === null ? [] : [[row.unitId, row.unitName ?? '']])),
-        ).entries(),
-      ]
-        .map(([id, name]) => [id, String(name)] as const)
-        .sort(([, a], [, b]) => a.localeCompare(b)),
-    [all],
-  )
+  const rows = queue.all
+  const data = queue.inbox.data
+  const itemOptions = (data?.itemOptions ?? []).map(({ id, name }) => [id, name] as const)
+  const unitOptions = (data?.unitOptions ?? []).map(({ id, name }) => [id, name] as const)
+  const onGroupPage = (next: number) =>
+    update({ groupPage: String(next), item: '', person: '', page: '' })
+  useEffect(() => {
+    if (data === undefined || queue.inbox.isPlaceholderData || view === 'asked') return
+    const corrected: Record<string, string> = {}
+    if (page !== data.page) corrected.page = data.page === 1 ? '' : String(data.page)
+    if (Object.keys(corrected).length > 0) update(corrected)
+  }, [data, queue.inbox.isPlaceholderData, page, view, update])
   const onPage = (next: number) => update({ page: next === 1 ? '' : String(next) })
   const onSearch = (value: string) => narrow({ q: value })
 
@@ -487,7 +483,9 @@ function QueueBody({
             <Tabs
               variant="segmented"
               value={view}
-              onValueChange={(next) => update({ view: next === 'item' ? '' : next, page: '' })}
+              onValueChange={(next) =>
+                update({ view: next === 'item' ? '' : next, page: '', groupPage: '' })
+              }
               xstyle={styles.viewsField}
             >
               <TabsList>
@@ -571,7 +569,7 @@ function QueueBody({
             about the queue alone, so all-done gets its whole screen back */}
         {view === 'asked' ? (
           <AwaitingSection batchId={batchId} page={page} onPage={onPage} />
-        ) : all.length === 0 ? (
+        ) : data?.queueTotal === 0 ? (
           // a phase that keeps judging shut empties the queue however much
           // is waiting, and nothing will arrive until it opens: that is not
           // a quiet day, and promising new work would be wrong
@@ -603,13 +601,16 @@ function QueueBody({
               body={m.review_nothingBody()}
             />
           )
-        ) : rows.length === 0 ? (
+        ) : data?.filteredTotal === 0 ? (
           <p data-testid="review-no-matches" {...stylex.props(styles.noMatches)}>
             {m.review_matchesNone()}
           </p>
         ) : view === 'item' ? (
           <ItemQueue
             rows={rows}
+            serverPage={data}
+            fetching={queue.inbox.isFetching}
+            onGroupPage={onGroupPage}
             chosen={itemKey}
             page={page}
             onChoose={(itemId, drills) => choose('item', itemId, drills)}
@@ -618,10 +619,20 @@ function QueueBody({
             onOpen={onOpen}
           />
         ) : view === 'time' ? (
-          <TimeQueue rows={rows} page={page} onPage={onPage} onOpen={onOpen} />
+          <TimeQueue
+            rows={rows}
+            serverPage={data}
+            fetching={queue.inbox.isFetching}
+            page={page}
+            onPage={onPage}
+            onOpen={onOpen}
+          />
         ) : (
           <PersonQueue
             rows={rows}
+            serverPage={data}
+            fetching={queue.inbox.isFetching}
+            onGroupPage={onGroupPage}
             chosen={personKey}
             page={page}
             onChoose={(key, drills) => choose('person', key, drills)}

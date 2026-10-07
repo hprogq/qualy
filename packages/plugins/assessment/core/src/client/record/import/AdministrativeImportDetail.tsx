@@ -1,18 +1,19 @@
+import { pageNumber } from '@qualy/api-kit/schema'
+import { RecordPager } from '../RecordPager.tsx'
 import { assertNever, formatPlatformFailure as formatError, useLocale } from '@qualy/web-i18n'
 
 import {
   useApiMutation,
   LoadFailure,
-  cursorPages,
   isRecordId,
   useApi,
   useApiQuery,
   useLoadFailure,
-  useRunApi,
+  usePageQueryState,
 } from '@qualy/web-runtime'
-import { Fragment, useMemo, useState } from 'react'
+import { Fragment, useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
-import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronRightIcon, DownloadIcon } from 'lucide-react'
 import { choiceLabel, displayTitle, kindOf, type AtomicSchema } from '@qualy/value-schema'
 
@@ -168,7 +169,6 @@ const styles = stylex.create({
   },
   waitingRows: { display: 'flex', flexDirection: 'column', gap: 10, paddingTop: 6 },
   waitingBone: { height: 13, borderRadius: 4 },
-  moreRow: { display: 'flex', justifyContent: 'center', paddingBlock: 8 },
 })
 
 export function AdministrativeImportDetail({
@@ -181,7 +181,6 @@ export function AdministrativeImportDetail({
   onOpenEntry: (entryId: string) => void
 }) {
   const api = useApi(assessmentApi)
-  const run = useRunApi()
   const query = useApiQuery(assessmentApi)
   const queryClient = useQueryClient()
   const locale = useLocale()
@@ -196,25 +195,19 @@ export function AdministrativeImportDetail({
     ...query.assessment.getAdministrativeImport.queryOptions({ params: { importId } }),
     enabled: named,
   })
-  const rows = useInfiniteQuery({
-    queryKey: [
-      ...query.assessment.listAdministrativeImportRows.key({ params: { importId }, query: {} }),
-      'infinite',
-    ],
-    queryFn: ({ pageParam }) =>
-      run(
-        api.assessment.listAdministrativeImportRows({
-          params: { importId },
-          query: {
-            limit: String(PAGE),
-            ...(pageParam !== undefined ? { cursor: pageParam } : {}),
-          },
-        }),
-      ),
-    ...cursorPages,
+  const [page, setPage] = usePageQueryState('rowsPage')
+  const identity = importId
+  const rows = useQuery({
+    ...query.assessment.listAdministrativeImportRows.queryOptions({
+      params: { importId },
+      query: { page: String(pageNumber(page)), limit: String(PAGE) },
+    }),
+    meta: { administrativePage: identity },
+    placeholderData: (previous, previousQuery) =>
+      previousQuery?.meta?.['administrativePage'] === identity ? previous : undefined,
     enabled: named,
   })
-  const lines = useMemo(() => rows.data?.pages.flatMap((page) => page.items) ?? [], [rows.data])
+  const lines = rows.data?.items ?? []
 
   const download = useApiMutation({
     mutationFn: () => api.assessment.describeAdministrativeImportSource({ params: { importId } }),
@@ -545,7 +538,13 @@ export function AdministrativeImportDetail({
               </div>
             }
           >
-            <div {...stylex.props(styles.card)} role="table" data-testid="import-rows">
+            <div
+              {...stylex.props(styles.card)}
+              role="table"
+              data-testid="import-rows"
+              tabIndex={-1}
+              aria-busy={rows.isFetching}
+            >
               <div role="row" {...stylex.props(styles.row, styles.headRow)}>
                 <span role="columnheader">{m.record_import_columnRow()}</span>
                 <span role="columnheader">{businessNo}</span>
@@ -603,17 +602,13 @@ export function AdministrativeImportDetail({
                 </button>
               ))}
             </div>
-            {rows.hasNextPage && (
-              <div {...stylex.props(styles.moreRow)}>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  disabled={rows.isFetchingNextPage}
-                  onClick={() => void rows.fetchNextPage()}
-                >
-                  {m.record_moreWho()}
-                </Button>
-              </div>
+            {rows.data !== undefined && (
+              <RecordPager
+                result={rows.data}
+                busy={rows.isFetching}
+                target="import-rows"
+                onPage={(next) => setPage(String(next))}
+              />
             )}
           </AsyncSection>
 

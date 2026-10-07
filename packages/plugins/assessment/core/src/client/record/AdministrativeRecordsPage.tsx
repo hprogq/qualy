@@ -263,7 +263,8 @@ function RecordsBody({
 }) {
   const businessNo = useTerm(authTerms.businessNumber)
   const query = useApiQuery(assessmentApi)
-  const [search, setSearch] = useState('')
+  const [search] = usePageQueryState('q')
+  const setSearch = (value: string) => address({ q: value, entriesPage: '' })
   // kept while the dialog shuts, or its contents would vanish before the
   // panel does and the whole thing would fold inward
   const errand = useLingering(doing)
@@ -350,7 +351,7 @@ function RecordsBody({
                 </Tabs>
               </div>
               {/* only the records are searchable: the other two tabs are
-                  walked by cursor and have nothing to search on, so drawing
+                  listed by import or act and have nothing to search on, so drawing
                   a box there would promise something that does not exist */}
               {view === 'records' && (
                 <div {...stylex.props(styles.searchSeat)}>
@@ -399,7 +400,7 @@ function RecordsBody({
             ) : view === 'imports' ? (
               <AdministrativeImportHistory
                 batchId={batch.id}
-                onOpen={(id) => address({ import: id }, { history: 'push' })}
+                onOpen={(id) => address({ import: id, rowsPage: '' }, { history: 'push' })}
                 onImport={() => address({ mode: 'import' }, { history: 'push' })}
               />
             ) : (
@@ -476,7 +477,10 @@ function RecordsBody({
                 // the import just made is where the reader goes next, and
                 // the errand is not somewhere to come back to
                 onImported={(id) =>
-                  address({ mode: '', tab: 'imports', import: id }, { history: 'replace' })
+                  address(
+                    { mode: '', tab: 'imports', import: id, rowsPage: '' },
+                    { history: 'replace' },
+                  )
                 }
               />
             )}
@@ -495,7 +499,10 @@ function RecordsBody({
           entryId={openEntry}
           onClose={() => address({ entry: '' })}
           onOpenImport={(id) =>
-            address({ entry: '', mode: '', tab: 'imports', import: id }, { history: 'push' })
+            address(
+              { entry: '', mode: '', tab: 'imports', import: id, rowsPage: '' },
+              { history: 'push' },
+            )
           }
           onOpenAct={(id) =>
             address({ entry: '', mode: '', tab: 'acts', act: id }, { history: 'push' })

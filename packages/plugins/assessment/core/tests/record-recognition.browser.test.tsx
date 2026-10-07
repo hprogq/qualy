@@ -169,7 +169,8 @@ const open = (stubs: Record<string, unknown>) =>
         listRosterUnits: () =>
           Effect.succeed({ units: [{ id: 'node', name: '一班', parentId: null }] }),
         listScoreGroups: () => Effect.succeed({ groups: [], version: 1 }),
-        listAdministrativeEntries: () => Effect.succeed({ entries: [], nextCursor: null }),
+        listAdministrativeEntries: () =>
+          Effect.succeed({ items: [], total: 0, page: 1, pageSize: 30 }),
         previewRecordDetermination: () =>
           Effect.succeed({ issues: [], amount: '6.00', refusal: null }),
         // eslint-disable-next-line typescript/no-unnecessary-type-assertion -- the stub is typed as the endpoint it stands in for

@@ -174,7 +174,7 @@ describe.runIf(postgresAvailable).concurrent('recording one finding on a group',
     expect(found.listed).not.toContain(found.outOfReach)
   })
 
-  it('pages its acts on a cursor postgres can read back', async () => {
+  it('jumps to a numbered page of its acts without repeating rows', async () => {
     const found = ok(
       await run(
         db.url,
@@ -210,19 +210,17 @@ describe.runIf(postgresAvailable).concurrent('recording one finding on a group',
           yield* settle(g.p1, '校发〔2026〕1 号')
           yield* settle(g.p2, '校发〔2026〕2 号')
 
-          const first = yield* assessment.listAdministrativeRecords(
+          const { items: first } = yield* assessment.listAdministrativeRecords(
             f.t,
             g.batch.id,
             { limit: 1 },
             f.principal(f.recorder),
           )
-          // the cursor is made of what the page handed back, so whatever
-          // shape that is has to survive the trip to postgres and back
-          const boundary = first[0]!
-          const second = yield* assessment.listAdministrativeRecords(
+          // The second numbered page must not repeat the first act.
+          const { items: second } = yield* assessment.listAdministrativeRecords(
             f.t,
             g.batch.id,
-            { after: [boundary.createdAt, boundary.id] as const, limit: 10 },
+            { page: 2, limit: 1 },
             f.principal(f.recorder),
           )
           return { first: first.map((row) => row.id), second: second.map((row) => row.id) }

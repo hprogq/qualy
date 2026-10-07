@@ -175,14 +175,14 @@ describe.runIf(postgresAvailable)('an administrative import', () => {
               sql`select status from storage_attachments where tenant_id = ${f.t} and id = ${attachmentId}`,
             ),
           ).status
-          const book = yield* assessment.listAdministrativeEntries(
+          const { items: book } = yield* assessment.listAdministrativeEntries(
             f.t,
             g.batch.id,
             { limit: 10 },
             f.principal(f.recorder),
           )
           // one fact by its id, for a sheet opened on it from an address
-          const single = yield* assessment.listAdministrativeEntries(
+          const { items: single } = yield* assessment.listAdministrativeEntries(
             f.t,
             g.batch.id,
             { entryId: book[1]!.entryId, limit: 10 },
@@ -248,17 +248,17 @@ describe.runIf(postgresAvailable)('an administrative import', () => {
             f.principal(f.recorder),
           )
           const reader = f.principal(f.recorder)
-          const first = yield* assessment.listAdministrativeEntries(
+          const { items: first } = yield* assessment.listAdministrativeEntries(
             f.t,
             g.batch.id,
             { limit: 1 },
             reader,
           )
-          // the pair the list hands out is the pair the next request resumes from
-          const second = yield* assessment.listAdministrativeEntries(
+          // The next page retains deterministic order even when timestamps tie.
+          const { items: second } = yield* assessment.listAdministrativeEntries(
             f.t,
             g.batch.id,
-            { limit: 1, after: first[0]!.cursor },
+            { limit: 1, page: 2 },
             reader,
           )
           return { first, second }
@@ -1299,22 +1299,22 @@ describe.runIf(postgresAvailable)('an administrative import', () => {
             reader,
           )
 
-          const all = yield* assessment.listAdministrativeImports(
+          const { items: all } = yield* assessment.listAdministrativeImports(
             f.t,
             g.batch.id,
             { limit: 10 },
             reader,
           )
-          const first = yield* assessment.listAdministrativeImports(
+          const { items: first } = yield* assessment.listAdministrativeImports(
             f.t,
             g.batch.id,
-            { limit: 1 },
+            { limit: 2 },
             reader,
           )
-          const second = yield* assessment.listAdministrativeImports(
+          const { items: second } = yield* assessment.listAdministrativeImports(
             f.t,
             g.batch.id,
-            { limit: 10, after: first[0]!.cursor },
+            { limit: 2, page: 2 },
             reader,
           )
           const student = yield* Effect.exit(
@@ -1329,7 +1329,7 @@ describe.runIf(postgresAvailable)('an administrative import', () => {
                    anchor_path = moved.anchor_path
               from batch_participants moved
              where moved.id = ${g.p3} and p.id = ${g.p1}`)
-          const afterMove = yield* assessment.listAdministrativeImports(
+          const { items: afterMove } = yield* assessment.listAdministrativeImports(
             f.t,
             g.batch.id,
             { limit: 10 },
@@ -1356,7 +1356,7 @@ describe.runIf(postgresAvailable)('an administrative import', () => {
     // the original file's identity is part of the list of names: this reader
     // reaches everyone in the import, so it is theirs to see
     expect(first.source).toMatchObject({ available: true, filename: 'import.xlsx' })
-    // the cursor the first page hands out resumes exactly after it
+    // The second page continues after the first page without overlap.
     expect([...found.first, ...found.second].map((row) => row.id)).toEqual(
       found.all.map((row) => row.id),
     )

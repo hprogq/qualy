@@ -73,6 +73,8 @@
   "batch_filterAll": "全部",
   "batch_noMatch": "未找到匹配的批次",
   "batch_switcherOnlyThis": "你目前只在这一个批次里。",
+  "record_pages": "记录分页",
+  "record_pageSummary": "第 {from}–{to} 条，共 {total} 条",
   "action_previousPage": "上一页",
   "action_nextPage": "下一页",
   "batch_pageOfTotal": "第 {page} / {pages} 页",

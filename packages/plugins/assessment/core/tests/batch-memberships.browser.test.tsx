@@ -3,7 +3,7 @@ import UserEntriesPage from '../src/client/person/UserEntriesPage.tsx'
 import { describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import { Effect } from 'effect'
-import { apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
+import { addressNow, apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
 // The rounds a person is in, listed outside any one of them.
 //
@@ -51,7 +51,9 @@ const open = async (
   return renderScreen({
     client: fakeClient({
       app: { getManifest: () => Effect.succeed(emptyManifest()) },
-      assessment: { listMyBatches: () => Effect.succeed({ items, nextCursor: null }) },
+      assessment: {
+        listMyBatches: () => Effect.succeed({ items, total: items.length, page: 1, pageSize: 50 }),
+      },
     }),
     children: <MyBatchesPage />,
     locale,
@@ -59,6 +61,48 @@ const open = async (
 }
 
 describe('the rounds a person is in', () => {
+  it('replaces memberships when jumping pages and keeps focus and controls on a narrow screen', async () => {
+    await page.viewport(320, 800)
+    const reads: number[] = []
+    try {
+      await renderScreen({
+        client: fakeClient({
+          app: { getManifest: () => Effect.succeed(emptyManifest()) },
+          assessment: {
+            listMyBatches: ({ query }: { query: { page: string } }) => {
+              const current = Number(query.page)
+              reads.push(current)
+              return Effect.succeed({
+                items: [membership(`page-${current}`, 'Asia/Shanghai', JOINED)],
+                total: 120,
+                page: current,
+                pageSize: 50,
+              })
+            },
+          },
+        }),
+        children: <MyBatchesPage />,
+      })
+      const pager = page.getByTestId('person-batches-pager')
+      await expect.element(pager).toHaveAttribute('data-page', '1')
+      await pager.getByRole('button', { name: '3', exact: true }).click()
+      await expect.element(pager).toHaveAttribute('data-page', '3')
+      expect([...new Set(reads)]).toEqual([1, 3])
+      expect(page.getByTestId('person-batch').elements()).toHaveLength(1)
+      expect(page.getByTestId('person-batch').element().getAttribute('data-batch-id')).toBe(
+        'page-3',
+      )
+      expect(addressNow()).toContain('batchesPage=3')
+      expect(document.activeElement).toBe(page.getByTestId('person-batches').element())
+      const rect = pager.element().getBoundingClientRect()
+      expect(rect.left).toBeGreaterThanOrEqual(0)
+      expect(rect.right).toBeLessThanOrEqual(321)
+      expect(pager.element().scrollWidth).toBeLessThanOrEqual(pager.element().clientWidth + 1)
+    } finally {
+      await page.viewport(1280, 800)
+    }
+  })
+
   it('marks when they joined a round with its clock where the device keeps another', async () => {
     await open([membership('far', KATHMANDU, JOINED)])
 
@@ -94,8 +138,7 @@ describe('the rounds a person is in', () => {
 
 // A person's lists that could not be read say so by what went wrong: on the
 // page's own ground, in a frame of their own, with another try only where
-// another try could answer differently. A further page that did not come
-// leaves the rows already read where they are.
+// another try could answer differently. A failed page can be retried directly.
 describe('a person’s list that could not be read', () => {
   const USER_ID = '88888888-8888-4888-8888-888888888888'
   const claim = (n: number) => ({
@@ -123,7 +166,9 @@ describe('a person’s list that could not be read', () => {
               ? Effect.fail(apiError('SOMETHING_ELSE'))
               : Effect.succeed({
                   items: [membership('near', 'Asia/Shanghai', JOINED)],
-                  nextCursor: null,
+                  total: 1,
+                  page: 1,
+                  pageSize: 50,
                 }),
         },
       }),
@@ -153,15 +198,21 @@ describe('a person’s list that could not be read', () => {
     expect(page.getByRole('button', { name: '重试' }).elements()).toHaveLength(0)
   })
 
-  it('keeps the claims read when a further page does not come', async () => {
+  it('shows a retryable failure for the requested page and retries that page', async () => {
+    const reads = { fail: true }
     await page.viewport(1280, 800)
     await renderScreen({
       client: fakeClient({
         app: { getManifest: () => Effect.succeed(emptyManifest()) },
         assessment: {
           listUserEntries: (request: { query?: Record<string, unknown> }) =>
-            request.query?.['cursor'] === undefined
-              ? Effect.succeed({ items: [claim(1), claim(2)], nextCursor: 'more' })
+            request.query?.['page'] === '1' || reads.fail === false
+              ? Effect.succeed({
+                  items: [claim(1), claim(2)],
+                  total: 4,
+                  page: Number(request.query?.['page']),
+                  pageSize: 2,
+                })
               : Effect.fail(apiError('SOMETHING_ELSE')),
         },
       }),
@@ -170,10 +221,12 @@ describe('a person’s list that could not be read', () => {
       children: <UserEntriesPage />,
     })
     await expect.poll(() => page.getByTestId('person-entry').elements().length).toBe(2)
-    await page.getByRole('button', { name: '加载更多' }).click()
-    await new Promise((settle) => setTimeout(settle, 500))
+    await page.getByRole('button', { name: '2', exact: true }).click()
+    await expect.poll(() => state()?.dataset['state']).toBe('failed')
+    reads.fail = false
+    await page.getByRole('button', { name: '重试' }).click()
+    await expect.element(page.getByTestId('person-entries-pager')).toHaveAttribute('data-page', '2')
     expect(page.getByTestId('person-entry').elements()).toHaveLength(2)
-    expect(state()).toBeNull()
   })
 })
 
@@ -212,7 +265,9 @@ describe('the batch column of a person’s claims', () => {
                   updatedAt: '2026-03-01T00:00:00.000Z',
                 },
               ],
-              nextCursor: null,
+              total: 1,
+              page: 1,
+              pageSize: 50,
             }),
         },
       }),

@@ -103,7 +103,7 @@ const stubs = (over: Record<string, Stub> = {}): Record<string, Stub> => ({
   getBatch: () => Effect.succeed({ batch: batch() }),
   getTimeline: () => Effect.succeed({ timeline: [] }),
   getMyOverview: () => Effect.succeed({ participant: null, reviewer: null }),
-  listMyActivity: () => Effect.succeed({ items: [], nextCursor: null }),
+  listMyActivity: () => Effect.succeed({ items: [], total: 0, page: 1, pageSize: 50 }),
   reviewAlerts: () => Effect.succeed(quiet),
   listParticipantPlacements: () =>
     Effect.succeed({ items: [], nextCursor: null, changedTotal: 0, unavailableTotal: 0 }),
@@ -841,7 +841,7 @@ describe('the overview when its own reads fail', () => {
           : Effect.fail(apiError('ASSESSMENT_INTERNAL')),
       listMyActivity: () =>
         reachable
-          ? Effect.succeed({ items: [], nextCursor: null })
+          ? Effect.succeed({ items: [], total: 0, page: 1, pageSize: 50 })
           : Effect.fail(apiError('SERVICE_UNAVAILABLE')),
     })
     const failed = () =>

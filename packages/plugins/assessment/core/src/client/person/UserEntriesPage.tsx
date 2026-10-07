@@ -1,12 +1,12 @@
-import { useInfiniteQuery } from '@tanstack/react-query'
+import { pageNumber } from '@qualy/api-kit/schema'
+import { RecordPager } from '../record/RecordPager.tsx'
+import { useQuery } from '@tanstack/react-query'
 import {
-  cursorPages,
+  usePageQueryState,
   PageLink,
-  useApi,
   useApiQuery,
   useLoadFailure,
   usePageRouteParams,
-  useRunApi,
 } from '@qualy/web-runtime'
 
 import * as stylex from '@stylexjs/stylex'
@@ -16,17 +16,14 @@ import { AsyncSection } from '@qualy/ui/admin'
 import {
   Card,
   CardEmpty,
-  CardFoot,
   Cell,
   EditorSkeleton,
   SectionHead,
-  Spacer,
   Status,
   Table,
   TableHead,
   TableRow,
 } from '@qualy/ui/screen'
-import { Button } from '@qualy/ui/button'
 import { useWhen } from '../batch/when.ts'
 import { assessmentApi } from '../api.ts'
 import * as commonMessages from '@qualy/web-i18n/messages'
@@ -105,28 +102,22 @@ type EntrySource = 'self' | 'proxy' | 'record' | 'import' | 'system'
 
 export default function UserEntriesPage() {
   const { userId } = usePageRouteParams('userId')
-  const api = useApi(assessmentApi)
-  const run = useRunApi()
   const query = useApiQuery(assessmentApi)
 
   const failures = useLoadFailure()
   const when = useWhen()
 
-  const rows = useInfiniteQuery({
-    queryKey: [
-      ...query.assessment.listUserEntries.key({ params: { userId }, query: {} }),
-      'infinite',
-    ],
-    queryFn: ({ pageParam }) =>
-      run(
-        api.assessment.listUserEntries({
-          params: { userId },
-          query: pageParam === undefined ? {} : { cursor: pageParam },
-        }),
-      ),
-    ...cursorPages,
+  const [page, setPage] = usePageQueryState('entriesPage')
+  const rows = useQuery({
+    ...query.assessment.listUserEntries.queryOptions({
+      params: { userId },
+      query: { page: String(pageNumber(page)) },
+    }),
+    meta: { personalPage: userId },
+    placeholderData: (previous, previousQuery) =>
+      previousQuery?.meta?.['personalPage'] === userId ? previous : undefined,
   })
-  const items = rows.data?.pages.flatMap((page) => page.items) ?? []
+  const items = rows.data?.items ?? []
 
   const statusWord: Record<EntryStatus, string> = {
     draft: m.entry_statusDraft(),
@@ -146,12 +137,10 @@ export default function UserEntriesPage() {
 
   return (
     <div {...stylex.props(styles.page)}>
-      <SectionHead title={m.person_entriesTab()} count={rows.data ? items.length : undefined} />
+      <SectionHead title={m.person_entriesTab()} count={rows.data?.total} />
       <AsyncSection
         pending={rows.isPending}
-        // the list's own failure, when it has nothing to show; a further
-        // page that did not come leaves the rows read, and its key to press
-        error={rows.data === undefined && rows.isError ? failures.of(rows.error) : null}
+        error={rows.isError ? failures.of(rows.error) : null}
         retrying={rows.isFetching}
         framed
         loadingLabel={commonMessages.state_loading()}
@@ -159,7 +148,7 @@ export default function UserEntriesPage() {
         onRetry={() => void rows.refetch()}
         skeleton={<EditorSkeleton />}
       >
-        <Card>
+        <Card data-testid="person-entries" tabIndex={-1} aria-busy={rows.isFetching}>
           {items.length === 0 ? (
             <CardEmpty>{m.person_entriesEmpty()}</CardEmpty>
           ) : (
@@ -203,18 +192,13 @@ export default function UserEntriesPage() {
               ))}
             </Table>
           )}
-          {rows.hasNextPage && (
-            <CardFoot>
-              <Spacer />
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={rows.isFetchingNextPage}
-                onClick={() => void rows.fetchNextPage()}
-              >
-                {m.person_loadMore()}
-              </Button>
-            </CardFoot>
+          {rows.data !== undefined && (
+            <RecordPager
+              result={rows.data}
+              busy={rows.isFetching}
+              target="person-entries"
+              onPage={(next) => setPage(String(next))}
+            />
           )}
         </Card>
       </AsyncSection>

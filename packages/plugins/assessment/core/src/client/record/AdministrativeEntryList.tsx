@@ -1,8 +1,9 @@
-import { useMemo } from 'react'
-import { useInfiniteQuery } from '@tanstack/react-query'
+import { pageNumber } from '@qualy/api-kit/schema'
+import { RecordPager } from './RecordPager.tsx'
+import { useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { ChevronRightIcon, PlusIcon } from 'lucide-react'
-import { cursorPages, useApi, useApiQuery, useLoadFailure, useRunApi } from '@qualy/web-runtime'
+import { useApiQuery, useLoadFailure, usePageQueryState } from '@qualy/web-runtime'
 import { useTerm } from '@qualy/plugin-settings/client/terms'
 import { authTerms } from '@qualy/auth-contract/terms'
 
@@ -190,7 +191,6 @@ const styles = stylex.create({
     paddingBlock: 48,
   },
   actionIcon: { width: 15, height: 15 },
-  moreRow: { display: 'flex', justifyContent: 'center', paddingBlock: 8 },
 })
 
 export function AdministrativeEntryList({
@@ -206,8 +206,6 @@ export function AdministrativeEntryList({
   /** the way out of an empty page, when this reader may take one */
   onRecord?: () => void
 }) {
-  const api = useApi(assessmentApi)
-  const run = useRunApi()
   const query = useApiQuery(assessmentApi)
 
   const failures = useLoadFailure()
@@ -215,27 +213,22 @@ export function AdministrativeEntryList({
   const whenOf = useWhen()
   const needle = search.trim()
 
-  const book = useInfiniteQuery({
-    queryKey: [
-      ...query.assessment.listAdministrativeEntries.key({ params: { batchId }, query: {} }),
-      { q: needle },
-      'infinite',
-    ],
-    queryFn: ({ pageParam }) =>
-      run(
-        api.assessment.listAdministrativeEntries({
-          params: { batchId },
-          query: {
-            limit: String(PAGE),
-            ...(needle === '' ? {} : { q: needle }),
-            ...(pageParam !== undefined ? { cursor: pageParam } : {}),
-          },
-        }),
-      ),
-    ...cursorPages,
+  const [page, setPage] = usePageQueryState('entriesPage')
+  const identity = `${batchId}:${needle}`
+  const book = useQuery({
+    ...query.assessment.listAdministrativeEntries.queryOptions({
+      params: { batchId },
+      query: {
+        ...(needle === '' ? {} : { q: needle }),
+        page: String(pageNumber(page)),
+        limit: String(PAGE),
+      },
+    }),
+    meta: { administrativePage: identity },
+    placeholderData: (previous, previousQuery) =>
+      previousQuery?.meta?.['administrativePage'] === identity ? previous : undefined,
   })
-
-  const rows = useMemo(() => book.data?.pages.flatMap((page) => page.entries) ?? [], [book.data])
+  const rows = book.data?.items ?? []
 
   return (
     <div {...stylex.props(styles.column)}>
@@ -269,7 +262,12 @@ export function AdministrativeEntryList({
           )
         ) : (
           <>
-            <div {...stylex.props(styles.card)} data-testid="administrative-entries">
+            <div
+              {...stylex.props(styles.card)}
+              data-testid="administrative-entries"
+              tabIndex={-1}
+              aria-busy={book.isFetching}
+            >
               {/* named columns, because five facts in a row need saying
                   once at the top rather than guessing at per line */}
               <div
@@ -333,17 +331,13 @@ export function AdministrativeEntryList({
                 )
               })}
             </div>
-            {book.hasNextPage && (
-              <div {...stylex.props(styles.moreRow)}>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  disabled={book.isFetchingNextPage}
-                  onClick={() => void book.fetchNextPage()}
-                >
-                  {m.record_moreWho()}
-                </Button>
-              </div>
+            {book.data !== undefined && (
+              <RecordPager
+                result={book.data}
+                busy={book.isFetching}
+                target="administrative-entries"
+                onPage={(next) => setPage(String(next))}
+              />
             )}
           </>
         )}

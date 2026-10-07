@@ -23,7 +23,8 @@ import { transaction, withDatabase } from '@qualy/plugin-database/server'
 import { Rbac } from '@qualy/rbac-contract/effect'
 import { scopeCoverage } from '@qualy/rbac-contract'
 import { AccessDenied } from '@qualy/rbac-contract/effect'
-import { BadRequest, likeContains } from '@qualy/api-kit/schema'
+import { DEFAULT_PAGE_SIZE } from '@qualy/api-kit'
+import { BadRequest, likeContains, pageNumber, pageSize, pageWindow } from '@qualy/api-kit/schema'
 import type { Principal } from '@qualy/rbac-contract'
 import { Audit } from '@qualy/audit-contract/effect'
 import { db } from './db.ts'
@@ -90,8 +91,9 @@ export interface TemplateDetail extends TemplateSummary {
 
 export interface TemplatePage {
   readonly items: readonly TemplateSummary[]
-  readonly last: { readonly publishedAt: string; readonly versionId: string } | null
-  readonly more: boolean
+  readonly total: number
+  readonly page: number
+  readonly pageSize: number
 }
 
 export class FormulaTemplateLibrary extends Context.Service<
@@ -108,7 +110,8 @@ export class FormulaTemplateLibrary extends Context.Service<
       viewer: { readonly userId: string; readonly nodeId: string | null },
       page?: {
         readonly limit?: number
-        readonly after?: { readonly publishedAt: string; readonly versionId: string }
+        readonly page?: number
+        readonly search?: string
       },
     ) => Effect.Effect<TemplatePage>
     readonly getTemplate: (
@@ -356,66 +359,60 @@ export const make = Effect.fn('FormulaTemplateLibrary.make')(function* () {
 
   return FormulaTemplateLibrary.of({
     listTemplates: (tenantId, viewer, page) =>
-      Effect.gen(function* () {
-        const size = Math.max(1, page?.limit ?? 50)
-        if (viewer.nodeId === null) return { items: [], last: null, more: false }
-        const nodeId = viewer.nodeId
-        const after = page?.after
-        const rows = yield* database(
-          db.query((k) => {
-            let query = k
-              .selectFrom('FormulaVersion as v')
-              .innerJoin('FormulaFunction as f', (join) =>
-                join.onRef('f.tenantId', '=', 'v.tenantId').onRef('f.id', '=', 'v.functionId'),
-              )
-              // LEFT, because authorship carries no foreign key: a template
-              // must not disappear because the row naming its author did
-              .leftJoin('User as u', (join) =>
-                join.onRef('u.tenantId', '=', 'f.tenantId').onRef('u.id', '=', 'f.createdBy'),
-              )
-              .select(TEMPLATE_COLUMNS)
-              // The instant as postgres wrote it, for the cursor alone: the
-              // column is microsecond and an ISO string of a Date is
-              // millisecond, so a boundary landing inside a millisecond
-              // excluded every row published in it - and a batch published
-              // together shares one.
-              .select(sql<string>`v.published_at::text`.as('cursorAt'))
-              .where('v.tenantId', '=', tenantId)
-              .where(visibleTemplate(tenantId, viewer.userId, nodeId))
-            if (after !== undefined) {
-              // newest first, the id closing the boundary: two versions can
-              // share an instant, and without a unique last key a page edge
-              // would drop rows or repeat them
-              query = query.where(
-                sql<boolean>`(
-                  v.published_at < ${after.publishedAt}::timestamptz
-                  or (v.published_at = ${after.publishedAt}::timestamptz
-                      and v.id < ${after.versionId}::uuid)
-                )`,
-              )
+      database(
+        transaction(
+          Effect.gen(function* () {
+            const size = pageSize(
+              page?.limit === undefined ? undefined : String(page.limit),
+              DEFAULT_PAGE_SIZE,
+            )
+            if (viewer.nodeId === null) return { items: [], total: 0, page: 1, pageSize: size }
+            const nodeId = viewer.nodeId
+            const matching = (k: Parameters<Parameters<typeof db.query>[0]>[0]) => {
+              let query = k
+                .selectFrom('FormulaVersion as v')
+                .innerJoin('FormulaFunction as f', (join) =>
+                  join.onRef('f.tenantId', '=', 'v.tenantId').onRef('f.id', '=', 'v.functionId'),
+                )
+                .where('v.tenantId', '=', tenantId)
+                .where(visibleTemplate(tenantId, viewer.userId, nodeId))
+              if (page?.search?.trim())
+                query = query.where('f.name', 'ilike', likeContains(page.search.trim()))
+              return query
             }
-            return query
-              .orderBy('v.publishedAt', 'desc')
-              .orderBy('v.id', 'desc')
-              .limit(size + 1)
-              .execute()
+            const counted = yield* db.query((k) =>
+              matching(k)
+                .select((eb) => eb.fn.countAll<string>().as('count'))
+                .executeTakeFirstOrThrow(),
+            )
+            const total = Number(counted.count)
+            const window = pageWindow(
+              pageNumber(page?.page === undefined ? undefined : String(page.page)),
+              size,
+              total,
+            )
+            const rows = yield* db.query((k) =>
+              matching(k)
+                .leftJoin('User as u', (join) =>
+                  join.onRef('u.tenantId', '=', 'f.tenantId').onRef('u.id', '=', 'f.createdBy'),
+                )
+                .select(TEMPLATE_COLUMNS)
+                .orderBy('v.publishedAt', 'desc')
+                .orderBy('v.id', 'desc')
+                .limit(size)
+                .offset(window.offset)
+                .execute(),
+            )
+            return {
+              items: (rows as unknown as TemplateRow[]).map(summaryOf),
+              total,
+              page: window.page,
+              pageSize: size,
+            }
           }),
-        ).pipe(Effect.orDie)
-        const all = rows as unknown as TemplateRow[]
-        const items = all.slice(0, size).map(summaryOf)
-        const tail = all[items.length - 1]
-        return {
-          items,
-          last:
-            tail === undefined
-              ? null
-              : {
-                  publishedAt: String((tail as unknown as { cursorAt: string }).cursorAt),
-                  versionId: tail.versionId,
-                },
-          more: all.length > size,
-        }
-      }),
+          { isolation: 'repeatable read', readOnly: true },
+        ),
+      ).pipe(Effect.orDie),
 
     getTemplate: (tenantId, versionId, viewer) =>
       Effect.gen(function* () {

@@ -12,10 +12,8 @@ import * as m from '#messages'
 // laid out, and the run - the ordered slice of the queue a reviewer walks
 // through one submission at a time.
 //
-// Grouping happens here rather than in the pages because the queue page and
-// the workbench must walk the same order: "the next one" has to mean the
-// same row in both, or finishing an item's list would land somewhere the
-// list never showed.
+// The server owns grouping, page boundaries and neighboring filings so the
+// queue and workbench share the same authorized order.
 
 export type InboxItemDto = ApiResult<
   typeof assessmentApi,
@@ -40,11 +38,12 @@ export type AwaitingDto = ApiResult<
 export type RunScope =
   | { kind: 'all' }
   | { kind: 'item'; itemId: string }
-  | { kind: 'person'; businessNo: string }
+  | { kind: 'person'; participantId: string }
 
 export const readRunScope = (raw: string): RunScope => {
   if (raw.startsWith('item:')) return { kind: 'item', itemId: raw.slice('item:'.length) }
-  if (raw.startsWith('person:')) return { kind: 'person', businessNo: raw.slice('person:'.length) }
+  if (raw.startsWith('person:'))
+    return { kind: 'person', participantId: raw.slice('person:'.length) }
   return { kind: 'all' }
 }
 
@@ -52,84 +51,15 @@ export const writeRunScope = (scope: RunScope): string =>
   scope.kind === 'item'
     ? `item:${scope.itemId}`
     : scope.kind === 'person'
-      ? `person:${scope.businessNo}`
+      ? `person:${scope.participantId}`
       : ''
 
-/** the queue in the order every screen walks it: oldest first, as served */
-export const runRows = (rows: readonly InboxItemDto[], scope: RunScope): readonly InboxItemDto[] =>
-  scope.kind === 'item'
-    ? rows.filter((row) => row.itemId === scope.itemId)
-    : scope.kind === 'person'
-      ? rows.filter((row) => (row.businessNo ?? row.participantName) === scope.businessNo)
-      : rows
-
-/**
- * One question's rows, keeping the queue's own order inside each group, and
- * the groups in the order their oldest filing arrived: the question that has
- * waited longest comes first.
- */
+/** One question's currently loaded page; totals and ordering come from the server. */
 export interface ItemGroup {
   readonly itemId: string
   readonly itemTitle: string
-  /** the labels of the first row's projected values, as the column head */
   readonly columns: readonly string[]
   readonly rows: readonly InboxItemDto[]
-}
-
-export const groupByItem = (rows: readonly InboxItemDto[]): readonly ItemGroup[] => {
-  const groups = new Map<string, { itemTitle: string; rows: InboxItemDto[] }>()
-  for (const row of rows) {
-    const group = groups.get(row.itemId)
-    if (group === undefined) groups.set(row.itemId, { itemTitle: row.itemTitle, rows: [row] })
-    else group.rows.push(row)
-  }
-  return [...groups.entries()].map(([itemId, group]) => ({
-    itemId,
-    itemTitle: group.itemTitle,
-    columns: (group.rows[0]?.values ?? []).map((pair) => pair.label),
-    rows: group.rows,
-  }))
-}
-
-/** one person's whole pile, so their duplicates sit next to each other */
-export interface PersonGroup {
-  readonly key: string
-  readonly name: string
-  readonly businessNo: string | null
-  readonly unitName: string | null
-  readonly rows: readonly InboxItemDto[]
-}
-
-export const groupByPerson = (rows: readonly InboxItemDto[]): readonly PersonGroup[] => {
-  const groups = new Map<string, PersonGroup & { rows: InboxItemDto[] }>()
-  for (const row of rows) {
-    const key = row.businessNo ?? row.participantName
-    const group = groups.get(key)
-    if (group === undefined) {
-      groups.set(key, {
-        key,
-        name: row.participantName,
-        businessNo: row.businessNo,
-        unitName: row.unitName,
-        rows: [row],
-      })
-    } else {
-      group.rows.push(row)
-    }
-  }
-  return [...groups.values()].sort((a, b) => a.key.localeCompare(b.key))
-}
-
-/** a text filter a reader types: matched against who and what, never status */
-export const matchesSearch = (row: InboxItemDto, needle: string): boolean => {
-  if (needle === '') return true
-  const lowered = needle.toLowerCase()
-  return (
-    row.participantName.toLowerCase().includes(lowered) ||
-    (row.businessNo ?? '').toLowerCase().includes(lowered) ||
-    row.itemTitle.toLowerCase().includes(lowered) ||
-    row.values.some((pair) => pair.value.toLowerCase().includes(lowered))
-  )
 }
 
 /**
@@ -217,37 +147,6 @@ export function useQueueClock(): (iso: string) => string {
     if (days === 1) return m.time_yesterdayAt({ time })
     if (yearOf(at.getTime(), zone) !== yearOf(Date.now(), zone)) return dayLabel(at, locale, zone)
     return `${dayLabel(at, locale, zone)} ${time}`
-  }
-}
-
-/**
- * One page of a list the queue lays out, and where it stands.
- *
- * The queue is read whole (queue.ts), so its pages are cut here rather than
- * asked for; a page past the end is the last page, the way the pager clamps
- * it, so a list that shrank under the reader never shows an empty page.
- */
-export const pageOf = <Row>(
-  rows: readonly Row[],
-  page: number,
-  size: number,
-): {
-  readonly rows: readonly Row[]
-  readonly page: number
-  readonly from: number
-  readonly to: number
-  readonly total: number
-} => {
-  const pages = Math.max(1, Math.ceil(rows.length / size))
-  const at = Math.min(Math.max(1, page), pages)
-  const start = (at - 1) * size
-  const shown = rows.slice(start, start + size)
-  return {
-    rows: shown,
-    page: at,
-    from: shown.length === 0 ? 0 : start + 1,
-    to: start + shown.length,
-    total: rows.length,
   }
 }
 

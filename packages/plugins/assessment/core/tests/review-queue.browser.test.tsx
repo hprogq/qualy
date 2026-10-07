@@ -1,3 +1,4 @@
+import { reviewClient } from './support/review-client.tsx'
 import ReviewInboxPage from '../src/client/review/ReviewInboxPage.tsx'
 import WorkspaceShell from '@qualy/plugin-layout-default/client/WorkspaceShell'
 import { lazy } from 'react'
@@ -5,7 +6,7 @@ import { Route, Routes } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { commands, page } from 'vitest/browser'
 import { Effect } from 'effect'
-import { addressNow, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
+import { addressNow, emptyManifest, renderScreen } from './support/screen.tsx'
 
 // The review queue in the room the product actually gives it.
 //
@@ -127,7 +128,7 @@ const badges = {
 
 const shelled = (items: readonly Record<string, unknown>[], search = '') =>
   renderScreen({
-    client: fakeClient({
+    client: reviewClient({
       app: {
         getManifest: () =>
           Effect.succeed({

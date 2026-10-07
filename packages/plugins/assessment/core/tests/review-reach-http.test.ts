@@ -104,6 +104,27 @@ describe.runIf(postgresAvailable)('routes with nowhere to stand, as served', () 
     expect(neither.body['_tag']).toBe('BAD_REQUEST')
   })
 
+  it('serves numbered reviewer pages with authorized counts and accepts repeated exclusions', async () => {
+    const response = await web.handler(
+      new Request(
+        `http://qualy.test${QUALY_API_PREFIX}/assessment/review/inbox?batchId=${fixture.batchId}&view=person&page=99&limit=1&exclude=${fixture.itemId}&exclude=${fixture.classType}`,
+        { headers: { cookie: `${COOKIE}=${token}` } },
+      ),
+    )
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({
+      items: [],
+      total: 0,
+      page: 1,
+      pageSize: 1,
+      queueTotal: 0,
+      groups: [],
+      groupTotal: 0,
+      previousId: null,
+      nextId: null,
+    })
+  })
+
   // `route` picks one of a saved question's two routes; a route still being
   // composed is the unit kinds themselves, so there is nothing for it to pick
   it('answers unit kinds alone, whatever route is named beside them', async () => {

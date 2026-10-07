@@ -1,5 +1,5 @@
 import { useLocale } from '@qualy/web-i18n'
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { CircleAlertIcon } from 'lucide-react'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
@@ -198,6 +198,7 @@ export function UnscheduleDialog({
 export function TemplateDialog({
   open,
   templates,
+  templateControls,
   value,
   unsaved,
   pending,
@@ -208,6 +209,7 @@ export function TemplateDialog({
 }: {
   open: boolean
   templates: readonly { id: string; name: string }[]
+  templateControls?: ReactNode
   value: string
   /** how many changes the plan being edited has not saved */
   unsaved: number
@@ -265,6 +267,7 @@ export function TemplateDialog({
           </NativeSelect>
         )}
       </Field>
+      {templateControls}
       {asked > 0 && (
         <p
           data-testid="template-unsaved"

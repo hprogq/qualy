@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 
@@ -224,6 +224,7 @@ export function PhaseDetailsPanel({
   draft,
   stored,
   presets,
+  presetControls,
   sections,
   itemsPending,
   itemsFailure,
@@ -238,6 +239,7 @@ export function PhaseDetailsPanel({
   /** the row as the server holds it, absent for a stage not saved yet */
   stored: PhaseDraft | undefined
   presets: readonly { id: string; name: string; phases: readonly PresetPhase[] }[]
+  presetControls?: ReactNode
   /** the paper an item allowance is chosen from */
   sections: readonly ScopeSection[]
   itemsPending: boolean
@@ -349,6 +351,7 @@ export function PhaseDetailsPanel({
             </div>
           )}
 
+          {!readOnly && !frozen && presetControls}
           <PermissionProfileEditor
             legend={m.profile_title()}
             hint={m.profile_hint()}

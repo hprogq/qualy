@@ -65,20 +65,20 @@ export const judgeSituations = (situations: readonly Situation[], seeded: Seeded
 const count = (query: RawBuilder<unknown>) =>
   Effect.map(runSql(query), (found) => (found as { rows: { n: number }[] }).rows[0]?.n ?? 0)
 
-/** the pages of a keyset listing, followed to its end */
+/** Read every numbered page when computing the complete demo situation report. */
 const everyPage = <T, E, R>(
   page: (
-    cursor: string | undefined,
-  ) => Effect.Effect<{ items: readonly T[]; nextCursor: string | null }, E, R>,
+    number: number,
+  ) => Effect.Effect<{ items: readonly T[]; total: number; page: number; pageSize: number }, E, R>,
 ) =>
   Effect.gen(function* () {
     const all: T[] = []
-    let cursor: string | undefined
+    let number = 1
     for (;;) {
-      const found = yield* page(cursor)
+      const found = yield* page(number)
       all.push(...found.items)
-      if (found.nextCursor === null) return all
-      cursor = found.nextCursor
+      if (found.page * found.pageSize >= found.total) return all
+      number = found.page + 1
     }
   })
 
@@ -330,10 +330,10 @@ export const personaSituations = Effect.gen(function* () {
   // what waits for each staff account, through the product's own inbox
   const inbox = (userId: string) =>
     Effect.map(
-      everyPage((cursor) =>
+      everyPage((page) =>
         assessment.listReviewInbox(
           tenantId,
-          { batchId: current, limit: '50', ...(cursor === undefined ? {} : { cursor }) },
+          { batchId: current, limit: '50', page: String(page) },
           principalOf(tenantId, userId),
         ),
       ),
@@ -350,10 +350,10 @@ export const personaSituations = Effect.gen(function* () {
      where r.tenant_id = ri.tenant_id and r.review_instance_id = ri.id and r.status = 'answered')`
   const asksOutstanding = (userId: string) =>
     Effect.map(
-      everyPage((cursor) =>
+      everyPage((page) =>
         assessment.listAwaitingSupplements(
           tenantId,
-          { batchId: current, limit: '50', ...(cursor === undefined ? {} : { cursor }) },
+          { batchId: current, limit: '50', page: String(page) },
           principalOf(tenantId, userId),
         ),
       ),

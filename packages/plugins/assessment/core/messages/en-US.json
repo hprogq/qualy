@@ -73,6 +73,8 @@
   "batch_filterAll": "All",
   "batch_noMatch": "No matching batches",
   "batch_switcherOnlyThis": "This is the only batch you are in.",
+  "record_pages": "Record pages",
+  "record_pageSummary": "{from}–{to} of {total}",
   "action_previousPage": "Previous",
   "action_nextPage": "Next",
   "batch_pageOfTotal": "Page {page} of {pages}",

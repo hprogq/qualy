@@ -1,3 +1,5 @@
+import { pageWindow } from '@qualy/api-kit/schema'
+import { transaction } from '@qualy/plugin-database/server'
 import { Effect } from 'effect'
 import { sql, type RawBuilder } from 'kysely'
 import { readEntryChannels, type EntryChannel } from '../item/channels.ts'
@@ -1866,7 +1868,7 @@ export const userActivityPage = (input: {
   /** the reader's membership row, when they have one */
   participantId: string | null
   perspectives: readonly ('participant' | 'reviewer')[]
-  after?: readonly [string, string, string] | undefined
+  page: number
   limit: number
 }) => {
   const pieces: RawBuilder<unknown>[] = []
@@ -2123,10 +2125,16 @@ export const userActivityPage = (input: {
           where v.tenant_id = ${input.tenantId}
             and v.voter_user_id = ${input.userId}`)
   }
-  if (pieces.length === 0) return Effect.succeed([] as readonly UserActivityRow[])
+  if (pieces.length === 0)
+    return Effect.succeed({
+      items: [] as readonly UserActivityRow[],
+      total: 0,
+      page: 1,
+      pageSize: input.limit,
+    })
   return db
-    .query((k) =>
-      sql<{
+    .query(async (k) => {
+      const source = sql<{
         id: string
         source: string
         perspective: string
@@ -2143,7 +2151,8 @@ export const userActivityPage = (input: {
         at: string
         at_ms: number
         cursor_at: string
-      }>`
+        sort_at: Date
+      }>`(
         with mine as (
           select e.id, e.item_id, i.title
           from entries e
@@ -2173,21 +2182,30 @@ export const userActivityPage = (input: {
                subject_name, instance_id, actor_id, actor_name, reason, comment,
                to_char(created_at at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as at,
                (extract(epoch from created_at) * 1000)::float8 as at_ms,
-               created_at::text as cursor_at
+               created_at::text as cursor_at, created_at as sort_at
         from activity
         where kind is not null
-          ${
-            input.after === undefined
-              ? sql``
-              : sql`and (created_at, source, id) < (${input.after[0]}::timestamptz, ${input.after[1]}, ${input.after[2]}::uuid)`
-          }
-        order by created_at desc, source desc, id desc
-        limit ${input.limit}
-      `.execute(k),
-    )
+      )`
+      const query = k.selectFrom(source.as('activity_page'))
+      const counted = await query
+        .select((eb) => eb.fn.countAll<string>().as('total'))
+        .executeTakeFirstOrThrow()
+      const total = Number(counted.total)
+      const window = pageWindow(input.page, input.limit, total)
+      const rows = await query
+        .selectAll()
+        .orderBy('sort_at', 'desc')
+        .orderBy('source', 'desc')
+        .orderBy('id', 'desc')
+        .limit(input.limit)
+        .offset(window.offset)
+        .execute()
+      return { rows, total, page: window.page, pageSize: input.limit }
+    })
     .pipe(
-      Effect.map(({ rows }) =>
-        rows.map((row): UserActivityRow => ({
+      Effect.map(({ rows, ...pagination }) => ({
+        ...pagination,
+        items: rows.map((row): UserActivityRow => ({
           id: row.id,
           source: row.source,
           perspective: row.perspective as UserActivityRow['perspective'],
@@ -2205,7 +2223,8 @@ export const userActivityPage = (input: {
           atMs: row.at_ms,
           cursorAt: row.cursor_at,
         })),
-      ),
+      })),
+      (effect) => transaction(effect, { isolation: 'repeatable read', readOnly: true }),
     )
 }
 
@@ -2216,7 +2235,6 @@ export interface AdministrativeEntryRow {
   readonly source: 'record' | 'import'
   readonly createdAt: number
   /** the creation instant as postgres prints it, microseconds included */
-  readonly cursorAt: string
   readonly participantId: string
   readonly participantUserId: string
   readonly participantName: string
@@ -2260,11 +2278,11 @@ export const listAdministrativeEntriesPage = (input: {
   orgScope?: 'self' | 'subtree' | undefined
   /** the reader's own recording reach, when they are not the roster's administrator */
   reach?: { userId: string; permissionCode: string } | undefined
-  after?: readonly [string, string] | undefined
+  page?: number
   limit: number
 }) =>
   db
-    .query((k) => {
+    .query(async (k) => {
       let query = k
         .selectFrom('Entry as e')
         .innerJoin('EntryRevision as v', (join) =>
@@ -2310,10 +2328,6 @@ export const listAdministrativeEntriesPage = (input: {
           'a.displayName as actorName',
         ])
         .select([epoch('e.created_at').as('createdMs'), epoch('v.created_at').as('recordedMs')])
-        // the cursor keeps the instant to the microsecond: every row of one
-        // import shares its transaction's instant, and a millisecond cursor
-        // sorts before all of them
-        .select([sql<string>`e.created_at::text`.as('cursorAt')])
         .where('e.tenantId', '=', input.tenantId)
         .where('e.batchId', '=', input.batchId)
         // the book is what the institution wrote, never what a participant filed
@@ -2358,41 +2372,47 @@ export const listAdministrativeEntriesPage = (input: {
           )`,
         )
       }
-      if (input.after !== undefined) {
-        query = query.where(
-          sql<boolean>`(e.created_at, e.id) < (${input.after[0]}::timestamptz, ${input.after[1]}::uuid)`,
-        )
-      }
-      return query
+      const counted = await query
+        .clearSelect()
+        .select((eb) => eb.fn.countAll<string>().as('count'))
+        .executeTakeFirstOrThrow()
+      const total = Number(counted.count)
+      const window = pageWindow(input.page ?? 1, input.limit, total)
+      const items = await query
         .orderBy(sql`e.created_at desc`)
         .orderBy(sql`e.id desc`)
         .limit(input.limit)
+        .offset(window.offset)
         .execute()
+      return { items, total, page: window.page, pageSize: input.limit }
     })
     .pipe(
-      Effect.map((rows) =>
-        (rows as unknown as Record<string, unknown>[]).map((row): AdministrativeEntryRow => ({
-          entryId: String(row['entryId']),
-          status: String(row['status']) as EntryStatus,
-          source: String(row['source']) as 'record' | 'import',
-          createdAt: msOf(row['createdMs']),
-          cursorAt: String(row['cursorAt']),
-          participantId: String(row['participantId']),
-          participantUserId: String(row['participantUserId']),
-          participantName: String(row['participantName'] ?? ''),
-          participantBusinessNo:
-            row['participantBusinessNo'] == null ? null : String(row['participantBusinessNo']),
-          itemId: String(row['itemId']),
-          itemTitle: String(row['itemTitle'] ?? ''),
-          revisionId: String(row['revisionId']),
-          itemRevisionId: String(row['itemRevisionId']),
-          payload: (row['payload'] ?? {}) as Record<string, unknown>,
-          note: row['note'] == null ? null : String(row['note']),
-          actorId: String(row['actorId']),
-          actorName: row['actorName'] == null ? null : String(row['actorName']),
-          recordedAt: msOf(row['recordedMs']),
-          importId: row['importId'] == null ? null : String(row['importId']),
-          operationId: row['operationId'] == null ? null : String(row['operationId']),
-        })),
-      ),
+      Effect.map(({ items, ...pagination }) => ({
+        ...pagination,
+        items: (items as unknown as Record<string, unknown>[]).map(
+          (row): AdministrativeEntryRow => ({
+            entryId: String(row['entryId']),
+            status: String(row['status']) as EntryStatus,
+            source: String(row['source']) as 'record' | 'import',
+            createdAt: msOf(row['createdMs']),
+            participantId: String(row['participantId']),
+            participantUserId: String(row['participantUserId']),
+            participantName: String(row['participantName'] ?? ''),
+            participantBusinessNo:
+              row['participantBusinessNo'] == null ? null : String(row['participantBusinessNo']),
+            itemId: String(row['itemId']),
+            itemTitle: String(row['itemTitle'] ?? ''),
+            revisionId: String(row['revisionId']),
+            itemRevisionId: String(row['itemRevisionId']),
+            payload: (row['payload'] ?? {}) as Record<string, unknown>,
+            note: row['note'] == null ? null : String(row['note']),
+            actorId: String(row['actorId']),
+            actorName: row['actorName'] == null ? null : String(row['actorName']),
+            recordedAt: msOf(row['recordedMs']),
+            importId: row['importId'] == null ? null : String(row['importId']),
+            operationId: row['operationId'] == null ? null : String(row['operationId']),
+          }),
+        ),
+      })),
+      (effect) => transaction(effect, { isolation: 'repeatable read', readOnly: true }),
     )

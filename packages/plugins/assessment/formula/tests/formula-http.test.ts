@@ -519,6 +519,20 @@ describe.runIf(postgresAvailable)('the formula api over http', () => {
     expect(
       (published.body as { version: { versionNo: number; testReport: unknown } }).version,
     ).toMatchObject({ versionNo: 1, testReport: [{ name: 'three', passed: true }] })
+    const history = await call(
+      'GET',
+      `/api/assessment/formula-functions/${id}/versions?page=99&limit=1`,
+    )
+    expect(history.status, inspect(history.body)).toBe(200)
+    expect(history.body).toMatchObject({
+      total: 1,
+      page: 1,
+      pageSize: 1,
+      items: [{ versionNo: 1 }],
+    })
+    const detail = await call('GET', `/api/assessment/formula-functions/${id}`)
+    expect(detail.body).toMatchObject({ versionCount: 1 })
+    expect(detail.body).not.toHaveProperty('versions')
   }, 120_000)
 
   it('previews and evaluates the current buffer without touching the draft', async () => {
@@ -671,7 +685,7 @@ export default defineFormula({
     expect(tampered.body).toEqual({ _tag: 'ASSESSMENT_FORMULA_VERSION_UNRUNNABLE' })
   }, 120_000)
 
-  it('pages the function list with a keyset cursor: no repeats, no gaps', async () => {
+  it('pages the function list by number: no repeats, no gaps', async () => {
     for (let index = 0; index < 12; index += 1) {
       const created = await call('POST', '/api/assessment/formula-functions', {
         name: `Paged ${String(index).padStart(2, '0')}`,
@@ -679,22 +693,20 @@ export default defineFormula({
       expect(created.status, inspect(created.body)).toBe(200)
     }
     const seen: string[] = []
-    let cursor: string | undefined
-    for (let hops = 0; ; hops += 1) {
-      expect(hops).toBeLessThan(10)
-      const query =
-        cursor === undefined ? 'limit=5' : `limit=5&cursor=${encodeURIComponent(cursor)}`
-      const page = await call('GET', `/api/assessment/formula-functions?${query}`)
+    for (let number = 1; ; number += 1) {
+      expect(number).toBeLessThan(10)
+      const page = await call('GET', `/api/assessment/formula-functions?limit=5&page=${number}`)
       expect(page.status, inspect(page.body)).toBe(200)
       const body = page.body as {
         items: readonly { id: string }[]
-        nextCursor: string | null
+        total: number
+        page: number
+        pageSize: number
       }
+      expect(body.page).toBe(number)
       seen.push(...body.items.map((row) => row.id))
-      if (body.nextCursor === null) break
-      // a non-null cursor promises a full page behind it
+      if (number * body.pageSize >= body.total) break
       expect(body.items.length).toBe(5)
-      cursor = body.nextCursor
     }
     expect(new Set(seen).size).toBe(seen.length)
     expect(seen.length).toBeGreaterThanOrEqual(12)

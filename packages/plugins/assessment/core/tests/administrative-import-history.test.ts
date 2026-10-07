@@ -179,7 +179,7 @@ describe.runIf(postgresAvailable)('an import, looked back on', () => {
             f.principal(f.admin),
           )
           const partial = yield* assessment.getAdministrativeImport(f.t, done.importId, recorder)
-          const listed = yield* assessment.listAdministrativeImports(
+          const { items: listed } = yield* assessment.listAdministrativeImports(
             f.t,
             g.batch.id,
             { limit: 10 },
@@ -224,31 +224,32 @@ describe.runIf(postgresAvailable)('an import, looked back on', () => {
           const { f, g, done } = yield* importedPair('aih-rows')
           const assessment = yield* Assessment
           const reader = f.principal(f.recorder)
-          const first = yield* assessment.listAdministrativeImportRows(
+          const { items: first } = yield* assessment.listAdministrativeImportRows(
             f.t,
             done.importId,
             { limit: 1 },
             reader,
           )
-          const second = yield* assessment.listAdministrativeImportRows(
+          const { items: second } = yield* assessment.listAdministrativeImportRows(
             f.t,
             done.importId,
-            { afterRowNo: first[0]!.rowNo, limit: 1 },
+            { page: 2, limit: 1 },
             reader,
           )
-          const past = yield* assessment.listAdministrativeImportRows(
+          const { items: past, ...lastPage } = yield* assessment.listAdministrativeImportRows(
             f.t,
             done.importId,
-            { afterRowNo: second[0]!.rowNo, limit: 1 },
+            { page: 999, limit: 1 },
             reader,
           )
-          return { first, second, past, g }
+          return { first, second, past, lastPage, g }
         }),
       ),
     )
     expect(found.first.map((row) => row.rowNo)).toEqual([2])
     expect(found.second.map((row) => row.rowNo)).toEqual([3])
-    expect(found.past).toEqual([])
+    expect(found.past).toEqual(found.second)
+    expect(found.lastPage).toEqual({ total: 2, page: 2, pageSize: 1 })
     const row = found.first[0]!
     expect(row.participant).toMatchObject({ id: found.g.p1, displayName: 'Zhang San' })
     expect(row.businessNoSnapshot).toBe('2023001')
@@ -325,14 +326,14 @@ describe.runIf(postgresAvailable)('an import, looked back on', () => {
           // the uploader's account is disabled, and one of the people leaves the roster
           yield* runSql(sql`update users set enabled = false where id = ${f.recorder}`)
           yield* runSql(sql`update batch_participants set status = 'excluded' where id = ${g.p2}`)
-          const listed = yield* assessment.listAdministrativeImports(
+          const { items: listed } = yield* assessment.listAdministrativeImports(
             f.t,
             g.batch.id,
             { limit: 10 },
             admin,
           )
           const detail = yield* assessment.getAdministrativeImport(f.t, done.importId, admin)
-          const rows = yield* assessment.listAdministrativeImportRows(
+          const { items: rows } = yield* assessment.listAdministrativeImportRows(
             f.t,
             done.importId,
             { limit: 10 },

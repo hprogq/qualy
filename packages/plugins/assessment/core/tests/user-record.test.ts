@@ -48,13 +48,13 @@ describe.runIf(postgresAvailable)('what one person’s record says about assessm
             'moved away',
             f.principal(f.admin),
           )
-          const ofS1 = yield* assessment.listUserBatches(
+          const { items: ofS1 } = yield* assessment.listUserBatches(
             f.t,
             f.s1,
             { limit: 10 },
             f.principal(f.admin),
           )
-          const ofS2 = yield* assessment.listUserBatches(
+          const { items: ofS2 } = yield* assessment.listUserBatches(
             f.t,
             f.s2,
             { limit: 10 },
@@ -62,13 +62,13 @@ describe.runIf(postgresAvailable)('what one person’s record says about assessm
           )
           // a fellow participant sees the round, and their own place in it,
           // but being in a round with somebody is not a way in to theirs
-          const byPeer = yield* assessment.listUserBatches(
+          const { items: byPeer } = yield* assessment.listUserBatches(
             f.t,
             f.s1,
             { limit: 10 },
             f.principal(f.s3),
           )
-          const ownByPeer = yield* assessment.listUserBatches(
+          const { items: ownByPeer } = yield* assessment.listUserBatches(
             f.t,
             f.s3,
             { limit: 10 },
@@ -81,7 +81,7 @@ describe.runIf(postgresAvailable)('what one person’s record says about assessm
               values (${f.t}, 'Outsider', ${f.studentType}, ${f.root}) returning id`),
             (rows) => (rows as { rows: { id: string }[] }).rows[0]!.id,
           )
-          const byOutsider = yield* assessment.listUserBatches(
+          const { items: byOutsider } = yield* assessment.listUserBatches(
             f.t,
             f.s1,
             { limit: 10 },
@@ -107,6 +107,86 @@ describe.runIf(postgresAvailable)('what one person’s record says about assessm
     expect(result.byOutsider).toBe(0)
   })
 
+  it('jumps to the last matching page and counts only authorized memberships and claims', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('ur-numbered')
+          const assessment = yield* Assessment
+          const batchIds: string[] = []
+          const entryIds: string[] = []
+          for (let index = 0; index < 3; index += 1) {
+            const g = yield* runningBatch(f)
+            batchIds.push(g.batch.id)
+            const entry = yield* assessment.createEntry(
+              f.t,
+              { itemId: g.item.id, participantId: g.p1, payload: {} },
+              f.principal(f.s1),
+            )
+            entryIds.push(entry.id)
+          }
+          const firstBatch = yield* assessment.listUserBatches(
+            f.t,
+            f.s1,
+            { page: 1, limit: 1 },
+            f.principal(f.s1),
+          )
+          const lastBatch = yield* assessment.listUserBatches(
+            f.t,
+            f.s1,
+            { page: 999, limit: 1 },
+            f.principal(f.s1),
+          )
+          const peer = yield* assessment.listUserBatches(
+            f.t,
+            f.s1,
+            { page: 999, limit: 1 },
+            f.principal(f.s3),
+          )
+          const firstEntry = yield* assessment.listUserEntries(
+            f.t,
+            f.s1,
+            { page: 1, limit: 1 },
+            f.principal(f.s1),
+          )
+          const lastEntry = yield* assessment.listUserEntries(
+            f.t,
+            f.s1,
+            { page: 999, limit: 1 },
+            f.principal(f.s1),
+          )
+          const administrator = yield* assessment.listUserEntries(
+            f.t,
+            f.s1,
+            { page: 999, limit: 1 },
+            f.principal(f.admin),
+          )
+          return {
+            batchIds,
+            entryIds,
+            firstBatch,
+            lastBatch,
+            peer,
+            firstEntry,
+            lastEntry,
+            administrator,
+          }
+        }),
+      ),
+    )
+    expect(result.firstBatch).toMatchObject({ page: 1, pageSize: 1, total: 3 })
+    expect(result.lastBatch).toMatchObject({ page: 3, pageSize: 1, total: 3 })
+    expect(result.firstBatch.items.map((one) => one.batchId)).toEqual([result.batchIds[2]])
+    expect(result.lastBatch.items.map((one) => one.batchId)).toEqual([result.batchIds[0]])
+    expect(result.peer).toEqual({ page: 1, pageSize: 1, total: 0, items: [] })
+    expect(result.firstEntry).toMatchObject({ page: 1, pageSize: 1, total: 3 })
+    expect(result.lastEntry).toMatchObject({ page: 3, pageSize: 1, total: 3 })
+    expect(result.firstEntry.items.map((one) => one.id)).toEqual([result.entryIds[2]])
+    expect(result.lastEntry.items.map((one) => one.id)).toEqual([result.entryIds[0]])
+    expect(result.administrator).toEqual({ page: 1, pageSize: 1, total: 0, items: [] })
+  })
+
   it('lists each claim only to a reader who may read that claim', async () => {
     const result = ok(
       await run(
@@ -119,7 +199,7 @@ describe.runIf(postgresAvailable)('what one person’s record says about assessm
           const idsBy = (who: string) =>
             Effect.map(
               assessment.listUserEntries(f.t, f.s1, { limit: 10 }, f.principal(who)),
-              (rows) => rows.map((row) => row.id).sort(),
+              (rows) => rows.items.map((row) => row.id).sort(),
             )
           const filed = yield* assessment.createEntry(
             f.t,

@@ -12,11 +12,11 @@ export default function UserBatchesPage() {
   return (
     <BatchMemberships
       queryKey={query.assessment.listUserBatches.key({ params: { userId }, query: {} })}
-      fetchPage={(cursor) =>
+      fetchPage={(page) =>
         run(
           api.assessment.listUserBatches({
             params: { userId },
-            query: cursor === undefined ? {} : { cursor },
+            query: { page: String(page) },
           }),
         )
       }

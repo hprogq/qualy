@@ -1,3 +1,5 @@
+import { pageWindow } from '@qualy/api-kit/schema'
+import { transaction } from '@qualy/plugin-database/server'
 import { Effect } from 'effect'
 import { sql } from 'kysely'
 import { db, staffReachOver } from '../server/db.ts'
@@ -252,53 +254,56 @@ export const standingOfOperations = (tenantId: string, operationIds: readonly st
         )
 
 /**
- * The acts of one round, newest first, keyset-paged.
+ * The acts of one round, newest first, with a matching total.
  *
- * The boundary instant is selected as text under a name of its own. Aliasing
+ * The recorded instant is selected as text under a name of its own. Aliasing
  * it `createdAt` would collide with the entity's own datetime property, and
  * the orm's kysely plugin rewrites a column of that name back into a Date -
- * so the cursor would carry `Fri Sep 19 2026 ...`, which PostgreSQL refuses
- * as a timestamptz on the way back in. Every other keyset read here spells
- * the alias differently for the same reason.
+ * so the view keeps the text alias distinct from the entity property.
  */
 export const operationsOfBatchPage = (input: {
   tenantId: string
   batchId: string
-  after?: readonly [string, string] | undefined
+  page?: number
   limit: number
 }) =>
-  db.query((k) => {
-    let query = k
-      .selectFrom('AdministrativeRecordOperation as o')
-      .innerJoin('AssessmentItem as i', (join) =>
-        join.onRef('i.tenantId', '=', 'o.tenantId').onRef('i.id', '=', 'o.itemId'),
-      )
-      .leftJoin('User as u', (join) =>
-        join.onRef('u.tenantId', '=', 'o.tenantId').onRef('u.id', '=', 'o.actorId'),
-      )
-      .select([
-        'o.id',
-        'o.itemId',
-        'o.targetKind',
-        'o.targetSpec',
-        'o.recordedCount',
-        'i.title as itemTitle',
-        'u.displayName as actorName',
-      ])
-      .select([sql<string>`o.created_at::text`.as('createdAtText')])
-      .where('o.tenantId', '=', input.tenantId)
-      .where('o.batchId', '=', input.batchId)
-    if (input.after !== undefined) {
-      query = query.where(
-        sql<boolean>`(o.created_at, o.id) < (${input.after[0]}::timestamptz, ${input.after[1]}::uuid)`,
-      )
-    }
-    return query
-      .orderBy(sql`o.created_at desc`)
-      .orderBy(sql`o.id desc`)
-      .limit(input.limit)
-      .execute()
-  })
+  db
+    .query(async (k) => {
+      const query = k
+        .selectFrom('AdministrativeRecordOperation as o')
+        .innerJoin('AssessmentItem as i', (join) =>
+          join.onRef('i.tenantId', '=', 'o.tenantId').onRef('i.id', '=', 'o.itemId'),
+        )
+        .leftJoin('User as u', (join) =>
+          join.onRef('u.tenantId', '=', 'o.tenantId').onRef('u.id', '=', 'o.actorId'),
+        )
+        .select([
+          'o.id',
+          'o.itemId',
+          'o.targetKind',
+          'o.targetSpec',
+          'o.recordedCount',
+          'i.title as itemTitle',
+          'u.displayName as actorName',
+        ])
+        .select([sql<string>`o.created_at::text`.as('createdAtText')])
+        .where('o.tenantId', '=', input.tenantId)
+        .where('o.batchId', '=', input.batchId)
+      const counted = await query
+        .clearSelect()
+        .select((eb) => eb.fn.countAll<string>().as('count'))
+        .executeTakeFirstOrThrow()
+      const total = Number(counted.count)
+      const window = pageWindow(input.page ?? 1, input.limit, total)
+      const items = await query
+        .orderBy(sql`o.created_at desc`)
+        .orderBy(sql`o.id desc`)
+        .limit(input.limit)
+        .offset(window.offset)
+        .execute()
+      return { items, total, page: window.page, pageSize: input.limit }
+    })
+    .pipe((effect) => transaction(effect, { isolation: 'repeatable read', readOnly: true }))
 
 /** what was done to a whole act, newest first */
 export const eventsOfOperation = (tenantId: string, operationId: string) =>

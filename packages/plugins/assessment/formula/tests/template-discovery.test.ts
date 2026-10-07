@@ -235,19 +235,26 @@ describe.runIf(postgresAvailable)('discovering a shared formula', () => {
 
           const viewer = { userId: f.authorB, nodeId: f.collegeA }
           const walked: string[] = []
-          let after: { publishedAt: string; versionId: string } | undefined = undefined
-          for (let page = 0; page < 20; page += 1) {
+          for (let page = 1; page <= 20; page += 1) {
             const got: TemplatePage = yield* templates.listTemplates(f.t, viewer, {
               limit: 2,
-              after,
+              page,
             })
             walked.push(...got.items.map((row) => row.versionId))
-            if (!got.more || got.last === null) break
-            after = got.last
+            if (got.page * got.pageSize >= got.total) break
           }
           const whole = yield* templates.listTemplates(f.t, viewer, { limit: 100 })
+          const last = yield* templates.listTemplates(f.t, viewer, { limit: 2, page: 999 })
+          const searched = yield* templates.listTemplates(f.t, viewer, {
+            search: '公式 4',
+            page: 999,
+          })
+          const literal = yield* templates.listTemplates(f.t, viewer, { search: '%' })
           return {
             walked,
+            last,
+            searched,
+            literal,
             planted,
             names: whole.items.map((row) => row.authorName),
             authors: whole.items.map((row) => row.authorUserId),
@@ -258,6 +265,11 @@ describe.runIf(postgresAvailable)('discovering a shared formula', () => {
     )
 
     expect([...outcome.walked].sort()).toEqual([...outcome.planted].sort())
+    expect(outcome.last).toMatchObject({ total: 5, page: 3, pageSize: 2 })
+    expect(outcome.last.items).toHaveLength(1)
+    expect(outcome.searched).toMatchObject({ total: 1, page: 1 })
+    expect(outcome.searched.items[0]?.functionName).toBe('公式 4')
+    expect(outcome.literal).toMatchObject({ total: 0, page: 1, items: [] })
     // the template stands; the name it cannot resolve is simply absent
     expect(outcome.names).toEqual([null, null, null, null, null])
     expect(new Set(outcome.authors)).toEqual(new Set([outcome.authorA]))

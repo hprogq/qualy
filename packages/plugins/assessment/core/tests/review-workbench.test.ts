@@ -138,6 +138,16 @@ describe.runIf(postgresAvailable)('the review workbench', () => {
             f.principal(f.reviewer),
           )
           const row = before.items.find((one) => one.itemId === item.id)!
+          const searched = yield* assessment.listReviewInbox(
+            f.t,
+            { batchId: g.batch.id, search: '机器人大赛', view: 'item' },
+            f.principal(f.reviewer),
+          )
+          const unprojected = yield* assessment.listReviewInbox(
+            f.t,
+            { batchId: g.batch.id, search: '证书原件备案' },
+            f.principal(f.reviewer),
+          )
           yield* assessment.decideReview(
             f.t,
             sent.currentReviewInstanceId!,
@@ -149,7 +159,7 @@ describe.runIf(postgresAvailable)('the review workbench', () => {
             { batchId: g.batch.id },
             f.principal(f.reviewer),
           )
-          return { before, row, after }
+          return { before, row, after, searched, unprojected }
         }),
       ),
     )
@@ -161,6 +171,9 @@ describe.runIf(postgresAvailable)('the review workbench', () => {
       { label: '等级与名次', value: '市级 一等奖', files: null },
       { label: '获奖日期', value: '2026-05-09', files: null },
     ])
+    expect(result.searched).toMatchObject({ total: 1, queueTotal: 1, groupTotal: 1 })
+    expect(result.searched.items.map((row) => row.instanceId)).toEqual([result.row.instanceId])
+    expect(result.unprojected).toMatchObject({ total: 0, queueTotal: 1 })
     expect(result.row.unitName).toBe('Class A1')
     expect(result.row.route).toBe('normal')
     expect(result.row.roundNo).toBe(1)

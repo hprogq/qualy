@@ -65,12 +65,12 @@ export const CLIENT_UNSUPPORTED_REASONS = ['protocol', 'assembly', 'release'] as
 export const isClientUnsupportedReason = (value: unknown): value is ClientUnsupportedReason =>
   typeof value === 'string' && (CLIENT_UNSUPPORTED_REASONS as readonly string[]).includes(value)
 
-// Generation 3: audit event lists now return a numbered page with a total,
-// replacing the cursor response. An older tab must reload before reading
-// the new shape, so this server accepts only the current generation.
-export const CURRENT_CLIENT_PROTOCOL = 3
-export const SERVER_MIN_CLIENT_PROTOCOL = 3
-export const SERVER_MAX_CLIENT_PROTOCOL = 3
+// Generation 4: assessment lists, review queues and formula histories return
+// numbered pages. Formula detail returns versionCount instead of all versions.
+// Older tabs must reload before reading the new shapes.
+export const CURRENT_CLIENT_PROTOCOL = 4
+export const SERVER_MIN_CLIENT_PROTOCOL = 4
+export const SERVER_MAX_CLIENT_PROTOCOL = 4
 
 export type ReleaseMode = 'development' | 'production'
 

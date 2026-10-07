@@ -66,7 +66,7 @@ export function AdministrativeEntrySheet({
       query: { entryId, limit: '1' },
     }),
   )
-  const line = (book.data?.entries ?? []).find((one) => one.entryId === entryId)
+  const line = (book.data?.items ?? []).find((one) => one.entryId === entryId)
   const determined: RecognitionDto | null = (() => {
     const row = line
     if (row === undefined || row.recognition === null) return null

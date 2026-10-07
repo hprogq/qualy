@@ -1,3 +1,5 @@
+import { pageWindow } from '@qualy/api-kit/schema'
+import { transaction } from '@qualy/plugin-database/server'
 import { Effect } from 'effect'
 import { sql } from 'kysely'
 import { db, staffReachOver } from '../server/db.ts'
@@ -493,16 +495,16 @@ export const eventsOfImport = (tenantId: string, importId: string) =>
       ),
     )
 
-/** the rows of one import in the file's own order, keyset-paged on the row number */
+/** The rows of one import in the file's own order, with a matching total. */
 export const importRowsPage = (input: {
   tenantId: string
   importId: string
-  afterRowNo?: number | undefined
+  page?: number
   limit: number
 }) =>
   db
-    .query((k) => {
-      let query = k
+    .query(async (k) => {
+      const query = k
         .selectFrom('AdministrativeEntryImportRow as r')
         .innerJoin('Entry as e', (join) =>
           join.onRef('e.tenantId', '=', 'r.tenantId').onRef('e.id', '=', 'r.entryId'),
@@ -529,14 +531,23 @@ export const importRowsPage = (input: {
         ])
         .where('r.tenantId', '=', input.tenantId)
         .where('r.importId', '=', input.importId)
-      if (input.afterRowNo !== undefined) {
-        query = query.where('r.sourceRowNo', '>', input.afterRowNo)
-      }
-      return query.orderBy('r.sourceRowNo').limit(input.limit).execute()
+      const counted = await query
+        .clearSelect()
+        .select((eb) => eb.fn.countAll<string>().as('count'))
+        .executeTakeFirstOrThrow()
+      const total = Number(counted.count)
+      const window = pageWindow(input.page ?? 1, input.limit, total)
+      const items = await query
+        .orderBy('r.sourceRowNo')
+        .limit(input.limit)
+        .offset(window.offset)
+        .execute()
+      return { items, total, page: window.page, pageSize: input.limit }
     })
     .pipe(
-      Effect.map((rows) =>
-        (rows as unknown as Record<string, unknown>[]).map((row) => ({
+      Effect.map(({ items, ...pagination }) => ({
+        ...pagination,
+        items: (items as unknown as Record<string, unknown>[]).map((row) => ({
           rowNo: Number(row['sourceRowNo'] ?? 0),
           entryId: String(row['entryId']),
           participantId: String(row['participantId']),
@@ -549,7 +560,8 @@ export const importRowsPage = (input: {
           displayName: String(row['displayName'] ?? ''),
           businessNo: row['businessNo'] == null ? null : String(row['businessNo']),
         })),
-      ),
+      })),
+      (effect) => transaction(effect, { isolation: 'repeatable read', readOnly: true }),
     )
 
 /**
@@ -615,16 +627,16 @@ export const reversalCandidatesOf = (
       ),
     )
 
-/** the imports of one round, newest first, keyset-paged */
+/** The imports of one round, newest first, with a matching total. */
 export const importsOfBatchPage = (input: {
   tenantId: string
   batchId: string
-  after?: readonly [string, string] | undefined
+  page?: number
   limit: number
 }) =>
   db
-    .query((k) => {
-      let query = k
+    .query(async (k) => {
+      const query = k
         .selectFrom('AdministrativeEntryImport as i')
         .innerJoin('AssessmentItem as it', (join) =>
           join.onRef('it.tenantId', '=', 'i.tenantId').onRef('it.id', '=', 'i.itemId'),
@@ -646,23 +658,26 @@ export const importsOfBatchPage = (input: {
           'a.displayName as actorName',
         ])
         .select([epoch('i.created_at').as('createdMs')])
-        .select([sql<string>`i.created_at::text`.as('cursorAt')])
         .where('i.tenantId', '=', input.tenantId)
         .where('i.batchId', '=', input.batchId)
-      if (input.after !== undefined) {
-        query = query.where(
-          sql<boolean>`(i.created_at, i.id) < (${input.after[0]}::timestamptz, ${input.after[1]}::uuid)`,
-        )
-      }
-      return query
+      const counted = await query
+        .clearSelect()
+        .select((eb) => eb.fn.countAll<string>().as('count'))
+        .executeTakeFirstOrThrow()
+      const total = Number(counted.count)
+      const window = pageWindow(input.page ?? 1, input.limit, total)
+      const items = await query
         .orderBy(sql`i.created_at desc`)
         .orderBy(sql`i.id desc`)
         .limit(input.limit)
+        .offset(window.offset)
         .execute()
+      return { items, total, page: window.page, pageSize: input.limit }
     })
     .pipe(
-      Effect.map((rows) =>
-        (rows as unknown as Record<string, unknown>[]).map((row) => ({
+      Effect.map(({ items, ...pagination }) => ({
+        ...pagination,
+        items: (items as unknown as Record<string, unknown>[]).map((row) => ({
           id: String(row['id']),
           batchId: String(row['batchId']),
           itemId: String(row['itemId']),
@@ -675,7 +690,7 @@ export const importsOfBatchPage = (input: {
           actorId: row['actorId'] == null ? null : String(row['actorId']),
           actorName: row['actorName'] == null ? null : String(row['actorName']),
           createdAt: msOf(row['createdMs']),
-          cursorAt: String(row['cursorAt']),
         })),
-      ),
+      })),
+      (effect) => transaction(effect, { isolation: 'repeatable read', readOnly: true }),
     )

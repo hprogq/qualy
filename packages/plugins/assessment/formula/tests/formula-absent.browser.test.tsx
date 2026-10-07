@@ -36,7 +36,8 @@ const formula = (getFormulaFunction: Stub, route = `/assessment/formulas/${FN_ID
       assessmentFormula: {
         getFormulaFunction,
         getFormulaVersion: () => Effect.fail(apiError('ASSESSMENT_FORMULA_VERSION_NOT_FOUND')),
-        listFormulaDraftRevisions: { items: [], nextCursor: null },
+        listFormulaVersions: { items: [], total: 0, page: 1, pageSize: 50 },
+        listFormulaDraftRevisions: { items: [], total: 0, page: 1, pageSize: 50 },
         listFormulaShareOptions: { nodes: [], truncated: false },
       },
     }),
@@ -192,7 +193,7 @@ describe('a formula library that could not be read', () => {
       {
         listFormulaFunctions: () =>
           reachable
-            ? Effect.succeed({ items: [], nextCursor: null })
+            ? Effect.succeed({ items: [], total: 0, page: 1, pageSize: 50 })
             : Effect.fail(apiError('SERVICE_UNAVAILABLE')),
       },
       '/assessment/formulas',
@@ -265,7 +266,7 @@ describe('a formula that goes away while it is open', () => {
               ? Effect.fail(apiError('ASSESSMENT_FORMULA_FUNCTION_NOT_FOUND'))
               : Effect.succeed({
                   function: draft(state.published),
-                  versions: [],
+                  versionCount: 0,
                   copiedFrom: null,
                 }),
           getFormulaVersion: () =>
@@ -274,7 +275,8 @@ describe('a formula that goes away while it is open', () => {
             }),
           previewFormulaDraft: () => Effect.succeed(contract),
           listFormulaShareOptions: { nodes: [], truncated: false },
-          listFormulaDraftRevisions: { items: [], nextCursor: null },
+          listFormulaVersions: { items: [], total: 0, page: 1, pageSize: 50 },
+          listFormulaDraftRevisions: { items: [], total: 0, page: 1, pageSize: 50 },
           setFormulaFunctionStatus: () =>
             Effect.succeed({ function: { ...draft(state.published), status: 'archived' } }),
           deleteFormulaFunction: () => {

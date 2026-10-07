@@ -104,6 +104,7 @@ const open = (
   // the list counts what the version is offered to, so the two agree
   const listed = {
     ...detail,
+    versionCount: 1,
     versions: [{ ...detail.versions[0]!, sharedCount: scopes.length }],
   }
   return renderScreen({
@@ -111,7 +112,13 @@ const open = (
       app: { getManifest: emptyManifest() },
       assessmentFormula: {
         getFormulaFunction: () => Effect.succeed(listed),
-        listFormulaDraftRevisions: { items: [], nextCursor: null },
+        listFormulaVersions: {
+          items: listed.versions,
+          total: listed.versions.length,
+          page: 1,
+          pageSize: 50,
+        },
+        listFormulaDraftRevisions: { items: [], total: 0, page: 1, pageSize: 50 },
         previewFormulaDraft: () => Effect.succeed(contract),
         getFormulaVersion: () => Effect.succeed({ version: frozen }),
         evaluateFormulaVersion: { cases: [] },

@@ -365,7 +365,7 @@ describe.runIf(postgresAvailable)('the runtime sandbox, shared by scoring and au
           const after = yield* library.getFunction(f.t, created.id, as)
           return {
             published,
-            versions: after.versions.length,
+            versions: after.versionCount,
             scored: probe.scored,
             referenced: probe.referenced,
           }
@@ -467,7 +467,7 @@ describe.runIf(postgresAvailable)('the runtime sandbox, shared by scoring and au
             library.publish(f.t, created.id, { expectedDraftRevision: 2, releaseName: '慢' }, as),
           )
           const after = yield* library.getFunction(f.t, created.id, as)
-          return { tried, refused, versions: after.versions.length }
+          return { tried, refused, versions: after.versionCount }
         }),
       ),
     )

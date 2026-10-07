@@ -15,11 +15,9 @@ import { assessmentApi } from '../api.ts'
 // this beside each entry and says which one; anything that is not ours
 // answers with nothing at all.
 //
-// A page's worth is all it asks for, and a full page reads as "at least
-// this many": the point is whether the section is worth opening, and paging
-// the whole history to put an exact number on a rail would cost more than
-// the answer is worth.
-const PAGE = 20
+// Numbered lists already count matching rows. Request one row for the
+// navigation badge and use that same authorized total.
+const PAGE = 1
 
 // The count is asked once the page is up, so on a fresh page it comes a
 // moment after the rail. It arrives rather than blinks in, as the rail's
@@ -82,9 +80,8 @@ function Counted({ section }: { section: Section }) {
   })
   const held = section === 'batches' ? batches.data : entries.data
   const [waited] = useState(() => held === undefined)
-  const rows = held?.items?.length ?? 0
+  const rows = held?.total ?? 0
   if (rows === 0) return null
-  const more = held?.nextCursor != null
   return (
     <span
       data-testid="person-section-count"
@@ -92,7 +89,7 @@ function Counted({ section }: { section: Section }) {
       data-count={rows}
       {...stylex.props(styles.seat, waited && styles.arriving)}
     >
-      <Count>{more ? `${PAGE}+` : String(rows)}</Count>
+      <Count>{String(rows)}</Count>
     </span>
   )
 }

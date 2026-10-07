@@ -101,7 +101,10 @@ describe.runIf(postgresAvailable)('the formula library', () => {
             },
             as,
           )
-          const detail = yield* library.getFunction(f.t, created.id, as)
+          const detail = {
+            ...(yield* library.getFunction(f.t, created.id, as)),
+            versions: (yield* library.listVersions(f.t, created.id, {}, as)).items,
+          }
           const listed = yield* library.listFunctions(f.t, {}, as)
           return { created, version, detail, listed }
         }),
@@ -146,23 +149,33 @@ describe.runIf(postgresAvailable)('the formula library', () => {
                set updated_at = '2026-03-01 10:00:00.123456+00'
              where tenant_id = ${f.t}`)
           const walked: string[] = []
-          let cursor: string | undefined = undefined
-          for (let page = 0; page < 5; page++) {
-            const listed: { items: readonly { name: string }[]; nextCursor: string | null } =
-              yield* library.listFunctions(
-                f.t,
-                { limit: '1', ...(cursor === undefined ? {} : { cursor }) },
-                as,
-              )
+          for (let page = 1; page <= 5; page++) {
+            const listed: {
+              items: readonly { name: string }[]
+              page: number
+              pageSize: number
+              total: number
+            } = yield* library.listFunctions(f.t, { limit: '1', page: String(page) }, as)
             for (const item of listed.items) walked.push(item.name)
-            if (listed.nextCursor === null) break
-            cursor = listed.nextCursor
+            if (listed.page * listed.pageSize >= listed.total) break
           }
-          return walked
+          const last = yield* library.listFunctions(f.t, { limit: '2', page: '999' }, as)
+          const searched = yield* library.listFunctions(
+            f.t,
+            { limit: '1', page: '999', search: 'Two' },
+            as,
+          )
+          const literal = yield* library.listFunctions(f.t, { search: '%' }, as)
+          return { walked, last, searched, literal }
         }),
       ),
     )
-    expect([...outcome].sort()).toEqual(['One', 'Three', 'Two'])
+    expect([...outcome.walked].sort()).toEqual(['One', 'Three', 'Two'])
+    expect(outcome.last).toMatchObject({ total: 3, page: 2, pageSize: 2 })
+    expect(outcome.last.items).toHaveLength(1)
+    expect(outcome.searched).toMatchObject({ total: 1, page: 1, pageSize: 1 })
+    expect(outcome.searched.items.map((row) => row.name)).toEqual(['Two'])
+    expect(outcome.literal).toMatchObject({ total: 0, page: 1, items: [] })
   }, 120_000)
 
   it('refuses to publish while a parameter has no words a reader could go by', async () => {

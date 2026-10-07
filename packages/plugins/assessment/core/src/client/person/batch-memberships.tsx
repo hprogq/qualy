@@ -1,6 +1,8 @@
+import { pageNumber } from '@qualy/api-kit/schema'
+import { RecordPager } from '../record/RecordPager.tsx'
 import { useLocale } from '@qualy/web-i18n'
-import { useInfiniteQuery } from '@tanstack/react-query'
-import { cursorPages, useLoadFailure, usePageHref, usePageNavigate } from '@qualy/web-runtime'
+import { useQuery } from '@tanstack/react-query'
+import { usePageQueryState, useLoadFailure, usePageHref, usePageNavigate } from '@qualy/web-runtime'
 
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
@@ -8,18 +10,15 @@ import { AsyncSection } from '@qualy/ui/admin'
 import {
   Card,
   CardEmpty,
-  CardFoot,
   Cell,
   EditorSkeleton,
   LeadWord,
   SectionHead,
-  Spacer,
   Status,
   Table,
   TableHead,
   TableRow,
 } from '@qualy/ui/screen'
-import { Button } from '@qualy/ui/button'
 import { StatusBadge } from '../batch/StatusBadge.tsx'
 import { useWhen } from '../batch/when.ts'
 import { zoneMarkOf } from '../batch/zone.ts'
@@ -146,8 +145,8 @@ export function BatchMemberships({
 }: {
   /** what the pages are cached under */
   queryKey: readonly unknown[]
-  /** one page, from where the last one ended */
-  fetchPage: (cursor: string | undefined) => Promise<BatchMembershipPage>
+  /** One numbered page. */
+  fetchPage: (page: number) => Promise<BatchMembershipPage>
 }) {
   const locale = useLocale()
   const failures = useLoadFailure()
@@ -155,12 +154,16 @@ export function BatchMemberships({
   // a row is a way into the round only for a reader who may open rounds
   const batchReachable = usePageHref('assessment/batch', { params: { batchId: '0' } }) !== undefined
 
-  const rows = useInfiniteQuery({
-    queryKey: [...queryKey, 'infinite'],
-    queryFn: ({ pageParam }) => fetchPage(pageParam),
-    ...cursorPages,
+  const [page, setPage] = usePageQueryState('batchesPage')
+  const identity = JSON.stringify(queryKey)
+  const rows = useQuery({
+    queryKey: [...queryKey, { page: pageNumber(page) }],
+    queryFn: () => fetchPage(pageNumber(page)),
+    meta: { personalPage: identity },
+    placeholderData: (previous, previousQuery) =>
+      previousQuery?.meta?.['personalPage'] === identity ? previous : undefined,
   })
-  const items = rows.data?.pages.flatMap((page) => page.items) ?? []
+  const items = rows.data?.items ?? []
   const marks = items.map(({ batch, membership }) =>
     zoneMarkOf(batch.timezone, locale, membership.includedAt),
   )
@@ -168,12 +171,10 @@ export function BatchMemberships({
 
   return (
     <div {...stylex.props(styles.page)}>
-      <SectionHead title={m.person_batchesTab()} count={rows.data ? items.length : undefined} />
+      <SectionHead title={m.person_batchesTab()} count={rows.data?.total} />
       <AsyncSection
         pending={rows.isPending}
-        // the list's own failure, when it has nothing to show; a further
-        // page that did not come leaves the rows read, and its key to press
-        error={rows.data === undefined && rows.isError ? failures.of(rows.error) : null}
+        error={rows.isError ? failures.of(rows.error) : null}
         retrying={rows.isFetching}
         framed
         loadingLabel={commonMessages.state_loading()}
@@ -181,7 +182,7 @@ export function BatchMemberships({
         onRetry={() => void rows.refetch()}
         skeleton={<EditorSkeleton />}
       >
-        <Card>
+        <Card data-testid="person-batches" tabIndex={-1} aria-busy={rows.isFetching}>
           {items.length === 0 ? (
             <CardEmpty>{m.person_batchesEmpty()}</CardEmpty>
           ) : (
@@ -235,18 +236,13 @@ export function BatchMemberships({
               ))}
             </Table>
           )}
-          {rows.hasNextPage && (
-            <CardFoot>
-              <Spacer />
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={rows.isFetchingNextPage}
-                onClick={() => void rows.fetchNextPage()}
-              >
-                {m.person_loadMore()}
-              </Button>
-            </CardFoot>
+          {rows.data !== undefined && (
+            <RecordPager
+              result={rows.data}
+              busy={rows.isFetching}
+              target="person-batches"
+              onPage={(next) => setPage(String(next))}
+            />
           )}
         </Card>
       </AsyncSection>

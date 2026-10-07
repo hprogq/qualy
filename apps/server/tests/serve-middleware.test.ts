@@ -259,6 +259,7 @@ describe('the web client protocol', () => {
       '0',
       '1',
       '2',
+      '3',
       String(CURRENT_CLIENT_PROTOCOL + 1),
       'one',
       '-1',

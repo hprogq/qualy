@@ -795,7 +795,7 @@ export default function FormulaEditorPage() {
   })
   // the tries this browser remembers for the draft
   const tryRecords = useTryRecords(functionId, 'draft')
-  const versions = detail.data?.versions ?? []
+  const versionCount = detail.data?.versionCount ?? 0
   // Where this draft was started from, when it was started from somebody
   // else's. A note about how it came to exist and nothing more: there is
   // no following the source, and no version of it to be behind.
@@ -1993,7 +1993,6 @@ export default function FormulaEditorPage() {
 
   const archived = fn.status === 'archived'
   const busy = save.isPending || publish.isPending || restore.isPending
-  const releases = [...versions].sort((a, b) => b.versionNo - a.versionNo)
   const releaseWords = (release: { versionNo: number; releaseName: string | null }): string =>
     release.releaseName ?? m.history_releaseOrdinal({ number: release.versionNo })
 
@@ -2020,7 +2019,7 @@ export default function FormulaEditorPage() {
       onOpenChange={setVersionsOpen}
       narrow={narrow}
       functionId={functionId}
-      releases={releases}
+      versionCount={versionCount}
       latestVersionNo={fn.latestVersionNo}
       draftRevision={fn.draftRevision}
       view={view}
@@ -2090,8 +2089,8 @@ export default function FormulaEditorPage() {
     >
       <HistoryIcon aria-hidden />
       {m.history_title()}
-      {releases.length === 0 ? null : (
-        <span {...stylex.props(styles.actionCount)}>{releases.length}</span>
+      {versionCount === 0 ? null : (
+        <span {...stylex.props(styles.actionCount)}>{versionCount}</span>
       )}
     </Button>
   )

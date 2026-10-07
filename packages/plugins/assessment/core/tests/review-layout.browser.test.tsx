@@ -1,3 +1,4 @@
+import { reviewClient } from './support/review-client.tsx'
 import ReviewInstancePage from '../src/client/review/ReviewInstancePage.tsx'
 import ReviewInboxPage from '../src/client/review/ReviewInboxPage.tsx'
 import QueueBadge from '../src/client/review/QueueBadge.tsx'
@@ -13,7 +14,7 @@ import {
   useScreenFillClaimed,
   useScreenFootClaimed,
 } from '@qualy/web-runtime'
-import { addressNow, apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
+import { addressNow, apiError, emptyManifest, renderScreen } from './support/screen.tsx'
 // The only suite that needs the real stylesheet: what it asserts is which
 // parts a width shows, and without the sheet every breakpoint is the same
 // screen. Test files run in their own frame, so this stays here.
@@ -172,7 +173,7 @@ const inboxRow = (over: Record<string, unknown> = {}) => ({
 
 const queue = (inbox?: Record<string, unknown>, search = '') =>
   renderScreen({
-    client: fakeClient({
+    client: reviewClient({
       app: { getManifest: () => Effect.succeed({ ...emptyManifest(), pages: PAGES }) },
       assessment: {
         getBatch: () => Effect.succeed({ batch: batch() }),
@@ -211,7 +212,7 @@ describe('the wake-ups of one decision', () => {
       'result-changed',
     ] as const
     await renderScreen({
-      client: fakeClient({
+      client: reviewClient({
         app: { getManifest: () => Effect.succeed({ ...emptyManifest(), pages: PAGES }) },
         assessment: {
           getBatch: () => Effect.succeed({ batch: batch() }),
@@ -256,7 +257,7 @@ describe('the wake-ups of one decision', () => {
 const open = (stubs: Record<string, unknown> = {}, locale: 'zh-CN' | 'en-US' = 'zh-CN') =>
   renderScreen({
     locale,
-    client: fakeClient({
+    client: reviewClient({
       app: { getManifest: () => Effect.succeed({ ...emptyManifest(), pages: PAGES }) },
       assessment: {
         getBatch: () => Effect.succeed({ batch: batch() }),
@@ -494,7 +495,7 @@ describe('one workbench, three widths', () => {
       return <span data-testid="fill-claimed" data-claimed={String(useScreenFillClaimed())} />
     }
     await renderScreen({
-      client: fakeClient({
+      client: reviewClient({
         app: { getManifest: () => Effect.succeed({ ...emptyManifest(), pages: PAGES }) },
         assessment: {
           getBatch: () => Effect.succeed({ batch: batch() }),
@@ -532,7 +533,7 @@ describe('one workbench, three widths', () => {
       return <span data-testid="foot-claimed" data-claimed={String(useScreenFootClaimed())} />
     }
     await renderScreen({
-      client: fakeClient({
+      client: reviewClient({
         app: { getManifest: () => Effect.succeed({ ...emptyManifest(), pages: PAGES }) },
         assessment: {
           getBatch: () => Effect.succeed({ batch: batch() }),
@@ -795,7 +796,7 @@ describe('the workbench inside the workspace shell', () => {
   it('stands inside the shell\u2019s main and gives up the scrollbar strip beside it', async () => {
     await page.viewport(1440, 900)
     await renderScreen({
-      client: fakeClient({
+      client: reviewClient({
         app: {
           getManifest: () =>
             Effect.succeed({
@@ -881,7 +882,7 @@ describe('the workbench inside the workspace shell', () => {
         storage: dragged
           ? { 'qualy:review-bench-columns': JSON.stringify({ flow: 640, about: 480 }) }
           : {},
-        client: fakeClient({
+        client: reviewClient({
           app: {
             getManifest: () =>
               Effect.succeed({
@@ -976,7 +977,7 @@ describe('a round the address names that is not there', () => {
     await page.viewport(1440, 900)
     const asked = vi.fn(() => Effect.succeed({ review }))
     await renderScreen({
-      client: fakeClient({
+      client: reviewClient({
         app: { getManifest: () => Effect.succeed({ ...emptyManifest(), pages: PAGES }) },
         assessment: {
           getBatch: () => Effect.succeed({ batch: batch() }),
@@ -1100,7 +1101,7 @@ describe('the rail badge beside the workbench', () => {
           ),
         )
       await renderScreen({
-        client: fakeClient({
+        client: reviewClient({
           app: { getManifest: () => Effect.succeed({ ...emptyManifest(), pages: PAGES }) },
           assessment: {
             getBatch: () => Effect.succeed({ batch: batch() }),
@@ -1448,19 +1449,15 @@ describe('a queue longer than one page', () => {
   const LATER_ID = '99999999-9999-4999-8999-999999999998'
   // the api serves the queue oldest first, a page at a time; the second page
   // holds a submission the first fifty never mention
-  const paged = (seen: (string | undefined)[]) => (input: { query: { cursor?: string } }) => {
-    seen.push(input.query.cursor)
-    return Effect.succeed(
-      input.query.cursor === undefined
-        ? { items: [inboxRow()], nextCursor: 'second-page', handledToday: 0 }
-        : {
-            items: [
-              inboxRow({ instanceId: LATER_ID, participantName: '赵六', businessNo: '2023019999' }),
-            ],
-            nextCursor: null,
-            handledToday: 0,
-          },
-    )
+  const paged = (seen: (string | undefined)[]) => (input: { query: { page?: string } }) => {
+    seen.push(input.query.page)
+    return Effect.succeed({
+      items: [
+        inboxRow(),
+        inboxRow({ instanceId: LATER_ID, participantName: '赵六', businessNo: '2023019999' }),
+      ],
+      handledToday: 0,
+    })
   }
   const stubs = (seen: (string | undefined)[]) => ({
     app: { getManifest: () => Effect.succeed({ ...emptyManifest(), pages: PAGES }) },
@@ -1475,7 +1472,7 @@ describe('a queue longer than one page', () => {
     await page.viewport(1280, 800)
     const seen: (string | undefined)[] = []
     await renderScreen({
-      client: fakeClient(stubs(seen)),
+      client: reviewClient(stubs(seen)),
       routes: [
         { path: '/assessment/batches/:batchId/reviews', element: <ReviewInboxPage /> },
       ] as never,
@@ -1485,7 +1482,7 @@ describe('a queue longer than one page', () => {
     await expect.element(page.getByTestId('review-stats')).toHaveAttribute('data-pending', '2')
     // the search runs over the whole queue, so the later filer is found
     await expect.element(page.getByText('赵六').first()).toBeVisible()
-    expect(seen).toContain('second-page')
+    expect(seen).toEqual(['1'])
   })
 
   // The rail stands on every page of the round, so its count is the one the
@@ -1494,7 +1491,7 @@ describe('a queue longer than one page', () => {
     const seen: (string | undefined)[] = []
     const base = stubs(seen)
     await renderScreen({
-      client: fakeClient({
+      client: reviewClient({
         ...base,
         assessment: {
           ...base.assessment,
@@ -1533,11 +1530,11 @@ describe('a queue longer than one page', () => {
     const base = stubs(seen)
     const listed = paged(seen)
     await renderScreen({
-      client: fakeClient({
+      client: reviewClient({
         ...base,
         assessment: {
           ...base.assessment,
-          listReviewInbox: (input: { query: { cursor?: string } }) =>
+          listReviewInbox: (input: { query: { page?: string } }) =>
             reachable ? listed(input) : Effect.fail(apiError('SERVICE_UNAVAILABLE')),
         },
       }),
@@ -1564,7 +1561,7 @@ describe('a queue longer than one page', () => {
     const seen: (string | undefined)[] = []
     const base = stubs(seen)
     await renderScreen({
-      client: fakeClient({
+      client: reviewClient({
         ...base,
         assessment: {
           ...base.assessment,
@@ -1589,11 +1586,11 @@ describe('a queue longer than one page', () => {
     const base = stubs(seen)
     const listed = paged(seen)
     await renderScreen({
-      client: fakeClient({
+      client: reviewClient({
         ...base,
         assessment: {
           ...base.assessment,
-          listReviewInbox: (input: { query: { cursor?: string } }) =>
+          listReviewInbox: (input: { query: { page?: string } }) =>
             reachable
               ? listed(input)
               : Effect.sync(() => {
@@ -1648,9 +1645,13 @@ describe('the queue, a page at a time', () => {
     handledToday: 4,
     judging: true,
   })
-  const withBench = (items: readonly Record<string, unknown>[], search = '') =>
+  const withBench = (
+    items: readonly Record<string, unknown>[],
+    search = '',
+    overrides: Record<string, unknown> = {},
+  ) =>
     renderScreen({
-      client: fakeClient({
+      client: reviewClient({
         app: { getManifest: () => Effect.succeed({ ...emptyManifest(), pages: PAGES }) },
         assessment: {
           getBatch: () => Effect.succeed({ batch: batch() }),
@@ -1658,6 +1659,7 @@ describe('the queue, a page at a time', () => {
           listAwaitingSupplements: () => Effect.succeed({ items: [], nextCursor: null }),
           getReviewInstance: () => Effect.succeed({ review }),
           getEntryHistory: () => Effect.succeed({ revisions: [], events: [], rounds: [] }),
+          ...overrides,
         },
       }),
       routes: [
@@ -1697,6 +1699,7 @@ describe('the queue, a page at a time', () => {
 
     await pager.getByRole('button', { name: '3' }).click()
     await expect.element(rows().first()).toHaveAttribute('data-instance', rowId(20))
+    expect(document.activeElement).toBe(page.getByTestId('queue-pane').element())
     expect(rows().elements()).toHaveLength(3)
     expect(addressNow()).toContain('page=3')
 
@@ -1716,6 +1719,22 @@ describe('the queue, a page at a time', () => {
     const stats = page.getByTestId('batch-band').getByTestId('review-stats')
     await expect.element(stats).toHaveAttribute('data-pending', '25')
     await expect.element(stats).toHaveAttribute('data-today', '4')
+  })
+
+  it('pages participant groups independently from their filings', async () => {
+    await page.viewport(1440, 900)
+    await queue(inboxOf(filings(25, 0)), '?view=person')
+    await expect
+      .element(page.getByTestId('review-groups-pager'))
+      .toHaveAttribute('data-total', '25')
+    expect(masters().elements()).toHaveLength(20)
+    await page
+      .getByTestId('review-groups-pager')
+      .getByRole('button', { name: '2', exact: true })
+      .click()
+    await expect.poll(() => masters().elements().length).toBe(5)
+    await expect.element(page.getByTestId('review-groups-pager')).toHaveAttribute('data-page', '2')
+    expect(addressNow()).toContain('groupPage=2')
   })
 
   // Every row of the queue is waiting; a word saying so on each of them was
@@ -1750,7 +1769,13 @@ describe('the queue, a page at a time', () => {
     await expect.element(page.getByTestId('queue-position')).not.toBeVisible()
     await page.getByTestId('queue-key').click()
     await expect.element(page.getByTestId('queue-sheet')).toBeVisible()
-    expect(page.getByTestId('queue-row').elements()).toHaveLength(23)
+    expect(page.getByTestId('queue-row').elements()).toHaveLength(20)
+    await expect.element(page.getByTestId('review-rail-pager')).toHaveAttribute('data-total', '23')
+    await page
+      .getByTestId('review-rail-pager')
+      .getByRole('button', { name: '2', exact: true })
+      .click()
+    await expect.poll(() => page.getByTestId('queue-row').elements().length).toBe(3)
     await userEvent.keyboard('{Escape}')
     await expect.poll(() => document.querySelector('[data-testid="queue-sheet"]')).toBeNull()
 
@@ -1768,6 +1793,62 @@ describe('the queue, a page at a time', () => {
     await page.getByTestId('review-start').click()
     await expect.element(page.getByTestId('run-position')).toHaveAttribute('data-total', '25')
     await expect.element(page.getByTestId('run-position')).toHaveAttribute('data-at', '1')
+  })
+
+  it('walks to the next and previous filing across a server page boundary', async () => {
+    await page.viewport(1440, 900)
+    await withBench(both(), '?page=2')
+    await expect.element(rows().last()).toHaveAttribute('data-instance', rowId(19))
+    await rows().last().click()
+    await expect.element(page.getByTestId('run-position')).toHaveAttribute('data-at', '20')
+    await userEvent.keyboard('j')
+    await expect.element(page.getByTestId('run-position')).toHaveAttribute('data-at', '21')
+    expect(addressNow()).toContain(rowId(20))
+    await userEvent.keyboard('k')
+    await expect.element(page.getByTestId('run-position')).toHaveAttribute('data-at', '20')
+    expect(addressNow()).toContain(rowId(19))
+  })
+
+  it('starts a question at its first filing even when the last page holds only one', async () => {
+    await page.viewport(1440, 900)
+    await withBench(filings(21, 0), '?page=3')
+    await expect.element(rows().first()).toHaveAttribute('data-instance', rowId(20))
+    await expect.element(page.getByTestId('queue-run')).toBeVisible()
+    await page.getByTestId('queue-run').click()
+    await expect.element(page.getByTestId('run-position')).toHaveAttribute('data-at', '1')
+    await expect.element(page.getByTestId('run-position')).toHaveAttribute('data-total', '21')
+  })
+
+  it('keeps the previous rail page while loading and offers retry when the next page fails', async () => {
+    await page.viewport(1440, 900)
+    let release: () => void = () => undefined
+    const delayed = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    let failing = true
+    await withBench(both(), '', {
+      listReviewInbox: ({ query }: { query: { view?: string; page?: string; focus?: string } }) =>
+        query.view === undefined && query.focus === undefined && query.page === '2' && failing
+          ? Effect.promise(() => delayed).pipe(
+              Effect.andThen(Effect.fail(apiError('SERVICE_UNAVAILABLE'))),
+            )
+          : Effect.succeed(inboxOf(both())),
+    })
+    await rows().first().click()
+    await page.getByTestId('queue-key').click()
+    await expect.poll(() => page.getByTestId('queue-row').elements().length).toBe(20)
+    await page
+      .getByTestId('review-rail-pager')
+      .getByRole('button', { name: '2', exact: true })
+      .click()
+    expect(page.getByTestId('queue-row').elements()).toHaveLength(20)
+    expect(document.activeElement?.closest('[data-testid="queue-sheet"]')).not.toBeNull()
+    release()
+    const retry = page.getByTestId('queue-sheet').getByRole('button', { name: /重试/ })
+    await expect.element(retry).toBeVisible()
+    failing = false
+    await retry.click()
+    await expect.poll(() => page.getByTestId('queue-row').elements().length).toBe(3)
   })
 
   // Narrower than a desk the list and a question's filings are one screen

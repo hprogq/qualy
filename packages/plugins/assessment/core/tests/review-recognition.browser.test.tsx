@@ -1,9 +1,10 @@
+import { reviewClient } from './support/review-client.tsx'
 import ReviewInstancePage from '../src/client/review/ReviewInstancePage.tsx'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
 import { Effect } from 'effect'
 import { readDraft, writeDraft } from '../src/client/local-store.ts'
-import { emptyManifest, fakeClient, READER_ID, renderScreen } from './support/screen.tsx'
+import { emptyManifest, READER_ID, renderScreen } from './support/screen.tsx'
 
 // The approval collecting an explicit determination.
 //
@@ -160,7 +161,7 @@ const open = (
   reader?: string,
 ) =>
   renderScreen({
-    client: fakeClient({
+    client: reviewClient({
       ...(reader === undefined
         ? {}
         : { auth: { getSession: () => Effect.succeed({ user: { id: reader } }) } }),

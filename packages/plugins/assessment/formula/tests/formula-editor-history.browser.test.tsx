@@ -148,7 +148,7 @@ const open = ({
       assessmentFormula: {
         getFormulaFunction: () => {
           wire.reads += 1
-          return Effect.succeed({ function: draft, versions: [release], copiedFrom: null })
+          return Effect.succeed({ function: draft, versionCount: 1, copiedFrom: null })
         },
         updateFormulaDraft: (request: {
           payload: { draftSourceTs?: string; draftTests?: typeof examples }
@@ -176,8 +176,11 @@ const open = ({
             cases: [{ clientId: 'try', actual: '7.5' }],
           })
         },
+        listFormulaVersions: { items: [release], total: 1, page: 1, pageSize: 50 },
         listFormulaDraftRevisions:
-          saves ?? (() => Effect.succeed({ items: revisions, nextCursor: null })),
+          saves ??
+          (() =>
+            Effect.succeed({ items: revisions, total: revisions.length, page: 1, pageSize: 50 })),
         getFormulaDraftRevision: revision,
         getFormulaVersionSharing: () => Effect.succeed({ scopes: [], token: 'token-1' }),
         listFormulaShareOptions: () => Effect.succeed({ nodes: [], truncated: false }),

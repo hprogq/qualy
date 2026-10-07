@@ -1,15 +1,9 @@
+import { FormulaPager } from './FormulaPager.tsx'
 import { useLocale } from '@qualy/web-i18n'
 import * as stylex from '@stylexjs/stylex'
-import { useMemo } from 'react'
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
-import {
-  LoadFailure,
-  cursorPages,
-  useApi,
-  useApiQuery,
-  useLoadFailure,
-  useRunApi,
-} from '@qualy/web-runtime'
+import { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { LoadFailure, useApiQuery, useLoadFailure } from '@qualy/web-runtime'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { EmptyRow } from '@qualy/ui/empty-row'
 import { Spinner } from '@qualy/ui/spinner'
@@ -37,6 +31,7 @@ export type HistoryList = 'releases' | 'revisions'
 
 const styles = stylex.create({
   panel: { width: 520 },
+  results: { display: 'flex', flexDirection: 'column', minHeight: 0, flexGrow: 1 },
   // a phone's sheet comes up from the foot and never takes the whole screen
   panelPhone: { width: null, maxHeight: '76%' },
   tabs: {
@@ -205,7 +200,7 @@ export function VersionsDrawer({
   onOpenChange,
   narrow,
   functionId,
-  releases,
+  versionCount,
   latestVersionNo,
   draftRevision,
   view,
@@ -223,8 +218,7 @@ export function VersionsDrawer({
   readonly onOpenChange: (open: boolean) => void
   readonly narrow: boolean
   readonly functionId: string
-  /** newest first */
-  readonly releases: readonly ReleaseInfo[]
+  readonly versionCount: number
   readonly latestVersionNo: number | null
   /** the revision the draft is at now */
   readonly draftRevision: number
@@ -241,8 +235,6 @@ export function VersionsDrawer({
   /** opens the name and notes of one publication for rewriting */
   readonly onEditInfo: (release: ReleaseInfo) => void
 }) {
-  const api = useApi(formulaApi)
-  const runApi = useRunApi()
   const query = useApiQuery(formulaApi)
   const locale = useLocale()
   const loadFailure = useLoadFailure()
@@ -252,32 +244,40 @@ export function VersionsDrawer({
   // no audience to manage
   const shareOptions = useQuery({
     ...query.assessmentFormula.listFormulaShareOptions.queryOptions({ query: {} }),
-    enabled: open && releases.length > 0,
+    enabled: open && versionCount > 0,
   })
   const mayShare = (shareOptions.data?.nodes.length ?? 0) > 0
 
-  const revisions = useInfiniteQuery({
-    queryKey: [
-      ...query.assessmentFormula.listFormulaDraftRevisions.key({
-        params: { functionId },
-        query: {},
-      }),
-      'infinite',
-    ],
-    queryFn: ({ pageParam }) =>
-      runApi(
-        api.assessmentFormula.listFormulaDraftRevisions({
-          params: { functionId },
-          query: pageParam !== undefined ? { cursor: pageParam } : {},
-        }),
-      ),
-    ...cursorPages,
-    enabled: open && list === 'revisions',
+  const [releasePage, setReleasePage] = useState(1)
+  const [revisionPage, setRevisionPage] = useState(1)
+  const publications = useQuery({
+    ...query.assessmentFormula.listFormulaVersions.queryOptions({
+      params: { functionId },
+      query: { page: String(releasePage) },
+    }),
+    enabled: open && list === 'releases',
+    meta: { formulaId: functionId },
+    placeholderData: (previous, previousQuery) =>
+      previousQuery?.meta?.['formulaId'] === functionId ? previous : undefined,
   })
-  const revisionItems = useMemo(
-    () => revisions.data?.pages.flatMap((page) => page.items) ?? [],
-    [revisions.data],
-  )
+  const releases = publications.data?.items ?? []
+  const revisions = useQuery({
+    ...query.assessmentFormula.listFormulaDraftRevisions.queryOptions({
+      params: { functionId },
+      query: { page: String(revisionPage) },
+    }),
+    enabled: open && list === 'revisions',
+    meta: { formulaId: functionId },
+    placeholderData: (previous, previousQuery) =>
+      previousQuery?.meta?.['formulaId'] === functionId ? previous : undefined,
+  })
+  const revisionItems = revisions.data?.items ?? []
+  const viewedRelease = useQuery({
+    ...query.assessmentFormula.getFormulaVersion.queryOptions({
+      params: { functionId, versionNo: view.kind === 'release' ? String(view.versionNo) : '1' },
+    }),
+    enabled: open && view.kind === 'release',
+  })
 
   const originWords = (item: (typeof revisionItems)[number]): string | null => {
     switch (item.origin) {
@@ -302,107 +302,117 @@ export function VersionsDrawer({
     }
   }
 
-  const releaseList =
-    releases.length === 0 ? (
-      <div {...stylex.props(styles.fill)}>
-        <EmptyRow>{m.editor_versionsEmpty()}</EmptyRow>
-      </div>
-    ) : (
-      <ul data-testid="formula-versions" {...stylex.props(styles.list)}>
-        {releases.map((release) => {
-          const here = view.kind === 'release' && view.versionNo === release.versionNo
-          const shared = release.sharedCount ?? 0
-          return (
-            <li key={release.versionNo} {...stylex.props(styles.row, here && styles.rowHere)}>
-              <div {...stylex.props(styles.body)}>
-                <div {...stylex.props(styles.line)}>
-                  <span
-                    {...stylex.props(
-                      styles.name,
-                      here && styles.nameHere,
-                      release.releaseName === null && styles.unnamed,
-                    )}
-                  >
-                    {release.releaseName ?? m.history_releaseUnnamed()}
-                  </span>
-                  {release.versionNo === latestVersionNo ? (
-                    <span {...stylex.props(w.standing, w.standingQuiet)}>{m.version_latest()}</span>
-                  ) : null}
-                  {shared === 0 ? null : (
-                    <span
-                      data-testid="formula-release-shared"
-                      data-count={shared}
-                      {...stylex.props(styles.sharedWords)}
-                    >
-                      {m.sharing_units({ count: shared })}
-                    </span>
+  const releaseList = publications.isPending ? (
+    <div role="status" {...stylex.props(styles.fill)}>
+      <Spinner aria-label={m.editor_loading()} />
+    </div>
+  ) : publications.isError ? (
+    <div {...stylex.props(styles.fill)}>
+      <LoadFailure
+        size="section"
+        failure={loadFailure.of(publications.error)}
+        onRetry={() => void publications.refetch()}
+        retrying={publications.isFetching}
+      />
+    </div>
+  ) : releases.length === 0 ? (
+    <div {...stylex.props(styles.fill)}>
+      <EmptyRow>{m.editor_versionsEmpty()}</EmptyRow>
+    </div>
+  ) : (
+    <ul data-history-list data-testid="formula-versions" {...stylex.props(styles.list)}>
+      {releases.map((release) => {
+        const here = view.kind === 'release' && view.versionNo === release.versionNo
+        const shared = release.sharedCount ?? 0
+        return (
+          <li key={release.versionNo} {...stylex.props(styles.row, here && styles.rowHere)}>
+            <div {...stylex.props(styles.body)}>
+              <div {...stylex.props(styles.line)}>
+                <span
+                  {...stylex.props(
+                    styles.name,
+                    here && styles.nameHere,
+                    release.releaseName === null && styles.unnamed,
                   )}
-                </div>
-                <div {...stylex.props(styles.meta)}>
-                  <span>{m.history_releaseOrdinal({ number: release.versionNo })}</span>
-                  <span aria-hidden {...stylex.props(styles.metaRule)} />
-                  <span>{shortWhen(release.publishedAt, locale)}</span>
-                  {release.publishedByName === null ? null : (
-                    <>
-                      <span aria-hidden {...stylex.props(styles.metaRule)} />
-                      <span {...stylex.props(styles.metaWho)}>{release.publishedByName}</span>
-                    </>
-                  )}
-                </div>
-              </div>
-              {shared === 0 && !mayShare ? null : (
-                <button
-                  type="button"
-                  data-testid="formula-release-share"
-                  data-shared={shared}
-                  data-version={release.versionNo}
-                  aria-label={
-                    shared === 0 ? m.sharing_manage() : m.sharing_units({ count: shared })
-                  }
-                  title={shared === 0 ? m.sharing_manage() : m.sharing_units({ count: shared })}
-                  onClick={() => onShare(release)}
-                  {...stylex.props(styles.act, shared > 0 && styles.actShared)}
                 >
-                  <Share2Icon size={15} aria-hidden />
-                </button>
-              )}
+                  {release.releaseName ?? m.history_releaseUnnamed()}
+                </span>
+                {release.versionNo === latestVersionNo ? (
+                  <span {...stylex.props(w.standing, w.standingQuiet)}>{m.version_latest()}</span>
+                ) : null}
+                {shared === 0 ? null : (
+                  <span
+                    data-testid="formula-release-shared"
+                    data-count={shared}
+                    {...stylex.props(styles.sharedWords)}
+                  >
+                    {m.sharing_units({ count: shared })}
+                  </span>
+                )}
+              </div>
+              <div {...stylex.props(styles.meta)}>
+                <span>{m.history_releaseOrdinal({ number: release.versionNo })}</span>
+                <span aria-hidden {...stylex.props(styles.metaRule)} />
+                <span>{shortWhen(release.publishedAt, locale)}</span>
+                {release.publishedByName === null ? null : (
+                  <>
+                    <span aria-hidden {...stylex.props(styles.metaRule)} />
+                    <span {...stylex.props(styles.metaWho)}>{release.publishedByName}</span>
+                  </>
+                )}
+              </div>
+            </div>
+            {shared === 0 && !mayShare ? null : (
               <button
                 type="button"
-                data-testid="formula-release-rename"
+                data-testid="formula-release-share"
+                data-shared={shared}
                 data-version={release.versionNo}
-                aria-label={m.release_infoEdit()}
-                title={m.release_infoEdit()}
-                onClick={() => onEditInfo(release)}
-                {...stylex.props(styles.act)}
+                aria-label={shared === 0 ? m.sharing_manage() : m.sharing_units({ count: shared })}
+                title={shared === 0 ? m.sharing_manage() : m.sharing_units({ count: shared })}
+                onClick={() => onShare(release)}
+                {...stylex.props(styles.act, shared > 0 && styles.actShared)}
               >
-                <PencilLineIcon size={15} aria-hidden />
+                <Share2Icon size={15} aria-hidden />
               </button>
-              <button
-                type="button"
-                data-testid="formula-release"
-                data-version={release.versionNo}
-                aria-current={here ? 'true' : undefined}
-                aria-label={m.history_versionOpen()}
-                title={m.history_versionOpen()}
-                onClick={() => {
-                  onView({ kind: 'release', versionNo: release.versionNo })
-                  onOpenChange(false)
-                }}
-                {...stylex.props(styles.act, here && styles.actHere)}
-              >
-                <EyeIcon size={15} aria-hidden />
-              </button>
-            </li>
-          )
-        })}
-      </ul>
-    )
+            )}
+            <button
+              type="button"
+              data-testid="formula-release-rename"
+              data-version={release.versionNo}
+              aria-label={m.release_infoEdit()}
+              title={m.release_infoEdit()}
+              onClick={() => onEditInfo(release)}
+              {...stylex.props(styles.act)}
+            >
+              <PencilLineIcon size={15} aria-hidden />
+            </button>
+            <button
+              type="button"
+              data-testid="formula-release"
+              data-version={release.versionNo}
+              aria-current={here ? 'true' : undefined}
+              aria-label={m.history_versionOpen()}
+              title={m.history_versionOpen()}
+              onClick={() => {
+                onView({ kind: 'release', versionNo: release.versionNo })
+                onOpenChange(false)
+              }}
+              {...stylex.props(styles.act, here && styles.actHere)}
+            >
+              <EyeIcon size={15} aria-hidden />
+            </button>
+          </li>
+        )
+      })}
+    </ul>
+  )
 
   const revisionList = revisions.isPending ? (
     <div role="status" {...stylex.props(styles.fill)}>
       <Spinner aria-label={m.editor_loading()} />
     </div>
-  ) : revisions.isError && revisionItems.length === 0 ? (
+  ) : revisions.isError ? (
     // the saves could not be listed, which is not the same as there being none
     <div data-testid="formula-revisions-unreadable" {...stylex.props(styles.fill)}>
       <LoadFailure
@@ -417,7 +427,7 @@ export function VersionsDrawer({
       <EmptyRow>{m.history_revisionsEmpty()}</EmptyRow>
     </div>
   ) : (
-    <ul data-testid="formula-revisions" {...stylex.props(styles.list)}>
+    <ul data-history-list data-testid="formula-revisions" {...stylex.props(styles.list)}>
       {revisionItems.map((item) => {
         const here = view.kind === 'revision' && view.revisionNo === item.revisionNo
         const origin = originWords(item)
@@ -468,25 +478,11 @@ export function VersionsDrawer({
           </li>
         )
       })}
-      {revisions.hasNextPage ? (
-        <li>
-          <button
-            type="button"
-            disabled={revisions.isFetchingNextPage}
-            onClick={() => void revisions.fetchNextPage()}
-            {...stylex.props(styles.more)}
-          >
-            {m.list_loadMore()}
-          </button>
-        </li>
-      ) : null}
     </ul>
   )
 
-  const openRelease =
-    view.kind === 'release'
-      ? releases.find((release) => release.versionNo === view.versionNo)
-      : undefined
+  const openRelease = viewedRelease.data?.version
+
   const foot =
     view.kind === 'draft' ? null : (
       <div {...stylex.props(styles.foot)}>
@@ -537,7 +533,7 @@ export function VersionsDrawer({
             <TabsList aria-label={m.history_title()} xstyle={styles.tabList}>
               <TabsTrigger value="releases" xstyle={styles.tab}>
                 {m.history_releases()}
-                <span {...stylex.props(styles.count)}>{releases.length}</span>
+                <span {...stylex.props(styles.count)}>{versionCount}</span>
               </TabsTrigger>
               <TabsTrigger value="revisions" xstyle={styles.tab}>
                 {m.history_revisions()}
@@ -559,7 +555,31 @@ export function VersionsDrawer({
             </button>
           )}
         </div>
-        {list === 'releases' ? releaseList : revisionList}
+        <div
+          data-formula-results
+          tabIndex={-1}
+          aria-label={m.pagination_label()}
+          aria-busy={list === 'releases' ? publications.isFetching : revisions.isFetching}
+          {...stylex.props(styles.results)}
+        >
+          {list === 'releases' ? releaseList : revisionList}
+          {list === 'releases' && publications.data && (
+            <FormulaPager
+              testId="formula-versions-pager"
+              result={publications.data}
+              busy={publications.isFetching}
+              onPage={setReleasePage}
+            />
+          )}
+          {list === 'revisions' && revisions.data && (
+            <FormulaPager
+              testId="formula-revisions-pager"
+              result={revisions.data}
+              busy={revisions.isFetching}
+              onPage={setRevisionPage}
+            />
+          )}
+        </div>
         {foot}
       </SheetContent>
     </Sheet>

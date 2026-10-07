@@ -86,9 +86,10 @@ header 在就是事实,忽略它只会让读者面对一堆无从解释的 API �
 
 ## Breaking change 的发布顺序
 
-**当前 `CURRENT_CLIENT_PROTOCOL` 为 3，窗口同为 `min = max = 3`。** 审计查询从 cursor
-响应改为 `{ items, total, page, pageSize }` 的页码响应，旧页面不能继续解读新形状，因此首次
-API 请求会收到 409，要求刷新。此前第 2 代用于 manifest 移除 surface 背后的模块名
+**当前 `CURRENT_CLIENT_PROTOCOL` 为 4，窗口同为 `min = max = 4`。** 综测列表、审核队列与
+公式历史改为 `{ items, total, page, pageSize }` 的页码响应，公式详情改为返回版本总数，版本
+通过独立分页接口读取。旧页面不能继续解读新形状，因此首次 API 请求会收到 409，要求刷新。
+此前第 3 代用于审计页码分页，第 2 代用于 manifest 移除 surface 背后的模块名
 （见 [浏览器公开面](browser-surface.md)）。
 
 下面的 expand → contract 顺序适用于服务端能同时服务新旧两种形状的变更；原位替换响应

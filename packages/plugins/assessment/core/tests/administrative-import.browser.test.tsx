@@ -195,8 +195,10 @@ const open = (route: string, stubs: Record<string, unknown> = {}) =>
           Effect.succeed({
             contract: { itemRevisionId: REVISION_ID, fields: [], defaults: [] },
           }),
-        listAdministrativeEntries: () => Effect.succeed({ entries: [bookLine], nextCursor: null }),
-        listAdministrativeImports: () => Effect.succeed({ items: [importRow], nextCursor: null }),
+        listAdministrativeEntries: () =>
+          Effect.succeed({ items: [bookLine], total: 1, page: 1, pageSize: 30 }),
+        listAdministrativeImports: () =>
+          Effect.succeed({ items: [importRow], total: 1, page: 1, pageSize: 30 }),
         getAdministrativeImport: () => Effect.succeed(detail()),
         listAdministrativeImportRows: () =>
           Effect.succeed({
@@ -215,7 +217,9 @@ const open = (route: string, stubs: Record<string, unknown> = {}) =>
                 recognition: null,
               },
             ],
-            nextCursor: null,
+            total: 1,
+            page: 1,
+            pageSize: 50,
           }),
         getEntry: () => Effect.succeed({ entry }),
         getEntryHistory: () =>
@@ -277,8 +281,10 @@ const openInShell = (route: string, stubs: Record<string, unknown> = {}) =>
         getBatch: () => Effect.succeed({ batch: batch() }),
         listItems: () => Effect.succeed({ items: [item], capabilities: { canManage: false } }),
         listScoreGroups: () => Effect.succeed({ groups: [], version: 1 }),
-        listAdministrativeEntries: () => Effect.succeed({ entries: [bookLine], nextCursor: null }),
-        listAdministrativeImports: () => Effect.succeed({ items: [importRow], nextCursor: null }),
+        listAdministrativeEntries: () =>
+          Effect.succeed({ items: [bookLine], total: 1, page: 1, pageSize: 30 }),
+        listAdministrativeImports: () =>
+          Effect.succeed({ items: [importRow], total: 1, page: 1, pageSize: 30 }),
         ...stubs,
       },
     }),
@@ -567,6 +573,114 @@ describe('importing a workbook of administrative records', () => {
     expect(document.querySelector('[data-testid="import-reverse"]')).toBeNull()
   })
 
+  for (const scenario of [
+    {
+      route: '',
+      endpoint: 'listAdministrativeEntries',
+      target: 'administrative-entries',
+      parameter: 'entriesPage',
+      item: bookLine,
+    },
+    {
+      route: '?tab=acts',
+      endpoint: 'listAdministrativeRecords',
+      target: 'administrative-acts',
+      parameter: 'actsPage',
+      item: {
+        id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+        itemId: ITEM_ID,
+        itemTitle: '优秀学生干部',
+        targetKind: 'organization',
+        recordedCount: 12,
+        voidedCount: 2,
+        actorName: '张老师',
+        createdAt: '2026-09-16T10:22:00.000Z',
+      },
+    },
+    {
+      route: '?tab=imports',
+      endpoint: 'listAdministrativeImports',
+      target: 'administrative-imports',
+      parameter: 'importsPage',
+      item: importRow,
+    },
+    {
+      route: `?import=${IMPORT_ID}`,
+      endpoint: 'listAdministrativeImportRows',
+      target: 'import-rows',
+      parameter: 'rowsPage',
+      item: {
+        rowNo: 2,
+        entryId: ENTRY_ID,
+        participant: { id: PARTICIPANT_ID, displayName: '郭航旗', businessNo: '2023123456' },
+        businessNoSnapshot: '2023123456',
+        displayNameSnapshot: '郭航旗',
+        status: 'approved',
+        recognition: null,
+      },
+    },
+  ]) {
+    it(`jumps between pages and keeps the ${scenario.target} pager inside a narrow screen`, async () => {
+      await page.viewport(320, 800)
+      const calls: number[] = []
+      try {
+        await open(`${base}${scenario.route}`, {
+          [scenario.endpoint]: ({ query }: { query: { page: string; limit: string } }) => {
+            const current = Number(query.page)
+            calls.push(current)
+            return Effect.succeed({
+              items: [scenario.item],
+              page: current,
+              pageSize: Number(query.limit),
+              total: Number(query.limit) * 3,
+            })
+          },
+        })
+        const pager = page.getByTestId(`${scenario.target}-pager`)
+        await expect.element(pager).toHaveAttribute('data-page', '1')
+        await pager.getByRole('button', { name: '3', exact: true }).click()
+        await expect.element(pager).toHaveAttribute('data-page', '3')
+        expect([...new Set(calls)]).toEqual([1, 3])
+        expect(addressNow()).toContain(`${scenario.parameter}=3`)
+        expect(document.activeElement).toBe(page.getByTestId(scenario.target).element())
+        const rect = pager.element().getBoundingClientRect()
+        expect(rect.left).toBeGreaterThanOrEqual(0)
+        expect(rect.right).toBeLessThanOrEqual(321)
+        expect(pager.element().scrollWidth).toBeLessThanOrEqual(pager.element().clientWidth + 1)
+      } finally {
+        await page.viewport(1280, 800)
+      }
+    })
+  }
+
+  it('resets the record page in the same address update as its search', async () => {
+    const calls: { q?: string; page: string }[] = []
+    await open(`${base}?entriesPage=3`, {
+      listAdministrativeEntries: ({
+        query,
+      }: {
+        query: { q?: string; page: string; limit: string }
+      }) => {
+        calls.push(query)
+        return Effect.succeed({
+          items: [bookLine],
+          total: 90,
+          page: Number(query.page),
+          pageSize: 30,
+        })
+      },
+    })
+    await expect
+      .element(page.getByTestId('administrative-entries-pager'))
+      .toHaveAttribute('data-page', '3')
+    await page.getByRole('textbox').fill('郭')
+    await expect
+      .element(page.getByTestId('administrative-entries-pager'))
+      .toHaveAttribute('data-page', '1')
+    expect(calls.some((one) => one.q === '郭' && one.page !== '1')).toBe(false)
+    expect(addressNow()).not.toContain('entriesPage=')
+  })
+
   it('leads from an import to its facts and from a fact back to its import', async () => {
     await open(`${base}?import=${IMPORT_ID}`)
     await page.getByTestId('import-row').click()
@@ -584,7 +698,7 @@ describe('importing a workbook of administrative records', () => {
     await open(`${base}?import=${IMPORT_ID}`, {
       listAdministrativeEntries: () =>
         Effect.succeed({
-          entries: [
+          items: [
             {
               ...bookLine,
               recognition: {
@@ -598,7 +712,9 @@ describe('importing a workbook of administrative records', () => {
               },
             },
           ],
-          nextCursor: null,
+          total: 1,
+          page: 1,
+          pageSize: 50,
         }),
     })
     await page.getByTestId('import-row').click()
@@ -715,7 +831,8 @@ describe('importing a workbook of administrative records', () => {
       events: [],
     }
     await open(`${base}?tab=acts&act=${NEW_IMPORT_ID}`, {
-      listAdministrativeRecords: () => Effect.succeed({ items: [], nextCursor: null }),
+      listAdministrativeRecords: () =>
+        Effect.succeed({ items: [], total: 0, page: 1, pageSize: 30 }),
       getAdministrativeRecord: () => {
         if (!reversed) return Effect.succeed(record)
         askedSince += 1
@@ -750,7 +867,8 @@ describe('importing a workbook of administrative records', () => {
 
   it('says a bulk record is not there, with the way back to the others', async () => {
     await open(`${base}?tab=acts&act=${NEW_IMPORT_ID}`, {
-      listAdministrativeRecords: () => Effect.succeed({ items: [], nextCursor: null }),
+      listAdministrativeRecords: () =>
+        Effect.succeed({ items: [], total: 0, page: 1, pageSize: 30 }),
       getAdministrativeRecord: () =>
         Effect.fail(apiError('ASSESSMENT_ADMINISTRATIVE_RECORD_NOT_FOUND')),
     })
@@ -820,8 +938,10 @@ describe('the record book and its histories across a screen', () => {
         await open(base, {
           listAdministrativeEntries: () =>
             Effect.succeed({
-              entries: [{ ...bookLine, item: { id: ITEM_ID, title } }],
-              nextCursor: null,
+              items: [{ ...bookLine, item: { id: ITEM_ID, title } }],
+              total: 1,
+              page: 1,
+              pageSize: 50,
             }),
         })
         const line = page.getByTestId('administrative-entry').first()
@@ -853,8 +973,10 @@ describe('the record book and its histories across a screen', () => {
         await openInShell(base, {
           listAdministrativeEntries: () =>
             Effect.succeed({
-              entries: [{ ...bookLine, item: { id: ITEM_ID, title } }],
-              nextCursor: null,
+              items: [{ ...bookLine, item: { id: ITEM_ID, title } }],
+              total: 1,
+              page: 1,
+              pageSize: 50,
             }),
         })
         await expect.element(page.getByTestId('workspace-rail')).toBeVisible()
@@ -881,9 +1003,12 @@ describe('the record book and its histories across a screen', () => {
           })
           const later = <A,>(value: A) => Effect.promise(() => landed.then(() => value))
           await openInShell(`${base}${tab}`, {
-            listAdministrativeEntries: () => later({ entries: [bookLine], nextCursor: null }),
-            listAdministrativeRecords: () => later({ items: [act], nextCursor: null }),
-            listAdministrativeImports: () => later({ items: [importRow], nextCursor: null }),
+            listAdministrativeEntries: () =>
+              later({ items: [bookLine], total: 1, page: 1, pageSize: 30 }),
+            listAdministrativeRecords: () =>
+              later({ items: [act], total: 1, page: 1, pageSize: 30 }),
+            listAdministrativeImports: () =>
+              later({ items: [importRow], total: 1, page: 1, pageSize: 30 }),
           })
           const bones = page.getByTestId('list-skeleton-row').first()
           await expect.element(bones).toBeVisible()
@@ -915,7 +1040,8 @@ describe('the record book and its histories across a screen', () => {
       await page.viewport(1280, 800)
       try {
         const screen = await open(`${base}${tab}`, {
-          listAdministrativeRecords: () => Effect.succeed({ items: [act], nextCursor: null }),
+          listAdministrativeRecords: () =>
+            Effect.succeed({ items: [act], total: 1, page: 1, pageSize: 30 }),
         })
         const line = page.getByTestId(row).first()
         await expect.element(line).toBeVisible()
@@ -932,7 +1058,8 @@ describe('the record book and its histories across a screen', () => {
 
         await page.viewport(390, 800)
         await open(`${base}${tab}`, {
-          listAdministrativeRecords: () => Effect.succeed({ items: [act], nextCursor: null }),
+          listAdministrativeRecords: () =>
+            Effect.succeed({ items: [act], total: 1, page: 1, pageSize: 30 }),
         })
         await expect.element(page.getByTestId(row).first()).toBeVisible()
         expect(spread(page.getByTestId(row).first().element())).toBeGreaterThan(12)

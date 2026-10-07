@@ -34,15 +34,13 @@ import {
   whoWidthOf,
 } from './queue-layout.ts'
 import {
-  groupByItem,
-  groupByPerson,
-  pageOf,
   useDayClock,
   useQueueClock,
   writeRunScope,
   type InboxItemDto,
   type ItemGroup,
 } from './model.ts'
+import type { QueuePage } from './queue.ts'
 import * as m from '#messages'
 
 // The queue laid out for working through it.
@@ -61,9 +59,19 @@ import * as m from '#messages'
 // filings are laid out whole, every answer under its own label - the whole
 // queue where it is that small, and the picked one's where it holds no more.
 //
-// Pages are cut from the whole queue, which is read in full (queue.ts): the
-// counts, the search and the run a reviewer walks are all about the whole
-// of it, and a run started from a page still walks the whole question.
+// Counts, groups and page boundaries are supplied by the same authorized server query.
+
+const listedPage = (rows: readonly InboxItemDto[], serverPage: QueuePage | undefined) => {
+  const page = serverPage?.page ?? 1
+  const size = serverPage?.pageSize ?? 10
+  return {
+    rows,
+    page,
+    total: serverPage?.total ?? 0,
+    from: rows.length === 0 ? 0 : (page - 1) * size + 1,
+    to: (page - 1) * size + rows.length,
+  }
+}
 
 /** filings to a page where one question or one person is open */
 const PANE_PAGE = 10
@@ -554,7 +562,7 @@ const styles = stylex.create({
 })
 
 /** what a row opens: the filing, walked as part of the named run */
-type OpenRow = (row: InboxItemDto, run: string) => void
+type OpenRow = (row: Pick<InboxItemDto, 'instanceId'>, run: string) => void
 
 /**
  * What picking a question or a person does. `drills` says whether picking
@@ -686,12 +694,14 @@ function MasterCard({
   count,
   selected,
   children,
+  footer,
 }: {
   title: string
   count: number
   /** the key of the row picked, kept in sight when the list is longer than the column */
   selected: string | null
   children: ReactNode
+  footer?: ReactNode
 }) {
   const list = useRef<HTMLUListElement>(null)
   useEffect(() => {
@@ -701,7 +711,7 @@ function MasterCard({
       ?.scrollIntoView({ block: 'nearest' })
   }, [selected])
   return (
-    <Card xstyle={styles.master} data-testid="queue-master">
+    <Card xstyle={styles.master} data-testid="queue-master" tabIndex={-1}>
       <div {...stylex.props(styles.masterHead)}>
         <h2 {...stylex.props(styles.masterTitle)}>{title}</h2>
         <span {...stylex.props(styles.masterTally)}>{count}</span>
@@ -709,6 +719,7 @@ function MasterCard({
       <ul ref={list} {...stylex.props(styles.masterList)}>
         {children}
       </ul>
+      {footer}
     </Card>
   )
 }
@@ -780,12 +791,14 @@ function MasterStrip({
   count,
   selected,
   children,
+  footer,
 }: {
   label: string
   count: number
   /** the key of the one picked, kept in sight when the strip scrolls */
   selected: string | null
   children: ReactNode
+  footer?: ReactNode
 }) {
   const list = useRef<HTMLUListElement>(null)
   // whether keys stand below the strip's two lines: its foot fades then,
@@ -819,7 +832,12 @@ function MasterStrip({
     }
   }, [selected])
   return (
-    <div data-testid="queue-master" data-shape="strip" {...stylex.props(styles.strip)}>
+    <div
+      data-testid="queue-master"
+      tabIndex={-1}
+      data-shape="strip"
+      {...stylex.props(styles.strip)}
+    >
       <span {...stylex.props(styles.stripLabel)}>
         {label}
         <span {...stylex.props(styles.masterTally)}>{count}</span>
@@ -832,6 +850,7 @@ function MasterStrip({
       >
         {children}
       </ul>
+      {footer}
     </div>
   )
 }
@@ -939,7 +958,11 @@ export function PagerFoot({
   onPage,
   anchor = 'queue-pane',
   compact,
+  disabled,
+  testId = 'review-queue-pager',
 }: {
+  testId?: string
+  disabled?: boolean
   list: {
     readonly page: number
     readonly from: number
@@ -958,7 +981,8 @@ export function PagerFoot({
   return (
     <CardFoot>
       <Pager
-        testId="review-queue-pager"
+        testId={testId}
+        disabled={disabled}
         label={m.review_pager()}
         page={list.page}
         pageSize={size}
@@ -970,15 +994,41 @@ export function PagerFoot({
           total: list.total,
         })}
         onPage={(next) => {
+          const anchorNode = document.querySelector<HTMLElement>(`[data-testid="${anchor}"]`)
+          anchorNode?.focus({ preventScroll: true })
+          anchorNode?.scrollIntoView({ block: 'nearest', behavior: scrollMotion() })
           onPage(next)
-          // the strip is at the foot of the list; the next page is read
-          // from its top
-          document
-            .querySelector(`[data-testid="${anchor}"]`)
-            ?.scrollIntoView({ block: 'nearest', behavior: scrollMotion() })
         }}
       />
     </CardFoot>
+  )
+}
+
+function GroupPager({
+  data,
+  disabled,
+  onPage,
+}: {
+  data: QueuePage | undefined
+  disabled: boolean
+  onPage: (page: number) => void
+}) {
+  const page = data?.groupPage ?? 1
+  return (
+    <PagerFoot
+      testId="review-groups-pager"
+      anchor="queue-master"
+      disabled={disabled}
+      compact
+      size={20}
+      onPage={onPage}
+      list={{
+        page,
+        total: data?.groupTotal ?? 0,
+        from: (page - 1) * 20 + 1,
+        to: (page - 1) * 20 + (data?.groups.length ?? 0),
+      }}
+    />
   )
 }
 
@@ -1155,16 +1205,8 @@ const layoutOf = (
  * The run over one question or one person, where it is worth a key: one
  * filing is its own way in.
  */
-function RunKey({
-  rows,
-  label,
-  onRun,
-}: {
-  rows: readonly InboxItemDto[]
-  label: string
-  onRun: () => void
-}) {
-  if (rows.length < 2) return null
+function RunKey({ count, label, onRun }: { count: number; label: string; onRun: () => void }) {
+  if (count < 2) return null
   return (
     <Button
       size="sm"
@@ -1184,17 +1226,23 @@ type Answers = 'spread' | 'summary' | 'columns'
 /** the queue by question: which questions have work, and one question's filings */
 export function ItemQueue({
   rows,
+  serverPage,
+  fetching,
   chosen,
   page,
+  onGroupPage,
   onChoose,
   onBack,
   onPage,
   onOpen,
 }: {
   rows: readonly InboxItemDto[]
+  serverPage: QueuePage | undefined
+  fetching: boolean
   /** the question named in the address; empty for none */
   chosen: string
   page: number
+  onGroupPage: (page: number) => void
   onChoose: Choose
   onBack: () => void
   onPage: (page: number) => void
@@ -1203,9 +1251,24 @@ export function ItemQueue({
   const { seat, width, room, beside, stacked } = useQueueRoom()
   const phone = usePhone()
   const since = useDayClock()
-  const groups = groupByItem(rows)
-  const layout = layoutOf(rows.length, groups.length, { beside, stacked })
-  const named = pickedOf(groups, (group) => group.itemId, chosen)
+  const groups = (serverPage?.groups ?? []).map((group) => ({
+    firstInstanceId: group.firstInstanceId,
+    itemId: group.key,
+    itemTitle: group.name,
+    count: group.count,
+    oldest: group.oldest,
+    rows: rows.filter((row) => row.itemId === group.key),
+    columns: (rows.find((row) => row.itemId === group.key)?.values ?? []).map((pair) => pair.label),
+  }))
+  const layout = layoutOf(serverPage?.filteredTotal ?? 0, serverPage?.groupTotal ?? 0, {
+    beside,
+    stacked,
+  })
+  const named = pickedOf(
+    groups,
+    (group) => group.itemId,
+    chosen !== '' && fetching ? (serverPage?.selected ?? chosen) : chosen,
+  )
   // at a desk something is always open: the question that has waited
   // longest; and a question alone in the queue is open at any width
   const open =
@@ -1224,7 +1287,7 @@ export function ItemQueue({
                 key={group.itemId}
                 data-testid="queue-spread"
                 data-key={group.itemId}
-                data-count={group.rows.length}
+                data-count={group.count}
               >
                 <PaneHead
                   back={null}
@@ -1232,16 +1295,16 @@ export function ItemQueue({
                   facts={
                     <Facts
                       items={[
-                        m.review_groupCount({ count: group.rows.length }),
-                        m.review_oldest({ when: since(group.rows[0]!.submittedAt) }),
+                        m.review_groupCount({ count: group.count }),
+                        m.review_oldest({ when: since(group.oldest) }),
                       ]}
                     />
                   }
                   action={
                     <RunKey
-                      rows={group.rows}
+                      count={group.count}
                       label={m.review_startItem()}
-                      onRun={() => onOpen(group.rows[0]!, run)}
+                      onRun={() => onOpen({ instanceId: group.firstInstanceId }, run)}
                     />
                   }
                 />
@@ -1263,15 +1326,16 @@ export function ItemQueue({
     layout === 'stack' ? (
       <MasterStrip
         label={m.review_masterItems()}
-        count={groups.length}
+        count={serverPage?.groupTotal ?? 0}
         selected={open?.itemId ?? null}
+        footer={<GroupPager data={serverPage} disabled={fetching} onPage={onGroupPage} />}
       >
         {groups.map((group) => (
           <StripKey
             key={group.itemId}
             id={group.itemId}
             name={group.itemTitle}
-            count={group.rows.length}
+            count={group.count}
             selected={open?.itemId === group.itemId}
             onChoose={() => onChoose(group.itemId, false)}
           />
@@ -1280,16 +1344,17 @@ export function ItemQueue({
     ) : (
       <MasterCard
         title={m.review_masterItems()}
-        count={groups.length}
+        count={serverPage?.groupTotal ?? 0}
         selected={open?.itemId ?? null}
+        footer={<GroupPager data={serverPage} disabled={fetching} onPage={onGroupPage} />}
       >
         {groups.map((group) => (
           <MasterRow
             key={group.itemId}
             id={group.itemId}
             name={group.itemTitle}
-            meta={m.review_oldest({ when: since(group.rows[0]!.submittedAt) })}
-            count={group.rows.length}
+            meta={m.review_oldest({ when: since(group.oldest) })}
+            count={group.count}
             selected={beside && open?.itemId === group.itemId}
             drills={!beside}
             onChoose={() => onChoose(group.itemId, !beside)}
@@ -1305,7 +1370,7 @@ export function ItemQueue({
     // each answer its own column where the room allows it and one column
     // of what was filed where it does not - a phone stacks the row anyway
     const answers: Answers =
-      open.rows.length <= SPREAD_MOST
+      open.count <= SPREAD_MOST
         ? 'spread'
         : phone || !answersFitIn(paneWidth, open.columns.length, open.rows)
           ? 'summary'
@@ -1313,8 +1378,9 @@ export function ItemQueue({
     pane = (
       <Card
         data-testid="queue-pane"
+        tabIndex={-1}
         data-key={open.itemId}
-        data-count={open.rows.length}
+        data-count={open.count}
         data-answers={answers}
       >
         {layout === 'stack' && master}
@@ -1324,16 +1390,16 @@ export function ItemQueue({
           facts={
             <Facts
               items={[
-                m.review_groupCount({ count: open.rows.length }),
-                m.review_oldest({ when: since(open.rows[0]!.submittedAt) }),
+                m.review_groupCount({ count: open.count }),
+                m.review_oldest({ when: since(open.oldest) }),
               ]}
             />
           }
           action={
             <RunKey
-              rows={open.rows}
+              count={open.count}
               label={m.review_startItem()}
-              onRun={() => onOpen(open.rows[0]!, run)}
+              onRun={() => onOpen({ instanceId: open.firstInstanceId }, run)}
             />
           }
         />
@@ -1348,6 +1414,8 @@ export function ItemQueue({
           <ItemTable
             group={open}
             page={page}
+            serverPage={serverPage}
+            fetching={fetching}
             paneWidth={paneWidth}
             summarize={answers === 'summary'}
             compact={phone || paneWidth < PAGER_ROOM}
@@ -1379,7 +1447,8 @@ export function ItemQueue({
 /** one question's filings as a table, ten to a page */
 function ItemTable({
   group,
-  page,
+  serverPage,
+  fetching,
   paneWidth,
   summarize,
   compact,
@@ -1388,6 +1457,8 @@ function ItemTable({
 }: {
   group: ItemGroup
   page: number
+  serverPage: QueuePage | undefined
+  fetching: boolean
   paneWidth: number
   /** the answers share one column rather than taking one each */
   summarize: boolean
@@ -1396,7 +1467,7 @@ function ItemTable({
   onPage: (page: number) => void
   onOpen: (row: InboxItemDto) => void
 }) {
-  const list = pageOf(group.rows, page, PANE_PAGE)
+  const list = listedPage(group.rows, serverPage)
   const columns = [
     ...(summarize
       ? [`minmax(${String(WHO_MIN)}px, ${String(whoWidthOf(group.rows))}px)`, 'minmax(0, 1fr)']
@@ -1458,7 +1529,13 @@ function ItemTable({
           </TableRow>
         ))}
       </Table>
-      <PagerFoot list={list} size={PANE_PAGE} onPage={onPage} compact={compact} />
+      <PagerFoot
+        disabled={fetching}
+        list={list}
+        size={PANE_PAGE}
+        onPage={onPage}
+        compact={compact}
+      />
     </>
   )
 }
@@ -1466,17 +1543,23 @@ function ItemTable({
 /** the queue by person: who has work waiting, and one person's filings */
 export function PersonQueue({
   rows,
+  serverPage,
+  fetching,
   chosen,
   page,
+  onGroupPage,
   onChoose,
   onBack,
   onPage,
   onOpen,
 }: {
   rows: readonly InboxItemDto[]
+  serverPage: QueuePage | undefined
+  fetching: boolean
   /** the person named in the address, by the key a run names them by */
   chosen: string
   page: number
+  onGroupPage: (page: number) => void
   onChoose: Choose
   onBack: () => void
   onPage: (page: number) => void
@@ -1484,15 +1567,30 @@ export function PersonQueue({
 }) {
   const { seat, width, room, beside, stacked } = useQueueRoom()
   const phone = usePhone()
-  const people = groupByPerson(rows)
-  const layout = layoutOf(rows.length, people.length, { beside, stacked })
+  const people = (serverPage?.groups ?? []).map((group) => ({
+    firstInstanceId: group.firstInstanceId,
+    key: group.key,
+    name: group.name,
+    businessNo: group.businessNo,
+    unitName: group.unitName,
+    count: group.count,
+    rows: rows.filter((row) => row.participantId === group.key),
+  }))
+  const layout = layoutOf(serverPage?.filteredTotal ?? 0, serverPage?.groupTotal ?? 0, {
+    beside,
+    stacked,
+  })
   // names more than one person in the queue answers to
   const shared = new Set(
     people
       .map((person) => person.name)
       .filter((name, index, names) => names.indexOf(name) !== index),
   )
-  const named = pickedOf(people, (person) => person.key, chosen)
+  const named = pickedOf(
+    people,
+    (person) => person.key,
+    chosen !== '' && fetching ? (serverPage?.selected ?? chosen) : chosen,
+  )
   const open =
     named ??
     (layout === 'split' || layout === 'stack' || layout === 'single' ? people[0] : undefined)
@@ -1503,13 +1601,13 @@ export function PersonQueue({
       <QueueRoom layout={layout} seat={seat} width={width}>
         <div {...stylex.props(styles.spread)}>
           {people.map((person) => {
-            const run = writeRunScope({ kind: 'person', businessNo: person.key })
+            const run = writeRunScope({ kind: 'person', participantId: person.key })
             return (
               <Card
                 key={person.key}
                 data-testid="queue-spread"
                 data-key={person.key}
-                data-count={person.rows.length}
+                data-count={person.count}
               >
                 <PaneHead
                   back={null}
@@ -1520,15 +1618,15 @@ export function PersonQueue({
                       items={[
                         person.businessNo,
                         person.unitName,
-                        m.review_groupCount({ count: person.rows.length }),
+                        m.review_groupCount({ count: person.count }),
                       ]}
                     />
                   }
                   action={
                     <RunKey
-                      rows={person.rows}
+                      count={person.count}
                       label={m.review_startPerson()}
-                      onRun={() => onOpen(person.rows[0]!, run)}
+                      onRun={() => onOpen({ instanceId: person.firstInstanceId }, run)}
                     />
                   }
                 />
@@ -1550,8 +1648,9 @@ export function PersonQueue({
     layout === 'stack' ? (
       <MasterStrip
         label={m.review_columnParticipant()}
-        count={people.length}
+        count={serverPage?.groupTotal ?? 0}
         selected={open?.key ?? null}
+        footer={<GroupPager data={serverPage} disabled={fetching} onPage={onGroupPage} />}
       >
         {people.map((person) => (
           <StripKey
@@ -1560,7 +1659,7 @@ export function PersonQueue({
             name={person.name}
             note={person.businessNo}
             noted={shared.has(person.name)}
-            count={person.rows.length}
+            count={person.count}
             selected={open?.key === person.key}
             onChoose={() => onChoose(person.key, false)}
           />
@@ -1569,8 +1668,9 @@ export function PersonQueue({
     ) : (
       <MasterCard
         title={m.review_columnParticipant()}
-        count={people.length}
+        count={serverPage?.groupTotal ?? 0}
         selected={open?.key ?? null}
+        footer={<GroupPager data={serverPage} disabled={fetching} onPage={onGroupPage} />}
       >
         {people.map((person) => (
           <MasterRow
@@ -1579,7 +1679,7 @@ export function PersonQueue({
             name={person.name}
             note={person.businessNo}
             meta={person.unitName}
-            count={person.rows.length}
+            count={person.count}
             face={<Face name={person.name} />}
             selected={beside && open?.key === person.key}
             drills={!beside}
@@ -1591,13 +1691,14 @@ export function PersonQueue({
 
   let pane: ReactNode = null
   if (open !== undefined) {
-    const run = writeRunScope({ kind: 'person', businessNo: open.key })
-    const answers: Answers = open.rows.length <= SPREAD_MOST ? 'spread' : 'summary'
+    const run = writeRunScope({ kind: 'person', participantId: open.key })
+    const answers: Answers = open.count <= SPREAD_MOST ? 'spread' : 'summary'
     pane = (
       <Card
         data-testid="queue-pane"
+        tabIndex={-1}
         data-key={open.key}
-        data-count={open.rows.length}
+        data-count={open.count}
         data-answers={answers}
       >
         {layout === 'stack' && master}
@@ -1607,18 +1708,14 @@ export function PersonQueue({
           title={open.name}
           facts={
             <Facts
-              items={[
-                open.businessNo,
-                open.unitName,
-                m.review_groupCount({ count: open.rows.length }),
-              ]}
+              items={[open.businessNo, open.unitName, m.review_groupCount({ count: open.count })]}
             />
           }
           action={
             <RunKey
-              rows={open.rows}
+              count={open.count}
               label={m.review_startPerson()}
-              onRun={() => onOpen(open.rows[0]!, run)}
+              onRun={() => onOpen({ instanceId: open.firstInstanceId }, run)}
             />
           }
         />
@@ -1633,6 +1730,8 @@ export function PersonQueue({
           <PersonTable
             rows={open.rows}
             page={page}
+            serverPage={serverPage}
+            fetching={fetching}
             compact={phone || paneWidth < PAGER_ROOM}
             onPage={onPage}
             onOpen={(row) => onOpen(row, run)}
@@ -1662,18 +1761,21 @@ export function PersonQueue({
 /** one person's filings as a table, ten to a page */
 function PersonTable({
   rows,
-  page,
+  serverPage,
+  fetching,
   compact,
   onPage,
   onOpen,
 }: {
   rows: readonly InboxItemDto[]
   page: number
+  serverPage: QueuePage | undefined
+  fetching: boolean
   compact: boolean
   onPage: (page: number) => void
   onOpen: (row: InboxItemDto) => void
 }) {
-  const list = pageOf(rows, page, PANE_PAGE)
+  const list = listedPage(rows, serverPage)
   const columns = [
     'minmax(7rem, 12rem)',
     'minmax(0, 1fr)',
@@ -1711,7 +1813,13 @@ function PersonTable({
           </TableRow>
         ))}
       </Table>
-      <PagerFoot list={list} size={PANE_PAGE} onPage={onPage} compact={compact} />
+      <PagerFoot
+        disabled={fetching}
+        list={list}
+        size={PANE_PAGE}
+        onPage={onPage}
+        compact={compact}
+      />
     </>
   )
 }
@@ -1719,19 +1827,22 @@ function PersonTable({
 /** the whole queue in the order it arrived, oldest first, a page at a time */
 export function TimeQueue({
   rows,
-  page,
+  serverPage,
+  fetching,
   onPage,
   onOpen,
 }: {
   rows: readonly InboxItemDto[]
+  serverPage: QueuePage | undefined
+  fetching: boolean
   page: number
   onPage: (page: number) => void
   onOpen: OpenRow
 }) {
   const { seat, width, room } = useQueueRoom()
   const phone = usePhone()
-  const spread = rows.length <= SPREAD_MOST
-  const list = pageOf(rows, page, TIME_PAGE)
+  const spread = (serverPage?.total ?? 0) <= SPREAD_MOST
+  const list = listedPage(rows, serverPage)
   // narrower than a list beside a question, the question rides under the
   // name rather than taking a column the answers need more
   const tight = room < BESIDE_MIN
@@ -1744,15 +1855,16 @@ export function TimeQueue({
   return (
     <QueueRoom layout={spread ? 'spread' : 'table'} seat={seat} width={width}>
       {spread ? (
-        <Card data-testid="queue-spread" data-key="" data-count={rows.length}>
+        <Card data-testid="queue-spread" data-key="" data-count={serverPage?.total ?? 0}>
           {/* the whole queue is the run: pressing any of them walks on from it */}
           <SpreadRows rows={rows} lead="both" room={room} onOpen={(row) => onOpen(row, '')} />
         </Card>
       ) : (
         <Card
           data-testid="queue-pane"
+          tabIndex={-1}
           data-key=""
-          data-count={rows.length}
+          data-count={serverPage?.total ?? 0}
           data-item={tight ? 'under-name' : 'column'}
         >
           <Table columns={columns} openable>
@@ -1803,6 +1915,7 @@ export function TimeQueue({
             ))}
           </Table>
           <PagerFoot
+            disabled={fetching}
             list={list}
             size={TIME_PAGE}
             onPage={onPage}

@@ -78,7 +78,7 @@ const open = (
         getFormulaFunction: () =>
           Effect.succeed({
             function: served,
-            versions: [],
+            versionCount: 0,
             copiedFrom: null,
           }),
         updateFormulaDraft: (request: {
@@ -108,6 +108,7 @@ const open = (
           return Effect.succeed({ ...contract, cases: [{ clientId: 'try', actual: '3.5' }] })
         },
         listFormulaShareOptions: { nodes: [], truncated: false },
+        listFormulaVersions: { items: [], total: 0, page: 1, pageSize: 50 },
         listFormulaDraftRevisions: {
           items: [
             {
@@ -121,7 +122,9 @@ const open = (
               sourceDraftRevisionNo: null,
             },
           ],
-          nextCursor: null,
+          total: 1,
+          page: 1,
+          pageSize: 50,
         },
         getFormulaDraftRevision: {
           revision: {

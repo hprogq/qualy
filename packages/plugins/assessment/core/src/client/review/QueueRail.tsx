@@ -1,4 +1,9 @@
-import { memo, useEffect, useRef, useState } from 'react'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { useReviewQueueQuery, type QueueRequest } from './queue.ts'
+import { Pager } from '@qualy/ui/pager'
+import { AsyncSection } from '@qualy/ui/admin'
+import { useLoadFailure } from '@qualy/web-runtime'
+import { memo, useMemo, useEffect, useRef, useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 
 import { Avatar, AvatarFallback } from '@qualy/ui/avatar'
@@ -87,7 +92,8 @@ const styles = stylex.create({
 // Memoized: the root re-renders on every keystroke in the decision bar and
 // on every overlay opening or closing.
 export const QueueRail = memo(function QueueRail({
-  rows,
+  batchId,
+  request,
   currentId,
   remainingCount,
   open,
@@ -96,6 +102,8 @@ export const QueueRail = memo(function QueueRail({
   onBack,
 }: {
   rows: readonly InboxItemDto[]
+  batchId: string
+  request: QueueRequest
   currentId: string
   remainingCount: number
   open: boolean
@@ -104,6 +112,22 @@ export const QueueRail = memo(function QueueRail({
   onBack: () => void
 }) {
   const dayClock = useDayClock()
+  const loadFailure = useLoadFailure()
+  const [page, setPage] = useState<number | null>(null)
+  const listed = useQuery({
+    ...useReviewQueueQuery(batchId, {
+      ...request,
+      limit: '20',
+      ...(page === null ? { focus: currentId } : { page: String(page) }),
+    }),
+    enabled: open,
+    refetchInterval: 30_000,
+    placeholderData: keepPreviousData,
+  })
+  const rows = useMemo(() => listed.data?.items ?? [], [listed.data])
+  useEffect(() => {
+    if (!open) setPage(null)
+  }, [open])
   const [at, setAt] = useState(0)
   const list = useRef<HTMLUListElement>(null)
 
@@ -114,7 +138,7 @@ export const QueueRail = memo(function QueueRail({
     setAt(found === -1 ? 0 : found)
     // rows and currentId are read at the moment of opening only
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open])
+  }, [open, listed.data?.page])
 
   // The row stood on holds the focus, not the corner the sheet opened on:
   // with the ring left on the close button, walking the list moved a tint
@@ -125,12 +149,19 @@ export const QueueRail = memo(function QueueRail({
     const row = list.current?.querySelector<HTMLElement>(`[data-queue-index="${at}"]`)
     row?.scrollIntoView({ block: 'nearest' })
     row?.focus({ preventScroll: true })
-  }, [open, at])
+  }, [open, at, rows])
 
   useEffect(() => {
     if (!open) return
     const down = (event: KeyboardEvent) => {
-      if (event.metaKey || event.ctrlKey || event.altKey) return
+      if (
+        event.metaKey ||
+        event.ctrlKey ||
+        event.altKey ||
+        (event.target instanceof HTMLElement &&
+          event.target.closest('nav, [data-testid="review-rail-pager"]'))
+      )
+        return
       const step =
         event.key === 'ArrowDown' || event.key === 'j' || event.key === 'J'
           ? 1
@@ -173,6 +204,21 @@ export const QueueRail = memo(function QueueRail({
       testId="queue-sheet"
       footer={
         <>
+          {listed.data !== undefined && (
+            <Pager
+              testId="review-rail-pager"
+              label={m.review_queueTitle()}
+              page={listed.data.page}
+              pageSize={listed.data.pageSize}
+              total={listed.data.total}
+              disabled={listed.isFetching}
+              compact
+              onPage={(next) => {
+                list.current?.focus({ preventScroll: true })
+                setPage(next)
+              }}
+            />
+          )}
           <FootNote>
             <span {...stylex.props(styles.keys)}>
               <Kbd>↑</Kbd>
@@ -191,47 +237,58 @@ export const QueueRail = memo(function QueueRail({
         </>
       }
     >
-      {rows.length === 0 ? (
-        <CardEmpty>{m.review_queueEmpty()}</CardEmpty>
-      ) : (
-        <ul ref={list} {...stylex.props(styles.list)}>
-          {rows.map((row, index) => {
-            const current = row.instanceId === currentId
-            return (
-              <li key={row.instanceId}>
-                <button
-                  type="button"
-                  data-testid="queue-row"
-                  data-queue-index={index}
-                  data-current={current}
-                  data-at={index === at}
-                  aria-current={current || undefined}
-                  onPointerMove={() => setAt(index)}
-                  onClick={() => {
-                    onOpen(row.instanceId)
-                    onToggle()
-                  }}
-                  {...stylex.props(styles.row, index === at && styles.rowAt)}
-                >
-                  <Avatar className={stylex.props(styles.face).className}>
-                    <AvatarFallback className={stylex.props(styles.faceText).className}>
-                      {row.participantName.slice(0, 1)}
-                    </AvatarFallback>
-                  </Avatar>
-                  <span {...stylex.props(styles.words)}>
-                    <span {...stylex.props(styles.nameLine)}>
-                      <span {...stylex.props(styles.name)}>{row.participantName}</span>
-                      {current && <Badge variant="secondary">{m.review_queueCurrent()}</Badge>}
+      <AsyncSection
+        pending={listed.isPending}
+        error={
+          listed.data === undefined && listed.error !== null ? loadFailure.of(listed.error) : null
+        }
+        retrying={listed.isFetching}
+        onRetry={() => void listed.refetch()}
+        loadingLabel={commonMessages.state_loading()}
+        retryLabel={commonMessages.action_retry()}
+      >
+        {rows.length === 0 ? (
+          <CardEmpty>{m.review_queueEmpty()}</CardEmpty>
+        ) : (
+          <ul tabIndex={-1} ref={list} {...stylex.props(styles.list)}>
+            {rows.map((row, index) => {
+              const current = row.instanceId === currentId
+              return (
+                <li key={row.instanceId}>
+                  <button
+                    type="button"
+                    data-testid="queue-row"
+                    data-queue-index={index}
+                    data-current={current}
+                    data-at={index === at}
+                    aria-current={current || undefined}
+                    onPointerMove={() => setAt(index)}
+                    onClick={() => {
+                      onOpen(row.instanceId)
+                      onToggle()
+                    }}
+                    {...stylex.props(styles.row, index === at && styles.rowAt)}
+                  >
+                    <Avatar className={stylex.props(styles.face).className}>
+                      <AvatarFallback className={stylex.props(styles.faceText).className}>
+                        {row.participantName.slice(0, 1)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <span {...stylex.props(styles.words)}>
+                      <span {...stylex.props(styles.nameLine)}>
+                        <span {...stylex.props(styles.name)}>{row.participantName}</span>
+                        {current && <Badge variant="secondary">{m.review_queueCurrent()}</Badge>}
+                      </span>
+                      <span {...stylex.props(styles.item)}>{row.itemTitle}</span>
                     </span>
-                    <span {...stylex.props(styles.item)}>{row.itemTitle}</span>
-                  </span>
-                  <span {...stylex.props(styles.clock)}>{dayClock(row.submittedAt)}</span>
-                </button>
-              </li>
-            )
-          })}
-        </ul>
-      )}
+                    <span {...stylex.props(styles.clock)}>{dayClock(row.submittedAt)}</span>
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </AsyncSection>
     </DetailSheet>
   )
 })

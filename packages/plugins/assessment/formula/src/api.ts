@@ -6,7 +6,8 @@ import {
   BadRequest,
   boundedText,
   expectedVersion,
-  pageOf,
+  numberedPageOf,
+  numberedPageQuery,
   pageQuery,
   positiveIntParam,
   trimmedName,
@@ -257,8 +258,8 @@ const bindingOptionView = Schema.Struct({
 export const formulaApiGroup = HttpApiGroup.make('assessmentFormula')
   .add(
     HttpApiEndpoint.get('listFormulaFunctions', '/assessment/formula-functions', {
-      query: Schema.Struct({ ...pageQuery }),
-      success: pageOf(functionView),
+      query: Schema.Struct({ ...numberedPageQuery, search: Schema.optional(boundedText(200)) }),
+      success: numberedPageOf(functionView),
       error: [BadRequest, AccessDenied],
     }).middleware(Authenticated),
   )
@@ -381,7 +382,7 @@ export const formulaApiGroup = HttpApiGroup.make('assessmentFormula')
       params: Schema.Struct({ functionId: id }),
       success: Schema.Struct({
         function: functionDetail,
-        versions: Schema.Array(versionView),
+        versionCount: Schema.Number,
         /**
          * Where this draft was forked from, if it was.
          *
@@ -432,6 +433,18 @@ export const formulaApiGroup = HttpApiGroup.make('assessmentFormula')
     }).middleware(Authenticated),
   )
   .add(
+    HttpApiEndpoint.get(
+      'listFormulaVersions',
+      '/assessment/formula-functions/:functionId/versions',
+      {
+        params: Schema.Struct({ functionId: id }),
+        query: Schema.Struct({ ...numberedPageQuery }),
+        success: numberedPageOf(versionView),
+        error: [FormulaFunctionNotFound, AccessDenied],
+      },
+    ).middleware(Authenticated),
+  )
+  .add(
     // every saved state of the draft, newest first: what the source and the
     // examples were at each save, restorable but never editable
     HttpApiEndpoint.get(
@@ -439,8 +452,8 @@ export const formulaApiGroup = HttpApiGroup.make('assessmentFormula')
       '/assessment/formula-functions/:functionId/draft/revisions',
       {
         params: Schema.Struct({ functionId: id }),
-        query: Schema.Struct({ ...pageQuery }),
-        success: pageOf(draftRevisionView),
+        query: Schema.Struct({ ...numberedPageQuery }),
+        success: numberedPageOf(draftRevisionView),
         error: [FormulaFunctionNotFound, AccessDenied, BadRequest],
       },
     ).middleware(Authenticated),
@@ -665,8 +678,8 @@ export const formulaApiGroup = HttpApiGroup.make('assessmentFormula')
     // published versions other authors have offered to where this reader
     // stands. Never their own: those are already in their own library
     HttpApiEndpoint.get('listFormulaTemplates', '/assessment/formula-templates', {
-      query: Schema.Struct({ ...pageQuery }),
-      success: pageOf(templateSummary),
+      query: Schema.Struct({ ...numberedPageQuery, search: Schema.optional(boundedText(200)) }),
+      success: numberedPageOf(templateSummary),
       error: [BadRequest, AccessDenied],
     }).middleware(Authenticated),
   )

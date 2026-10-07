@@ -2243,53 +2243,68 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
     ])
   })
 
-  it('walks a page boundary that falls inside one millisecond', async () => {
-    const exit = await run(
-      db.url,
-      Effect.gen(function* () {
-        const f = yield* seed('cursor-precision')
-        const assessment = yield* Assessment
-        const make = (name: string) =>
-          assessment.createBatch(
-            f.tenant,
-            {
-              name,
-              materialRange: { start: '2026-03-01', end: '2026-09-01' },
-              import: { orgNodeIds: [f.class1], userTypeIds: [f.studentType] },
-            },
-            f.principal,
-          )
-        yield* make('One')
-        yield* make('Two')
-        yield* make('Three')
-        // what a bulk write leaves behind: postgres stamps a whole
-        // transaction with one now(), to the microsecond
-        yield* runSql(sql`
-          update assessment_batches set created_at = '2026-03-01 10:00:00.123456+00'
-          where tenant_id = ${f.tenant}`)
-
-        const walked: string[] = []
-        let after: { createdAt: string; id: string } | undefined = undefined
-        for (let page = 0; page < 5; page++) {
-          const found: readonly { name: string; id: string; cursorAt: string }[] =
-            yield* assessment.listBatches(
+  it('counts and jumps directly to numbered batch pages within the visible search', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('batch-numbered')
+          const assessment = yield* Assessment
+          for (const name of ['One', 'Two', 'Three']) {
+            yield* assessment.createBatch(
               f.tenant,
-              { limit: 2, ...(after !== undefined ? { after } : {}) },
+              {
+                name,
+                materialRange: { start: '2026-03-01', end: '2026-09-01' },
+                import: { orgNodeIds: [f.class1], userTypeIds: [f.studentType] },
+              },
               f.principal,
             )
-          const shown = found.slice(0, 1)
-          for (const row of shown) walked.push(row.name)
-          const last = shown[0]
-          if (found.length < 2 || last === undefined) break
-          after = { createdAt: last.cursorAt, id: last.id }
-        }
-        return { walked }
-      }),
+          }
+          yield* runSql(
+            sql`update assessment_batches set created_at = '2026-03-01 10:00:00.123456+00' where tenant_id = ${f.tenant}`,
+          )
+          const first = yield* assessment.pageBatches(f.tenant, { limit: 1, page: 1 }, f.principal)
+          const middle = yield* assessment.pageBatches(f.tenant, { limit: 1, page: 2 }, f.principal)
+          const last = yield* assessment.pageBatches(f.tenant, { limit: 1, page: 99 }, f.principal)
+          const searched = yield* assessment.pageBatches(
+            f.tenant,
+            { limit: 1, page: 99, q: 'Two' },
+            f.principal,
+          )
+          const empty = yield* assessment.pageBatches(
+            f.tenant,
+            { limit: 1, page: 99, status: 'archived' },
+            f.principal,
+          )
+          return { first, middle, last, searched, empty }
+        }),
+      ),
     )
-    const { walked } = ok(exit)
-    // every round is reached exactly once, though the boundary between two
-    // pages falls inside a single millisecond
-    expect([...walked].sort()).toEqual(['One', 'Three', 'Two'])
+    expect(result.first).toMatchObject({
+      total: 3,
+      page: 1,
+      pageSize: 1,
+      statusCounts: { draft: 3, active: 0, archived: 0 },
+    })
+    expect(result.last).toMatchObject({ total: 3, page: 3, pageSize: 1 })
+    expect(
+      [result.first, result.middle, result.last]
+        .flatMap((page) => page.items.map((row) => row.name))
+        .sort(),
+    ).toEqual(['One', 'Three', 'Two'])
+    expect(result.searched).toMatchObject({
+      total: 1,
+      page: 1,
+      items: [{ name: 'Two' }],
+      statusCounts: { draft: 1, active: 0, archived: 0 },
+    })
+    expect(result.empty).toMatchObject({
+      total: 0,
+      page: 1,
+      items: [],
+      statusCounts: { draft: 3, active: 0, archived: 0 },
+    })
   })
 
   it('lists the people who work a round in the order it pages them', async () => {

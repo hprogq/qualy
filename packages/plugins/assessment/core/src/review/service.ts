@@ -42,8 +42,14 @@ import { projectEntrySummary } from '../entry/summary.ts'
 import { transaction, type Orm, type QueryFailed } from '@qualy/plugin-database/server'
 import type { Principal } from '@qualy/rbac-contract'
 import type { AttachmentMeta } from '@qualy/plugin-storage/server'
-import { DEFAULT_PAGE_SIZE, encodeQueryCursor, readQueryCursor } from '@qualy/api-kit'
-import { cursorUnusable, pageSize, type BadRequest } from '@qualy/api-kit/schema'
+import { DEFAULT_PAGE_SIZE } from '@qualy/api-kit'
+import {
+  inboxNumberedPage,
+  awaitingNumberedPage,
+  type InboxQuery,
+  type QueueGroup,
+} from './queue-db.ts'
+import { pageNumber, pageSize, type BadRequest } from '@qualy/api-kit/schema'
 import type { ItemTypeDriver } from '../plugin.ts'
 import { announce } from '../live/events.ts'
 import { bumpParticipantAttention } from '../entry/db.ts'
@@ -93,7 +99,6 @@ import {
 import { standingPlace } from '../entry/db.ts'
 import {
   activeReviewBatches,
-  awaitingPage,
   claimPanelSeat,
   createPanel,
   earlierConclusions,
@@ -101,7 +106,6 @@ import {
   completeInstance,
   decisionsToday,
   endPanelAssignment,
-  inboxPage,
   insertSupplementAttachments,
   insertSupplementRequest,
   insertSupplementResponse,
@@ -131,7 +135,6 @@ import {
   userMayReview,
   votesOfPanel,
   votesToday,
-  type InboxRow,
   type PanelVoteRow,
   type ReviewInstanceDetailRow,
   type SupplementRequirement,
@@ -163,6 +166,7 @@ export interface ReviewInboxItem {
   readonly batchName: string
   readonly itemId: string
   readonly itemTitle: string
+  readonly participantId: string
   readonly participantName: string
   readonly businessNo: string | null
   readonly unitId: string | null
@@ -503,12 +507,39 @@ export interface ReviewMethods {
   >
   readonly listReviewInbox: (
     tenantId: string,
-    page: { cursor?: string; limit?: string; batchId?: string },
+    page: {
+      page?: string
+      limit?: string
+      batchId?: string
+      view?: 'item' | 'person' | 'time'
+      itemId?: string
+      person?: string
+      unitId?: string
+      search?: string
+      groupPage?: string
+      groupOrder?: 'largest'
+      focus?: string
+      exclude?: readonly string[]
+    },
     as: Principal,
   ) => Effect.Effect<
     {
       items: readonly ReviewInboxItem[]
-      nextCursor: string | null
+      total: number
+      page: number
+      pageSize: number
+      queueTotal: number
+      filteredTotal: number
+      groups: readonly QueueGroup[]
+      groupTotal: number
+      groupPage: number
+      selected: string | null
+      itemOptions: readonly { id: string; name: string }[]
+      unitOptions: readonly { id: string; name: string }[]
+      queueFirstId: string | null
+      firstId: string | null
+      previousId: string | null
+      nextId: string | null
       handledToday: number
       /** whether the phase opens judging in the batch asked about */
       judging: boolean
@@ -517,9 +548,18 @@ export interface ReviewMethods {
   >
   readonly listAwaitingSupplements: (
     tenantId: string,
-    page: { batchId: string; cursor?: string; limit?: string },
+    page: { batchId: string; page?: string; limit?: string },
     as: Principal,
-  ) => Effect.Effect<{ items: readonly AwaitingItem[]; nextCursor: string | null }, BadRequest>
+  ) => Effect.Effect<
+    {
+      items: readonly AwaitingItem[]
+      total: number
+      page: number
+      pageSize: number
+      answered: number
+    },
+    BadRequest
+  >
   readonly getReviewInstance: (
     tenantId: string,
     instanceId: string,
@@ -1025,27 +1065,27 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
 
   const listReviewInbox: ReviewMethods['listReviewInbox'] = Effect.fn('Assessment.listReviewInbox')(
     function* (tenantId, page, as) {
-      const fingerprint = `review-inbox:${as.userId}`
-      const key = readQueryCursor(page.cursor, fingerprint, ['timestamp', 'uuid'])
-      if (key === null) return yield* cursorUnusable()
       const limit = pageSize(page.limit, DEFAULT_PAGE_SIZE)
       const withWork = yield* dieQuery(withDb(activeReviewBatches(tenantId)))
       const asked =
         page.batchId === undefined ? withWork : withWork.filter((one) => one === page.batchId)
       const open = yield* openBatches(tenantId, asked)
-      const rows = yield* dieQuery(
+      const result = yield* dieQuery(
         withDb(
-          inboxPage({
-            tenantId,
-            userId: as.userId,
-            batchIds: open,
-            after: key === undefined ? undefined : [key[0]!, key[1]!],
-            limit: limit + 1,
-          }),
+          transaction(
+            inboxNumberedPage({
+              ...page,
+              tenantId,
+              userId: as.userId,
+              batchIds: open,
+              page: pageNumber(page.page),
+              groupPage: pageNumber(page.groupPage),
+              limit,
+            } satisfies InboxQuery),
+            { isolation: 'repeatable read', readOnly: true },
+          ),
         ),
       )
-      const pageRows: readonly InboxRow[] = rows.slice(0, limit)
-      const last = pageRows[pageRows.length - 1]
       // an empty queue in a phase that keeps judging shut is not a quiet
       // day, and the screen says which it is
       const judging =
@@ -1070,13 +1110,15 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
         }
       }
       return {
-        items: pageRows.map((row) => ({
+        ...result,
+        items: result.items.map((row) => ({
           instanceId: row.instanceId,
           entryId: row.entryId,
           batchId: row.batchId,
           batchName: row.batchName,
           itemId: row.itemId,
           itemTitle: row.itemTitle,
+          participantId: row.participantId,
           participantName: row.participantName,
           businessNo: row.businessNo,
           unitId: row.unitId,
@@ -1087,10 +1129,6 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
           attachmentCount: row.attachmentCount,
           submittedAt: row.submittedAt,
         })),
-        nextCursor:
-          rows.length > limit && last !== undefined
-            ? encodeQueryCursor(fingerprint, [last.submittedAtIso, last.instanceId])
-            : null,
         handledToday,
         judging,
       }
@@ -1107,42 +1145,20 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
   const listAwaitingSupplements: ReviewMethods['listAwaitingSupplements'] = Effect.fn(
     'Assessment.listAwaitingSupplements',
   )(function* (tenantId, page, as) {
-    const fingerprint = `review-awaiting:${page.batchId}:${as.userId}`
-    const key = readQueryCursor(page.cursor, fingerprint, ['timestamp', 'uuid'])
-    if (key === null) return yield* cursorUnusable()
-    const limit = pageSize(page.limit, DEFAULT_PAGE_SIZE)
-    const rows = yield* dieQuery(
+    return yield* dieQuery(
       withDb(
-        awaitingPage({
-          tenantId,
-          batchId: page.batchId,
-          userId: as.userId,
-          after: key === undefined ? undefined : [key[0]!, key[1]!],
-          limit: limit + 1,
-        }),
+        transaction(
+          awaitingNumberedPage({
+            tenantId,
+            batchId: page.batchId,
+            userId: as.userId,
+            page: pageNumber(page.page),
+            limit: pageSize(page.limit, DEFAULT_PAGE_SIZE),
+          }),
+          { isolation: 'repeatable read', readOnly: true },
+        ),
       ),
     )
-    const pageRows = rows.slice(0, limit)
-    const last = pageRows[pageRows.length - 1]
-    return {
-      items: pageRows.map((row) => ({
-        requestId: row.requestId,
-        instanceId: row.instanceId,
-        entryId: row.entryId,
-        requestNo: row.requestNo,
-        status: row.status,
-        participantName: row.participantName,
-        businessNo: row.businessNo,
-        itemTitle: row.itemTitle,
-        asks: row.asks,
-        requestedAt: row.requestedAt,
-        answeredAt: row.answeredAt,
-      })),
-      nextCursor:
-        rows.length > limit && last !== undefined
-          ? encodeQueryCursor(fingerprint, [last.requestedAtIso, last.requestId])
-          : null,
-    }
   })
 
   const getReviewInstance: ReviewMethods['getReviewInstance'] = Effect.fn(

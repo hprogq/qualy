@@ -10,7 +10,6 @@ import {
   numberedPageOf,
   numberedPageQuery,
   pageQuery,
-  countedPageOf,
   pageOf,
   trimmedName,
   uuidInput,
@@ -1279,6 +1278,7 @@ const reviewInboxItem = Schema.Struct({
   batchName: Schema.String,
   itemId: Schema.String,
   itemTitle: Schema.String,
+  participantId: Schema.String,
   participantName: Schema.String,
   businessNo: Schema.NullOr(Schema.String),
   /** the unit the participant stands in, for grouping and the unit filter */
@@ -1824,13 +1824,46 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
     // another person, so the path carries no batch and no user
     HttpApiEndpoint.get('listReviewInbox', '/assessment/review/inbox', {
       query: Schema.Struct({
-        ...pageQuery,
+        ...numberedPageQuery,
         /** narrow the queue to one batch; the workbench always asks this way */
         batchId: Schema.optional(uuidInput),
+        view: Schema.optional(Schema.Literals(['item', 'person', 'time'])),
+        itemId: Schema.optional(uuidInput),
+        person: Schema.optional(uuidInput),
+        unitId: Schema.optional(uuidInput),
+        search: Schema.optional(boundedText(200)),
+        groupPage: Schema.optional(Schema.String),
+        groupOrder: Schema.optional(Schema.Literal('largest')),
+        focus: Schema.optional(uuidInput),
+        exclude: Schema.optional(idListUpTo(100)),
       }),
       success: Schema.Struct({
         items: Schema.Array(reviewInboxItem),
-        nextCursor: Schema.NullOr(Schema.String),
+        total: Schema.Number,
+        page: Schema.Number,
+        pageSize: Schema.Number,
+        queueTotal: Schema.Number,
+        filteredTotal: Schema.Number,
+        groups: Schema.Array(
+          Schema.Struct({
+            key: Schema.String,
+            name: Schema.String,
+            businessNo: Schema.NullOr(Schema.String),
+            unitName: Schema.NullOr(Schema.String),
+            count: Schema.Number,
+            oldest: Schema.String,
+            firstInstanceId: Schema.String,
+          }),
+        ),
+        groupTotal: Schema.Number,
+        groupPage: Schema.Number,
+        selected: Schema.NullOr(Schema.String),
+        itemOptions: Schema.Array(Schema.Struct({ id: Schema.String, name: Schema.String })),
+        unitOptions: Schema.Array(Schema.Struct({ id: Schema.String, name: Schema.String })),
+        queueFirstId: Schema.NullOr(Schema.String),
+        firstId: Schema.NullOr(Schema.String),
+        previousId: Schema.NullOr(Schema.String),
+        nextId: Schema.NullOr(Schema.String),
         /**
          * Decisions this reader recorded today, on the batch's own calendar.
          * Zero when the queue was asked for without a batch - a day belongs
@@ -1853,7 +1886,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
     // list, because the queue is what can be decided now and a round paused
     // for material cannot (§32.65 ⑤).
     HttpApiEndpoint.get('listAwaitingSupplements', '/assessment/review/supplement-requests', {
-      query: Schema.Struct({ ...pageQuery, batchId: uuidInput }),
+      query: Schema.Struct({ ...numberedPageQuery, batchId: uuidInput }),
       success: Schema.Struct({
         items: Schema.Array(
           Schema.Struct({
@@ -1872,7 +1905,10 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
             answeredAt: Schema.NullOr(Schema.String),
           }),
         ),
-        nextCursor: Schema.NullOr(Schema.String),
+        total: Schema.Number,
+        page: Schema.Number,
+        pageSize: Schema.Number,
+        answered: Schema.Number,
       }),
       error: [BadRequest],
     }).middleware(Authenticated),
@@ -2196,7 +2232,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
     HttpApiEndpoint.get('listMyActivity', '/assessment/batches/:batchId/me/activity', {
       params: Schema.Struct({ batchId: uuidInput }),
       query: Schema.Struct({
-        ...pageQuery,
+        ...numberedPageQuery,
         perspective: Schema.optional(Schema.Literals(['participant', 'reviewer'])),
       }),
       success: Schema.Struct({
@@ -2250,7 +2286,9 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
             at: Schema.String,
           }),
         ),
-        nextCursor: Schema.NullOr(Schema.String),
+        total: Schema.Number,
+        page: Schema.Number,
+        pageSize: Schema.Number,
       }),
       error: [BatchNotFound, BadRequest],
     }).middleware(Authenticated),
@@ -2751,12 +2789,12 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
   .add(
     HttpApiEndpoint.get('listBatches', '/assessment/batches', {
       query: Schema.Struct({
-        ...pageQuery,
+        ...numberedPageQuery,
         status: Schema.optional(batchStatus),
         q: Schema.optional(boundedText(100)),
       }),
       success: Schema.Struct({
-        ...countedPageOf(batchListView).fields,
+        ...numberedPageOf(batchListView).fields,
         /** how many of each kind the search matches, for the filter chips */
         statusCounts: Schema.Struct({
           draft: Schema.Number,
@@ -2783,8 +2821,8 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
      */
     HttpApiEndpoint.get('listUserBatches', '/assessment/users/:userId/batches', {
       params: Schema.Struct({ userId: uuidInput }),
-      query: Schema.Struct(pageQuery),
-      success: pageOf(userBatchView),
+      query: Schema.Struct(numberedPageQuery),
+      success: numberedPageOf(userBatchView),
       error: [AccessDenied, BadRequest],
     }).middleware(Authenticated),
   )
@@ -2795,8 +2833,8 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
      * ask: there is no user id to name anybody else by.
      */
     HttpApiEndpoint.get('listMyBatches', '/assessment/me/batches', {
-      query: Schema.Struct(pageQuery),
-      success: pageOf(userBatchView),
+      query: Schema.Struct(numberedPageQuery),
+      success: numberedPageOf(userBatchView),
       error: [BadRequest],
     }).middleware(Authenticated),
   )
@@ -2808,8 +2846,8 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
      */
     HttpApiEndpoint.get('listUserEntries', '/assessment/users/:userId/entries', {
       params: Schema.Struct({ userId: uuidInput }),
-      query: Schema.Struct(pageQuery),
-      success: pageOf(userEntryView),
+      query: Schema.Struct(numberedPageQuery),
+      success: numberedPageOf(userEntryView),
       error: [AccessDenied, BadRequest],
     }).middleware(Authenticated),
   )
@@ -3359,8 +3397,8 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
       '/assessment/batches/:batchId/administrative-imports',
       {
         params: Schema.Struct({ batchId: uuidInput }),
-        query: Schema.Struct({ ...pageQuery }),
-        success: pageOf(administrativeImportView),
+        query: Schema.Struct({ ...numberedPageQuery }),
+        success: numberedPageOf(administrativeImportView),
         error: [BatchNotFound, AccessDenied, BadRequest],
       },
     ).middleware(Authenticated),
@@ -3384,8 +3422,8 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
       '/assessment/administrative-imports/:importId/rows',
       {
         params: Schema.Struct({ importId: uuidInput }),
-        query: Schema.Struct({ ...pageQuery }),
-        success: pageOf(administrativeImportRowView),
+        query: Schema.Struct({ ...numberedPageQuery }),
+        success: numberedPageOf(administrativeImportRowView),
         error: [AdministrativeImportNotFound, AccessDenied, BadRequest],
       },
     ).middleware(Authenticated),
@@ -3465,7 +3503,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
       {
         params: Schema.Struct({ batchId: uuidInput }),
         query: Schema.Struct({
-          ...pageQuery,
+          ...numberedPageQuery,
           /** a name or a business number of the person it is about */
           q: Schema.optional(boundedText(100)),
           /** one fact, for a screen opened on it by address */
@@ -3476,10 +3514,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
           orgNodeIds: Schema.optional(idList),
           orgScope: Schema.optional(Schema.Literals(['self', 'subtree'])),
         }),
-        success: Schema.Struct({
-          entries: Schema.Array(administrativeEntryView),
-          nextCursor: Schema.NullOr(Schema.String),
-        }),
+        success: numberedPageOf(administrativeEntryView),
         error: [BatchNotFound, AccessDenied, BadRequest],
       },
     ).middleware(Authenticated),
@@ -3731,11 +3766,8 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
       '/assessment/batches/:batchId/administrative-records',
       {
         params: Schema.Struct({ batchId: uuidInput }),
-        query: Schema.Struct({ ...pageQuery }),
-        success: Schema.Struct({
-          items: Schema.Array(recordOperationView),
-          nextCursor: Schema.NullOr(Schema.String),
-        }),
+        query: Schema.Struct({ ...numberedPageQuery }),
+        success: numberedPageOf(recordOperationView),
         error: [BatchNotFound, AccessDenied, BadRequest],
       },
     ).middleware(Authenticated),

@@ -6,7 +6,14 @@ import { HttpServerRequest, HttpServerResponse } from 'effect/http'
 import { sql } from 'kysely'
 import { Api } from '@qualy/api-kit/local'
 import { DEFAULT_PAGE_SIZE, encodeQueryCursor, readQueryCursor } from '@qualy/api-kit'
-import { BadRequest, cursorUnusable, pageSize } from '@qualy/api-kit/schema'
+import {
+  BadRequest,
+  cursorUnusable,
+  likeContains,
+  pageNumber,
+  pageWindow,
+  pageSize,
+} from '@qualy/api-kit/schema'
 import { originMatches, publicOriginOf, trustedProxies } from '@qualy/api-kit/origin'
 import { currentRequestContext } from '@qualy/api-kit/request'
 import { CurrentUser } from '@qualy/auth-contract/session'
@@ -172,15 +179,6 @@ type SandboxFailure = Effect.Error<ReturnType<Sandbox['Service']['invoke']>>
 /** the examples' own weight check, the same at every door a draft is written through */
 const testsTooLarge = (tests: readonly unknown[]): boolean =>
   Buffer.byteLength(JSON.stringify(tests), 'utf8') > TESTS_LIMIT
-
-const LIST_FINGERPRINT = 'assessment-formula-functions'
-
-/** the template library is one list for everybody who can see it */
-const TEMPLATE_FINGERPRINT = 'assessment-formula-templates'
-
-/** one function's revisions are their own list */
-const revisionFingerprint = (functionId: string) =>
-  `assessment-formula-draft-revisions:${functionId}`
 
 /** one batch's options are their own query: a cursor from another round's
  *  page describes a position in a different list */
@@ -562,12 +560,14 @@ interface FormulaLibraryShape {
   ) => Effect.Effect<{ readonly draftSourceTs: string }, AccessDenied | FormulaFunctionNotFound>
   readonly listFunctions: (
     tenantId: string,
-    page: { cursor?: string; limit?: string },
+    page: { page?: string; limit?: string; search?: string },
     as: Principal,
   ) => Effect.Effect<
     {
       items: ReturnType<typeof functionDto>[]
-      nextCursor: string | null
+      total: number
+      page: number
+      pageSize: number
     },
     AccessDenied | BadRequest
   >
@@ -586,7 +586,7 @@ interface FormulaLibraryShape {
   ) => Effect.Effect<
     {
       function: ReturnType<typeof functionDetailDto>
-      versions: ReturnType<typeof versionViewDto>[]
+      versionCount: number
       /** where this draft was forked from, if it was */
       copiedFrom: {
         versionId: string
@@ -655,13 +655,22 @@ interface FormulaLibraryShape {
     | CompileRefusal
     | FormulaAuthoringBusy
   >
+  readonly listVersions: (
+    tenantId: string,
+    functionId: string,
+    page: { page?: string; limit?: string },
+    as: Principal,
+  ) => Effect.Effect<
+    { items: ReturnType<typeof versionViewDto>[]; total: number; page: number; pageSize: number },
+    AccessDenied | FormulaFunctionNotFound
+  >
   readonly listDraftRevisions: (
     tenantId: string,
     functionId: string,
-    page: { cursor?: string; limit?: string },
+    page: { page?: string; limit?: string },
     as: Principal,
   ) => Effect.Effect<
-    { items: ReturnType<typeof revisionViewDto>[]; nextCursor: string | null },
+    { items: ReturnType<typeof revisionViewDto>[]; total: number; page: number; pageSize: number },
     AccessDenied | FormulaFunctionNotFound | BadRequest
   >
   readonly getDraftRevision: (
@@ -1581,68 +1590,63 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
       if (report.some((row) => !row.passed)) return yield* new FormulaTestFailed({ report })
     })
 
-  const listFunctions = Effect.fn('FormulaLibrary.listFunctions')(function* (
-    tenantId: string,
-    page: { cursor?: string; limit?: string },
-    as: Principal,
-  ) {
-    yield* requireAuthor(as)
-    const size = pageSize(page.limit, DEFAULT_PAGE_SIZE)
-    const cursor = readQueryCursor(page.cursor, LIST_FINGERPRINT, ['timestamp', 'uuid'])
-    if (cursor === null) return yield* cursorUnusable()
-    const rows = yield* db
-      .query((k) => {
+  const listFunctions = Effect.fn('FormulaLibrary.listFunctions')(
+    function* (
+      tenantId: string,
+      page: { page?: string; limit?: string; search?: string },
+      as: Principal,
+    ) {
+      yield* requireAuthor(as)
+      const size = pageSize(page.limit, DEFAULT_PAGE_SIZE)
+      const matching = (k: Parameters<Parameters<typeof db.query>[0]>[0]) => {
         let query = k
           .selectFrom('FormulaFunction')
-          // projection on purpose: the list never needs the draft source or
-          // the examples, and a row may carry a quarter megabyte of each
-          .select([
-            'FormulaFunction.id',
-            'FormulaFunction.name',
-            'FormulaFunction.description',
-            'FormulaFunction.createdBy',
-            'FormulaFunction.draftRevision',
-            'FormulaFunction.archivedAt',
-            'FormulaFunction.updatedAt',
-          ])
-          .select(latestNoSubquery.as('latestVersionNo'))
-          .select(latestReleaseSubquery.as('latestReleaseName'))
-          // The instant as postgres wrote it, for the cursor alone. The
-          // column is microsecond, `updatedAt` arrives as a Date and an ISO
-          // string of one is millisecond - so a boundary landing inside a
-          // millisecond excluded every row written in it, and a bulk write
-          // shares one. Aliased away from the entity's own property name so
-          // the orm's hydration leaves it a string.
-          .select(sql<string>`assessment_formula_functions.updated_at::text`.as('cursorAt'))
           .where('FormulaFunction.tenantId', '=', tenantId)
-          // what this author wrote, and nothing else: there is no
-          // organizational range to a formula any more
           .where('FormulaFunction.createdBy', '=', as.userId)
-        if (cursor !== undefined) {
-          // row-value keyset comparison is the postgres-specific idiom the
-          // repo allows as a minimal sql fragment
-          query = query.where(
-            sql<boolean>`(assessment_formula_functions.updated_at, assessment_formula_functions.id)
-              < (${cursor[0]}::timestamptz, ${cursor[1]}::uuid)`,
-          )
-        }
+        if (page.search?.trim())
+          query = query.where('FormulaFunction.name', 'ilike', likeContains(page.search.trim()))
         return query
-          .orderBy('FormulaFunction.updatedAt', 'desc')
-          .orderBy('FormulaFunction.id', 'desc')
-          .limit(size + 1)
-          .execute()
-      })
-      .pipe(Effect.orDie)
-    const sliced = (rows as unknown as FunctionRow[]).slice(0, size)
-    const nextCursor =
-      rows.length > size
-        ? encodeQueryCursor(LIST_FINGERPRINT, [
-            String((sliced[sliced.length - 1]! as unknown as { cursorAt: string }).cursorAt),
-            sliced[sliced.length - 1]!.id,
-          ])
-        : null
-    return { items: sliced.map(functionDto), nextCursor }
-  })
+      }
+      const counted = yield* db
+        .query((k) =>
+          matching(k)
+            .select((eb) => eb.fn.countAll<string>().as('count'))
+            .executeTakeFirstOrThrow(),
+        )
+        .pipe(Effect.orDie)
+      const total = Number(counted.count)
+      const window = pageWindow(pageNumber(page.page), size, total)
+      const rows = yield* db
+        .query((k) =>
+          matching(k)
+            .select([
+              'FormulaFunction.id',
+              'FormulaFunction.name',
+              'FormulaFunction.description',
+              'FormulaFunction.createdBy',
+              'FormulaFunction.draftRevision',
+              'FormulaFunction.detailsRevision',
+              'FormulaFunction.archivedAt',
+              'FormulaFunction.updatedAt',
+            ])
+            .select(latestNoSubquery.as('latestVersionNo'))
+            .select(latestReleaseSubquery.as('latestReleaseName'))
+            .orderBy('FormulaFunction.updatedAt', 'desc')
+            .orderBy('FormulaFunction.id', 'desc')
+            .limit(size)
+            .offset(window.offset)
+            .execute(),
+        )
+        .pipe(Effect.orDie)
+      return {
+        items: (rows as unknown as FunctionRow[]).map(functionDto),
+        total,
+        page: window.page,
+        pageSize: size,
+      }
+    },
+    (effect) => transaction(effect, { isolation: 'repeatable read', readOnly: true }),
+  )
 
   const createFunction = Effect.fn('FormulaLibrary.createFunction')(function* (
     tenantId: string,
@@ -1710,44 +1714,14 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
     as: Principal,
   ) {
     const row = yield* authoringRow(tenantId, functionId, as)
-    // summaries only: every published row also carries the full artifact and
-    // sources, which belong to getVersion, not to opening the editor
-    const versions = yield* db
+    const counted = yield* db
       .query((k) =>
         k
-          .selectFrom('FormulaVersion as v')
-          .leftJoin('User as u', (join) =>
-            join.onRef('u.tenantId', '=', 'v.tenantId').onRef('u.id', '=', 'v.publishedBy'),
-          )
-          .select([
-            'v.id as id',
-            'v.versionNo as versionNo',
-            'v.releaseName as releaseName',
-            'v.releaseNotes as releaseNotes',
-            'v.contractSha256 as contractSha256',
-            'v.runtimeSha256 as runtimeSha256',
-            'v.publishedBy as publishedBy',
-            'u.displayName as publishedByName',
-            'v.publishedAt as publishedAt',
-            // the label's own revision: a list this is relabelled from must
-            // hand the rewrite the revision it read, or the second rewrite
-            // in a row reads as somebody else's
-            'v.metadataRevision as metadataRevision',
-          ])
-          // how wide each publication's audience is, so the list of versions
-          // can say it without a request per row
-          .select((eb) =>
-            eb
-              .selectFrom('FormulaShareScope as s')
-              .whereRef('s.tenantId', '=', 'v.tenantId')
-              .whereRef('s.versionId', '=', 'v.id')
-              .select(eb.fn.countAll<number>().as('count'))
-              .as('sharedCount'),
-          )
-          .where('v.tenantId', '=', tenantId)
-          .where('v.functionId', '=', functionId)
-          .orderBy('v.versionNo', 'desc')
-          .execute(),
+          .selectFrom('FormulaVersion')
+          .where('tenantId', '=', tenantId)
+          .where('functionId', '=', functionId)
+          .select((eb) => eb.fn.countAll<string>().as('count'))
+          .executeTakeFirstOrThrow(),
       )
       .pipe(Effect.orDie)
     // Where this draft was forked from, if it was - read as this function's
@@ -1791,10 +1765,81 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
             )
     return {
       function: functionDetailDto(row),
-      versions: (versions as unknown as VersionRow[]).map(versionViewDto),
+      versionCount: Number(counted.count),
       copiedFrom,
     }
   })
+
+  const listVersions = Effect.fn('FormulaLibrary.listVersions')(
+    function* (
+      tenantId: string,
+      functionId: string,
+      page: { page?: string; limit?: string },
+      as: Principal,
+    ) {
+      yield* authoringRow(tenantId, functionId, as)
+      const size = pageSize(page.limit, DEFAULT_PAGE_SIZE)
+      const counted = yield* db
+        .query((k) =>
+          k
+            .selectFrom('FormulaVersion')
+            .where('tenantId', '=', tenantId)
+            .where('functionId', '=', functionId)
+            .select((eb) => eb.fn.countAll<string>().as('count'))
+            .executeTakeFirstOrThrow(),
+        )
+        .pipe(Effect.orDie)
+      const total = Number(counted.count)
+      const window = pageWindow(pageNumber(page.page), size, total)
+      const versions = yield* db
+        .query((k) =>
+          k
+            .selectFrom('FormulaVersion as v')
+            .leftJoin('User as u', (join) =>
+              join.onRef('u.tenantId', '=', 'v.tenantId').onRef('u.id', '=', 'v.publishedBy'),
+            )
+            .select([
+              'v.id as id',
+              'v.versionNo as versionNo',
+              'v.releaseName as releaseName',
+              'v.releaseNotes as releaseNotes',
+              'v.contractSha256 as contractSha256',
+              'v.runtimeSha256 as runtimeSha256',
+              'v.publishedBy as publishedBy',
+              'u.displayName as publishedByName',
+              'v.publishedAt as publishedAt',
+              // the label's own revision: a list this is relabelled from must
+              // hand the rewrite the revision it read, or the second rewrite
+              // in a row reads as somebody else's
+              'v.metadataRevision as metadataRevision',
+            ])
+            // how wide each publication's audience is, so the list of versions
+            // can say it without a request per row
+            .select((eb) =>
+              eb
+                .selectFrom('FormulaShareScope as s')
+                .whereRef('s.tenantId', '=', 'v.tenantId')
+                .whereRef('s.versionId', '=', 'v.id')
+                .select(eb.fn.countAll<number>().as('count'))
+                .as('sharedCount'),
+            )
+            .where('v.tenantId', '=', tenantId)
+            .where('v.functionId', '=', functionId)
+            .orderBy('v.versionNo', 'desc')
+            .limit(size)
+            .offset(window.offset)
+            .execute(),
+        )
+        .pipe(Effect.orDie)
+      return {
+        items: (versions as unknown as VersionRow[]).map(versionViewDto),
+        total,
+        page: window.page,
+        pageSize: size,
+      }
+    },
+    (effect) => transaction(effect, { isolation: 'repeatable read', readOnly: true }),
+  )
 
   const updateDraft = Effect.fn('FormulaLibrary.updateDraft')(function* (
     tenantId: string,
@@ -2468,61 +2513,62 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
     } satisfies VersionEvaluation
   })
 
-  const listDraftRevisions = Effect.fn('FormulaLibrary.listDraftRevisions')(function* (
-    tenantId: string,
-    functionId: string,
-    page: { cursor?: string; limit?: string },
-    as: Principal,
-  ) {
-    yield* authoringRow(tenantId, functionId, as)
-    const size = pageSize(page.limit, DEFAULT_PAGE_SIZE)
-    const cursor = readQueryCursor(page.cursor, revisionFingerprint(functionId), ['text'])
-    if (cursor === null) return yield* cursorUnusable()
-    const before = cursor === undefined ? undefined : Number(cursor[0])
-    if (before !== undefined && !(Number.isSafeInteger(before) && before > 0))
-      return yield* cursorUnusable()
-    const rows = yield* db
-      .query((k) => {
-        let query = k
-          .selectFrom('FormulaDraftRevision as r')
-          .leftJoin('User as u', (join) =>
-            join.onRef('u.tenantId', '=', 'r.tenantId').onRef('u.id', '=', 'r.savedBy'),
-          )
-          .leftJoin('FormulaVersion as v', (join) =>
-            join.onRef('v.tenantId', '=', 'r.tenantId').onRef('v.id', '=', 'r.sourceVersionId'),
-          )
-          .select([
-            'r.revisionNo as revisionNo',
-            'r.origin as origin',
-            'r.sourceSha256 as sourceSha256',
-            'r.savedBy as savedBy',
-            'u.displayName as savedByName',
-            'r.savedAt as savedAt',
-            'v.versionNo as sourceVersionNo',
-            'v.releaseName as sourceReleaseName',
-            'r.sourceDraftRevisionNo as sourceDraftRevisionNo',
-          ])
-          .where('r.tenantId', '=', tenantId)
-          .where('r.functionId', '=', functionId)
-        if (before !== undefined) query = query.where('r.revisionNo', '<', before)
-        return query
-          .orderBy('r.revisionNo', 'desc')
-          .limit(size + 1)
-          .execute()
-      })
-      .pipe(Effect.orDie)
-    const all = rows as unknown as RevisionRow[]
-    const sliced = all.slice(0, size)
-    return {
-      items: sliced.map(revisionViewDto),
-      nextCursor:
-        all.length > size
-          ? encodeQueryCursor(revisionFingerprint(functionId), [
-              String(sliced[sliced.length - 1]!.revisionNo),
+  const listDraftRevisions = Effect.fn('FormulaLibrary.listDraftRevisions')(
+    function* (
+      tenantId: string,
+      functionId: string,
+      page: { page?: string; limit?: string },
+      as: Principal,
+    ) {
+      yield* authoringRow(tenantId, functionId, as)
+      const size = pageSize(page.limit, DEFAULT_PAGE_SIZE)
+      const counted = yield* db
+        .query((k) =>
+          k
+            .selectFrom('FormulaDraftRevision')
+            .where('tenantId', '=', tenantId)
+            .where('functionId', '=', functionId)
+            .select((eb) => eb.fn.countAll<string>().as('count'))
+            .executeTakeFirstOrThrow(),
+        )
+        .pipe(Effect.orDie)
+      const total = Number(counted.count)
+      const window = pageWindow(pageNumber(page.page), size, total)
+      const rows = yield* db
+        .query((k) => {
+          const query = k
+            .selectFrom('FormulaDraftRevision as r')
+            .leftJoin('User as u', (join) =>
+              join.onRef('u.tenantId', '=', 'r.tenantId').onRef('u.id', '=', 'r.savedBy'),
+            )
+            .leftJoin('FormulaVersion as v', (join) =>
+              join.onRef('v.tenantId', '=', 'r.tenantId').onRef('v.id', '=', 'r.sourceVersionId'),
+            )
+            .select([
+              'r.revisionNo as revisionNo',
+              'r.origin as origin',
+              'r.sourceSha256 as sourceSha256',
+              'r.savedBy as savedBy',
+              'u.displayName as savedByName',
+              'r.savedAt as savedAt',
+              'v.versionNo as sourceVersionNo',
+              'v.releaseName as sourceReleaseName',
+              'r.sourceDraftRevisionNo as sourceDraftRevisionNo',
             ])
-          : null,
-    }
-  })
+            .where('r.tenantId', '=', tenantId)
+            .where('r.functionId', '=', functionId)
+          return query.orderBy('r.revisionNo', 'desc').limit(size).offset(window.offset).execute()
+        })
+        .pipe(Effect.orDie)
+      return {
+        items: (rows as unknown as RevisionRow[]).map(revisionViewDto),
+        total,
+        page: window.page,
+        pageSize: size,
+      }
+    },
+    (effect) => transaction(effect, { isolation: 'repeatable read', readOnly: true }),
+  )
 
   const getDraftRevision = Effect.fn('FormulaLibrary.getDraftRevision')(function* (
     tenantId: string,
@@ -2719,6 +2765,8 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
       withDb(updateVersionInfo(tenantId, functionId, versionNo, request, as)),
     evaluateVersion: (tenantId, functionId, versionNo, cases, as) =>
       admitted(as, withDb(evaluateVersion(tenantId, functionId, versionNo, cases, as))),
+    listVersions: (tenantId, functionId, page, as) =>
+      withDb(listVersions(tenantId, functionId, page, as)),
     listDraftRevisions: (tenantId, functionId, page, as) =>
       withDb(listDraftRevisions(tenantId, functionId, page, as)),
     getDraftRevision: (tenantId, functionId, revisionNo, as) =>
@@ -2836,6 +2884,14 @@ export const formulaApiHandlers = HttpApiBuilder.group(local, 'assessmentFormula
           principal,
         )
         return { function: created }
+      }),
+    )
+    .handle(
+      'listFormulaVersions',
+      Effect.fn('assessmentFormula.listVersions.handler')(function* ({ params, query }) {
+        const library = yield* FormulaLibrary
+        const principal = yield* CurrentUser
+        return yield* library.listVersions(principal.tenantId, params.functionId, query, principal)
       }),
     )
     .handle(
@@ -2996,29 +3052,16 @@ export const formulaApiHandlers = HttpApiBuilder.group(local, 'assessmentFormula
         // them has nothing to do here
         yield* library.requireAuthor(principal)
         const stands = yield* placement.primaryNode(tenantId, principal.userId)
-        const size = pageSize(query.limit, DEFAULT_PAGE_SIZE)
-        const cursor = readQueryCursor(query.cursor, TEMPLATE_FINGERPRINT, ['timestamp', 'uuid'])
-        if (cursor === null) return yield* cursorUnusable()
         const page = yield* templates.listTemplates(
           tenantId,
           { userId: principal.userId, nodeId: stands?.nodeId ?? null },
           {
-            limit: size,
-            ...(cursor === undefined
-              ? {}
-              : { after: { publishedAt: cursor[0]!, versionId: cursor[1]! } }),
+            page: pageNumber(query.page),
+            limit: pageSize(query.limit, DEFAULT_PAGE_SIZE),
+            ...(query.search === undefined ? {} : { search: query.search }),
           },
         )
-        return {
-          items: page.items.map(templateSummaryDto),
-          nextCursor:
-            page.more && page.last !== null
-              ? encodeQueryCursor(TEMPLATE_FINGERPRINT, [
-                  page.last.publishedAt,
-                  page.last.versionId,
-                ])
-              : null,
-        }
+        return { ...page, items: page.items.map(templateSummaryDto) }
       }),
     )
     .handle(

@@ -1,3 +1,5 @@
+import { pageNumber } from '@qualy/api-kit/schema'
+import { Pager } from '@qualy/ui/pager'
 import { useLocale } from '@qualy/web-i18n'
 import { useEffect, useState, type MouseEvent } from 'react'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
@@ -8,6 +10,8 @@ import {
   useLoadFailure,
   usePageNavigate,
   usePageTitle,
+  usePageQueryState,
+  usePageQueryUpdate,
 } from '@qualy/web-runtime'
 
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
@@ -24,14 +28,7 @@ import { useIsMobile } from '@qualy/ui/use-mobile'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@qualy/ui/table'
 import { ToggleGroup, ToggleGroupItem } from '@qualy/ui/toggle-group'
 import { Count } from '@qualy/ui/count'
-import {
-  ChevronLeftIcon,
-  ChevronRightIcon,
-  LayersIcon,
-  PlusIcon,
-  SearchIcon,
-  XIcon,
-} from 'lucide-react'
+import { ChevronRightIcon, LayersIcon, PlusIcon, SearchIcon, XIcon } from 'lucide-react'
 
 import { assessmentApi } from './api.ts'
 import { NewBatchDialog } from './NewBatchForm.tsx'
@@ -592,39 +589,39 @@ export default function BatchListPage() {
   const titleRef = usePageTitle(m.batch_title())
   const navigate = usePageNavigate()
   const [creating, setCreating] = useState(false)
-  const [search, setSearch] = useState('')
-  // 'all' rather than '': a single-choice toggle group treats the empty
-  // string as "nothing selected", so an item carrying it can never light up
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
-
-  // typing filters the list, but not on every keystroke: the query the table
-  // reads settles a moment after the person stops
-  const [settledSearch, setSettledSearch] = useState('')
-  useEffect(() => {
-    const timer = setTimeout(() => setSettledSearch(search.trim()), 300)
-    return () => clearTimeout(timer)
-  }, [search])
-
-  // Keyset paging walked by page number: each page's cursor is remembered as
-  // it is handed out, so going back is a cursor we already hold rather than
-  // an offset the database has to count to.
-  const [cursors, setCursors] = useState<readonly (string | undefined)[]>([undefined])
-  const [pageIndex, setPageIndex] = useState(0)
+  const [searchParam] = usePageQueryState('q')
+  const [statusParam] = usePageQueryState('status')
+  const [pageParam, setPageParam] = usePageQueryState('page')
+  const write = usePageQueryUpdate()
+  const [search, setSearch] = useState(searchParam)
+  const [seenSearch, setSeenSearch] = useState(searchParam)
+  // Same-page navigation can change the URL without remounting this input.
+  if (seenSearch !== searchParam) {
+    setSeenSearch(searchParam)
+    setSearch(searchParam)
+  }
+  const statusFilter: StatusFilter =
+    statusParam === 'draft' || statusParam === 'active' || statusParam === 'archived'
+      ? statusParam
+      : 'all'
+  const setStatusFilter = (value: StatusFilter) =>
+    write({ status: value === 'all' ? '' : value, page: '' })
+  const settledSearch = searchParam
+  const currentPage = pageNumber(pageParam)
   const filtered = settledSearch !== '' || statusFilter !== 'all'
   useEffect(() => {
-    // a different question deserves a first page, and none of the pages
-    // held for the old one answer it
-    setCursors([undefined])
-    setPageIndex(0)
-    setPiles({})
-  }, [settledSearch, statusFilter])
+    const timer = setTimeout(() => {
+      if (search.trim() !== searchParam) write({ q: search.trim(), page: '' })
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [search, searchParam, write])
 
   const batches = useQuery({
     ...query.assessment.listBatches.queryOptions({
       query: {
         ...(settledSearch !== '' ? { q: settledSearch } : {}),
         ...(statusFilter !== 'all' ? { status: statusFilter } : {}),
-        ...(cursors[pageIndex] !== undefined ? { cursor: cursors[pageIndex] } : {}),
+        page: String(currentPage),
         limit: String(PAGE_SIZE),
       },
     }),
@@ -653,35 +650,11 @@ export default function BatchListPage() {
   // not drawn, and this reader's own list is still theirs to read
   const canCreate = batches.data?.capabilities.create ?? false
   const counts = batches.data?.statusCounts
-  // keepPreviousData deliberately carries capabilities while a re-keyed
-  // filter loads. Its cursor belongs to the old fingerprint and must never
-  // be offered as the new filter's next page.
-  const nextCursor = batches.isPlaceholderData ? null : (batches.data?.nextCursor ?? null)
-  useEffect(() => {
-    // remember where the next page starts, the moment this one says
-    if (nextCursor === null || cursors[pageIndex + 1] === nextCursor) return
-    setCursors((current) => [...current.slice(0, pageIndex + 1), nextCursor])
-  }, [nextCursor, pageIndex, cursors])
-
   const open = (batchId: string) => navigate('assessment/batch', { params: { batchId } })
-
   const rows = batches.data?.items ?? []
-  // On a phone the pages pile up instead of replacing each other: the list
-  // is one column somebody is already scrolling, and a pager that swapped
-  // the rows under them would lose their place. Kept by the cursor that
-  // fetched each page, so asking twice cannot count a page twice and
-  // stepping back is a page already held.
-  const [piles, setPiles] = useState<Readonly<Record<string, readonly (typeof rows)[number][]>>>({})
-  const pileKey = cursors[pageIndex] ?? ''
-  useEffect(() => {
-    if (batches.isPlaceholderData) return
-    const items = batches.data?.items
-    if (items === undefined) return
-    setPiles((held) => (held[pileKey] === items ? held : { ...held, [pileKey]: items }))
-  }, [batches.data, batches.isPlaceholderData, pileKey])
-  const piled = cursors.slice(0, pageIndex + 1).flatMap((cursor) => piles[cursor ?? ''] ?? [])
-  const shownRows = narrow ? piled : rows
+  const shownRows = rows
   const total = batches.data?.total ?? 0
+  const actualPage = batches.data?.page ?? currentPage
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE))
   const standing = (row: (typeof rows)[number]) => standingOf(row.status, row.currentPhaseId)
 
@@ -761,7 +734,7 @@ export default function BatchListPage() {
     archived: null,
   } as const
 
-  const paged = nextCursor !== null || pageIndex > 0
+  const paged = pageCount > 1
   // the list is being asked again - a filter, a search, a page - and the
   // answer is slow enough to be worth saying so
   const refreshing = useHeld(batches.isFetching && !batches.isPending, REFRESH_NOTICE_AFTER)
@@ -928,8 +901,7 @@ export default function BatchListPage() {
                 size="sm"
                 onClick={() => {
                   setSearch('')
-                  setSettledSearch('')
-                  setStatusFilter('active')
+                  write({ q: '', status: 'active', page: '' })
                 }}
               >
                 {m.batch_runningShowAll()}
@@ -954,7 +926,12 @@ export default function BatchListPage() {
             }}
             skeleton={<ListSkeleton labelled={listLabelled} />}
           >
-            <section {...stylex.props(styles.list)}>
+            <section
+              data-testid="batch-list"
+              tabIndex={-1}
+              aria-label={m.batch_title()}
+              {...stylex.props(styles.list)}
+            >
               {/* the list has a name of its own because the cards above it
                   are batches too: without it the pills read as filtering
                   the whole page. A refresh that runs long is said just
@@ -1072,17 +1049,6 @@ export default function BatchListPage() {
                         </PageLink>
                       )
                     })}
-                    {/* one more page, where a pager would be */}
-                    {nextCursor !== null && (
-                      <button
-                        type="button"
-                        data-testid="batch-more"
-                        onClick={() => setPageIndex((index) => index + 1)}
-                        {...stylex.props(styles.more)}
-                      >
-                        {m.action_nextPage()}
-                      </button>
-                    )}
                   </div>
                 ) : (
                   <div {...stylex.props(styles.sheetScroller)}>
@@ -1159,39 +1125,28 @@ export default function BatchListPage() {
                 )}
                 {/* the foot exists only when there is somewhere to page to:
                     how many there are is on the pills already */}
-                {paged && !narrow && (
+                {paged && (
                   <div {...stylex.props(styles.pagerRow)}>
-                    <span
-                      data-testid="batch-pager"
-                      data-page={String(pageIndex + 1)}
-                      data-pages={String(pageCount)}
-                      {...stylex.props(styles.pagerNote)}
-                    >
-                      {m.batch_pageOfTotal({ page: pageIndex + 1, pages: pageCount })}
-                    </span>
-                    {/* buttons, not anchors: these move client-side state,
-                        and an anchor with no href is neither focusable nor
-                        disableable */}
-                    <nav aria-label="pagination" {...stylex.props(styles.pager)}>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        disabled={pageIndex === 0}
-                        onClick={() => setPageIndex((index) => Math.max(0, index - 1))}
-                      >
-                        <ChevronLeftIcon />
-                        {m.action_previousPage()}
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        disabled={nextCursor === null}
-                        onClick={() => setPageIndex((index) => index + 1)}
-                      >
-                        {m.action_nextPage()}
-                        <ChevronRightIcon />
-                      </Button>
-                    </nav>
+                    <Pager
+                      testId="batch-pager"
+                      label={m.batch_title()}
+                      previousLabel={m.action_previousPage()}
+                      nextLabel={m.action_nextPage()}
+                      page={actualPage}
+                      pageSize={PAGE_SIZE}
+                      total={total}
+                      compact={narrow}
+                      disabled={batches.isFetching}
+                      summary={m.batch_pageOfTotal({ page: actualPage, pages: pageCount })}
+                      onPage={(next) => {
+                        const list = document.querySelector<HTMLElement>(
+                          '[data-testid="batch-list"]',
+                        )
+                        list?.focus({ preventScroll: true })
+                        list?.scrollIntoView({ block: 'start' })
+                        setPageParam(next === 1 ? '' : String(next))
+                      }}
+                    />
                   </div>
                 )}
               </div>

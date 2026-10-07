@@ -25,11 +25,8 @@ describe.runIf(postgresAvailable)('the participant attention model', () => {
     await db?.dispose()
   })
 
-  // Paging the feed. The rows carry a millisecond rendering for the wire and
-  // the column keeps microseconds, so a cursor built from what is shown asks
-  // the next page for everything older than a rounded-down instant - and
-  // drops whatever was written inside the gap, which is exactly where the
-  // rows written alongside the boundary row live.
+  // Numbered pages must preserve PostgreSQL precision and the deterministic
+  // tie-breakers when several events land within the same millisecond.
   it('pages the feed without dropping rows that share an instant', async () => {
     const result = ok(
       await run(
@@ -74,19 +71,29 @@ describe.runIf(postgresAvailable)('the participant attention model', () => {
 
           const whole = yield* assessment.listMyActivity(f.t, g.batch.id, { limit: '50' }, s1)
           const paged: string[] = []
-          let cursor: string | undefined
           for (let turn = 0; turn < 20; turn += 1) {
             const page = yield* assessment.listMyActivity(
               f.t,
               g.batch.id,
-              cursor === undefined ? { limit: '2' } : { limit: '2', cursor },
+              { limit: '2', page: String(turn + 1) },
               s1,
             )
             paged.push(...page.items.map((one) => one.id))
-            if (page.nextCursor === null) break
-            cursor = page.nextCursor
+            if (page.page * page.pageSize >= page.total) break
           }
-          return { whole: whole.items.map((one) => one.id), paged }
+          const last = yield* assessment.listMyActivity(
+            f.t,
+            g.batch.id,
+            { limit: '2', page: '999' },
+            s1,
+          )
+          const empty = yield* assessment.listMyActivity(
+            f.t,
+            g.batch.id,
+            { limit: '2', page: '99', perspective: 'reviewer' },
+            s1,
+          )
+          return { whole: whole.items.map((one) => one.id), total: whole.total, paged, last, empty }
         }),
       ),
     )
@@ -94,6 +101,16 @@ describe.runIf(postgresAvailable)('the participant attention model', () => {
     expect(result.whole.length).toBeGreaterThan(2)
     // and walking it two at a time reads the same story, in the same order
     expect(result.paged).toEqual(result.whole)
+    expect(result.total).toBe(result.whole.length)
+    expect(result.last).toMatchObject({
+      total: result.total,
+      page: Math.ceil(result.total / 2),
+      pageSize: 2,
+    })
+    expect(result.last.items.map((row) => row.id)).toEqual(
+      result.whole.slice((result.last.page - 1) * 2),
+    )
+    expect(result.empty).toMatchObject({ items: [], total: 0, page: 1, pageSize: 2 })
   })
 
   it('rings on the verdict, not on the stage handover, and a look silences it', async () => {

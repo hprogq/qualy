@@ -877,32 +877,36 @@ export const administrativeRecordService = (deps: AdministrativeRecordDeps) => {
   const list = Effect.fn('Assessment.listAdministrativeRecords')(function* (
     tenantId: string,
     batchId: string,
-    filter: { after?: readonly [string, string] | undefined; limit: number },
+    filter: { page?: number; limit: number },
     as: Principal,
   ) {
     if (!(yield* deps.holdsRecord(tenantId, batchId, as.userId))) {
       return yield* new AccessDenied({ reason: 'assessment.entry.record' })
     }
-    const rows = (yield* withDb(
-      operationsOfBatchPage({ tenantId, batchId, after: filter.after, limit: filter.limit }),
-    )) as unknown as Record<string, unknown>[]
+    const { items, ...pagination } = yield* withDb(
+      operationsOfBatchPage({ tenantId, batchId, page: filter.page ?? 1, limit: filter.limit }),
+    )
+    const rows = items as unknown as Record<string, unknown>[]
     const standing = yield* withDb(
       standingOfOperations(
         tenantId,
         rows.map((row) => String(row['id'])),
       ),
     )
-    return rows.map((row) => ({
-      id: String(row['id']),
-      itemId: String(row['itemId']),
-      itemTitle: String(row['itemTitle'] ?? ''),
-      targetKind: String(row['targetKind']),
-      targetSpec: row['targetSpec'] as Record<string, unknown>,
-      recordedCount: Number(row['recordedCount'] ?? 0),
-      voidedCount: standing.get(String(row['id']))?.voided ?? 0,
-      actorName: row['actorName'] == null ? null : String(row['actorName']),
-      createdAt: String(row['createdAtText']),
-    }))
+    return {
+      ...pagination,
+      items: rows.map((row) => ({
+        id: String(row['id']),
+        itemId: String(row['itemId']),
+        itemTitle: String(row['itemTitle'] ?? ''),
+        targetKind: String(row['targetKind']),
+        targetSpec: row['targetSpec'] as Record<string, unknown>,
+        recordedCount: Number(row['recordedCount'] ?? 0),
+        voidedCount: standing.get(String(row['id']))?.voided ?? 0,
+        actorName: row['actorName'] == null ? null : String(row['actorName']),
+        createdAt: String(row['createdAtText']),
+      })),
+    }
   })
 
   /** one act, what it came to, and what has been done to it */

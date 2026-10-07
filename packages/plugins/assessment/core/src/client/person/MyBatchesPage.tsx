@@ -12,9 +12,7 @@ export default function MyBatchesPage() {
   return (
     <BatchMemberships
       queryKey={query.assessment.listMyBatches.key({ query: {} })}
-      fetchPage={(cursor) =>
-        run(api.assessment.listMyBatches({ query: cursor === undefined ? {} : { cursor } }))
-      }
+      fetchPage={(page) => run(api.assessment.listMyBatches({ query: { page: String(page) } }))}
     />
   )
 }

@@ -598,7 +598,7 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
     expect(result.settled.outcome).toBe('approved')
   })
 
-  it('pages the queue oldest first and refuses a cursor it did not write', async () => {
+  it('pages the queue oldest first and clamps out-of-range pages', async () => {
     const result = ok(
       await run(
         db.url,
@@ -610,13 +610,11 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
           const second = yield* submitted(f, g, g.p2, f.s2)
           const reviewer = f.principal(f.reviewer)
           const page1 = yield* assessment.listReviewInbox(f.t, { limit: '1' }, reviewer)
-          const page2 = yield* assessment.listReviewInbox(
+          const page2 = yield* assessment.listReviewInbox(f.t, { limit: '1', page: '2' }, reviewer)
+          const tampered = yield* assessment.listReviewInbox(
             f.t,
-            { limit: '1', cursor: page1.nextCursor! },
+            { limit: '1', page: '99' },
             reviewer,
-          )
-          const tampered = yield* Effect.exit(
-            assessment.listReviewInbox(f.t, { cursor: 'not-a-cursor' }, reviewer),
           )
           return { first, second, page1, page2, tampered }
         }),
@@ -624,10 +622,175 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
     )
 
     expect(result.page1.items.map((item) => item.instanceId)).toEqual([result.first.instanceId])
-    expect(result.page1.nextCursor).not.toBeNull()
+    expect(result.page1.total).toBe(2)
+    expect(result.page1.page).toBe(1)
     expect(result.page2.items.map((item) => item.instanceId)).toEqual([result.second.instanceId])
-    expect(result.page2.nextCursor).toBeNull()
-    expect(errorOf<{ _tag: string }>(result.tampered)?._tag).toBe('BAD_REQUEST')
+    expect(result.page2.page).toBe(2)
+    expect(result.tampered.page).toBe(2)
+    expect(result.tampered.items).toEqual(result.page2.items)
+  })
+
+  it('recommends the largest group even when it falls beyond the first group page', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('rv-largest-group')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f, { profile: REVIEW_OPEN })
+          yield* submitted(f, g, g.p1, f.s1)
+          const admin = f.principal(f.admin)
+          const groups = yield* assessment.listScoreGroups(f.t, g.batch.id, admin)
+          let largestId = ''
+          let firstInstanceId = ''
+          for (let index = 1; index <= 20; index += 1) {
+            const item = yield* assessment.createItem(
+              f.t,
+              g.batch.id,
+              {
+                itemType: 'evidence',
+                title: `Question ${index}`,
+                scoreGroupId: groups.groups[0]!.id,
+                maxEntries: 3,
+                config: g.item.currentRevision!,
+              },
+              admin,
+            )
+            yield* assessment.setItemStatus(f.t, item.id, { status: 'active' }, admin)
+            const first = yield* submitted(f, { item }, g.p1, f.s1)
+            if (index === 20) {
+              largestId = item.id
+              firstInstanceId = first.instanceId
+              yield* submitted(f, { item }, g.p1, f.s1)
+              yield* submitted(f, { item }, g.p1, f.s1)
+            }
+          }
+          const reviewer = f.principal(f.reviewer)
+          const firstPage = yield* assessment.listReviewInbox(
+            f.t,
+            {
+              batchId: g.batch.id,
+              view: 'item',
+              limit: '1',
+            },
+            reviewer,
+          )
+          const largest = yield* assessment.listReviewInbox(
+            f.t,
+            {
+              batchId: g.batch.id,
+              view: 'item',
+              groupOrder: 'largest',
+              limit: '1',
+            },
+            reviewer,
+          )
+          return { firstPage, largest, largestId, firstInstanceId }
+        }),
+      ),
+    )
+    expect(result.firstPage.groupTotal).toBe(21)
+    expect(result.firstPage.groups).toHaveLength(20)
+    expect(result.firstPage.groups.some((group) => group.key === result.largestId)).toBe(false)
+    expect(result.largest.groups[0]).toMatchObject({
+      key: result.largestId,
+      count: 3,
+      firstInstanceId: result.firstInstanceId,
+    })
+    expect(result.largest.items).toHaveLength(1)
+  })
+
+  it('counts groups in SQL and locates neighbors across page boundaries without returning the whole queue', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('rv-numbered-groups')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f, { profile: REVIEW_OPEN })
+          yield* runSql(
+            sql`update assessment_items set max_entries = 30 where tenant_id = ${f.t} and id = ${g.item.id}`,
+          )
+          const created: { entryId: string; instanceId: string }[] = []
+          for (let index = 0; index < 23; index += 1)
+            created.push(yield* submitted(f, g, g.p1, f.s1))
+          const other = yield* submitted(f, g, g.p2, f.s2)
+          const reviewer = f.principal(f.reviewer)
+          const second = yield* assessment.listReviewInbox(
+            f.t,
+            { batchId: g.batch.id, page: '2', limit: '7' },
+            reviewer,
+          )
+          const people = yield* assessment.listReviewInbox(
+            f.t,
+            { batchId: g.batch.id, view: 'person', person: g.p2, limit: '7' },
+            reviewer,
+          )
+          const focused = yield* assessment.listReviewInbox(
+            f.t,
+            { batchId: g.batch.id, focus: created[7]!.instanceId, limit: '7' },
+            reviewer,
+          )
+          const narrowed = yield* assessment.listReviewInbox(
+            f.t,
+            {
+              batchId: g.batch.id,
+              person: g.p1,
+              page: '9',
+              limit: '7',
+              exclude: [created[22]!.instanceId],
+            },
+            reviewer,
+          )
+          const unrelated = yield* assessment.listReviewInbox(
+            f.t,
+            { batchId: g.batch.id, view: 'person', limit: '7' },
+            f.principal(f.s3),
+          )
+          return {
+            created,
+            other,
+            second,
+            people,
+            focused,
+            narrowed,
+            unrelated,
+            p1: g.p1,
+            p2: g.p2,
+          }
+        }),
+      ),
+    )
+    expect(result.second).toMatchObject({ total: 24, page: 2, pageSize: 7, queueTotal: 24 })
+    expect(result.second.items.map((item) => item.instanceId)).toEqual(
+      result.created.slice(7, 14).map((item) => item.instanceId),
+    )
+    expect(result.people).toMatchObject({ total: 1, queueTotal: 24, groupTotal: 2 })
+    expect(result.people.groups.map(({ key, count }) => ({ key, count }))).toEqual(
+      expect.arrayContaining([
+        { key: result.p1, count: 23 },
+        { key: result.p2, count: 1 },
+      ]),
+    )
+    expect(result.people.items.map((item) => item.instanceId)).toEqual([result.other.instanceId])
+    expect(result.focused).toMatchObject({
+      page: 2,
+      previousId: result.created[6]!.instanceId,
+      nextId: result.created[8]!.instanceId,
+    })
+    expect(result.narrowed).toMatchObject({ total: 22, page: 4 })
+    expect(result.narrowed.items.map((item) => item.instanceId)).toEqual([
+      result.created[21]!.instanceId,
+    ])
+    expect(result.unrelated).toMatchObject({
+      total: 0,
+      queueTotal: 0,
+      groupTotal: 0,
+      items: [],
+      groups: [],
+      itemOptions: [],
+      unitOptions: [],
+    })
   })
 
   it('carries a middle rung\u2019s objection up the ladder, with the opinion on record', async () => {
