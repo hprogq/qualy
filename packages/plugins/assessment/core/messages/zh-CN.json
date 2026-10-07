@@ -1904,8 +1904,6 @@
   "roster_unreachableHint": "调整项目的审核流程，或将相关人员移出名单",
   "roster_unreachableLevels": "审核层级：{levels}",
   "roster_unreachableCount": "{count} 人",
-  "roster_unreachableShowPeople": "查看人员",
-  "roster_unreachableHidePeople": "收起人员",
   "roster_unreachableEditQuestion": "调整流程",
   "roster_unreachablePeoplePager": "人员分页",
   "roster_unreachableQuiet": "现在所有人都可以申报",

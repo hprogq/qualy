@@ -3083,8 +3083,10 @@ describe('review waiting for a reviewer', () => {
     const dialog = page.getByTestId('unreachable-dialog')
     await expect.element(dialog).toBeVisible()
     await expect.element(dialog.getByRole('heading', { name: '无法申报的项目' })).toBeVisible()
-    await expect.element(dialog.getByText('志愿服务活动', { exact: true })).toBeVisible()
-    await expect.element(dialog.getByRole('button', { name: '查看人员' })).toBeVisible()
+    const question = dialog.getByTestId('unreachable-question')
+    await expect.element(question.getByText('志愿服务活动', { exact: true })).toBeVisible()
+    await expect.element(question).toHaveAttribute('data-chosen', 'true')
+    await expect.element(dialog.getByTestId('unreachable-people')).toBeVisible()
   })
 
   it('keeps unresolvable project warnings off an archived batch', async () => {

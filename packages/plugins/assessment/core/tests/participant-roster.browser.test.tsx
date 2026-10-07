@@ -1517,9 +1517,8 @@ describe('people the review steps find nowhere', () => {
     const questions = dialog.getByTestId('unreachable-question')
     await expect.element(questions).toHaveAttribute('data-item', QUESTION)
     expect(questions.elements()).toHaveLength(1)
-    // whom, a page at a time and only on request
-    expect(dialog.getByTestId('unreachable-people').elements()).toHaveLength(0)
-    await questions.getByRole('button', { name: '查看人员' }).click()
+    // whom, a page at a time, beside the question that is open
+    await expect.element(questions).toHaveAttribute('data-chosen', 'true')
     const people = dialog.getByTestId('unreachable-people')
     await expect.element(people).toHaveAttribute('data-total', '12')
     expect(unreachable.mock.calls.at(-1)![0].query).toMatchObject({

@@ -1,12 +1,14 @@
 import { useState } from 'react'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
+import { ChevronRightIcon } from 'lucide-react'
 import { useApiQuery, useLoadFailure } from '@qualy/web-runtime'
 import { useTerm } from '@qualy/plugin-settings/client/terms'
 import { authTerms } from '@qualy/auth-contract/terms'
 
 import { AsyncSection } from '@qualy/ui/admin'
 import { Pager } from '@qualy/ui/pager'
+import { Skeleton } from '@qualy/ui/skeleton'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { assessmentApi } from '../api.ts'
@@ -83,6 +85,36 @@ const styles = stylex.create({
     gridColumn: { default: null, [breakpoints.phone]: '1 / -1' },
   },
   pages: { display: 'flex', paddingTop: 8, flexShrink: 0 },
+  // filling a pane of its own: the list takes the pane's height and the
+  // pages stand at its foot, under a rule
+  fill: { display: 'flex', minHeight: 0, flexGrow: 1, flexDirection: 'column' },
+  peopleFill: {
+    flexGrow: 1,
+    maxHeight: 'none',
+    padding: 6,
+    borderRadius: 0,
+    backgroundColor: 'transparent',
+    overscrollBehavior: 'none',
+  },
+  personFill: { minHeight: 52, paddingBlock: 8 },
+  personGo: { gridTemplateColumns: 'minmax(0, 12rem) minmax(0, 1fr) auto' },
+  go: { width: 14, height: 14, color: tokens.mutedForeground },
+  rowFill: {
+    borderBottomWidth: { default: 1, ':last-child': 0 },
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.divider,
+  },
+  pagesFill: {
+    paddingTop: 8,
+    paddingBottom: 8,
+    paddingInline: 16,
+    borderTopWidth: 1,
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.divider,
+  },
+  // the room a page of people would have, so turning to the next does not jump
+  waitingFill: { display: 'flex', flexDirection: 'column', gap: 8, padding: 12 },
+  waitingRow: { height: 40, width: '100%' },
 })
 
 /** which route's people: a saved question's, or the unit kinds a route being composed asks for */
@@ -94,11 +126,14 @@ export function UnreachablePeople({
   batchId,
   of,
   onOpenPerson,
+  fill = false,
 }: {
   batchId: string
   of: UnreachableOf
   /** open somebody's account; without it they are listed and not offered */
   onOpenPerson?: (participantId: string) => void
+  /** fill a pane of its own rather than stand as a box in a dialog's body */
+  fill?: boolean
 }) {
   const query = useApiQuery(assessmentApi)
   const businessNo = useTerm(authTerms.businessNumber)
@@ -116,7 +151,7 @@ export function UnreachablePeople({
   })
   const rows = people.data?.items ?? []
   const total = people.data?.total ?? 0
-  return (
+  const section = (
     <AsyncSection
       pending={people.isPending}
       error={people.isError ? failures.of(people.error) : null}
@@ -124,8 +159,23 @@ export function UnreachablePeople({
       loadingLabel={commonMessages.state_loading()}
       retryLabel={commonMessages.action_retry()}
       onRetry={() => void people.refetch()}
+      {...(fill
+        ? {
+            skeleton: (
+              <div {...stylex.props(styles.waitingFill)}>
+                {[0, 1, 2, 3].map((index) => (
+                  <Skeleton key={index} className={stylex.props(styles.waitingRow).className} />
+                ))}
+              </div>
+            ),
+          }
+        : {})}
     >
-      <ul data-testid="unreachable-people" data-total={total} {...stylex.props(styles.people)}>
+      <ul
+        data-testid="unreachable-people"
+        data-total={total}
+        {...stylex.props(styles.people, fill && styles.peopleFill)}
+      >
         {rows.map((row) => {
           // said from the top down, less the root everybody shares
           const steps = (row.unitPath.length > 1 ? row.unitPath.slice(1) : row.unitPath).map(
@@ -145,12 +195,12 @@ export function UnreachablePeople({
             </>
           )
           return (
-            <li key={row.participantId}>
+            <li key={row.participantId} {...stylex.props(fill && styles.rowFill)}>
               {onOpenPerson === undefined ? (
                 <div
                   data-testid="unreachable-person"
                   data-participant={row.participantId}
-                  {...stylex.props(styles.person)}
+                  {...stylex.props(styles.person, fill && styles.personFill)}
                 >
                   {said}
                 </div>
@@ -160,9 +210,15 @@ export function UnreachablePeople({
                   data-testid="unreachable-person"
                   data-participant={row.participantId}
                   onClick={() => onOpenPerson(row.participantId)}
-                  {...stylex.props(styles.person, styles.opens)}
+                  {...stylex.props(
+                    styles.person,
+                    fill && styles.personFill,
+                    fill && styles.personGo,
+                    styles.opens,
+                  )}
                 >
                   {said}
+                  {fill && <ChevronRightIcon aria-hidden {...stylex.props(styles.go)} />}
                 </button>
               )}
             </li>
@@ -170,7 +226,7 @@ export function UnreachablePeople({
         })}
       </ul>
       {total > PAGE_SIZE && (
-        <div {...stylex.props(styles.pages)}>
+        <div {...stylex.props(styles.pages, fill && styles.pagesFill)}>
           <Pager
             compact
             testId="unreachable-pager"
@@ -185,4 +241,5 @@ export function UnreachablePeople({
       )}
     </AsyncSection>
   )
+  return fill ? <div {...stylex.props(styles.fill)}>{section}</div> : section
 }

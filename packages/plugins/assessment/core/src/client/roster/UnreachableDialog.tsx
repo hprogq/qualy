@@ -11,12 +11,13 @@ import {
   Dialog,
   DialogBody,
   DialogContent,
-  DialogFooter,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from '@qualy/ui/dialog'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
+import { useIsMobile } from '@qualy/ui/use-mobile'
 import { assessmentApi } from '../api.ts'
 
 import { DialogBlank } from '../DialogBlank.tsx'
@@ -29,14 +30,52 @@ import * as m from '#messages'
 // A question's ordinary route asks, step by step, for kinds of unit; somebody
 // who sits under none of them has nowhere for their filing to go (§32.93).
 // The two ways out are the question's and the list's: change the route, or
-// take the people off. A question opens a separate paginated detail inside
-// this dialog, keeping its people out of the list of other questions.
+// take the people off.
+//
+// Across a wide window the questions stand on the left and the chosen one's
+// people on the right, a page at a time, so going through them is one press
+// per question. On a phone a question opens its people in place of the list,
+// with the way back above them.
 
 const styles = stylex.create({
-  // as tall as what it holds, up to a ceiling where the questions scroll
-  panel: { maxHeight: 'min(90dvh, 44rem)' },
+  panel: { height: 'min(86dvh, 36rem)' },
+  panelPhone: { height: 'auto', maxHeight: 'min(90dvh, 44rem)' },
   dialogHead: { paddingInlineEnd: 28 },
   body: { gap: 12 },
+  // the two panes share one frame, cut by one rule
+  frame: {
+    display: 'grid',
+    gridTemplateColumns: 'minmax(13rem, 17rem) minmax(0, 1fr)',
+    flexGrow: 1,
+    minHeight: 0,
+    overflow: 'hidden',
+    borderRadius: tokens.radiusLg,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    backgroundColor: tokens.surface,
+  },
+  aside: {
+    minHeight: 0,
+    overflowY: 'auto',
+    overscrollBehavior: 'none',
+    borderInlineEndWidth: 1,
+    borderInlineEndStyle: 'solid',
+    borderInlineEndColor: tokens.divider,
+    backgroundColor: tokens.surfaceInset,
+  },
+  pane: { display: 'flex', minWidth: 0, minHeight: 0, flexDirection: 'column' },
+  paneHead: {
+    display: 'flex',
+    flexShrink: 0,
+    alignItems: 'center',
+    gap: 12,
+    paddingInline: 16,
+    paddingBlock: 12,
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.divider,
+  },
   detail: { overflowY: 'hidden' },
   detailHead: {
     display: 'flex',
@@ -45,58 +84,88 @@ const styles = stylex.create({
     gap: 12,
   },
   back: { alignSelf: 'flex-start' },
+  headRow: { display: 'flex', alignItems: 'center', gap: 12 },
+  keys: { justifyContent: 'space-between' },
   waiting: { display: 'flex', flexDirection: 'column', gap: 8 },
-  waitingRow: { height: 64, width: '100%' },
+  waitingRow: { height: 48, width: '100%' },
   list: {
     display: 'flex',
     flexDirection: 'column',
     margin: 0,
-    padding: 0,
+    padding: 6,
     listStyleType: 'none',
-    gap: 10,
+    gap: 2,
   },
-  question: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 10,
-    paddingInline: 16,
-    paddingBlock: 12,
-    borderRadius: tokens.radiusMd,
+  listPhone: {
+    padding: 0,
+    borderRadius: tokens.radiusLg,
     borderWidth: 1,
     borderStyle: 'solid',
     borderColor: tokens.border,
-    backgroundColor: tokens.surface,
+    overflow: 'hidden',
+    gap: 0,
   },
-  head: {
+  // one question: a press away from its people
+  question: {
     display: 'flex',
-    flexWrap: 'wrap',
+    width: '100%',
     alignItems: 'center',
-    columnGap: 12,
-    rowGap: 6,
+    gap: 10,
+    paddingInline: 12,
+    paddingBlock: 10,
+    borderWidth: 0,
+    borderRadius: tokens.radiusMd,
+    backgroundColor: { default: 'transparent', ':hover': tokens.hoverSurface },
+    color: tokens.foreground,
+    fontFamily: 'inherit',
+    textAlign: 'start',
+    cursor: 'pointer',
+    outline: 'none',
+    boxShadow: { default: 'none', ':focus-visible': `inset 0 0 0 2px ${tokens.focusRing}` },
+  },
+  questionPhone: {
+    borderRadius: 0,
+    paddingInline: 14,
+    paddingBlock: 12,
+  },
+  questionDivided: {
+    borderTopWidth: 1,
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.divider,
+  },
+  chosen: {
+    backgroundColor: { default: tokens.surface, ':hover': tokens.surface },
+    boxShadow: {
+      default: `0 0 0 1px ${tokens.border}, 0 1px 2px color-mix(in oklab, ${tokens.foreground} 6%, transparent)`,
+      ':focus-visible': `inset 0 0 0 2px ${tokens.focusRing}`,
+    },
   },
   what: { display: 'flex', minWidth: 0, flexGrow: 1, flexDirection: 'column', gap: 2 },
   title: {
     minWidth: 0,
-    fontSize: 14,
+    fontSize: 13.5,
     lineHeight: '1.25rem',
     fontWeight: 500,
     overflowWrap: 'anywhere',
   },
-  levels: { fontSize: 12.5, color: tokens.mutedForeground, overflowWrap: 'anywhere' },
+  headTitle: { fontSize: 15, fontWeight: 600 },
+  levels: { fontSize: 12, color: tokens.mutedForeground, overflowWrap: 'anywhere' },
   count: {
+    display: 'inline-flex',
     flexShrink: 0,
-    fontSize: 13,
+    alignItems: 'center',
+    height: 20,
+    paddingInline: 7,
+    borderRadius: tokens.radiusPill,
+    backgroundColor: `color-mix(in oklab, ${tokens.warning} 16%, transparent)`,
+    color: tokens.warningForeground,
+    fontSize: 12,
+    fontWeight: 500,
     fontVariantNumeric: 'tabular-nums',
-    color: tokens.mutedForeground,
     whiteSpace: 'nowrap',
   },
-  keys: {
-    display: 'flex',
-    justifyContent: 'flex-end',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
+  arrow: { width: 14, height: 14, flexShrink: 0, color: tokens.mutedForeground },
+  people: { display: 'flex', minHeight: 0, flexGrow: 1, flexDirection: 'column' },
 })
 
 type Route = {
@@ -121,6 +190,7 @@ export function UnreachableDialog({
   route?: 'normal' | 'escalation'
 }) {
   const query = useApiQuery(assessmentApi)
+  const phone = useIsMobile()
 
   const failures = useLoadFailure()
   // the same reading the roster's notice counts from
@@ -132,7 +202,9 @@ export function UnreachableDialog({
     (route) => route.route === routeKind,
   )
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const selected = routes.find((route) => route.itemId === selectedId)
+  // beside the list, a question is always open: the one chosen, or the first
+  const selected =
+    routes.find((route) => route.itemId === selectedId) ?? (phone ? undefined : routes[0])
   const selectedKey = selected?.itemId
   const listRef = useRef<HTMLUListElement>(null)
   const backRef = useRef<HTMLButtonElement>(null)
@@ -143,28 +215,58 @@ export function UnreachableDialog({
   useEffect(() => {
     const previous = previousSelection.current
     previousSelection.current = selectedKey
-    if (!open) return
+    if (!open || !phone) return
     if (selectedKey !== undefined) {
       backRef.current?.focus()
     } else if (previous !== undefined) {
-      const row = [...(listRef.current?.children ?? [])].find(
-        (element) => element.getAttribute('data-item') === previous,
-      )
-      row?.querySelector<HTMLButtonElement>('button[data-open-people]')?.focus()
+      listRef.current
+        ?.querySelector<HTMLButtonElement>(`[data-item="${previous}"] button[data-open-people]`)
+        ?.focus()
     }
-  }, [open, selectedKey])
+  }, [open, phone, selectedKey])
+
+  const title =
+    routeKind === 'normal' ? m.roster_unreachableTitle() : m.roster_unreachableAppealTitle()
+  const people = (route: Route) => (
+    <UnreachablePeople
+      key={`${route.itemId}:${routeKind}`}
+      batchId={batchId}
+      of={{ itemId: route.itemId, route: routeKind }}
+      onOpenPerson={onOpenPerson}
+      fill={!phone}
+    />
+  )
+  const questions = (
+    <ul
+      ref={listRef}
+      data-testid="unreachable-questions"
+      {...stylex.props(styles.list, phone && styles.listPhone)}
+    >
+      {routes.map((route, index) => (
+        <QuestionRow
+          key={route.itemId}
+          route={route}
+          phone={phone}
+          divided={phone && index > 0}
+          chosen={!phone && route.itemId === selectedKey}
+          onOpenPeople={() => setSelectedId(route.itemId)}
+        />
+      ))}
+    </ul>
+  )
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent data-testid="unreachable-dialog" size="44rem" xstyle={styles.panel}>
+      <DialogContent
+        data-testid="unreachable-dialog"
+        size={phone ? '44rem' : '60rem'}
+        xstyle={[styles.panel, (phone || routes.length === 0) && styles.panelPhone]}
+      >
         <DialogHeader className={stylex.props(styles.dialogHead).className}>
-          <DialogTitle>
-            {routeKind === 'normal'
-              ? m.roster_unreachableTitle()
-              : m.roster_unreachableAppealTitle()}
-          </DialogTitle>
+          <DialogTitle>{title}</DialogTitle>
+          {routes.length > 0 && <DialogDescription>{m.roster_unreachableHint()}</DialogDescription>}
         </DialogHeader>
-        <DialogBody xstyle={[styles.body, selected !== undefined && styles.detail]}>
+        <DialogBody xstyle={[styles.body, (selected !== undefined || !phone) && styles.detail]}>
           <AsyncSection
             pending={alerts.isPending}
             error={alerts.isError ? failures.of(alerts.error) : null}
@@ -176,32 +278,11 @@ export function UnreachableDialog({
               <div {...stylex.props(styles.waiting)}>
                 <Skeleton className={stylex.props(styles.waitingRow).className} />
                 <Skeleton className={stylex.props(styles.waitingRow).className} />
+                <Skeleton className={stylex.props(styles.waitingRow).className} />
               </div>
             }
           >
-            {selected !== undefined ? (
-              <>
-                <div {...stylex.props(styles.detailHead)}>
-                  <Button
-                    ref={backRef}
-                    size="sm"
-                    variant="ghost"
-                    className={stylex.props(styles.back).className}
-                    onClick={() => setSelectedId(null)}
-                  >
-                    <ArrowLeftIcon aria-hidden />
-                    {commonMessages.action_back()}
-                  </Button>
-                  <QuestionHeading route={selected} />
-                </div>
-                <UnreachablePeople
-                  key={`${selected.itemId}:${routeKind}`}
-                  batchId={batchId}
-                  of={{ itemId: selected.itemId, route: routeKind }}
-                  onOpenPerson={onOpenPerson}
-                />
-              </>
-            ) : routes.length === 0 ? (
+            {routes.length === 0 ? (
               <DialogBlank
                 testId="unreachable-quiet"
                 icon={<CircleCheckIcon />}
@@ -211,75 +292,109 @@ export function UnreachableDialog({
                     : m.roster_unreachableAppealQuiet()
                 }
               />
+            ) : !phone && selected !== undefined ? (
+              <div {...stylex.props(styles.frame)}>
+                <nav aria-label={title} {...stylex.props(styles.aside)}>
+                  {questions}
+                </nav>
+                <section aria-label={selected.itemTitle} {...stylex.props(styles.pane)}>
+                  <div {...stylex.props(styles.paneHead)}>
+                    <QuestionHeading route={selected} large />
+                    <EditRoute batchId={batchId} itemId={selected.itemId} />
+                  </div>
+                  <div {...stylex.props(styles.people)}>{people(selected)}</div>
+                </section>
+              </div>
+            ) : selected !== undefined ? (
+              <>
+                <div {...stylex.props(styles.detailHead)}>
+                  <div {...stylex.props(styles.headRow, styles.keys)}>
+                    <Button
+                      ref={backRef}
+                      size="sm"
+                      variant="ghost"
+                      className={stylex.props(styles.back).className}
+                      onClick={() => setSelectedId(null)}
+                    >
+                      <ArrowLeftIcon aria-hidden />
+                      {commonMessages.action_back()}
+                    </Button>
+                    <EditRoute batchId={batchId} itemId={selected.itemId} />
+                  </div>
+                  <div {...stylex.props(styles.headRow)}>
+                    <QuestionHeading route={selected} large />
+                  </div>
+                </div>
+                {people(selected)}
+              </>
             ) : (
-              <ul ref={listRef} data-testid="unreachable-questions" {...stylex.props(styles.list)}>
-                {routes.map((route) => (
-                  <QuestionRow
-                    key={route.itemId}
-                    batchId={batchId}
-                    route={route}
-                    onOpenPeople={() => setSelectedId(route.itemId)}
-                  />
-                ))}
-              </ul>
+              questions
             )}
           </AsyncSection>
         </DialogBody>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
-            {commonMessages.action_close()}
-          </Button>
-        </DialogFooter>
       </DialogContent>
     </Dialog>
   )
 }
 
-/** one question, what its steps ask for, and its people on request */
-function QuestionRow({
-  batchId,
-  route,
-  onOpenPeople,
-}: {
-  batchId: string
-  route: Route
-  onOpenPeople: () => void
-}) {
+/** the way to the question's settings, where the reader may open them */
+function EditRoute({ batchId, itemId }: { batchId: string; itemId: string }) {
   // a reader who cannot open the question's settings is not led to a closed door
   const settings = usePageHref('assessment/batch-items', {
     params: { batchId },
-    search: { question: route.itemId },
+    search: { question: itemId },
   })
+  if (settings === undefined) return null
+  return (
+    <Button size="sm" variant="outline" asChild>
+      <PageLink page="assessment/batch-items" params={{ batchId }} search={{ question: itemId }}>
+        {m.roster_unreachableEditQuestion()}
+      </PageLink>
+    </Button>
+  )
+}
+
+/** one question, what its steps ask for, and how many it finds nowhere */
+function QuestionRow({
+  route,
+  phone,
+  divided,
+  chosen,
+  onOpenPeople,
+}: {
+  route: Route
+  phone: boolean
+  divided: boolean
+  chosen: boolean
+  onOpenPeople: () => void
+}) {
   return (
     <li
       data-testid="unreachable-question"
       data-item={route.itemId}
       data-count={route.participants}
-      {...stylex.props(styles.question)}
+      data-chosen={chosen}
     >
-      <QuestionHeading route={route} />
-      <div {...stylex.props(styles.keys)}>
-        {settings !== undefined && (
-          <Button size="sm" variant="outline" asChild>
-            <PageLink
-              page="assessment/batch-items"
-              params={{ batchId }}
-              search={{ question: route.itemId }}
-            >
-              {m.roster_unreachableEditQuestion()}
-            </PageLink>
-          </Button>
+      <button
+        type="button"
+        data-open-people
+        aria-current={chosen || undefined}
+        onClick={onOpenPeople}
+        {...stylex.props(
+          styles.question,
+          phone && styles.questionPhone,
+          divided && styles.questionDivided,
+          chosen && styles.chosen,
         )}
-        <Button size="sm" variant="secondary" data-open-people onClick={onOpenPeople}>
-          {m.roster_unreachableShowPeople()}
-          <ChevronRightIcon aria-hidden />
-        </Button>
-      </div>
+      >
+        <QuestionHeading route={route} />
+        {phone && <ChevronRightIcon aria-hidden {...stylex.props(styles.arrow)} />}
+      </button>
     </li>
   )
 }
 
-function QuestionHeading({ route }: { route: Route }) {
+function QuestionHeading({ route, large = false }: { route: Route; large?: boolean }) {
   const locale = useLocale()
   const levels =
     route.levelNames.length === 0
@@ -288,9 +403,9 @@ function QuestionHeading({ route }: { route: Route }) {
           route.levelNames,
         )
   return (
-    <div {...stylex.props(styles.head)}>
+    <>
       <span {...stylex.props(styles.what)}>
-        <span {...stylex.props(styles.title)}>{route.itemTitle}</span>
+        <span {...stylex.props(styles.title, large && styles.headTitle)}>{route.itemTitle}</span>
         {levels !== null && (
           <span {...stylex.props(styles.levels)}>{m.roster_unreachableLevels({ levels })}</span>
         )}
@@ -298,6 +413,6 @@ function QuestionHeading({ route }: { route: Route }) {
       <span {...stylex.props(styles.count)}>
         {m.roster_unreachableCount({ count: route.participants })}
       </span>
-    </div>
+    </>
   )
 }

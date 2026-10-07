@@ -1904,8 +1904,6 @@
   "roster_unreachableHint": "Adjust a question's review steps, or remove the people concerned from the list",
   "roster_unreachableLevels": "Reviewed at {levels}",
   "roster_unreachableCount": "{count, plural, one {# person} other {# people}}",
-  "roster_unreachableShowPeople": "Show people",
-  "roster_unreachableHidePeople": "Hide people",
   "roster_unreachableEditQuestion": "Edit review steps",
   "roster_unreachablePeoplePager": "Pages of people",
   "roster_unreachableQuiet": "Everyone can file every question now",

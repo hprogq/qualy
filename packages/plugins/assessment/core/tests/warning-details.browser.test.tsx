@@ -82,13 +82,14 @@ const openPeople = async (
 }
 
 describe('warning detail panels', () => {
+  const question = (index: 'first' | 'last') =>
+    page.getByTestId('unreachable-dialog').getByTestId('unreachable-question')[index]()
+
   it.each([
     [1280, 844],
-    [390, 844],
-    [390, 568],
     [844, 390],
   ])(
-    'keeps a large roster paginated with its controls visible at %i by %i px',
+    'keeps the questions beside the chosen one’s people, paginated, at %i by %i px',
     async (width, height) => {
       await page.viewport(width, height)
       try {
@@ -97,21 +98,13 @@ describe('warning detail panels', () => {
         await expect
           .poll(() => dialog.getByTestId('unreachable-question').elements().length)
           .toBe(2)
-        expect(requests).not.toHaveBeenCalled()
-        await dialog
-          .getByTestId('unreachable-question')
-          .first()
-          .getByRole('button', { name: '查看人员' })
-          .click()
+        // the first question is open from the start
+        await expect.element(question('first')).toHaveAttribute('data-chosen', 'true')
         await expect.poll(() => dialog.getByTestId('unreachable-person').elements().length).toBe(10)
-        await expect
-          .element(dialog.getByRole('button', { name: '返回', exact: true }))
-          .toHaveFocus()
+        expect(requests.mock.calls.at(-1)?.[0].query).toMatchObject({ itemId: FIRST, page: '1' })
         const list = dialog.getByTestId('unreachable-people').element()
         expect(list.getAttribute('data-total')).toBe('10000')
-        expect(list.scrollHeight).toBeGreaterThan(list.clientHeight)
         expect(list.clientHeight).toBeGreaterThan(36)
-        expect(dialog.getByTestId('unreachable-question').elements()).toHaveLength(0)
         await expect.element(dialog.getByText('未绑定学工号')).toBeVisible()
         expect(dialog.element().querySelector('[title]')).toBeNull()
         const pager = dialog.getByTestId('unreachable-pager')
@@ -121,6 +114,11 @@ describe('warning detail panels', () => {
         expect(pagerRect.top).toBeGreaterThanOrEqual(list.getBoundingClientRect().bottom)
         expect(panelRect.left).toBeGreaterThanOrEqual(0)
         expect(panelRect.right).toBeLessThanOrEqual(width)
+        // the questions stand beside the people, not over them
+        const questions = dialog.getByTestId('unreachable-questions').element()
+        expect(questions.getBoundingClientRect().right).toBeLessThanOrEqual(
+          list.getBoundingClientRect().left + 1,
+        )
         await pager.getByRole('button', { name: '1000', exact: true }).click()
         await expect.element(dialog.getByRole('button', { name: /参评人9991/ })).toBeVisible()
         expect(requests.mock.calls.at(-1)?.[0].query).toMatchObject({
@@ -130,20 +128,55 @@ describe('warning detail panels', () => {
         })
         await dialog.getByRole('button', { name: /参评人9991/ }).click()
         expect(opened).toHaveBeenCalledWith(`${FIRST}-9990`)
-        await dialog.getByRole('button', { name: '返回', exact: true }).click()
+        await question('last').getByRole('button').click()
+        await expect.element(question('last')).toHaveAttribute('data-chosen', 'true')
+        await expect.element(question('first')).toHaveAttribute('data-chosen', 'false')
+        await expect.poll(() => dialog.getByTestId('unreachable-person').elements().length).toBe(3)
+        expect(requests.mock.calls.at(-1)?.[0].query).toMatchObject({ itemId: SECOND, page: '1' })
+        await expect.element(question('last').getByRole('button')).toHaveFocus()
+      } finally {
+        await page.viewport(1280, 800)
+      }
+    },
+  )
+
+  it.each([
+    [390, 844],
+    [390, 568],
+  ])(
+    'opens a question’s people in place of the list on a phone at %i by %i px',
+    async (width, height) => {
+      await page.viewport(width, height)
+      try {
+        const { requests, opened } = await openPeople()
+        const dialog = page.getByTestId('unreachable-dialog')
         await expect
-          .element(
-            dialog
-              .getByTestId('unreachable-question')
-              .first()
-              .getByRole('button', { name: '查看人员' }),
-          )
+          .poll(() => dialog.getByTestId('unreachable-question').elements().length)
+          .toBe(2)
+        expect(requests).not.toHaveBeenCalled()
+        await question('first').getByRole('button').click()
+        await expect.poll(() => dialog.getByTestId('unreachable-person').elements().length).toBe(10)
+        await expect
+          .element(dialog.getByRole('button', { name: '返回', exact: true }))
           .toHaveFocus()
-        await dialog
-          .getByTestId('unreachable-question')
-          .last()
-          .getByRole('button', { name: '查看人员' })
-          .click()
+        const list = dialog.getByTestId('unreachable-people').element()
+        expect(list.getAttribute('data-total')).toBe('10000')
+        expect(list.scrollHeight).toBeGreaterThan(list.clientHeight)
+        expect(list.clientHeight).toBeGreaterThan(36)
+        expect(dialog.getByTestId('unreachable-question').elements()).toHaveLength(0)
+        const pager = dialog.getByTestId('unreachable-pager')
+        const panelRect = dialog.element().getBoundingClientRect()
+        const pagerRect = pager.element().getBoundingClientRect()
+        expect(pagerRect.bottom).toBeLessThan(panelRect.bottom)
+        expect(pagerRect.top).toBeGreaterThanOrEqual(list.getBoundingClientRect().bottom)
+        expect(panelRect.left).toBeGreaterThanOrEqual(0)
+        expect(panelRect.right).toBeLessThanOrEqual(width)
+        await pager.getByRole('button', { name: '1000', exact: true }).click()
+        await dialog.getByRole('button', { name: /参评人9991/ }).click()
+        expect(opened).toHaveBeenCalledWith(`${FIRST}-9990`)
+        await dialog.getByRole('button', { name: '返回', exact: true }).click()
+        await expect.element(question('first').getByRole('button')).toHaveFocus()
+        await question('last').getByRole('button').click()
         await expect.poll(() => dialog.getByTestId('unreachable-person').elements().length).toBe(3)
         expect(requests.mock.calls.at(-1)?.[0].query).toMatchObject({ itemId: SECOND, page: '1' })
       } finally {
@@ -152,16 +185,11 @@ describe('warning detail panels', () => {
     },
   )
 
-  it('uses the same drilldown for appeals without offering an unavailable account action', async () => {
+  it('uses the same layout for appeals without offering an unavailable account action', async () => {
     const { requests } = await openPeople('escalation')
     const dialog = page.getByTestId('unreachable-dialog')
     await expect.element(dialog.getByRole('heading', { name: '无法申诉的项目' })).toBeVisible()
     await expect.poll(() => dialog.getByTestId('unreachable-question').elements().length).toBe(2)
-    await dialog
-      .getByTestId('unreachable-question')
-      .first()
-      .getByRole('button', { name: '查看人员' })
-      .click()
     await expect.poll(() => dialog.getByTestId('unreachable-person').elements().length).toBe(10)
     expect(requests.mock.calls.at(-1)?.[0].query.route).toBe('escalation')
     expect(dialog.element().querySelector('button[data-testid="unreachable-person"]')).toBeNull()
@@ -178,11 +206,7 @@ describe('warning detail panels', () => {
       expect(heading.element().getBoundingClientRect().right).toBeLessThan(
         close.getBoundingClientRect().left,
       )
-      await dialog
-        .getByTestId('unreachable-question')
-        .first()
-        .getByRole('button', { name: 'Show people' })
-        .click()
+      await question('first').getByRole('button').click()
       await expect.element(dialog.getByText('No Student/staff ID')).toBeVisible()
       const pager = dialog.getByTestId('unreachable-pager').element().getBoundingClientRect()
       expect(pager.bottom).toBeLessThan(dialog.element().getBoundingClientRect().bottom)
