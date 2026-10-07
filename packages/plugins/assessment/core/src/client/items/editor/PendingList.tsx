@@ -47,8 +47,8 @@ const styles = stylex.create({
     height: 'auto',
     minHeight: 28,
     paddingBlock: 6,
-    paddingInline: 2,
-    borderRadius: 4,
+    paddingInline: 10,
+    borderRadius: 6,
     backgroundColor: { default: 'transparent', ':hover': tokens.hoverSurface },
     boxShadow: 'none',
     whiteSpace: 'normal',
@@ -70,7 +70,13 @@ const styles = stylex.create({
     display: { default: 'none', [breakpoints.phone]: 'inline' },
     fontVariantNumeric: 'tabular-nums',
   },
-  panel: { padding: 0, gap: 0, maxWidth: 'calc(100vw - 24px)' },
+  panel: {
+    padding: 0,
+    gap: 0,
+    maxWidth: 'calc(100vw - 24px)',
+    maxHeight: 'min(32rem, calc(100dvh - 24px))',
+    overflow: 'hidden',
+  },
   head: {
     display: 'flex',
     alignItems: 'center',
@@ -91,7 +97,12 @@ const styles = stylex.create({
 })
 
 const rowStyles = stylex.create({
-  list: { maxHeight: 'min(60dvh, 24rem)', overflowY: 'auto', overscrollBehavior: 'contain' },
+  list: {
+    minHeight: 0,
+    maxHeight: 'min(60dvh, 24rem)',
+    overflowY: 'auto',
+    overscrollBehavior: 'contain',
+  },
   row: {
     display: 'grid',
     gridTemplateColumns: {
@@ -122,6 +133,12 @@ const rowStyles = stylex.create({
     color: tokens.mutedForeground,
     gridColumn: { default: null, [breakpoints.phone]: '1 / -1' },
   },
+  compactRow: {
+    gridTemplateColumns: 'minmax(0, 1fr) auto',
+    rowGap: 4,
+    paddingBlock: 12,
+  },
+  compactWhere: { gridColumn: '1 / -1', minWidth: 0, overflowWrap: 'anywhere' },
   what: {
     minWidth: 0,
     overflowWrap: 'anywhere',
@@ -144,9 +161,12 @@ const rowStyles = stylex.create({
 export function ProblemRows({
   problems,
   onGo,
+  compact = false,
 }: {
   problems: readonly EditorProblem[]
   onGo: (problem: EditorProblem) => void
+  /** Place the location above the problem inside a bounded popover. */
+  compact?: boolean
 }) {
   return (
     <div data-testid="pending-list" {...stylex.props(rowStyles.list)}>
@@ -156,13 +176,13 @@ export function ProblemRows({
           <button
             key={`${problem.code}:${index}`}
             type="button"
-            {...stylex.props(rowStyles.row)}
+            {...stylex.props(rowStyles.row, compact && rowStyles.compactRow)}
             data-testid="pending-row"
             data-code={problem.code}
             data-tone={problem.tone}
             onClick={() => onGo(problem)}
           >
-            <span {...stylex.props(rowStyles.where)}>
+            <span {...stylex.props(rowStyles.where, compact && rowStyles.compactWhere)}>
               {AREA_LABEL[problem.area]()}
               {problem.block !== undefined && problem.block !== 'basics' && (
                 <>
@@ -238,10 +258,21 @@ export function PendingList({
           <span aria-hidden {...stylex.props(styles.countNarrow)}>
             {problems.length}
           </span>
-          <ChevronDownIcon aria-hidden {...stylex.props(styles.icon12)} />
+          {sidebar ? (
+            <ChevronRightIcon aria-hidden {...stylex.props(styles.icon12)} />
+          ) : (
+            <ChevronDownIcon aria-hidden {...stylex.props(styles.icon12)} />
+          )}
         </button>
       </PopoverTrigger>
-      <PopoverContent width={520} xstyle={styles.panel}>
+      <PopoverContent
+        side={sidebar ? 'right' : 'bottom'}
+        align={sidebar ? 'start' : 'end'}
+        sideOffset={sidebar ? 12 : 8}
+        width={384}
+        fitViewport
+        xstyle={styles.panel}
+      >
         <div {...stylex.props(styles.head)}>
           <Dot tone={tone} />
           <span {...stylex.props(styles.headTitle)}>{words}</span>
@@ -250,6 +281,7 @@ export function PendingList({
         </div>
         <ProblemRows
           problems={problems}
+          compact
           onGo={(problem) => {
             setOpen(false)
             onGo(problem)

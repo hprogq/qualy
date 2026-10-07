@@ -194,6 +194,18 @@ const settle = async () => {
     .toBe(true)
 }
 
+const openedProblems = async () => {
+  await expect.element(page.getByTestId('pending-list')).toBeVisible()
+  const dialog = page.getByRole('dialog').element()
+  await expect
+    .poll(() => {
+      const style = getComputedStyle(dialog)
+      return style.opacity === '1' && style.transform === 'none'
+    })
+    .toBe(true)
+  return dialog
+}
+
 afterEach(() => page.viewport(1280, 900))
 
 describe('the item editor navigation', () => {
@@ -241,6 +253,34 @@ describe('the item editor navigation', () => {
       expect(save.bottom).toBeLessThan(form.top)
       expect(save.right).toBeLessThanOrEqual(1280)
       expect(page.getByRole('tab').elements()[2]!.getAttribute('data-tone')).toBe('error')
+      const trigger = page.getByTestId('pending-trigger')
+      expect(getComputedStyle(trigger.element()).paddingLeft).toBe('10px')
+      expect(getComputedStyle(trigger.element()).paddingRight).toBe('10px')
+      const triggerDot = trigger.element().querySelector('[data-tone]')!.getBoundingClientRect()
+      const tabDot = tabs[0]!.querySelector('[data-tone]')!.getBoundingClientRect()
+      expect(triggerDot.left).toBeCloseTo(tabDot.left, 0)
+      await trigger.click()
+      const dropdown = await openedProblems()
+      const pop = dropdown.getBoundingClientRect()
+      expect(pop.left - problem.right).toBeCloseTo(12, 0)
+      expect(pop.left).toBeGreaterThanOrEqual(
+        navigation.closest('main')!.getBoundingClientRect().left,
+      )
+      expect(pop.right).toBeLessThanOrEqual(1280)
+      expect(pop.top).toBeGreaterThanOrEqual(0)
+      expect(pop.bottom).toBeLessThanOrEqual(900)
+      const row = page.getByTestId('pending-row').element()
+      const [where, what, go] = Array.from(row.children)
+      expect(where!.getBoundingClientRect().bottom).toBeLessThanOrEqual(
+        what!.getBoundingClientRect().top,
+      )
+      expect(what!.getBoundingClientRect().right).toBeLessThanOrEqual(
+        go!.getBoundingClientRect().left,
+      )
+      expect(row.scrollWidth).toBeLessThanOrEqual(row.clientWidth)
+      await userEvent.keyboard('{Escape}')
+      await expect.element(page.getByTestId('pending-list')).not.toBeInTheDocument()
+      await expect.poll(() => document.activeElement).toBe(trigger.element())
     },
   )
 
@@ -312,51 +352,92 @@ describe('the item editor navigation', () => {
     expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(1024)
   })
 
-  it('wraps the full English failed-save status within a sidebar and keeps every issue reachable', async () => {
-    const problems: EditorProblem[] = Array.from({ length: 40 }, (_, index) => ({
-      area: 'rules',
-      block: 'review',
-      code: 'stage-unnamed',
-      tone: 'error',
-      subject: `Review stage ${index + 1}`,
-    }))
-    const visited: EditorProblem[] = []
-    await renderScreen({
-      locale: 'en-US',
-      client: fakeClient({ app: { getManifest: () => Effect.succeed(emptyManifest()) } }),
-      route: '/',
-      routes: [
-        {
-          path: '/',
-          element: (
-            <aside style={{ width: 192 }}>
-              <PendingList
-                problems={problems}
-                failed
-                sidebar
-                onGo={(problem) => visited.push(problem)}
-              />
-            </aside>
-          ),
-        },
-      ],
-    })
-    const trigger = page.getByTestId('pending-trigger')
-    await expect.element(trigger).toBeVisible()
-    const button = trigger.element()
-    expect(button.getBoundingClientRect().width).toBeLessThanOrEqual(192)
-    expect(button.getBoundingClientRect().height).toBeGreaterThan(28)
-    expect(button.scrollWidth).toBeLessThanOrEqual(button.clientWidth)
-    expect(getComputedStyle(button).whiteSpace).toBe('normal')
-    expect(getComputedStyle(button).boxShadow).toBe('none')
-    const words = button.querySelector('span:not([aria-hidden])')!
-    expect(words.textContent).toBe(button.getAttribute('aria-label'))
-    expect(getComputedStyle(words).textOverflow).not.toBe('ellipsis')
-    expect(words.getBoundingClientRect().right).toBeLessThan(button.getBoundingClientRect().right)
-    await trigger.click()
-    await page.getByTestId('pending-row').last().click()
-    expect(visited).toEqual([problems.at(-1)])
-  })
+  it.each([
+    { width: 1280, height: 390, sidebar: true },
+    { width: 390, height: 844, sidebar: false },
+    { width: 844, height: 390, sidebar: false },
+  ])(
+    'keeps 40 long problems reachable at $width by $height',
+    async ({ width, height, sidebar }) => {
+      await page.viewport(width, height)
+      const problems: EditorProblem[] = Array.from({ length: 40 }, (_, index) => ({
+        area: 'rules',
+        block: 'review',
+        code: 'stage-unnamed',
+        tone: 'error',
+        subject: `Review stage ${index + 1} for scholarship evidence requiring faculty confirmation`,
+      }))
+      const visited: EditorProblem[] = []
+      await renderScreen({
+        locale: 'en-US',
+        client: fakeClient({ app: { getManifest: () => Effect.succeed(emptyManifest()) } }),
+        route: '/',
+        routes: [
+          {
+            path: '/',
+            element: (
+              <aside style={{ width: 192, marginLeft: sidebar ? 248 : 16, marginTop: 112 }}>
+                <PendingList
+                  problems={problems}
+                  failed
+                  sidebar={sidebar}
+                  onGo={(problem) => visited.push(problem)}
+                />
+              </aside>
+            ),
+          },
+        ],
+      })
+      const trigger = page.getByTestId('pending-trigger')
+      await expect.element(trigger).toBeVisible()
+      const button = trigger.element()
+      if (sidebar) {
+        expect(button.getBoundingClientRect().width).toBeLessThanOrEqual(192)
+        expect(button.getBoundingClientRect().height).toBeGreaterThan(28)
+        expect(getComputedStyle(button).whiteSpace).toBe('normal')
+        expect(getComputedStyle(button).boxShadow).toBe('none')
+      }
+      expect(button.scrollWidth).toBeLessThanOrEqual(button.clientWidth)
+      if (sidebar) {
+        const words = button.querySelector('span:not([aria-hidden])')!
+        expect(words.textContent).toBe(button.getAttribute('aria-label'))
+        expect(getComputedStyle(words).textOverflow).not.toBe('ellipsis')
+        expect(words.getBoundingClientRect().right).toBeLessThan(
+          button.getBoundingClientRect().right,
+        )
+      }
+      await trigger.click()
+      const dropdown = await openedProblems()
+      const pop = dropdown.getBoundingClientRect()
+      expect(pop.left).toBeGreaterThanOrEqual(0)
+      expect(pop.top).toBeGreaterThanOrEqual(0)
+      expect(pop.right).toBeLessThanOrEqual(width)
+      expect(pop.bottom).toBeLessThanOrEqual(height)
+      if (sidebar) expect(pop.left).toBeGreaterThan(button.getBoundingClientRect().right)
+      const list = page.getByTestId('pending-list').element()
+      expect(list.scrollHeight).toBeGreaterThan(list.clientHeight)
+      expect(list.scrollWidth).toBeLessThanOrEqual(list.clientWidth)
+      const heading = list.previousElementSibling!
+      expect(list.getBoundingClientRect().top).toBeCloseTo(
+        heading.getBoundingClientRect().bottom,
+        0,
+      )
+      await userEvent.keyboard('{Escape}')
+      await expect.element(page.getByTestId('pending-list')).not.toBeInTheDocument()
+      await expect.poll(() => document.activeElement).toBe(button)
+      await trigger.click()
+      await openedProblems()
+      const reopenedList = page.getByTestId('pending-list').element()
+      const last = page.getByTestId('pending-row').last().element()
+      last.scrollIntoView({ block: 'end' })
+      await expect.poll(() => reopenedList.scrollTop).toBeGreaterThan(0)
+      expect(last.getBoundingClientRect().bottom).toBeLessThanOrEqual(
+        reopenedList.getBoundingClientRect().bottom + 1,
+      )
+      await page.getByTestId('pending-row').last().click()
+      expect(visited).toEqual([problems.at(-1)])
+    },
+  )
 
   it('keeps edits and URL selection through keyboard navigation and a responsive layout change', async () => {
     await page.viewport(1440, 900)

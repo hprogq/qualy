@@ -81,6 +81,8 @@ interface ContentDecl {
   sideOffset?: number
   /** how wide the panel is; `'target'` matches the trigger it opened from */
   width?: number | string
+  /** Constrain a scrollable panel to the space available beside its anchor. */
+  fitViewport?: boolean
 }
 
 function Popover({
@@ -135,6 +137,9 @@ function Popover({
       position={positionOf(side, align)}
       width={decl.width ?? 288}
       offset={decl.sideOffset ?? 4}
+      {...(decl.fitViewport
+        ? { middlewares: { flip: true, shift: true, size: { padding: 12 } } }
+        : {})}
       // an anchored surface travels a little out of its trigger, on
       // whichever side the placement landed (lib/overlay-motion.ts)
       transitionProps={dropIn}
