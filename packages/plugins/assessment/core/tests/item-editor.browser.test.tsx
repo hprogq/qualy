@@ -1138,13 +1138,9 @@ describe('feeding the arithmetic', () => {
     })
     await expect.element(page.getByRole('radio', { name: '提交即生效' })).toBeVisible()
     // the contract has to be in hand for the editor to know what is unlinked
-    await vi.waitFor(() => {
-      if (
-        document.querySelector('[data-testid="pending-trigger"], [data-testid="pending-none"]') ===
-        null
-      )
-        throw new Error('not settled')
-    })
+    await tab(/表单与计分/).click()
+    await expect.element(await parameterRow('level')).toHaveAttribute('data-source', 'recognition')
+    await tab(/基本信息/).click()
     await page.getByRole('radio', { name: '提交即生效' }).click()
     const dialog = page.getByRole('alertdialog')
     await expect.element(dialog).toBeVisible()
@@ -1160,13 +1156,6 @@ describe('feeding the arithmetic', () => {
   it('blocks automatic scoring while a parameter takes a determined value', async () => {
     await open({ items: [formulaItem()], question: ITEM_ID, surfaces: BOTH_CALCULATORS })
     await expect.element(page.getByRole('radio', { name: '自动计分' })).toBeVisible()
-    await vi.waitFor(() => {
-      if (
-        document.querySelector('[data-testid="pending-trigger"], [data-testid="pending-none"]') ===
-        null
-      )
-        throw new Error('not settled')
-    })
     // a saved question's kind is settled: the card is locked
     await expect.element(page.getByRole('radio', { name: '自动计分' })).toBeDisabled()
     // and a greyed card is never left unexplained
@@ -2398,6 +2387,300 @@ describe('choosing a published formula', () => {
     ],
     nextCursor: null,
     current: { ...option({}), bindableForNew: true },
+  })
+
+  it.each([1280, 390])(
+    'keeps an unconfigured formula on the page until its chooser is opened at %i px',
+    async (width) => {
+      await page.viewport(width, 844)
+      try {
+        const saved: { config?: unknown }[] = []
+        await open({
+          items: [officerItem()],
+          question: ITEM_ID,
+          panel: 'scoring',
+          surfaces: BOTH_CALCULATORS_CONFIRMING,
+          formulas: { ...formulas(), current: null },
+          saved,
+        })
+        const method = page.getByTestId('scoring-method')
+        const fixed = method.getByRole('radio', { name: '固定分值' })
+        const formula = method.getByRole('radio', { name: '已发布的公式' })
+        await expect.element(fixed).toBeChecked()
+        const input = method.getByRole('textbox', { name: '每条通过计分' })
+        await input.fill('7.50')
+        const compact = page.getByTestId('scoring-fixed-method').element().getBoundingClientRect()
+        expect(compact.width).toBeLessThanOrEqual(200)
+        expect(compact.height).toBeLessThan(90)
+        const options = page.getByTestId('scoring-method-options').element().getBoundingClientRect()
+        expect(options.bottom).toBeLessThanOrEqual(compact.top)
+        expect(options.right).toBeLessThanOrEqual(width)
+        await formula.click()
+        const dialog = page.getByTestId('scoring-method-dialog')
+        await expect.element(formula).toBeChecked()
+        await expect.element(page.getByTestId('scoring-unconfigured')).toBeVisible()
+        expect(dialog.elements()).toHaveLength(0)
+        expect(page.getByTestId('scoring-parameters').elements()).toHaveLength(0)
+        await page.getByTestId('item-save').click()
+        expect(saved).toHaveLength(0)
+        await method.getByRole('button', { name: '选择公式', exact: true }).click()
+        await expect
+          .element(page.getByTestId('formula-version-picker'))
+          .toHaveAttribute('data-step', 'formula')
+        expect(dialog.getByRole('radiogroup').elements()).toHaveLength(0)
+        expect(dialog.getByRole('radio', { name: '固定分值' }).elements()).toHaveLength(0)
+        await page.getByTestId('formula-option').first().click()
+        await expect
+          .element(page.getByTestId('formula-version-picker'))
+          .toHaveAttribute('data-step', 'version')
+        await dialog.getByRole('button', { name: '关闭', exact: true }).click()
+        await expect.element(dialog).not.toBeInTheDocument()
+        await expect.element(formula).toBeChecked()
+        await expect.element(page.getByTestId('scoring-unconfigured')).toBeVisible()
+        await fixed.click()
+        await expect.element(fixed).toBeChecked()
+        await expect.element(input).toHaveValue('7.50')
+        expect(saved).toHaveLength(0)
+        await page.getByTestId('item-save').click()
+        await expect.poll(() => saved.length).toBe(1)
+        expect((saved[0]!.config as { scoringConfig: unknown }).scoringConfig).toMatchObject({
+          calculator: { ref: 'fixed@1', config: { value: '7.50' } },
+        })
+      } finally {
+        await page.viewport(1280, 800)
+      }
+    },
+  )
+
+  it('keeps the original formula, determinations and bindings when another publication is canceled', async () => {
+    const item = formulaItem()
+    const saved: { config?: unknown }[] = []
+    await open({
+      items: [item],
+      question: ITEM_ID,
+      panel: 'scoring',
+      surfaces: BOTH_CALCULATORS_CONFIRMING,
+      formulas: formulas(),
+      saved,
+    })
+    await page.getByTestId('scoring-method').getByRole('button', { name: '更换公式' }).click()
+    await page.getByTestId('formula-option').first().click()
+    await page.getByTestId('formula-version-option').first().click()
+    await page
+      .getByTestId('scoring-method-dialog')
+      .getByRole('button', { name: '关闭', exact: true })
+      .click()
+    await expect.element(page.getByTestId('scoring-method-dialog')).not.toBeInTheDocument()
+    await expect
+      .element(page.getByTestId('scoring-method').getByRole('radio', { name: '已发布的公式' }))
+      .toBeChecked()
+    await page.getByTestId('item-save').click()
+    await expect.poll(() => saved.length).toBe(1)
+    const scoring = (
+      saved[0]!.config as {
+        scoringConfig: { calculator: unknown; recognitions: unknown; bindings: unknown }
+      }
+    ).scoringConfig
+    expect(scoring.calculator).toEqual(item.currentRevision.scoringConfig.calculator)
+    expect(scoring.recognitions).toEqual(item.currentRevision.scoringConfig.recognitions)
+    expect(scoring.bindings).toEqual(item.currentRevision.scoringConfig.bindings)
+  })
+
+  it('applies a published formula only after opening the chooser and confirming a release', async () => {
+    const saved: { config?: unknown }[] = []
+    await open({
+      items: [officerItem()],
+      question: ITEM_ID,
+      panel: 'scoring',
+      surfaces: BOTH_CALCULATORS_CONFIRMING,
+      formulas: { ...formulas(), current: null },
+      saved,
+    })
+    const method = page.getByTestId('scoring-method')
+    await method.getByRole('radio', { name: '已发布的公式' }).click()
+    await expect.element(page.getByTestId('scoring-unconfigured')).toBeVisible()
+    expect(page.getByTestId('scoring-method-dialog').elements()).toHaveLength(0)
+    await method.getByRole('button', { name: '选择公式', exact: true }).click()
+    await expect
+      .element(page.getByTestId('formula-version-picker'))
+      .toHaveAttribute('data-step', 'formula')
+    await page.getByTestId('formula-option').first().click()
+    await page.getByTestId('formula-version-option').last().click()
+    expect(saved).toHaveLength(0)
+    await page.getByTestId('formula-version-use').click()
+    await expect.element(page.getByTestId('scoring-method-dialog')).not.toBeInTheDocument()
+    await expect.element(method.getByRole('radio', { name: '已发布的公式' })).toBeChecked()
+    expect(page.getByTestId('scoring-fixed-method').elements()).toHaveLength(0)
+    await chooseSource('level', '固定值')
+    await (await parameterRow('level')).getByRole('textbox').fill('80')
+    expect(saved).toHaveLength(0)
+    await page.getByTestId('item-save').click()
+    await expect.poll(() => saved.length).toBe(1)
+    expect((saved[0]!.config as { scoringConfig: unknown }).scoringConfig).toMatchObject({
+      version: 2,
+      calculator: { ref: 'formula@1', config: { versionId: FORMULA_VERSION_ID } },
+      bindings: { level: { kind: 'constant', value: '80' } },
+    })
+  })
+
+  it('holds an unconfigured formula as an unsaved choice when leaving is canceled', async () => {
+    const saved: { config?: unknown }[] = []
+    await open({
+      items: [officerItem()],
+      question: ITEM_ID,
+      panel: 'scoring',
+      surfaces: BOTH_CALCULATORS_CONFIRMING,
+      formulas: { ...formulas(), current: null },
+      saved,
+    })
+    await page.getByTestId('scoring-method').getByRole('radio', { name: '已发布的公式' }).click()
+    await expect.element(page.getByTestId('scoring-unconfigured')).toBeVisible()
+    await backButton().click()
+    await expect.element(page.getByRole('alertdialog')).toBeVisible()
+    await page.getByRole('alertdialog').getByRole('button', { name: '取消' }).click()
+    await expect.element(page.getByTestId('scoring-unconfigured')).toBeVisible()
+    await tab(/基本信息/).click()
+    await tab(/表单与计分/).click()
+    await expect
+      .element(page.getByTestId('scoring-method').getByRole('radio', { name: '已发布的公式' }))
+      .toBeChecked()
+    await expect.element(page.getByTestId('scoring-unconfigured')).toBeVisible()
+    await page.getByTestId('item-save').click()
+    expect(saved).toHaveLength(0)
+  })
+
+  it.each(['legacy', 'versioned'])(
+    'returns to an unchanged %s fixed method without leaving a dirty draft',
+    async (language) => {
+      const item = officerItem()
+      await open({
+        items: [
+          language === 'legacy'
+            ? item
+            : {
+                ...item,
+                currentRevision: {
+                  ...item.currentRevision,
+                  scoringConfig: {
+                    ...item.currentRevision.scoringConfig,
+                    version: 2,
+                    recognitions: {},
+                    bindings: {},
+                  },
+                },
+              },
+        ],
+        question: ITEM_ID,
+        panel: 'scoring',
+        surfaces: BOTH_CALCULATORS_CONFIRMING,
+        formulas: { ...formulas(), current: null },
+      })
+      const method = page.getByTestId('scoring-method')
+      await method.getByRole('radio', { name: '已发布的公式' }).click()
+      await expect.element(page.getByTestId('scoring-unconfigured')).toBeVisible()
+      await method.getByRole('radio', { name: '固定分值' }).click()
+      await expect
+        .element(method.getByRole('textbox', { name: '每条通过计分' }))
+        .toHaveValue('2.00')
+      await backButton().click()
+      await expect.element(editor()).not.toBeInTheDocument()
+      expect(page.getByRole('alertdialog').elements()).toHaveLength(0)
+    },
+  )
+
+  it('restores the selected formula and its determinations when switching back before saving', async () => {
+    const item = formulaItem()
+    const saved: { config?: unknown }[] = []
+    await open({
+      items: [item],
+      question: ITEM_ID,
+      panel: 'scoring',
+      surfaces: BOTH_CALCULATORS_CONFIRMING,
+      formulas: formulas(),
+      saved,
+    })
+    const method = page.getByTestId('scoring-method')
+    const fixed = method.getByRole('radio', { name: '固定分值' })
+    const formula = method.getByRole('radio', { name: '已发布的公式' })
+    await expect.element(await parameterRow('level')).toHaveAttribute('data-source', 'recognition')
+    await fixed.click()
+    await method.getByRole('textbox', { name: '每条通过计分' }).fill('4.75')
+    await formula.click()
+    expect(page.getByTestId('scoring-method-dialog').elements()).toHaveLength(0)
+    expect(page.getByTestId('scoring-unconfigured').elements()).toHaveLength(0)
+    await expect.element(await parameterRow('level')).toHaveAttribute('data-source', 'recognition')
+    await fixed.click()
+    await expect.element(method.getByRole('textbox', { name: '每条通过计分' })).toHaveValue('4.75')
+    await formula.click()
+    await page.getByTestId('item-save').click()
+    await expect.poll(() => saved.length).toBe(1)
+    const scoring = (
+      saved[0]!.config as {
+        scoringConfig: { calculator: unknown; recognitions: unknown; bindings: unknown }
+      }
+    ).scoringConfig
+    expect(scoring.calculator).toEqual(item.currentRevision.scoringConfig.calculator)
+    expect(scoring.recognitions).toEqual(item.currentRevision.scoringConfig.recognitions)
+    expect(scoring.bindings).toEqual(item.currentRevision.scoringConfig.bindings)
+  })
+
+  it('prevents restoring a removed determination while a fixed method save is pending', async () => {
+    let release!: () => void
+    const answerAfter = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const saved: { config?: any }[] = []
+    await open({
+      items: [formulaItem()],
+      question: ITEM_ID,
+      panel: 'scoring',
+      surfaces: BOTH_CALCULATORS_CONFIRMING,
+      formulas: formulas(),
+      saved,
+      answerAfter,
+    })
+    const method = page.getByTestId('scoring-method')
+    await method.getByRole('radio', { name: '固定分值' }).click()
+    await page.getByTestId('item-save').click()
+    await expect.poll(() => saved.length).toBe(1)
+    try {
+      await expect.element(method.getByRole('radio', { name: '已发布的公式' })).toBeDisabled()
+      await expect.element(method.getByRole('radio', { name: '固定分值' })).toBeDisabled()
+    } finally {
+      release()
+    }
+    await expect.element(page.getByTestId('item-save')).toBeEnabled()
+    await method.getByRole('radio', { name: '已发布的公式' }).click()
+    await expect.element(page.getByTestId('scoring-unconfigured')).toBeVisible()
+    expect(page.getByTestId('scoring-parameters').elements()).toHaveLength(0)
+    await page.getByTestId('item-save').click()
+    expect(saved).toHaveLength(1)
+  })
+
+  it('switches directly to a fixed amount in the draft and saves through the existing configuration path', async () => {
+    const saved: { config?: unknown }[] = []
+    await open({
+      items: [formulaItem()],
+      question: ITEM_ID,
+      panel: 'scoring',
+      surfaces: BOTH_CALCULATORS_CONFIRMING,
+      formulas: formulas(),
+      saved,
+    })
+    const method = page.getByTestId('scoring-method')
+    await method.getByRole('radio', { name: '固定分值' }).click()
+    await expect.element(method.getByRole('textbox', { name: '每条通过计分' })).toBeVisible()
+    expect(page.getByTestId('scoring-method-dialog').elements()).toHaveLength(0)
+    expect(saved).toHaveLength(0)
+    await method.getByRole('textbox', { name: '每条通过计分' }).fill('4.75')
+    await page.getByTestId('item-save').click()
+    await expect.poll(() => saved.length).toBe(1)
+    expect((saved[0]!.config as { scoringConfig: unknown }).scoringConfig).toMatchObject({
+      version: 2,
+      calculator: { ref: 'fixed@1', config: { value: '4.75' } },
+      recognitions: [],
+      bindings: {},
+    })
   })
 
   it('asks which formula, then which of its publications, and changes nothing until the second is confirmed', async () => {

@@ -234,6 +234,7 @@ function TabsTrigger({
   className,
   style,
   xstyle,
+  labelXstyle,
   value,
   disabled,
   children,
@@ -243,6 +244,8 @@ function TabsTrigger({
   disabled?: boolean
   children: React.ReactNode
   'aria-label'?: string
+  /** Style the widget's label wrapper when a caller needs bounded text. */
+  labelXstyle?: stylex.StyleXStyles
 }) {
   const { value: held, variant } = React.use(TabsCtx)
   const reading = held === value
@@ -252,6 +255,9 @@ function TabsTrigger({
       data-slot="tabs-trigger"
       value={value}
       disabled={disabled}
+      classNames={
+        labelXstyle === undefined ? undefined : { tabLabel: stylex.props(labelXstyle).className }
+      }
       {...rest}
       {...seatOf(
         stylex.props(

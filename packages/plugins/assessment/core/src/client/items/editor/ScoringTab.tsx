@@ -16,6 +16,7 @@ import { type Message } from '@qualy/i18n-contract'
 import { Feedback } from '@qualy/ui/admin'
 import { DatePicker } from '@qualy/ui/date-picker'
 import { Input } from '@qualy/ui/input'
+import { RadioGroup, RadioGroupItem } from '@qualy/ui/radio-group'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { calculatorEditorSlot, calculatorSummarySlot } from '../../../surfaces.ts'
 
@@ -69,6 +70,17 @@ const MONO = "'SFMono-Regular', ui-monospace, Menlo, Consolas, monospace"
 
 const styles = stylex.create({
   stack: { display: 'flex', flexDirection: 'column', gap: 32 },
+  methods: { display: 'flex', flexWrap: 'wrap', columnGap: 20, rowGap: 10 },
+  methodChoice: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 8,
+    minHeight: 36,
+    fontSize: 13,
+    fontWeight: 500,
+    cursor: 'pointer',
+  },
+  fixedMethod: { alignSelf: 'flex-start', maxWidth: '100%', borderRadius: 8 },
   methodCard: {
     display: 'flex',
     alignItems: 'center',
@@ -84,8 +96,6 @@ const styles = stylex.create({
   methodCardBad: { boxShadow: `0 0 0 1px ${tokens.danger}, 0 1px 2px rgb(0 0 0 / 0.04)` },
   methodWords: { display: 'flex', minWidth: 0, flexGrow: 1, flexDirection: 'column', gap: 3 },
   methodName: { fontSize: 14, fontWeight: 600 },
-  methodNote: { fontSize: 12, color: tokens.mutedForeground },
-  methodAmount: { paddingTop: 6 },
   methodChange: {
     display: 'inline-flex',
     flexShrink: 0,
@@ -98,7 +108,8 @@ const styles = stylex.create({
     backgroundColor: 'transparent',
     borderWidth: 0,
     padding: 0,
-    cursor: 'pointer',
+    cursor: { default: 'pointer', ':disabled': 'not-allowed' },
+    opacity: { default: 1, ':disabled': 0.5 },
   },
   problemLine: { margin: 0, fontSize: 12, color: tokens.danger },
   status: { margin: 0, fontSize: 13, color: tokens.mutedForeground },
@@ -191,6 +202,8 @@ export function ScoringTab({
   chosenCalculator,
   placement,
   problems,
+  methodLocked,
+  onCalculatorSelect,
   onCalculatorApply,
   onSource,
   onConstant,
@@ -209,6 +222,9 @@ export function ScoringTab({
   chosenCalculator: { ref: string; config: unknown }
   placement: Placement
   problems: readonly EditorProblem[]
+  methodLocked: boolean
+  /** choose a method before its own editor supplies a configuration */
+  onCalculatorSelect: (ref: string) => void
   /** the arithmetic chosen and configured, in one act */
   onCalculatorApply: (next: { ref: string; config: unknown }) => void
   /** what feeds a parameter: a determination, a fixed value, or the form itself */
@@ -223,10 +239,11 @@ export function ScoringTab({
 }) {
   const locale = useLocale()
   const words = usePickerWords()
-  const [choosing, setChoosing] = useState(false)
+  const [choosing, setChoosing] = useState<{ ref: string; config: unknown } | null>(null)
   const automatic = draft.mode === 'automatic'
   const review = draft.mode === 'review'
   const versioned = draft.scoring.language === 'v2'
+  const configured = draft.scoring.language !== 'v2' || draft.scoring.configured
   const fixed = chosenCalculator.ref === 'fixed@1'
   const parameters = contract === null ? [] : inputOrder(contract.inputSchema)
   const chosenLabel = calculators.find((one) => one.ref === chosenCalculator.ref)?.label
@@ -288,54 +305,79 @@ export function ScoringTab({
         {draft.scoring.language === 'unsupported' ? (
           <Feedback message={m.items_scoringUnsupported()} />
         ) : (
-          <div
-            {...stylex.props(
-              styles.methodCard,
-              methodProblem !== undefined && styles.methodCardBad,
+          <>
+            {calculators.length > 1 && (
+              <RadioGroup
+                aria-label={m.items_scoringMethod()}
+                value={chosenCalculator.ref}
+                onValueChange={onCalculatorSelect}
+                xstyle={styles.methods}
+                data-testid="scoring-method-options"
+              >
+                {calculators.map((option) => (
+                  <label key={option.ref} {...stylex.props(styles.methodChoice)}>
+                    <RadioGroupItem
+                      value={option.ref}
+                      data-calculator={option.ref}
+                      disabled={methodLocked}
+                    />
+                    <span>{option.label}</span>
+                  </label>
+                ))}
+              </RadioGroup>
             )}
-            data-invalid={methodProblem === undefined ? undefined : true}
-          >
             {fixed ? (
-              <div {...stylex.props(styles.methodWords)}>
-                <span {...stylex.props(styles.methodName)} data-testid="scoring-method-name">
-                  {methodName}
-                </span>
-                <span {...stylex.props(styles.methodNote)}>{m.items_scoringFixedNote()}</span>
-                {/* the amount is the whole configuration of a fixed method,
-                    so it is edited right here rather than behind a dialog */}
-                <div {...stylex.props(styles.methodAmount)}>
-                  <UiSlot
-                    token={calculatorEditorSlot}
-                    context={{
-                      ...slotContext,
-                      amountPer: automatic ? ('item' as const) : ('entry' as const),
-                      disabled: false,
-                      onChange: onCalculatorApply,
-                    }}
-                  />
-                </div>
-              </div>
-            ) : (
-              <div {...stylex.props(styles.methodWords)} data-testid="scoring-method-name">
-                {/* whoever owns the arithmetic says what it is */}
+              <div
+                {...stylex.props(
+                  styles.fixedMethod,
+                  methodProblem !== undefined && styles.methodCardBad,
+                )}
+                data-testid="scoring-fixed-method"
+                data-invalid={methodProblem === undefined ? undefined : true}
+              >
                 <UiSlot
-                  token={calculatorSummarySlot}
-                  context={slotContext}
-                  fallback={<span {...stylex.props(styles.methodName)}>{methodName}</span>}
+                  token={calculatorEditorSlot}
+                  context={{
+                    ...slotContext,
+                    amountPer: automatic ? ('item' as const) : ('entry' as const),
+                    disabled: false,
+                    onChange: onCalculatorApply,
+                  }}
                 />
               </div>
-            )}
-            {calculators.length > 1 && (
-              <button
-                type="button"
-                {...stylex.props(styles.methodChange)}
-                onClick={() => setChoosing(true)}
+            ) : (
+              <div
+                {...stylex.props(
+                  styles.methodCard,
+                  methodProblem !== undefined && styles.methodCardBad,
+                )}
+                data-invalid={methodProblem === undefined ? undefined : true}
               >
-                {m.items_scoringChange()}
-                <ChevronRightIcon aria-hidden {...stylex.props(rowWords.icon12)} />
-              </button>
+                <div {...stylex.props(styles.methodWords)} data-testid="scoring-method-name">
+                  {configured ? (
+                    <UiSlot
+                      token={calculatorSummarySlot}
+                      context={slotContext}
+                      fallback={<span {...stylex.props(styles.methodName)}>{methodName}</span>}
+                    />
+                  ) : (
+                    <span {...stylex.props(styles.methodName)} data-testid="scoring-unconfigured">
+                      {m.items_scoringUnchosen()}
+                    </span>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  {...stylex.props(styles.methodChange)}
+                  disabled={methodLocked}
+                  onClick={() => setChoosing(chosenCalculator)}
+                >
+                  {configured ? m.items_scoringChange() : m.items_scoringPick()}
+                  <ChevronRightIcon aria-hidden {...stylex.props(rowWords.icon12)} />
+                </button>
+              </div>
             )}
-          </div>
+          </>
         )}
         {methodProblem !== undefined && (
           <p {...stylex.props(styles.problemLine)} role="alert" data-testid="method-problem">
@@ -355,18 +397,18 @@ export function ScoringTab({
         )}
       </EditorSection>
 
-      {choosing && (
+      {choosing !== null && (
         <ScoringMethodDialog
           batchId={batchId}
           itemId={itemId}
           calculators={calculators}
-          chosen={chosenCalculator}
+          chosen={choosing}
           amountPer={automatic ? 'item' : 'entry'}
           onApply={(next) => {
             onCalculatorApply(next)
-            setChoosing(false)
+            setChoosing(null)
           }}
-          onClose={() => setChoosing(false)}
+          onClose={() => setChoosing(null)}
         />
       )}
 

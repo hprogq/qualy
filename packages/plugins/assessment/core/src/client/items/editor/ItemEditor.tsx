@@ -30,6 +30,7 @@ import { toast } from '@qualy/ui/toast'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { useLingering } from '@qualy/ui/use-lingering'
 import { useSettled } from '@qualy/ui/use-settled'
+import { useIsBelow } from '@qualy/ui/use-mobile'
 import { calculatorAuthoringOptions } from '../../../surfaces.ts'
 import { assessmentApi } from '../../api.ts'
 
@@ -113,9 +114,8 @@ const styles = stylex.create({
   },
   // The band is the section heading's own shape: the question's name with
   // its standing beside it, the way back on the line under it, and what can
-  // be done at the far end. The three views of the question are the first
-  // row of the body rather than a third row of the band: a band that grew a
-  // row of tabs pushed everything under it down each time a question opened.
+  // be done at the far end. Navigation belongs in the body rather than
+  // another row of the band, so opening a question keeps the heading's height.
   bandHead: { flexWrap: 'nowrap', alignItems: 'center' },
   titleWord: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
   titleUnset: { color: tokens.mutedForeground },
@@ -177,9 +177,8 @@ const styles = stylex.create({
     whiteSpace: 'nowrap',
   },
   wideOnly: { display: { default: 'inline-flex', [breakpoints.phone]: 'none' } },
-  // The views of the question, and what is left before it can be saved. It
-  // stays in reach while a long form scrolls under it; a phone scrolls it
-  // away with the rest, because there the room is the form's.
+  // A narrow editor keeps its views on one compact row. With room beside
+  // the form, the same tabs become a sticky column without adding a band.
   tabStrip: {
     position: { default: 'sticky', [breakpoints.phone]: 'static' },
     top: 0,
@@ -192,6 +191,20 @@ const styles = stylex.create({
     borderBottomStyle: 'solid',
     borderBottomColor: tokens.border,
     backgroundColor: tokens.background,
+  },
+  horizontalShade: {
+    // Cards cast their border one pixel outside the form. Cover that edge
+    // too as they pass beneath the sticky navigation.
+    '::before': {
+      content: { default: '""', [breakpoints.phone]: 'none' },
+      position: 'absolute',
+      zIndex: -1,
+      insetInline: -2,
+      top: -2,
+      bottom: 0,
+      backgroundColor: tokens.background,
+      pointerEvents: 'none',
+    },
   },
   // the views take the row, and what is left before a save sits at its end
   tabsSeat: { minWidth: 0, flexGrow: 1, overflowX: 'auto', scrollbarWidth: 'none' },
@@ -206,14 +219,62 @@ const styles = stylex.create({
     paddingInline: { default: 2, [breakpoints.phone]: 0 },
     fontSize: { default: null, [breakpoints.phone]: 13 },
   },
+  shortTab: { flexShrink: 0 },
   tabLabel: {
     display: 'inline-flex',
     minWidth: 0,
     alignItems: 'center',
     gap: { default: 7, [breakpoints.phone]: 5 },
   },
+  tabInnerLabel: { display: 'flex', minWidth: 0, width: '100%', maxWidth: '100%' },
   tabWord: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-  body: { display: 'flex', flexDirection: 'column', gap: 24, paddingBottom: 40 },
+  body: { display: 'flex', flexDirection: 'column', gap: 24, paddingBottom: 40, minWidth: 0 },
+  bodyBeside: {
+    display: 'grid',
+    gridTemplateColumns: '192px minmax(0, 1fr)',
+    alignItems: 'start',
+  },
+  sidebar: {
+    top: 12,
+    alignSelf: 'start',
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    gap: 24,
+    borderBottomWidth: 0,
+    backgroundColor: 'transparent',
+  },
+  sidebarTabs: { width: '100%', flexGrow: 0, overflow: 'visible' },
+  sidebarStatus: { display: 'flex', alignItems: 'flex-start', minWidth: 0 },
+  tabsRoot: { width: '100%' },
+  verticalList: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    gap: 4,
+    height: 'auto',
+    width: '100%',
+    padding: 0,
+    backgroundColor: 'transparent',
+    overflow: 'visible',
+  },
+  verticalTab: {
+    width: '100%',
+    maxWidth: '100%',
+    minWidth: 0,
+    alignSelf: 'stretch',
+    boxSizing: 'border-box',
+    height: 38,
+    justifyContent: 'flex-start',
+    paddingInline: 10,
+    fontSize: 13,
+    boxShadow: {
+      default: 'none',
+      ':focus-visible': `0 0 0 3px color-mix(in oklab, ${tokens.focusRing} 50%, transparent)`,
+    },
+  },
+  verticalSelected: { backgroundColor: tokens.surfaceMuted },
+  verticalLabel: { display: 'flex', width: '100%' },
+  panel: { display: 'flex', flexDirection: 'column', minWidth: 0, gap: 24 },
   menu: { width: 176 },
 })
 
@@ -339,6 +400,9 @@ export function ItemEditor({
   const run = useRunApi()
   const locale = useLocale()
   const zone = useBatchZone()
+  // At 1200px the workspace rail leaves enough room for this navigation
+  // and a 700px form. Below it, keep the form's full width.
+  const navigationBeside = !useIsBelow(1200)
   const listJoin = useList()
   // What the last save here answered with, until the page's own read of the
   // question catches up. Until then it IS the question: the next save names
@@ -411,13 +475,59 @@ export function ItemEditor({
     draft.scoring.language === 'v2'
       ? draft.scoring.calculator
       : { ref: 'fixed@1', config: { value: draft.fixedValue } }
+  const calculatorDrafts = useRef({
+    itemId: item?.id ?? null,
+    methods: new Map<string, Exclude<ScoringDraft, { language: 'unsupported' }>>(),
+  })
+  const onCalculatorSelect = (ref: string) => {
+    if (
+      save.isPending ||
+      reloading ||
+      draft.scoring.language === 'unsupported' ||
+      ref === chosenCalculator.ref
+    )
+      return
+    if (calculatorDrafts.current.itemId !== (item?.id ?? null)) {
+      calculatorDrafts.current = { itemId: item?.id ?? null, methods: new Map() }
+    }
+    const remembered = calculatorDrafts.current.methods
+    remembered.set(chosenCalculator.ref, draft.scoring)
+    const prior = remembered.get(ref)
+    setDraft((previous) => ({
+      ...previous,
+      scoring:
+        prior !== undefined
+          ? ref === 'fixed@1' &&
+            prior.language === 'v2' &&
+            (prior.calculator.config as { value?: unknown } | null)?.value !== previous.fixedValue
+            ? {
+                ...prior,
+                calculator: { ref, config: { value: previous.fixedValue } },
+                touched: true,
+              }
+            : prior
+          : {
+              language: 'v2',
+              original: null,
+              calculator: {
+                ref,
+                config: ref === 'fixed@1' ? { value: previous.fixedValue } : {},
+              },
+              recognitions: {},
+              bindings: {},
+              touched: true,
+              configured: ref === 'fixed@1',
+            },
+    }))
+  }
   /**
    * The arithmetic chosen and configured in one act.
    *
    * The legacy language keeps its own amount for as long as the method is
    * the fixed one; anything else moves the question into the versioned
-   * language, and once there it never goes back. A different reference
-   * clears the facts and bindings: they answered the old contract.
+   * language. The method selector can restore an earlier unsaved draft;
+   * a stored versioned composition always stays versioned. A different
+   * reference clears facts and bindings that answered the old contract.
    */
   const onCalculatorApply = (next: { ref: string; config: unknown }) =>
     setDraft((previous) => {
@@ -483,7 +593,10 @@ export function ItemEditor({
     enabled: draft.scoring.language === 'v2' && draft.scoring.configured,
     placeholderData: keepPreviousData,
   })
-  const contract = (contractQuery.data as Contract | undefined) ?? null
+  const calculatorConfigured = draft.scoring.language !== 'v2' || draft.scoring.configured
+  const contract = calculatorConfigured
+    ? ((contractQuery.data as Contract | undefined) ?? null)
+    : null
   const contractRefused =
     contractQuery.isError &&
     (contractQuery.error as { _tag?: string } | null)?._tag === 'ASSESSMENT_ITEM_CONFIG_INVALID'
@@ -525,6 +638,7 @@ export function ItemEditor({
     enabled:
       draft.scoreGroupId !== '' &&
       draft.scoring.language !== 'unsupported' &&
+      calculatorConfigured &&
       contractState.kind !== 'pending',
     placeholderData: keepPreviousData,
     retry: false,
@@ -534,6 +648,7 @@ export function ItemEditor({
   const standing =
     (checkQuery.data as { standing?: readonly Standing[] } | undefined)?.standing ?? NO_STANDING
   const serverIssues = ((): readonly Issue[] => {
+    if (!calculatorConfigured) return []
     const checked = (checkQuery.data as { issues: readonly Issue[] } | undefined)?.issues
     const fresh = checkQuery.isSuccess && !checkQuery.isPlaceholderData && askedCheck === checkKey
     if (refusal !== null && refusal.at === checkKey) {
@@ -1034,6 +1149,9 @@ export function ItemEditor({
       return { sent: draft }
     },
     onSuccess: (result: { item: ItemDto }, _input, mutated) => {
+      // A saved method may remove old determination identities. Only restore
+      // alternatives composed since that save, never a stale stored identity.
+      calculatorDrafts.current = { itemId: result.item.id, methods: new Map() }
       toast.success(m.items_saved())
       setAskingReason(false)
       setImpact(null)
@@ -1255,6 +1373,7 @@ export function ItemEditor({
         setRefused({ kind: 'gone' })
         return
       }
+      calculatorDrafts.current = { itemId: fresh.id, methods: new Map() }
       setDraft(draftOf(fresh, groups, options))
       setOrigin(plainOf(fresh))
       setRefused(null)
@@ -1571,11 +1690,23 @@ export function ItemEditor({
         </div>
       </BatchBanner>
 
-      <div {...stylex.props(styles.body)}>
-        <div {...stylex.props(styles.tabStrip)} data-testid="item-tabs">
-          <div {...stylex.props(styles.tabsSeat)}>
-            <Tabs value={area} onValueChange={(next) => setPanelParam(next)}>
-              <TabsList xstyle={styles.tabList}>
+      <div {...stylex.props(styles.body, navigationBeside && styles.bodyBeside)}>
+        <div
+          {...stylex.props(
+            styles.tabStrip,
+            navigationBeside ? styles.sidebar : styles.horizontalShade,
+          )}
+          data-testid="item-tabs"
+        >
+          <div {...stylex.props(styles.tabsSeat, navigationBeside && styles.sidebarTabs)}>
+            <Tabs
+              value={area}
+              onValueChange={(next) => setPanelParam(next)}
+              orientation={navigationBeside ? 'vertical' : 'horizontal'}
+              variant={navigationBeside ? 'segmented' : 'line'}
+              xstyle={styles.tabsRoot}
+            >
+              <TabsList xstyle={[styles.tabList, navigationBeside && styles.verticalList]}>
                 {AREAS.filter((one) => one !== 'rules' || draft.mode !== 'automatic').map((one) => {
                   const name = (
                     one === 'basics'
@@ -1590,12 +1721,20 @@ export function ItemEditor({
                     <TabsTrigger
                       key={one}
                       value={one}
-                      xstyle={styles.tab}
+                      labelXstyle={styles.tabInnerLabel}
+                      xstyle={[
+                        styles.tab,
+                        one === 'basics' && styles.shortTab,
+                        navigationBeside && styles.verticalTab,
+                        navigationBeside && area === one && styles.verticalSelected,
+                      ]}
                       data-area={one}
                       data-pending={toneOf(one) !== 'ok'}
                       data-tone={toneOf(one)}
                     >
-                      <span {...stylex.props(styles.tabLabel)}>
+                      <span
+                        {...stylex.props(styles.tabLabel, navigationBeside && styles.verticalLabel)}
+                      >
                         <Dot tone={toneOf(one)} />
                         <span {...stylex.props(styles.tabWord)} title={name}>
                           {name}
@@ -1607,119 +1746,131 @@ export function ItemEditor({
               </TabsList>
             </Tabs>
           </div>
-          <PendingList problems={problems} failed={failed} onGo={jumpTo} />
+          {navigationBeside ? (
+            problems.length > 0 && (
+              <div {...stylex.props(styles.sidebarStatus)}>
+                <PendingList problems={problems} failed={failed} onGo={jumpTo} sidebar />
+              </div>
+            )
+          ) : (
+            <PendingList problems={problems} failed={failed} onGo={jumpTo} />
+          )}
         </div>
-        {failed && !dismissed && (
-          <FailureList problems={problems} onGo={jumpTo} onDismiss={() => setDismissed(true)} />
-        )}
-        {refused !== null && (
-          <FailureNotice
-            kind={refused.kind}
-            title={
-              refused.kind === 'loose'
-                ? m.items_failLooseTitle({ count: refused.reasons.length })
-                : REFUSED_TITLE[refused.kind]()
-            }
-            hint={
-              refused.kind === 'incompatible' || refused.kind === 'other'
-                ? refused.words
-                : REFUSED_HINT[refused.kind]()
-            }
-            reasons={refused.kind === 'loose' ? refused.reasons : undefined}
-            actions={
-              refused.kind === 'conflict' ? (
-                <>
+        <div {...stylex.props(styles.panel)} data-testid="item-editor-panel">
+          {failed && !dismissed && (
+            <FailureList problems={problems} onGo={jumpTo} onDismiss={() => setDismissed(true)} />
+          )}
+          {refused !== null && (
+            <FailureNotice
+              kind={refused.kind}
+              title={
+                refused.kind === 'loose'
+                  ? m.items_failLooseTitle({ count: refused.reasons.length })
+                  : REFUSED_TITLE[refused.kind]()
+              }
+              hint={
+                refused.kind === 'incompatible' || refused.kind === 'other'
+                  ? refused.words
+                  : REFUSED_HINT[refused.kind]()
+              }
+              reasons={refused.kind === 'loose' ? refused.reasons : undefined}
+              actions={
+                refused.kind === 'conflict' ? (
+                  <>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={reloading || save.isPending}
+                      onClick={() => void reload()}
+                    >
+                      {m.items_failReload()}
+                    </Button>
+                    <Button
+                      size="sm"
+                      disabled={reloading || save.isPending || wrong}
+                      onClick={() => void overwrite()}
+                    >
+                      {m.items_failOverwrite()}
+                    </Button>
+                  </>
+                ) : refused.kind === 'loose' && item !== null ? (
                   <Button
                     variant="outline"
                     size="sm"
-                    disabled={reloading || save.isPending}
+                    disabled={reloading}
                     onClick={() => void reload()}
                   >
                     {m.items_failReload()}
                   </Button>
+                ) : refused.kind === 'scoring' || refused.kind === 'other' ? (
                   <Button
+                    variant="outline"
                     size="sm"
-                    disabled={reloading || save.isPending || wrong}
-                    onClick={() => void overwrite()}
+                    disabled={save.isPending || wrong}
+                    onClick={retry}
                   >
-                    {m.items_failOverwrite()}
+                    {m.items_failRetry()}
                   </Button>
-                </>
-              ) : refused.kind === 'loose' && item !== null ? (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={reloading}
-                  onClick={() => void reload()}
-                >
-                  {m.items_failReload()}
-                </Button>
-              ) : refused.kind === 'scoring' || refused.kind === 'other' ? (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={save.isPending || wrong}
-                  onClick={retry}
-                >
-                  {m.items_failRetry()}
-                </Button>
-              ) : undefined
-            }
-          />
-        )}
-        {area === 'basics' && (
-          <BasicsTab
-            draft={draft}
-            groups={groups}
-            automaticLocked={automaticLocked}
-            problems={problems}
-            attempted={attempted}
-            onPatch={patch}
-            onMode={setMode}
-          />
-        )}
-        {area === 'scoring' && (
-          <ScoringTab
-            draft={draft}
-            batchId={batchId}
-            itemId={item?.id ?? null}
-            contract={contract}
-            contractState={contractState}
-            calculators={calculators}
-            chosenCalculator={chosenCalculator}
-            placement={placement}
-            problems={problems}
-            onCalculatorApply={onCalculatorApply}
-            onSource={onSource}
-            onConstant={onConstant}
-            onOpenRecognition={(handle) => setSheet({ kind: 'recognition', handle })}
-            onOpenField={(key) => setSheet({ kind: 'field', key })}
-            onAddField={() => setAdding({ open: true })}
-            onReorderFields={(orderedKeys) =>
-              setDraft((previous) => ({
-                ...previous,
-                fields: orderedKeys.flatMap((key) => {
-                  const found = previous.fields.find((one) => one.key === key)
-                  return found === undefined ? [] : [found]
-                }),
-              }))
-            }
-            onSummary={(summaryFieldIds) => patch({ summaryFieldIds })}
-          />
-        )}
-        {area === 'rules' && draft.mode !== 'automatic' && (
-          <RulesTab
-            draft={draft}
-            batchId={batchId}
-            options={options}
-            placement={placement}
-            method={{ ref: chosenCalculator.ref, label: methodLabel }}
-            problems={problems}
-            onPatch={patch}
-            onOpenStage={(key) => setSheet({ kind: 'stage', key })}
-            onAddStage={addStage}
-          />
-        )}
+                ) : undefined
+              }
+            />
+          )}
+          {area === 'basics' && (
+            <BasicsTab
+              draft={draft}
+              groups={groups}
+              automaticLocked={automaticLocked}
+              problems={problems}
+              attempted={attempted}
+              onPatch={patch}
+              onMode={setMode}
+            />
+          )}
+          {area === 'scoring' && (
+            <ScoringTab
+              draft={draft}
+              batchId={batchId}
+              itemId={item?.id ?? null}
+              contract={contract}
+              contractState={contractState}
+              calculators={calculators}
+              chosenCalculator={chosenCalculator}
+              placement={placement}
+              problems={problems}
+              methodLocked={save.isPending || reloading}
+              onCalculatorSelect={onCalculatorSelect}
+              onCalculatorApply={onCalculatorApply}
+              onSource={onSource}
+              onConstant={onConstant}
+              onOpenRecognition={(handle) => setSheet({ kind: 'recognition', handle })}
+              onOpenField={(key) => setSheet({ kind: 'field', key })}
+              onAddField={() => setAdding({ open: true })}
+              onReorderFields={(orderedKeys) =>
+                setDraft((previous) => ({
+                  ...previous,
+                  fields: orderedKeys.flatMap((key) => {
+                    const found = previous.fields.find((one) => one.key === key)
+                    return found === undefined ? [] : [found]
+                  }),
+                }))
+              }
+              onSummary={(summaryFieldIds) => patch({ summaryFieldIds })}
+            />
+          )}
+          {area === 'rules' && draft.mode !== 'automatic' && (
+            <RulesTab
+              draft={draft}
+              batchId={batchId}
+              options={options}
+              placement={placement}
+              method={{ ref: chosenCalculator.ref, label: methodLabel }}
+              problems={problems}
+              onPatch={patch}
+              onOpenStage={(key) => setSheet({ kind: 'stage', key })}
+              onAddStage={addStage}
+            />
+          )}
+        </div>
       </div>
 
       {/* kept mounted while they shut, or they would vanish rather than close */}

@@ -19,9 +19,7 @@ import * as m from '#messages'
 // decides which of the other two tabs even exist.
 
 const styles = stylex.create({
-  // held at a reading width and to the left: on a wide screen two inputs
-  // stretched across the whole page are harder to scan, not easier
-  stack: { display: 'flex', flexDirection: 'column', gap: 32, maxWidth: 720 },
+  stack: { display: 'flex', flexDirection: 'column', gap: 32, minWidth: 0 },
   grid: {
     display: 'grid',
     rowGap: 16,

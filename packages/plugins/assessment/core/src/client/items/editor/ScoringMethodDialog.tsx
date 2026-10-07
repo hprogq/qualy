@@ -10,9 +10,9 @@ import { calculatorEditorSlot } from '../../../surfaces.ts'
 import * as commonMessages from '@qualy/web-i18n/messages'
 import * as m from '#messages'
 
-// Choosing what does the arithmetic, behind one dialog: the question keeps
-// its current method until a choice is finished, so looking around disturbs
-// nothing.
+// Choosing a publication for the method already selected on the page. The
+// draft keeps its current configuration, including an unconfigured choice,
+// until this chooser commits a complete selection.
 //
 // The frame is this plugin's and never changes size - a list that grows or
 // a second step that is shorter would otherwise make the dialog jump under
@@ -45,31 +45,6 @@ const styles = stylex.create({
   },
   title: { margin: 0, fontSize: 15, fontWeight: 600 },
   spacer: { flexGrow: 1 },
-  // which arithmetic, as two words side by side: there are never many
-  methods: {
-    display: 'inline-flex',
-    padding: 2,
-    borderRadius: 8,
-    backgroundColor: tokens.surfaceMuted,
-  },
-  method: {
-    height: 26,
-    paddingInline: 10,
-    borderWidth: 0,
-    borderRadius: 6,
-    backgroundColor: 'transparent',
-    fontFamily: 'inherit',
-    fontSize: 12.5,
-    fontWeight: 500,
-    color: tokens.mutedForeground,
-    whiteSpace: 'nowrap',
-    cursor: 'pointer',
-  },
-  methodOn: {
-    backgroundColor: tokens.background,
-    color: tokens.foreground,
-    boxShadow: `0 0 0 1px ${tokens.border}, 0 1px 2px rgb(0 0 0 / 0.06)`,
-  },
   close: { color: tokens.mutedForeground },
   body: { display: 'flex', minHeight: 0, flexGrow: 1, flexDirection: 'column', overflowY: 'auto' },
   // an editor that is a few controls rather than a screen of its own
@@ -122,37 +97,6 @@ export function ScoringMethodDialog({
         <div {...stylex.props(styles.head)}>
           <DialogTitle {...stylex.props(styles.title)}>{m.items_scoringPick()}</DialogTitle>
           <span {...stylex.props(styles.spacer)} />
-          {calculators.length > 1 && (
-            <div
-              role="radiogroup"
-              aria-label={m.items_scoringMethod()}
-              {...stylex.props(styles.methods)}
-            >
-              {calculators.map((option) => {
-                const on = option.ref === candidate.ref
-                return (
-                  <button
-                    key={option.ref}
-                    type="button"
-                    role="radio"
-                    aria-checked={on}
-                    data-calculator={option.ref}
-                    {...stylex.props(styles.method, on && styles.methodOn)}
-                    onClick={() => {
-                      // the question's own configuration comes back with its
-                      // method; another method starts from nothing
-                      if (!on)
-                        setCandidate(
-                          option.ref === chosen.ref ? chosen : { ref: option.ref, config: {} },
-                        )
-                    }}
-                  >
-                    {option.label}
-                  </button>
-                )
-              })}
-            </div>
-          )}
           <Button
             variant="ghost"
             size="icon-sm"

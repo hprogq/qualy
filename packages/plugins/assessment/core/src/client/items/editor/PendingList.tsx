@@ -10,8 +10,8 @@ import type { EditorProblem } from './model.ts'
 import { AREA_LABEL, BLOCK_LABEL, problemWords } from './words.ts'
 import * as m from '#messages'
 
-// Everything still standing between the question and a save, as a capsule at
-// the end of the tab row: how many, and - opened - one line per thing saying
+// Everything still standing between the question and a save, as a capsule by
+// the editor's navigation: how many, and - opened - one line per thing saying
 // where it is and what it is. Pressing one goes there.
 //
 // Amber while things are only waiting to be set; red once something set is
@@ -40,6 +40,21 @@ const styles = stylex.create({
   },
   capsulePending: { color: tokens.warningForeground },
   capsuleError: { color: tokens.danger },
+  capsuleSidebar: {
+    width: 'fit-content',
+    maxWidth: '100%',
+    minWidth: 0,
+    height: 'auto',
+    minHeight: 28,
+    paddingBlock: 6,
+    paddingInline: 2,
+    borderRadius: 4,
+    backgroundColor: { default: 'transparent', ':hover': tokens.hoverSurface },
+    boxShadow: 'none',
+    whiteSpace: 'normal',
+    textAlign: 'start',
+  },
+  sidebarWords: { minWidth: 0, flexGrow: 1, overflowWrap: 'anywhere' },
   // Nothing to do is said on a screen with room for it. A phone's row of
   // views has none to spare, and the third view was the one pushed out of
   // sight by a line saying all was well.
@@ -72,7 +87,7 @@ const styles = stylex.create({
   headTitle: { fontSize: 13.5, fontWeight: 600 },
   spacer: { flexGrow: 1 },
   headHint: { fontSize: 12, color: tokens.mutedForeground },
-  icon12: { width: 12, height: 12 },
+  icon12: { width: 12, height: 12, flexShrink: 0 },
 })
 
 const rowStyles = stylex.create({
@@ -177,11 +192,14 @@ export function PendingList({
   problems,
   failed,
   onGo,
+  sidebar = false,
 }: {
   problems: readonly EditorProblem[]
   /** a save was refused, and what it was refused for is still unfixed */
   failed: boolean
   onGo: (problem: EditorProblem) => void
+  /** Let the full status wrap inside a narrow navigation column. */
+  sidebar?: boolean
 }) {
   const [open, setOpen] = useState(false)
   if (problems.length === 0) {
@@ -207,6 +225,7 @@ export function PendingList({
           {...stylex.props(
             styles.capsule,
             tone === 'error' ? styles.capsuleError : styles.capsulePending,
+            sidebar && styles.capsuleSidebar,
           )}
           data-testid="pending-trigger"
           data-count={problems.length}
@@ -215,7 +234,7 @@ export function PendingList({
           aria-label={words}
         >
           <Dot tone={tone} />
-          <span {...stylex.props(styles.wordsWide)}>{words}</span>
+          <span {...stylex.props(styles.wordsWide, sidebar && styles.sidebarWords)}>{words}</span>
           <span aria-hidden {...stylex.props(styles.countNarrow)}>
             {problems.length}
           </span>
