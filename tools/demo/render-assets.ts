@@ -7,6 +7,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { chromium } from 'playwright'
+import { writeAsset } from './asset-output.ts'
 import { PICTURES } from './pictures.ts'
 
 const OUT = 'tools/demo/assets'
@@ -26,7 +27,8 @@ for (const [name, html] of Object.entries(PICTURES)) {
   if (only.length > 0 && !only.includes(name)) continue
   rendered += 1
   await tab.setContent(html, { waitUntil: 'load' })
-  await tab.screenshot({ path: path.join(OUT, `${name}.jpg`), type: 'jpeg', quality: 72 })
+  const bytes = await tab.screenshot({ type: 'jpeg', quality: 72 })
+  writeAsset(path.join(OUT, `${name}.jpg`), bytes)
 }
 await browser.close()
 console.log(`rendered ${rendered} images into ${OUT}`)

@@ -11,6 +11,8 @@
 // filed in, or before it, would contradict the claim it backs. A picture one
 // episode or scene cites alone is dated to fit that one claim.
 
+import { SECONDARY_ACTIVITIES, type SecondaryActivity } from './seed/secondary-activities.ts'
+
 const seal = (text: string) => `
 <svg class="seal" viewBox="0 0 200 200" width="150" height="150">
   <circle cx="100" cy="100" r="92" fill="none" stroke="#d0342c" stroke-width="6"/>
@@ -129,20 +131,101 @@ const transcript = (stamped: boolean) =>
      <tr><td>2024-2025</td><td>数据结构</td><td>4</td><td>93</td></tr>
      <tr><td>2025-2026</td><td>操作系统</td><td>4</td><td>89</td></tr></table>
      <p style="margin-top:26px;font-size:19px;color:#555;text-indent:0">教务处盖章后有效，本页为演示用截图。</p>
-     ${stamped ? seal('示例大学教务处') : ''}</div>`,
+     ${stamped ? seal('大连外国语大学教务处') : ''}</div>`,
     '#fff',
   )
 
+const secondaryProof = (activity: SecondaryActivity) => {
+  if (activity.kind === 'competition') {
+    return certificate(
+      '获奖证明',
+      `大连外国语大学英语学院参赛同学在${activity.name}中获得${activity.award}，特发此证。`,
+      '赛事组委会（演示）',
+    )
+  }
+  if (activity.kind === 'service') {
+    return certificate(
+      '服务参与证明',
+      `兹证明大连外国语大学英语学院该同学参加${activity.name}，已完成本次志愿服务，参与情况经项目负责人核实。`,
+      '活动服务单位（演示）',
+      undefined,
+      '#f4f7fd',
+    )
+  }
+  return certificate(
+    '参与证明',
+    `兹证明该同学参加大连外国语大学英语学院组织的${activity.name}，全程认真参与，已完成本次活动任务。`,
+    '大连外国语大学英语学院',
+  )
+}
+
+const secondarySupplement = (activity: SecondaryActivity) => {
+  if (activity.kind === 'competition') {
+    return table(
+      `${activity.name}获奖名单`,
+      ['序号', '学院', '参赛记录', '奖项'],
+      [
+        ['1', '英语学院', 'DEMO-EN-001', activity.award!],
+        ['2', '英语学院', 'DEMO-EN-002', activity.award!],
+      ],
+      '赛事组委会公布的获奖名单节选。参赛记录均为演示编号，不对应真实个人。',
+    )
+  }
+  if (activity.kind === 'service') {
+    return certificate(
+      '实践鉴定意见',
+      `大连外国语大学英语学院该同学参加${activity.name}。具体职责为${activity.work}。以上服务内容经现场负责人核实，任务完成情况良好，予以确认。`,
+      '活动服务单位（演示）',
+      undefined,
+      '#f4f7fd',
+    )
+  }
+  return table(
+    `${activity.name}活动通知`,
+    ['适用学院', '活动要求', '参与认定依据'],
+    [['英语学院', activity.work, '完整参加活动，提交参与证明与活动签到记录']],
+    `大连外国语大学英语学院关于${activity.name}的通知。按照学院公布的项目规则认定本次参与情况。`,
+  )
+}
+
 export const PICTURES: Readonly<Record<string, string>> = {
+  ...Object.fromEntries(
+    SECONDARY_ACTIVITIES.flatMap((group) =>
+      group.activities.flatMap((activity) => [
+        [activity.proof, secondaryProof(activity)],
+        [activity.ask.asset, secondarySupplement(activity)],
+      ]),
+    ),
+  ),
+  'live-service-hours': table(
+    '志愿服务平台时长记录',
+    ['服务项目', '服务日期', '时段', '累计时长'],
+    [['图书馆志愿服务', '2026-05-17', '09:00–12:00 / 14:00–17:00', '6 小时']],
+    '服务地点：大连外国语大学图书馆。平台已记录签到与签退，本页为服务时长记录。',
+  ),
+  'live-service-confirmation': certificate(
+    '志愿服务证明',
+    '兹证明该同学于 2026-05-17 参加图书馆志愿服务，累计服务 6 小时，全程按时签到与签退，特此证明。',
+    '大连外国语大学图书馆',
+    '2026-05-18',
+    '#f4f7fd',
+  ),
+  'live-service-duty': certificate(
+    '服务鉴定意见',
+    '该同学于 2026-05-17 参加图书馆志愿服务，累计服务 6 小时。具体职责包括：协助图书分类与归架，引导读者使用自助借还设备，整理阅览区并维护现场秩序。以上服务内容经现场负责人核实，履职认真，予以确认。',
+    '大连外国语大学图书馆',
+    '2026-05-19',
+    '#f4f7fd',
+  ),
   'campus-1': certificate(
     '参与证明',
-    '兹证明该同学参加由示例大学软件学院组织的校园文化活动，全程认真参与，表现良好。',
-    '示例大学软件学院团委',
+    '兹证明该同学参加由大连外国语大学组织的校园文化活动，全程认真参与，表现良好。',
+    '大连外国语大学团委',
   ),
   'campus-2': certificate(
     '荣誉证书',
     '该同学在校园文化活动中表现突出，荣获<b>二等奖</b>，特发此证，以资鼓励。',
-    '示例大学学生工作处',
+    '大连外国语大学学生工作处',
     undefined,
     '#fdf2f2',
   ),
@@ -161,7 +244,7 @@ export const PICTURES: Readonly<Record<string, string>> = {
   'campus-4': certificate(
     '荣誉证书',
     '该同学在二〇二四年五月举办的心理情景剧微电影大赛中荣获<b>三等奖</b>，特发此证。',
-    '示例大学学生工作处',
+    '大连外国语大学学生工作处',
     '二〇二四年十月',
     '#fdf2f2',
   ),
@@ -213,7 +296,7 @@ export const PICTURES: Readonly<Record<string, string>> = {
   'practice-1': certificate(
     '社会实践证明',
     '该同学于假期参加“返家乡”社会实践活动，按要求完成调研与服务任务，经考核合格。',
-    '示例大学团委',
+    '大连外国语大学团委',
   ),
   'practice-2': table(
     '志愿服务时长记录（示例）',
@@ -228,14 +311,14 @@ export const PICTURES: Readonly<Record<string, string>> = {
   'practice-3': certificate(
     '志愿服务证明',
     '该同学在志愿服务活动中认真负责、热情周到，累计服务时长 12 小时。',
-    '示例大学青年志愿者协会',
+    '大连外国语大学青年志愿者协会',
     undefined,
     '#f4f7fd',
   ),
   'research-1': certificate(
     '立项通知书',
     '经评审，该同学主持的大学生创新创业训练计划项目获准<b>校级立项</b>。',
-    '示例大学教务处',
+    '大连外国语大学教务处',
   ),
   'research-2': table(
     '计算机软件著作权登记证书（示例）',
@@ -252,7 +335,7 @@ export const PICTURES: Readonly<Record<string, string>> = {
   'honour-1': certificate(
     '荣誉证书',
     '该同学在新生军训中表现突出，被评为<b>优秀学生教官</b>。',
-    '示例大学武装部',
+    '大连外国语大学武装部',
     undefined,
     '#fdf2f2',
   ),
@@ -291,7 +374,7 @@ export const PICTURES: Readonly<Record<string, string>> = {
     '参赛队伍名单与成绩（节选）',
     ['序号', '参赛单位', '项目', '队员编号', '成绩'],
     [
-      ['7', '示例大学', '健身操舞', 'DEMO-07-01 至 07-08', '团体第三名'],
+      ['7', '大连外国语大学', '健身操舞', 'DEMO-07-01 至 07-08', '团体第三名'],
       ['8', '滨海理工大学', '健身操舞', 'DEMO-08-01 至 08-08', '团体第四名'],
     ],
     '成绩册由赛事组委会印发，本页为演示用截图。',
@@ -351,7 +434,7 @@ export const PICTURES: Readonly<Record<string, string>> = {
   'signature-1': certificate(
     '考核意见',
     '经班级评议与班主任审核，该生思想政治表现良好，遵守校纪校规，同意推荐。',
-    '示例大学软件学院',
+    '大连外国语大学软件学院',
     '班主任（签字）　二〇二六年九月',
     '#f3f8f3',
   ),
@@ -410,7 +493,7 @@ export const PICTURES: Readonly<Record<string, string>> = {
   'campus-6': blurred(
     '荣誉证书',
     '该同学在校园文化活动中表现突出，荣获<b>二等奖</b>，特发此证，以资鼓励。',
-    '示例大学学生工作处',
+    '大连外国语大学学生工作处',
     '#fdf2f2',
   ),
   'notice-3': table(
@@ -451,7 +534,7 @@ export const PICTURES: Readonly<Record<string, string>> = {
   'service-2': certificate(
     '志愿服务证明',
     '该同学于二〇二五年十月十八日参加图书馆志愿服务，服务时长 3 小时，表现良好。',
-    '示例大学图书馆',
+    '大连外国语大学图书馆',
     '二〇二五年十月',
     '#f4f7fd',
   ),
