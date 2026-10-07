@@ -159,6 +159,30 @@ describe('the reader’s banner', () => {
 })
 
 describe('the reader’s profile', () => {
+  it.each([1280, 390])('keeps the English identifier label on one line at %i px', async (width) => {
+    await page.viewport(width, 800)
+    try {
+      await renderScreen({
+        locale: 'en-US',
+        client: fakeClient(stubs([])),
+        route: '/account',
+        children: <AccountProfilePage />,
+      })
+      const number = page.getByTestId('account-profile').getByText('20990001')
+      await expect.element(number).toBeVisible()
+      const value = number.element()
+      const label = value.previousElementSibling!
+      const text = document.createRange()
+      text.selectNodeContents(label)
+      expect(text.getClientRects()).toHaveLength(1)
+      expect(text.getBoundingClientRect().right).toBeLessThanOrEqual(
+        value.getBoundingClientRect().left,
+      )
+    } finally {
+      await page.viewport(1280, 800)
+    }
+  })
+
   // A reading that failed says why in the words of reading, and a server
   // that cannot serve right now is told apart from one that failed.
   it('says their record could not be read the way a reading failed', async () => {

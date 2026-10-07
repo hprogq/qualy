@@ -50,7 +50,7 @@ const personId = defineTerm({
   default: text({ namespace: 'qualy-plugin-auth', key: 'settings_term_businessNumberDefault' }),
   order: 10,
 })
-const personIdDefaults = { 'zh-CN': '学工号', 'en-US': 'Student or staff ID' } as const
+const personIdDefaults = { 'zh-CN': '学工号', 'en-US': 'Student/staff ID' } as const
 const personIdWords = { maxLength: personId.maxLength, defaults: personIdDefaults }
 
 describe('compiling the setting catalog', () => {
@@ -85,7 +85,7 @@ describe('compiling the setting catalog', () => {
 
   it('normalizes an override to the delta: trimmed, blanks and defaults dropped', () => {
     expect(
-      normalizeOverride(personIdWords, { 'zh-CN': '  工号 ', 'en-US': 'Student or staff ID' }),
+      normalizeOverride(personIdWords, { 'zh-CN': '  工号 ', 'en-US': 'Student/staff ID' }),
     ).toEqual({
       ok: true,
       value: { 'zh-CN': '工号' },
@@ -351,11 +351,11 @@ describe.runIf(postgresAvailable)('tenant terminology', () => {
         version: 1,
       })
       expect(result.aZh).toBe('统一编号')
-      expect(result.aEn).toBe('Student or staff ID')
+      expect(result.aEn).toBe('Student/staff ID')
       expect(result.bZh).toBe('学工号')
       expect(result.page).toEqual({ [personId.id]: '统一编号' })
       // nobody signed in: the product's words, which are nobody's secret
-      expect(result.visitor).toEqual({ [personId.id]: 'Student or staff ID' })
+      expect(result.visitor).toEqual({ [personId.id]: 'Student/staff ID' })
       expect(result.read.terms[0]).toMatchObject({ override: { 'zh-CN': '统一编号' }, version: 1 })
       expect(result.other.terms[0]).toMatchObject({ override: {}, version: 0 })
     } finally {

@@ -24,7 +24,7 @@ const terminology = (override: Record<string, string> = {}, version = 0) => ({
       description: '在本机构内识别人员的业务编号',
       order: 10,
       maxLength: 64,
-      defaults: { 'zh-CN': '学工号', 'en-US': 'Student or staff ID' },
+      defaults: { 'zh-CN': '学工号', 'en-US': 'Student/staff ID' },
       override,
       version,
     },

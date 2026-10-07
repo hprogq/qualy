@@ -46,7 +46,7 @@ const signedIn = {
 /** the tenant's words settings gives every page, as a tenant that never renamed them has them */
 const termsIn = (locale: 'zh-CN' | 'en-US') => ({
   'settings/terms': {
-    'auth/business-number': locale === 'en-US' ? 'Student or staff ID' : '学工号',
+    'auth/business-number': locale === 'en-US' ? 'Student/staff ID' : '学工号',
   },
 })
 
