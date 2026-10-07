@@ -1,29 +1,18 @@
 import type { PageNotice } from '@qualy/ui/page-notices'
+import type { RefObject } from 'react'
 import { BatchNotices } from '../batch/BatchNotices.tsx'
 import * as m from '#messages'
 
 export function RosterNotices({
   placements,
-  cannotSubmit,
   onPlacements,
-  onUnreachable,
+  alignRef,
 }: {
   placements: { readonly changedTotal: number; readonly unavailableTotal: number } | null
-  cannotSubmit: number | null
   onPlacements: () => void
-  onUnreachable: () => void
+  alignRef?: RefObject<HTMLElement | null>
 }) {
   const notices: PageNotice[] = []
-  if (cannotSubmit !== null && cannotSubmit > 0)
-    notices.push({
-      id: 'unreachable',
-      testId: 'unreachable-notice',
-      tone: 'warning',
-      label: m.roster_unreachablePrompt({ count: cannotSubmit }),
-      actionLabel: m.roster_unreachableOpen(),
-      onSelect: onUnreachable,
-      attributes: { 'data-count': cannotSubmit },
-    })
   if (placements !== null && (placements.changedTotal > 0 || placements.unavailableTotal > 0))
     notices.push({
       id: 'placements',
@@ -40,5 +29,5 @@ export function RosterNotices({
         'data-unavailable': placements.unavailableTotal,
       },
     })
-  return <BatchNotices notices={notices} />
+  return <BatchNotices notices={notices} alignRef={alignRef} />
 }

@@ -1171,6 +1171,97 @@ describe('the room the roster gives its rows', () => {
     }
   })
 
+  it.each([false, true])(
+    'ends the tree and roster at the viewport foot with organization warning %s',
+    async (warning) => {
+      await page.viewport(1440, 900)
+      try {
+        await open(
+          {
+            listRosterUnits: deepUnits,
+            listParticipantPlacements: () =>
+              Effect.succeed({
+                items: [],
+                nextCursor: null,
+                changedTotal: warning ? 2 : 0,
+                unavailableTotal: 0,
+              }),
+          },
+          undefined,
+          1440 - 224,
+          'zh-CN',
+          {},
+          112,
+        )
+        await expect.element(rows().last()).toBeVisible()
+        const card = page.getByTestId('roster').element()
+        const tree = page.getByTestId('roster-unit-tree').element()
+        const scroller = page.getByTestId('roster-page-scroll').element()
+        if (warning) await expect.element(page.getByTestId('placement-notice')).toBeVisible()
+        const end = () => {
+          scroller.scrollTop = scroller.scrollHeight
+          return scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop
+        }
+        await expect.poll(end).toBeLessThanOrEqual(1)
+        // scrollTop rounds to physical pixels while row heights may end
+        // on a half pixel, so compare the two visible edges to that precision.
+        await expect
+          .poll(() => Math.abs(card.getBoundingClientRect().bottom - 884))
+          .toBeLessThanOrEqual(0.5)
+        await expect
+          .poll(() => Math.abs(tree.getBoundingClientRect().bottom - 884))
+          .toBeLessThanOrEqual(0.5)
+        const last = rows().last().element().getBoundingClientRect()
+        const pager = page.getByTestId('roster-pager').element().getBoundingClientRect()
+        expect(last.bottom).toBeLessThanOrEqual(pager.top)
+        expect(pager.top - last.bottom).toBeLessThanOrEqual(24)
+        expect(pager.bottom).toBeLessThanOrEqual(884)
+        const placement = page.getByTestId('placement-notice')
+        const checkNotice = () => {
+          const notice = placement.element().getBoundingClientRect()
+          const bounds = card.getBoundingClientRect()
+          const space = card
+            .querySelector('[data-slot="page-notice-space"]')!
+            .getBoundingClientRect()
+          expect(notice.left).toBeGreaterThanOrEqual(bounds.left)
+          expect(notice.right).toBeLessThanOrEqual(bounds.right)
+          expect(notice.top).toBeGreaterThanOrEqual(space.top)
+          expect(notice.bottom).toBeLessThanOrEqual(space.bottom)
+          expect(notice.top).toBeGreaterThan(
+            page.getByTestId('roster-pager').element().getBoundingClientRect().bottom,
+          )
+        }
+        if (warning) checkNotice()
+        else {
+          expect(document.querySelector('[data-slot="page-notice-space"]')).toBeNull()
+          expect(card.getBoundingClientRect().bottom - pager.bottom).toBeLessThanOrEqual(16)
+        }
+        // The bottom row's menu and every page remain usable at the very end.
+        await rows().last().getByTestId('participant-actions').click()
+        await expect.element(page.getByTestId('participant-standing')).toBeVisible()
+        await userEvent.keyboard('{Escape}')
+        if (warning) {
+          scroller.scrollTop = 0
+          await page.getByTestId('roster-tree-toggle').click()
+          await expect.element(page.getByTestId('roster-unit-tree')).not.toBeVisible()
+          await expect.poll(end).toBeLessThanOrEqual(1)
+          await expect
+            .poll(() => {
+              const notice = placement.element().getBoundingClientRect()
+              const bounds = card.getBoundingClientRect()
+              return Math.abs(notice.left + notice.width / 2 - bounds.left - bounds.width / 2)
+            })
+            .toBeLessThan(1)
+          checkNotice()
+        }
+        await page.getByTestId('roster-pager').getByRole('button', { name: '3' }).click()
+        await expect.element(rows().last()).toHaveAttribute('data-participant', id(45))
+      } finally {
+        await page.viewport(1280, 800)
+      }
+    },
+  )
+
   it('offers the same scope, search and folding controls as the organization tree', async () => {
     const asked = vi.fn((request: Request) => pageOf(request))
     await open({ listRosterUnits: deepUnits, listParticipantAccounts: asked })
@@ -1284,50 +1375,81 @@ describe('the room the roster gives its rows', () => {
 
   // With the room for them, each kind of waiting stands in a column of its
   // own, its count under its head and nothing waiting a quiet dash.
-  it('gives each kind of waiting a column of its own in a wide window', async () => {
-    await page.viewport(1920, 1000)
-    try {
-      await open({
-        listRosterUnits: deepUnits,
-        listParticipantAccounts: (request: Request) =>
-          pageOf(request, [
-            deep(1),
-            deep(2, { filings: { ...NONE, reconsidering: 1, inReview: 3, toRevise: 1 } }),
-          ]),
-      })
-      const busy = page.getByTestId('participant-filings').nth(1)
-      await expect.element(busy).toHaveAttribute('data-waiting', 'some')
-      const kinds = Array.from(busy.element().querySelectorAll<HTMLElement>('[data-kind]'))
-      expect(kinds.map((one) => [one.dataset['kind'], one.textContent])).toEqual([
-        ['inReview', '3'],
-        ['toSupplement', '—'],
-        ['toRevise', '1'],
-        ['reconsidering', '1'],
-        ['blocked', '—'],
-      ])
-      const head = page.getByTestId('roster').element().firstElementChild!
-      for (const [kind, words] of [
-        ['inReview', '审核中'],
-        ['toSupplement', '待补充'],
-        ['toRevise', '待修改'],
-        ['reconsidering', '申诉复查'],
-        ['blocked', '无人可审'],
-      ] as const) {
-        const title = Array.from(head.querySelectorAll('span')).find(
-          (one) => one.textContent === words,
-        )!
-        const above = title.getBoundingClientRect()
-        const count = kinds.find((one) => one.dataset['kind'] === kind)!.getBoundingClientRect()
-        expect(
-          Math.abs(above.left + above.width / 2 - (count.left + count.width / 2)),
-        ).toBeLessThan(1)
+  it.each([1440, 1920, 2560])(
+    'distributes five waiting columns across the available room at %i',
+    async (width) => {
+      await page.viewport(width, 1000)
+      try {
+        await open(
+          {
+            listRosterUnits: deepUnits,
+            listParticipantAccounts: (request: Request) =>
+              pageOf(request, [
+                deep(1),
+                deep(2, { filings: { ...NONE, reconsidering: 1, inReview: 3, toRevise: 1 } }),
+              ]),
+          },
+          undefined,
+          width - 224,
+        )
+        const busy = page.getByTestId('participant-filings').nth(1)
+        await expect.element(busy).toHaveAttribute('data-waiting', 'some')
+        const kinds = Array.from(busy.element().querySelectorAll<HTMLElement>('[data-kind]'))
+        expect(kinds.map((one) => [one.dataset['kind'], one.textContent])).toEqual([
+          ['inReview', '3'],
+          ['toSupplement', '—'],
+          ['toRevise', '1'],
+          ['reconsidering', '1'],
+          ['blocked', '—'],
+        ])
+        const head = page.getByTestId('roster').element().firstElementChild!
+        for (const [kind, words] of [
+          ['inReview', '审核中'],
+          ['toSupplement', '待补充'],
+          ['toRevise', '待修改'],
+          ['reconsidering', '申诉复查'],
+          ['blocked', '无人可审'],
+        ] as const) {
+          const title = Array.from(head.querySelectorAll('span')).find(
+            (one) => one.textContent === words,
+          )!
+          const above = title.getBoundingClientRect()
+          const count = kinds.find((one) => one.dataset['kind'] === kind)!.getBoundingClientRect()
+          expect(
+            Math.abs(above.left + above.width / 2 - (count.left + count.width / 2)),
+          ).toBeLessThan(1)
+        }
+        // a reader hears the counts as words
+        expect(busy.element().textContent).toContain('审核中 3')
+        const row = rows().nth(1).element()
+        // The responsive facts wrapper is display:contents across a row.
+        // Measure the cells it exposes to the grid, not that boxless wrapper.
+        const who = rows()
+          .nth(1)
+          .getByTestId('participant-who')
+          .element()
+          .parentElement!.getBoundingClientRect()
+        const waiting = busy.element().parentElement!.getBoundingClientRect()
+        const total = rows()
+          .nth(1)
+          .getByTestId('participant-score')
+          .element()
+          .parentElement!.parentElement!.getBoundingClientRect()
+        expect(who.width).toBeLessThanOrEqual(480)
+        expect(waiting.left - who.right).toBeCloseTo(16, 1)
+        expect(total.left - waiting.right).toBeCloseTo(16, 1)
+        const tracks = getComputedStyle(busy.element())
+          .gridTemplateColumns.split(' ')
+          .map(Number.parseFloat)
+        expect(tracks).toHaveLength(5)
+        expect(Math.max(...tracks) - Math.min(...tracks)).toBeLessThan(1)
+        expect(tracks.reduce((sum, track) => sum + track, 0)).toBeCloseTo(waiting.width, 1)
+        expect(row.scrollWidth).toBeLessThanOrEqual(row.clientWidth)
+      } finally {
+        await page.viewport(1280, 800)
       }
-      // a reader hears the counts as words
-      expect(busy.element().textContent).toContain('审核中 3')
-    } finally {
-      await page.viewport(1280, 800)
-    }
-  })
+    },
+  )
 
   // Beside the rail on a laptop or a tablet held sideways, the unit, the
   // search and the three choices share one row: the choices give a little
@@ -1458,9 +1580,9 @@ describe('the room the roster gives its rows', () => {
 
 // Some question's review steps can find somebody on the roster nowhere - they
 // sit under no unit a step asks for - so they cannot file it. Nothing about
-// the roster or the questions is refused for it (§32.93); the roster says so
-// for as long as it is true, shows which questions and whom, and says it to
-// whoever puts such people on it, at the moment they do.
+// the roster or the questions is refused for it (§32.93). Global warnings
+// belong to project configuration; admission outcomes still say what the
+// write just did and open the questions and people behind it on request.
 describe('people the review steps find nowhere', () => {
   const QUESTION = '55555555-5555-4555-8555-555555555555'
   const alerts = (cannotSubmit: number) => () =>
@@ -1505,12 +1627,38 @@ describe('people the review steps find nowhere', () => {
       pageSize: 10,
     })
   })
+  const admission = {
+    listParticipantCandidates: () =>
+      Effect.succeed({
+        items: [
+          {
+            userId: 'u-new',
+            displayName: '新同学',
+            businessNo: '20230099',
+            userTypeName: '学生',
+            roster: null,
+          },
+        ],
+        total: 1,
+        page: 1,
+        pageSize: 20,
+      }),
+    addParticipants: () =>
+      Effect.succeed({ added: 1, skipped: 0, cannotSubmit: 1, systemAccounts: 0 }),
+  }
+  const reviewAdmission = async () => {
+    await page.getByRole('button', { name: '添加人员' }).click()
+    await page.getByRole('checkbox', { name: '新同学' }).click()
+    await page.getByRole('button', { name: '添加 1 人' }).click()
+    await page.getByTestId('admission-outcome').getByRole('button', { name: '查看' }).click()
+  }
 
-  it('says how many cannot file, and shows the questions and people behind it', async () => {
-    await open({ reviewAlerts: alerts(12), listUnreachableParticipants: unreachable })
-    const notice = page.getByTestId('unreachable-notice')
-    await expect.element(notice).toHaveAttribute('data-count', '12')
-    await notice.click()
+  it('reads the questions and people only when an admission outcome opens them', async () => {
+    const asked = vi.fn(alerts(12))
+    await open({ ...admission, reviewAlerts: asked, listUnreachableParticipants: unreachable })
+    await expect.element(rows().first()).toBeVisible()
+    expect(asked).not.toHaveBeenCalled()
+    await reviewAdmission()
     const dialog = page.getByTestId('unreachable-dialog')
     await expect.element(dialog).toBeVisible()
     // the questions people cannot file; an appeal's route is another matter
@@ -1534,11 +1682,17 @@ describe('people the review steps find nowhere', () => {
     await expect.element(dialog).not.toBeInTheDocument()
   })
 
-  it('says nothing while everybody can file', async () => {
-    await open({ reviewAlerts: alerts(0) })
-    await expect.element(rows().first()).toBeVisible()
-    expect(page.getByTestId('unreachable-notice').elements()).toHaveLength(0)
-  })
+  it.each([0, 12])(
+    'does not read or repeat a global warning for %i unfileable people',
+    async (count) => {
+      const asked = vi.fn(alerts(count))
+      await open({ reviewAlerts: asked })
+      await expect.element(rows().first()).toBeVisible()
+      expect(asked).not.toHaveBeenCalled()
+      expect(page.getByTestId('unreachable-notice').elements()).toHaveLength(0)
+      expect(document.querySelector('[data-slot="page-notice-space"]')).toBeNull()
+    },
+  )
 
   it('keeps roster warnings in the shared bottom stack without redundant tooltips', async () => {
     const moved = () =>
@@ -1553,33 +1707,22 @@ describe('people the review steps find nowhere', () => {
         listParticipantPlacements: moved,
       })
       const box = page.getByTestId('page-notices')
-      await expect.element(box.getByTestId('unreachable-notice')).toBeVisible()
-      expect(box.getByTestId('placement-notice').elements()).toHaveLength(0)
-      await box.hover()
       await expect.element(box.getByTestId('placement-notice')).toBeVisible()
       const placed = box.getByTestId('placement-notice').element().getBoundingClientRect()
-      const stuck = box.getByTestId('unreachable-notice').element().getBoundingClientRect()
-      expect(placed.bottom).toBeLessThan(stuck.top)
-      expect(stuck.bottom).toBeLessThan(high)
+      expect(page.getByTestId('unreachable-notice').elements()).toHaveLength(0)
+      expect(placed.bottom).toBeLessThan(high)
       expect(placed.left).toBeGreaterThanOrEqual(0)
-      expect(stuck.right).toBeLessThanOrEqual(wide)
+      expect(placed.right).toBeLessThanOrEqual(wide)
       expect(getComputedStyle(box.element()).position).toBe('fixed')
       const heading = page.getByTestId('roster-heading')
       expect(heading.element().contains(box.element())).toBe(false)
       expect(box.element().querySelector('[title]')).toBeNull()
-      for (const notice of [
-        box.getByTestId('placement-notice'),
-        box.getByTestId('unreachable-notice'),
-      ]) {
-        expect(notice.element().tagName).toBe('BUTTON')
-        expect(notice.element().getAttribute('aria-label')).not.toBe('')
-        expect(notice.element().getBoundingClientRect().width).toBeGreaterThanOrEqual(32)
-      }
-      // both wait on a decision, and say so in the same colour
-      const mark = (line: Element) => getComputedStyle(line.querySelector('svg')!).color
-      expect(mark(box.getByTestId('placement-notice').element())).toBe(
-        mark(box.getByTestId('unreachable-notice').element()),
-      )
+      const notice = box.getByTestId('placement-notice')
+      expect(notice.element().tagName).toBe('BUTTON')
+      expect(notice.element().getAttribute('aria-label')).not.toBe('')
+      expect(placed.width).toBeGreaterThanOrEqual(32)
+      await notice.click()
+      await expect.element(page.getByTestId('placement-dialog')).toBeVisible()
       await unmount()
     }
     await page.viewport(1280, 800)
@@ -1610,7 +1753,6 @@ describe('people the review steps find nowhere', () => {
                   unavailableTotal: 0,
                 }),
               ),
-            reviewAlerts: () => Effect.promise(() => held).pipe(Effect.andThen(alerts(24))),
           },
           undefined,
           width === 1440 ? 1440 - 224 : undefined,
@@ -1620,8 +1762,6 @@ describe('people the review steps find nowhere', () => {
         const top = page.getByTestId('roster').element().getBoundingClientRect().top
         const height = page.getByTestId('roster-heading').element().getBoundingClientRect().height
         release()
-        await expect.element(page.getByTestId('unreachable-notice')).toBeVisible()
-        await page.getByTestId('page-notices').hover()
         await expect.element(page.getByTestId('placement-notice')).toBeVisible()
         expect(page.getByTestId('roster').element().getBoundingClientRect().top).toBe(top)
         expect(page.getByTestId('roster-heading').element().getBoundingClientRect().height).toBe(
@@ -1635,10 +1775,9 @@ describe('people the review steps find nowhere', () => {
     },
   )
 
-  // What the roster waits on can change under it: a question's steps moved,
-  // or anything at all while the line was down. The count is asked again
-  // for either, as the rows are.
-  it('counts again who cannot file when a question changes, and after a reconnect', async () => {
+  // Only an open admission detail observes the global reading. Live events
+  // keep it fresh but must never start a background request on the roster.
+  it('refreshes open admission details after a question change and a reconnect', async () => {
     const said = { wake: (_kind: string) => {} }
     const watchBatch = () =>
       Effect.succeed(
@@ -1649,17 +1788,29 @@ describe('people the review steps find nowhere', () => {
         ),
       )
     const held = { count: 12 }
-    await open({ watchBatch, reviewAlerts: () => alerts(held.count)() })
-    const notice = page.getByTestId('unreachable-notice')
-    await expect.element(notice).toHaveAttribute('data-count', '12')
+    const asked = vi.fn(() => alerts(held.count)())
+    await open({
+      ...admission,
+      watchBatch,
+      reviewAlerts: asked,
+      listUnreachableParticipants: unreachable,
+    })
+    await expect.element(rows().first()).toBeVisible()
+    said.wake('item-changed')
+    said.wake('sync')
+    await new Promise((settle) => setTimeout(settle, 500))
+    expect(asked).not.toHaveBeenCalled()
+    await reviewAdmission()
+    const question = page.getByTestId('unreachable-question').first()
+    await expect.element(question).toHaveAttribute('data-count', '12')
     held.count = 3
     said.wake('item-changed')
-    await expect.element(notice).toHaveAttribute('data-count', '3')
+    await expect.element(question).toHaveAttribute('data-count', '3')
     // a line that opens again finds a count read a while before
     held.count = 5
     await new Promise((settle) => setTimeout(settle, 2_300))
     said.wake('sync')
-    await expect.element(notice).toHaveAttribute('data-count', '5')
+    await expect.element(question).toHaveAttribute('data-count', '5')
   })
 
   it('asks nothing of a reader who only re-determines', async () => {

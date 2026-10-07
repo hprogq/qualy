@@ -578,7 +578,6 @@ describe('the administration lane of the overview', () => {
       expect(dots().sort((a, b) => (a ?? '').localeCompare(b ?? ''))).toEqual([
         'assessment/batch-access/rail',
         'assessment/batch-items/rail',
-        'assessment/batch-results/rail',
       ]),
     )
     // the entry reads as one that needs attention to whoever hears the rail
@@ -591,7 +590,7 @@ describe('the administration lane of the overview', () => {
     ).toBe('warning')
   })
 
-  it('lights the roster and project entries when only two people cannot submit', async () => {
+  it('lights only project configuration when two people cannot submit', async () => {
     await page.viewport(1280, 800)
     await shelled(`/assessment/batches/${BATCH_ID}`, {
       reviewAlerts: () =>
@@ -613,15 +612,32 @@ describe('the administration lane of the overview', () => {
         }),
     })
     const dots = () => [...document.querySelectorAll('[data-testid="rail-alert"]')]
-    await expect.poll(() => dots().length).toBe(2)
+    await expect.poll(() => dots().length).toBe(1)
     expect(
       dots()
         .map((dot) => dot.getAttribute('data-navigation'))
         .sort((a, b) => (a ?? '').localeCompare(b ?? '')),
-    ).toEqual(['assessment/batch-items/rail', 'assessment/batch-results/rail'])
+    ).toEqual(['assessment/batch-items/rail'])
     expect(dots().every((dot) => dot.getAttribute('data-tone') === 'warning')).toBe(true)
     expect(row('admin-placements')).toBeNull()
     expect(row('admin-unreachable')?.getAttribute('data-count')).toBe('2')
+  })
+
+  it('keeps roster and authority changes on their own navigation entries', async () => {
+    await page.viewport(1280, 800)
+    await shelled(`/assessment/batches/${BATCH_ID}`, {
+      listParticipantPlacements: () =>
+        Effect.succeed({ items: [], nextCursor: null, changedTotal: 2, unavailableTotal: 0 }),
+      previewAccessSync: () =>
+        Effect.succeed({ items: [], nextCursor: null, pendingTotal: 1, lapsedTotal: 0 }),
+    })
+    const dots = () =>
+      [...document.querySelectorAll('[data-testid="rail-alert"]')]
+        .map((dot) => dot.getAttribute('data-navigation'))
+        .sort((a, b) => (a ?? '').localeCompare(b ?? ''))
+    await expect
+      .poll(dots)
+      .toEqual(['assessment/batch-access/rail', 'assessment/batch-results/rail'])
   })
 
   for (const status of ['active', 'archived'] as const) {

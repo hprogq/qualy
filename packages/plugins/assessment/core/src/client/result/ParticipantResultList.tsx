@@ -204,7 +204,7 @@ const styles = stylex.create({
     gap: 12,
     paddingInline: { default: 24, [breakpoints.phone]: 16 },
     paddingTop: { default: 18, [breakpoints.phone]: 14 },
-    paddingBottom: 24,
+    paddingBottom: 16,
   },
   head: {
     display: { default: 'flex', [breakpoints.phone]: 'grid' },
@@ -461,6 +461,7 @@ export function ParticipantResultList({
   // started on the old page was cut short when the rows changed under it.
   const turned = useRef(false)
   const listTop = useRef<HTMLElement>(null)
+  const listCard = useRef<HTMLElement>(null)
   useLayoutEffect(() => {
     const node = listTop.current
     if (!turned.current || participants.isPlaceholderData || node === null) return
@@ -622,10 +623,9 @@ export function ParticipantResultList({
   })
   const placements = useQuery({ ...placementsRead, enabled: manageable && !archived })
   latestPlacements.current = placementsRead.queryKey
-  // whether some question's review steps find anybody on the roster nowhere,
-  // read off the roster and the questions as they are now (§32.93)
+  // Only the details opened from an admission outcome read this endpoint.
+  // Keep that open dialog fresh without fetching review alerts for the list.
   const alertsRead = query.assessment.reviewAlerts.queryOptions({ params: { batchId } })
-  const reach = useQuery({ ...alertsRead, enabled: manageable && !archived })
   latestAlerts.current = alertsRead.queryKey
   const [unreachableOpen, setUnreachableOpen] = useState(false)
 
@@ -803,7 +803,23 @@ export function ParticipantResultList({
     !stacked &&
     listWidth >= SPLIT_FIXED + PERSON_ROOMY + kinds.width &&
     rows.some((row) => waitsOnAnything(row.filings))
-  const columns = `${numberColumn} minmax(${String(PERSON_LEAST)}px, 1fr) ${split ? `${String(kinds.width)}px` : waitingColumn} ${tailColumns}`
+  // The kinds share the space after a bounded person column. A wide page
+  // must not collect all its spare space on either side of five tiny tracks.
+  const personWidth = Math.min(
+    480,
+    Math.max(PERSON_ROOMY, Math.floor((listWidth - SPLIT_FIXED) * 0.45)),
+    listWidth - SPLIT_FIXED - kinds.width,
+  )
+  const columns = split
+    ? `${numberColumn} ${String(personWidth)}px minmax(${String(kinds.width)}px, 1fr) ${tailColumns}`
+    : `${numberColumn} minmax(${String(PERSON_LEAST)}px, 1fr) ${waitingColumn} ${tailColumns}`
+  const notices = manageable ? (
+    <RosterNotices
+      placements={archived ? null : (placements.data ?? null)}
+      onPlacements={() => setReconciling(true)}
+      alignRef={listCard}
+    />
+  ) : null
 
   const listSection = (
     <section
@@ -993,7 +1009,7 @@ export function ParticipantResultList({
           </div>
         }
       >
-        <Card data-testid="roster">
+        <Card ref={listCard} data-testid="roster">
           <Table columns={columns}>
             <TableHead>
               <span>{businessNo}</span>
@@ -1181,8 +1197,10 @@ export function ParticipantResultList({
               />
             </CardFoot>
           )}
+          {notices}
         </Card>
       </AsyncSection>
+      {participants.data === undefined && notices}
     </section>
   )
 
@@ -1262,12 +1280,6 @@ export function ParticipantResultList({
       />
       {manageable && (
         <>
-          <RosterNotices
-            placements={archived ? null : (placements.data ?? null)}
-            cannotSubmit={archived ? null : (reach.data?.unreachable.cannotSubmit ?? null)}
-            onPlacements={() => setReconciling(true)}
-            onUnreachable={() => setUnreachableOpen(true)}
-          />
           <PlacementDialog
             batchId={batchId}
             open={reconciling}

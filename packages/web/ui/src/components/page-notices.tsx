@@ -1,4 +1,4 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useId, useLayoutEffect, useRef, useState, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
 import { ChevronRightIcon, ChevronUpIcon, InfoIcon, TriangleAlertIcon } from 'lucide-react'
 import * as stylex from '@stylexjs/stylex'
@@ -158,11 +158,14 @@ export function PageNotices({
   label,
   expandLabel,
   collapseLabel,
+  alignRef,
 }: {
   notices: readonly PageNotice[]
   label: string
   expandLabel: string
   collapseLabel: string
+  /** Optionally center notices within a working pane while retaining the page's vertical bounds. */
+  alignRef?: RefObject<HTMLElement | null>
 }) {
   const marker = useRef<HTMLDivElement>(null)
   const stack = useRef<HTMLDivElement>(null)
@@ -228,10 +231,19 @@ export function PageNotices({
     }
     const port = boundary === document.body ? null : boundary
     let frame = 0
+    let observedAlignment: HTMLElement | null = null
     const measure = () => {
+      const alignment = alignRef?.current ?? null
+      if (alignment !== observedAlignment) {
+        if (observedAlignment !== null && observedAlignment !== port)
+          observer.unobserve(observedAlignment)
+        if (alignment !== null) observer.observe(alignment)
+        observedAlignment = alignment
+      }
       const rect = port?.getBoundingClientRect()
-      const left = Math.max(0, rect?.left ?? 0) + 12
-      const right = Math.min(window.innerWidth, rect?.right ?? window.innerWidth) - 12
+      const horizontal = alignment?.getBoundingClientRect() ?? rect
+      const left = Math.max(0, horizontal?.left ?? 0) + 12
+      const right = Math.min(window.innerWidth, horizontal?.right ?? window.innerWidth) - 12
       // The shell reserves bottom space for its phone navigation.
       const foot = port === null ? 0 : parseFloat(getComputedStyle(port).paddingBottom) || 0
       const visibleBottom = Math.min(window.innerHeight, rect?.bottom ?? window.innerHeight)
@@ -263,9 +275,11 @@ export function PageNotices({
       cancelAnimationFrame(frame)
       frame = requestAnimationFrame(measure)
     }
-    measure()
     const observer = new ResizeObserver(schedule)
     if (port !== null) observer.observe(port)
+    measure()
+    // A containing host's ref can attach after this child's layout effect.
+    schedule()
     window.addEventListener('resize', schedule)
     window.addEventListener('scroll', schedule, true)
     return () => {
@@ -274,7 +288,7 @@ export function PageNotices({
       window.removeEventListener('resize', schedule)
       window.removeEventListener('scroll', schedule, true)
     }
-  }, [visible])
+  }, [visible, alignRef])
 
   if (!visible) return null
   const front = heights[notices[0]!.id] ?? 48

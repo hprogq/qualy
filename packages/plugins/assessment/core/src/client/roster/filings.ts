@@ -51,18 +51,18 @@ export const COLUMNS: readonly RosterWaiting[] = [
 const KIND_ROOM = 12
 
 /**
- * The kinds' columns: each as wide as its head or a three-digit count with
- * room either side, and how wide all of them are together.
+ * Each kind keeps room for its head or a three-digit count. On a wide page
+ * the tracks grow together, using the whole space between person and total.
  */
 export function useKindColumns(): { template: string; width: number } {
   return useMemo(() => {
     const least = widthOf('000', 12, 600) + 12
-    const widths = COLUMNS.map((kind) =>
-      Math.ceil(Math.max(least, widthOf(HEADS[kind](), 11, 500)) + KIND_ROOM),
+    const width = Math.ceil(
+      Math.max(least, ...COLUMNS.map((kind) => widthOf(HEADS[kind](), 11, 500))) + KIND_ROOM,
     )
     return {
-      template: widths.map((width) => `${String(width)}px`).join(' '),
-      width: widths.reduce((sum, width) => sum + width, 0),
+      template: `repeat(${String(COLUMNS.length)}, minmax(${String(width)}px, 1fr))`,
+      width: width * COLUMNS.length,
     }
   }, [])
 }
