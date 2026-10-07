@@ -37,6 +37,7 @@
     "./avatar": "./src/components/avatar.tsx",
     "./dropdown-menu": "./src/components/dropdown-menu.tsx",
     "./dialog": "./src/components/dialog.tsx",
+    "./page-notices": "./src/components/page-notices.tsx",
     "./popover": "./src/components/popover.tsx",
     "./separator": "./src/components/separator.tsx",
     "./native-select": "./src/components/native-select.tsx",
