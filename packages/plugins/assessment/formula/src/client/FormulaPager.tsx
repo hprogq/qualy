@@ -18,6 +18,8 @@ export function FormulaPager({
   const seat = useRef<HTMLDivElement>(null)
   const compact = useIsBelow(600)
   const { page, pageSize, total, items } = result
+  if (total === 0) return null
+
   return (
     <div ref={seat}>
       <CardFoot>
@@ -32,7 +34,7 @@ export function FormulaPager({
           disabled={busy}
           compact={compact}
           summary={m.pagination_summary({
-            from: total === 0 ? 0 : (page - 1) * pageSize + 1,
+            from: (page - 1) * pageSize + 1,
             to: (page - 1) * pageSize + items.length,
             total,
           })}
