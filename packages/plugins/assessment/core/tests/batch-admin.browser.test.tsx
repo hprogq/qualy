@@ -3102,6 +3102,18 @@ describe('the notice of organization changes', () => {
       })
       await accessScreen({ previewAccessSync: () => Effect.promise(() => answer) })
       await expect.element(page.getByTestId('access-toolbar')).toBeVisible()
+      // Reveal enters from 8px below. Its first frame is already visible,
+      // so measure the notice only after that independent entrance settles.
+      await expect
+        .poll(() => {
+          let node: HTMLElement | null = page.getByTestId('access-toolbar').element() as HTMLElement
+          while (node !== null) {
+            if (getComputedStyle(node).transform !== 'none') return false
+            node = node.parentElement
+          }
+          return true
+        })
+        .toBe(true)
       const top = page.getByTestId('access-toolbar').element().getBoundingClientRect().top
       reply({ items: [], nextCursor: null, pendingTotal: 3, lapsedTotal: 1 })
       await expect.element(page.getByTestId('access-sync-notice')).toBeVisible()

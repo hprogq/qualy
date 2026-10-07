@@ -14,6 +14,13 @@ export interface PageNotice {
   readonly attributes?: Readonly<Record<`data-${string}`, string | number>>
 }
 
+const radiate = stylex.keyframes({
+  '0%': { opacity: 0, transform: 'scale(1)' },
+  '15%': { opacity: 0.75, transform: 'scale(1.008, 1.08)' },
+  '85%, 100%': { opacity: 0, transform: 'scale(1.045, 1.55)' },
+})
+const REDUCE = '@media (prefers-reduced-motion: reduce)'
+
 const styles = stylex.create({
   space: { height: 84, flexShrink: 0 },
   dock: {
@@ -23,17 +30,18 @@ const styles = stylex.create({
     justifyContent: 'center',
     pointerEvents: 'none',
   },
-  stack: { position: 'relative', width: 'max-content', maxWidth: '100%', pointerEvents: 'auto' },
-  sheet: {
+  stack: { position: 'relative', width: 480, maxWidth: '100%', pointerEvents: 'auto' },
+  wave: {
     position: 'absolute',
     inset: 0,
     borderRadius: tokens.radiusPill,
-    backgroundColor: tokens.surfaceElevated,
-    borderWidth: 1,
-    borderStyle: 'solid',
-    borderColor: tokens.border,
-    transform: 'translateY(-6px) scale(0.96)',
     pointerEvents: 'none',
+    boxShadow: `0 0 12px 4px color-mix(in oklab, ${tokens.warning} 36%, transparent)`,
+    opacity: { default: 0, [REDUCE]: 0.35 },
+    animationName: { default: radiate, [REDUCE]: 'none' },
+    animationDuration: '3.2s',
+    animationTimingFunction: 'ease-out',
+    animationIterationCount: 'infinite',
   },
   pill: {
     position: 'relative',
@@ -47,18 +55,19 @@ const styles = stylex.create({
     borderStyle: 'solid',
     borderColor: tokens.border,
     backgroundColor: tokens.surfaceElevated,
-    boxShadow: tokens.elevation2,
+    // Elevation tokens include a second outline; this pill already has its own border.
+    boxShadow: `0 4px 16px -4px color-mix(in oklab, ${tokens.foreground} 16%, transparent)`,
     color: tokens.foreground,
     overflow: 'hidden',
   },
-  warning: { borderColor: `color-mix(in oklab, ${tokens.warning} 45%, ${tokens.border})` },
   action: {
     display: 'flex',
     minWidth: 0,
     flexGrow: 1,
     alignItems: 'center',
     gap: 10,
-    paddingBlock: 12,
+    minHeight: 42,
+    paddingBlock: 10,
     paddingInline: 16,
     borderWidth: 0,
     backgroundColor: { default: 'transparent', ':hover': tokens.hoverSurface },
@@ -137,6 +146,7 @@ export function PageNotices({
     width: number
     bottom: number
     available: number
+    clearance: number
   } | null>(null)
   const detailsId = useId()
   const visible = notices.length > 0
@@ -175,23 +185,27 @@ export function PageNotices({
       const right = Math.min(window.innerWidth, rect?.right ?? window.innerWidth) - 12
       // The shell reserves bottom space for its phone navigation.
       const foot = port === null ? 0 : parseFloat(getComputedStyle(port).paddingBottom) || 0
-      const bottom =
-        window.innerHeight -
-        Math.min(window.innerHeight, rect?.bottom ?? window.innerHeight) +
-        foot +
-        16
+      const visibleBottom = Math.min(window.innerHeight, rect?.bottom ?? window.innerHeight)
+      const visibleTop = Math.max(0, rect?.top ?? 0)
+      const clearance = Math.min(
+        48,
+        Math.max(24, Math.round((visibleBottom - visibleTop - foot) * 0.08)),
+      )
+      const bottom = window.innerHeight - visibleBottom + foot + clearance
       const next = {
         left,
         width: Math.max(0, right - left),
         bottom,
-        available: Math.max(0, window.innerHeight - bottom - Math.max(0, rect?.top ?? 0)),
+        available: Math.max(0, window.innerHeight - bottom - visibleTop),
+        clearance,
       }
       setBounds((old) =>
         old !== null &&
         old.left === next.left &&
         old.width === next.width &&
         old.bottom === next.bottom &&
-        old.available === next.available
+        old.available === next.available &&
+        old.clearance === next.clearance
           ? old
           : next,
       )
@@ -243,7 +257,7 @@ export function PageNotices({
         aria-hidden
         data-slot="page-notice-space"
         {...stylex.props(styles.space)}
-        style={{ height: pillHeight + 32 }}
+        style={{ height: pillHeight + (bounds?.clearance ?? 48) + 16 }}
       />
       {bounds !== null &&
         createPortal(
@@ -280,13 +294,10 @@ export function PageNotices({
                 }
               }}
             >
-              {notices.length > 1 && !expanded && (
-                <div aria-hidden {...stylex.props(styles.sheet)} />
+              {!expanded && notices.some((notice) => notice.tone === 'warning') && (
+                <span aria-hidden data-slot="page-notice-wave" {...stylex.props(styles.wave)} />
               )}
-              <div
-                ref={primary}
-                {...stylex.props(styles.pill, first.tone === 'warning' && styles.warning)}
-              >
+              <div ref={primary} {...stylex.props(styles.pill)}>
                 {action(first)}
                 {notices.length > 1 && (
                   <button
@@ -317,10 +328,7 @@ export function PageNotices({
                     }}
                   >
                     {notices.slice(1).map((notice) => (
-                      <div
-                        key={notice.id}
-                        {...stylex.props(styles.pill, notice.tone === 'warning' && styles.warning)}
-                      >
+                      <div key={notice.id} {...stylex.props(styles.pill)}>
                         {action(notice)}
                       </div>
                     ))}
