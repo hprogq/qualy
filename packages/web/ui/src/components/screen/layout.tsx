@@ -13,20 +13,39 @@ const FOOT = 16
 
 const styles = stylex.create({
   split: {
+    position: 'relative',
     display: 'grid',
     alignItems: 'stretch',
     columnGap: GAP,
     rowGap: GAP,
     gridTemplateColumns: 'minmax(0, 1fr)',
+    transitionProperty: 'grid-template-columns, column-gap',
+    transitionDuration: { default: '220ms', '@media (prefers-reduced-motion: reduce)': '0ms' },
+    transitionTimingFunction: 'ease-in-out',
   },
-  side: { position: 'relative', minWidth: 0 },
+  splitDragging: { transitionDuration: '0ms' },
+  columns: (width: number, gap: number) => ({
+    gridTemplateColumns: `${width}px minmax(0, 1fr)`,
+    columnGap: gap,
+  }),
+  side: {
+    minWidth: 0,
+    overflow: 'clip',
+    opacity: 1,
+    visibility: 'visible',
+    transitionProperty: 'opacity, visibility',
+    transitionDuration: { default: '220ms', '@media (prefers-reduced-motion: reduce)': '0ms' },
+  },
+  sideClosed: { opacity: 0, visibility: 'hidden' },
+  sideStackedClosed: { display: 'none' },
+  sideContent: { height: '100%' },
+  sideWidth: (width: number) => ({ width }),
   main: { minWidth: 0 },
   // the strip between the two, wide enough to catch and drawn only on hover
   handle: {
     position: 'absolute',
     top: 0,
     bottom: 0,
-    right: -(GAP / 2) - 6,
     zIndex: 5,
     display: { default: 'flex', [breakpoints.phone]: 'none', [breakpoints.tablet]: 'none' },
     width: 12,
@@ -38,6 +57,7 @@ const styles = stylex.create({
     cursor: 'col-resize',
     touchAction: 'none',
   },
+  handleAt: (width: number) => ({ left: width + GAP / 2 - 6 }),
   // A pill standing in the middle of the boundary, always drawn: a boundary
   // that shows itself only under the pointer is one nobody knows can move.
   // The line the full height of it is the hover's, to say how far it reaches.
@@ -86,6 +106,7 @@ export function ResizableSplit({
   max = 520,
   from = 1024,
   handleLabel,
+  collapsed = false,
   side,
   children,
 }: {
@@ -104,6 +125,8 @@ export function ResizableSplit({
   from?: number
   /** spoken name of the boundary */
   handleLabel: string
+  /** Keep the main content mounted while the side folds out of view. */
+  collapsed?: boolean
   side: ReactNode
   children: ReactNode
 }) {
@@ -121,6 +144,15 @@ export function ResizableSplit({
   const [dragging, setDragging] = useState(false)
   const [hover, setHover] = useState(false)
   const origin = useRef<{ x: number; width: number } | null>(null)
+  const sideRef = useRef<HTMLDivElement>(null)
+  const hasSide = side !== null && side !== false && side !== undefined
+
+  useLayoutEffect(() => {
+    const focused = document.activeElement
+    if (collapsed && focused instanceof HTMLElement && sideRef.current?.contains(focused)) {
+      focused.blur()
+    }
+  }, [collapsed])
 
   useEffect(() => {
     const media = window.matchMedia(beside)
@@ -140,63 +172,72 @@ export function ResizableSplit({
 
   return (
     <div
-      {...stylex.props(styles.split)}
-      style={wide ? { gridTemplateColumns: `${String(width)}px minmax(0, 1fr)` } : undefined}
+      {...stylex.props(
+        styles.split,
+        wide && hasSide && styles.columns(collapsed ? 0 : width, collapsed ? 0 : GAP),
+        dragging && styles.splitDragging,
+      )}
       data-split-width={width}
+      data-split-collapsed={collapsed}
     >
       {/* A side that is not there keeps no row: the grid's own row gap then
           stood above the first thing in the other column, which reads as the
           page starting an inch down. */}
-      {side !== null && side !== false && side !== undefined && (
-        <div {...stylex.props(styles.side)}>
-          {side}
-          <button
-            type="button"
-            role="separator"
-            aria-orientation="vertical"
-            aria-label={handleLabel}
-            aria-valuemin={min}
-            aria-valuemax={max}
-            aria-valuenow={width}
-            data-testid="split-handle"
-            {...stylex.props(styles.handle)}
-            onPointerEnter={() => setHover(true)}
-            onPointerLeave={() => setHover(false)}
-            onPointerDown={(event) => {
-              origin.current = { x: event.clientX, width }
-              setDragging(true)
-              event.currentTarget.setPointerCapture(event.pointerId)
-            }}
-            onPointerMove={(event) => {
-              if (origin.current === null) return
-              setWidth(clamp(origin.current.width + event.clientX - origin.current.x))
-            }}
-            onPointerUp={(event) => {
-              if (origin.current === null) return
-              origin.current = null
-              setDragging(false)
-              event.currentTarget.releasePointerCapture(event.pointerId)
-              keep(width)
-            }}
-            onKeyDown={(event) => {
-              const step = event.key === 'ArrowLeft' ? -16 : event.key === 'ArrowRight' ? 16 : 0
-              if (step === 0) return
-              event.preventDefault()
-              const next = clamp(width + step)
-              setWidth(next)
-              keep(next)
-            }}
-          >
-            <span
-              aria-hidden
-              {...stylex.props(styles.rule, (hover || dragging) && styles.ruleLit)}
-            />
-            <span
-              aria-hidden
-              {...stylex.props(styles.grip, (hover || dragging) && styles.gripLit)}
-            />
-          </button>
+      {hasSide && (
+        <div
+          ref={sideRef}
+          inert={collapsed}
+          {...stylex.props(
+            styles.side,
+            collapsed && styles.sideClosed,
+            collapsed && !wide && styles.sideStackedClosed,
+          )}
+          data-testid="split-side"
+        >
+          <div {...stylex.props(styles.sideContent, wide && styles.sideWidth(width))}>{side}</div>
         </div>
+      )}
+      {hasSide && wide && !collapsed && (
+        <button
+          type="button"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label={handleLabel}
+          aria-valuemin={min}
+          aria-valuemax={max}
+          aria-valuenow={width}
+          data-testid="split-handle"
+          {...stylex.props(styles.handle, styles.handleAt(width))}
+          onPointerEnter={() => setHover(true)}
+          onPointerLeave={() => setHover(false)}
+          onPointerDown={(event) => {
+            origin.current = { x: event.clientX, width }
+            setDragging(true)
+            event.currentTarget.setPointerCapture(event.pointerId)
+          }}
+          onPointerMove={(event) => {
+            if (origin.current === null) return
+            setWidth(clamp(origin.current.width + event.clientX - origin.current.x))
+          }}
+          onPointerUp={(event) => {
+            if (origin.current === null) return
+            origin.current = null
+            setDragging(false)
+            event.currentTarget.releasePointerCapture(event.pointerId)
+            keep(width)
+          }}
+          onKeyDown={(event) => {
+            const step = event.key === 'ArrowLeft' ? -16 : event.key === 'ArrowRight' ? 16 : 0
+            if (step === 0) return
+            event.preventDefault()
+            const next = clamp(width + step)
+            setWidth(next)
+            keep(next)
+          }}
+        >
+          <span aria-hidden {...stylex.props(styles.rule, (hover || dragging) && styles.ruleLit)} />
+          <span aria-hidden {...stylex.props(styles.grip, (hover || dragging) && styles.gripLit)} />
+        </button>
       )}
       <div {...stylex.props(styles.main)}>{children}</div>
     </div>
