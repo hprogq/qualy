@@ -532,6 +532,61 @@ describe('the stage plan, read', () => {
     ).toEqual(['ok', 'warn'])
   })
 
+  describe.each([1280, 390])('stage lifecycle at %i px', (width) => {
+    it('shows every entered stage as ended once the batch is archived', async () => {
+      await page.viewport(width, 800)
+      await screen({
+        getBatch: () =>
+          Effect.succeed({ batch: batch({ status: 'archived', currentPhaseId: null }) }),
+        getPhases: () =>
+          Effect.succeed({
+            ...threeStages,
+            phases: threeStages.phases.map((one, index) => ({
+              ...one,
+              actualEntryAt: `2026-03-0${index + 1}T00:00:00.000Z`,
+            })),
+          }),
+      })
+
+      await vi.waitFor(() => expect(keys()).toHaveLength(3))
+      expect(
+        page
+          .getByTestId('phase-standing')
+          .elements()
+          .map((node) => node.getAttribute('data-standing')),
+      ).toEqual(['ended', 'ended', 'ended'])
+    })
+
+    it.each(['archived', 'active'] as const)(
+      'keeps unentered stages future when the %s batch has no current stage',
+      async (status) => {
+        await page.viewport(width, 800)
+        await screen({
+          getBatch: () => Effect.succeed({ batch: batch({ status, currentPhaseId: null }) }),
+          getPhases: () =>
+            Effect.succeed({
+              ...threeStages,
+              phases: threeStages.phases.map((one, index) =>
+                index === 0
+                  ? { ...one, actualEntryAt: '2026-03-01T00:00:00.000Z' }
+                  : index === 1
+                    ? { ...one, plannedEntryAt: new Date(Date.now() + 86_400_000).toISOString() }
+                    : one,
+              ),
+            }),
+        })
+
+        await vi.waitFor(() => expect(keys()).toHaveLength(3))
+        expect(
+          page
+            .getByTestId('phase-standing')
+            .elements()
+            .map((node) => node.getAttribute('data-standing')),
+        ).toEqual(['ended', 'locked', 'open'])
+      },
+    )
+  })
+
   it('says of a stage behind the next to be scheduled that it waits on the one before', async () => {
     await page.viewport(1280, 800)
     await screen()

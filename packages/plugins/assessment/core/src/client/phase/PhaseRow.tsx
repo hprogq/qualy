@@ -395,7 +395,9 @@ function useParts(props: PhaseRowProps) {
   const entered = phase?.actualEntryAt ?? null
   const planned = phase?.plannedEntryAt ?? null
   const current = index === shape.currentIndex
-  const ended = index < shape.currentIndex
+  // An archived batch, or one awaiting a reopened stage, has no current
+  // stage. Its entered stages still ended; unentered stages are still ahead.
+  const ended = index < shape.currentIndex || (shape.currentIndex === -1 && entered !== null)
   const isNew = draft.id === undefined
   /** past the scheduled prefix, where structure is still free */
   const structural = index >= shape.scheduled
