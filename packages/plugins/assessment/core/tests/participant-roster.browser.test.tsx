@@ -104,6 +104,7 @@ const open = (
   locale: 'zh-CN' | 'en-US' = 'zh-CN',
   /** what this browser already keeps */
   storage: Record<string, string> = {},
+  scrolling: false | number = false,
 ) =>
   renderScreen({
     locale,
@@ -181,14 +182,25 @@ const open = (
     routes: [
       {
         path: '/assessment/batches/:batchId/results',
-        element:
-          width === undefined ? (
-            <ParticipantResultsPage />
-          ) : (
-            <div style={{ width }}>
+        element: (
+          <div
+            style={
+              scrolling !== false
+                ? { width, height: '100vh', display: 'flex', flexDirection: 'column' }
+                : { width }
+            }
+          >
+            {scrolling !== false && (
+              <div aria-hidden style={{ height: scrolling, flexShrink: 0 }} />
+            )}
+            <div
+              data-testid="roster-page-scroll"
+              style={scrolling !== false ? { minHeight: 0, flex: 1, overflowY: 'auto' } : undefined}
+            >
               <ParticipantResultsPage />
             </div>
-          ),
+          </div>
+        ),
       },
     ],
     route,
@@ -623,7 +635,7 @@ describe('the roster on the results page', () => {
     const rows = vi.fn((request: Request) => pageOf(request))
     await open({ listParticipantAccounts: rows })
     await expect.element(page.getByTestId('participant-row').first()).toBeVisible()
-    const box = page.getByRole('searchbox')
+    const box = page.getByRole('searchbox', { name: '按姓名或学工号搜索' })
     await userEvent.type(box, '参评人4')
     // one question for the words, not one per keystroke
     await expect.poll(() => addressNow()).toContain('list-q=')
@@ -1117,28 +1129,7 @@ describe('the room the roster gives its rows', () => {
   const waitingWidth = () =>
     page.getByTestId('participant-filings').first().element().parentElement!.getBoundingClientRect()
       .width
-  /**
-   * How far the waiting column starts past the end of the widest thing the
-   * person's column says on the page: a name with its marks, or a unit path.
-   */
-  const bandBeforeWaiting = () => {
-    let said = 0
-    for (const row of rows().elements()) {
-      // the name and the marks beside it, each as wide as its words
-      const line = row.querySelector('[data-testid="participant-name"]')!.parentElement!
-      for (const part of line.children) said = Math.max(said, part.getBoundingClientRect().right)
-      const steps = [...row.querySelectorAll('[data-path-step]')]
-      for (const step of steps) said = Math.max(said, step.getBoundingClientRect().right)
-    }
-    const waiting = page
-      .getByTestId('participant-filings')
-      .first()
-      .element()
-      .parentElement!.getBoundingClientRect().left
-    return waiting - said
-  }
-
-  it('says nothing waits with a dash a reader can hear, right after the names', async () => {
+  it('says nothing waits with a dash a reader can hear in a compact column', async () => {
     await open({
       listRosterUnits: deepUnits,
       listParticipantAccounts: (request: Request) => pageOf(request, [deep(1), deep(2)]),
@@ -1151,10 +1142,52 @@ describe('the room the roster gives its rows', () => {
     expect((quiet.element().textContent ?? '').replace(dash.textContent ?? '', '').trim()).not.toBe(
       '',
     )
-    // the dashes stand just past the names and their units, not across a
-    // band of nothing the person's column kept for itself
-    await expect.poll(bandBeforeWaiting).toBeLessThanOrEqual(32)
-    expect(bandBeforeWaiting()).toBeGreaterThanOrEqual(0)
+    // Empty statuses keep only a label-sized column, even on a wide page.
+    expect(waitingWidth()).toBeLessThanOrEqual(64)
+  })
+
+  it.each([0, 112])('keeps the unit card inside a scrollport starting at %i px', async (offset) => {
+    await page.viewport(1440, 900)
+    try {
+      await open({ listRosterUnits: deepUnits }, undefined, 1440 - 224, 'zh-CN', {}, offset)
+      const card = page.getByTestId('roster-unit-tree')
+      await expect.element(card).toBeVisible()
+      const bottom = () => card.element().getBoundingClientRect().bottom
+      await expect.poll(bottom).toBeCloseTo(884, 0)
+      const scroller = page.getByTestId('roster-page-scroll').element()
+      scroller.scrollTop = 200
+      await expect.poll(() => scroller.scrollTop).toBeGreaterThan(100)
+      await expect
+        .poll(() => card.element().getBoundingClientRect().top)
+        .toBeCloseTo(offset + 12, 0)
+      await expect.poll(bottom).toBeCloseTo(884, 0)
+      const treeScroll = page.getByTestId('roster-unit-scroll').element()
+      expect(treeScroll.getBoundingClientRect().bottom).toBeLessThanOrEqual(bottom() + 0.5)
+      // The last branch remains reachable after the page has moved.
+      await card.getByRole('button', { name: '计算机科学与技术2023级1班', exact: true }).click()
+      await expect.poll(() => addressNow()).toContain(`list-unit=${DEEP}`)
+    } finally {
+      await page.viewport(1280, 800)
+    }
+  })
+
+  it('offers the same scope, search and folding controls as the organization tree', async () => {
+    const asked = vi.fn((request: Request) => pageOf(request))
+    await open({ listRosterUnits: deepUnits, listParticipantAccounts: asked })
+    const tree = page.getByTestId('roster-unit-tree')
+    const chosen = tree.getByRole('button', { name: '计算机科学与技术2023级1班', exact: true })
+    await expect.element(chosen).toBeVisible()
+    await tree.getByRole('button', { name: '组织树选项' }).click()
+    await page.getByTestId('roster-scope-self').click()
+    await chosen.click()
+    await expect.poll(() => asked.mock.calls.at(-1)![0].query?.['orgScope']).toBe('self')
+    await tree.getByRole('button', { name: '组织树选项' }).click()
+    await page.getByRole('menuitem', { name: '收起全部' }).click()
+    await expect.element(chosen).not.toBeInTheDocument()
+    await tree.getByRole('searchbox').fill('2023级1班')
+    await expect.element(chosen).toBeVisible()
+    await chosen.click()
+    await expect.poll(() => addressNow()).not.toContain('list-unit=')
   })
 
   // The words for a missing number run past the number's column in English;
@@ -1203,10 +1236,9 @@ describe('the room the roster gives its rows', () => {
     expect(waitingWidth()).toBeGreaterThan(60)
   })
 
-  // A wide window's room goes to what waits on each person, beside their
-  // name, rather than to a band between the name and it: the person's
-  // column is as wide as what the page's rows say in it.
-  it('gives a wide window’s room to what waits, not to a band after the names', async () => {
+  // Status counts keep a bounded column even when the viewport has ample
+  // room. Different states wrap instead of reserving a mostly empty band.
+  it('keeps the waiting column bounded in a wide window', async () => {
     await page.viewport(1920, 1000)
     try {
       await open({
@@ -1219,13 +1251,14 @@ describe('the room the roster gives its rows', () => {
       })
       const busy = page.getByTestId('participant-filings').nth(1)
       await expect.element(busy).toHaveAttribute('data-waiting', 'some')
-      await expect.poll(bandBeforeWaiting).toBeLessThanOrEqual(32)
-      // every count stands on one line when there is room for it
-      const tops = Array.from(busy.element().children).map((one) =>
-        Math.round(one.getBoundingClientRect().top),
-      )
-      expect(tops).toHaveLength(3)
-      expect(new Set(tops).size).toBe(1)
+      expect(waitingWidth()).toBeLessThanOrEqual(144)
+      const cell = busy.element().parentElement!.getBoundingClientRect()
+      const counts = Array.from(busy.element().children)
+      expect(counts).toHaveLength(3)
+      for (const count of counts) {
+        expect(count.getBoundingClientRect().right).toBeLessThanOrEqual(cell.right + 0.5)
+        expect(count.scrollWidth).toBeLessThanOrEqual(count.clientWidth + 1)
+      }
     } finally {
       await page.viewport(1280, 800)
     }
@@ -1439,16 +1472,14 @@ describe('people the review steps find nowhere', () => {
     expect(page.getByTestId('unreachable-notice').elements()).toHaveLength(0)
   })
 
-  // Two things waiting on the administrator are one box over the list, not
-  // two notices stacked above it: side by side where there is room, one
-  // under the other on a phone, and marked alike where both wait on a
-  // decision.
-  it('holds what the roster waits on in one box, a line each', async () => {
+  // Both actions share the title row, including on a phone. Their complete
+  // explanations remain available even when only counts fit beside it.
+  it('holds both notices in the title row without a separate band', async () => {
     const moved = () =>
       Effect.succeed({ items: [], nextCursor: null, changedTotal: 2, unavailableTotal: 0 })
-    for (const [wide, high, beside] of [
-      [1280, 800, true],
-      [390, 844, false],
+    for (const [wide, high] of [
+      [1280, 800],
+      [390, 844],
     ] as const) {
       await page.viewport(wide, high)
       const { unmount } = await open({
@@ -1460,8 +1491,21 @@ describe('people the review steps find nowhere', () => {
       await expect.element(box.getByTestId('unreachable-notice')).toBeVisible()
       const placed = box.getByTestId('placement-notice').element().getBoundingClientRect()
       const stuck = box.getByTestId('unreachable-notice').element().getBoundingClientRect()
-      if (beside) expect(stuck.top).toBe(placed.top)
-      else expect(stuck.top).toBeGreaterThanOrEqual(placed.bottom)
+      expect(stuck.top).toBe(placed.top)
+      const heading = page.getByTestId('roster-heading')
+      expect(heading.element().contains(box.element())).toBe(true)
+      const title = heading.getByRole('heading').element().getBoundingClientRect()
+      expect(Math.abs(placed.top + placed.height / 2 - title.top - title.height / 2)).toBeLessThan(
+        2,
+      )
+      for (const notice of [
+        box.getByTestId('placement-notice'),
+        box.getByTestId('unreachable-notice'),
+      ]) {
+        const button = notice.getByRole('button')
+        expect(button.element().getAttribute('aria-label')).not.toBe('')
+        expect(button.element().getBoundingClientRect().width).toBeGreaterThanOrEqual(32)
+      }
       // both wait on a decision, and say so in the same colour
       const mark = (line: Element) => getComputedStyle(line.querySelector('svg')!).color
       expect(mark(box.getByTestId('placement-notice').element())).toBe(
@@ -1471,6 +1515,55 @@ describe('people the review steps find nowhere', () => {
     }
     await page.viewport(1280, 800)
   })
+
+  it.each([
+    [1440, 'zh-CN'],
+    [1440, 'en-US'],
+    [390, 'zh-CN'],
+    [390, 'en-US'],
+  ] as const)(
+    'does not shift the roster when notices arrive at %i px in %s',
+    async (width, locale) => {
+      await page.viewport(width, 900)
+      try {
+        let release = () => {}
+        const held = new Promise<void>((resolve) => {
+          release = resolve
+        })
+        await open(
+          {
+            listParticipantPlacements: () =>
+              Effect.promise(() => held).pipe(
+                Effect.as({
+                  items: [],
+                  nextCursor: null,
+                  changedTotal: 12,
+                  unavailableTotal: 0,
+                }),
+              ),
+            reviewAlerts: () => Effect.promise(() => held).pipe(Effect.andThen(alerts(24))),
+          },
+          undefined,
+          width === 1440 ? 1440 - 224 : undefined,
+          locale,
+        )
+        await expect.element(rows().first()).toBeVisible()
+        const top = page.getByTestId('roster').element().getBoundingClientRect().top
+        const height = page.getByTestId('roster-heading').element().getBoundingClientRect().height
+        release()
+        await expect.element(page.getByTestId('placement-notice')).toBeVisible()
+        await expect.element(page.getByTestId('unreachable-notice')).toBeVisible()
+        expect(page.getByTestId('roster').element().getBoundingClientRect().top).toBe(top)
+        expect(page.getByTestId('roster-heading').element().getBoundingClientRect().height).toBe(
+          height,
+        )
+        const heading = page.getByTestId('roster-heading').element()
+        expect(heading.scrollWidth).toBeLessThanOrEqual(heading.clientWidth + 1)
+      } finally {
+        await page.viewport(1280, 800)
+      }
+    },
+  )
 
   // What the roster waits on can change under it: a question's steps moved,
   // or anything at all while the line was down. The count is asked again

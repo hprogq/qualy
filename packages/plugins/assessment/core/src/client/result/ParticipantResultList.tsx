@@ -1,5 +1,5 @@
 import { Effect } from 'effect'
-import { useApiMutation, UiSlot, useApi, useApiQuery, useLoadFailure } from '@qualy/web-runtime'
+import { useApiMutation, useApi, useApiQuery, useLoadFailure } from '@qualy/web-runtime'
 import {
   assertNever,
   formatPlatformFailure as formatError,
@@ -20,7 +20,6 @@ import {
 import { useTerm } from '@qualy/plugin-settings/client/terms'
 import { authTerms } from '@qualy/auth-contract/terms'
 
-import { orgNodePickerView } from '@qualy/ui-contract'
 import { AsyncSection, Feedback, ConfirmDialog } from '@qualy/ui/admin'
 import {
   Card,
@@ -59,13 +58,13 @@ import { AddPeopleDialog } from '../roster/AddPeopleDialog.tsx'
 import { ImportDialog } from '../roster/ImportDialog.tsx'
 import { PlacementDialog, type PlacementDecision } from '../roster/PlacementDialog.tsx'
 import { RosterNotices } from '../roster/RosterNotices.tsx'
+import { RosterUnitTree } from '../roster/RosterUnitTree.tsx'
 import { UnreachableDialog } from '../roster/UnreachableDialog.tsx'
 import { type AdmissionOutcomeFacts } from '../roster/AdmissionOutcome.tsx'
 import { RosterFilings } from '../roster/RosterFilings.tsx'
 import { useWaitingColumn, waitsOnAnything } from '../roster/filings.ts'
 import { RosterScore } from '../roster/RosterScore.tsx'
 import { unitPathOf } from '../roster/unit-path.ts'
-import { pathWidthOf, widthOf } from '../roster/measure.ts'
 import {
   ROSTER_PAGE_SIZE,
   ROSTER_WAITING,
@@ -121,12 +120,9 @@ const TWO_COLUMNS = 1280
 const TREE_MOST = 312
 
 /**
- * The columns around the person and what waits on them. The person's column
- * is as wide as the page's widest name or unit path (measured below) and
- * is given that before anything else grows; the waiting column is at least
- * as wide as the page's widest answer (RosterFilings) and takes whatever is
- * left, so on a wide screen the room goes to the counts beside a name
- * rather than to a band of nothing between the name and them. The total is
+ * The columns around the person and what waits on them. The waiting column
+ * takes only what its counts need, capped so multiple states wrap together.
+ * The person and their organization take the remaining room. The total is
  * wide enough for the longest reason there is none beside the button that
  * asks again; a reason longer still, in some language, takes a second line
  * rather than the button.
@@ -135,15 +131,10 @@ const numberColumn = '6.5rem'
 const tailColumns = '7.5rem 2rem'
 
 /**
- * The narrowest and widest the person's column is drawn. Past the widest a
- * unit path folds its front away, which leaves the unit itself said whole.
+ * The person keeps this much room. Their content stops at 480px in the
+ * styles below; a longer unit path folds its front away.
  */
 const PERSON_LEAST = 160
-const PERSON_MOST = 480
-
-/** the size a name is said at on a row, and a mark beside it */
-const NAME_SIZE = 12.5
-const MARK_SIZE = 12
 
 /** whether the reader keeps the unit tree open beside the list, remembered per browser */
 const TREE_OPEN_KEY = 'qualy:assessment-roster-tree-open'
@@ -207,9 +198,10 @@ const styles = stylex.create({
     paddingBottom: 24,
   },
   head: {
-    display: 'flex',
+    display: { default: 'flex', [breakpoints.phone]: 'grid' },
     minHeight: 34,
-    flexWrap: 'wrap',
+    gridTemplateColumns: { default: null, [breakpoints.phone]: 'auto minmax(0, 1fr) auto' },
+    gridTemplateRows: { default: null, [breakpoints.phone]: '34px auto' },
     alignItems: 'center',
     columnGap: 12,
     rowGap: 8,
@@ -220,15 +212,32 @@ const styles = stylex.create({
     lineHeight: '1.5rem',
     fontWeight: 600,
     letterSpacing: '-0.01em',
+    flexShrink: 0,
+    whiteSpace: 'nowrap',
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
   },
   count: {
     fontSize: 13,
     fontVariantNumeric: 'tabular-nums',
     color: tokens.mutedForeground,
+    flexShrink: 0,
+    whiteSpace: 'nowrap',
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
   },
-  spacer: { flexGrow: 1 },
-  actions: { display: 'flex', flexShrink: 0, alignItems: 'center', gap: 8 },
-  unitsAside: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 8 },
+  spacer: { display: { default: 'block', [breakpoints.phone]: 'none' }, flexGrow: 1 },
+  actions: {
+    display: 'flex',
+    flexShrink: 0,
+    alignItems: 'center',
+    gap: 8,
+    marginInlineStart: 'auto',
+    gridColumn: { default: null, [breakpoints.phone]: '1 / -1' },
+    gridRow: { default: null, [breakpoints.phone]: 2 },
+  },
   // stacked, it stands against the whole row beside what the row is scanned
   // by, rather than auto-placing itself on the first line; a reader with
   // nothing to do on a row still gets the seat, so both lay out alike
@@ -292,8 +301,6 @@ const styles = stylex.create({
     color: tokens.mutedForeground,
   },
   offTreeName: { minWidth: 0, overflowWrap: 'anywhere' },
-  treeWaiting: { display: 'flex', flexDirection: 'column', gap: 10, paddingBlock: 8 },
-  bone: { height: 14, borderRadius: 4 },
   listColumn: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 10 },
   // One row from a tablet up, however narrow the list gets beside the rail:
   // the choices and the search give a little rather than the last choice
@@ -322,7 +329,14 @@ const styles = stylex.create({
     flexBasis: { default: null, [breakpoints.phone]: '0%' },
   },
   busy: { width: 14, height: 14, flexShrink: 0, color: tokens.mutedForeground },
-  who: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 1, paddingBlock: 4 },
+  who: {
+    display: 'flex',
+    minWidth: 0,
+    maxWidth: 480,
+    flexDirection: 'column',
+    gap: 1,
+    paddingBlock: 4,
+  },
   nameWithMark: { display: 'inline-flex', minWidth: 0, alignItems: 'center', gap: 8 },
   name: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
   mark: { display: 'inline-flex', flexShrink: 0 },
@@ -719,37 +733,14 @@ export function ParticipantResultList({
   })
 
   const tree = (
-    <UiSlot
-      token={orgNodePickerView}
-      context={{
-        // one unit, pointed at rather than collected, plus how far down to
-        // look: a filter is not a shopping list
-        single: true,
-        fill: true,
-        value: view.unit === '' ? [] : [view.unit],
-        onChange: (next: string[]) => onView({ unit: next[0] ?? '' }),
-        scope: view.scope,
-        onScopeChange: (scope: 'self' | 'subtree') => onView({ scope }),
-        nodes: units.data?.units ?? [],
-        loading: units.isPending,
-      }}
-      fallback={null}
-      // the shape of a tree, not a block the size of one: a grey rectangle
-      // where a list of units will be says only that something is missing
-      loading={
-        <div {...stylex.props(styles.treeWaiting)}>
-          {[0, 1, 2, 3, 4].map((depth) => (
-            <Skeleton
-              key={depth}
-              className={stylex.props(styles.bone).className}
-              style={{
-                width: `${[68, 84, 56, 76, 48][depth]!}%`,
-                marginInlineStart: depth % 2 === 0 ? 0 : 14,
-              }}
-            />
-          ))}
-        </div>
-      }
+    <RosterUnitTree
+      units={units.data?.units ?? []}
+      loading={units.isPending}
+      bare={narrow}
+      selected={view.unit}
+      scope={view.scope}
+      onSelect={(unit) => onView({ unit })}
+      onScope={(scope) => onView({ scope })}
     />
   )
 
@@ -757,36 +748,7 @@ export function ParticipantResultList({
   const unitWord = view.unit === '' ? m.roster_unitsAll() : (unitName ?? m.roster_unitChosen())
   const waitingHead = m.roster_columnWaiting()
   const waitingColumn = useWaitingColumn(rows, waitingHead)
-  // The person's column, measured from what this page's rows say: the name
-  // with the marks beside it, and the unit path under it on one line.
-  const personWidth = useMemo(() => {
-    let widest = 0
-    for (const row of rows) {
-      const marks = [
-        ...(row.status === 'excluded' ? [widthOf(m.roster_excluded(), MARK_SIZE, 400) + 12] : []),
-        ...(row.placement === 'current'
-          ? []
-          : [
-              widthOf(
-                (row.placement === 'changed'
-                  ? m.roster_placementChanged
-                  : m.roster_placementUnavailable)(),
-                MARK_SIZE,
-                600,
-              ) + 22,
-            ]),
-      ]
-      const name =
-        widthOf(row.displayName, NAME_SIZE, 400) + marks.reduce((sum, one) => sum + one + 8, 0)
-      const path =
-        units.data === undefined
-          ? 0
-          : pathWidthOf(unitPathOf(row.anchorLineage, (nodeId) => byUnit.get(nodeId)?.name).steps)
-      widest = Math.max(widest, name, path)
-    }
-    return Math.ceil(Math.min(PERSON_MOST, Math.max(PERSON_LEAST, widest + 8)))
-  }, [rows, units.data, byUnit])
-  const columns = `${numberColumn} minmax(${String(PERSON_LEAST)}px, ${String(personWidth)}px) minmax(${waitingColumn}, 1fr) ${tailColumns}`
+  const columns = `${numberColumn} minmax(${String(PERSON_LEAST)}px, 1fr) ${waitingColumn} ${tailColumns}`
 
   const listSection = (
     <section aria-label={m.participantResults_tab()} {...stylex.props(styles.listColumn)}>
@@ -1178,7 +1140,7 @@ export function ParticipantResultList({
           one line: the rail already says which section this is, and the bar
           above it which round, so a band saying it again only pushed the
           list down. */}
-      <header {...stylex.props(styles.head)}>
+      <header data-testid="roster-heading" {...stylex.props(styles.head)}>
         <h1 {...stylex.props(styles.title)}>{m.participantResults_tab()}</h1>
         {/* how many the list holds, or how many answer what it was asked;
             an empty list says so itself, below */}
@@ -1194,6 +1156,14 @@ export function ParticipantResultList({
         )}
         <span {...stylex.props(styles.spacer)} />
         {manageable && (
+          <RosterNotices
+            placements={placements.data ?? null}
+            cannotSubmit={reach.data?.unreachable.cannotSubmit ?? null}
+            onPlacements={() => setReconciling(true)}
+            onUnreachable={() => setUnreachableOpen(true)}
+          />
+        )}
+        {manageable && (
           <span {...stylex.props(styles.actions)}>
             <Button size="sm" variant="outline" onClick={() => setImporting(true)}>
               {m.roster_import()}
@@ -1205,14 +1175,6 @@ export function ParticipantResultList({
         )}
       </header>
       <Feedback message={failure} />
-      {manageable && (
-        <RosterNotices
-          placements={placements.data ?? null}
-          cannotSubmit={reach.data?.unreachable.cannotSubmit ?? null}
-          onPlacements={() => setReconciling(true)}
-          onUnreachable={() => setUnreachableOpen(true)}
-        />
-      )}
       {treeBeside ? (
         <ResizableSplit
           storageKey="qualy:assessment-roster-tree"
@@ -1223,11 +1185,7 @@ export function ParticipantResultList({
           handleLabel={m.roster_unitsResize()}
           // with room for the tree beside the table, it is simply there,
           // filling the window's height from where it stands
-          side={
-            <aside {...stylex.props(styles.unitsAside)}>
-              <StickyFill>{tree}</StickyFill>
-            </aside>
-          }
+          side={<StickyFill>{tree}</StickyFill>}
         >
           {listSection}
         </ResizableSplit>

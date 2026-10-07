@@ -31,8 +31,8 @@ export const COUNT_GAP = 10
 
 /**
  * The narrowest and widest the column asks for; past the widest a row's
- * counts wrap, unless the roster has room to spare, which goes to this
- * column so that its counts can stand side by side.
+ * counts wrap within this width. A wide window never turns empty status
+ * cells into the largest column in the roster.
  */
 const COLUMN_LEAST = 48
 const COLUMN_MOST = 144

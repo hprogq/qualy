@@ -1,88 +1,78 @@
-import type { ReactNode } from 'react'
-import { InfoIcon, TriangleAlertIcon } from 'lucide-react'
+import { ChevronRightIcon, InfoIcon, TriangleAlertIcon } from 'lucide-react'
 import * as stylex from '@stylexjs/stylex'
 import { Button } from '@qualy/ui/button'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
+import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@qualy/ui/tooltip'
 import * as m from '#messages'
 
-// What the roster is waiting on its administrator for, over the list: the
-// organization having people somewhere other than this round does, and
-// people some question's review steps find nowhere (§32.93). One box, a
-// line for each thing and the button that opens it; side by side where the
-// page is wide enough, one under the other where it is not. The rows
-// themselves are a press away: the subject of the page is the roster, and
-// it has to start near the top of the screen.
-
+// Changes belong beside the page's title. Each is one compact action with
+// its complete explanation available to focus, hover and assistive readers.
+// Loading or resolving a notice never inserts another band above the list.
 const styles = stylex.create({
-  // The lines are laid on the rule's own colour a hair apart, so the rule
-  // between two falls wherever they meet: down the middle when they share a
-  // row, across it when one wraps under the other.
-  root: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    gap: 1,
-    overflow: 'hidden',
-    borderRadius: tokens.radiusLg,
-    borderWidth: 1,
-    borderStyle: 'solid',
-    borderColor: tokens.border,
-    backgroundColor: tokens.border,
-  },
-  line: {
-    display: 'flex',
-    minWidth: 0,
-    flexGrow: 1,
-    flexShrink: 1,
-    flexBasis: '18rem',
-    alignItems: 'center',
-    gap: 10,
-    minHeight: 44,
-    paddingBlock: 6,
-    paddingInlineStart: 14,
-    paddingInlineEnd: 8,
-    backgroundColor: tokens.surface,
-  },
-  icon: { width: 16, height: 16, flexShrink: 0 },
-  // amber, as everything waiting on somebody's decision is said
+  root: { display: 'flex', minWidth: 0, maxWidth: '32rem', gap: 4, alignItems: 'center' },
+  line: { display: 'flex', minWidth: 0, flexShrink: 1 },
+  button: { minWidth: 0, maxWidth: '100%', paddingInline: 8, gap: 6 },
+  icon: { width: 15, height: 15, flexShrink: 0 },
   decide: { color: tokens.warning },
   inform: { color: tokens.mutedForeground },
   words: {
     minWidth: 0,
-    flexGrow: 1,
-    margin: 0,
-    fontSize: 14,
-    lineHeight: '1.25rem',
-    color: tokens.foreground,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: 12,
+    color: tokens.mutedForeground,
+    display: { default: 'inline', [breakpoints.phone]: 'none' },
   },
-  action: { flexShrink: 0 },
+  count: {
+    display: { default: 'none', [breakpoints.phone]: 'inline' },
+    fontSize: 12,
+    fontVariantNumeric: 'tabular-nums',
+  },
+  arrow: { width: 12, height: 12, flexShrink: 0, color: tokens.mutedForeground },
 })
 
 function Line({
   tone,
   words,
+  count,
   action,
   onOpen,
   ...data
 }: {
-  /** waiting on a decision, or only worth knowing */
   tone: 'decide' | 'inform'
-  words: ReactNode
+  words: string
+  count: number
   action: string
   onOpen: () => void
 } & Record<`data-${string}`, string>) {
   const Icon = tone === 'decide' ? TriangleAlertIcon : InfoIcon
   return (
     <div data-tone={tone} {...data} {...stylex.props(styles.line)}>
-      <Icon aria-hidden {...stylex.props(styles.icon, styles[tone])} />
-      <p {...stylex.props(styles.words)}>{words}</p>
-      <Button
-        size="sm"
-        variant="outline"
-        className={stylex.props(styles.action).className}
-        onClick={onOpen}
-      >
-        {action}
-      </Button>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            size="sm"
+            variant="ghost"
+            aria-label={`${words} · ${action}`}
+            className={stylex.props(styles.button).className}
+            onClick={onOpen}
+          >
+            <Icon aria-hidden {...stylex.props(styles.icon, styles[tone])} />
+            <span aria-hidden {...stylex.props(styles.words)}>
+              {words}
+            </span>
+            <span aria-hidden {...stylex.props(styles.count)}>
+              {count}
+            </span>
+            <ChevronRightIcon aria-hidden {...stylex.props(styles.arrow)} />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>
+          {words} · {action}
+        </TooltipContent>
+      </Tooltip>
     </div>
   )
 }
@@ -121,6 +111,7 @@ export function RosterNotices({
               ? m.placement_prompt({ count: moved.changedTotal })
               : m.placement_unavailablePrompt({ count: moved.unavailableTotal })
           }
+          count={moved.changedTotal || moved.unavailableTotal}
           action={m.placement_open()}
           onOpen={onPlacements}
         />
@@ -131,6 +122,7 @@ export function RosterNotices({
           data-count={String(stuck)}
           tone="decide"
           words={m.roster_unreachablePrompt({ count: stuck })}
+          count={stuck}
           action={m.roster_unreachableOpen()}
           onOpen={onUnreachable}
         />
