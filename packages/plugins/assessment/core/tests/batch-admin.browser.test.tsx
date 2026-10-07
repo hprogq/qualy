@@ -2468,7 +2468,7 @@ describe('who may work on a batch', () => {
       .toHaveAttribute('data-kind', 'decide')
     expect(page.getByText('新来的老师').elements()).toHaveLength(0)
 
-    await page.getByRole('button', { name: '查看变更' }).click()
+    await page.getByTestId('access-sync-notice').click()
     await expect.element(page.getByText('新来的老师')).toBeVisible()
     // a withdrawal is stated, and carries no checkbox to approve it
     await expect.element(page.getByText('离任的老师')).toBeVisible()
@@ -2543,7 +2543,7 @@ describe('who may work on a batch', () => {
     await expect
       .element(page.getByTestId('access-sync-notice'))
       .toHaveAttribute('data-kind', 'lapsed')
-    await page.getByRole('button', { name: '查看变更' }).click()
+    await page.getByTestId('access-sync-notice').click()
     const changes = page.getByTestId('access-sync')
     await expect.element(changes.getByText('新来的老师')).toBeVisible()
     expect(changes.getByRole('checkbox').elements()).toHaveLength(0)
@@ -3071,7 +3071,7 @@ describe('who may work on a batch', () => {
           lapsedTotal: 0,
         }),
     })
-    await page.getByRole('button', { name: '查看变更' }).click()
+    await page.getByTestId('access-sync-notice').click()
     const dialog = page.getByTestId('access-sync')
     await expect.element(dialog.getByTestId('access-sync-quiet')).toBeVisible()
     expect(dialog.getByRole('checkbox').elements()).toHaveLength(0)
@@ -3106,14 +3106,15 @@ describe('the notice of organization changes', () => {
       reply({ items: [], nextCursor: null, pendingTotal: 3, lapsedTotal: 1 })
       await expect.element(page.getByTestId('access-sync-notice')).toBeVisible()
       expect(page.getByTestId('access-toolbar').element().getBoundingClientRect().top).toBe(top)
-      const hint = page.getByTestId('access-sync-notice').element()
-        .parentElement!.previousElementSibling!
-      expect(getComputedStyle(hint).visibility).toBe('hidden')
+      const dock = page.getByTestId('page-notices').element()
+      expect(getComputedStyle(dock).position).toBe('fixed')
+      expect(dock.contains(page.getByTestId('access-sync-notice').element())).toBe(true)
+      expect(page.getByTestId('batch-band').element().contains(dock)).toBe(false)
       await page.viewport(1280, 800)
     },
   )
 
-  it('keeps the information and its action within a phone header', async () => {
+  it('keeps the information directly actionable in the common phone warning dock', async () => {
     await page.viewport(390, 844)
     await accessScreen({
       previewAccessSync: () =>
@@ -3122,18 +3123,21 @@ describe('the notice of organization changes', () => {
     const notice = page.getByTestId('access-sync-notice')
     await expect.element(notice).toHaveAttribute('data-kind', 'lapsed')
     const bounds = notice.element().getBoundingClientRect()
-    const action = notice.getByRole('button', { name: '查看变更' })
+    expect(notice.element().tagName).toBe('BUTTON')
+    expect(notice.element().querySelector('[title]')).toBeNull()
+    expect(notice.element().hasAttribute('title')).toBe(false)
+    const dock = page.getByTestId('page-notices').element()
+    expect(dock.contains(notice.element())).toBe(true)
+    expect(getComputedStyle(dock).position).toBe('fixed')
     expect(bounds.left).toBeGreaterThanOrEqual(0)
     expect(bounds.right).toBeLessThanOrEqual(390)
-    await action.click()
+    await notice.click()
     await expect.element(page.getByTestId('access-sync')).toBeVisible()
     await page.viewport(1280, 800)
   })
 
-  // The button hung over the notice from a corner, with padding guessed wide
-  // enough to keep the words clear of it: in a language whose button runs
-  // wider than the guess, the words ran underneath it.
-  it('keeps the words clear of the button whatever the language', async () => {
+  // The entire pill is the action; its label remains legible in both languages.
+  it('keeps the English warning text inside its single action', async () => {
     await page.viewport(900, 800)
     try {
       await renderScreen({
@@ -3152,25 +3156,28 @@ describe('the notice of organization changes', () => {
       })
       const notice = page.getByTestId('access-sync-notice')
       await expect.element(notice).toHaveAttribute('data-kind', 'decide')
-      const button = notice.getByRole('button').element().getBoundingClientRect()
-      // The compact summary remains beside the action in the existing header.
-      const words = [...notice.element().querySelectorAll('*')]
-        .find(
-          (element) =>
-            element.closest('button') === null &&
-            element.children.length === 0 &&
-            (element.textContent ?? '').includes('permission changes'),
-        )!
+      const button = notice.element().getBoundingClientRect()
+      const words = notice
+        .getByText('3 permission changes', { exact: true })
+        .element()
         .getBoundingClientRect()
-      const apart =
-        words.right <= button.left + 0.5 ||
-        words.bottom <= button.top + 0.5 ||
-        button.bottom <= words.top + 0.5
-      expect(apart).toBe(true)
-      expect(page.getByTestId('batch-band').element().contains(notice.element())).toBe(true)
-      expect(notice.element().getBoundingClientRect().bottom).toBeLessThanOrEqual(
-        page.getByTestId('access-toolbar').element().getBoundingClientRect().top,
+      expect(words.left).toBeGreaterThan(button.left)
+      expect(words.right).toBeLessThan(button.right)
+      expect(words.top).toBeGreaterThanOrEqual(button.top)
+      expect(words.bottom).toBeLessThanOrEqual(button.bottom)
+      expect(notice.element().querySelector('button')).toBeNull()
+      expect(notice.element().querySelector('[title]')).toBeNull()
+      expect(notice.element().hasAttribute('title')).toBe(false)
+      expect(page.getByTestId('batch-band').element().contains(notice.element())).toBe(false)
+      const dock = page.getByTestId('page-notices').element()
+      expect(getComputedStyle(dock).position).toBe('fixed')
+      expect(dock.contains(notice.element())).toBe(true)
+      expect(button.bottom).toBeLessThanOrEqual(800)
+      expect(button.top).toBeGreaterThan(
+        page.getByTestId('access-toolbar').element().getBoundingClientRect().bottom,
       )
+      await notice.click()
+      await expect.element(page.getByTestId('access-sync')).toBeVisible()
     } finally {
       await page.viewport(1280, 800)
     }

@@ -101,10 +101,10 @@ import * as m from '#messages'
  *
  * Counted from what the table needs, not from where two columns first fit:
  * a laptop's 1280 less the rail (224), a scrollbar's gutter (17), the page's
- * margins (48), the tree (260) and the gap (20) leaves the list 711 pixels.
+ * margins (48), the tree (312) and the gap (20) leaves the list 659 pixels.
  * The row takes its padding (32) and gaps (64), the number (104), a name
- * with its unit (160 at least), the waiting counts (144 at most), a total
- * (120) and a menu (32): 656. An inch narrower and the name is what gives.
+ * with its unit (144 at least), the waiting counts (144 at most), a total
+ * (120) and a menu (32): 640. An inch narrower and the name is what gives.
  */
 const TWO_COLUMNS = 1280
 
@@ -113,8 +113,8 @@ const TWO_COLUMNS = 1280
  *
  * Bounded by the table, not by the tree: at the narrowest width the tree
  * stands beside the list, 1280 less the rail (224), a scrollbar's gutter
- * (17), the page's margins (48) and the gap (20), less the table's 656,
- * leaves it 315. A width stored in a wider window is held to this too,
+ * (17), the page's margins (48) and the gap (20), less the table's 640,
+ * leaves it 331. A width stored in a wider window is held to this too,
  * rather than squeezing the menu out of the row.
  */
 const TREE_MOST = 312
@@ -134,7 +134,7 @@ const tailColumns = '7.5rem 2rem'
  * The person keeps this much room. Their content stops at 480px in the
  * styles below; a longer unit path folds its front away.
  */
-const PERSON_LEAST = 160
+const PERSON_LEAST = 144
 
 /** whether the reader keeps the unit tree open beside the list, remembered per browser */
 const TREE_OPEN_KEY = 'qualy:assessment-roster-tree-open'
@@ -289,6 +289,7 @@ const styles = stylex.create({
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
   },
+  unitSwitchCompact: { width: 36, maxWidth: 36, paddingInline: 0, justifyContent: 'center' },
   unitSwitchIcon: { width: 15, height: 15, flexShrink: 0, color: tokens.mutedForeground },
   // the unit the list is narrowed to, where the tree no longer holds it
   offTree: {
@@ -382,6 +383,7 @@ const styles = stylex.create({
 export function ParticipantResultList({
   batchId,
   manageable,
+  archived,
   view,
   onView,
   onOpen,
@@ -389,6 +391,7 @@ export function ParticipantResultList({
   batchId: string
   /** whether this reader may add people to the round */
   manageable: boolean
+  archived: boolean
   /** where the reader is in the list, as the address has it */
   view: RosterView
   onView: (changes: Partial<RosterView>) => void
@@ -573,12 +576,12 @@ export function ParticipantResultList({
     params: { batchId },
     query: { limit: '1' },
   })
-  const placements = useQuery({ ...placementsRead, enabled: manageable })
+  const placements = useQuery({ ...placementsRead, enabled: manageable && !archived })
   latestPlacements.current = placementsRead.queryKey
   // whether some question's review steps find anybody on the roster nowhere,
   // read off the roster and the questions as they are now (§32.93)
   const alertsRead = query.assessment.reviewAlerts.queryOptions({ params: { batchId } })
-  const reach = useQuery({ ...alertsRead, enabled: manageable })
+  const reach = useQuery({ ...alertsRead, enabled: manageable && !archived })
   latestAlerts.current = alertsRead.queryKey
   const [unreachableOpen, setUnreachableOpen] = useState(false)
 
@@ -768,33 +771,27 @@ export function ParticipantResultList({
             <span {...stylex.props(styles.unitSwitchName)}>{unitWord}</span>
             <ChevronRightIcon aria-hidden {...stylex.props(styles.unitSwitchIcon)} />
           </button>
-        ) : treeOpen ? (
-          <Button
-            size="icon"
-            variant="outline"
-            data-testid="roster-tree-toggle"
-            data-open="true"
-            aria-expanded
-            aria-label={m.roster_treeHide()}
-            onClick={() => foldTree(false)}
-          >
-            <PanelLeftCloseIcon aria-hidden />
-          </Button>
         ) : (
           // folded away, the control still says which units the list
           // is of, and brings the tree back
           <button
             type="button"
             data-testid="roster-tree-toggle"
-            data-open="false"
+            data-open={treeOpen}
             data-unit={view.unit}
-            aria-expanded={false}
-            aria-label={`${m.roster_treeShow()} ${unitWord}`}
-            {...stylex.props(styles.unitSwitch)}
-            onClick={() => foldTree(true)}
+            aria-expanded={treeOpen}
+            aria-label={treeOpen ? m.roster_treeHide() : `${m.roster_treeShow()} ${unitWord}`}
+            {...stylex.props(styles.unitSwitch, treeOpen && styles.unitSwitchCompact)}
+            onClick={() => foldTree(!treeOpen)}
           >
-            <PanelLeftOpenIcon aria-hidden {...stylex.props(styles.unitSwitchIcon)} />
-            <span {...stylex.props(styles.unitSwitchName)}>{unitWord}</span>
+            {treeOpen ? (
+              <PanelLeftCloseIcon aria-hidden {...stylex.props(styles.unitSwitchIcon)} />
+            ) : (
+              <>
+                <PanelLeftOpenIcon aria-hidden {...stylex.props(styles.unitSwitchIcon)} />
+                <span {...stylex.props(styles.unitSwitchName)}>{unitWord}</span>
+              </>
+            )}
           </button>
         )}
         <SearchField
@@ -1155,14 +1152,7 @@ export function ParticipantResultList({
           </span>
         )}
         <span {...stylex.props(styles.spacer)} />
-        {manageable && (
-          <RosterNotices
-            placements={placements.data ?? null}
-            cannotSubmit={reach.data?.unreachable.cannotSubmit ?? null}
-            onPlacements={() => setReconciling(true)}
-            onUnreachable={() => setUnreachableOpen(true)}
-          />
-        )}
+
         {manageable && (
           <span {...stylex.props(styles.actions)}>
             <Button size="sm" variant="outline" onClick={() => setImporting(true)}>
@@ -1175,27 +1165,19 @@ export function ParticipantResultList({
         )}
       </header>
       <Feedback message={failure} />
-      {treeBeside ? (
-        <ResizableSplit
-          storageKey="qualy:assessment-roster-tree"
-          initial={260}
-          min={220}
-          max={TREE_MOST}
-          from={TWO_COLUMNS}
-          handleLabel={m.roster_unitsResize()}
-          // with room for the tree beside the table, it is simply there,
-          // filling the window's height from where it stands
-          side={<StickyFill>{tree}</StickyFill>}
-        >
-          {listSection}
-        </ResizableSplit>
-      ) : (
-        // Folded away, or no room for it: the list alone, the whole width,
-        // with the unit said in the toolbar and a sheet to change it where
-        // the tree cannot come back beside the list. No side at all, so no
-        // boundary is offered to drag.
-        listSection
-      )}
+      <ResizableSplit
+        storageKey="qualy:assessment-roster-tree"
+        initial={TREE_MOST}
+        min={220}
+        max={TREE_MOST}
+        from={TWO_COLUMNS}
+        collapsed={!treeBeside}
+        handleLabel={m.roster_unitsResize()}
+        // Keep the list mounted as the tree folds, retaining its focus and scroll.
+        side={narrow ? null : <StickyFill>{tree}</StickyFill>}
+      >
+        {listSection}
+      </ResizableSplit>
 
       {narrow && (
         <DetailSheet
@@ -1225,6 +1207,12 @@ export function ParticipantResultList({
       />
       {manageable && (
         <>
+          <RosterNotices
+            placements={archived ? null : (placements.data ?? null)}
+            cannotSubmit={archived ? null : (reach.data?.unreachable.cannotSubmit ?? null)}
+            onPlacements={() => setReconciling(true)}
+            onUnreachable={() => setUnreachableOpen(true)}
+          />
           <PlacementDialog
             batchId={batchId}
             open={reconciling}

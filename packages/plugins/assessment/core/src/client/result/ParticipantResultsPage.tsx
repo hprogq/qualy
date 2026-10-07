@@ -139,6 +139,7 @@ function Results({ batch, participantId }: { batch: BatchDto; participantId: str
         <ParticipantResultList
           batchId={batch.id}
           manageable={batch.manageable}
+          archived={batch.status === 'archived'}
           view={roster}
           onView={moveRoster}
           // somebody opened from the list starts on their claims, at the

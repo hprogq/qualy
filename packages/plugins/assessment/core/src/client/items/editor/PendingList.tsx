@@ -55,13 +55,16 @@ const styles = stylex.create({
     display: { default: 'none', [breakpoints.phone]: 'inline' },
     fontVariantNumeric: 'tabular-nums',
   },
-  panel: { padding: 0 },
+  panel: { padding: 0, gap: 0, maxWidth: 'calc(100vw - 24px)' },
   head: {
     display: 'flex',
     alignItems: 'center',
     gap: 8,
-    height: 44,
+    minHeight: 44,
+    flexShrink: 0,
+    flexWrap: 'wrap',
     paddingInline: 14,
+    paddingBlock: 8,
     borderBottomWidth: 1,
     borderBottomStyle: 'solid',
     borderBottomColor: tokens.divider,
@@ -73,8 +76,13 @@ const styles = stylex.create({
 })
 
 const rowStyles = stylex.create({
+  list: { maxHeight: 'min(60dvh, 24rem)', overflowY: 'auto', overscrollBehavior: 'contain' },
   row: {
-    display: 'flex',
+    display: 'grid',
+    gridTemplateColumns: {
+      default: 'auto minmax(0, 1fr) auto',
+      [breakpoints.phone]: 'minmax(0, 1fr) auto',
+    },
     width: '100%',
     alignItems: 'center',
     gap: 12,
@@ -94,13 +102,14 @@ const rowStyles = stylex.create({
     },
     cursor: 'pointer',
   },
-  where: { flexShrink: 0, fontSize: 12.5, color: tokens.mutedForeground, whiteSpace: 'nowrap' },
+  where: {
+    fontSize: 12.5,
+    color: tokens.mutedForeground,
+    gridColumn: { default: null, [breakpoints.phone]: '1 / -1' },
+  },
   what: {
     minWidth: 0,
-    flexGrow: 1,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
+    overflowWrap: 'anywhere',
     fontSize: 13,
   },
   subject: { fontWeight: 500 },
@@ -125,7 +134,7 @@ export function ProblemRows({
   onGo: (problem: EditorProblem) => void
 }) {
   return (
-    <div data-testid="pending-list">
+    <div data-testid="pending-list" {...stylex.props(rowStyles.list)}>
       {problems.map((problem, index) => {
         const words = problemWords(problem)
         return (
@@ -147,7 +156,7 @@ export function ProblemRows({
                 </>
               )}
             </span>
-            <span {...stylex.props(rowStyles.what)} title={words}>
+            <span {...stylex.props(rowStyles.what)}>
               {problem.subject !== undefined && problem.subject !== '' && (
                 <span {...stylex.props(rowStyles.subject)}>{problem.subject} </span>
               )}

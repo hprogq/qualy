@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { EllipsisIcon } from 'lucide-react'
 import { Button } from '@qualy/ui/button'
+import { Collapsible, CollapsibleContent } from '@qualy/ui/collapsible'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -84,17 +85,37 @@ export function RosterUnitTree({
     }
     return { tops, children }
   }, [units])
-  const rows: { unit: Unit; depth: number }[] = []
-  const walk = (unit: Unit, depth: number) => {
-    rows.push({ unit, depth })
-    if (collapsed.has(unit.id)) return
-    for (const child of children.get(unit.id) ?? []) walk(child, depth + 1)
-  }
-  if (term === '') for (const top of tops) walk(top, 0)
-  else {
-    for (const unit of units) {
-      if (unit.name.toLowerCase().includes(term)) rows.push({ unit, depth: 0 })
-    }
+  const matches = units.filter((unit) => unit.name.toLowerCase().includes(term))
+  const row = (unit: Unit, depth: number) => (
+    <TreeRow
+      key={unit.id}
+      name={unit.name}
+      depth={depth}
+      found={term}
+      open={selected === unit.id}
+      expandable={term === '' && children.has(unit.id)}
+      collapsed={collapsed.has(unit.id)}
+      expandLabel={m.roster_unitsFold()}
+      onToggle={() => {
+        const next = new Set(collapsed)
+        if (!next.delete(unit.id)) next.add(unit.id)
+        setCollapsed(next)
+      }}
+      onOpen={() => onSelect(selected === unit.id ? '' : unit.id)}
+    />
+  )
+  const branch = (unit: Unit, depth: number): React.ReactNode => {
+    const descendants = children.get(unit.id)
+    if (descendants === undefined) return row(unit, depth)
+    const open = !collapsed.has(unit.id)
+    return (
+      <Collapsible key={unit.id} open={open}>
+        {row(unit, depth)}
+        <CollapsibleContent>
+          <div inert={!open}>{descendants.map((child) => branch(child, depth + 1))}</div>
+        </CollapsibleContent>
+      </Collapsible>
+    )
   }
   const menu = (
     <DropdownMenu>
@@ -164,25 +185,10 @@ export function RosterUnitTree({
                 onOpen={() => onSelect('')}
               />
             )}
-            {rows.map(({ unit, depth }) => (
-              <TreeRow
-                key={unit.id}
-                name={unit.name}
-                depth={depth}
-                found={term}
-                open={selected === unit.id}
-                expandable={term === '' && children.has(unit.id)}
-                collapsed={collapsed.has(unit.id)}
-                expandLabel={m.roster_unitsFold()}
-                onToggle={() => {
-                  const next = new Set(collapsed)
-                  if (!next.delete(unit.id)) next.add(unit.id)
-                  setCollapsed(next)
-                }}
-                onOpen={() => onSelect(selected === unit.id ? '' : unit.id)}
-              />
-            ))}
-            {rows.length === 0 && <CardEmpty>{m.roster_unitsEmpty()}</CardEmpty>}
+            {term === ''
+              ? tops.map((unit) => branch(unit, 0))
+              : matches.map((unit) => row(unit, 0))}
+            {matches.length === 0 && <CardEmpty>{m.roster_unitsEmpty()}</CardEmpty>}
           </>
         )}
       </div>

@@ -27,7 +27,7 @@ import { Skeleton } from '@qualy/ui/skeleton'
 import { toast } from '@qualy/ui/toast'
 import { assessmentApi } from '../api.ts'
 
-import { BatchHeaderNotice, BatchScreen } from '../batch/BatchScreen.tsx'
+import { BatchScreen } from '../batch/BatchScreen.tsx'
 import { ItemEditor } from './editor/ItemEditor.tsx'
 import { GroupEditor } from './GroupEditor.tsx'
 import { PaperStart } from './PaperStart.tsx'
@@ -1005,19 +1005,18 @@ function Editor({
       xstyle={unread === null ? styles.grow : styles.failure}
     >
       <div {...stylex.props(styles.grow, styles.editorColumn)}>
-        {selection === null && (
-          <BatchHeaderNotice>
-            <ReviewGapNotice
-              batchId={batchId}
-              groups={alerts.data?.groups ?? []}
-              canAppoint={canAppoint}
-            />
-          </BatchHeaderNotice>
-        )}
-
         <Drill move={move} drillKey={drillKey} className={stylex.props(styles.grow).className}>
           {selection === null ? structure : editorArea}
         </Drill>
+        {selection === null && batchStatus !== 'archived' && (
+          <ReviewGapNotice
+            batchId={batchId}
+            groups={alerts.data?.groups ?? []}
+            canAppoint={canAppoint}
+            cannotSubmit={alerts.data?.unreachable.cannotSubmit ?? 0}
+            cannotAppeal={alerts.data?.unreachable.cannotAppeal ?? 0}
+          />
+        )}
       </div>
 
       {/* kept mounted while it shuts, or it would vanish rather than close */}

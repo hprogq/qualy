@@ -403,6 +403,8 @@ const open = (
     slowReads?: number
     /** the questions whose current route finds some of the roster nowhere */
     reach?: readonly unknown[]
+    cannotSubmit?: number
+    cannotAppeal?: number
     /** the units a step's roles are held at, and by how many */
     coverage?: readonly unknown[]
     /** where the round stands, when not being set up */
@@ -494,7 +496,12 @@ const open = (
         reviewAlerts: () => {
           const result = {
             groups: had.alerts ?? [],
-            unreachable: { ...NOBODY_UNREACHABLE, routes: had.reach ?? [] },
+            unreachable: {
+              ...NOBODY_UNREACHABLE,
+              routes: had.reach ?? [],
+              cannotSubmit: had.cannotSubmit ?? 0,
+              cannotAppeal: had.cannotAppeal ?? 0,
+            },
           }
           return had.alertsAfter === undefined
             ? Effect.succeed(result)
@@ -2968,7 +2975,7 @@ describe('review waiting for a reviewer', () => {
     },
   ]
 
-  it('says in one amber line how much waits, and lays the units out only when asked', async () => {
+  it('shows waiting reviews in the common dock and opens their units only when asked', async () => {
     await open({ alerts: gaps })
     const notice = page.getByTestId('review-gap-notice')
     await expect.element(notice).toHaveAttribute('data-waiting', '10')
@@ -2976,9 +2983,14 @@ describe('review waiting for a reviewer', () => {
     await expect.element(notice).toHaveAttribute('data-units', '3')
     // the rows wait behind a press: the page under this is the paper
     expect(page.getByTestId('review-gap-row').elements()).toHaveLength(0)
-    expect(page.getByTestId('batch-band').element().contains(notice.element())).toBe(true)
+    expect(page.getByTestId('batch-band').element().contains(notice.element())).toBe(false)
+    const dock = page.getByTestId('page-notices').element()
+    expect(dock.contains(notice.element())).toBe(true)
+    expect(getComputedStyle(dock).position).toBe('fixed')
+    expect(notice.element().hasAttribute('title')).toBe(false)
+    expect(notice.element().querySelector('[title]')).toBeNull()
     const bandHeight = page.getByTestId('batch-band').element().getBoundingClientRect().height
-    await notice.getByRole('button', { name: '查看' }).click()
+    await notice.click()
     const details = page.getByTestId('review-gap-details')
     await expect
       .element(details.getByRole('link', { name: '去任命' }))
@@ -3020,7 +3032,7 @@ describe('review waiting for a reviewer', () => {
         element.getAttribute('aria-live') === null)
     const inside = [notice.element(), ...notice.element().querySelectorAll('*')]
     expect(inside.every(quiet)).toBe(true)
-    await notice.getByRole('button', { name: '查看' }).click()
+    await notice.click()
     const appoint = page
       .getByTestId('review-gap-details')
       .getByRole('link', { name: '去任命' })
@@ -3032,8 +3044,8 @@ describe('review waiting for a reviewer', () => {
     await open({ alerts: gaps, manage: false })
     const notice = page.getByTestId('review-gap-notice')
     await expect.element(notice).toBeVisible()
-    await expect.element(notice.getByRole('button', { name: '查看' })).toBeVisible()
-    await notice.getByRole('button', { name: '查看' }).click()
+    expect(notice.element().tagName).toBe('BUTTON')
+    await notice.click()
     expect(page.getByTestId('review-gap-details').getByRole('link').elements()).toHaveLength(0)
   })
 
@@ -3045,6 +3057,51 @@ describe('review waiting for a reviewer', () => {
     expect(document.querySelector('[data-testid="review-gap-notice"]')).toBeNull()
   })
 
+  it('opens unreachable project details from the common warning dock without reviewer gaps', async () => {
+    await open({
+      cannotSubmit: 2,
+      reach: [
+        {
+          itemId: ITEM_ID,
+          itemTitle: '志愿服务活动',
+          route: 'normal',
+          participants: 2,
+          levelNames: ['专业方向'],
+        },
+      ],
+    })
+    const notice = page.getByTestId('items-unreachable-notice')
+    await expect.element(notice).toBeVisible()
+    expect(notice.element().tagName).toBe('BUTTON')
+    expect(notice.element().hasAttribute('title')).toBe(false)
+    expect(notice.element().querySelector('[title]')).toBeNull()
+    expect(page.getByTestId('review-gap-notice').elements()).toHaveLength(0)
+    const dock = page.getByTestId('page-notices').element()
+    expect(getComputedStyle(dock).position).toBe('fixed')
+    expect(dock.contains(notice.element())).toBe(true)
+    await notice.click()
+    const dialog = page.getByTestId('unreachable-dialog')
+    await expect.element(dialog).toBeVisible()
+    await expect.element(dialog.getByRole('heading', { name: '无法申报的项目' })).toBeVisible()
+    await expect.element(dialog.getByText('志愿服务活动', { exact: true })).toBeVisible()
+    await expect.element(dialog.getByRole('button', { name: '查看人员' })).toBeVisible()
+  })
+
+  it('keeps unresolvable project warnings off an archived batch', async () => {
+    await open({
+      status: 'archived',
+      alerts: gaps,
+      cannotSubmit: 2,
+      cannotAppeal: 3,
+      items: [{ ...officerItem(), scoreGroupId: PAPER_ID }],
+    })
+    await expect.element(page.getByTestId('structure-table')).toBeVisible()
+    expect(page.getByTestId('review-gap-notice').elements()).toHaveLength(0)
+    expect(page.getByTestId('items-unreachable-notice').elements()).toHaveLength(0)
+    expect(page.getByTestId('items-unappealable-notice').elements()).toHaveLength(0)
+    expect(page.getByTestId('page-notices').elements()).toHaveLength(0)
+  })
+
   for (const locale of ['zh-CN', 'en-US'] as const) {
     it(`does not move the paper when the gap summary arrives on a phone in ${locale}`, async () => {
       await page.viewport(390, 844)
@@ -3052,27 +3109,34 @@ describe('review waiting for a reviewer', () => {
       const answer = new Promise<void>((resolve) => {
         reply = resolve
       })
-      await open({ alerts: gaps, locale, alertsAfter: answer })
+      await open({ alerts: gaps, locale, alertsAfter: answer, inShell: true })
       await expect.element(page.getByTestId('structure-table')).toBeVisible()
       const top = page.getByTestId('structure-table').element().getBoundingClientRect().top
       reply()
       await expect.element(page.getByTestId('review-gap-notice')).toBeVisible()
       expect(page.getByTestId('structure-table').element().getBoundingClientRect().top).toBe(top)
-      const hint = page.getByTestId('review-gap-notice').element()
-        .parentElement!.previousElementSibling!
-      expect(getComputedStyle(hint).visibility).toBe('hidden')
+      const dock = page.getByTestId('page-notices').element()
+      expect(getComputedStyle(dock).position).toBe('fixed')
+      expect(dock.contains(page.getByTestId('review-gap-notice').element())).toBe(true)
+      expect(page.getByTestId('batch-band').element().contains(dock)).toBe(false)
       await page.viewport(1280, 800)
     })
 
     it(`keeps review-gap details reachable on a phone in ${locale}`, async () => {
       await page.viewport(390, 844)
-      await open({ alerts: gaps, locale })
+      await open({ alerts: gaps, locale, inShell: true })
       const notice = page.getByTestId('review-gap-notice')
       await expect.element(notice).toBeVisible()
       const bounds = notice.element().getBoundingClientRect()
       expect(bounds.left).toBeGreaterThanOrEqual(0)
       expect(bounds.right).toBeLessThanOrEqual(390)
-      await notice.getByRole('button').click()
+      const main = document.querySelector('main')!
+      const content = main.getBoundingClientRect()
+      expect(bounds.top).toBeGreaterThanOrEqual(content.top)
+      expect(bounds.bottom).toBeLessThanOrEqual(
+        content.bottom - (parseFloat(getComputedStyle(main).paddingBottom) || 0),
+      )
+      await notice.click()
       const dialog = page.getByTestId('review-gap-details')
       await expect.element(dialog).toBeVisible()
       expect(page.getByTestId('review-gap-row').elements()).toHaveLength(4)

@@ -77,25 +77,6 @@ const styles = stylex.create({
   bannerSeat: {
     position: 'relative',
   },
-  headerDescription: {
-    position: 'relative',
-    minWidth: 0,
-    width: '100%',
-  },
-  descriptionHint: {
-    visibility: {
-      default: 'visible',
-      ':has(+ [data-slot="batch-header-notice"]:not(:empty))': 'hidden',
-    },
-  },
-  headerNotice: {
-    display: { default: 'flex', ':empty': 'none' },
-    position: 'absolute',
-    inset: 0,
-    maxWidth: '100%',
-    alignItems: 'center',
-    gap: 8,
-  },
   bannerShown: {
     opacity: 1,
     transitionProperty: 'opacity',
@@ -169,10 +150,7 @@ const styles = stylex.create({
   },
 })
 
-const HeaderSlots = createContext<{ banner: HTMLElement | null; notice: HTMLElement | null }>({
-  banner: null,
-  notice: null,
-})
+const BannerSlot = createContext<HTMLElement | null>(null)
 
 /** what a reader is told on a screen of the batch that is for somebody else */
 const DENIED = {
@@ -213,14 +191,8 @@ function Arrival({
  * band would put half an editor in its parent.
  */
 export function BatchBanner({ children }: { children: ReactNode }) {
-  const { banner } = useContext(HeaderSlots)
-  return <Portal into={banner}>{children}</Portal>
-}
-
-/** Replace the heading's hint with a notice without moving the section below it. */
-export function BatchHeaderNotice({ children }: { children: ReactNode }) {
-  const { notice } = useContext(HeaderSlots)
-  return <Portal into={notice}>{children}</Portal>
+  const slot = useContext(BannerSlot)
+  return <Portal into={slot}>{children}</Portal>
 }
 
 export function BatchScreen({
@@ -280,7 +252,6 @@ export function BatchScreen({
   const query = useApiQuery(assessmentApi)
 
   const [slot, setSlot] = useState<HTMLDivElement | null>(null)
-  const [noticeSlot, setNoticeSlot] = useState<HTMLDivElement | null>(null)
   // the section's own name is what shows unless it says otherwise
   const showing = banner ?? 'section'
   const noting = notes ?? showing === 'section'
@@ -382,7 +353,7 @@ export function BatchScreen({
   }
 
   return (
-    <HeaderSlots.Provider value={{ banner: slot, notice: noticeSlot }}>
+    <BannerSlot.Provider value={slot}>
       {/* Edge to edge, cutting the content area in two: a band inset inside
           the page's own width is a card pretending to be a header, and it
           reads as one more box among the boxes below it. */}
@@ -416,18 +387,7 @@ export function BatchScreen({
               >
                 <PageHeader
                   title={title}
-                  description={
-                    description === undefined || description === '' ? undefined : (
-                      <div {...stylex.props(styles.headerDescription)}>
-                        <div {...stylex.props(styles.descriptionHint)}>{description}</div>
-                        <div
-                          ref={setNoticeSlot}
-                          data-slot="batch-header-notice"
-                          {...stylex.props(styles.headerNotice)}
-                        />
-                      </div>
-                    )
-                  }
+                  description={description}
                   actions={actions}
                   variant="banner"
                 />
@@ -474,6 +434,6 @@ export function BatchScreen({
           )}
         </AsyncSection>
       </PageContainer>
-    </HeaderSlots.Provider>
+    </BannerSlot.Provider>
   )
 }

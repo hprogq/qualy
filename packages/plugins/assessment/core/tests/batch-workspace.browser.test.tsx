@@ -578,6 +578,7 @@ describe('the administration lane of the overview', () => {
       expect(dots().sort((a, b) => (a ?? '').localeCompare(b ?? ''))).toEqual([
         'assessment/batch-access/rail',
         'assessment/batch-items/rail',
+        'assessment/batch-results/rail',
       ]),
     )
     // the entry reads as one that needs attention to whoever hears the rail
@@ -588,6 +589,39 @@ describe('the administration lane of the overview', () => {
         .querySelector('[data-navigation="assessment/batch-access/rail"][data-testid="rail-alert"]')
         ?.getAttribute('data-tone'),
     ).toBe('warning')
+  })
+
+  it('lights the roster and project entries when only two people cannot submit', async () => {
+    await page.viewport(1280, 800)
+    await shelled(`/assessment/batches/${BATCH_ID}`, {
+      reviewAlerts: () =>
+        Effect.succeed({
+          groups: [],
+          unreachable: {
+            routes: [
+              {
+                itemId: 'item-a',
+                itemTitle: '志愿服务活动',
+                route: 'normal',
+                participants: 2,
+                levelNames: ['专业方向'],
+              },
+            ],
+            cannotSubmit: 2,
+            cannotAppeal: 0,
+          },
+        }),
+    })
+    const dots = () => [...document.querySelectorAll('[data-testid="rail-alert"]')]
+    await expect.poll(() => dots().length).toBe(2)
+    expect(
+      dots()
+        .map((dot) => dot.getAttribute('data-navigation'))
+        .sort((a, b) => (a ?? '').localeCompare(b ?? '')),
+    ).toEqual(['assessment/batch-items/rail', 'assessment/batch-results/rail'])
+    expect(dots().every((dot) => dot.getAttribute('data-tone') === 'warning')).toBe(true)
+    expect(row('admin-placements')).toBeNull()
+    expect(row('admin-unreachable')?.getAttribute('data-count')).toBe('2')
   })
 
   for (const status of ['active', 'archived'] as const) {

@@ -49,7 +49,6 @@ import { VisuallyHidden } from '@qualy/ui/visually-hidden'
 import { personCard } from '@qualy/ui-contract'
 import { BATCH_STAFF_CODES } from '../../permission-codes.ts'
 import { assessmentApi } from '../api.ts'
-import { BatchHeaderNotice } from '../batch/BatchScreen.tsx'
 
 import { AccessAdjustDialog } from './AccessAdjustDialog.tsx'
 import { AccessSyncDialog } from './AccessSyncDialog.tsx'
@@ -737,16 +736,6 @@ export function AccessPanel({
     <div {...stylex.props(styles.page)}>
       <Feedback message={failure} />
 
-      {summary.data && (
-        <BatchHeaderNotice>
-          <AccessSyncNotice
-            pendingTotal={archived ? 0 : summary.data.pendingTotal}
-            lapsedTotal={summary.data.lapsedTotal}
-            onOpen={() => setMerging(true)}
-          />
-        </BatchHeaderNotice>
-      )}
-
       <AccessSyncDialog
         batchId={batchId}
         archived={archived}
@@ -774,6 +763,14 @@ export function AccessPanel({
           {list}
         </AsyncSection>
       </section>
+
+      {summary.data && (
+        <AccessSyncNotice
+          pendingTotal={archived ? 0 : summary.data.pendingTotal}
+          lapsedTotal={summary.data.lapsedTotal}
+          onOpen={() => setMerging(true)}
+        />
+      )}
 
       {/* mounted whether or not it is open: unmounting it the moment the
           answer arrives cuts its closing animation off at the knees */}

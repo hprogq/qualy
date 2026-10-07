@@ -1,8 +1,8 @@
 import { useLocale } from '@qualy/web-i18n'
-import { useEffect, useId, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
-import { ChevronDownIcon, CircleCheckIcon } from 'lucide-react'
+import { ArrowLeftIcon, ChevronRightIcon, CircleCheckIcon } from 'lucide-react'
 import { PageLink, useApiQuery, useLoadFailure, usePageHref } from '@qualy/web-runtime'
 
 import { AsyncSection } from '@qualy/ui/admin'
@@ -11,14 +11,12 @@ import {
   Dialog,
   DialogBody,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@qualy/ui/dialog'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { assessmentApi } from '../api.ts'
 
 import { DialogBlank } from '../DialogBlank.tsx'
@@ -31,15 +29,22 @@ import * as m from '#messages'
 // A question's ordinary route asks, step by step, for kinds of unit; somebody
 // who sits under none of them has nowhere for their filing to go (§32.93).
 // The two ways out are the question's and the list's: change the route, or
-// take the people off. So each question says what its steps ask for, leads
-// to its settings, and shows its people a page at a time on request - a
-// school's worth of names is not laid out on arrival - each of whom opens
-// on a press.
+// take the people off. A question opens a separate paginated detail inside
+// this dialog, keeping its people out of the list of other questions.
 
 const styles = stylex.create({
   // as tall as what it holds, up to a ceiling where the questions scroll
   panel: { maxHeight: 'min(90dvh, 44rem)' },
+  dialogHead: { paddingInlineEnd: 28 },
   body: { gap: 12 },
+  detail: { overflowY: 'hidden' },
+  detailHead: {
+    display: 'flex',
+    flexDirection: 'column',
+    flexShrink: 0,
+    gap: 12,
+  },
+  back: { alignSelf: 'flex-start' },
   waiting: { display: 'flex', flexDirection: 'column', gap: 8 },
   waitingRow: { height: 64, width: '100%' },
   list: {
@@ -48,11 +53,7 @@ const styles = stylex.create({
     margin: 0,
     padding: 0,
     listStyleType: 'none',
-    borderRadius: tokens.radiusMd,
-    borderWidth: 1,
-    borderStyle: 'solid',
-    borderColor: tokens.border,
-    backgroundColor: tokens.surface,
+    gap: 10,
   },
   question: {
     display: 'flex',
@@ -60,13 +61,15 @@ const styles = stylex.create({
     gap: 10,
     paddingInline: 16,
     paddingBlock: 12,
-    borderTopWidth: { default: 1, ':first-child': 0 },
-    borderTopStyle: 'solid',
-    borderTopColor: tokens.divider,
+    borderRadius: tokens.radiusMd,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    backgroundColor: tokens.surface,
   },
   head: {
     display: 'flex',
-    flexWrap: { default: 'nowrap', [breakpoints.phone]: 'wrap' },
+    flexWrap: 'wrap',
     alignItems: 'center',
     columnGap: 12,
     rowGap: 6,
@@ -79,7 +82,7 @@ const styles = stylex.create({
     fontWeight: 500,
     overflowWrap: 'anywhere',
   },
-  levels: { fontSize: 12.5, color: tokens.mutedForeground },
+  levels: { fontSize: 12.5, color: tokens.mutedForeground, overflowWrap: 'anywhere' },
   count: {
     flexShrink: 0,
     fontSize: 13,
@@ -87,9 +90,13 @@ const styles = stylex.create({
     color: tokens.mutedForeground,
     whiteSpace: 'nowrap',
   },
-  keys: { display: 'flex', flexShrink: 0, alignItems: 'center', gap: 6 },
-  chevron: { transitionProperty: 'transform', transitionDuration: '120ms' },
-  chevronOpen: { transform: 'rotate(180deg)' },
+  keys: {
+    display: 'flex',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
 })
 
 type Route = {
@@ -104,12 +111,14 @@ export function UnreachableDialog({
   open,
   onClose,
   onOpenPerson,
+  route: routeKind = 'normal',
 }: {
   batchId: string
   open: boolean
   onClose: () => void
-  /** open somebody's account, from the roster this dialog stands over */
-  onOpenPerson: (participantId: string) => void
+  /** Open an account when the caller has a roster context for it. */
+  onOpenPerson?: (participantId: string) => void
+  route?: 'normal' | 'escalation'
 }) {
   const query = useApiQuery(assessmentApi)
 
@@ -120,22 +129,42 @@ export function UnreachableDialog({
     enabled: open,
   })
   const routes: readonly Route[] = (alerts.data?.unreachable.routes ?? []).filter(
-    (route) => route.route === 'normal',
+    (route) => route.route === routeKind,
   )
-  // one question's people at a time: two lists open read as one
-  const [unfolded, setUnfolded] = useState<string | null>(null)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const selected = routes.find((route) => route.itemId === selectedId)
+  const selectedKey = selected?.itemId
+  const listRef = useRef<HTMLUListElement>(null)
+  const backRef = useRef<HTMLButtonElement>(null)
+  const previousSelection = useRef<string | undefined>(undefined)
   useEffect(() => {
-    if (!open) setUnfolded(null)
+    if (!open) setSelectedId(null)
   }, [open])
+  useEffect(() => {
+    const previous = previousSelection.current
+    previousSelection.current = selectedKey
+    if (!open) return
+    if (selectedKey !== undefined) {
+      backRef.current?.focus()
+    } else if (previous !== undefined) {
+      const row = [...(listRef.current?.children ?? [])].find(
+        (element) => element.getAttribute('data-item') === previous,
+      )
+      row?.querySelector<HTMLButtonElement>('button[data-open-people]')?.focus()
+    }
+  }, [open, selectedKey])
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
       <DialogContent data-testid="unreachable-dialog" size="44rem" xstyle={styles.panel}>
-        <DialogHeader>
-          <DialogTitle>{m.roster_unreachableTitle()}</DialogTitle>
-          {routes.length > 0 && <DialogDescription>{m.roster_unreachableHint()}</DialogDescription>}
+        <DialogHeader className={stylex.props(styles.dialogHead).className}>
+          <DialogTitle>
+            {routeKind === 'normal'
+              ? m.roster_unreachableTitle()
+              : m.roster_unreachableAppealTitle()}
+          </DialogTitle>
         </DialogHeader>
-        <DialogBody xstyle={styles.body}>
+        <DialogBody xstyle={[styles.body, selected !== undefined && styles.detail]}>
           <AsyncSection
             pending={alerts.isPending}
             error={alerts.isError ? failures.of(alerts.error) : null}
@@ -150,24 +179,46 @@ export function UnreachableDialog({
               </div>
             }
           >
-            {routes.length === 0 ? (
+            {selected !== undefined ? (
+              <>
+                <div {...stylex.props(styles.detailHead)}>
+                  <Button
+                    ref={backRef}
+                    size="sm"
+                    variant="ghost"
+                    className={stylex.props(styles.back).className}
+                    onClick={() => setSelectedId(null)}
+                  >
+                    <ArrowLeftIcon aria-hidden />
+                    {commonMessages.action_back()}
+                  </Button>
+                  <QuestionHeading route={selected} />
+                </div>
+                <UnreachablePeople
+                  key={`${selected.itemId}:${routeKind}`}
+                  batchId={batchId}
+                  of={{ itemId: selected.itemId, route: routeKind }}
+                  onOpenPerson={onOpenPerson}
+                />
+              </>
+            ) : routes.length === 0 ? (
               <DialogBlank
                 testId="unreachable-quiet"
                 icon={<CircleCheckIcon />}
-                title={m.roster_unreachableQuiet()}
+                title={
+                  routeKind === 'normal'
+                    ? m.roster_unreachableQuiet()
+                    : m.roster_unreachableAppealQuiet()
+                }
               />
             ) : (
-              <ul data-testid="unreachable-questions" {...stylex.props(styles.list)}>
+              <ul ref={listRef} data-testid="unreachable-questions" {...stylex.props(styles.list)}>
                 {routes.map((route) => (
                   <QuestionRow
                     key={route.itemId}
                     batchId={batchId}
                     route={route}
-                    unfolded={unfolded === route.itemId}
-                    onUnfold={() =>
-                      setUnfolded((now) => (now === route.itemId ? null : route.itemId))
-                    }
-                    onOpenPerson={onOpenPerson}
+                    onOpenPeople={() => setSelectedId(route.itemId)}
                   />
                 ))}
               </ul>
@@ -188,29 +239,17 @@ export function UnreachableDialog({
 function QuestionRow({
   batchId,
   route,
-  unfolded,
-  onUnfold,
-  onOpenPerson,
+  onOpenPeople,
 }: {
   batchId: string
   route: Route
-  unfolded: boolean
-  onUnfold: () => void
-  onOpenPerson: (participantId: string) => void
+  onOpenPeople: () => void
 }) {
-  const locale = useLocale()
-  const peopleId = useId()
   // a reader who cannot open the question's settings is not led to a closed door
   const settings = usePageHref('assessment/batch-items', {
     params: { batchId },
     search: { question: route.itemId },
   })
-  const levels =
-    route.levelNames.length === 0
-      ? null
-      : new Intl.ListFormat(locale, { type: 'conjunction', style: 'narrow' }).format(
-          route.levelNames,
-        )
   return (
     <li
       data-testid="unreachable-question"
@@ -218,52 +257,47 @@ function QuestionRow({
       data-count={route.participants}
       {...stylex.props(styles.question)}
     >
-      <div {...stylex.props(styles.head)}>
-        <span {...stylex.props(styles.what)}>
-          <span {...stylex.props(styles.title)}>{route.itemTitle}</span>
-          {levels !== null && (
-            <span {...stylex.props(styles.levels)}>{m.roster_unreachableLevels({ levels })}</span>
-          )}
-        </span>
-        <span {...stylex.props(styles.count)}>
-          {m.roster_unreachableCount({ count: route.participants })}
-        </span>
-        <span {...stylex.props(styles.keys)}>
-          {settings !== undefined && (
-            <Button size="sm" variant="outline" asChild>
-              <PageLink
-                page="assessment/batch-items"
-                params={{ batchId }}
-                search={{ question: route.itemId }}
-              >
-                {m.roster_unreachableEditQuestion()}
-              </PageLink>
-            </Button>
-          )}
-          <Button
-            size="sm"
-            variant="ghost"
-            aria-expanded={unfolded}
-            aria-controls={peopleId}
-            onClick={onUnfold}
-          >
-            {(unfolded ? m.roster_unreachableHidePeople : m.roster_unreachableShowPeople)()}
-            <ChevronDownIcon
-              aria-hidden
-              {...stylex.props(styles.chevron, unfolded && styles.chevronOpen)}
-            />
+      <QuestionHeading route={route} />
+      <div {...stylex.props(styles.keys)}>
+        {settings !== undefined && (
+          <Button size="sm" variant="outline" asChild>
+            <PageLink
+              page="assessment/batch-items"
+              params={{ batchId }}
+              search={{ question: route.itemId }}
+            >
+              {m.roster_unreachableEditQuestion()}
+            </PageLink>
           </Button>
-        </span>
+        )}
+        <Button size="sm" variant="secondary" data-open-people onClick={onOpenPeople}>
+          {m.roster_unreachableShowPeople()}
+          <ChevronRightIcon aria-hidden />
+        </Button>
       </div>
-      {unfolded && (
-        <div id={peopleId}>
-          <UnreachablePeople
-            batchId={batchId}
-            of={{ itemId: route.itemId, route: 'normal' }}
-            onOpenPerson={onOpenPerson}
-          />
-        </div>
-      )}
     </li>
+  )
+}
+
+function QuestionHeading({ route }: { route: Route }) {
+  const locale = useLocale()
+  const levels =
+    route.levelNames.length === 0
+      ? null
+      : new Intl.ListFormat(locale, { type: 'conjunction', style: 'narrow' }).format(
+          route.levelNames,
+        )
+  return (
+    <div {...stylex.props(styles.head)}>
+      <span {...stylex.props(styles.what)}>
+        <span {...stylex.props(styles.title)}>{route.itemTitle}</span>
+        {levels !== null && (
+          <span {...stylex.props(styles.levels)}>{m.roster_unreachableLevels({ levels })}</span>
+        )}
+      </span>
+      <span {...stylex.props(styles.count)}>
+        {m.roster_unreachableCount({ count: route.participants })}
+      </span>
+    </div>
   )
 }

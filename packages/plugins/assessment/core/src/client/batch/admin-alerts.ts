@@ -165,7 +165,11 @@ export function entryAlertTone(
         ? 'warning'
         : null
     case ALERTED_ENTRIES.roster:
-      return alerts.placements.changed > 0 || alerts.placements.unavailable > 0 ? 'warning' : null
+      return alerts.placements.changed > 0 ||
+        alerts.placements.unavailable > 0 ||
+        alerts.unreachable.cannotSubmit > 0
+        ? 'warning'
+        : null
     case ALERTED_ENTRIES.access:
       return alerts.accessPending > 0 ? 'warning' : alerts.accessLapsed > 0 ? 'info' : null
     default:

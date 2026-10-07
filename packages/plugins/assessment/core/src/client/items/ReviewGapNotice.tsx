@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
-import { TriangleAlertIcon } from 'lucide-react'
 import { PageLink, usePageHref } from '@qualy/web-runtime'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
@@ -16,35 +15,14 @@ import {
 import { UnitPath } from '@qualy/ui/unit-path'
 
 import { Tag } from './editor/Rows.tsx'
+import type { PageNotice } from '@qualy/ui/page-notices'
+import { BatchNotices } from '../batch/BatchNotices.tsx'
+import { UnreachableDialog } from '../roster/UnreachableDialog.tsx'
 import * as m from '#messages'
 
-// Review that has stopped for want of a reviewer, said in one line with the
-// way to the details in the page heading. Details open over the paper so
-// neither their arrival nor opening them moves the configuration underneath.
+// Configuration and staffing warnings share the page dock; each opens its details.
 
 const styles = stylex.create({
-  notice: {
-    display: 'flex',
-    minWidth: 0,
-    maxWidth: '100%',
-    alignItems: 'center',
-    gap: 8,
-    fontSize: 13,
-    lineHeight: '1.25rem',
-    color: tokens.foreground,
-  },
-  // the triangle says "waiting", in the colour everything waiting is said in,
-  // centred on the line of words beside it
-  icon: { flexShrink: 0, width: 16, height: 16, color: tokens.warning },
-  summary: {
-    minWidth: 0,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-    margin: 0,
-    color: tokens.mutedForeground,
-  },
-  open: { flexShrink: 0 },
   detail: {
     display: 'flex',
     minWidth: 0,
@@ -128,46 +106,69 @@ export function ReviewGapNotice({
   batchId,
   groups,
   canAppoint,
+  cannotSubmit = 0,
+  cannotAppeal = 0,
 }: {
   batchId: string
   /** where review waits, one row per unit, roles and reason */
   groups: readonly ReviewGap[]
   /** the reader may put people into the round's roles, so the way there is theirs */
   canAppoint: boolean
+  cannotSubmit?: number
+  cannotAppeal?: number
 }) {
   const [open, setOpen] = useState(false)
+  const [route, setRoute] = useState<'normal' | 'escalation' | null>(null)
   // the roles are given out on the round's people page; a reader who cannot
   // reach it is not offered a way that ends at a closed door
   const appointHref = usePageHref('assessment/batch-access', { params: { batchId } })
-  if (groups.length === 0) return null
   const waiting = groups.reduce((total, one) => total + one.waiting, 0)
   // a step that stopped at no unit is not a unit: it is said on its own row
   const units = new Set(groups.flatMap((one) => (one.nodeId === null ? [] : [one.nodeId]))).size
 
+  const notices: PageNotice[] = []
+  if (cannotSubmit > 0)
+    notices.push({
+      id: 'cannot-submit',
+      testId: 'items-unreachable-notice',
+      tone: 'warning',
+      label: m.roster_unreachablePrompt({ count: cannotSubmit }),
+      actionLabel: m.roster_unreachableOpen(),
+      onSelect: () => setRoute('normal'),
+    })
+  if (cannotAppeal > 0)
+    notices.push({
+      id: 'cannot-appeal',
+      testId: 'items-unappealable-notice',
+      tone: 'warning',
+      label: m.roster_unreachableAppealPrompt({ count: cannotAppeal }),
+      actionLabel: m.roster_unreachableOpen(),
+      onSelect: () => setRoute('escalation'),
+    })
+  if (groups.length > 0)
+    notices.push({
+      id: 'reviewers',
+      testId: 'review-gap-notice',
+      tone: 'warning',
+      label: m.items_stuckShort({ count: waiting }),
+      actionLabel: m.items_stuckShow(),
+      onSelect: () => setOpen(true),
+      attributes: {
+        'data-waiting': waiting,
+        'data-units': units,
+        'data-groups': groups.length,
+        'data-open': String(open),
+      },
+    })
   return (
     <>
-      <div
-        {...stylex.props(styles.notice)}
-        data-testid="review-gap-notice"
-        data-waiting={waiting}
-        data-units={units}
-        data-groups={groups.length}
-        data-open={open}
-      >
-        <TriangleAlertIcon aria-hidden {...stylex.props(styles.icon)} />
-        <p title={m.items_stuckSummary({ waiting, units })} {...stylex.props(styles.summary)}>
-          {m.items_stuckShort({ count: waiting })}
-        </p>
-        <Button
-          size="xs"
-          variant="outline"
-          aria-haspopup="dialog"
-          className={stylex.props(styles.open).className}
-          onClick={() => setOpen(true)}
-        >
-          {m.items_stuckShow()}
-        </Button>
-      </div>
+      <BatchNotices notices={notices} />
+      <UnreachableDialog
+        batchId={batchId}
+        open={route !== null}
+        route={route ?? 'normal'}
+        onClose={() => setRoute(null)}
+      />
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent size="48rem" data-testid="review-gap-details">
           <DialogHeader>

@@ -1,7 +1,7 @@
 import ParticipantResultsPage from '../src/client/result/ParticipantResultsPage.tsx'
 import { lazy } from 'react'
 import { describe, expect, it, vi } from 'vitest'
-import { page, userEvent } from 'vitest/browser'
+import { commands, page, userEvent } from 'vitest/browser'
 import { Effect, Queue, Stream } from 'effect'
 import { addressNow, apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
@@ -1190,6 +1190,47 @@ describe('the room the roster gives its rows', () => {
     await expect.poll(() => addressNow()).not.toContain('list-unit=')
   })
 
+  it('animates organization tree branches in both directions', async () => {
+    await commands.emulateMedia({ reducedMotion: 'no-preference' })
+    try {
+      await open({ listRosterUnits: deepUnits })
+      const tree = page.getByTestId('roster-unit-tree')
+      const toggle = tree.getByRole('button', { name: '展开或收起 示例大学', exact: true })
+      await expect.element(toggle).toBeVisible()
+      const region = toggle
+        .element()
+        .closest('[data-slot="collapsible"]')!
+        .querySelector<HTMLElement>('[data-slot="collapsible-content"]')!
+      const fullHeight = region.getBoundingClientRect().height
+      expect(fullHeight).toBeGreaterThan(100)
+      for (const closing of [true, false]) {
+        await toggle.click()
+        const heightMotion = () =>
+          region
+            .getAnimations()
+            .find((animation) =>
+              (animation.effect as KeyframeEffect)
+                .getKeyframes()
+                .some((frame) => 'height' in frame),
+            )
+        await expect.poll(heightMotion).toBeDefined()
+        const motion = heightMotion()!
+        motion.pause()
+        motion.currentTime = Number((motion.effect as KeyframeEffect).getTiming().duration) / 2
+        const halfway = region.getBoundingClientRect().height
+        expect(halfway).toBeGreaterThan(0)
+        expect(halfway).toBeLessThan(fullHeight)
+        expect(region.querySelector<HTMLElement>('[inert]') !== null).toBe(closing)
+        motion.finish()
+        await expect
+          .poll(() => region.getBoundingClientRect().height)
+          .toBeCloseTo(closing ? 0 : fullHeight, 2)
+      }
+    } finally {
+      await commands.emulateMedia({ reducedMotion: 'reduce' })
+    }
+  })
+
   // The words for a missing number run past the number's column in English;
   // under the column's head a dash says it, and the words stay a hover and
   // a reader away rather than cut off at the column's edge.
@@ -1322,9 +1363,13 @@ describe('the room the roster gives its rows', () => {
     await open()
     const tree = page.getByRole('button', { name: '软件学院', exact: true })
     await expect.element(tree).toBeVisible()
+    await expect.element(page.getByTestId('split-handle')).toHaveAttribute('aria-valuenow', '312')
+    const roster = page.getByTestId('roster').element()
     const beside = page.getByTestId('roster').element().getBoundingClientRect().width
     await page.getByRole('button', { name: '收起组织树' }).click()
-    await expect.element(tree).not.toBeInTheDocument()
+    await expect.element(page.getByTestId('roster-unit-tree')).not.toBeVisible()
+    expect(page.getByTestId('roster').element()).toBe(roster)
+    expect(document.activeElement).toBe(page.getByTestId('roster-tree-toggle').element())
     // the list takes the room the tree gave up
     await expect
       .poll(() => page.getByTestId('roster').element().getBoundingClientRect().width)
@@ -1441,7 +1486,7 @@ describe('people the review steps find nowhere', () => {
     await open({ reviewAlerts: alerts(12), listUnreachableParticipants: unreachable })
     const notice = page.getByTestId('unreachable-notice')
     await expect.element(notice).toHaveAttribute('data-count', '12')
-    await notice.getByRole('button').click()
+    await notice.click()
     const dialog = page.getByTestId('unreachable-dialog')
     await expect.element(dialog).toBeVisible()
     // the questions people cannot file; an appeal's route is another matter
@@ -1472,9 +1517,7 @@ describe('people the review steps find nowhere', () => {
     expect(page.getByTestId('unreachable-notice').elements()).toHaveLength(0)
   })
 
-  // Both actions share the title row, including on a phone. Their complete
-  // explanations remain available even when only counts fit beside it.
-  it('holds both notices in the title row without a separate band', async () => {
+  it('keeps roster warnings in the shared bottom stack without redundant tooltips', async () => {
     const moved = () =>
       Effect.succeed({ items: [], nextCursor: null, changedTotal: 2, unavailableTotal: 0 })
     for (const [wide, high] of [
@@ -1486,25 +1529,28 @@ describe('people the review steps find nowhere', () => {
         reviewAlerts: alerts(12),
         listParticipantPlacements: moved,
       })
-      const box = page.getByTestId('roster-notices')
-      await expect.element(box.getByTestId('placement-notice')).toBeVisible()
+      const box = page.getByTestId('page-notices')
       await expect.element(box.getByTestId('unreachable-notice')).toBeVisible()
+      expect(box.getByTestId('placement-notice').elements()).toHaveLength(0)
+      await box.hover()
+      await expect.element(box.getByTestId('placement-notice')).toBeVisible()
       const placed = box.getByTestId('placement-notice').element().getBoundingClientRect()
       const stuck = box.getByTestId('unreachable-notice').element().getBoundingClientRect()
-      expect(stuck.top).toBe(placed.top)
+      expect(placed.bottom).toBeLessThan(stuck.top)
+      expect(stuck.bottom).toBeLessThan(high)
+      expect(placed.left).toBeGreaterThanOrEqual(0)
+      expect(stuck.right).toBeLessThanOrEqual(wide)
+      expect(getComputedStyle(box.element()).position).toBe('fixed')
       const heading = page.getByTestId('roster-heading')
-      expect(heading.element().contains(box.element())).toBe(true)
-      const title = heading.getByRole('heading').element().getBoundingClientRect()
-      expect(Math.abs(placed.top + placed.height / 2 - title.top - title.height / 2)).toBeLessThan(
-        2,
-      )
+      expect(heading.element().contains(box.element())).toBe(false)
+      expect(box.element().querySelector('[title]')).toBeNull()
       for (const notice of [
         box.getByTestId('placement-notice'),
         box.getByTestId('unreachable-notice'),
       ]) {
-        const button = notice.getByRole('button')
-        expect(button.element().getAttribute('aria-label')).not.toBe('')
-        expect(button.element().getBoundingClientRect().width).toBeGreaterThanOrEqual(32)
+        expect(notice.element().tagName).toBe('BUTTON')
+        expect(notice.element().getAttribute('aria-label')).not.toBe('')
+        expect(notice.element().getBoundingClientRect().width).toBeGreaterThanOrEqual(32)
       }
       // both wait on a decision, and say so in the same colour
       const mark = (line: Element) => getComputedStyle(line.querySelector('svg')!).color
@@ -1551,8 +1597,9 @@ describe('people the review steps find nowhere', () => {
         const top = page.getByTestId('roster').element().getBoundingClientRect().top
         const height = page.getByTestId('roster-heading').element().getBoundingClientRect().height
         release()
-        await expect.element(page.getByTestId('placement-notice')).toBeVisible()
         await expect.element(page.getByTestId('unreachable-notice')).toBeVisible()
+        await page.getByTestId('page-notices').hover()
+        await expect.element(page.getByTestId('placement-notice')).toBeVisible()
         expect(page.getByTestId('roster').element().getBoundingClientRect().top).toBe(top)
         expect(page.getByTestId('roster-heading').element().getBoundingClientRect().height).toBe(
           height,
@@ -1614,6 +1661,22 @@ describe('people the review steps find nowhere', () => {
     await expect.element(rows().first()).toBeVisible()
     expect(asked).not.toHaveBeenCalled()
     expect(page.getByTestId('unreachable-notice').elements()).toHaveLength(0)
+  })
+
+  it('does not read or show roster warnings for an archived batch', async () => {
+    const asked = vi.fn(alerts(3))
+    const placements = vi.fn(() =>
+      Effect.succeed({ items: [], nextCursor: null, changedTotal: 2, unavailableTotal: 0 }),
+    )
+    await open({
+      reviewAlerts: asked,
+      listParticipantPlacements: placements,
+      getBatch: () => Effect.succeed({ batch: batch({ status: 'archived' }) }),
+    })
+    await expect.element(rows().first()).toBeVisible()
+    expect(asked).not.toHaveBeenCalled()
+    expect(placements).not.toHaveBeenCalled()
+    expect(page.getByTestId('page-notices').elements()).toHaveLength(0)
   })
 
   it('keeps the add dialog open to say what the people added leave the roster with', async () => {

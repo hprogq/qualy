@@ -2,10 +2,11 @@ import { useState } from 'react'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { useApiQuery, useLoadFailure } from '@qualy/web-runtime'
+import { useTerm } from '@qualy/plugin-settings/client/terms'
+import { authTerms } from '@qualy/auth-contract/terms'
 
 import { AsyncSection } from '@qualy/ui/admin'
 import { Pager } from '@qualy/ui/pager'
-import { UnitPath } from '@qualy/ui/unit-path'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { assessmentApi } from '../api.ts'
@@ -29,26 +30,28 @@ const styles = stylex.create({
     margin: 0,
     padding: 0,
     listStyleType: 'none',
+    minHeight: 0,
     borderRadius: tokens.radiusMd,
     backgroundColor: tokens.surfaceInset,
+    maxHeight: 'min(44dvh, 24rem)',
+    overflowY: 'auto',
+    overscrollBehavior: 'contain',
   },
   person: {
     display: 'grid',
     width: '100%',
-    // the same columns on every row, so the numbers and units line up down
-    // the list; a long name gives way first
     gridTemplateColumns: {
-      default: 'minmax(0, 10rem) 6.5rem minmax(0, 1fr)',
-      [breakpoints.phone]: 'minmax(0, 1fr) auto',
+      default: 'minmax(0, 12rem) minmax(0, 1fr)',
+      [breakpoints.phone]: 'minmax(0, 1fr)',
     },
     alignItems: 'center',
     columnGap: 12,
     rowGap: 2,
-    minHeight: 36,
+    minHeight: 56,
     borderWidth: 0,
     borderRadius: tokens.radiusMd,
-    paddingInline: 10,
-    paddingBlock: 6,
+    paddingInline: 12,
+    paddingBlock: 10,
     backgroundColor: 'transparent',
     fontFamily: 'inherit',
     fontSize: 13,
@@ -64,19 +67,22 @@ const styles = stylex.create({
     outline: 'none',
     boxShadow: { default: 'none', ':focus-visible': `inset 0 0 0 2px ${tokens.focusRing}` },
   },
-  personName: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  identity: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 2 },
+  personName: { minWidth: 0, overflowWrap: 'anywhere', fontWeight: 500 },
   personNumber: {
     fontVariantNumeric: 'tabular-nums',
     color: tokens.mutedForeground,
-    whiteSpace: 'nowrap',
+    overflowWrap: 'anywhere',
+    fontSize: 12,
   },
   personUnit: {
-    display: 'flex',
     minWidth: 0,
     color: tokens.mutedForeground,
+    fontSize: 12,
+    overflowWrap: 'anywhere',
     gridColumn: { default: null, [breakpoints.phone]: '1 / -1' },
   },
-  pages: { display: 'flex', paddingTop: 4 },
+  pages: { display: 'flex', paddingTop: 8, flexShrink: 0 },
 })
 
 /** which route's people: a saved question's, or the unit kinds a route being composed asks for */
@@ -95,6 +101,7 @@ export function UnreachablePeople({
   onOpenPerson?: (participantId: string) => void
 }) {
   const query = useApiQuery(assessmentApi)
+  const businessNo = useTerm(authTerms.businessNumber)
 
   const failures = useLoadFailure()
   const [page, setPage] = useState(1)
@@ -126,14 +133,14 @@ export function UnreachablePeople({
           )
           const said = (
             <>
-              <span title={row.displayName} {...stylex.props(styles.personName)}>
-                {row.displayName}
-              </span>
-              <span {...stylex.props(styles.personNumber)}>{row.businessNo ?? ''}</span>
-              {steps.length > 0 && (
-                <span {...stylex.props(styles.personUnit)}>
-                  <UnitPath steps={steps} />
+              <span {...stylex.props(styles.identity)}>
+                <span {...stylex.props(styles.personName)}>{row.displayName}</span>
+                <span {...stylex.props(styles.personNumber)}>
+                  {row.businessNo || m.roster_noBusinessNo({ businessNo })}
                 </span>
+              </span>
+              {steps.length > 0 && (
+                <span {...stylex.props(styles.personUnit)}>{steps.join(' / ')}</span>
               )}
             </>
           )
