@@ -14,6 +14,7 @@ import {
   DropdownMenuTrigger,
 } from '@qualy/ui/dropdown-menu'
 import { Card, CardEmpty, CardHead, SearchField, TreeRow } from '@qualy/ui/screen'
+import { ScrollAreaAutosize } from '@qualy/ui/scroll-area'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import * as m from '#messages'
@@ -47,10 +48,8 @@ const styles = stylex.create({
     flexGrow: 1,
     flexShrink: 1,
     flexBasis: '0%',
-    overflowY: 'auto',
-    overscrollBehavior: 'contain',
-    padding: 6,
   },
+  rows: { padding: 6 },
   listBare: { paddingInline: 0 },
   loading: { display: 'flex', flexDirection: 'column', gap: 16, padding: 10 },
 })
@@ -167,31 +166,38 @@ export function RosterUnitTree({
         />
         {bare && menu}
       </div>
-      <div data-testid="roster-unit-scroll" {...stylex.props(styles.list, bare && styles.listBare)}>
-        {loading ? (
-          <div aria-hidden {...stylex.props(styles.loading)}>
-            {['72%', '60%', '80%', '56%'].map((width) => (
-              <Skeleton key={width} width={width} height={14} />
-            ))}
-          </div>
-        ) : (
-          <>
-            {term === '' && (
-              <TreeRow
-                name={m.roster_unitsAll()}
-                depth={0}
-                open={selected === ''}
-                expandLabel={m.roster_unitsFold()}
-                onOpen={() => onSelect('')}
-              />
-            )}
-            {term === ''
-              ? tops.map((unit) => branch(unit, 0))
-              : matches.map((unit) => row(unit, 0))}
-            {matches.length === 0 && <CardEmpty>{m.roster_unitsEmpty()}</CardEmpty>}
-          </>
-        )}
-      </div>
+      <ScrollAreaAutosize
+        scrollbars="y"
+        overscrollBehavior="none"
+        data-testid="roster-unit-scroll"
+        xstyle={styles.list}
+      >
+        <div {...stylex.props(styles.rows, bare && styles.listBare)}>
+          {loading ? (
+            <div aria-hidden {...stylex.props(styles.loading)}>
+              {['72%', '60%', '80%', '56%'].map((width) => (
+                <Skeleton key={width} width={width} height={14} />
+              ))}
+            </div>
+          ) : (
+            <>
+              {term === '' && (
+                <TreeRow
+                  name={m.roster_unitsAll()}
+                  depth={0}
+                  open={selected === ''}
+                  expandLabel={m.roster_unitsFold()}
+                  onOpen={() => onSelect('')}
+                />
+              )}
+              {term === ''
+                ? tops.map((unit) => branch(unit, 0))
+                : matches.map((unit) => row(unit, 0))}
+              {matches.length === 0 && <CardEmpty>{m.roster_unitsEmpty()}</CardEmpty>}
+            </>
+          )}
+        </div>
+      </ScrollAreaAutosize>
     </>
   )
   return bare ? (

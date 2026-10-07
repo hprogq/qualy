@@ -1259,14 +1259,19 @@ describe('the room the roster gives its rows', () => {
     expect(cell.getAttribute('title')).toBe(heard)
   })
 
+  // too narrow for a column per kind, the kinds share one column as words
   it('widens the waiting column to at least the page’s longest answer', async () => {
-    await open({
-      listParticipantAccounts: (request: Request) =>
-        pageOf(request, [
-          person(1, { filings: { ...NONE, inReview: 2, toSupplement: 1 } }),
-          person(2),
-        ]),
-    })
+    await open(
+      {
+        listParticipantAccounts: (request: Request) =>
+          pageOf(request, [
+            person(1, { filings: { ...NONE, inReview: 2, toSupplement: 1 } }),
+            person(2),
+          ]),
+      },
+      undefined,
+      1000,
+    )
     const busy = page.getByTestId('participant-filings').first()
     await expect.element(busy).toHaveAttribute('data-waiting', 'some')
     const counts = Array.from(busy.element().children).map((one) => one.getBoundingClientRect())
@@ -1277,9 +1282,9 @@ describe('the room the roster gives its rows', () => {
     expect(waitingWidth()).toBeGreaterThan(60)
   })
 
-  // Status counts keep a bounded column even when the viewport has ample
-  // room. Different states wrap instead of reserving a mostly empty band.
-  it('keeps the waiting column bounded in a wide window', async () => {
+  // With the room for them, each kind of waiting stands in a column of its
+  // own, its count under its head and nothing waiting a quiet dash.
+  it('gives each kind of waiting a column of its own in a wide window', async () => {
     await page.viewport(1920, 1000)
     try {
       await open({
@@ -1292,14 +1297,33 @@ describe('the room the roster gives its rows', () => {
       })
       const busy = page.getByTestId('participant-filings').nth(1)
       await expect.element(busy).toHaveAttribute('data-waiting', 'some')
-      expect(waitingWidth()).toBeLessThanOrEqual(144)
-      const cell = busy.element().parentElement!.getBoundingClientRect()
-      const counts = Array.from(busy.element().children)
-      expect(counts).toHaveLength(3)
-      for (const count of counts) {
-        expect(count.getBoundingClientRect().right).toBeLessThanOrEqual(cell.right + 0.5)
-        expect(count.scrollWidth).toBeLessThanOrEqual(count.clientWidth + 1)
+      const kinds = Array.from(busy.element().querySelectorAll<HTMLElement>('[data-kind]'))
+      expect(kinds.map((one) => [one.dataset['kind'], one.textContent])).toEqual([
+        ['inReview', '3'],
+        ['toSupplement', '—'],
+        ['toRevise', '1'],
+        ['reconsidering', '1'],
+        ['blocked', '—'],
+      ])
+      const head = page.getByTestId('roster').element().firstElementChild!
+      for (const [kind, words] of [
+        ['inReview', '审核中'],
+        ['toSupplement', '待补充'],
+        ['toRevise', '待修改'],
+        ['reconsidering', '申诉复查'],
+        ['blocked', '无人可审'],
+      ] as const) {
+        const title = Array.from(head.querySelectorAll('span')).find(
+          (one) => one.textContent === words,
+        )!
+        const above = title.getBoundingClientRect()
+        const count = kinds.find((one) => one.dataset['kind'] === kind)!.getBoundingClientRect()
+        expect(
+          Math.abs(above.left + above.width / 2 - (count.left + count.width / 2)),
+        ).toBeLessThan(1)
       }
+      // a reader hears the counts as words
+      expect(busy.element().textContent).toContain('审核中 3')
     } finally {
       await page.viewport(1280, 800)
     }

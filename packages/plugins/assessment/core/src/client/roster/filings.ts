@@ -29,6 +29,44 @@ export const ORDER: readonly RosterWaiting[] = [
 /** the space between two counts, as RosterFilings draws them */
 export const COUNT_GAP = 10
 
+/** each kind's column head, where the kinds stand in columns of their own */
+export const HEADS = {
+  inReview: m.roster_columnInReview,
+  toSupplement: m.roster_columnToSupplement,
+  reconsidering: m.roster_columnReconsidering,
+  toRevise: m.roster_columnToRevise,
+  blocked: m.roster_columnBlocked,
+} as const
+
+/** the kinds in the order a claim meets them, the one nobody can move last */
+export const COLUMNS: readonly RosterWaiting[] = [
+  'inReview',
+  'toSupplement',
+  'toRevise',
+  'reconsidering',
+  'blocked',
+]
+
+/** the room each kind's column keeps either side of its head */
+const KIND_ROOM = 12
+
+/**
+ * The kinds' columns: each as wide as its head or a three-digit count with
+ * room either side, and how wide all of them are together.
+ */
+export function useKindColumns(): { template: string; width: number } {
+  return useMemo(() => {
+    const least = widthOf('000', 12, 600) + 12
+    const widths = COLUMNS.map((kind) =>
+      Math.ceil(Math.max(least, widthOf(HEADS[kind](), 11, 500)) + KIND_ROOM),
+    )
+    return {
+      template: widths.map((width) => `${String(width)}px`).join(' '),
+      width: widths.reduce((sum, width) => sum + width, 0),
+    }
+  }, [])
+}
+
 /**
  * The narrowest and widest the column asks for; past the widest a row's
  * counts wrap within this width. A wide window never turns empty status

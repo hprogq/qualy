@@ -6,7 +6,7 @@ import {
   type UseCaseApiFailure,
 } from '@qualy/web-i18n'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { keepPreviousData, useQuery, useQueryClient, type QueryKey } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import {
@@ -61,8 +61,8 @@ import { RosterNotices } from '../roster/RosterNotices.tsx'
 import { RosterUnitTree } from '../roster/RosterUnitTree.tsx'
 import { UnreachableDialog } from '../roster/UnreachableDialog.tsx'
 import { type AdmissionOutcomeFacts } from '../roster/AdmissionOutcome.tsx'
-import { RosterFilings } from '../roster/RosterFilings.tsx'
-import { useWaitingColumn, waitsOnAnything } from '../roster/filings.ts'
+import { RosterFilings, RosterFilingsHead } from '../roster/RosterFilings.tsx'
+import { useKindColumns, useWaitingColumn, waitsOnAnything } from '../roster/filings.ts'
 import { RosterScore } from '../roster/RosterScore.tsx'
 import { unitPathOf } from '../roster/unit-path.ts'
 import {
@@ -135,6 +135,15 @@ const tailColumns = '7.5rem 2rem'
  * styles below; a longer unit path folds its front away.
  */
 const PERSON_LEAST = 144
+
+/**
+ * What a row takes besides the person and the waiting column: its padding
+ * (32), four gaps (64), the number (104), the total (120) and the menu (32).
+ */
+const SPLIT_FIXED = 352
+
+/** the person's room before the kinds of waiting may take columns of their own */
+const PERSON_ROOMY = 180
 
 /** whether the reader keeps the unit tree open beside the list, remembered per browser */
 const TREE_OPEN_KEY = 'qualy:assessment-roster-tree-open'
@@ -302,7 +311,13 @@ const styles = stylex.create({
     color: tokens.mutedForeground,
   },
   offTreeName: { minWidth: 0, overflowWrap: 'anywhere' },
-  listColumn: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 10 },
+  listColumn: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+    gap: 10,
+    scrollMarginTop: 12,
+  },
   // One row from a tablet up, however narrow the list gets beside the rail:
   // the choices and the search give a little rather than the last choice
   // dropping to a line of its own. On a phone the search takes a line and
@@ -440,6 +455,35 @@ export function ParticipantResultList({
   const rows = useMemo(() => participants.data?.items ?? [], [participants.data])
   const total = participants.data?.total ?? 0
   const page = participants.data?.page ?? view.page
+
+  // The pager is at the foot of the list, and the next page is read from its
+  // top. The jump waits for the new rows and is instant: a smooth scroll
+  // started on the old page was cut short when the rows changed under it.
+  const turned = useRef(false)
+  const listTop = useRef<HTMLElement>(null)
+  useLayoutEffect(() => {
+    const node = listTop.current
+    if (!turned.current || participants.isPlaceholderData || node === null) return
+    turned.current = false
+    let scroller = node.parentElement
+    while (scroller !== null && !/(auto|scroll)/.test(getComputedStyle(scroller).overflowY)) {
+      scroller = scroller.parentElement
+    }
+    const port = scroller?.getBoundingClientRect().top ?? 0
+    const under = (scroller && parseFloat(getComputedStyle(scroller).scrollPaddingTop)) || 0
+    if (node.getBoundingClientRect().top < port + under) node.scrollIntoView({ block: 'start' })
+  }, [participants.isPlaceholderData, rows])
+  const [listWidth, setListWidth] = useState(0)
+  useLayoutEffect(() => {
+    const node = listTop.current
+    if (node === null) return
+    setListWidth(Math.round(node.getBoundingClientRect().width))
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry !== undefined) setListWidth(Math.round(entry.contentRect.width))
+    })
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [])
 
   // the page's totals, asked once its rows are known and never before: the
   // rows are what somebody came for, and they must not wait on arithmetic
@@ -751,10 +795,22 @@ export function ParticipantResultList({
   const unitWord = view.unit === '' ? m.roster_unitsAll() : (unitName ?? m.roster_unitChosen())
   const waitingHead = m.roster_columnWaiting()
   const waitingColumn = useWaitingColumn(rows, waitingHead)
-  const columns = `${numberColumn} minmax(${String(PERSON_LEAST)}px, 1fr) ${waitingColumn} ${tailColumns}`
+  const kinds = useKindColumns()
+  // each kind in a column of its own wherever the person keeps a name's
+  // room beside them; narrower, the kinds share one column as words, and a
+  // page where nothing waits keeps one narrow column of dashes
+  const split =
+    !stacked &&
+    listWidth >= SPLIT_FIXED + PERSON_ROOMY + kinds.width &&
+    rows.some((row) => waitsOnAnything(row.filings))
+  const columns = `${numberColumn} minmax(${String(PERSON_LEAST)}px, 1fr) ${split ? `${String(kinds.width)}px` : waitingColumn} ${tailColumns}`
 
   const listSection = (
-    <section aria-label={m.participantResults_tab()} {...stylex.props(styles.listColumn)}>
+    <section
+      ref={listTop}
+      aria-label={m.participantResults_tab()}
+      {...stylex.props(styles.listColumn)}
+    >
       <div {...stylex.props(styles.toolbar)}>
         {narrow ? (
           <button
@@ -942,7 +998,7 @@ export function ParticipantResultList({
             <TableHead>
               <span>{businessNo}</span>
               <span>{m.roster_columnName()}</span>
-              <span>{waitingHead}</span>
+              {split ? <RosterFilingsHead columns={kinds.template} /> : <span>{waitingHead}</span>}
               <span {...stylex.props(styles.headEnd)}>{m.roster_columnScore()}</span>
               <span />
             </TableHead>
@@ -1042,7 +1098,10 @@ export function ParticipantResultList({
                         with no words would only leave its rule behind */}
                     <Cell unlabelled>
                       {stacked && !waitsOnAnything(row.filings) ? null : (
-                        <RosterFilings filings={row.filings} />
+                        <RosterFilings
+                          filings={row.filings}
+                          columns={split ? kinds.template : undefined}
+                        />
                       )}
                     </Cell>
                     {/* the total is what the list is scanned by, so
@@ -1116,12 +1175,8 @@ export function ParticipantResultList({
                   total,
                 })}
                 onPage={(next) => {
+                  turned.current = true
                   onView({ page: next })
-                  // the pager is at the foot of the list; the next page
-                  // is read from its top
-                  document
-                    .querySelector('[data-testid="roster"]')
-                    ?.scrollIntoView({ block: 'start', behavior: 'smooth' })
                 }}
               />
             </CardFoot>

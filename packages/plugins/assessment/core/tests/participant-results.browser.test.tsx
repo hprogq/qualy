@@ -368,7 +368,7 @@ describe('the participant results screen', () => {
     const notice = page.getByTestId('placement-notice')
     await expect.element(notice).toHaveAttribute('data-changed', '1')
 
-    await notice.getByRole('button').click()
+    await notice.click()
     const row = page.getByTestId('placement-difference')
     await expect.element(row).toHaveAttribute('data-changes', 'placement')
     await expect.element(row.getByText('软件学院 / 软件2302班')).toBeVisible()
