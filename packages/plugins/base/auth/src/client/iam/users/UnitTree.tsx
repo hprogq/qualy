@@ -14,6 +14,7 @@ import {
   DropdownMenuTrigger,
 } from '@qualy/ui/dropdown-menu'
 import { Card, CardEmpty, CardHead, SearchField, StickyFill, TreeRow } from '@qualy/ui/screen'
+import { ScrollAreaAutosize } from '@qualy/ui/scroll-area'
 import * as m from '#messages'
 
 // The units this reader may look into, as one card that runs to the bottom of
@@ -58,12 +59,12 @@ const styles = stylex.create({
     flexShrink: 1,
     flexBasis: '0%',
     maxHeight: { default: null, '@media (max-width: 1023.98px)': '50vh' },
-    overflowY: 'auto',
-    padding: 6,
   },
+  rows: { padding: 6 },
   // in a sheet the panel already says how tall it is; a ceiling of its own
   // would leave a band of nothing under a short tree
-  scrollBare: { maxHeight: 'none', paddingInline: 0 },
+  scrollBare: { maxHeight: 'none' },
+  rowsBare: { paddingInline: 0 },
 })
 
 export interface UnitNode {
@@ -205,19 +206,26 @@ export function UnitTree({
     </div>
   )
   const list = (
-    <div {...stylex.props(styles.scroll, bare && styles.scrollBare)}>
-      {matches !== null ? (
-        matches.length === 0 ? (
-          <CardEmpty>{m.users_treeSearchEmpty()}</CardEmpty>
+    <ScrollAreaAutosize
+      scrollbars="y"
+      overscrollBehavior="none"
+      data-testid="unit-tree-scroll"
+      xstyle={[styles.scroll, bare && styles.scrollBare]}
+    >
+      <div {...stylex.props(styles.rows, bare && styles.rowsBare)}>
+        {matches !== null ? (
+          matches.length === 0 ? (
+            <CardEmpty>{m.users_treeSearchEmpty()}</CardEmpty>
+          ) : (
+            matches.map((unit) => row(unit, 0, false))
+          )
+        ) : rows.length === 0 ? (
+          <CardEmpty>{m.users_noAnchors()}</CardEmpty>
         ) : (
-          matches.map((unit) => row(unit, 0, false))
-        )
-      ) : rows.length === 0 ? (
-        <CardEmpty>{m.users_noAnchors()}</CardEmpty>
-      ) : (
-        rows.map(({ unit, depth }) => row(unit, depth, true))
-      )}
-    </div>
+          rows.map(({ unit, depth }) => row(unit, depth, true))
+        )}
+      </div>
+    </ScrollAreaAutosize>
   )
 
   if (bare) {
