@@ -247,9 +247,18 @@ export function StickyFill({
       // into view, and this is the same question
       const under =
         (scroller === null ? 0 : parseFloat(getComputedStyle(scroller).scrollPaddingTop) || 0) + 12
+      // CSS sticky's top is relative to the scrollport. The measured marker
+      // and viewport edges are not: the shell's bars may put this scrollport
+      // well below the window's top, or leave another panel below it.
+      const scrollTop =
+        scroller === null ? 0 : scroller.getBoundingClientRect().top + scroller.clientTop
+      const bottom =
+        scroller === null
+          ? window.innerHeight
+          : Math.min(window.innerHeight, scrollTop + scroller.clientHeight)
       const natural = node.getBoundingClientRect().top
-      const top = Math.max(under, natural)
-      const height = Math.max(minHeight, window.innerHeight - top - FOOT)
+      const top = Math.max(scrollTop + under, natural)
+      const height = Math.max(minHeight, bottom - top - FOOT)
       setBox((held) =>
         held !== null && held.top === under && Math.abs(held.height - height) < 1
           ? held
