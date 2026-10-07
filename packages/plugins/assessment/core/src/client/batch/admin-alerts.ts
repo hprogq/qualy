@@ -42,6 +42,8 @@ export interface AdminAlerts {
   readonly placements: { readonly changed: number; readonly unavailable: number }
   /** changes to the organization's appointments this batch has yet to take */
   readonly accessPending: number
+  /** withdrawals that already took effect; information, never a decision to approve */
+  readonly accessLapsed: number
   /** some count has not arrived yet */
   readonly pending: boolean
   /** some count could not be read, and none of what follows is known for it */
@@ -76,10 +78,14 @@ export const owesAdministration = (batch: {
 /**
  * What the batch's administrators owe it, for a reader who is one.
  *
- * `enabled` is `owesAdministration` of the batch: with it off nothing is
- * asked, and the answer is that nothing is owed.
+ * `enabled` is `owesAdministration` of the batch. The staff rail may also
+ * read withdrawals on archived batches, without treating them as decisions.
  */
-export function useAdminAlerts(batchId: string, enabled: boolean): AdminAlerts {
+export function useAdminAlerts(
+  batchId: string,
+  enabled: boolean,
+  includeAccessInformation = false,
+): AdminAlerts {
   const query = useApiQuery(assessmentApi)
   const alerts = useQuery({
     ...query.assessment.reviewAlerts.queryOptions({ params: { batchId } }),
@@ -101,7 +107,7 @@ export function useAdminAlerts(batchId: string, enabled: boolean): AdminAlerts {
       query: { limit: '1' },
     }),
     staleTime: FRESH_FOR,
-    enabled,
+    enabled: enabled || includeAccessInformation,
   })
 
   // a count kept from before the batch was archived is not owed either
@@ -134,6 +140,7 @@ export function useAdminAlerts(batchId: string, enabled: boolean): AdminAlerts {
       unavailable: owed(placements.data)?.unavailableTotal ?? 0,
     },
     accessPending: owed(access.data)?.pendingTotal ?? 0,
+    accessLapsed: enabled || includeAccessInformation ? (access.data?.lapsedTotal ?? 0) : 0,
     pending: enabled && reads.some((read) => read.isPending && read.errorUpdateCount === 0),
     // what was read once and failed on a later look still stands; nothing
     // asked has nothing to have failed
@@ -146,19 +153,22 @@ export function useAdminAlerts(batchId: string, enabled: boolean): AdminAlerts {
 }
 
 /** whether the desk has something for this rail entry's page, the way the desk says it */
-export function entryAlerted(alerts: AdminAlerts, navigationId: string): boolean {
+export function entryAlertTone(
+  alerts: AdminAlerts,
+  navigationId: string,
+): 'warning' | 'info' | null {
   switch (navigationId) {
     case ALERTED_ENTRIES.items:
-      return (
-        alerts.gaps.length > 0 ||
+      return alerts.gaps.length > 0 ||
         alerts.unreachable.cannotSubmit > 0 ||
         alerts.unreachable.cannotAppeal > 0
-      )
+        ? 'warning'
+        : null
     case ALERTED_ENTRIES.roster:
-      return alerts.placements.changed > 0 || alerts.placements.unavailable > 0
+      return alerts.placements.changed > 0 || alerts.placements.unavailable > 0 ? 'warning' : null
     case ALERTED_ENTRIES.access:
-      return alerts.accessPending > 0
+      return alerts.accessPending > 0 ? 'warning' : alerts.accessLapsed > 0 ? 'info' : null
     default:
-      return false
+      return null
   }
 }

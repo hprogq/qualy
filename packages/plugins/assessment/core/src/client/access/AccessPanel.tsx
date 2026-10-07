@@ -49,6 +49,7 @@ import { VisuallyHidden } from '@qualy/ui/visually-hidden'
 import { personCard } from '@qualy/ui-contract'
 import { BATCH_STAFF_CODES } from '../../permission-codes.ts'
 import { assessmentApi } from '../api.ts'
+import { BatchHeaderNotice } from '../batch/BatchScreen.tsx'
 
 import { AccessAdjustDialog } from './AccessAdjustDialog.tsx'
 import { AccessSyncDialog } from './AccessSyncDialog.tsx'
@@ -96,7 +97,7 @@ const MATRIX_AT = 1060
  * what the eye reads along a row is who somebody is and on whose authority,
  * and that is where the width goes.
  */
-const MATRIX_COLUMNS = `minmax(9rem, 1fr) minmax(13rem, 1.7fr) repeat(${String(BATCH_STAFF_CODES.length)}, 4.5rem) 7rem`
+const MATRIX_COLUMNS = `minmax(9rem, 0.9fr) minmax(12rem, 1fr) repeat(${String(BATCH_STAFF_CODES.length)}, minmax(4.5rem, 0.42fr)) 7rem`
 /** person, role and scope, what it grants, and the way to change it */
 const LIST_COLUMNS = 'minmax(8.5rem, 0.9fr) minmax(0, 1.3fr) minmax(0, 1.2fr) 7rem'
 
@@ -737,11 +738,13 @@ export function AccessPanel({
       <Feedback message={failure} />
 
       {summary.data && (
-        <AccessSyncNotice
-          pendingTotal={archived ? 0 : summary.data.pendingTotal}
-          lapsedTotal={summary.data.lapsedTotal}
-          onOpen={() => setMerging(true)}
-        />
+        <BatchHeaderNotice>
+          <AccessSyncNotice
+            pendingTotal={archived ? 0 : summary.data.pendingTotal}
+            lapsedTotal={summary.data.lapsedTotal}
+            onOpen={() => setMerging(true)}
+          />
+        </BatchHeaderNotice>
       )}
 
       <AccessSyncDialog

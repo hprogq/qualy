@@ -3028,6 +3028,12 @@ describe('who may work on a batch', () => {
       expect(cell('assessment.review.process')).toBe('granted')
       expect(cell('assessment.ranking.view')).toBe('withheld')
       expect(cell('assessment.entry.record')).toBe('none')
+      const roleWidth = staff
+        .getByTestId('access-source')
+        .first()
+        .element()
+        .getBoundingClientRect().width
+      expect(roleWidth / staff.element().getBoundingClientRect().width).toBeLessThan(0.24)
     } finally {
       await page.viewport(1280, 800)
     }
@@ -3076,6 +3082,54 @@ describe('who may work on a batch', () => {
 })
 
 describe('the notice of organization changes', () => {
+  it.each([390, 900, 1600])(
+    'does not move the staff table when the change summary arrives at %i px',
+    async (width) => {
+      await page.viewport(width, 900)
+      let reply: (value: {
+        items: never[]
+        nextCursor: null
+        pendingTotal: number
+        lapsedTotal: number
+      }) => void = () => {}
+      const answer = new Promise<{
+        items: never[]
+        nextCursor: null
+        pendingTotal: number
+        lapsedTotal: number
+      }>((resolve) => {
+        reply = resolve
+      })
+      await accessScreen({ previewAccessSync: () => Effect.promise(() => answer) })
+      await expect.element(page.getByTestId('access-toolbar')).toBeVisible()
+      const top = page.getByTestId('access-toolbar').element().getBoundingClientRect().top
+      reply({ items: [], nextCursor: null, pendingTotal: 3, lapsedTotal: 1 })
+      await expect.element(page.getByTestId('access-sync-notice')).toBeVisible()
+      expect(page.getByTestId('access-toolbar').element().getBoundingClientRect().top).toBe(top)
+      const hint = page.getByTestId('access-sync-notice').element()
+        .parentElement!.previousElementSibling!
+      expect(getComputedStyle(hint).visibility).toBe('hidden')
+      await page.viewport(1280, 800)
+    },
+  )
+
+  it('keeps the information and its action within a phone header', async () => {
+    await page.viewport(390, 844)
+    await accessScreen({
+      previewAccessSync: () =>
+        Effect.succeed({ items: [], nextCursor: null, pendingTotal: 0, lapsedTotal: 12 }),
+    })
+    const notice = page.getByTestId('access-sync-notice')
+    await expect.element(notice).toHaveAttribute('data-kind', 'lapsed')
+    const bounds = notice.element().getBoundingClientRect()
+    const action = notice.getByRole('button', { name: '查看变更' })
+    expect(bounds.left).toBeGreaterThanOrEqual(0)
+    expect(bounds.right).toBeLessThanOrEqual(390)
+    await action.click()
+    await expect.element(page.getByTestId('access-sync')).toBeVisible()
+    await page.viewport(1280, 800)
+  })
+
   // The button hung over the notice from a corner, with padding guessed wide
   // enough to keep the words clear of it: in a language whose button runs
   // wider than the guess, the words ran underneath it.
@@ -3099,13 +3153,13 @@ describe('the notice of organization changes', () => {
       const notice = page.getByTestId('access-sync-notice')
       await expect.element(notice).toHaveAttribute('data-kind', 'decide')
       const button = notice.getByRole('button').element().getBoundingClientRect()
-      // the words themselves: the innermost element holding the sentence
+      // The compact summary remains beside the action in the existing header.
       const words = [...notice.element().querySelectorAll('*')]
         .find(
           (element) =>
             element.closest('button') === null &&
             element.children.length === 0 &&
-            (element.textContent ?? '').length > 20,
+            (element.textContent ?? '').includes('permission changes'),
         )!
         .getBoundingClientRect()
       const apart =
@@ -3113,6 +3167,10 @@ describe('the notice of organization changes', () => {
         words.bottom <= button.top + 0.5 ||
         button.bottom <= words.top + 0.5
       expect(apart).toBe(true)
+      expect(page.getByTestId('batch-band').element().contains(notice.element())).toBe(true)
+      expect(notice.element().getBoundingClientRect().bottom).toBeLessThanOrEqual(
+        page.getByTestId('access-toolbar').element().getBoundingClientRect().top,
+      )
     } finally {
       await page.viewport(1280, 800)
     }

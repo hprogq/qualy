@@ -8,7 +8,7 @@ import { assessmentApi } from '../api.ts'
 
 import {
   ALERTED_ENTRIES,
-  entryAlerted,
+  entryAlertTone,
   owesAdministration,
   useAdminAlerts,
 } from './admin-alerts.ts'
@@ -22,8 +22,8 @@ import * as m from '#messages'
 // submissions, appointments - and a number beside "Questions" would read as
 // a count of questions. The overview's desk says what each one is. Answered
 // only for this plugin's own three entries, and only to whoever administers
-// the open batch while it is not archived, where none of it could be mended;
-// everybody else's rail is untouched.
+// the open batch. Archived batches only retain the grey information dot for
+// authority already withdrawn; they never ask to accept new authority.
 
 // The counts behind a dot are asked once the batch is read, so on a fresh
 // page it comes a moment after the rail. It arrives rather than blinks in,
@@ -43,6 +43,7 @@ const styles = stylex.create({
     borderRadius: '9999px',
     backgroundColor: tokens.warning,
   },
+  info: { backgroundColor: tokens.mutedForeground },
   arriving: {
     animationName: { default: arrive, '@media (prefers-reduced-motion: reduce)': 'none' },
     animationDuration: '150ms',
@@ -70,20 +71,26 @@ function Dot({ navigationId }: { navigationId: string }) {
     enabled: isRecordId(batchId),
   })
   const batch = detail.data?.batch
-  const alerts = useAdminAlerts(batchId, batch !== undefined && owesAdministration(batch))
+  const alerts = useAdminAlerts(
+    batchId,
+    batch !== undefined && owesAdministration(batch),
+    batch?.capabilities.manage === true && navigationId === ALERTED_ENTRIES.access,
+  )
   // only a dot that was waited for arrives; one already known when the rail
   // is drawn again, moving between the batch's pages, is simply there
   const [waited] = useState(() => batch === undefined || alerts.pending)
-  if (!entryAlerted(alerts, navigationId)) return null
+  const tone = entryAlertTone(alerts, navigationId)
+  if (tone === null) return null
   // named, so the entry reads as one that needs attention to whoever
   // hears the rail rather than sees it
   return (
     <span
       role="img"
-      aria-label={m.batch_railAlert()}
+      aria-label={(tone === 'info' ? m.batch_railInfo : m.batch_railAlert)()}
       data-testid="rail-alert"
       data-navigation={navigationId}
-      {...stylex.props(styles.dot, waited && styles.arriving)}
+      data-tone={tone}
+      {...stylex.props(styles.dot, tone === 'info' && styles.info, waited && styles.arriving)}
     />
   )
 }

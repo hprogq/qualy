@@ -558,7 +558,7 @@ describe('the administration lane of the overview', () => {
     expect(document.querySelectorAll('[data-testid="rail-alert"]')).toHaveLength(0)
     expect(reviewAlerts).not.toHaveBeenCalled()
     expect(listParticipantPlacements).not.toHaveBeenCalled()
-    expect(previewAccessSync).not.toHaveBeenCalled()
+    expect(previewAccessSync).toHaveBeenCalled()
   })
 
   it('says what stands behind each administration entry of the rail with a dot', async () => {
@@ -583,7 +583,36 @@ describe('the administration lane of the overview', () => {
     // the entry reads as one that needs attention to whoever hears the rail
     const items = page.getByRole('link', { name: /项目配置/ })
     expect(items.element().querySelector('[role="img"][aria-label]')).not.toBeNull()
+    expect(
+      document
+        .querySelector('[data-navigation="assessment/batch-access/rail"][data-testid="rail-alert"]')
+        ?.getAttribute('data-tone'),
+    ).toBe('warning')
   })
+
+  for (const status of ['active', 'archived'] as const) {
+    it(`shows an information dot for withdrawn authority on an ${status} batch`, async () => {
+      await page.viewport(1280, 800)
+      await shelled(`/assessment/batches/${BATCH_ID}`, {
+        getBatch: () => Effect.succeed({ batch: batch({ status }) }),
+        previewAccessSync: () =>
+          Effect.succeed({
+            items: [],
+            nextCursor: null,
+            pendingTotal: status === 'archived' ? 3 : 0,
+            lapsedTotal: 2,
+          }),
+      })
+      const dot = () =>
+        document.querySelector(
+          '[data-navigation="assessment/batch-access/rail"][data-testid="rail-alert"]',
+        )
+      await vi.waitFor(() => expect(dot()?.getAttribute('data-tone')).toBe('info'))
+      expect(dot()?.getAttribute('aria-label')).toBeTruthy()
+      // Information about an effective withdrawal is never listed as authority to accept.
+      expect(document.querySelector('[data-action="admin-access"]')).toBeNull()
+    })
+  }
 
   it('keeps the desk for a pure administrator on a phone, where the plan is not shown', async () => {
     await page.viewport(390, 844)
