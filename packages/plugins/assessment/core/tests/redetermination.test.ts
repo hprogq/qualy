@@ -2,6 +2,7 @@ import { sql } from 'kysely'
 import { Effect, Exit } from 'effect'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createTestContext, postgresAvailable, runSql } from '@qualy/plugin-database/testkit'
+import { Access } from '@qualy/plugin-rbac/server'
 import { Assessment } from '../src/server/index.ts'
 import { twoFactScoring } from './support/catalogs.ts'
 import { appointStaff } from './support/correction.ts'
@@ -14,6 +15,7 @@ import {
   run,
   runningBatch,
   seed,
+  stack,
   type Seeded,
 } from './support/round.ts'
 
@@ -380,6 +382,143 @@ describe.runIf(postgresAvailable)('re-determining a concluded claim', () => {
     expect(result.accepted).not.toContain('assessment.entry.redetermine')
     expect(result.accepted).toContain('assessment.review.process')
     expect(errorOf<{ _tag: string }>(result.stranger)?._tag).toBe('ASSESSMENT_ENTRY_NOT_FOUND')
+  })
+
+  it('lets an administrator explicitly appoint themselves after filing ends, but not redetermine after archival', async () => {
+    const result = ok(
+      await Effect.runPromiseExit(
+        Effect.gen(function* () {
+          const f = yield* seed('rd-admin-appointment')
+          const assessment = yield* Assessment
+          const access = yield* Access
+          const admin = f.principal(f.admin)
+          const g = yield* runningBatch(f, { profile: OPEN, scoring: twoFactScoring })
+          const entryId = yield* judged(f, g, 'approve')
+          const plan = yield* assessment.getPlan(f.t, g.batch.id, admin)
+          // Filing and review are closed in this last phase. Explicit
+          // re-determination remains available until the batch is archived.
+          yield* assessment.advancePhase(
+            f.t,
+            g.batch.id,
+            { to: plan[plan.length - 1]!.id, force: true, reason: 'Filing and review ended' },
+            admin,
+          )
+          const before = yield* assessment.getBatch(f.t, g.batch.id, admin)
+          const beforeEntries = yield* assessment.listParticipantEntries(
+            f.t,
+            g.batch.id,
+            g.p1,
+            {},
+            admin,
+          )
+          const refused = yield* Effect.exit(
+            assessment.redetermineEntry(
+              f.t,
+              entryId,
+              { decision: 'reject', reason: 'Administrator without an explicit appointment' },
+              admin,
+            ),
+          )
+
+          const roleId = yield* access.roles.create(
+            f.t,
+            { code: 'redeterminer', name: 'Redeterminer', kind: 'org' },
+            admin,
+          )
+          const permissionVersion = yield* access.roles.setPermissions(
+            f.t,
+            roleId,
+            ['assessment.entry.redetermine'],
+            1,
+            admin,
+          )
+          const eligibilityVersion = yield* access.roles.setEligibility(
+            f.t,
+            roleId,
+            {
+              holderPolicy: { mode: 'allow-list', userTypeIds: [f.studentType] },
+              anchorPolicy: { mode: 'allow-list', orgTypeIds: [f.classType] },
+            },
+            permissionVersion,
+            admin,
+          )
+          yield* access.roles.setStatus(f.t, roleId, 'active', eligibilityVersion, admin)
+          const appointment = { userIds: [f.admin], orgNodeIds: [f.classA], roleId }
+          const options = yield* assessment.staffOptions(f.t, g.batch.id, appointment, admin)
+          yield* assessment.addStaff(f.t, g.batch.id, appointment, admin)
+
+          const appointed = yield* assessment.getBatch(f.t, g.batch.id, admin)
+          const appointedTimeline = yield* assessment.timeline(f.t, g.batch.id)
+          const appointedEntries = yield* assessment.listParticipantEntries(
+            f.t,
+            g.batch.id,
+            g.p1,
+            {},
+            admin,
+          )
+          const corrected = yield* assessment.redetermineEntry(
+            f.t,
+            entryId,
+            {
+              decision: 'approve',
+              recognition: { values: { 'rec-level': 'national', 'rec-ordinal': 2 } },
+              reason: 'Certificate verified after filing closed',
+            },
+            admin,
+          )
+          const afterCorrection = yield* claimOf(entryId)
+
+          yield* assessment.setBatchStatus(f.t, g.batch.id, { status: 'archived' }, admin)
+          const archivedEntries = yield* assessment.listParticipantEntries(
+            f.t,
+            g.batch.id,
+            g.p1,
+            {},
+            admin,
+          )
+          const archivedRefusal = yield* Effect.exit(
+            assessment.redetermineEntry(
+              f.t,
+              entryId,
+              { decision: 'reject', reason: 'An explicit appointment cannot write after archival' },
+              admin,
+            ),
+          )
+          return {
+            before,
+            beforeOffer: beforeEntries.entries[0]!.corrections.redetermine,
+            refused,
+            roleOption: options.roles.find((role) => role.id === roleId),
+            appointed,
+            appointedTimeline,
+            appointedOffer: appointedEntries.entries[0]!.corrections.redetermine,
+            corrected,
+            afterCorrection,
+            archivedOffer: archivedEntries.entries[0]!.corrections.redetermine,
+            archivedRefusal,
+            afterArchive: yield* claimOf(entryId),
+          }
+        }).pipe(Effect.provide(stack(db.url))),
+      ),
+    )
+    expect(result.before.capabilities.redetermine).toBe(false)
+    expect(result.beforeOffer).toEqual({ state: 'hidden', reason: null })
+    expect(refusalOf(result.refused)?.reason).toBe('permission-not-held')
+    expect(result.roleOption).toMatchObject({ refusal: null })
+    expect(result.appointed.status).toBe('active')
+    expect(result.appointedTimeline.map((phase) => phase.status)).toEqual(['ended', 'current'])
+    expect(result.appointed.capabilities.redetermine).toBe(true)
+    expect(result.appointedOffer).toEqual({ state: 'available', reason: null })
+    expect(result.corrected).toMatchObject({ kind: 'recognition-corrected', status: 'approved' })
+    expect(result.afterCorrection).toMatchObject({
+      recognitions: 2,
+      events: 'recognition-corrected',
+    })
+    expect(result.archivedOffer).toEqual({ state: 'hidden', reason: null })
+    expect(errorOf<{ _tag: string }>(result.archivedRefusal)?._tag).toBe(
+      'ASSESSMENT_BATCH_READ_ONLY',
+    )
+    expect(result.afterArchive).toEqual(result.afterCorrection)
   })
 
   it('offers the correction on the participant page to its holder only', async () => {
