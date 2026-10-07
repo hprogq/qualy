@@ -64,4 +64,36 @@ function ScrollArea({
   )
 }
 
-export { ScrollArea }
+/**
+ * The same scroll container for a box that is only as tall as its content,
+ * up to the height its own seat allows.
+ */
+function ScrollAreaAutosize({
+  className,
+  style,
+  xstyle,
+  children,
+  ...props
+}: React.ComponentProps<typeof MScrollArea.Autosize> & Seat) {
+  return (
+    <MScrollArea.Autosize
+      data-slot="scroll-area"
+      scrollbarSize={10}
+      viewportProps={
+        { 'data-slot': 'scroll-area-viewport' } as React.HTMLAttributes<HTMLDivElement>
+      }
+      classNames={{
+        scrollbar: stylex.props(styles.bar).className,
+        thumb: stylex.props(styles.thumb).className,
+      }}
+      // a box that scrolls only down keeps its rows to its own width
+      styles={props.scrollbars === 'y' ? { content: { minWidth: '100%' } } : undefined}
+      {...props}
+      {...seatOf(stylex.props(xstyle), className, style)}
+    >
+      {children}
+    </MScrollArea.Autosize>
+  )
+}
+
+export { ScrollArea, ScrollAreaAutosize }

@@ -10,6 +10,7 @@ import { breakpoints } from '../../theme/breakpoints.stylex.ts'
 
 const GAP = 20
 const FOOT = 16
+const CLIP_ROOM = 4
 
 const styles = stylex.create({
   split: {
@@ -30,7 +31,9 @@ const styles = stylex.create({
   }),
   side: {
     minWidth: 0,
-    overflow: 'clip',
+    // clipped a little outside its box, so a card's ring drawn outside the
+    // card still shows while a folding side stays out of the list
+    clipPath: `inset(-${String(CLIP_ROOM)}px)`,
     opacity: 1,
     visibility: 'visible',
     transitionProperty: 'opacity, visibility',
