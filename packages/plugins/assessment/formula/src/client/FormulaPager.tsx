@@ -10,14 +10,14 @@ export function FormulaPager({
   onPage,
   testId = 'formula-pager',
 }: {
-  result: { page: number; pageSize: number; total: number; items: readonly unknown[] }
+  result: { page: number; pageSize: number; total: number }
   busy: boolean
   onPage: (page: number) => void
   testId?: string
 }) {
   const seat = useRef<HTMLDivElement>(null)
   const compact = useIsBelow(600)
-  const { page, pageSize, total, items } = result
+  const { page, pageSize, total } = result
   if (total === 0) return null
 
   return (
@@ -33,11 +33,7 @@ export function FormulaPager({
           total={total}
           disabled={busy}
           compact={compact}
-          summary={m.pagination_summary({
-            from: (page - 1) * pageSize + 1,
-            to: (page - 1) * pageSize + items.length,
-            total,
-          })}
+          summary={m.pagination_summary({ total })}
           onPage={(next) => {
             const results = seat.current?.closest<HTMLElement>('[data-formula-results]')
             results?.focus({ preventScroll: true })

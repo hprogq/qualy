@@ -468,6 +468,6 @@
   "pagination_label": "List pages",
   "pagination_previous": "Previous page",
   "pagination_next": "Next page",
-  "pagination_summary": "{from}–{to} of {total}",
+  "pagination_summary": "{total, plural, one {# item} other {# items}}",
   "pagination_search": "Search formula names"
 }
