@@ -14,12 +14,24 @@ export interface PageNotice {
   readonly attributes?: Readonly<Record<`data-${string}`, string | number>>
 }
 
-const radiate = stylex.keyframes({
-  '0%': { opacity: 0, transform: 'scale(1)' },
-  '15%': { opacity: 0.75, transform: 'scale(1.008, 1.08)' },
-  '85%, 100%': { opacity: 0, transform: 'scale(1.045, 1.55)' },
+// Persistent notices stacked as the product's toasts are: one card in front,
+// the rest peeking behind it, fanned out while the pointer is over the stack.
+
+/** how far each card behind peeks out above the one in front of it */
+const PEEK = 10
+/** how much smaller each card behind is drawn */
+const SHRINK = 0.05
+/** the room between two fanned-out cards */
+const GAP = 8
+/** cards drawn behind the front one at most */
+const BEHIND = 2
+
+const enter = stylex.keyframes({
+  from: { opacity: 0, transform: 'translateY(16px)' },
+  to: { opacity: 1, transform: 'none' },
 })
 const REDUCE = '@media (prefers-reduced-motion: reduce)'
+const EASE = 'cubic-bezier(0.2, 0, 0, 1)'
 
 const styles = stylex.create({
   space: { height: 84, flexShrink: 0 },
@@ -30,35 +42,46 @@ const styles = stylex.create({
     justifyContent: 'center',
     pointerEvents: 'none',
   },
-  stack: { position: 'relative', width: 480, maxWidth: '100%', pointerEvents: 'auto' },
-  wave: {
-    position: 'absolute',
-    inset: 0,
-    borderRadius: tokens.radiusPill,
-    pointerEvents: 'none',
-    boxShadow: `0 0 12px 4px color-mix(in oklab, ${tokens.warning} 36%, transparent)`,
-    opacity: { default: 0, [REDUCE]: 0.35 },
-    animationName: { default: radiate, [REDUCE]: 'none' },
-    animationDuration: '3.2s',
-    animationTimingFunction: 'ease-out',
-    animationIterationCount: 'infinite',
-  },
-  pill: {
-    position: 'relative',
-    display: 'flex',
-    flexShrink: 0,
-    alignItems: 'stretch',
-    minWidth: 0,
+  port: {
+    width: 400,
     maxWidth: '100%',
-    borderRadius: tokens.radiusPill,
-    borderWidth: 1,
-    borderStyle: 'solid',
-    borderColor: tokens.border,
-    backgroundColor: tokens.surfaceElevated,
-    // Elevation tokens include a second outline; this pill already has its own border.
-    boxShadow: `0 4px 16px -4px color-mix(in oklab, ${tokens.foreground} 16%, transparent)`,
-    color: tokens.foreground,
+    pointerEvents: 'auto',
+    transitionProperty: 'height',
+    transitionDuration: { default: '300ms', [REDUCE]: '0s' },
+    transitionTimingFunction: EASE,
+  },
+  // more fanned-out cards than the page has room for scroll, front last
+  portScrolls: {
+    overflowY: 'auto',
+    overscrollBehavior: 'none',
+    scrollbarWidth: 'thin',
+    // room for the cards' rings, which a scroll box would otherwise cut
+    paddingInline: 3,
+    marginInline: -3,
+  },
+  stack: { position: 'relative', height: '100%' },
+  slot: {
+    position: 'absolute',
+    insetInline: 0,
+    bottom: 0,
+    transformOrigin: 'center top',
+    transitionProperty: 'transform, opacity, height',
+    transitionDuration: { default: '300ms', [REDUCE]: '0s' },
+    transitionTimingFunction: EASE,
+  },
+  card: {
+    display: 'flex',
+    alignItems: 'stretch',
+    height: '100%',
+    minWidth: 0,
     overflow: 'hidden',
+    borderRadius: tokens.radiusLg,
+    backgroundColor: tokens.surfaceElevated,
+    boxShadow: tokens.elevation2,
+    color: tokens.foreground,
+    animationName: { default: enter, [REDUCE]: 'none' },
+    animationDuration: '300ms',
+    animationTimingFunction: EASE,
   },
   action: {
     display: 'flex',
@@ -66,9 +89,10 @@ const styles = stylex.create({
     flexGrow: 1,
     alignItems: 'center',
     gap: 10,
-    minHeight: 42,
-    paddingBlock: 10,
-    paddingInline: 16,
+    minHeight: 48,
+    paddingBlock: 12,
+    paddingInlineStart: 14,
+    paddingInlineEnd: 12,
     borderWidth: 0,
     backgroundColor: { default: 'transparent', ':hover': tokens.hoverSurface },
     color: 'inherit',
@@ -78,13 +102,26 @@ const styles = stylex.create({
     fontSize: 13,
     lineHeight: '1.25rem',
     fontWeight: 500,
-    outlineOffset: -4,
+    outlineOffset: -3,
     outlineColor: tokens.focusRing,
+    transitionProperty: 'background-color',
+    transitionDuration: '120ms',
   },
-  words: { minWidth: 0, overflowWrap: 'anywhere' },
+  words: { minWidth: 0, flexGrow: 1, overflowWrap: 'anywhere' },
   icon: { width: 16, height: 16, flexShrink: 0, color: tokens.mutedForeground },
   warningIcon: { color: tokens.warning },
-  arrow: { width: 14, height: 14, flexShrink: 0, marginInlineStart: 'auto' },
+  go: {
+    display: 'inline-flex',
+    flexShrink: 0,
+    alignItems: 'center',
+    gap: 2,
+    marginInlineStart: 4,
+    fontSize: 12,
+    fontWeight: 400,
+    color: tokens.mutedForeground,
+    whiteSpace: 'nowrap',
+  },
+  arrow: { width: 14, height: 14, flexShrink: 0 },
   more: {
     display: 'flex',
     flexShrink: 0,
@@ -100,25 +137,19 @@ const styles = stylex.create({
     cursor: 'pointer',
     fontFamily: 'inherit',
     fontSize: 12,
+    fontWeight: 500,
     fontVariantNumeric: 'tabular-nums',
-    outlineOffset: -4,
+    outlineOffset: -3,
     outlineColor: tokens.focusRing,
   },
-  expanded: {
-    position: 'absolute',
-    bottom: 'calc(100% + 8px)',
-    insetInline: 0,
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 8,
-    maxHeight: 'min(50dvh, 20rem)',
-    overflowY: 'auto',
-    overscrollBehavior: 'contain',
-    padding: 2,
-    borderRadius: tokens.radiusLg,
+  turn: {
+    width: 14,
+    height: 14,
+    flexShrink: 0,
+    transitionProperty: 'transform',
+    transitionDuration: { default: '200ms', [REDUCE]: '0s' },
   },
-  // Bridge the visual gap so a pointer can reach the expanded actions.
-  bridge: { position: 'absolute', insetInline: 0, bottom: '100%', height: 10 },
+  turned: { transform: 'rotate(180deg)' },
 })
 
 /** Persistent page warnings. Mount once, after the page's working content. */
@@ -135,12 +166,12 @@ export function PageNotices({
 }) {
   const marker = useRef<HTMLDivElement>(null)
   const stack = useRef<HTMLDivElement>(null)
-  const primary = useRef<HTMLDivElement>(null)
   const more = useRef<HTMLButtonElement>(null)
-  const [pillHeight, setPillHeight] = useState(52)
+  const cards = useRef(new Map<string, HTMLElement>())
+  const [heights, setHeights] = useState<Readonly<Record<string, number>>>({})
   const [pinned, setPinned] = useState(false)
   const [hovered, setHovered] = useState(false)
-  const expanded = pinned || hovered
+  const expanded = (pinned || hovered) && notices.length > 1
   const [bounds, setBounds] = useState<{
     left: number
     width: number
@@ -151,16 +182,34 @@ export function PageNotices({
   const detailsId = useId()
   const visible = notices.length > 0
   const ready = visible && bounds !== null
+  const ids = notices.map((notice) => notice.id).join('\n')
 
+  // Each card's own height, as its content draws it: a card behind the
+  // front one is drawn at the front one's height until the stack fans out.
   useLayoutEffect(() => {
-    const node = primary.current
-    if (!ready || node === null) return
-    const measure = () => setPillHeight(node.getBoundingClientRect().height)
+    if (!ready) return
+    const measure = () => {
+      const next: Record<string, number> = {}
+      for (const [id, node] of cards.current) next[id] = node.offsetHeight
+      setHeights((old) =>
+        Object.keys(next).length === Object.keys(old).length &&
+        Object.entries(next).every(([id, height]) => old[id] === height)
+          ? old
+          : next,
+      )
+    }
     measure()
     const observer = new ResizeObserver(measure)
-    observer.observe(node)
+    for (const node of cards.current.values()) observer.observe(node)
     return () => observer.disconnect()
-  }, [ready])
+  }, [ready, ids, expanded])
+
+  // a fanned stack too tall for the page opens scrolled to its front card
+  useLayoutEffect(() => {
+    const node = stack.current
+    if (expanded && node !== null && node.scrollHeight > node.clientHeight)
+      node.scrollTop = node.scrollHeight
+  }, [expanded, heights])
 
   useEffect(() => {
     setPinned(false)
@@ -228,7 +277,19 @@ export function PageNotices({
   }, [visible])
 
   if (!visible) return null
-  const first = notices[0]!
+  const front = heights[notices[0]!.id] ?? 48
+  const peeking = Math.min(notices.length - 1, BEHIND)
+  const heightOf = (notice: PageNotice) => heights[notice.id] ?? front
+  const fanned =
+    notices.reduce((sum, notice) => sum + heightOf(notice), 0) + GAP * (notices.length - 1)
+  const collapsedHeight = front + PEEK * peeking
+  const room = Math.max(front, (bounds?.available ?? fanned) - 12)
+  const scrolls = expanded && fanned > room
+
+  const keep = (id: string) => (node: HTMLElement | null) => {
+    if (node === null) cards.current.delete(id)
+    else cards.current.set(id, node)
+  }
   const action = (notice: PageNotice) => {
     const Icon = notice.tone === 'warning' ? TriangleAlertIcon : InfoIcon
     return (
@@ -246,10 +307,67 @@ export function PageNotices({
           {...stylex.props(styles.icon, notice.tone === 'warning' && styles.warningIcon)}
         />
         <span {...stylex.props(styles.words)}>{notice.label}</span>
-        <ChevronRightIcon aria-hidden {...stylex.props(styles.arrow)} />
+        <span aria-hidden {...stylex.props(styles.go)}>
+          {notice.actionLabel}
+          <ChevronRightIcon {...stylex.props(styles.arrow)} />
+        </span>
       </button>
     )
   }
+
+  let offset = 0
+  const slots = notices.map((notice, index) => {
+    const lift = offset
+    offset += heightOf(notice) + GAP
+    const shown = index <= BEHIND
+    const transform = expanded
+      ? `translateY(${String(-lift)}px)`
+      : `translateY(${String(-PEEK * index)}px) scale(${String(1 - SHRINK * index)})`
+    return (
+      <div
+        key={notice.id}
+        data-slot="page-notice"
+        data-index={index}
+        aria-hidden={index > 0 && !expanded ? true : undefined}
+        {...stylex.props(styles.slot)}
+        style={{
+          zIndex: notices.length - index,
+          transform,
+          opacity: expanded || shown ? 1 : 0,
+          // a card behind the front one is the front one's shape until fanned
+          height: index > 0 && !expanded ? front : undefined,
+        }}
+      >
+        <div
+          ref={index === 0 || expanded ? keep(notice.id) : undefined}
+          {...stylex.props(styles.card)}
+        >
+          {(index === 0 || expanded) && action(notice)}
+          {index === 0 && notices.length > 1 && (
+            <button
+              ref={more}
+              type="button"
+              aria-label={expanded ? collapseLabel : expandLabel}
+              aria-expanded={expanded}
+              aria-controls={expanded ? detailsId : undefined}
+              onClick={() => {
+                setPinned(!expanded)
+                setHovered(false)
+              }}
+              {...stylex.props(styles.more)}
+            >
+              <span>{notices.length}</span>
+              <ChevronUpIcon
+                aria-hidden
+                {...stylex.props(styles.turn, expanded && styles.turned)}
+              />
+            </button>
+          )}
+        </div>
+      </div>
+    )
+  })
+
   return (
     <>
       <div
@@ -257,7 +375,7 @@ export function PageNotices({
         aria-hidden
         data-slot="page-notice-space"
         {...stylex.props(styles.space)}
-        style={{ height: pillHeight + (bounds?.clearance ?? 48) + 16 }}
+        style={{ height: collapsedHeight + (bounds?.clearance ?? 48) + 16 }}
       />
       {bounds !== null &&
         createPortal(
@@ -270,8 +388,11 @@ export function PageNotices({
           >
             <div
               ref={stack}
+              id={detailsId}
+              data-slot="page-notices-port"
               data-expanded={expanded}
-              {...stylex.props(styles.stack)}
+              {...stylex.props(styles.port, scrolls && styles.portScrolls)}
+              style={{ height: expanded ? Math.min(fanned, room) : collapsedHeight }}
               onPointerEnter={(event) => {
                 if (event.pointerType === 'mouse') setHovered(true)
               }}
@@ -294,47 +415,9 @@ export function PageNotices({
                 }
               }}
             >
-              {!expanded && notices.some((notice) => notice.tone === 'warning') && (
-                <span aria-hidden data-slot="page-notice-wave" {...stylex.props(styles.wave)} />
-              )}
-              <div ref={primary} {...stylex.props(styles.pill)}>
-                {action(first)}
-                {notices.length > 1 && (
-                  <button
-                    ref={more}
-                    type="button"
-                    aria-label={expanded ? collapseLabel : expandLabel}
-                    aria-expanded={expanded}
-                    aria-controls={expanded ? detailsId : undefined}
-                    onClick={() => {
-                      setPinned(!expanded)
-                      setHovered(false)
-                    }}
-                    {...stylex.props(styles.more)}
-                  >
-                    <span>{notices.length}</span>
-                    <ChevronUpIcon aria-hidden {...stylex.props(styles.icon)} />
-                  </button>
-                )}
+              <div {...stylex.props(styles.stack)} style={scrolls ? { height: fanned } : undefined}>
+                {slots}
               </div>
-              {expanded && notices.length > 1 && (
-                <>
-                  <div {...stylex.props(styles.bridge)} />
-                  <div
-                    id={detailsId}
-                    {...stylex.props(styles.expanded)}
-                    style={{
-                      maxHeight: Math.max(0, Math.min(320, bounds.available - pillHeight - 12)),
-                    }}
-                  >
-                    {notices.slice(1).map((notice) => (
-                      <div key={notice.id} {...stylex.props(styles.pill)}>
-                        {action(notice)}
-                      </div>
-                    ))}
-                  </div>
-                </>
-              )}
             </div>
           </div>,
           document.body,

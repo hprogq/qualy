@@ -105,6 +105,8 @@ afterEach(async () => {
 
 const parkPointer = () => page.getByRole('button', { name: 'Change page' }).hover()
 const notice = (index: number) => page.getByTestId(`notice-${index}`)
+const dock = () => page.getByTestId('page-notices').element()
+const port = () => dock().querySelector<HTMLElement>('[data-slot="page-notices-port"]')!
 
 describe('persistent page warnings', () => {
   it.each([
@@ -137,80 +139,80 @@ describe('persistent page warnings', () => {
     },
   )
 
-  it('uses one neutral border and a wider, flatter desktop capsule without a shadow ring', async () => {
+  it('draws each notice as a card the shape of the product toasts', async () => {
     await page.viewport(1440, 900)
     await render(<Example count={3} />)
     await parkPointer()
-    const pill = notice(0).element().parentElement!
-    const geometry = pill.getBoundingClientRect()
-    expect(geometry.width).toBe(480)
-    expect(geometry.height).toBe(44)
-    const surface = getComputedStyle(pill)
-    expect(surface.borderTopWidth).toBe('1px')
-    expect(surface.borderBottomWidth).toBe('1px')
-    expect(surface.borderLeftWidth).toBe('1px')
-    expect(surface.borderRightWidth).toBe('1px')
+    const card = notice(0).element().parentElement!
+    const geometry = card.getBoundingClientRect()
+    expect(geometry.width).toBe(400)
+    expect(geometry.height).toBeGreaterThanOrEqual(48)
+    const surface = getComputedStyle(card)
     const probe = document.createElement('span')
-    probe.style.color = 'var(--q-border)'
+    probe.style.color = 'var(--q-surface-elevated)'
+    probe.style.borderRadius = 'var(--q-radius-lg)'
+    probe.style.boxShadow = 'var(--q-elevation-2)'
     document.body.append(probe)
-    expect(surface.borderTopColor).toBe(getComputedStyle(probe).color)
+    expect(surface.backgroundColor).toBe(getComputedStyle(probe).color)
+    expect(surface.borderTopLeftRadius).toBe(getComputedStyle(probe).borderTopLeftRadius)
+    expect(surface.boxShadow).toBe(getComputedStyle(probe).boxShadow)
     probe.remove()
-    expect(surface.boxShadow).not.toContain('inset')
-    for (const shadow of surface.boxShadow.split(/,(?![^(]*\))/u)) {
-      const lengths = [...shadow.matchAll(/(-?\d+(?:\.\d+)?)px/gu)].map((match) => Number(match[1]))
-      expect(lengths.length).toBeGreaterThanOrEqual(3)
-      expect(lengths[2]).toBeGreaterThan(0)
-      if (lengths[3] !== undefined) expect(lengths[3]).toBeLessThanOrEqual(0)
-    }
-  })
-
-  it('animates a borderless outward warning glow and removes it while the stack is expanded', async () => {
-    await commands.emulateMedia({ reducedMotion: 'no-preference' })
-    await render(<Example count={3} />)
-    await parkPointer()
-    const dock = page.getByTestId('page-notices').element()
-    const wave = dock.querySelector<HTMLElement>('[data-slot="page-notice-wave"]')!
-    expect(wave).not.toBeNull()
-    const waves = wave.getAnimations()
-    expect(waves).toHaveLength(1)
-    const motion = waves[0]!
-    const timing = motion.effect!.getTiming()
-    expect(timing.duration).toBe(3200)
-    expect(timing.iterations).toBe(Infinity)
-    motion.pause()
-    motion.currentTime = 320
-    const first = {
-      opacity: getComputedStyle(wave).opacity,
-      transform: getComputedStyle(wave).transform,
-    }
-    motion.currentTime = 1760
-    expect(getComputedStyle(wave).opacity).not.toBe(first.opacity)
-    expect(getComputedStyle(wave).transform).not.toBe(first.transform)
-    expect(getComputedStyle(wave).borderTopWidth).toBe('0px')
-    expect(getComputedStyle(wave).pointerEvents).toBe('none')
-    motion.currentTime = 480
+    // fanned out, every card keeps the front one's shape
     await notice(0).hover()
     await expect.element(notice(1)).toBeVisible()
-    expect(dock.querySelector('[data-slot="page-notice-wave"]')).toBeNull()
+    for (const index of [1, 2]) {
+      const other = getComputedStyle(notice(index).element().parentElement!)
+      expect(other.borderTopLeftRadius).toBe(surface.borderTopLeftRadius)
+      expect(notice(index).element().parentElement!.getBoundingClientRect().width).toBe(400)
+    }
   })
 
-  it('keeps a still glow for reduced motion and does not draw a warning glow for information', async () => {
-    await commands.emulateMedia({ reducedMotion: 'reduce' })
-    const rendered = await render(<Example />)
+  it('stacks the notices behind the front one and fans them out above it', async () => {
+    await render(<Example count={4} />)
     await parkPointer()
-    const wave = page
-      .getByTestId('page-notices')
-      .element()
-      .querySelector<HTMLElement>('[data-slot="page-notice-wave"]')!
-    expect(wave).not.toBeNull()
-    expect(wave.getAnimations()).toHaveLength(0)
-    expect(Number(getComputedStyle(wave).opacity)).toBeGreaterThan(0)
+    const dock = page.getByTestId('page-notices').element()
+    const slots = () => Array.from(dock.querySelectorAll<HTMLElement>('[data-slot="page-notice"]'))
+    expect(slots()).toHaveLength(4)
+    const front = slots()[0]!.getBoundingClientRect()
+    // two cards peek out above the front one, each a little smaller; more stay hidden
+    for (const index of [1, 2]) {
+      const behind = slots()[index]!
+      expect(behind.getAttribute('aria-hidden')).toBe('true')
+      expect(behind.getBoundingClientRect().top).toBeCloseTo(front.top - 10 * index, 0)
+      expect(behind.getBoundingClientRect().width).toBeLessThan(front.width)
+      expect(Number(getComputedStyle(behind).zIndex)).toBeLessThan(
+        Number(getComputedStyle(slots()[0]!).zIndex),
+      )
+    }
+    expect(getComputedStyle(slots()[3]!).opacity).toBe('0')
+    await notice(0).hover()
+    await expect.element(notice(3)).toBeVisible()
+    await expect
+      .poll(() => notice(1).element().getBoundingClientRect().bottom)
+      .toBeCloseTo(notice(0).element().getBoundingClientRect().top - 8, 0)
+    expect(notice(2).element().getBoundingClientRect().bottom).toBeLessThan(
+      notice(1).element().getBoundingClientRect().top,
+    )
+    expect(slots().every((slot) => !slot.hasAttribute('aria-hidden'))).toBe(true)
+  })
+
+  it('moves the stack with its own transitions, and not at all for reduced motion', async () => {
+    await commands.emulateMedia({ reducedMotion: 'no-preference' })
+    const rendered = await render(<Example count={3} />)
+    await parkPointer()
+    const slot = () =>
+      page
+        .getByTestId('page-notices')
+        .element()
+        .querySelector<HTMLElement>('[data-slot="page-notice"]')!
+    expect(getComputedStyle(slot()).transitionDuration).not.toBe('0s')
+    expect(dock().querySelector('[data-slot="page-notice-wave"]')).toBeNull()
     await rendered.unmount()
-    await render(<Example info />)
+    await commands.emulateMedia({ reducedMotion: 'reduce' })
+    await render(<Example count={3} />)
     await expect.element(notice(0)).toBeVisible()
-    expect(
-      page.getByTestId('page-notices').element().querySelector('[data-slot="page-notice-wave"]'),
-    ).toBeNull()
+    expect(getComputedStyle(slot()).transitionDuration).toBe('0s')
+    expect(notice(0).element().parentElement!.getAnimations()).toHaveLength(0)
   })
 
   it('expands on hover and adds no repeated tooltip or decorative separator text', async () => {
@@ -269,14 +271,15 @@ describe('persistent page warnings', () => {
     toggle.focus()
     await userEvent.keyboard('{Enter}')
     await expect.element(notice(9)).toBeInTheDocument()
-    const list = notice(9).element().parentElement!.parentElement!
+    const list = port()
     expect(list.scrollHeight).toBeGreaterThan(list.clientHeight)
     for (let index = 1; index < 10; index += 1) {
       const action = notice(index).element()
-      const pill = action.parentElement!
-      expect(pill.getBoundingClientRect().height).toBeGreaterThanOrEqual(44)
-      expect(pill.clientHeight).toBeGreaterThanOrEqual(action.scrollHeight)
+      const card = action.parentElement!
+      expect(card.getBoundingClientRect().height).toBeGreaterThanOrEqual(44)
+      expect(card.clientHeight).toBeGreaterThanOrEqual(action.scrollHeight)
     }
+    notice(9).element().scrollIntoView({ block: 'nearest' })
     await notice(9).click()
     await expect.element(page.getByTestId('selected-notice')).toHaveTextContent('9')
     expect(
@@ -309,7 +312,8 @@ describe('persistent page warnings', () => {
     toggle.focus()
     await userEvent.keyboard('{Enter}')
     await expect.element(notice(9)).toBeInTheDocument()
-    const list = notice(9).element().parentElement!.parentElement!
+    const list = port()
+    await expect.poll(() => list.getBoundingClientRect().height).toBeGreaterThan(48)
     expect(list.getBoundingClientRect().top).toBeGreaterThanOrEqual(112)
     expect(page.getByTestId('page-notices').element().getBoundingClientRect().bottom).toBeCloseTo(
       390 - 64 - 24,
@@ -317,6 +321,7 @@ describe('persistent page warnings', () => {
     )
     expect(list.clientHeight).toBeGreaterThan(0)
     expect(list.scrollHeight).toBeGreaterThan(list.clientHeight)
+    notice(9).element().scrollIntoView({ block: 'nearest' })
     await notice(9).click()
     await expect.element(page.getByTestId('selected-notice')).toHaveTextContent('9')
   })
