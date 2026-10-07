@@ -18,13 +18,15 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { Pool } from 'pg'
 import { DEMO_STORAGE_ROOT } from './runtime.ts'
-import { demoUrl } from './target.ts'
+import { DEMO_URL_VARIABLE, demoUrl, snapshotDatabaseOf } from './target.ts'
+import { prepareSnapshotOutput } from './snapshot-output.ts'
 
-const OUT = 'data/demo-baseline'
+const OUT = process.env.QUALY_DEMO_SNAPSHOT_ROOT ?? 'data/demo-baseline'
 const CONTAINER = 'qualy-postgres-demo'
 
+const database = snapshotDatabaseOf(process.env[DEMO_URL_VARIABLE] ?? '')
 const url = demoUrl()
-const database = new URL(url).pathname.slice(1)
+process.umask(0o077)
 const pool = new Pool({ connectionString: url })
 for (const table of ['secrets', 'auth_flows', 'session_auth_grants']) {
   const rows = (await pool.query<{ n: string }>(`select count(*)::text as n from ${table}`))
@@ -91,7 +93,7 @@ if (uncited.length > 0 || missing.length > 0) {
   )
 }
 
-fs.mkdirSync(OUT, { recursive: true })
+const output = prepareSnapshotOutput(OUT)
 const dump = execFileSync(
   'docker',
   ['exec', CONTAINER, 'pg_dump', '-U', 'qualy', '-Fc', '--no-owner', '--no-acl', database],
@@ -99,15 +101,14 @@ const dump = execFileSync(
     maxBuffer: 1024 * 1024 * 1024,
   },
 )
-fs.writeFileSync(path.join(OUT, 'qualy-demo.dump'), dump)
+fs.writeFileSync(output.dump, dump, { mode: 0o600 })
 // without a Mac's AppleDouble `._` companions and extended attributes, which
 // would otherwise land in the server's storage volume as files of their own
-execFileSync(
-  'tar',
-  ['--no-xattrs', '-czf', path.join(OUT, 'storage.tar.gz'), '-C', DEMO_STORAGE_ROOT, '.'],
-  { env: { ...process.env, COPYFILE_DISABLE: '1' } },
-)
+execFileSync('tar', ['--no-xattrs', '-czf', output.storage, '-C', DEMO_STORAGE_ROOT, '.'], {
+  env: { ...process.env, COPYFILE_DISABLE: '1' },
+})
 for (const file of ['qualy-demo.dump', 'storage.tar.gz']) {
+  fs.chmodSync(path.join(OUT, file), 0o600)
   const size = fs.statSync(path.join(OUT, file)).size
   console.log(`${path.join(OUT, file)}  ${(size / 1024 / 1024).toFixed(1)} MB`)
 }

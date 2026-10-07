@@ -33,6 +33,34 @@ export const demoUrl = (env: NodeJS.ProcessEnv = process.env): string => {
   return url
 }
 
+/** Snapshot checks and container exports must address the same local demo instance. */
+export const snapshotDatabaseOf = (url: string): string => {
+  let parsed: URL
+  try {
+    parsed = new URL(url)
+  } catch {
+    throw new Error(`${DEMO_URL_VARIABLE} must be a PostgreSQL URL for the local demo instance`)
+  }
+  if (
+    !['postgres:', 'postgresql:'].includes(parsed.protocol) ||
+    !['localhost', '127.0.0.1'].includes(parsed.hostname) ||
+    parsed.port !== '5434' ||
+    parsed.search !== '' ||
+    parsed.hash !== ''
+  ) {
+    throw new Error(
+      `${DEMO_URL_VARIABLE} must address localhost or 127.0.0.1 on port 5434 without query parameters or a fragment; snapshots export from qualy-postgres-demo`,
+    )
+  }
+  const database = parsed.pathname.slice(1)
+  if (!/^[A-Za-z_][A-Za-z0-9_]{0,62}$/.test(database)) {
+    throw new Error(
+      `${DEMO_URL_VARIABLE} must name a database of 1 to 63 ASCII letters, digits or underscores, starting with a letter or underscore`,
+    )
+  }
+  return database
+}
+
 /**
  * The database must hold nothing but its schema: no tenant has been seeded
  * into it. A partly seeded database is refused too - the seeder starts over
