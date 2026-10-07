@@ -65,15 +65,12 @@ export const CLIENT_UNSUPPORTED_REASONS = ['protocol', 'assembly', 'release'] as
 export const isClientUnsupportedReason = (value: unknown): value is ClientUnsupportedReason =>
   typeof value === 'string' && (CLIENT_UNSUPPORTED_REASONS as readonly string[]).includes(value)
 
-// Generation 2: the shell manifest stopped naming the module behind each
-// surface, which is a breaking change to a document every page reads. The
-// window is a single generation because a server cannot serve both shapes -
-// expand-then-contract is for changes where it can - so a tab from the
-// previous release is refused on its first api call and told to reload,
-// which is exactly what that refusal is for.
-export const CURRENT_CLIENT_PROTOCOL = 2
-export const SERVER_MIN_CLIENT_PROTOCOL = 2
-export const SERVER_MAX_CLIENT_PROTOCOL = 2
+// Generation 3: audit event lists now return a numbered page with a total,
+// replacing the cursor response. An older tab must reload before reading
+// the new shape, so this server accepts only the current generation.
+export const CURRENT_CLIENT_PROTOCOL = 3
+export const SERVER_MIN_CLIENT_PROTOCOL = 3
+export const SERVER_MAX_CLIENT_PROTOCOL = 3
 
 export type ReleaseMode = 'development' | 'production'
 

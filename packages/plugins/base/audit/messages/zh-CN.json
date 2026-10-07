@@ -26,8 +26,6 @@
   "events_actorSystem": "系统",
   "events_actorAnonymous": "匿名",
   "events_empty": "当前条件下没有记录。",
-  "events_loadedCount": "{count, plural, other {已列出 # 条}}",
-  "events_loadMore": "加载更多",
   "userEvents_title": "操作记录",
   "userEvents_about": "涉及该用户",
   "userEvents_by": "该用户的操作",
@@ -39,5 +37,9 @@
   "events_detailSource": "来源",
   "events_detailReason": "原因",
   "events_detailUserAgent": "浏览器",
-  "events_detailDetails": "详情"
+  "events_detailDetails": "详情",
+  "events_pager": "审计记录分页",
+  "events_previousPage": "上一页",
+  "events_nextPage": "下一页",
+  "events_pageSummary": "第 {from}–{to} 条，共 {total} 条"
 }

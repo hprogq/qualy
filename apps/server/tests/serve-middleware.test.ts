@@ -5,6 +5,7 @@ import { createServer } from 'node:http'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { QUALY_API_PREFIX } from '@qualy/api-kit'
 import {
+  CURRENT_CLIENT_PROTOCOL,
   QUALY_CLIENT_PROTOCOL_HEADER,
   QUALY_CLIENT_RELEASE_HEADER,
   QUALY_CLIENT_UNSUPPORTED_HEADER,
@@ -248,11 +249,21 @@ describe('the web client protocol', () => {
   })
 
   it('serves the generation it speaks', async () => {
-    expect((await api({ [QUALY_CLIENT_PROTOCOL_HEADER]: '2' })).status).toBe(200)
+    expect(
+      (await api({ [QUALY_CLIENT_PROTOCOL_HEADER]: String(CURRENT_CLIENT_PROTOCOL) })).status,
+    ).toBe(200)
   })
 
   it('refuses a generation outside the window, at once, with the signal the page reads', async () => {
-    for (const declared of ['0', '1', '3', 'one', '-1', '2.0']) {
+    for (const declared of [
+      '0',
+      '1',
+      '2',
+      String(CURRENT_CLIENT_PROTOCOL + 1),
+      'one',
+      '-1',
+      '3.0',
+    ]) {
       const response = await api({ [QUALY_CLIENT_PROTOCOL_HEADER]: declared })
       expect(response.status, declared).toBe(409)
       // the header names which of the three refusals it was; the body is the

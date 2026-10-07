@@ -86,11 +86,13 @@ header 在就是事实,忽略它只会让读者面对一堆无从解释的 API �
 
 ## Breaking change 的发布顺序
 
-**2026-09-15:`CURRENT_CLIENT_PROTOCOL` 已升到 2**,窗口同为 `min = max = 2`。原因是 manifest 去掉了
-每个 surface 背后的模块名(见 docs/architecture/browser-surface.md),那是每个页面都要读的文档、服务端
-无法同时服务两种形状——所以下面的 expand → contract 顺序**不适用于这一类改动**:它适用于服务端
-能同时服务新旧两种形状的变更。形状本身破坏时只能一次到位,旧 tab 在第一个 API 请求上收到 409,
-被阻断屏要求刷新。
+**当前 `CURRENT_CLIENT_PROTOCOL` 为 3，窗口同为 `min = max = 3`。** 审计查询从 cursor
+响应改为 `{ items, total, page, pageSize }` 的页码响应，旧页面不能继续解读新形状，因此首次
+API 请求会收到 409，要求刷新。此前第 2 代用于 manifest 移除 surface 背后的模块名
+（见 [浏览器公开面](browser-surface.md)）。
+
+下面的 expand → contract 顺序适用于服务端能同时服务新旧两种形状的变更；原位替换响应
+形状时，新服务端与新 Web release 必须作为同一发布物交付，旧页面由兼容检查阻断。
 
 以下是能同时服务时的顺序:
 

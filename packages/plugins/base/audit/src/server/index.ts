@@ -4,17 +4,12 @@ import { HttpApiBuilder } from 'effect/http-api'
 import { Api } from '@qualy/api-kit/plugin'
 import { requestLocale } from '@qualy/api-kit/locale'
 import { render } from '@qualy/text'
-import {
-  DEFAULT_PAGE_SIZE,
-  encodeQueryCursor,
-  isReadableTimestamp,
-  readQueryCursor,
-} from '@qualy/api-kit'
-import { BadRequest, cursorUnusable, pageSize } from '@qualy/api-kit/schema'
+import { DEFAULT_PAGE_SIZE, isReadableTimestamp } from '@qualy/api-kit'
+import { BadRequest, pageNumber, pageSize, pageWindow } from '@qualy/api-kit/schema'
 import { CurrentUser } from '@qualy/auth-contract/session'
 import { Rbac } from '@qualy/rbac-contract/effect'
 import { AuditActionCatalog } from '@qualy/audit-contract/effect'
-import type { Orm } from '@qualy/plugin-database/server'
+import { transaction, type Orm } from '@qualy/plugin-database/server'
 import type { Audit } from '@qualy/audit-contract/effect'
 import { auditApiGroup } from '../api.ts'
 import { db } from './db.ts'
@@ -39,95 +34,98 @@ interface ListFilters {
   readonly to?: string
 }
 
-// exported for the tests that page and filter it against a seeded table; the
-// handler below is the same query behind authorization
-export const listEvents = (
-  tenantId: string,
-  filters: ListFilters,
-  page: { readonly after?: readonly [string, string]; readonly limit: number },
-) =>
-  db.query((k) => {
-    let query = k
-      .selectFrom('AuditEvent')
-      // the snapshot wins when it exists; the live name fills in for writers
-      // that could not know one (a plugin whose closure cannot see users)
-      .leftJoin('User as actor', (join) =>
-        join
-          .onRef('actor.tenantId', '=', 'AuditEvent.tenantId')
-          .onRef('actor.id', '=', 'AuditEvent.actorUserId'),
-      )
-      // the cursor carries the column's own text form: a Date round-trips at
-      // millisecond precision while now() writes microseconds, and the lost
-      // digits made the boundary row - and everything sharing its instant -
-      // vanish from the next page
-      .select((eb) => [
-        sql<string>`${eb.ref('AuditEvent.occurredAt')}::text`.as('occurredAtCursor'),
-        sql<
-          string | null
-        >`coalesce(${eb.ref('AuditEvent.actorLabel')}, ${eb.ref('actor.displayName')})`.as(
-          'actorLabel',
-        ),
-      ])
-      .select([
-        'AuditEvent.id',
-        'AuditEvent.occurredAt',
-        'AuditEvent.actionCode',
-        'AuditEvent.actionVersion',
-        'AuditEvent.actorKind',
-        'AuditEvent.actorUserId',
-        'AuditEvent.targetKind',
-        'AuditEvent.targetId',
-        'AuditEvent.targetLabel',
-        'AuditEvent.organizationId',
-        'AuditEvent.outcome',
-        'AuditEvent.reasonCode',
-        'AuditEvent.details',
-        'AuditEvent.source',
-        'AuditEvent.requestId',
-        'AuditEvent.traceId',
-        'AuditEvent.clientIp',
-        'AuditEvent.userAgent',
-      ])
-      .where('AuditEvent.tenantId', '=', tenantId)
-      .orderBy('AuditEvent.occurredAt', 'desc')
-      .orderBy('AuditEvent.id', 'desc')
-      .limit(page.limit)
-    if (filters.actionCode !== undefined) {
-      query = query.where('AuditEvent.actionCode', '=', filters.actionCode)
-    }
-    if (filters.actorUserId !== undefined) {
-      query = query.where('AuditEvent.actorUserId', '=', filters.actorUserId)
-    }
-    if (filters.outcome !== undefined) {
-      query = query.where('AuditEvent.outcome', '=', filters.outcome)
-    }
-    if (filters.targetKind !== undefined) {
-      query = query.where('AuditEvent.targetKind', '=', filters.targetKind)
-    }
-    if (filters.targetId !== undefined) {
-      query = query.where('AuditEvent.targetId', '=', filters.targetId)
-    }
-    if (filters.from !== undefined) {
-      query = query.where(
-        (eb) => sql<boolean>`${eb.ref('AuditEvent.occurredAt')} >= ${filters.from}::timestamptz`,
-      )
-    }
-    if (filters.to !== undefined) {
-      query = query.where(
-        (eb) => sql<boolean>`${eb.ref('AuditEvent.occurredAt')} < ${filters.to}::timestamptz`,
-      )
-    }
-    if (page.after !== undefined) {
-      const [occurredAt, id] = page.after
-      // row-value keyset: strictly before the cursor row in the (time, id)
-      // order the screen reads in
-      query = query.where(
-        (eb) =>
-          sql<boolean>`(${eb.ref('AuditEvent.occurredAt')}, ${eb.ref('AuditEvent.id')}) < (${occurredAt}::timestamptz, ${id}::uuid)`,
-      )
-    }
-    return query.execute()
-  })
+type Kysely = Parameters<Parameters<typeof db.query>[0]>[0]
+
+/** Shared by the count and page so every filter, including tenancy, stays identical. */
+const matching = (k: Kysely, tenantId: string, filters: ListFilters) => {
+  let query = k.selectFrom('AuditEvent').where('AuditEvent.tenantId', '=', tenantId)
+  if (filters.actionCode !== undefined) {
+    query = query.where('AuditEvent.actionCode', '=', filters.actionCode)
+  }
+  if (filters.actorUserId !== undefined) {
+    query = query.where('AuditEvent.actorUserId', '=', filters.actorUserId)
+  }
+  if (filters.outcome !== undefined) {
+    query = query.where('AuditEvent.outcome', '=', filters.outcome)
+  }
+  if (filters.targetKind !== undefined) {
+    query = query.where('AuditEvent.targetKind', '=', filters.targetKind)
+  }
+  if (filters.targetId !== undefined) {
+    query = query.where('AuditEvent.targetId', '=', filters.targetId)
+  }
+  if (filters.from !== undefined) {
+    query = query.where(
+      (eb) => sql<boolean>`${eb.ref('AuditEvent.occurredAt')} >= ${filters.from}::timestamptz`,
+    )
+  }
+  if (filters.to !== undefined) {
+    query = query.where(
+      (eb) => sql<boolean>`${eb.ref('AuditEvent.occurredAt')} < ${filters.to}::timestamptz`,
+    )
+  }
+  return query
+}
+
+export const listEvents = Effect.fn('audit.listEvents')(
+  function* (
+    tenantId: string,
+    filters: ListFilters,
+    page: { readonly page: number; readonly pageSize: number },
+  ) {
+    const counted = yield* db.query((k) =>
+      matching(k, tenantId, filters)
+        .select((eb) => eb.fn.countAll<string>().as('count'))
+        .executeTakeFirstOrThrow(),
+    )
+    const total = Number(counted.count)
+    const window = pageWindow(page.page, page.pageSize, total)
+    const items = yield* db.query((k) =>
+      matching(k, tenantId, filters)
+        // Prefer the recorded actor name; the live name only fills a missing snapshot.
+        .leftJoin('User as actor', (join) =>
+          join
+            .onRef('actor.tenantId', '=', 'AuditEvent.tenantId')
+            .onRef('actor.id', '=', 'AuditEvent.actorUserId'),
+        )
+        .select((eb) =>
+          sql<
+            string | null
+          >`coalesce(${eb.ref('AuditEvent.actorLabel')}, ${eb.ref('actor.displayName')})`.as(
+            'actorLabel',
+          ),
+        )
+        .select([
+          'AuditEvent.id',
+          'AuditEvent.occurredAt',
+          'AuditEvent.actionCode',
+          'AuditEvent.actionVersion',
+          'AuditEvent.actorKind',
+          'AuditEvent.actorUserId',
+          'AuditEvent.targetKind',
+          'AuditEvent.targetId',
+          'AuditEvent.targetLabel',
+          'AuditEvent.organizationId',
+          'AuditEvent.outcome',
+          'AuditEvent.reasonCode',
+          'AuditEvent.details',
+          'AuditEvent.source',
+          'AuditEvent.requestId',
+          'AuditEvent.traceId',
+          'AuditEvent.clientIp',
+          'AuditEvent.userAgent',
+        ])
+        .orderBy('AuditEvent.occurredAt', 'desc')
+        .orderBy('AuditEvent.id', 'desc')
+        .limit(page.pageSize)
+        .offset(window.offset)
+        .execute(),
+    )
+    return { items, total, page: window.page, pageSize: page.pageSize }
+  },
+  // One response must count and read the same trail even while operations append events.
+  (effect) => transaction(effect, { isolation: 'repeatable read', readOnly: true }),
+)
 
 /**
  * A timestamp filter the database would refuse is a bad request, not a
@@ -170,24 +168,12 @@ export const auditApiHandlers = HttpApiBuilder.group(local, 'audit', (handlers) 
           ...(from !== undefined ? { from } : {}),
           ...(to !== undefined ? { to } : {}),
         }
-        const limit = pageSize(query.limit, DEFAULT_PAGE_SIZE)
-        // the cursor belongs to this filter and no other
-        const fingerprint = `audit:${filters.actionCode ?? ''}:${filters.actorUserId ?? ''}:${
-          filters.outcome ?? ''
-        }:${filters.targetKind ?? ''}:${filters.targetId ?? ''}:${filters.from ?? ''}:${
-          filters.to ?? ''
-        }`
-        const key = readQueryCursor(query.cursor, fingerprint, ['timestamp', 'uuid'])
-        if (key === null) return yield* cursorUnusable()
-
         const found = yield* listEvents(principal.tenantId, filters, {
-          ...(key === undefined ? {} : { after: [key[0]!, key[1]!] as const }),
-          limit: limit + 1,
+          page: pageNumber(query.page),
+          pageSize: pageSize(query.limit, DEFAULT_PAGE_SIZE),
         }).pipe(Effect.orDie)
-        const items = found.slice(0, limit)
-        const last = items.at(-1)
         return {
-          items: items.map((row) => ({
+          items: found.items.map((row) => ({
             id: row.id,
             occurredAt: new Date(row.occurredAt).toISOString(),
             actionCode: row.actionCode,
@@ -209,10 +195,9 @@ export const auditApiHandlers = HttpApiBuilder.group(local, 'audit', (handlers) 
             clientIp: row.clientIp,
             userAgent: row.userAgent,
           })),
-          nextCursor:
-            found.length > limit && last
-              ? encodeQueryCursor(fingerprint, [last.occurredAtCursor, last.id])
-              : null,
+          total: found.total,
+          page: found.page,
+          pageSize: found.pageSize,
         }
       }),
     )

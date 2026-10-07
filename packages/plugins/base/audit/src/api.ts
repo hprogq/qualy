@@ -1,6 +1,6 @@
 import { Schema } from 'effect'
 import { HttpApiEndpoint, HttpApiGroup } from 'effect/http-api'
-import { BadRequest, pageOf, pageQuery, uuidInput } from '@qualy/api-kit/schema'
+import { BadRequest, numberedPageOf, numberedPageQuery, uuidInput } from '@qualy/api-kit/schema'
 import { AccessDenied } from '@qualy/rbac-contract/effect'
 import { Authenticated } from '@qualy/auth-contract/session'
 
@@ -49,9 +49,9 @@ export const auditApiGroup = HttpApiGroup.make('audit')
         /** inclusive lower and exclusive upper bounds, ISO timestamps */
         from: Schema.optional(Schema.String.check(Schema.isMaxLength(40))),
         to: Schema.optional(Schema.String.check(Schema.isMaxLength(40))),
-        ...pageQuery,
+        ...numberedPageQuery,
       }),
-      success: pageOf(auditEvent),
+      success: numberedPageOf(auditEvent),
       error: [BadRequest, AccessDenied],
     }).middleware(Authenticated),
   )

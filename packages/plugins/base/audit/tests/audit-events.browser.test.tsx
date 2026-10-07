@@ -1,6 +1,6 @@
 import AuditEventsPage from '../src/client/AuditEventsPage.tsx'
 import { describe, expect, it, vi } from 'vitest'
-import { page } from 'vitest/browser'
+import { page, userEvent } from 'vitest/browser'
 import { Effect } from 'effect'
 import { addressNow, apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
@@ -9,37 +9,44 @@ import { addressNow, apiError, emptyManifest, fakeClient, renderScreen } from '.
 
 const ACTOR = '11111111-1111-4111-8111-111111111111'
 
+const event = (id: string) => ({
+  id,
+  occurredAt: '2026-09-25T06:30:00.000Z',
+  actionCode: `test.event.${id}`,
+  actionVersion: 1,
+  actionName: 'Edit user',
+  actorKind: 'user' as const,
+  actorUserId: ACTOR,
+  actorLabel: '李老师',
+  targetKind: 'auth.user',
+  targetId: 'u1',
+  targetLabel: '张三',
+  organizationId: null,
+  outcome: 'success' as const,
+  reasonCode: null,
+  details: { fields: ['email'] },
+  source: 'http' as const,
+  requestId: 'r1',
+  traceId: null,
+  clientIp: '203.0.113.7',
+  userAgent: null,
+})
+
 describe('the audit log', () => {
-  it('narrows to the actor of an opened row, and asks the trail for theirs alone', async () => {
-    const list = vi.fn((_: { query: Record<string, string> }) =>
-      Effect.succeed({
-        items: [
-          {
-            id: 'e1',
-            occurredAt: '2026-09-25T06:30:00.000Z',
-            actionCode: 'auth.user.update',
-            actionVersion: 1,
-            actionName: 'Edit user',
-            actorKind: 'user' as const,
-            actorUserId: ACTOR,
-            actorLabel: '李老师',
-            targetKind: 'auth.user',
-            targetId: 'u1',
-            targetLabel: '张三',
-            organizationId: null,
-            outcome: 'success' as const,
-            reasonCode: null,
-            details: { fields: ['email'] },
-            source: 'http' as const,
-            requestId: 'r1',
-            traceId: null,
-            clientIp: '203.0.113.7',
-            userAgent: null,
-          },
-        ],
-        nextCursor: null,
-      }),
-    )
+  it('keeps rows during a slow page turn and moves keyboard focus to the results', async () => {
+    let finish: (() => void) | undefined
+    const list = vi.fn(({ query }: { query: Record<string, string> }) => {
+      const at = Number(query['page'])
+      const result = { items: [event(`page-${at}`)], total: 101, page: at, pageSize: 50 }
+      return at === 1
+        ? Effect.succeed(result)
+        : Effect.promise(
+            () =>
+              new Promise<typeof result>((resolve) => {
+                finish = () => resolve(result)
+              }),
+          )
+    })
     await renderScreen({
       client: fakeClient({
         app: { getManifest: () => Effect.succeed(emptyManifest()) },
@@ -52,11 +59,137 @@ describe('the audit log', () => {
       path: '/organization/audit',
       children: <AuditEventsPage />,
     })
+    const next = page.getByRole('button', { name: '下一页' })
+    await expect.element(next).toBeEnabled()
+    ;(next.element() as HTMLElement).focus()
+    await userEvent.keyboard('{Enter}')
+    await expect.element(next).toBeDisabled()
+    await expect
+      .element(page.getByTestId('audit-row'))
+      .toHaveAttribute('data-action', 'test.event.page-1')
+    const results = page.getByTestId('audit-results').element()
+    expect(document.activeElement).toBe(results)
+    await vi.waitFor(() => expect(finish).toBeTypeOf('function'))
+    finish!()
+    await expect
+      .element(page.getByTestId('audit-row'))
+      .toHaveAttribute('data-action', 'test.event.page-2')
+    await expect.element(next).toBeEnabled()
+    expect(document.activeElement).toBe(results)
+  })
+
+  const openPages = (route = '/organization/audit') => {
+    const list = vi.fn(({ query }: { query: Record<string, string> }) => {
+      const total = query['outcome'] || query['actionCode'] ? 1 : 451
+      const at = Math.min(Number(query['page']), Math.ceil(total / 50))
+      return Effect.succeed({ items: [event(`page-${at}`)], total, page: at, pageSize: 50 })
+    })
+    return {
+      list,
+      screen: renderScreen({
+        client: fakeClient({
+          app: { getManifest: () => Effect.succeed(emptyManifest()) },
+          audit: {
+            listAuditEvents: list,
+            getAuditEventOptions: () =>
+              Effect.succeed({
+                actions: [{ code: 'test.action', name: 'Test action', plugin: 'test' }],
+              }),
+          },
+        }),
+        route,
+        path: '/organization/audit',
+        children: <AuditEventsPage />,
+      }),
+    }
+  }
+
+  it('jumps directly to the last page, replaces rows, and restores the page from its address', async () => {
+    const { screen, list } = openPages('/organization/audit?page=2')
+    await screen
+    const pager = page.getByTestId('audit-pager')
+    await expect.element(pager).toHaveAttribute('data-page', '2')
+    await expect.element(pager).toHaveAttribute('data-total', '451')
+    await pager.getByRole('button', { name: '10', exact: true }).click()
+    await expect.element(pager).toHaveAttribute('data-page', '10')
+    expect(list).toHaveBeenLastCalledWith({ query: { page: '10' } })
+    expect(addressNow()).toContain('page=10')
+    expect(page.getByTestId('audit-row').elements()).toHaveLength(1)
+    await expect
+      .element(page.getByTestId('audit-row'))
+      .toHaveAttribute('data-action', 'test.event.page-10')
+    await pager.getByRole('button', { name: '上一页' }).click()
+    await expect.element(pager).toHaveAttribute('data-page', '9')
+  })
+
+  it('resets the page together with action and outcome filters', async () => {
+    const { screen, list } = openPages('/organization/audit?page=10')
+    await screen
+    await expect.element(page.getByTestId('audit-pager')).toHaveAttribute('data-page', '10')
+    await page.getByRole('combobox').nth(0).click()
+    await page.getByRole('option', { name: 'Test action' }).click()
+    await vi.waitFor(() =>
+      expect(list).toHaveBeenLastCalledWith({ query: { actionCode: 'test.action', page: '1' } }),
+    )
+    expect(addressNow()).not.toContain('page=')
+    await page.getByRole('combobox').nth(1).click()
+    await page.getByRole('option', { name: '失败', exact: true }).click()
+    await vi.waitFor(() =>
+      expect(list).toHaveBeenLastCalledWith({
+        query: { actionCode: 'test.action', outcome: 'failure', page: '1' },
+      }),
+    )
+    await expect.element(page.getByTestId('audit-pager')).toHaveAttribute('data-total', '1')
+  })
+
+  it('uses the clamped server page and keeps every pager control inside a phone viewport', async () => {
+    await page.viewport(320, 740)
+    try {
+      const { screen } = openPages('/organization/audit?page=999')
+      await screen
+      const pager = page.getByTestId('audit-pager')
+      await expect.element(pager).toHaveAttribute('data-page', '10')
+      await pager.getByRole('button', { name: '上一页' }).click()
+      await expect.element(pager).toHaveAttribute('data-page', '9')
+      for (const control of pager.getByRole('button').elements()) {
+        const bounds = control.getBoundingClientRect()
+        expect(bounds.left).toBeGreaterThanOrEqual(0)
+        expect(bounds.right).toBeLessThanOrEqual(320)
+      }
+    } finally {
+      await page.viewport(1280, 800)
+    }
+  })
+
+  it('narrows to the actor of an opened row, and asks the trail for theirs alone', async () => {
+    const list = vi.fn((_: { query: Record<string, string> }) =>
+      Effect.succeed({
+        items: [event('e1')],
+        total: 1,
+        page: 1,
+        pageSize: 50,
+      }),
+    )
+    await renderScreen({
+      client: fakeClient({
+        app: { getManifest: () => Effect.succeed(emptyManifest()) },
+        audit: {
+          listAuditEvents: list,
+          getAuditEventOptions: () => Effect.succeed({ actions: [] }),
+        },
+      }),
+      route: '/organization/audit?page=3',
+      path: '/organization/audit',
+      children: <AuditEventsPage />,
+    })
     await page.getByTestId('audit-row').click()
     await expect.element(page.getByTestId('audit-detail')).toBeVisible()
     await page.getByRole('button', { name: '只看此人' }).click()
     await vi.waitFor(() => expect(addressNow()).toContain(`actor=${ACTOR}`))
-    await vi.waitFor(() => expect(list).toHaveBeenLastCalledWith({ query: { actorUserId: ACTOR } }))
+    await vi.waitFor(() =>
+      expect(list).toHaveBeenLastCalledWith({ query: { actorUserId: ACTOR, page: '1' } }),
+    )
+    expect(addressNow()).not.toContain('page=')
     await expect.element(page.getByTestId('actor-filter')).toHaveAttribute('data-actor', ACTOR)
   })
 
@@ -68,7 +201,7 @@ describe('the audit log', () => {
       client: fakeClient({
         app: { getManifest: () => Effect.succeed({ ...emptyManifest(), slots }) },
         audit: {
-          listAuditEvents: () => Effect.succeed({ items: [], nextCursor: null }),
+          listAuditEvents: () => Effect.succeed({ items: [], total: 0, page: 1, pageSize: 50 }),
           getAuditEventOptions: () => Effect.succeed({ actions: [] }),
         },
       }),

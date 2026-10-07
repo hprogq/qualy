@@ -26,8 +26,6 @@
   "events_actorSystem": "System",
   "events_actorAnonymous": "Anonymous",
   "events_empty": "No events match the current filters.",
-  "events_loadedCount": "{count, plural, one {# event listed} other {# events listed}}",
-  "events_loadMore": "Load more",
   "userEvents_title": "Audit events",
   "userEvents_about": "Done to them",
   "userEvents_by": "Done by them",
@@ -39,5 +37,9 @@
   "events_detailSource": "Source",
   "events_detailReason": "Reason",
   "events_detailUserAgent": "Browser",
-  "events_detailDetails": "Details"
+  "events_detailDetails": "Details",
+  "events_pager": "Audit event pages",
+  "events_previousPage": "Previous page",
+  "events_nextPage": "Next page",
+  "events_pageSummary": "{from}–{to} of {total} events"
 }

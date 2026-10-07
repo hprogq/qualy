@@ -38,30 +38,61 @@ const event = (id: string, over: Partial<Event> = {}): Event => ({
   ...over,
 })
 
-const open = (list: (input: { query: Record<string, string> }) => unknown) =>
+const open = (list: (input: { query: Record<string, string> }) => unknown, search = '') =>
   renderScreen({
     client: fakeClient({
       app: { getManifest: () => Effect.succeed(emptyManifest()) },
       audit: { listAuditEvents: list },
     }),
     path: '/organization/users/:userId/audit',
-    route: `/organization/users/${USER_ID}/audit`,
+    route: `/organization/users/${USER_ID}/audit${search}`,
     children: <UserAuditPage />,
   })
 
 describe("a person's audit events", () => {
+  it('pages within the person and resets to the first page when changing the view', async () => {
+    const list = vi.fn(({ query }: { query: Record<string, string> }) =>
+      Effect.succeed({
+        items: [event(`p${query['page']}`)],
+        total: 101,
+        page: Number(query['page']),
+        pageSize: 50,
+      }),
+    )
+    await open(list, '?page=3')
+    const pager = page.getByTestId('audit-pager')
+    await expect.element(pager).toHaveAttribute('data-page', '3')
+    await pager.getByRole('button', { name: '上一页' }).click()
+    await expect.element(pager).toHaveAttribute('data-page', '2')
+    expect(list).toHaveBeenLastCalledWith({
+      query: { targetKind: 'auth.user', targetId: USER_ID, page: '2' },
+    })
+    await page.getByRole('radio', { name: '该用户的操作' }).click()
+    await expect.element(pager).toHaveAttribute('data-page', '1')
+    expect(list).toHaveBeenLastCalledWith({ query: { actorUserId: USER_ID, page: '1' } })
+    expect(addressNow()).toContain('view=by')
+    expect(addressNow()).not.toContain('page=')
+    expect(page.getByTestId('audit-row').elements()).toHaveLength(1)
+  })
+
   it('reads what was done to them, then what they did, from the trail by their id', async () => {
     const list = vi.fn(({ query }: { query: Record<string, string> }) =>
       Effect.succeed({
         items: query['actorUserId'] === undefined ? [event('e1'), event('e2')] : [],
-        nextCursor: null,
+        total: query['actorUserId'] === undefined ? 2 : 0,
+        page: 1,
+        pageSize: 50,
       }),
     )
     await open(list)
-    await expect.element(page.getByTestId('audit-count')).toHaveAttribute('data-count', '2')
-    expect(list).toHaveBeenCalledWith({ query: { targetKind: 'auth.user', targetId: USER_ID } })
+    await expect.element(page.getByTestId('audit-pager')).toHaveAttribute('data-total', '2')
+    expect(list).toHaveBeenCalledWith({
+      query: { targetKind: 'auth.user', targetId: USER_ID, page: '1' },
+    })
     await page.getByRole('radio', { name: '该用户的操作' }).click()
-    await vi.waitFor(() => expect(list).toHaveBeenCalledWith({ query: { actorUserId: USER_ID } }))
+    await vi.waitFor(() =>
+      expect(list).toHaveBeenCalledWith({ query: { actorUserId: USER_ID, page: '1' } }),
+    )
     await expect.element(page.getByTestId('user-audit')).toHaveAttribute('data-view', 'by')
     // the half being read is in the address, for a reload or a link
     expect(addressNow()).toContain('view=by')
@@ -74,7 +105,9 @@ describe("a person's audit events", () => {
     await open(({ query }: { query: Record<string, string> }) =>
       Effect.succeed({
         items: [event(query['actorUserId'] === undefined ? 'about' : 'by')],
-        nextCursor: null,
+        total: 1,
+        page: 1,
+        pageSize: 50,
       }),
     )
     const row = page.getByTestId('audit-row')
@@ -106,7 +139,9 @@ describe("a person's audit events", () => {
     await open(() =>
       Effect.succeed({
         items: [event('e1', { outcome: 'denied', reasonCode: 'ACCESS_DENIED' })],
-        nextCursor: null,
+        total: 1,
+        page: 1,
+        pageSize: 50,
       }),
     )
     const row = page.getByTestId('audit-row')

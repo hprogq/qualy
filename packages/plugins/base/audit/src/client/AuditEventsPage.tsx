@@ -1,21 +1,20 @@
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
-import { useMemo, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { useState } from 'react'
+import { pageNumber } from '@qualy/api-kit/schema'
 import { UserRoundIcon, UserRoundXIcon, XIcon } from 'lucide-react'
 import { peoplePicker, type PeoplePickerContext } from '@qualy/ui-contract'
 import * as stylex from '@stylexjs/stylex'
 import {
   UiSlot,
-  cursorPages,
-  useApi,
   useApiQuery,
   useLoadFailure,
   useManifest,
   usePageQueryState,
-  useRunApi,
+  usePageQueryUpdate,
 } from '@qualy/web-runtime'
 
 import { AsyncSection, FormDialog } from '@qualy/ui/admin'
-import { Blank, Card, CardFoot, FootNote, Screen, Spacer, TableSkeleton } from '@qualy/ui/screen'
+import { Blank, Card, Screen, TableSkeleton } from '@qualy/ui/screen'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { Button } from '@qualy/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@qualy/ui/select'
@@ -24,6 +23,7 @@ import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 
 import { auditApi } from './api.ts'
 import { EventTable } from './EventTable.tsx'
+import { EventPager } from './EventPager.tsx'
 import * as commonMessages from '@qualy/web-i18n/messages'
 import * as m from '#messages'
 
@@ -56,13 +56,14 @@ const styles = stylex.create({
 })
 
 export default function AuditEventsPage() {
-  const api = useApi(auditApi)
-  const runApi = useRunApi()
   const query = useApiQuery(auditApi)
   const failures = useLoadFailure()
-  const [action, setAction] = usePageQueryState('action')
-  const [outcome, setOutcome] = usePageQueryState('outcome')
-  const [actor, setActor] = usePageQueryState('actor')
+  const [action] = usePageQueryState('action')
+  const [outcome] = usePageQueryState('outcome')
+  const [actor] = usePageQueryState('actor')
+  const [pageParam, setPageParam] = usePageQueryState('page')
+  const write = usePageQueryUpdate()
+  const setActor = (value: string) => write({ actor: value, page: '' })
   const [pickingActor, setPickingActor] = useState(false)
   const pickable = (useManifest().slots[peoplePicker.key]?.length ?? 0) > 0
 
@@ -75,24 +76,24 @@ export default function AuditEventsPage() {
     ...(actor ? { actorUserId: actor } : {}),
     ...(outcomeFilter !== undefined ? { outcome: outcomeFilter } : {}),
   }
-  const events = useInfiniteQuery({
-    queryKey: [...query.audit.listAuditEvents.key({ query: filter }), 'infinite'],
-    queryFn: ({ pageParam }) =>
-      runApi(
-        api.audit.listAuditEvents({
-          query: { ...filter, ...(pageParam !== undefined ? { cursor: pageParam } : {}) },
-        }),
-      ),
-    ...cursorPages,
+  const filterKey = JSON.stringify(filter)
+  const events = useQuery({
+    ...query.audit.listAuditEvents.queryOptions({
+      query: { ...filter, page: String(pageNumber(pageParam)) },
+    }),
+    meta: { auditFilter: filterKey },
+    // Keep the current page while turning it, but never show a different filter's rows.
+    placeholderData: (previous, previousQuery) =>
+      previousQuery?.meta?.['auditFilter'] === filterKey ? previous : undefined,
   })
-  const rows = useMemo(() => events.data?.pages.flatMap((page) => page.items) ?? [], [events.data])
+  const rows = events.data?.items ?? []
 
   return (
     <Screen title={m.events_title()} description={m.events_hint()} size="broad">
       <div {...stylex.props(styles.filters)}>
         <Select
           value={action || ALL}
-          onValueChange={(value) => setAction(value === ALL ? '' : value)}
+          onValueChange={(value) => write({ action: value === ALL ? '' : value, page: '' })}
         >
           <SelectTrigger size="sm" xstyle={styles.actionFilter}>
             <SelectValue />
@@ -108,7 +109,7 @@ export default function AuditEventsPage() {
         </Select>
         <Select
           value={outcome || ALL}
-          onValueChange={(value) => setOutcome(value === ALL ? '' : value)}
+          onValueChange={(value) => write({ outcome: value === ALL ? '' : value, page: '' })}
         >
           <SelectTrigger size="sm" xstyle={styles.outcomeFilter}>
             <SelectValue />
@@ -149,37 +150,34 @@ export default function AuditEventsPage() {
         )}
       </div>
 
-      <AsyncSection
-        pending={events.isPending}
-        error={events.isError ? failures.of(events.error) : undefined}
-        framed
-        loadingLabel={commonMessages.state_loading()}
-        retryLabel={commonMessages.action_retry()}
-        onRetry={() => void events.refetch()}
-        skeleton={<TableSkeleton />}
+      <section
+        data-testid="audit-results"
+        aria-label={m.events_title()}
+        aria-busy={events.isFetching}
+        tabIndex={-1}
       >
-        <Card data-testid="audit-table">
-          <EventTable rows={rows} empty={m.events_empty()} onlyActor={setActor} />
-          <CardFoot>
-            <FootNote>
-              <span data-testid="audit-count" data-count={rows.length}>
-                {m.events_loadedCount({ count: rows.length })}
-              </span>
-            </FootNote>
-            <Spacer />
-            {events.hasNextPage && (
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={events.isFetchingNextPage}
-                onClick={() => void events.fetchNextPage()}
-              >
-                {m.events_loadMore()}
-              </Button>
+        <AsyncSection
+          pending={events.isPending}
+          error={events.isError ? failures.of(events.error) : undefined}
+          retrying={events.isFetching}
+          framed
+          loadingLabel={commonMessages.state_loading()}
+          retryLabel={commonMessages.action_retry()}
+          onRetry={() => void events.refetch()}
+          skeleton={<TableSkeleton />}
+        >
+          <Card data-testid="audit-table">
+            <EventTable rows={rows} empty={m.events_empty()} onlyActor={setActor} />
+            {events.data && (
+              <EventPager
+                result={events.data}
+                busy={events.isFetching}
+                onPage={(next) => setPageParam(next === 1 ? '' : String(next))}
+              />
             )}
-          </CardFoot>
-        </Card>
-      </AsyncSection>
+          </Card>
+        </AsyncSection>
+      </section>
       {/* a tree beside a roster, which is the shape the picker has wherever
           it is opened; at a form's width the two columns had a few
           characters each */}

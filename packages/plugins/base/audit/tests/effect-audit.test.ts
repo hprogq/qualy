@@ -320,37 +320,45 @@ describe.runIf(postgresAvailable)('the audit writer', () => {
           // so the page boundary has to be decided by the id tiebreak
           yield* transaction(Effect.all([record('active'), record('active'), record('disabled')]))
 
-          const firstPage = yield* listEvents(tenant, {}, { limit: 2 }).pipe(Effect.orDie)
-          const last = firstPage.at(-1)!
+          const firstPage = yield* listEvents(tenant, {}, { page: 1, pageSize: 2 }).pipe(
+            Effect.orDie,
+          )
           const secondPage = yield* listEvents(
             tenant,
             {},
             {
-              after: [last.occurredAtCursor, last.id],
-              limit: 2,
+              page: 2,
+              pageSize: 2,
             },
           ).pipe(Effect.orDie)
 
+          const past = yield* listEvents(tenant, {}, { page: 9, pageSize: 2 }).pipe(Effect.orDie)
           const other = yield* runSql<{ id: string }>(
             sql`insert into tenants (slug, name) values ('u', 'U') returning id`,
           )
-          const foreign = yield* listEvents(other.rows[0]!.id, {}, { limit: 10 }).pipe(Effect.orDie)
-          return { firstPage, secondPage, foreign }
+          const foreign = yield* listEvents(other.rows[0]!.id, {}, { page: 9, pageSize: 10 }).pipe(
+            Effect.orDie,
+          )
+          return { firstPage, secondPage, past, foreign }
         }),
       )
-      const { firstPage, secondPage, foreign } = ok(exit)
-      expect(firstPage).toHaveLength(2)
-      expect(secondPage).toHaveLength(1)
-      const ids = [...firstPage, ...secondPage].map((row) => row.id)
+      const { firstPage, secondPage, past, foreign } = ok(exit)
+      expect(firstPage).toMatchObject({ total: 3, page: 1, pageSize: 2 })
+      expect(firstPage.items).toHaveLength(2)
+      expect(secondPage).toMatchObject({ total: 3, page: 2, pageSize: 2 })
+      expect(secondPage.items).toHaveLength(1)
+      expect(past).toEqual(secondPage)
+      const ids = [...firstPage.items, ...secondPage.items].map((row) => row.id)
+      expect(ids).toEqual([...ids].sort().reverse())
       expect(new Set(ids).size).toBe(3)
       // the other tenant reads its own empty trail, never a neighbour's
-      expect(foreign).toHaveLength(0)
+      expect(foreign).toEqual({ items: [], total: 0, page: 1, pageSize: 10 })
     } finally {
       await db.dispose()
     }
   })
 
-  it('filters by action and outcome without breaking the cursor contract', async () => {
+  it('counts only the events matching the action and outcome filters', async () => {
     const db = await createTestContext('audit-filters')
     try {
       const exit = await run(
@@ -374,21 +382,98 @@ describe.runIf(postgresAvailable)('the audit writer', () => {
             tenant,
             { actionCode: 'auth.user.disable' },
             {
-              limit: 10,
+              page: 1,
+              pageSize: 10,
             },
           ).pipe(Effect.orDie)
-          const byOutcome = yield* listEvents(tenant, { outcome: 'denied' }, { limit: 10 }).pipe(
-            Effect.orDie,
-          )
+          const byOutcome = yield* listEvents(
+            tenant,
+            { outcome: 'denied' },
+            { page: 1, pageSize: 10 },
+          ).pipe(Effect.orDie)
           return { byAction, byOutcome }
         }),
       )
       const { byAction, byOutcome } = ok(exit)
-      expect(byAction).toHaveLength(1)
-      expect(byAction[0]!.actionCode).toBe('auth.user.disable')
-      expect(byOutcome).toHaveLength(1)
-      expect(byOutcome[0]!.reasonCode).toBe('not-allowed')
+      expect(byAction.total).toBe(1)
+      expect(byAction.items).toHaveLength(1)
+      expect(byAction.items[0]!.actionCode).toBe('auth.user.disable')
+      expect(byOutcome.total).toBe(1)
+      expect(byOutcome.items).toHaveLength(1)
+      expect(byOutcome.items[0]!.reasonCode).toBe('not-allowed')
     } finally {
+      await db.dispose()
+    }
+  })
+
+  it('keeps the count and page in one snapshot when an event arrives between the reads', async () => {
+    const db = await createTestContext('audit-page-snapshot')
+    let releaseLock = () => {}
+    let locker: Promise<void> | undefined
+    const readPage = (tenant: string) =>
+      run(db.url, listEvents(tenant, {}, { page: 1, pageSize: 10 }).pipe(Effect.orDie))
+    let reading: ReturnType<typeof readPage> | undefined
+    try {
+      const tenant = (
+        await db.row<{ id: string }>(
+          "insert into tenants (slug, name) values ('t', 'T') returning id",
+        )
+      ).id
+      const insert = () =>
+        db.query(
+          `insert into audit_events
+           (tenant_id, action_code, action_version, actor_kind, outcome, details, source)
+           values ($1, 'audit.test.read', 1, 'system', 'success', '{}', 'system')`,
+          [tenant],
+        )
+      await insert()
+      await insert()
+      let announceLock = () => {}
+      const locked = new Promise<void>((resolve) => {
+        announceLock = resolve
+      })
+      const released = new Promise<void>((resolve) => {
+        releaseLock = resolve
+      })
+      // Only the row query joins users. Holding this lock lets the count
+      // finish, then pauses the rows while a separate connection appends.
+      locker = Effect.runPromise(
+        transaction(
+          Effect.gen(function* () {
+            yield* runSql(sql`lock table users in access exclusive mode`)
+            announceLock()
+            yield* Effect.promise(() => released)
+          }),
+        ).pipe(Effect.provide(databaseFor(db.url, { entities: closure }))),
+      )
+      await locked
+      reading = readPage(tenant)
+      await expect
+        .poll(
+          async () =>
+            (
+              await db.row<{ count: number }>(
+                `select count(*)::int as count from pg_stat_activity
+                 where datname = current_database() and wait_event_type = 'Lock'
+                   and query like '%"audit_events"%'`,
+              )
+            ).count,
+          { timeout: 5_000 },
+        )
+        .toBe(1)
+      await insert()
+      releaseLock()
+      await locker
+      const page = ok(await reading)
+      expect(page.total).toBe(2)
+      expect(page.items).toHaveLength(2)
+      const refreshed = ok(await readPage(tenant))
+      expect(refreshed.total).toBe(3)
+      expect(refreshed.items).toHaveLength(3)
+    } finally {
+      releaseLock()
+      await locker
+      await reading
       await db.dispose()
     }
   })

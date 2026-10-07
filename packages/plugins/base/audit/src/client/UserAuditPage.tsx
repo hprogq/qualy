@@ -1,23 +1,21 @@
-import { useInfiniteQuery } from '@tanstack/react-query'
-import { useMemo } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { pageNumber } from '@qualy/api-kit/schema'
 import * as stylex from '@stylexjs/stylex'
 import {
-  cursorPages,
-  useApi,
   useApiQuery,
   useLoadFailure,
   usePageQueryState,
   usePageRouteParams,
-  useRunApi,
+  usePageQueryUpdate,
 } from '@qualy/web-runtime'
 
 import { AsyncSection } from '@qualy/ui/admin'
-import { Button } from '@qualy/ui/button'
-import { Card, CardFoot, FootNote, SectionHead, Spacer, TableSkeleton } from '@qualy/ui/screen'
+import { Card, SectionHead, TableSkeleton } from '@qualy/ui/screen'
 import { ToggleGroup, ToggleGroupItem } from '@qualy/ui/toggle-group'
 
 import { auditApi } from './api.ts'
 import { EventTable } from './EventTable.tsx'
+import { EventPager } from './EventPager.tsx'
 import * as commonMessages from '@qualy/web-i18n/messages'
 import * as m from '#messages'
 
@@ -36,26 +34,26 @@ const styles = stylex.create({
 
 export default function UserAuditPage() {
   const { userId } = usePageRouteParams('userId')
-  const api = useApi(auditApi)
-  const runApi = useRunApi()
   const query = useApiQuery(auditApi)
 
   const describe = useLoadFailure()
   // kept in the address, so a reload or a link keeps which half is read
-  const [view, setView] = usePageQueryState('view')
+  const [view] = usePageQueryState('view')
+  const [pageParam, setPageParam] = usePageQueryState('page')
+  const write = usePageQueryUpdate()
   const by = view === 'by'
   const filter = by ? { actorUserId: userId } : { targetKind: PERSON_TARGET, targetId: userId }
-  const events = useInfiniteQuery({
-    queryKey: [...query.audit.listAuditEvents.key({ query: filter }), 'infinite'],
-    queryFn: ({ pageParam }) =>
-      runApi(
-        api.audit.listAuditEvents({
-          query: { ...filter, ...(pageParam !== undefined ? { cursor: pageParam } : {}) },
-        }),
-      ),
-    ...cursorPages,
+  const filterKey = JSON.stringify(filter)
+  const events = useQuery({
+    ...query.audit.listAuditEvents.queryOptions({
+      query: { ...filter, page: String(pageNumber(pageParam)) },
+    }),
+    meta: { auditFilter: filterKey },
+    // Keep the current page while turning it, but never show a different filter's rows.
+    placeholderData: (previous, previousQuery) =>
+      previousQuery?.meta?.['auditFilter'] === filterKey ? previous : undefined,
   })
-  const rows = useMemo(() => events.data?.pages.flatMap((page) => page.items) ?? [], [events.data])
+  const rows = events.data?.items ?? []
 
   return (
     <div {...stylex.props(styles.page)} data-testid="user-audit" data-view={by ? 'by' : 'about'}>
@@ -67,7 +65,7 @@ export default function UserAuditPage() {
             value={by ? 'by' : 'about'}
             onValueChange={(next) => {
               if (next === '') return
-              setView(next === 'by' ? 'by' : '')
+              write({ view: next === 'by' ? 'by' : '', page: '' })
             }}
           >
             <ToggleGroupItem value="about">{m.userEvents_about()}</ToggleGroupItem>
@@ -75,45 +73,39 @@ export default function UserAuditPage() {
           </ToggleGroup>
         }
       />
-      <AsyncSection
-        pending={events.isPending}
-        error={events.isError ? describe.of(events.error) : undefined}
-        retrying={events.isFetching}
-        framed
-        loadingLabel={commonMessages.state_loading()}
-        retryLabel={commonMessages.action_retry()}
-        onRetry={() => void events.refetch()}
-        skeleton={<TableSkeleton />}
+      <section
+        data-testid="audit-results"
+        aria-label={m.userEvents_title()}
+        aria-busy={events.isFetching}
+        tabIndex={-1}
       >
-        <Card data-testid="audit-table">
-          <EventTable
-            rows={rows}
-            empty={(by ? m.userEvents_emptyBy : m.userEvents_emptyAbout)()}
-            // what was done to them is all about them: their name on every row says nothing
-            hideTarget={!by}
-          />
-          {rows.length > 0 && (
-            <CardFoot>
-              <FootNote>
-                <span data-testid="audit-count" data-count={rows.length}>
-                  {m.events_loadedCount({ count: rows.length })}
-                </span>
-              </FootNote>
-              <Spacer />
-              {events.hasNextPage && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={events.isFetchingNextPage}
-                  onClick={() => void events.fetchNextPage()}
-                >
-                  {m.events_loadMore()}
-                </Button>
-              )}
-            </CardFoot>
-          )}
-        </Card>
-      </AsyncSection>
+        <AsyncSection
+          pending={events.isPending}
+          error={events.isError ? describe.of(events.error) : undefined}
+          retrying={events.isFetching}
+          framed
+          loadingLabel={commonMessages.state_loading()}
+          retryLabel={commonMessages.action_retry()}
+          onRetry={() => void events.refetch()}
+          skeleton={<TableSkeleton />}
+        >
+          <Card data-testid="audit-table">
+            <EventTable
+              rows={rows}
+              empty={(by ? m.userEvents_emptyBy : m.userEvents_emptyAbout)()}
+              // what was done to them is all about them: their name on every row says nothing
+              hideTarget={!by}
+            />
+            {events.data && (
+              <EventPager
+                result={events.data}
+                busy={events.isFetching}
+                onPage={(next) => setPageParam(next === 1 ? '' : String(next))}
+              />
+            )}
+          </Card>
+        </AsyncSection>
+      </section>
     </div>
   )
 }
