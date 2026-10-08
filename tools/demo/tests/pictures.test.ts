@@ -11,7 +11,8 @@ import { PROOF_ASSETS } from '../seed/files.ts'
 
 const ASSETS = path.resolve('tools/demo/assets')
 const DATED = /二〇[〇一二三四五六七八九]{2}年|\d{4}\s*年|\d{4}-\d{2}-\d{2}/
-const shared = [...new Set(Object.values(PROOF_ASSETS).flat())]
+// Selection applications also reuse the provincial project notice across terms.
+const shared = [...new Set([...Object.values(PROOF_ASSETS).flat(), 'research-3'])]
 
 describe('the pictures claims are filed with', () => {
   it('are drawn and rendered', () => {

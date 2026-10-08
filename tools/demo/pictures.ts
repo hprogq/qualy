@@ -383,7 +383,6 @@ export const PICTURES: Readonly<Record<string, string>> = {
     '立项通知书',
     '经评审，该同学主持的大学生创新创业训练计划项目获准<b>省级立项</b>，请按计划开展研究。',
     '省教育厅高等教育处（示例）',
-    '二〇二五年十一月',
   ),
   // the qualifying papers, whole, and each with the one thing missing that
   // an ask or a refusal names (seed/papers.ts)
