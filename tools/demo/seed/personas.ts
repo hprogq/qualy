@@ -1,26 +1,23 @@
 import { Effect } from 'effect'
-import { sql } from 'kysely'
 import { Iam } from '@qualy/plugin-auth/server'
-import { runSql } from '@qualy/plugin-database/testkit'
 import type { Story } from './context.ts'
 import type { Student, World } from './world.ts'
+import { demoEmail } from './school.ts'
 
 // The people the demonstration signs in as.
 //
 // Their password is given at seeding time, like the administrator's, and is
-// never committed: a deployment of this baseline decides for itself whether
-// anybody but its owner may sign in as them. One that offers them on its
-// sign-in page names them in QUALY_DEMO_ACCOUNTS, which also freezes them
-// against a visitor changing them; the seeder prints that value.
+// never committed or printed. The presenter keeps the credentials locally;
+// the public sign-in page does not advertise these accounts.
 //
 // The system administrator is not among them: that account can change how
 // everybody signs in, and its password comes from the environment only.
 
 export const PERSONA_ACCOUNTS = [
-  { key: 'student', label: '学生', email: 'student@demo.qualy.example' },
-  { key: 'class-lead', label: '班级综测负责人', email: 'class-lead@demo.qualy.example' },
-  { key: 'counsellor', label: '辅导员', email: 'counsellor@demo.qualy.example' },
-  { key: 'lead', label: '综测负责人', email: 'assessment-lead@demo.qualy.example' },
+  { key: 'student', label: '学生', email: demoEmail('student') },
+  { key: 'class-lead', label: '班级综测负责人', email: demoEmail('class-lead') },
+  { key: 'counsellor', label: '辅导员', email: demoEmail('counsellor') },
+  { key: 'lead', label: '综测负责人', email: demoEmail('lead') },
 ] as const
 
 export const PERSONA_PASSWORD_REQUIRED =
@@ -32,9 +29,11 @@ export const personaPassword = (): string | undefined => {
   return value === undefined || value.length < 15 ? undefined : value
 }
 
-/** what a deployment that offers the accounts puts in QUALY_DEMO_ACCOUNTS */
-export const demoAccountsEnv = (password: string) =>
-  JSON.stringify(PERSONA_ACCOUNTS.map(({ label, email }) => ({ label, email, password })))
+/** Ordinary students are participants without being admitted by any login entrance. */
+export const personaAudience = (userTypes: World['userTypes'], systemType: string) => ({
+  mode: 'allow-list' as const,
+  userTypeIds: [systemType, userTypes.demoStudent, userTypes.faculty],
+})
 
 /**
  * The two students the demonstration signs in as, chosen from the cohort
@@ -66,11 +65,23 @@ export const choosePersonaStudents = (
 export const arrangeSignInPage = (world: World, story: Story) =>
   Effect.gen(function* () {
     const iam = yield* Iam
-    const provider = (
-      (yield* runSql(sql`select id, version from auth_providers where code = 'local'`)) as {
-        rows: { id: string; version: number }[]
-      }
-    ).rows[0]!
+    const providers = yield* iam.providers.list(world.tenantId)
+    const systemType = (yield* iam.userTypes.list(world.tenantId)).find((type) => type.isSystem)!.id
+    const audience = personaAudience(world.userTypes, systemType)
+    for (const provider of providers) {
+      yield* story.step(
+        iam.providers.setAudience(
+          world.tenantId,
+          provider.id,
+          audience,
+          provider.version,
+          world.admin,
+        ),
+      )
+    }
+    const provider = (yield* iam.providers.list(world.tenantId)).find(
+      (one) => one.code === 'local',
+    )!
     yield* story.step(
       iam.providers.update(
         world.tenantId,
@@ -88,11 +99,9 @@ export const arrangeSignInPage = (world: World, story: Story) =>
 export const openPersonaAccounts = (world: World, story: Story, password: string) =>
   Effect.gen(function* () {
     const iam = yield* Iam
-    const provider = (
-      (yield* runSql(sql`select id from auth_providers where code = 'local'`)) as {
-        rows: { id: string }[]
-      }
-    ).rows[0]!.id
+    const provider = (yield* iam.providers.list(world.tenantId)).find(
+      (one) => one.code === 'local',
+    )!.id
     const people: Record<(typeof PERSONA_ACCOUNTS)[number]['key'], string> = {
       student: world.cast.student.id,
       'class-lead': world.cast.classLead.id,

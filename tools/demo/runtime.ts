@@ -19,7 +19,7 @@ import { BOOT_HOOKS } from './boot-hooks.ts'
 // the database except the calls the seeder makes.
 
 /** where the demo's uploaded files live, beside the development ones and never among them */
-export const DEMO_STORAGE_ROOT = './data/demo-storage'
+export const DEMO_STORAGE_ROOT = process.env.QUALY_DEMO_STORAGE_ROOT ?? './data/demo-storage'
 
 const resolution = async () => {
   const manifestPath = locateManifest({ env: process.env, from: process.cwd() })
@@ -103,8 +103,7 @@ export const runOverDemo = async <A>(
   // a key Resend will refuse: whatever a service does while seeding, no
   // message leaves this machine
   process.env.QUALY_MAIL_RESEND_API_KEY = 're_demo_seeder_sends_nothing'
-  // the seeder sets the demo accounts' passwords, which the running
-  // deployment then keeps anybody from changing
+  // Presenter credentials stay private and their account settings remain usable.
   process.env.QUALY_DEMO_ACCOUNTS = ''
   process.env.QUALY_STORAGE_LOCAL_ROOT = path.resolve(DEMO_STORAGE_ROOT)
   process.env.QUALY_STORAGE_DEFAULT_BACKEND = 'local'

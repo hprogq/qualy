@@ -20,6 +20,7 @@ import type { Pool } from 'pg'
 export const MOVED_COLUMNS: Readonly<Record<string, readonly string[]>> = {
   tenants: ['created_at', 'updated_at'],
   auth_providers: ['created_at', 'updated_at'],
+  auth_provider_user_types: ['created_at'],
   user_auth_bindings: ['bound_at'],
   permissions: ['created_at', 'updated_at'],
   org_types: ['created_at', 'updated_at'],

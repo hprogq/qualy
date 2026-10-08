@@ -67,6 +67,13 @@ const rankFor = (random: Random) =>
 
 const proofOf = (random: Random, kind: keyof typeof PROOF_ASSETS) => random.pick(PROOF_ASSETS[kind])
 
+const COMPETITION_PROOFS = [
+  { proof: 'competition-1', level: 'provincial', rank: 1, team: true },
+  { proof: 'competition-2', level: 'national', rank: 3, team: false },
+  { proof: 'competition-3', level: 'municipal', rank: 2, team: false },
+  { proof: 'competition-4', level: 'provincial', rank: 1, team: false },
+] as const
+
 export const claimsOf = (
   student: Student,
   term: Term,
@@ -133,20 +140,19 @@ export const claimsOf = (
 
   add(Math.min(countAt(perStudent['competition'], lean(0.85)), 4), () => {
     const competition = random.weighted(COMPETITIONS)
-    const level =
-      competition.levels.length > 1 && random.chance(0.3)
-        ? competition.levels[0]!
-        : competition.levels[competition.levels.length - 1]!
+    const evidence = random.pick(
+      COMPETITION_PROOFS.filter((one) => competition.levels.includes(one.level)),
+    )
     return {
       item: 'competition',
       payload: {
         name: competition.name,
-        level,
-        rank: rankFor(random),
-        team: random.chance(0.62),
+        level: evidence.level,
+        rank: evidence.rank,
+        team: evidence.team,
         'awarded-on': dayIn(random, material),
       },
-      proof: proofOf(random, 'competition'),
+      proof: evidence.proof,
       filename: '获奖证书.jpg',
     }
   })

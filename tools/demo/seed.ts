@@ -25,7 +25,6 @@ import type { Student } from './seed/world.ts'
 import {
   arrangeSignInPage,
   PERSONA_PASSWORD_REQUIRED,
-  demoAccountsEnv,
   openPersonaAccounts,
   personaPassword,
 } from './seed/personas.ts'
@@ -34,14 +33,19 @@ import { episodeHostOf, seedOptionsOf, termsToSeed } from './options.ts'
 import { EPISODE_KINDS, episodesOf } from './seed/episodes.ts'
 import { STAGING, shutDoors } from './seed/stages.ts'
 import { writeSignIns } from './seed/telemetry.ts'
-import { sql } from 'kysely'
-import { runSql } from '@qualy/plugin-database/testkit'
+import { privateIdentityOf } from './seed/private-identity.ts'
+import { runSecondaryCollege } from './seed/secondary.ts'
+import { productRootFor } from '@qualy/assembly'
+import { compileMessages } from '@qualy/message-build'
+import { installProductMessages } from '@qualy/text/node'
+import { manifestPath } from '../lib/manifest.ts'
 
 try {
   process.loadEnvFile()
 } catch {}
 
 const url = demoUrl()
+privateIdentityOf()
 // the one account that can change how everybody signs in: never a committed value
 const adminPassword = process.env.QUALY_DEMO_ADMIN_PASSWORD
 if (adminPassword === undefined || adminPassword.length < 15) {
@@ -66,6 +70,8 @@ const episodeHost = episodeHostOf(
   (term) => shutDoors(STAGING[term], EPISODE_KINDS),
 )
 await requireEmpty(url)
+await compileMessages({ manifestPath: manifestPath() })
+await installProductMessages(productRootFor(manifestPath()))
 console.log(`seeding ${describeTarget(url)}`)
 const startedAt = Date.now()
 
@@ -82,11 +88,11 @@ try {
   await timeline.record(cst('2023-08-18T10:00:00'), async () => {
     await client.query('begin')
     // the school's own name, which the bootstrap keeps once a tenant has one
-    await client.query(`insert into tenants (slug, name) values ($1, '示例大学')`, [
+    await client.query(`insert into tenants (slug, name) values ($1, '大连外国语大学')`, [
       process.env.QUALY_DEFAULT_TENANT || 'default',
     ])
     await bootstrap(client, {
-      adminEmail: 'admin@demo.example.edu',
+      adminEmail: 'admin@qualy.hprogq.com',
       adminPassword,
     })
     await client.query('commit')
@@ -94,7 +100,7 @@ try {
   tenantId = (await client.query<{ id: string }>('select id from tenants')).rows[0]!.id
   adminId = (
     await client.query<{ id: string }>(
-      `select id from users where email = 'admin@demo.example.edu'`,
+      `select id from users where email = 'admin@qualy.hprogq.com'`,
     )
   ).rows[0]!.id
 } finally {
@@ -179,12 +185,16 @@ const program = Effect.gen(function* () {
   // college, which the lead finds among the formulas shared with them, and
   // one still a draft
   story.set(cst('2024-03-04T16:10:00'))
-  const weighted = yield* publishFormula(tenantId, 'weighted', admin, story)
-  yield* shareVersion(tenantId, weighted.functionId, 1, [world.college], admin, story)
-  yield* draftFormula(tenantId, 'capped', admin, story)
+  const hours = yield* publishFormula(tenantId, 'service-hours', admin, story)
+  yield* shareVersion(tenantId, hours.functionId, 1, [world.root], admin, story)
+  yield* draftFormula(tenantId, 'language-band', admin, story)
+  const schoolAuthor = principalOf(tenantId, world.staff.schoolFormulaAuthor.id)
+  const shared = yield* publishFormula(tenantId, 'per-count', schoolAuthor, story)
+  yield* shareVersion(tenantId, shared.functionId, 1, [world.root], schoolAuthor, story)
 
   const away: Away[] = []
   let leaving: Student[] = []
+  const history: { batchId: string; term: string; status: 'active' | 'archived' }[] = []
   for (const { plan, index } of terms) {
     const started = Date.now()
     if (index > 0) {
@@ -224,6 +234,12 @@ const program = Effect.gen(function* () {
       random,
       onLeave,
       persona: personaStudent,
+      active: plan.term === '25-26-2',
+    })
+    history.push({
+      batchId: outcome.batchId,
+      term: plan.term,
+      status: plan.term === '25-26-2' ? 'active' : 'archived',
     })
     leaving = onLeave
     console.log(
@@ -237,11 +253,8 @@ const program = Effect.gen(function* () {
   story.set(new Date(startedAt - 27 * 86_400_000))
   const personas = yield* openPersonaAccounts(world, story, accountsPassword)
 
-  const history = (
-    (yield* runSql(
-      sql`select id from assessment_batches where status = 'archived' order by created_at`,
-    )) as { rows: { id: string }[] }
-  ).rows.map((row) => row.id)
+  yield* runSecondaryCollege(world, story)
+
   const selection = yield* runSelection({
     world,
     versions: yield* publishRemaining(tenantId, author, story, versions, functions, startedAt),
@@ -267,7 +280,7 @@ const moved = await rewrite(pool, timeline)
 const signIns = await writeSignIns(pool)
 console.log(`${signIns} sign-ins written`)
 console.log(
-  `\nonly on a deployment that offers these accounts on its sign-in page:\nQUALY_DEMO_ACCOUNTS='${demoAccountsEnv(accountsPassword)}'`,
+  'Demo sign-in credentials remain in the private environment file; no public account list was generated.',
 )
 await pool.end()
 console.log(

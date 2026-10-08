@@ -1,9 +1,17 @@
+import { createQueryId, PostgresQueryCompiler } from 'kysely'
 import { describe, expect, it } from 'vitest'
 import { episodeHostOf, positionalOf, seedOptionsOf, termsToSeed } from '../options.ts'
 import { EPISODE_KINDS } from '../seed/episodes.ts'
 import { STAGING, shutDoors } from '../seed/stages.ts'
 import { TERM_PLANS } from '../seed/term.ts'
-import { judgeSituations, judgeStandings, type Situation, type Standing } from '../situations.ts'
+import {
+  completedReviewHistoriesOf,
+  judgeSituations,
+  judgeStandings,
+  scopedSubmissionsOf,
+  type Situation,
+  type Standing,
+} from '../situations.ts'
 
 // demo:check reads the flags demo:seed was given, and asks for a situation
 // only when the run was meant to write it.
@@ -87,6 +95,55 @@ describe('what a check requires', () => {
   ]
   const labels = (list: readonly Situation[]) => list.map((one) => one.label)
   const full = { stage: 'review', migrationBefore: false, lastTerm: true } as const
+
+  it('counts scoped-stage submissions even when the last term remains active', () => {
+    const compiled = new PostgresQueryCompiler().compileQuery(
+      scopedSubmissionsOf('demo-student-id').toOperationNode(),
+      createQueryId(),
+    )
+    expect(compiled.parameters).toEqual(['demo-student-id'])
+    expect(compiled.sql).toContain('e.created_at >= ph.actual_entry_at')
+    expect(compiled.sql).toContain('later.actual_entry_at <= e.created_at')
+    expect(compiled.sql).not.toContain('archived')
+  })
+
+  it('requires three completed rounds without requiring the containing batch to be archived', () => {
+    const compiled = new PostgresQueryCompiler().compileQuery(
+      completedReviewHistoriesOf('demo-student-id', 'three-rounds').toOperationNode(),
+      createQueryId(),
+    )
+    expect(compiled.parameters).toEqual(['demo-student-id'])
+    expect(compiled.sql).toContain("ri.state = 'completed'")
+    expect(compiled.sql).toContain('ri.entry_id = e.id')
+    expect(compiled.sql).toContain('>= 3')
+    expect(compiled.sql).not.toContain('archived')
+  })
+
+  it('requires a completed continuation linked to the earlier route in any batch', () => {
+    const compiled = new PostgresQueryCompiler().compileQuery(
+      completedReviewHistoriesOf('demo-student-id', 'reroute').toOperationNode(),
+      createQueryId(),
+    )
+    expect(compiled.parameters).toEqual(['demo-student-id'])
+    expect(compiled.sql).toContain("ri.origin = 'reroute' and ri.state = 'completed'")
+    expect(compiled.sql).toContain('ri.supersedes_instance_id is not null')
+    expect(compiled.sql).toContain('ri.entry_id = e.id')
+    expect(compiled.sql).not.toContain('archived')
+  })
+
+  it('still fails when either completed-history scenario is missing', () => {
+    const history: Situation[] = [
+      { account: 'student', label: 'three completed rounds', count: 0 },
+      { account: 'student', label: 'completed reroute', count: 0 },
+    ]
+    expect(judgeSituations(history, full).missing).toEqual(history)
+    expect(
+      judgeSituations(
+        history.map((one) => ({ ...one, count: 1 })),
+        full,
+      ).missing,
+    ).toEqual([])
+  })
 
   it('requires everything a full run writes', () => {
     const judged = judgeSituations(situations, full)

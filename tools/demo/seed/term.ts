@@ -8,13 +8,22 @@ import library from '../library.json' with { type: 'json' }
 import { APPEAL_REASONS, CADRE_POSTS, SCRIPTED_APPEALS, type ScriptedAppeal } from '../catalog.ts'
 import type { FieldSpec, ItemSpec, Term } from '../rules.ts'
 import { claimsOf, type Claim } from './claims.ts'
+import { unreservedClaims } from './claim-identity.ts'
 import { SCRIPTED_ASKS, answerAsk, askFor, requestAsk, type Ask } from './asks.ts'
 import { addMinutes, awake, cst, principalOf, type Random, type Story } from './context.ts'
 import { EPISODE_DOORS, TRIAL_ITEM, type Episode } from './episodes.ts'
 import { stageProof, stageWorkbook } from './files.ts'
 import { buildTermItems, reviewPolicyOf, scoringConfigOf, type Versions } from './items.ts'
-import { EventQueue } from './queue.ts'
 import { reviewAtRandom } from './random-review.ts'
+import { randomStream } from './random-stream.ts'
+import {
+  LIVE_TERM_STOP,
+  LIVE_SERVICE,
+  TermQueue,
+  liveStagingOf,
+  liveTermScenes,
+  type LiveTermScene,
+} from './term-scenes.ts'
 import {
   STAGING,
   amendedDescription,
@@ -24,7 +33,7 @@ import {
 } from './stages.ts'
 import type { Student, World } from './world.ts'
 
-// One term, from the batch being set up to its archive.
+// A term from setup to archive, or to its unfinished live demonstration window.
 //
 //   D-3  the assessment lead sets the batch up: stages, score tree, questions
 //   D    filing opens
@@ -177,10 +186,12 @@ export const runTerm = (input: {
   onLeave: readonly Student[]
   /** the student a visitor signs in as, whose term is written out (episodes.ts) */
   persona: Student
+  /** Stop with real unfinished work and keep filing, review and appeals open. */
+  active?: boolean
 }) =>
   Effect.gen(function* () {
     const { world, plan, episodes, versions, story, random, persona } = input
-    const staging = STAGING[plan.term]
+    const staging = input.active ? liveStagingOf(STAGING[plan.term]) : STAGING[plan.term]
     // what the batch says of itself, as the lead changes it over the term
     let description = openingDescription(staging, episodes)
     const scoped = staging.scoped
@@ -201,7 +212,10 @@ export const runTerm = (input: {
           name: plan.name,
           descriptionMd: description,
           materialRange: plan.material,
-          import: { orgNodeIds: [world.grade], userTypeIds: [world.userTypes.student] },
+          import: {
+            orgNodeIds: [world.grade],
+            userTypeIds: [world.userTypes.student, world.userTypes.demoStudent],
+          },
         },
         lead,
       ),
@@ -249,7 +263,21 @@ export const runTerm = (input: {
     }
     const present = world.students.filter((student) => participants.has(student.id))
 
-    const queue = new EventQueue(story)
+    const queue = new TermQueue(story, input.active ? at(...LIVE_TERM_STOP) : undefined)
+    const personaClaims = [
+      ...episodes.flatMap((episode) =>
+        [episode.first, episode.claim, episode.refiled].filter((claim) => claim !== undefined),
+      ),
+      ...(scoped === undefined ? [] : [scoped.persona.claim]),
+    ]
+    const liveScenes = input.active
+      ? liveTermScenes(
+          present.filter((student) => !input.onLeave.some((away) => away.id === student.id)),
+          persona,
+          world.cast.classLead,
+          new Map([[persona.id, personaClaims]]),
+        )
+      : []
     const itemOf = (key: string) => items.get(key)!
     const asStudent = (student: Student) => principalOf(t, student.id)
     /** the round a claim stands on now, whoever opened it */
@@ -378,7 +406,7 @@ export const runTerm = (input: {
      * Files a claim. Left alone, a few stay drafts and the rest are sent and
      * reviewed as they come; an episode sends its own and judges it itself.
      */
-    const file = (student: Student, claim: Claim, scripted = false) =>
+    const file = (student: Student, claim: Claim, scripted = false, submitted = true) =>
       Effect.gen(function* () {
         const item = itemOf(claim.item)
         const me = asStudent(student)
@@ -407,6 +435,7 @@ export const runTerm = (input: {
           attachments: [proof],
         }
         filed.push(state)
+        if (!submitted) return state
         if (scripted) {
           yield* submit(state, false)
           return state
@@ -433,16 +462,27 @@ export const runTerm = (input: {
     // the persona's own claims leave room for what their episodes file, and
     // for the one they file once filing reopens for its question
     const roomLeft = (student: Student, claims: Claim[]) => {
-      if (student.id !== persona.id) return claims
       const taken = new Map<string, number>()
-      for (const episode of episodes) {
-        for (const claim of [episode.first, episode.claim, episode.refiled]) {
-          if (claim !== undefined) taken.set(claim.item, (taken.get(claim.item) ?? 0) + 1)
+      const reserved: Claim[] = []
+      for (const scene of liveScenes) {
+        if (scene.student.id === student.id) {
+          taken.set(scene.claim.item, (taken.get(scene.claim.item) ?? 0) + 1)
+          reserved.push(scene.claim)
         }
       }
-      if (scoped !== undefined) taken.set(scoped.persona.claim.item, 1)
+      if (student.id === persona.id) {
+        reserved.push(...personaClaims)
+        for (const episode of episodes) {
+          for (const claim of [episode.first, episode.claim, episode.refiled]) {
+            if (claim !== undefined) taken.set(claim.item, (taken.get(claim.item) ?? 0) + 1)
+          }
+        }
+        if (scoped !== undefined) taken.set(scoped.persona.claim.item, 1)
+      }
       return allowed(
-        claims.filter((claim) => !(scoped?.items.includes(claim.item) ?? false)),
+        unreservedClaims(claims, reserved).filter(
+          (claim) => student.id !== persona.id || !(scoped?.items.includes(claim.item) ?? false),
+        ),
         taken,
       )
     }
@@ -452,12 +492,12 @@ export const runTerm = (input: {
      * are: three claims at least, on two kinds of question or more, one per
      * activity, within what each question allows.
      */
-    const cadreClaims = (student: Student) => {
+    const cadreClaims = (student: Student, draws: Random) => {
       const busy: Student = { ...student, activity: Math.max(student.activity, 0.85) }
       const drawn: Claim[] = []
       const named = new Set<string>()
       for (let draw = 0; draw < 6; draw++) {
-        for (const claim of claimsOf(busy, plan.term, random, plan.material)) {
+        for (const claim of claimsOf(busy, plan.term, draws, plan.material)) {
           const what = claim.payload['activity'] ?? claim.payload['name']
           if (typeof what === 'string') {
             if (named.has(`${claim.item}:${what}`)) continue
@@ -472,44 +512,45 @@ export const runTerm = (input: {
     }
 
     /** a claim on a reopened question that waited for its papers */
-    const waited = (claim: Claim) =>
+    const waited = (claim: Claim, draws: Random) =>
       scoped !== undefined &&
       scoped.items.includes(claim.item) &&
       scoped.awaited.includes(String(claim.payload['kind'])) &&
-      random.chance(scoped.late)
+      draws.chance(scoped.late)
 
     for (const student of present) {
       if (input.onLeave.some((one) => one.id === student.id)) continue
+      const draws = randomStream('term-filing', plan.term, student.number)
       const claims = roomLeft(
         student,
         student.id === world.cast.classLead.id
-          ? cadreClaims(student)
-          : claimsOf(student, plan.term, random, plan.material),
+          ? cadreClaims(student, draws)
+          : claimsOf(student, plan.term, draws, plan.material),
       )
       for (const claim of claims) {
-        if (scoped !== undefined && waited(claim)) {
+        if (scoped !== undefined && waited(claim, draws)) {
           // in the evenings once the stage reopening its question is in
-          const day = random.int(...scoped.filedOn)
-          const hour = random.chance(0.75) ? random.int(19, 22) : random.int(12, 17)
+          const day = draws.int(...scoped.filedOn)
+          const hour = draws.chance(0.75) ? draws.int(19, 22) : draws.int(12, 17)
           queue.at(
-            addMinutes(at(day, `${String(hour).padStart(2, '0')}:00`), random.int(0, 59)),
+            addMinutes(at(day, `${String(hour).padStart(2, '0')}:00`), draws.int(0, 59)),
             'file',
             () => Effect.asVoid(file(student, claim)),
           )
           continue
         }
         // evenings mostly, over the four filing days; a last-minute rush on the last one
-        const dayOffset = random.weighted([
+        const dayOffset = draws.weighted([
           { day: 0, weight: 18 },
           { day: 1, weight: 22 },
           { day: 2, weight: 20 },
           { day: 3, weight: 18 },
           { day: 4, weight: 22 },
         ]).day
-        const hour = random.chance(0.75) ? random.int(19, 23) : random.int(9, 17)
+        const hour = draws.chance(0.75) ? draws.int(19, 23) : draws.int(9, 17)
         const when = addMinutes(
           at(dayOffset, `${String(hour).padStart(2, '0')}:00`),
-          random.int(0, 59),
+          draws.int(0, 59),
         )
         queue.at(when < at(0, '08:05') ? at(0, '08:30') : when, 'file', () =>
           Effect.asVoid(file(student, claim)),
@@ -1688,6 +1729,175 @@ export const runTerm = (input: {
       })
 
     episodes.forEach((episode, order) => play(episode, order))
+
+    /** Live cases stop at their actual unfinished step, ready for the next person to act. */
+    const playLive = (scene: LiveTermScene, order: number) => {
+      const held: { entry?: Filed } = {}
+      const when = (days: number, time: string) => addMinutes(at(days, time), order * 3)
+      const on = (
+        days: number,
+        time: string,
+        action: (entry: Filed) => Effect.Effect<void, unknown, unknown>,
+      ) => queue.at(when(days, time), 'live-scene', () => action(held.entry!))
+      const judged = (
+        entry: Filed,
+        action: (judge: Judge) => Effect.Effect<unknown, unknown, unknown>,
+      ) =>
+        Effect.gen(function* () {
+          const judge = yield* judgeOf(entry.instanceId!, entry.student)
+          if (judge === null)
+            return yield* Effect.die(new Error(`live scene ${scene.kind}: no available reviewer`))
+          yield* action(judge)
+        })
+      const reject = (reason: string, comment: string) => (entry: Filed) =>
+        judged(entry, (judge) =>
+          Effect.tap(
+            assessment.decideReview(
+              t,
+              entry.instanceId!,
+              { decision: 'reject', reason, comment },
+              judge.as,
+            ),
+            () =>
+              Effect.sync(() => {
+                entry.status = 'rejected'
+              }),
+          ),
+        )
+      const escalate = (entry: Filed) =>
+        judged(entry, (judge) =>
+          assessment.decideReview(
+            t,
+            entry.instanceId!,
+            {
+              decision: 'escalate',
+              reason: '认定标准存在争议',
+              comment: '申报涉及材料认定口径，请专业负责人合议后复核',
+            },
+            judge.as,
+          ),
+        )
+      const draws = randomStream('live-term-review', scene.student.number, scene.kind)
+      const toCounsellor = (entry: Filed): Effect.Effect<void, unknown, unknown> =>
+        Effect.gen(function* () {
+          const judge = yield* judgeOf(entry.instanceId!, entry.student)
+          if (judge === null)
+            return yield* Effect.die(new Error(`live scene ${scene.kind}: review ended too early`))
+          if (judge.round.chain.stageId.startsWith('counsellor')) return
+          if (judge.round.chain.route === 'normal') yield* escalate(entry)
+          else yield* approveWith(entry, judge, undefined, '已核对现有材料，提请下一步复核')
+          queue.at(awake(addMinutes(queue.now, draws.int(45, 100))), 'live-review', () =>
+            toCounsellor(entry),
+          )
+        })
+      const fresh = scene.kind === 'fresh' || scene.kind === 'draft'
+      queue.at(when(fresh ? 10 : 0, fresh ? '15:30' : '20:00'), 'live-scene', () =>
+        Effect.map(
+          file(scene.student, dated(scene.claim), true, scene.kind !== 'draft'),
+          (entry) => {
+            held.entry = entry
+          },
+        ),
+      )
+      if (fresh) return
+
+      if (scene.kind === 'revised' || scene.kind === 'multiple-revisions') {
+        on(
+          1,
+          '10:20',
+          reject('现有材料不足以支持申报内容', '时长截图不足以证明服务内容，请上传服务单位证明'),
+        )
+        on(2, '12:10', (entry) =>
+          revise(entry, {
+            payload: { evidence: 'certificate' },
+            note: '已补充服务单位出具的志愿服务证明',
+            add: { asset: LIVE_SERVICE.confirmation, filename: '志愿服务证明.jpg' },
+            review: false,
+          }),
+        )
+        if (scene.kind === 'multiple-revisions') {
+          on(
+            2,
+            '18:00',
+            reject(
+              '现有材料不足以支持申报内容',
+              '证明未载明本次服务的具体职责，请补充服务鉴定意见',
+            ),
+          )
+          on(3, '12:30', (entry) =>
+            revise(entry, {
+              note: '已补充服务单位盖章的鉴定意见，列明服务职责',
+              add: { asset: LIVE_SERVICE.duty, filename: '服务鉴定意见.jpg' },
+              review: false,
+            }),
+          )
+        }
+      }
+      if (scene.kind === 'escalated') on(2, '10:00', escalate)
+      if (scene.kind === 'appealed') {
+        on(1, '15:00', reject('现有材料不足以支持申报内容', '现有证书未附赛事认定通知，暂不予认定'))
+        on(9, '09:30', (entry) =>
+          Effect.gen(function* () {
+            const round = yield* assessment.appealEntry(
+              t,
+              entry.entryId,
+              { reason: '赛事主办方已公布认定通知，请结合通知重新核对本次获奖材料' },
+              asStudent(entry.student),
+            )
+            entry.appealed = true
+            entry.instanceId = round.id
+          }),
+        )
+      }
+      if (scene.kind === 'reopened') {
+        on(1, '14:00', (entry) => walk(entry, { kind: 'approve' }, 90))
+        on(6, '10:00', (entry) =>
+          Effect.gen(function* () {
+            const round = yield* assessment.reopenEntry(
+              t,
+              entry.entryId,
+              { reason: '组委会发布获奖名单更正公告，请复核原认定与更正内容是否一致' },
+              recorder,
+            )
+            entry.instanceId = round.id
+          }),
+        )
+      }
+      if (scene.kind === 'returned') {
+        on(9, '14:00', (entry) =>
+          Effect.gen(function* () {
+            yield* assessment.interveneOnEntry(
+              t,
+              entry.entryId,
+              {
+                kind: 'return-for-revision',
+                reason: '现有参与证明未说明活动安排，请补充活动通知和本人参与情况后重新提交',
+              },
+              lead,
+            )
+            entry.status = 'needs_revision'
+          }),
+        )
+        return
+      }
+      if (scene.counsellor) on(9, '11:00', toCounsellor)
+      if (scene.kind === 'supplement-waiting' || scene.kind === 'supplement-answered') {
+        on(10, '13:00', (entry) =>
+          judged(entry, (judge) => {
+            const ask = askFor({
+              item: entry.claim.item,
+              payload: entry.payload,
+              proof: entry.pictures[0]!,
+            })
+            if (ask === undefined)
+              return Effect.die(new Error('live supplement has no matching evidence request'))
+            return askOn(entry, ask, judge.as)
+          }),
+        )
+        if (scene.kind === 'supplement-answered') on(10, '16:00', (entry) => answer(entry, false))
+      }
+    }
+    liveScenes.forEach(playLive)
 
     // the persona's certificate, filed once filing reopens for its question
     if (scoped !== undefined) {

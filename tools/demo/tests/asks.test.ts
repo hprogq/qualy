@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { APPEAL_REASONS, SCRIPTED_APPEALS } from '../catalog.ts'
 import { EVERY_ASK, SCRIPTED_ASKS, askFor, requirementsOf, type Filing } from '../seed/asks.ts'
 import { claimsOf } from '../seed/claims.ts'
-import { makeRandom } from '../seed/context.ts'
+import { makeRandom, randomOf } from '../seed/context.ts'
 import { PROOF_ASSETS } from '../seed/files.ts'
 import { CET4_REPORTS, PAPERS } from '../seed/papers.ts'
 import { TERM_PLANS } from '../seed/term.ts'
@@ -23,17 +23,22 @@ const termFilings = (): Filing[] => {
   const random = makeRandom(7)
   const filings: Filing[] = []
   for (const plan of TERM_PLANS) {
-    for (let i = 0; i < 60; i++) {
+    for (let i = 0; i <= 60; i++) {
+      // Include the histogram's upper tail explicitly: rare team awards
+      // must not disappear when an unrelated draw consumes fewer numbers.
+      const rare = i === 60
       const student: Student = {
         id: `s${i}`,
         name: '',
         number: '',
         classKey: '2023-se-1',
         major: 'se',
-        activity: (i % 10) / 10 + 0.05,
+        activity: rare ? 1 : (i % 10) / 10 + 0.05,
         standing: 0.5,
       }
-      filings.push(...claimsOf(student, plan.term, random, plan.material))
+      filings.push(
+        ...claimsOf(student, plan.term, rare ? randomOf(() => 0) : random, plan.material),
+      )
     }
   }
   return filings

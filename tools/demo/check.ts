@@ -26,6 +26,11 @@ import {
   personaStandings,
 } from './situations.ts'
 import { TERM_PLANS } from './seed/term.ts'
+import { checkDemoCoverage } from './coverage.ts'
+import { productRootFor } from '@qualy/assembly'
+import { compileMessages } from '@qualy/message-build'
+import { installProductMessages } from '@qualy/text/node'
+import { manifestPath } from '../lib/manifest.ts'
 
 const url = demoUrl()
 const argv = process.argv.slice(2)
@@ -35,6 +40,8 @@ const sample = Number(positionalOf(argv)[0] ?? 80)
 const quantile = (sorted: readonly number[], q: number) =>
   sorted.length === 0 ? NaN : sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))]!
 
+await compileMessages({ manifestPath: manifestPath() })
+await installProductMessages(productRootFor(manifestPath()))
 await runOverDemo(
   url,
   Effect.gen(function* () {
@@ -43,9 +50,7 @@ await runOverDemo(
     const lead = (
       (yield* runSql(sql`
         select u.id, u.tenant_id from users u
-        join role_grants g on g.user_id = u.id
-        join roles r on r.id = g.role_id and r.code = 'assessment-manager'
-        limit 1`)) as { rows: { id: string; tenant_id: string }[] }
+        where u.email = 'admin@qualy.hprogq.com'`)) as { rows: { id: string; tenant_id: string }[] }
     ).rows[0]!
     const as = principalOf(lead.tenant_id, lead.id)
     const batches = (
@@ -240,5 +245,7 @@ await runOverDemo(
       )
       process.exitCode = 1
     }
+    console.log('\naccount and active-batch coverage:')
+    if ((yield* checkDemoCoverage).length > 0) process.exitCode = 1
   }) as Effect.Effect<void, unknown, never>,
 )

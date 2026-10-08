@@ -5,6 +5,7 @@ import { runSql } from '@qualy/plugin-database/testkit'
 import type { SeedOptions } from './options.ts'
 import { principalOf } from './seed/context.ts'
 import { PERSONA_ACCOUNTS } from './seed/personas.ts'
+import { SECONDARY_BATCHES } from './seed/secondary.ts'
 
 // What each demonstration account opens onto, counted.
 //
@@ -65,6 +66,39 @@ export const judgeSituations = (situations: readonly Situation[], seeded: Seeded
 const count = (query: RawBuilder<unknown>) =>
   Effect.map(runSql(query), (found) => (found as { rows: { n: number }[] }).rows[0]?.n ?? 0)
 
+/** A scoped reopening is part of a person's history even while that batch is still active. */
+export const scopedSubmissionsOf = (studentId: string) => sql`
+  select count(*)::int as n from entries e
+    join batch_participants p on p.tenant_id = e.tenant_id and p.id = e.participant_id
+    join phase_item_scopes s on s.tenant_id = e.tenant_id and s.item_id = e.item_id
+    join batch_phases ph on ph.tenant_id = s.tenant_id and ph.id = s.phase_id
+   where p.user_id = ${studentId}
+     and e.created_at >= ph.actual_entry_at
+     and not exists (
+       select 1 from batch_phases later
+        where later.tenant_id = ph.tenant_id and later.batch_id = ph.batch_id
+          and later.ordinal > ph.ordinal and later.actual_entry_at <= e.created_at)`
+
+/** Completed review history remains history while its batch accepts other work. */
+export const completedReviewHistoriesOf = (
+  studentId: string,
+  kind: 'three-rounds' | 'reroute',
+) => sql`
+  select count(*)::int as n from entries e
+    join batch_participants p on p.tenant_id = e.tenant_id and p.id = e.participant_id
+   where p.user_id = ${studentId}
+     and ${
+       kind === 'three-rounds'
+         ? sql`(select count(*) from review_instances ri
+                 where ri.tenant_id = e.tenant_id and ri.entry_id = e.id
+                   and ri.state = 'completed') >= 3`
+         : sql`exists (
+             select 1 from review_instances ri
+              where ri.tenant_id = e.tenant_id and ri.entry_id = e.id
+                and ri.origin = 'reroute' and ri.state = 'completed'
+                and ri.supersedes_instance_id is not null)`
+     }`
+
 /** Read every numbered page when computing the complete demo situation report. */
 const everyPage = <T, E, R>(
   page: (
@@ -98,7 +132,7 @@ export const personaSituations = Effect.gen(function* () {
   const tenantId = people[0]?.tenant_id
   const current = (
     (yield* runSql(
-      sql`select id from assessment_batches where status = 'active' order by created_at desc limit 1`,
+      sql`select id from assessment_batches where status = 'active' and name = '2027 届软件学院推荐免试研究生综合评价'`,
     )) as { rows: { id: string }[] }
   ).rows[0]?.id
   const situations: Situation[] = []
@@ -160,11 +194,13 @@ export const personaSituations = Effect.gen(function* () {
   )
   add(
     'student',
-    'past: three rounds or more',
-    yield* count(sql`
-      select count(*)::int as n from (${history}) e
-       where (select count(*) from review_instances ri
-               where ri.tenant_id = e.tenant_id and ri.entry_id = e.id) >= 3`),
+    'all batches: three completed rounds or more',
+    yield* count(completedReviewHistoriesOf(student, 'three-rounds')),
+  )
+  add(
+    'student',
+    'all batches: completed after moving onto a changed route',
+    yield* count(completedReviewHistoriesOf(student, 'reroute')),
   )
   add(
     'student',
@@ -228,16 +264,8 @@ export const personaSituations = Effect.gen(function* () {
   )
   add(
     'student',
-    'past: filed in a stage reopened for some questions',
-    yield* count(sql`
-      select count(*)::int as n from (${history}) e
-        join phase_item_scopes s on s.tenant_id = e.tenant_id and s.item_id = e.item_id
-        join batch_phases ph on ph.tenant_id = s.tenant_id and ph.id = s.phase_id
-       where e.created_at >= ph.actual_entry_at
-         and not exists (
-           select 1 from batch_phases later
-            where later.tenant_id = ph.tenant_id and later.batch_id = ph.batch_id
-              and later.ordinal > ph.ordinal and later.actual_entry_at <= e.created_at)`),
+    'all batches: filed in a stage reopened for some questions',
+    yield* count(scopedSubmissionsOf(student)),
     'last-term',
   )
   // what the student's own result pages say about the taken-back facts
@@ -272,16 +300,16 @@ export const personaSituations = Effect.gen(function* () {
           join entry_events ee on ee.tenant_id = e.tenant_id and ee.entry_id = e.id
          where ee.kind = 'revision-required'`),
     )
-    add(
-      'student',
-      `${when}: moved onto a changed route`,
-      yield* count(sql`
-        select count(*)::int as n from (${claims}) e
-          join review_instances ri on ri.tenant_id = e.tenant_id and ri.entry_id = e.id
-         where ri.origin = 'reroute'`),
-      when === 'running' ? 'route-change' : undefined,
-    )
   }
+  add(
+    'student',
+    'running: moved onto a changed route',
+    yield* count(sql`
+      select count(*)::int as n from (${running}) e
+        join review_instances ri on ri.tenant_id = e.tenant_id and ri.entry_id = e.id
+       where ri.origin = 'reroute'`),
+    'route-change',
+  )
   for (const status of ['approved', 'in_review', 'rejected', 'draft'] as const) {
     add(
       'student',
@@ -611,7 +639,9 @@ export const judgeStandings = (
 export const personaStandings = Effect.gen(function* () {
   const assessment = yield* Assessment
   const batches = (
-    (yield* runSql(sql`select id, name from assessment_batches order by created_at`)) as {
+    (yield* runSql(
+      sql`select id, name from assessment_batches where name <> all(${SECONDARY_BATCHES.map((one) => one.name)}::text[]) order by created_at`,
+    )) as {
       rows: { id: string; name: string }[]
     }
   ).rows

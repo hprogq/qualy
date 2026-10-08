@@ -572,10 +572,10 @@ export const FORMULAS: readonly FormulaSpec[] = [
 // showed that. One is published and offered to the college, so the lead
 // finds it among the formulas shared with them; the other is still a draft.
 
-const weighted: FormulaSpec = {
-  key: 'weighted',
-  name: '加权合计',
-  description: '两部分分值各乘以权重后相加，保留两位小数。可用于德育与智育等按比例合成的场景。',
+const serviceHours: FormulaSpec = {
+  key: 'service-hours',
+  name: '志愿服务时长折算',
+  description: '将一条服务记录的认定时长按每小时分值折算，保留两位小数。',
   versions: [
     {
       releaseName: '初版',
@@ -583,75 +583,33 @@ const weighted: FormulaSpec = {
 
 export default defineFormula({
   input: Schema.input({
-    first: ${decimalInput('第一部分', '0', '100')},
-    firstWeight: ${decimalInput('第一部分权重', '0', '1')},
-    second: ${decimalInput('第二部分', '0', '100')},
-    secondWeight: ${decimalInput('第二部分权重', '0', '1')},
+    hours: ${decimalInput('认定时长', '0', '200')},
+    perHour: ${decimalInput('每小时分值', '0', '1')},
   }),
   output: Schema.scoreAmount(),
-  run: (input, q) => {
-    const d = q.decimal
-    return d.quantize(
-      d.add(d.mul(input.first, input.firstWeight), d.mul(input.second, input.secondWeight)),
-      2,
-    )
-  },
+  run: (input, q) => q.decimal.quantize(q.decimal.mul(input.hours, input.perHour), 2),
 })
 `,
       tests: [
-        {
-          name: '七三开',
-          input: { first: '91.5', firstWeight: '0.7', second: '83', secondWeight: '0.3' },
-          expected: '88.95',
-        },
-        {
-          name: '六四开',
-          input: { first: '60', firstWeight: '0.6', second: '75.35', secondWeight: '0.4' },
-          expected: '66.14',
-        },
+        { name: '半天服务', input: { hours: '4', perHour: '0.1' }, expected: '0.4' },
+        { name: '含半小时时长', input: { hours: '7.5', perHour: '0.1' }, expected: '0.75' },
       ],
     },
   ],
 }
 
-const capped: FormulaSpec = {
-  key: 'capped',
-  name: '封顶累加',
-  description: '三项分值相加，超过上限时按上限计。',
-  versions: [
-    {
-      releaseName: '初版',
-      source: `import { Schema, defineFormula } from '@qualy/formula'
-
-export default defineFormula({
-  input: Schema.input({
-    first: ${decimalInput('第一项', '-10', '20')},
-    second: ${decimalInput('第二项', '-10', '20')},
-    third: ${decimalInput('第三项', '-10', '20')},
-    cap: ${decimalInput('上限', '0', '50')},
-  }),
-  output: Schema.scoreAmount(),
-  run: (input, q) => {
-    const d = q.decimal
-    return d.min(d.add(d.add(input.first, input.second), input.third), input.cap)
-  },
-})
-`,
-      tests: [
-        {
-          name: '未到上限',
-          input: { first: '3.5', second: '2.25', third: '1.5', cap: '12.5' },
-          expected: '7.25',
-        },
-        {
-          name: '超过上限',
-          input: { first: '8.5', second: '6.75', third: '2', cap: '12.5' },
-          expected: '12.5',
-        },
-      ],
-    },
+const languageBand = tableFormula(
+  'language-band',
+  '语言能力等级认定',
+  '按单份语言能力证书的认定等级给分，草稿供规则维护时试算。',
+  { name: 'level', title: '认定等级' },
+  [
+    { key: 'qualified', label: '合格', tenths: 10 },
+    { key: 'good', label: '良好', tenths: 15 },
+    { key: 'excellent', label: '优秀', tenths: 20 },
   ],
-}
+  [{ name: '优秀等级', input: { level: 'excellent', scoreUnit: '0.1' }, expected: '2' }],
+)
 
-/** the administrator's own: the first is published, the second is a draft */
-export const ADMIN_FORMULAS: readonly FormulaSpec[] = [weighted, capped]
+/** The administrator's own: the first is published, the second is a draft. */
+export const ADMIN_FORMULAS: readonly FormulaSpec[] = [serviceHours, languageBand]

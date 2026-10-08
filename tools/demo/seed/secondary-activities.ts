@@ -1,3 +1,5 @@
+import type { Random } from './context.ts'
+
 export type SecondaryActivityKind = 'culture' | 'service' | 'competition'
 
 const EVIDENCE = {
@@ -86,3 +88,17 @@ export const SECONDARY_ACTIVITIES = [
 ] as const
 
 export type SecondaryActivity = (typeof SECONDARY_ACTIVITIES)[number]['activities'][number]
+
+/** Pick distinct events for one participant without separating their evidence from the event. */
+export const drawSecondaryActivities = (random: Pick<Random, 'int'>, count: number) => {
+  const available = SECONDARY_ACTIVITIES.flatMap((spec) =>
+    spec.activities.map((activity) => ({ spec, activity })),
+  )
+  if (!Number.isInteger(count) || count < 0 || count > available.length) {
+    throw new RangeError('Secondary activity count is outside the available catalog')
+  }
+  return Array.from(
+    { length: count },
+    () => available.splice(random.int(0, available.length - 1), 1)[0]!,
+  )
+}

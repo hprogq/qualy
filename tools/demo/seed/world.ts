@@ -9,10 +9,20 @@ import library from '../library.json' with { type: 'json' }
 import { makeNames } from './names.ts'
 import type { Random, Story } from './context.ts'
 import { choosePersonaStudents } from './personas.ts'
+import { privateIdentityOf } from './private-identity.ts'
+import {
+  SCHOOL_NAME,
+  SCHOOL_ORG_TYPES,
+  SCHOOL_ORG_RULES,
+  SECONDARY_CLASSES,
+  SECONDARY_MAJORS,
+  demoEmail,
+  type SecondaryMajorKey,
+} from './school.ts'
 
-// The school as it stood in August 2023: one college, one grade, five
-// majors and their classes, the students the first term counted, and the
-// people who run the assessment.
+// A fictional cohort inside the real school's organisation. The main
+// college owns the six-term story; the second has its own people and
+// directory, kept separate so historical cohort movements cannot mix them.
 //
 // Class leads, major leads and the grade lead are students, as they are in
 // the real process; counsellors and the assessment lead are staff. Every
@@ -48,20 +58,53 @@ export interface Student {
   readonly standing: number
 }
 
+export interface StaffMember {
+  readonly id: string
+  readonly name: string
+}
+
+export interface SecondaryClassUnit extends Omit<ClassUnit, 'major'> {
+  readonly major: SecondaryMajorKey
+}
+
+export interface SecondaryStudent extends Omit<Student, 'major'> {
+  major: SecondaryMajorKey
+}
+
+export interface SecondaryCollege {
+  readonly college: string
+  readonly grade: string
+  readonly majors: ReadonlyMap<SecondaryMajorKey, string>
+  readonly classes: ReadonlyMap<string, SecondaryClassUnit>
+  readonly students: readonly SecondaryStudent[]
+  readonly classLeads: ReadonlyMap<string, readonly string[]>
+  readonly staff: { readonly counsellor: StaffMember; readonly manager: StaffMember }
+}
+
 export interface World {
   readonly tenantId: string
   readonly admin: Principal
   readonly types: {
+    readonly campus: string
     readonly college: string
     readonly grade: string
     readonly major: string
+    readonly direction: string
     readonly class: string
+    readonly department: string
   }
+  readonly root: string
+  readonly campuses: { readonly lushun: string; readonly zhongshan: string }
   readonly college: string
   readonly grade: string
   readonly majors: ReadonlyMap<MajorKey, string>
   readonly classes: Map<string, ClassUnit>
-  readonly userTypes: { readonly student: string; readonly faculty: string }
+  readonly userTypes: {
+    readonly student: string
+    readonly demoStudent: string
+    readonly faculty: string
+    readonly business: string
+  }
   readonly students: Student[]
   readonly roles: {
     readonly classLead: string
@@ -70,13 +113,18 @@ export interface World {
     readonly counsellor: string
     readonly manager: string
     readonly ruleKeeper: string
+    readonly formulaAuthor: string
     readonly inspector: string
     readonly formulaSharer: string
+    readonly officeRecorder: string
   }
   readonly staff: {
-    readonly counsellors: readonly { id: string; name: string }[]
-    readonly manager: { id: string; name: string }
+    readonly counsellors: readonly StaffMember[]
+    readonly manager: StaffMember
+    readonly schoolFormulaAuthor: StaffMember
+    readonly offices: readonly StaffMember[]
   }
+  readonly secondary: SecondaryCollege
   /** the students holding each class's lead office now, two per class */
   readonly classLeads: Map<string, string[]>
   readonly majorLeads: readonly string[]
@@ -100,8 +148,6 @@ const classKeyOf = (cohort: string, no: number) => `${cohort}-${no}`
 export const classNameOf = (cohort: string, no: number, major: MajorKey) =>
   `软件${cohort}级${no}班（${MAJORS.find((m) => m.key === major)!.short}）`
 
-const ORG_TYPES = ['学院', '年级', '专业', '班级'] as const
-
 export const buildWorld = (input: {
   tenantId: string
   admin: Principal
@@ -110,6 +156,7 @@ export const buildWorld = (input: {
 }) =>
   Effect.gen(function* () {
     const { tenantId, admin, story, random } = input
+    const privateIdentity = privateIdentityOf()
     const org = yield* Org
     const iam = yield* Iam
     const access = yield* Access
@@ -117,7 +164,7 @@ export const buildWorld = (input: {
 
     // the vocabulary, and which kind of unit may sit under which
     const typeIds = new Map<string, string>()
-    for (const [index, name] of ORG_TYPES.entries()) {
+    for (const [index, name] of SCHOOL_ORG_TYPES.entries()) {
       const type = yield* story.step(
         org.createType(tenantId, { name, sortOrder: (index + 1) * 10 }, admin),
       )
@@ -126,12 +173,12 @@ export const buildWorld = (input: {
     const rootType = (yield* org.listTypes(tenantId, admin)).find(
       (type) => !typeIds.has(type.name),
     )!.id
-    const chain = [rootType, ...ORG_TYPES.map((name) => typeIds.get(name)!)]
-    for (let i = 0; i < chain.length - 1; i++) {
-      yield* story.step(org.putRule(tenantId, chain[i]!, chain[i + 1]!, admin))
+    typeIds.set('学校', rootType)
+    for (const [parent, child] of SCHOOL_ORG_RULES) {
+      yield* story.step(org.putRule(tenantId, typeIds.get(parent)!, typeIds.get(child)!, admin))
     }
     const root = (yield* org.readForest(tenantId, undefined, admin)).roots[0]!
-    yield* story.step(org.updateNode(tenantId, root, { name: '示例大学' }, admin))
+    yield* story.step(org.updateNode(tenantId, root, { name: SCHOOL_NAME }, admin))
     // the bootstrap's placeholder name for the kind of unit at the top,
     // renamed the way an administrator would, on the types page
     yield* story.step(org.updateType(tenantId, rootType, { name: '学校' }, admin))
@@ -153,7 +200,13 @@ export const buildWorld = (input: {
         ),
         5,
       )
-    const college = yield* node(root, '学院', '软件学院')
+    const campuses = {
+      lushun: yield* node(root, '校区', '旅顺校区', 10),
+      zhongshan: yield* node(root, '校区', '中山校区', 20),
+    }
+    const academicOffice = yield* node(root, '部门', '教务处', 30)
+    const college = yield* node(campuses.lushun, '学院', '软件学院', 10)
+    const collegeOffice = yield* node(college, '部门', '教务办公室', 90)
     const grade = yield* node(college, '年级', '2023级')
     const majors = new Map<MajorKey, string>()
     for (const [index, major] of MAJORS.entries()) {
@@ -184,6 +237,17 @@ export const buildWorld = (input: {
         admin,
       ),
     )
+    const demoStudent = yield* story.step(
+      iam.userTypes.create(
+        tenantId,
+        {
+          code: 'demo-student',
+          name: '演示学生',
+          placementPolicy: { mode: 'allow-list', orgTypeIds: [typeIds.get('班级')!] },
+        },
+        admin,
+      ),
+    )
     const faculty = yield* story.step(
       iam.userTypes.create(
         tenantId,
@@ -198,10 +262,24 @@ export const buildWorld = (input: {
         admin,
       ),
     )
+    const business = yield* story.step(
+      iam.userTypes.create(
+        tenantId,
+        {
+          code: 'business-account',
+          name: '业务账号',
+          placementPolicy: {
+            mode: 'allow-list',
+            orgTypeIds: [rootType, typeIds.get('学院')!, typeIds.get('部门')!],
+          },
+        },
+        admin,
+      ),
+    )
 
     // the students, class by class, as one directory import
     const nextName = makeNames(random)
-    const planned: Omit<Student, 'id'>[] = []
+    let planned: Omit<Student, 'id'>[] = []
     for (const unit of firstTerm) {
       const major = unit.major as MajorKey
       const no = major === 'bd' ? 29 : unit.classNo
@@ -216,6 +294,23 @@ export const buildWorld = (input: {
         })
       }
     }
+    const plannedCast = choosePersonaStudents(
+      planned.map((person) => ({ ...person, id: person.number })),
+    )
+    const personaNumberByOriginal = new Map([
+      [plannedCast.student.number, privateIdentity.student],
+      [plannedCast.classLead.number, privateIdentity.classLead],
+    ])
+    planned = planned.map((person) => ({
+      ...person,
+      number: personaNumberByOriginal.get(person.number) ?? person.number,
+    }))
+    if (new Set(planned.map((person) => person.number)).size !== planned.length) {
+      return yield* Effect.die(
+        new Error('Private persona business numbers overlap the generated cohort'),
+      )
+    }
+    const personaNumbers = new Set([privateIdentity.student, privateIdentity.classLead])
     const staffPlanned = [
       { name: nextName(), number: 'T2019031', placement: grade },
       { name: nextName(), number: 'T2021017', placement: grade },
@@ -229,7 +324,7 @@ export const buildWorld = (input: {
             planned.map((person) => ({
               displayName: person.name,
               businessNo: person.number,
-              userTypeId: student,
+              userTypeId: personaNumbers.has(person.number) ? demoStudent : student,
               primaryOrgNodeId: classes.get(person.classKey)!.nodeId,
             })),
             admin,
@@ -260,8 +355,8 @@ export const buildWorld = (input: {
       code: string,
       name: string,
       permissions: readonly string[],
-      holders: string,
-      anchor: string | null,
+      holders: string | readonly string[],
+      anchor: string | readonly string[] | null,
     ) =>
       Effect.gen(function* () {
         const id = yield* story.step(
@@ -280,9 +375,19 @@ export const buildWorld = (input: {
             tenantId,
             id,
             {
-              holderPolicy: { mode: 'allow-list', userTypeIds: [holders] },
+              holderPolicy: {
+                mode: 'allow-list',
+                userTypeIds: typeof holders === 'string' ? [holders] : holders,
+              },
               anchorPolicy:
-                anchor === null ? null : { mode: 'allow-list', orgTypeIds: [typeIds.get(anchor)!] },
+                anchor === null
+                  ? null
+                  : {
+                      mode: 'allow-list',
+                      orgTypeIds: (typeof anchor === 'string' ? [anchor] : anchor).map((name) =>
+                        typeIds.get(name)!,
+                      ),
+                    },
             },
             version,
             admin,
@@ -295,21 +400,21 @@ export const buildWorld = (input: {
       'class-lead',
       '班级综测负责人',
       ['assessment.review.process'],
-      student,
+      [student, demoStudent],
       '班级',
     )
     const majorLead = yield* role(
       'major-lead',
       '专业负责人',
       ['assessment.review.process'],
-      student,
+      [student, demoStudent],
       '年级',
     )
     const gradeLead = yield* role(
       'grade-lead',
       '年级负责人',
       ['assessment.review.process'],
-      student,
+      [student, demoStudent],
       '年级',
     )
     // looking over a student's whole account is the counsellor's own
@@ -345,7 +450,14 @@ export const buildWorld = (input: {
       'assessment-rules',
       '综测规则维护',
       ['assessment.formula.author', 'assessment.result.view-peers', 'assessment.ranking.view'],
-      faculty,
+      [faculty, business],
+      null,
+    )
+    const formulaAuthor = yield* role(
+      'formula-author',
+      '公式编写',
+      ['assessment.formula.author'],
+      [faculty, business],
       null,
     )
     // offering what the lead wrote to the college's other authors: a unit's
@@ -356,8 +468,8 @@ export const buildWorld = (input: {
       'assessment-formula-share',
       '综测公式共享',
       ['assessment.formula.share'],
-      faculty,
-      '学院',
+      [faculty, business],
+      ['学校', '学院'],
     )
     // correcting a concluded claim outside any round is granted on purpose,
     // never implied by judging at the end of a route; the college's
@@ -366,7 +478,14 @@ export const buildWorld = (input: {
       'assessment-inspector',
       '综测督查',
       ['assessment.entry.redetermine'],
-      faculty,
+      [faculty, (yield* iam.userTypes.list(tenantId)).find((type) => type.isSystem)!.id],
+      '学院',
+    )
+    const officeRecorder = yield* role(
+      'academic-recording',
+      '教务成绩录入',
+      ['assessment.entry.record'],
+      business,
       '学院',
     )
 
@@ -425,6 +544,7 @@ export const buildWorld = (input: {
     yield* grant(staffIds[2]!, manager, college, 'subtree')
     yield* grant(staffIds[2]!, inspector, college, 'subtree')
     yield* grant(staffIds[2]!, formulaSharer, college, 'subtree')
+    yield* grant(admin.userId, inspector, college, 'subtree')
     grants.set(
       `${staffIds[2]!}:${ruleKeeper}`,
       yield* story.step(
@@ -436,20 +556,178 @@ export const buildWorld = (input: {
       ),
     )
 
+    const createOffice = (name: string, email: string, placement: string) =>
+      Effect.gen(function* () {
+        const id = yield* story.step(
+          iam.users.create(
+            tenantId,
+            { displayName: name, email, userTypeId: business, primaryOrgNodeId: placement },
+            admin,
+          ),
+        )
+        return { id, name }
+      })
+    const schoolFormulaAuthor = yield* createOffice(
+      '校级综测规则维护',
+      demoEmail('school-rules'),
+      academicOffice,
+    )
+    const primaryOffice = yield* createOffice(
+      '软件学院教务办公室',
+      demoEmail('software-office'),
+      collegeOffice,
+    )
+    yield* grant(primaryOffice.id, officeRecorder, college, 'subtree')
+    yield* grant(schoolFormulaAuthor.id, formulaSharer, root, 'subtree')
+    yield* story.step(
+      access.grants.grant(
+        tenantId,
+        { userId: schoolFormulaAuthor.id, roleId: formulaAuthor, target: { kind: 'tenant' } },
+        admin,
+      ),
+    )
+
+    const secondaryCollege = yield* node(campuses.lushun, '学院', '英语学院', 20)
+    const secondaryGrade = yield* node(secondaryCollege, '年级', '2023级')
+    const secondaryOfficeNode = yield* node(secondaryCollege, '部门', '教务办公室', 90)
+    const secondaryMajors = new Map<SecondaryMajorKey, string>()
+    for (const [index, major] of SECONDARY_MAJORS.entries()) {
+      secondaryMajors.set(major.key, yield* node(secondaryGrade, '专业', major.name, index))
+    }
+    const directions = new Map<string, string>()
+    const secondaryClasses = new Map<string, SecondaryClassUnit>()
+    for (const unit of SECONDARY_CLASSES) {
+      let parentId = secondaryMajors.get(unit.major)!
+      if (unit.direction !== null) {
+        const key = `${unit.major}:${unit.direction}`
+        if (!directions.has(key)) {
+          directions.set(key, yield* node(parentId, '专业方向', unit.direction))
+        }
+        parentId = directions.get(key)!
+      }
+      secondaryClasses.set(unit.key, {
+        key: unit.key,
+        no: unit.no,
+        major: unit.major,
+        name: unit.name,
+        nodeId: yield* node(parentId, '班级', unit.name, unit.no),
+      })
+    }
+    const secondaryPlanned = SECONDARY_CLASSES.flatMap((unit) =>
+      Array.from({ length: unit.size }, (_, seat) => ({
+        name: nextName(),
+        number: `23998${String(unit.no).padStart(2, '0')}${String(seat + 1).padStart(2, '0')}`,
+        classKey: unit.key,
+        major: unit.major,
+        activity: random.next() ** 1.6,
+        standing: random.next(),
+      })),
+    )
+    if (secondaryPlanned.some((person) => personaNumbers.has(person.number))) {
+      return yield* Effect.die(
+        new Error('Private persona business numbers overlap the secondary cohort'),
+      )
+    }
+    const secondaryCreated = yield* story.step(
+      transaction(
+        provisioning.createUsers(
+          tenantId,
+          secondaryPlanned.map((person) => ({
+            displayName: person.name,
+            businessNo: person.number,
+            userTypeId: student,
+            primaryOrgNodeId: secondaryClasses.get(person.classKey)!.nodeId,
+          })),
+          admin,
+        ),
+      ),
+      120,
+    )
+    const secondaryStudents: SecondaryStudent[] = secondaryPlanned.map((person, index) => ({
+      ...person,
+      id: secondaryCreated[index]!.id,
+    }))
+    const secondaryStaffPlanned = [
+      { name: nextName(), number: 'T2022035', placement: secondaryGrade },
+      { name: nextName(), number: 'T2018012', placement: secondaryCollege },
+    ]
+    const secondaryStaffCreated = yield* story.step(
+      transaction(
+        provisioning.createUsers(
+          tenantId,
+          secondaryStaffPlanned.map((person) => ({
+            displayName: person.name,
+            businessNo: person.number,
+            userTypeId: faculty,
+            primaryOrgNodeId: person.placement,
+          })),
+          admin,
+        ),
+      ),
+    )
+    const secondaryStaff = {
+      counsellor: { id: secondaryStaffCreated[0]!.id, name: secondaryStaffPlanned[0]!.name },
+      manager: { id: secondaryStaffCreated[1]!.id, name: secondaryStaffPlanned[1]!.name },
+    }
+    yield* grant(secondaryStaff.counsellor.id, counsellor, secondaryGrade, 'subtree')
+    yield* grant(secondaryStaff.manager.id, manager, secondaryCollege, 'subtree')
+    yield* grant(secondaryStaff.manager.id, inspector, secondaryCollege, 'subtree')
+    yield* grant(secondaryStaff.manager.id, formulaSharer, secondaryCollege, 'subtree')
+    yield* grant(admin.userId, inspector, secondaryCollege, 'subtree')
+    yield* story.step(
+      access.grants.grant(
+        tenantId,
+        { userId: secondaryStaff.manager.id, roleId: formulaAuthor, target: { kind: 'tenant' } },
+        admin,
+      ),
+    )
+    const secondaryClassLeads = new Map<string, string[]>()
+    for (const unit of secondaryClasses.values()) {
+      const candidates = secondaryStudents
+        .filter((person) => person.classKey === unit.key)
+        .sort((a, b) => b.activity - a.activity)
+        .slice(0, 2)
+      secondaryClassLeads.set(
+        unit.key,
+        candidates.map((person) => person.id),
+      )
+      for (const person of candidates) yield* grant(person.id, classLead, unit.nodeId)
+    }
+    const secondaryOffice = yield* createOffice(
+      '英语学院教务办公室',
+      demoEmail('english-office'),
+      secondaryOfficeNode,
+    )
+    yield* grant(secondaryOffice.id, officeRecorder, secondaryCollege, 'subtree')
+    const secondary: SecondaryCollege = {
+      college: secondaryCollege,
+      grade: secondaryGrade,
+      majors: secondaryMajors,
+      classes: secondaryClasses,
+      students: secondaryStudents,
+      classLeads: secondaryClassLeads,
+      staff: secondaryStaff,
+    }
+
     const world: World = {
       tenantId,
       admin,
       types: {
+        campus: typeIds.get('校区')!,
         college: typeIds.get('学院')!,
         grade: typeIds.get('年级')!,
         major: typeIds.get('专业')!,
+        direction: typeIds.get('专业方向')!,
         class: typeIds.get('班级')!,
+        department: typeIds.get('部门')!,
       },
+      root,
+      campuses,
       college,
       grade,
       majors,
       classes,
-      userTypes: { student, faculty },
+      userTypes: { student, demoStudent, faculty, business },
       students,
       roles: {
         classLead,
@@ -458,15 +736,20 @@ export const buildWorld = (input: {
         counsellor,
         manager,
         ruleKeeper,
+        formulaAuthor,
         inspector,
         formulaSharer,
+        officeRecorder,
       },
       staff: {
         counsellors: staffIds
           .slice(0, 2)
           .map((id, index) => ({ id, name: staffPlanned[index]!.name })),
         manager: { id: staffIds[2]!, name: staffPlanned[2]!.name },
+        schoolFormulaAuthor,
+        offices: [primaryOffice, secondaryOffice],
       },
+      secondary,
       classLeads,
       majorLeads,
       gradeLead: majorLeads[0]!,

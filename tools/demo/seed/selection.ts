@@ -10,7 +10,6 @@ import { runSql } from '@qualy/plugin-database/testkit'
 import { transaction } from '@qualy/plugin-database/server'
 import {
   COMPETITIONS,
-  REJECTIONS,
   RESEARCH_KINDS,
   RESEARCH_ROLES,
   RESEARCH_SUBJECTS,
@@ -22,8 +21,16 @@ import { SCRIPTED_ASKS, answerAsk, askFor, requestAsk, type Ask } from './asks.t
 import { addMinutes, awake, principalOf, type Random, type Story } from './context.ts'
 import { PROOF_ASSETS, stageProof, stageWorkbook } from './files.ts'
 import { scoringConfigOf, type Versions } from './items.ts'
-import { CET4_REPORTS, PAPERS } from './papers.ts'
+import { CET4_REPORTS, PAPERS, cet4ReportFor } from './papers.ts'
 import { EventQueue } from './queue.ts'
+import { randomStream } from './random-stream.ts'
+import {
+  CORRECTED_REPORT,
+  COUNSELLOR_PAPER_STORIES,
+  SELECTION_AWARD_PROOFS,
+  historyBasis,
+  type SelectionHistory,
+} from './selection-scenes.ts'
 import { ESCALATE_REASONS } from './term.ts'
 import type { SeedOptions } from '../options.ts'
 import type { FieldSpec, ItemSpec } from '../rules.ts'
@@ -38,7 +45,7 @@ import { MAJORS, type MajorKey, type Student, type World } from './world.ts'
 //   ├ 素质拓展   20
 //   │ ├ 竞赛与科研 10   filed by the applicant, judged by a counsellor
 //   │ └ 品德与文体 10   the six terms' averages, taken from the six batches
-//   │                   this very system archived, times 0.4, imported
+//   │                   this system holds at import time, times 0.4, imported
 //   └ 资格材料    0   the application form and the rest, required, unscored
 //
 // Everything is dated against the moment the seeder runs, so the batch is
@@ -359,8 +366,8 @@ export const runSelection = (input: {
   versions: Versions
   story: Story
   random: Random
-  /** the six archived batches, oldest first, to take the conduct averages from */
-  history: readonly string[]
+  /** Explicit source batches, including the current term's provisional results. */
+  history: readonly SelectionHistory[]
   options: SeedOptions
   /** the real moment the story treats as now */
   now: Date
@@ -371,6 +378,8 @@ export const runSelection = (input: {
 }) =>
   Effect.gen(function* () {
     const { world, versions, story, random, options, now } = input
+    if (input.history.length === 0)
+      return yield* Effect.die(new Error('Selection requires at least one explicit source term'))
     const assessment = yield* Assessment
     const access = yield* Access
     const t = world.tenantId
@@ -533,7 +542,14 @@ export const runSelection = (input: {
     }
 
     const items = new Map<string, { id: string; spec: ItemSpec }>()
-    for (const [order, spec] of SELECTION_ITEMS.entries()) {
+    for (const [order, original] of SELECTION_ITEMS.entries()) {
+      const spec = {
+        ...original,
+        fields: original.fields.map((field) => ({
+          ...field,
+          label: field.label.replace('六学期', `${input.history.length} 学期`),
+        })),
+      }
       const created = yield* story.step(
         assessment.createItem(
           t,
@@ -562,9 +578,25 @@ export const runSelection = (input: {
 
     // the applicants: the strongest students of the grade as it stands now,
     // as far as grades go, with the cohort's major shares
+    const sourceParticipants: Map<string, string>[] = []
+    for (const { batchId } of input.history) {
+      const source = (yield* runSql(
+        sql`select id, user_id from batch_participants where batch_id = ${batchId} and tenant_id = ${t}`,
+      )) as { rows: { id: string; user_id: string }[] }
+      sourceParticipants.push(new Map(source.rows.map((row) => [row.user_id, row.id])))
+    }
     const cohort = world.students.filter(
-      (student) => student.classKey.startsWith('2023-') && !input.away.has(student.id),
+      (student) =>
+        student.classKey.startsWith('2023-') &&
+        !input.away.has(student.id) &&
+        sourceParticipants.every((participants) => participants.has(student.id)),
     )
+    for (const account of ['student', 'class-lead'] as const) {
+      if (!cohort.some((student) => student.id === input.personas[account]))
+        return yield* Effect.die(
+          new Error(`Selection persona ${account} must have every supplied source term`),
+        )
+    }
     const persona = cohort.find((student) => student.id === input.personas.student)
     const leading = new Set([...world.classLeads.values()].flat().concat(world.majorLeads))
     // the student a visitor signs in as always applies, and so do five of
@@ -618,6 +650,19 @@ export const runSelection = (input: {
             )
             .slice(0, 6)
     const cast = new Set([...first, ...others.map((one) => one.id)])
+    const deskStudents = applicants
+      .filter((student) => !cast.has(student.id) && !leading.has(student.id))
+      .map((student) => ({
+        student,
+        order: randomStream('selection', 'counsellor-cast', student.number).next(),
+      }))
+      .sort((a, b) => a.order - b.order)
+      .slice(0, COUNSELLOR_PAPER_STORIES.length)
+    const deskStories = COUNSELLOR_PAPER_STORIES.flatMap((scene, index) => {
+      const student = deskStudents[index]?.student
+      return student === undefined ? [] : [{ ...scene, student }]
+    })
+    for (const scene of deskStories) cast.add(scene.student.id)
 
     // the lead enters the sign-up list the day before material opens
     story.set(ago(17, '16:00'))
@@ -679,6 +724,8 @@ export const runSelection = (input: {
       asked: Ask | null
       /** the uploads the claim cites now */
       attachments: readonly string[]
+      /** Chance belongs to this filing, independent of other applicants' events. */
+      random: Random
     }
     const filed: Filed[] = []
     const judgeFor = (instanceId: string) =>
@@ -723,6 +770,7 @@ export const runSelection = (input: {
      */
     const askAndWait = (entry: Filed, ask: Ask, as: Principal) =>
       Effect.gen(function* () {
+        const random = entry.random
         yield* requestAsk(t, entry.instanceId!, ask, as)
         entry.asked = ask
         const answered = addMinutes(queue.now, random.int(4 * 60, 36 * 60))
@@ -748,6 +796,7 @@ export const runSelection = (input: {
 
     const decide = (entry: Filed): Effect.Effect<void, unknown, unknown> =>
       Effect.gen(function* () {
+        const random = entry.random
         if (entry.instanceId === null) return
         const judge = yield* judgeFor(entry.instanceId)
         if (judge === null) return
@@ -778,12 +827,15 @@ export const runSelection = (input: {
           )
           return
         }
-        if (roll < 0.08) {
-          const rejection = random.weighted(REJECTIONS)
+        if (entry.proof === 'competition-6' && roll < 0.65) {
           yield* assessment.decideReview(
             t,
             entry.instanceId,
-            { decision: 'reject', reason: rejection.reason, comment: rejection.comment },
+            {
+              decision: 'reject',
+              reason: '证明材料无法清晰辨识',
+              comment: '证书照片模糊，无法辨认奖项等级，请重新拍摄后提交',
+            },
             judge.as,
           )
           return
@@ -823,6 +875,7 @@ export const runSelection = (input: {
         yield* assessment.decideReview(t, entry.instanceId, approval(form), judge.as)
       })
 
+    const filingCounts = new Map<string, number>()
     const file = (
       student: Student,
       item: string,
@@ -833,6 +886,10 @@ export const runSelection = (input: {
       waiting = false,
     ) =>
       Effect.gen(function* () {
+        const filingKey = `${student.number}:${item}`
+        const occurrence = filingCounts.get(filingKey) ?? 0
+        filingCounts.set(filingKey, occurrence + 1)
+        const random = randomStream('selection', 'review', student.number, item, occurrence)
         const target = items.get(item)!
         const me = principalOf(t, student.id)
         const attachment = yield* stageProof(t, batch.id, target.id, proofAsset, filename, me)
@@ -855,6 +912,7 @@ export const runSelection = (input: {
           scripted: waiting,
           asked: null,
           attachments: [attachment],
+          random,
         }
         filed.push(state)
         if (!submit) return state
@@ -873,6 +931,8 @@ export const runSelection = (input: {
     for (const student of applicants) {
       // the persona's claims are written out below
       if (student.id === persona?.id) continue
+      const random = randomStream('selection', 'filings', student.number)
+      const deskStory = deskStories.find((scene) => scene.student.id === student.id)
       // the students the scenes follow file within the first two days
       const start =
         ago(16, '10:00').getTime() + random.next() * (cast.has(student.id) ? 2 : 8) * DAY
@@ -883,13 +943,24 @@ export const runSelection = (input: {
       // the forms the scenes below follow are left for them to judge
       const onDesk = (item: string) =>
         (item === 'conduct' && classmates.some((one) => one.id === student.id)) ||
-        (item === 'transcript' && student === others[4])
+        (item === 'transcript' && student === others[4]) ||
+        item === deskStory?.item ||
+        (student === classLead && ['application', 'transcript', 'cet4'].includes(item))
       // Some papers come in lacking something (papers.ts). The scenes' own
       // lack exactly what they are asked for or refused for: two classmates'
       // conduct forms their head teacher's page, one transcript its stamp.
       const flawedOnDesk = (item: string) =>
-        item === 'conduct' ? student === classmates[1] || student === classmates[2] : true
-      const report = random.pick(CET4_REPORTS)
+        item === deskStory?.item
+          ? deskStory.flawed
+          : item === 'conduct'
+            ? student === classmates[1] || student === classmates[2]
+            : student === classLead && item === 'application'
+              ? false
+              : true
+      const report =
+        deskStory?.kind === 'multiple-rounds'
+          ? CET4_REPORTS.find((one) => one.score === CORRECTED_REPORT.original.score)!
+          : random.pick(CET4_REPORTS)
       const papers = [
         ['application', {}],
         ['conduct', {}],
@@ -911,7 +982,7 @@ export const runSelection = (input: {
               { ...payload },
               flawed ? paper.flawed : whole,
               paper.filename,
-              !lateStarter,
+              !lateStarter && !(student === classLead && item === 'application'),
               onDesk(item),
             ),
           ),
@@ -922,7 +993,11 @@ export const runSelection = (input: {
       const competitions = student === classLead ? Math.max(2, drawn) : drawn
       for (let i = 0; i < competitions; i++) {
         const competition = random.weighted(COMPETITIONS)
-        const level = competition.levels[random.int(0, competition.levels.length - 1)]!
+        const award = random.pick(
+          SELECTION_AWARD_PROOFS.filter((proof) => competition.levels.includes(proof.level)),
+        )
+        const certificate =
+          award.proof === 'competition-1' && random.chance(0.12) ? 'competition-6' : award.proof
         queue.at(at(2 + i), 'file', () =>
           fileVoid(
             student,
@@ -930,36 +1005,48 @@ export const runSelection = (input: {
             {
               name: competition.name,
               term: random.pick(['23-24-2', '24-25-1', '24-25-2', '25-26-1', '25-26-2']),
-              level,
-              rank: random.int(1, 5),
-              team: random.chance(0.6),
+              level: award.level,
+              rank: award.rank,
+              team: award.team,
             },
-            random.pick(PROOF_ASSETS.competition),
+            certificate,
             '获奖证书.jpg',
             !random.chance(0.05),
           ),
         )
       }
       const research = random.chance(0.45) || student === classLead ? random.int(1, 2) : 0
+      let softwareFiled = false
       for (let i = 0; i < research; i++) {
-        const kind = random.weighted(RESEARCH_KINDS)
+        const kind = random.weighted(
+          RESEARCH_KINDS.filter(
+            (kind) =>
+              kind.value === 'project-university' ||
+              kind.value === 'project-provincial' ||
+              (kind.value === 'software' && !softwareFiled),
+          ),
+        )
+        const software = kind.value === 'software'
+        softwareFiled ||= software
+        const title = software
+          ? '校园服务数据可视化平台 V1.0'
+          : random.pick(RESEARCH_TREATMENTS).replace('{subject}', random.pick(RESEARCH_SUBJECTS))
         queue.at(at(10 + i), 'file', () =>
           fileVoid(
             student,
             'research',
             {
-              title: random
-                .pick(RESEARCH_TREATMENTS)
-                .replace('{subject}', random.pick(RESEARCH_SUBJECTS)),
+              title,
               term: random.pick(['24-25-1', '24-25-2', '25-26-1', '25-26-2']),
               kind: kind.value,
-              role: random.weighted(RESEARCH_ROLES).value,
-              source:
-                kind.value === 'software'
-                  ? `登记号 DEMO-SR-${random.int(10000, 99999)}`
-                  : '大学生创新创业训练计划',
+              role: software ? 'first' : 'lead',
+              source: software ? '登记号 2025SR000000' : '大学生创新创业训练计划',
             },
-            kind.value === 'software' ? PROOF_ASSETS.software[0] : PROOF_ASSETS.project[0],
+            software
+              ? PROOF_ASSETS.software[0]
+              : kind.value === 'project-provincial'
+                ? 'research-3'
+                : PROOF_ASSETS.project[0],
             '成果证明.jpg',
             true,
           ),
@@ -1209,6 +1296,142 @@ export const runSelection = (input: {
 
     const held = new Map<string, Filed>()
     const one = (key: string) => held.get(key)!
+
+    // Each paper reaches a different, real stopping point. These are reserved
+    // before the chance filings are queued, so ordinary reviews cannot finish
+    // them before the account used in the demonstration opens its desk.
+    for (const story of deskStories) {
+      const entry = () => papersOf(story.student, story.item)
+      const minute = randomStream('selection', 'desk-time', story.student.number, story.kind).int(
+        0,
+        25,
+      )
+      const at = (
+        days: number,
+        time: string,
+        run: () => Effect.Effect<unknown, unknown, unknown>,
+      ) => scene(addMinutes(ago(days, time), minute), run)
+      const classReviewers = (world.classLeads.get(story.student.classKey) ?? []).map((id) =>
+        principalOf(t, id),
+      )
+      const settlePanel = () =>
+        Effect.gen(function* () {
+          for (let ballot = 0; ballot < classReviewers.length; ballot++) {
+            const round = yield* pointerOf(entry())
+            const view = yield* assessment.getReviewInstance(t, round!, lead)
+            if (view.chain.stageId !== 'class-panel') break
+            // A normal-stage reviewer who escalated is excluded from this
+            // round's panel. Resolve its eligible reviewer after every ballot;
+            // finished-stage reviewers cannot even read the current round.
+            const judge = yield* judgeFor(round!)
+            if (judge === null) {
+              return yield* Effect.die(new Error('Selection panel has no eligible reviewer'))
+            }
+            yield* decideAs(entry(), judge.as, {
+              decision: 'approve',
+              comment: '已与班级考核记录核对，提交辅导员复核',
+            })
+          }
+        })
+      switch (story.kind) {
+        case 'initial':
+          break
+        case 'revised':
+          at(13, '10:00', () =>
+            decideAs(entry(), desk, { decision: 'reject', ...PAPERS['transcript']!.refusal! }),
+          )
+          at(7, '19:00', () =>
+            reviseAs(entry(), '已到教务处重新申请盖章成绩单', {
+              replace: PAPERS['transcript']!.whole,
+            }),
+          )
+          break
+        case 'multiple-rounds':
+          at(13, '11:00', () =>
+            decideAs(entry(), desk, { decision: 'reject', ...PAPERS['cet4']!.refusal! }),
+          )
+          at(12, '20:00', () =>
+            reviseAs(entry(), '已上传完整的成绩报告单', {
+              replace: CORRECTED_REPORT.complete.asset,
+            }),
+          )
+          at(10, '15:00', () =>
+            decideAs(entry(), desk, {
+              decision: 'reject',
+              reason: '申报内容与证明材料不一致',
+              comment: '完整报告单显示 531 分，填写为 562 分，请核对笔试成绩',
+            }),
+          )
+          at(7, '20:00', () =>
+            reviseAs(entry(), '已按完整报告单改正笔试成绩', {
+              payload: { score: CORRECTED_REPORT.corrected.score },
+            }),
+          )
+          break
+        case 'awaiting-supplement':
+          at(3, '14:00', () => askAs(entry(), desk))
+          break
+        case 'answered-supplement':
+          at(4, '09:00', () => askAs(entry(), desk))
+          at(2, '19:00', () => answerAs(entry()))
+          break
+        case 'appeal':
+          at(10, '20:00', () =>
+            decideAs(entry(), classReviewers[0]!, {
+              decision: 'reject',
+              ...PAPERS['conduct']!.refusal!,
+            }),
+          )
+          if (reviewing) {
+            at(5, '19:00', () => appealAs(entry(), 'pageLeftOut'))
+            at(4, '20:00', () => askAs(entry(), classReviewers[1]!))
+            at(3, '19:00', () => answerAs(entry()))
+            at(2, '20:00', settlePanel)
+          }
+          break
+        case 'reopen':
+          at(12, '20:00', () => decideAs(entry(), classReviewers[0]!, { decision: 'approve' }))
+          if (reviewing) {
+            at(4, '11:00', () =>
+              assessment.reopenEntry(
+                t,
+                entry().entryId,
+                { reason: '学院复核发现考核表与班级登记的服务情况有出入，请重新核对原始记录' },
+                desk,
+              ),
+            )
+            at(3, '20:00', settlePanel)
+          }
+          break
+        case 'escalated':
+          at(8, '20:00', () =>
+            decideAs(entry(), classReviewers[0]!, {
+              decision: 'escalate',
+              reason: '认定标准存在争议',
+              comment: '跨学院志愿服务已在考核表列出，本班登记尚未补录，请复核其是否可认定',
+            }),
+          )
+          at(7, '20:00', settlePanel)
+          break
+      }
+    }
+
+    // A class lead also has unfinished work of their own. Their classmates
+    // judge their conduct; a counsellor handles these qualifying papers.
+    if (classLead !== undefined) {
+      scene(ago(3, '10:10'), () => askAs(papersOf(classLead, 'transcript'), desk))
+      scene(ago(12, '11:40'), () =>
+        decideAs(papersOf(classLead, 'cet4'), desk, {
+          decision: 'reject',
+          ...PAPERS['cet4']!.refusal!,
+        }),
+      )
+      scene(ago(7, '21:10'), () =>
+        reviseAs(papersOf(classLead, 'cet4'), '已补上完整成绩页，保留原来填写的笔试成绩', {
+          replace: cet4ReportFor(papersOf(classLead, 'cet4').payload['score'])!,
+        }),
+      )
+    }
 
     if (persona !== undefined) {
       const seat = principalOf(t, input.personas['class-lead'])
@@ -1621,7 +1844,8 @@ export const runSelection = (input: {
         }
         const gradesOf = (student: Student) => {
           const rank = (ranked.get(student.major) ?? []).indexOf(student) + 1
-          const average = (84 + student.standing * 13 + random.next() * 1.5).toFixed(2)
+          const draw = randomStream('selection', 'grades', student.number)
+          const average = (84 + student.standing * 13 + draw.next() * 1.5).toFixed(2)
           return { average, rank, size: bySize.get(student.major) ?? 1 }
         }
         // the registry's export dropped one applicant's row; the counsellor
@@ -1646,29 +1870,22 @@ export const runSelection = (input: {
           )
         }
 
-        // the conduct averages, read from the six batches this system archived
+        // Read the supplied batches once. An unfinished term is an explicit
+        // provisional source, not an implicit live dependency of this import.
+        const basis = historyBasis(input.history, queue.now)
         const rows: { student: Student; values: Record<string, string> }[] = []
         for (const student of applicants) {
           let moral = 0
           let sports = 0
-          let terms = 0
-          for (const batchId of input.history) {
-            const participant = (
-              (yield* runSql(
-                sql`select id from batch_participants where batch_id = ${batchId} and user_id = ${student.id}`,
-              )) as {
-                rows: { id: string }[]
-              }
-            ).rows[0]
-            if (participant === undefined) continue
-            const result = yield* assessment.getParticipantResult(t, batchId, participant.id, lead)
+          for (const [index, { batchId }] of input.history.entries()) {
+            const participantId = sourceParticipants[index]!.get(student.id)!
+            const result = yield* assessment.getParticipantResult(t, batchId, participantId, lead)
             const section = (name: string) =>
               Number(result.groups.find((group) => group.name === name)?.final ?? 0)
             moral += section('品德行为表现')
             sports += section('文体表现')
-            terms += 1
           }
-          if (terms === 0) continue
+          const terms = input.history.length
           const m = Math.round((moral / terms) * 100) / 100
           const s = Math.round((sports / terms) * 100) / 100
           rows.push({
@@ -1695,7 +1912,7 @@ export const runSelection = (input: {
           batch.id,
           items.get('conduct-sports')!,
           rows.map((row) => (row === right ? { ...row, values: shifted(row.values) } : row)),
-          '本系统六学期综合素质测评结果',
+          basis,
           importer,
         )
         if (mistaken !== undefined && right !== undefined) {
@@ -1721,7 +1938,7 @@ export const runSelection = (input: {
               'conduct-sports',
               mistaken,
               right.values,
-              '本系统六学期综合素质测评结果（更正）',
+              `${basis}；更正导入时误用的往年均值`,
               desk,
             ),
           )
