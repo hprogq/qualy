@@ -6,12 +6,14 @@
 
 1. [系统概览](architecture/overview.md)：Qualy 解决的问题、主要业务流程、代码边界和关键取舍。
 2. [综测领域入口](domain/README.md)：批次、填报、审核、认定、计分和公示的权威规则。
+3. [面试演示指南](qualy-demo-guide.md)：五个身份的操作顺序、简短讲解和扩展场景。
 
 ## 本地开发与验证
 
 - [本地开发](development/getting-started.md)：工具链、启动方式、配置来源和安全边界。
 - [验证指南](development/validation.md)：按改动类型选择检查，不把终端流水账写回长期文档。
 - [开发态进程模型](development/runtime.md)：Vite、后端候选进程和热更新如何协作。
+- [演示数据说明](notes/demo-data.md)：两个学院、进行中的演示批次、私有身份配置与基线验收。
 - [StyleX 编写约定](development/stylex.md)：当前 UI 样式 API 和常见陷阱。
 - AI 或自动化工具先读根目录 `AGENTS.md`，再按其中的任务路由打开必要文档。
 
