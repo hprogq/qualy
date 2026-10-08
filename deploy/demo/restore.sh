@@ -34,11 +34,11 @@ baseline=${1:-/opt/qualy/demo-baseline}
 
 # who signs in with a password in the baseline, and where .env keeps the
 # password this deployment gives them (tools/demo/seed.ts, seed/personas.ts)
-ACCOUNTS='admin@demo.example.edu QUALY_BASELINE_PASSWORD_ADMIN
-student@demo.qualy.example QUALY_BASELINE_PASSWORD_STUDENT
-class-lead@demo.qualy.example QUALY_BASELINE_PASSWORD_CLASS_LEAD
-counsellor@demo.qualy.example QUALY_BASELINE_PASSWORD_COUNSELLOR
-assessment-lead@demo.qualy.example QUALY_BASELINE_PASSWORD_LEAD'
+ACCOUNTS='admin@qualy.hprogq.com QUALY_BASELINE_PASSWORD_ADMIN
+student@qualy.hprogq.com QUALY_BASELINE_PASSWORD_STUDENT
+class-lead@qualy.hprogq.com QUALY_BASELINE_PASSWORD_CLASS_LEAD
+counsellor@qualy.hprogq.com QUALY_BASELINE_PASSWORD_COUNSELLOR
+lead@qualy.hprogq.com QUALY_BASELINE_PASSWORD_LEAD'
 
 # The database commands run inside the postgres container, which already
 # knows the deployment's user and database: .env is compose's to read, and a

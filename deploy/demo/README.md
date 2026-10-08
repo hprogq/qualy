@@ -2,31 +2,38 @@
 
 一个按生产方式运行、带三学年历史数据的实例，用来现场演示。账号不公开：登录页就是正常的登录页，演示时由作者本人登录。
 它和正式部署用同一套镜像与 `deploy/compose.yaml`，只多两件事：一份演示数据基线，以及把实例复原到基线的脚本。
-演示数据的生成方式见 `tools/demo/`（`pnpm demo:seed`）与 docs/notes/demo-data.md，这里只讲服务器上怎么用。
+演示数据的范围和验收见[演示数据说明](../../docs/notes/demo-data.md)，现场顺序见[面试演示指南](../../docs/qualy-demo-guide.md)。本文说明服务器操作；本机基线验收不代表公网实例已经部署上线。
 
 ## 1. 生成基线（在开发机上）
 
+先准备独立的空演示库和可用沙箱。重建数据库是明确的准备操作，不把现有模板库或开发库作为试运行目标。私有配置放在 Git 忽略的 `data/demo-private.env`，权限为 `0600`，至少提供：
+
+| 变量                                | 用途                             |
+| ----------------------------------- | -------------------------------- |
+| `QUALY_DEMO_DATABASE_URL`           | 空的独立演示数据库，不能是开发库 |
+| `QUALY_DEMO_STORAGE_ROOT`           | 本次生成独占的附件目录           |
+| `QUALY_DEMO_SNAPSHOT_ROOT`          | 本次基线包的输出目录             |
+| `QUALY_DEMO_ADMIN_PASSWORD`         | 系统管理员的本地生成密码         |
+| `QUALY_DEMO_PERSONA_PASSWORD`       | 四个人物账号的本地生成密码       |
+| `QUALY_DEMO_STUDENT_BUSINESS_NO`    | 学生主角私下提供的 CAS 学号      |
+| `QUALY_DEMO_CLASS_LEAD_BUSINESS_NO` | 班级负责人私下提供的 CAS 学号    |
+
+密码均至少 15 位。具体连接串、密码与真实学号不写入命令文本、仓库或本文。在仓库目录执行：
+
 ```sh
-pnpm sandbox:up                          # 公式发布与计分要经两个沙箱进程
-pnpm demo:reset-db                       # 只重建 demo 容器里的 qualy_demo
-QUALY_DEMO_DATABASE_URL=postgres://qualy:qualy@localhost:5434/qualy_demo \
-QUALY_DEMO_ADMIN_PASSWORD='<系统管理员密码，至少 15 位>' \
-QUALY_DEMO_PERSONA_PASSWORD='<四个演示身份共用的密码，至少 15 位>' \
-  pnpm demo:seed                         # 约 2 小时；--stage=entry|review|appeal，--migration-state=before
-QUALY_DEMO_DATABASE_URL=postgres://qualy:qualy@localhost:5434/qualy_demo pnpm demo:check
-QUALY_DEMO_DATABASE_URL=postgres://qualy:qualy@localhost:5434/qualy_demo pnpm demo:snapshot
+mise exec -- node --env-file-if-exists=.env --env-file=data/demo-private.env tools/demo/seed.ts
+mise exec -- node --env-file-if-exists=.env --env-file=data/demo-private.env tools/demo/check.ts
+mise exec -- node --env-file-if-exists=.env --env-file=data/demo-private.env tools/demo/snapshot.ts
 ```
 
-`demo:check` 清点下文每个演示身份应当看到的情况，任何一项为 0 就以非零退出，这时不要打快照。生成时带了
-`--stage` 或 `--migration-state` 的，检查时带上同样的参数：它据此不要求那次生成本来就不会有的申诉、复查与流程调整。
-它还核对库里没有只要文字的补件、没有不带文件的答复、没有与原件相同的答复，也没有落在 23:00 至 08:00 的审核动作。
-得到 `data/demo-baseline/qualy-demo.dump` 与 `storage.tar.gz`，上传到服务器的 `/opt/qualy/demo-baseline/`。
+生成默认包含软件学院前五个归档学期、进行中的第六学期及推免，以及英语学院的一归档一进行中批次。通过数据库检查、附件检查与五账号浏览器走查后，才把同次产出的 `qualy-demo.dump` 和 `storage.tar.gz` 交付服务器。具体耗时与文件大小以本次运行结果为准。
 
-- 两个密码都只来自环境变量，不进仓库，也不写进任何文档。它们只在开发机上用：导入时 `restore.sh` 把五个账号的密码换成服务器 `.env`
-  里的五个值（见第 3 节），基线里带的密码在服务器上从不生效。
-- `demo:snapshot` 拒绝打包带有会话、限流桶、待确认邮件、已用验证码挑战的库（在这份库上登录过就会有），
-  确认可以清掉时加 `--clear-runtime`。它同样拒绝带有本机密钥加密数据的库，服务器用自己的 `QUALY_SECRETS_MASTER_KEY` 即可。
-- 基线里进行中的推免批次按生成当天定时间（「材料审核」阶段、前几天刚开始），会随时间变旧，建议每月重新生成一次。
+- 生成使用了 `--stage` 或 `--migration-state` 时，检查传入相同参数。缩短历史的 `QUALY_DEMO_TERMS` 只用于开发定位，不是六学期演示基线。
+- `demo:snapshot` 拒绝混入会话、限流桶、待确认邮件、已用验证码挑战或本机密钥加密数据。`--clear-runtime` 会删除运行态数据，仅在确认目标可清理时使用。
+- 快照只支持本机 `localhost:5434` 或 `127.0.0.1:5434` 对应的 `qualy-postgres-demo` 实例，连接地址不能带查询参数。检查与容器导出必须指向同一数据库；数据库名限 1 至 63 个字母、数字或下划线，首字符不能是数字。
+- dump 包含两项私有学号和本地生成的密码散列，是私有产物。快照目录权限为 `0700`，两个产物为 `0600`，覆盖旧产物也会收紧权限。`restore.sh` 导入后，用服务器配置的五个密码替换本地密码；真实标识不会因此消失。
+- 进行中的推免按生成时点布置近期工作，后续阶段不设置过期即自动推进的日期。演示前仍需核对时间语境及当前阶段，不把一份快照永久视为新鲜数据。
+- 本地演练使用 `tools/demo/preview.ts` 从基线恢复 `qualy_demo_preview`，不直接在模板库中登录操作。加载同一私有环境文件后，预览读取同一 `QUALY_DEMO_SNAPSHOT_ROOT`；`--keep` 继续上次预览，省略则恢复副本。演练结果不覆盖回模板库或已验收的基线包。
 
 ## 2. 服务器配置
 
@@ -41,7 +48,9 @@ QUALY_DEMO_DATABASE_URL=postgres://qualy:qualy@localhost:5434/qualy_demo pnpm de
 - `QUALY_BASELINE_PASSWORD_ADMIN`、`_STUDENT`、`_CLASS_LEAD`、`_COUNSELLOR`、`_LEAD`：五个账号在这台服务器上的密码，
   每个至少 15 位、不含本人的名字或邮箱。缺任何一个，导入在停服之前就拒绝。
 - `QUALY_PUBLIC_URL`：站点的 https 地址。找回密码、验证邮箱与第三方登录都用它拼回跳地址。
-- 不设 `QUALY_DEMO_ACCOUNTS`。它会把演示账号连同密码列在登录页上并冻结其凭据，只给将来开放受限演示时用。
+- 不设 `QUALY_DEMO_ACCOUNTS`。它会把演示账号连同密码列在登录页上并冻结其凭据；本展示实例需要正常私有登录及可操作的账号流程。
+- GitHub、OIDC、CAS 的提供方、密钥、回调与身份绑定由部署后配置，seed 不创建。CAS 分别通过两项私有学号匹配学生和班级负责人。新增入口必须设置用户类型受众，不接纳普通背景学生。
+- `@qualy.hprogq.com` 是演示收件域，邮件提供方、发件身份、回跳地址和实际收件仍需独立验证。完整恢复会丢失基线生成后新增的外部提供方、密钥、身份绑定和邮箱验证状态。恢复后必须重新配置外部入口并设置受众，重新绑定身份、完成实际邮箱验证，再逐项验证登录与收件；不要伪造验证成功或自动发送演示邮件。
 
 Caddy 用 `ops/reverse-proxy/Caddyfile` 那一份：站点导入 `/etc/caddy/qualy/upstream.caddy`，由脚本改写指向服务中的那一色，
 502/503/504 时服务本目录的 `maintenance.html`。首次导入前先放一个指向维护页的片段，站点才加载得起来：
@@ -84,13 +93,14 @@ deploy/demo/restore.sh /opt/qualy/demo-baseline
 
 ## 5. 演示身份
 
-四个身份在服务器上各用 `.env` 里自己的 `QUALY_BASELINE_PASSWORD_*`（开发机上共用生成基线时给的 `QUALY_DEMO_PERSONA_PASSWORD`）：
+四个人物账号在服务器上各用对应的 `QUALY_BASELINE_PASSWORD_*`。系统管理员使用 `QUALY_BASELINE_PASSWORD_ADMIN`，同样不公开。完整点击顺序、预期状态和备用案例见[面试演示指南](../../docs/qualy-demo-guide.md)。
 
-| 账号                               | 能看到什么                                                                                                                                                                                                                                                                                       |
-| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| student@demo.qualy.example         | 六个学期里的补充材料（附件可打开）、驳回重交、多轮审核、合议、申诉改判与维持、申诉与复查中的补件、复查、重新认定调高与撤销、行政扣分撤回、题目作废、流程调整、在只开放一道题的补充阶段补报的证书；推免批次里通过、被重新认定、补件已答复与待答复、驳回后申诉中（其中一条在班级合议）、待审与草稿 |
-| class-lead@demo.qualy.example      | 本班历次审核记录，以及自己每个学期的申报；推免批次里自己的申请材料与竞赛科研，本班考核表：未审的、补上签字页后回来的、申诉合议中只差你一票的、申诉中补件后重新合议的，以及自己驳回与通过的                                                                                                       |
-| counsellor@demo.qualy.example      | 推免材料审核的待办、补件往返、驳回、上提、发起复查、考核表申诉的复核意见，以及单独录入与撤回重录的行政认定                                                                                                                                                                                       |
-| assessment-lead@demo.qualy.example | 批次与阶段管理、题目与计分公式、名单对账、无人可审的告警；推免工作组待审的申诉、多轮条目、复查与班级合议分歧，一条自己发出尚未答复的补件；以「综测督查」身份重新认定                                                                                                                             |
+| 邮箱                          | 主要用途                                                     |
+| ----------------------------- | ------------------------------------------------------------ |
+| `student@qualy.hprogq.com`    | 第六学期提交、补件、申诉与成绩；前五学期历史及推免材料       |
+| `class-lead@qualy.hprogq.com` | 本班审核、补件、自审回避，以及自己的申报                     |
+| `counsellor@qualy.hprogq.com` | 多轮审核、补件回件、复查、行政认定与导入更正                 |
+| `lead@qualy.hprogq.com`       | 推免复核、六学期阶段性成绩来源、批次管理及显式授权的重新认定 |
+| `admin@qualy.hprogq.com`      | 两院组织、权限与公式共享；通过显式督查任命获得重新认定权     |
 
-系统管理员（`admin@demo.example.edu`）在服务器上用 `QUALY_BASELINE_PASSWORD_ADMIN`，同样不公开。
+其他人物用于填充真实可读的业务历史，不批量创建可登录身份。两名学生主角使用独立的演示学生类型，普通背景学生不在登录入口受众中。教务业务账号没有学工号，也不因此获得系统管理员权限。

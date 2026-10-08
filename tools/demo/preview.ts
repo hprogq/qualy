@@ -14,11 +14,11 @@
 import { execFileSync, spawn } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
-import { PERSONA_ACCOUNTS, demoAccountsEnv, personaPassword } from './seed/personas.ts'
+import { PERSONA_ACCOUNTS } from './seed/personas.ts'
 
 const CONTAINER = 'qualy-postgres-demo'
 const DATABASE = 'qualy_demo_preview'
-const BASELINE = 'data/demo-baseline'
+const BASELINE = process.env.QUALY_DEMO_SNAPSHOT_ROOT ?? 'data/demo-baseline'
 const STORAGE = path.resolve('data/demo-preview/storage')
 
 const keep = process.argv.includes('--keep')
@@ -78,16 +78,12 @@ if (!keep) {
   execFileSync('tar', ['-xzf', files, '-C', STORAGE])
 }
 
-// the password the baseline was seeded with; without it the sign-in page
-// lists nobody and the accounts are signed in to by hand
-const password = personaPassword()
+// Sign in privately with the credentials used to generate the baseline.
 console.log('\nsign in at http://localhost:5173 with one of:')
 for (const account of PERSONA_ACCOUNTS) {
   console.log(`  ${account.label}: ${account.email}`)
 }
-if (password === undefined) {
-  console.log('  (with the password the baseline was seeded with, QUALY_DEMO_PERSONA_PASSWORD)')
-}
+console.log('  (use the credentials stored in your private environment file)')
 console.log('')
 
 // the shell's variables win over .env in a development session, so these
@@ -100,7 +96,7 @@ const child = spawn(process.execPath, ['apps/server/src/dev/host.ts'], {
     DATABASE_URL: `postgres://qualy:qualy@localhost:5434/${DATABASE}`,
     QUALY_STORAGE_DEFAULT_BACKEND: 'local',
     QUALY_STORAGE_LOCAL_ROOT: STORAGE,
-    ...(password === undefined ? {} : { QUALY_DEMO_ACCOUNTS: demoAccountsEnv(password) }),
+    QUALY_DEMO_ACCOUNTS: '',
   },
 })
 // the terminal's interrupt reaches the whole group; this only waits for it
