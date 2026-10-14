@@ -32,11 +32,14 @@ export const SECONDARY_MAJORS = [
 ] as const
 export type SecondaryMajorKey = (typeof SECONDARY_MAJORS)[number]['key']
 
+const secondaryMajorOf = (index: number): SecondaryMajorKey =>
+  index < 4 ? 'english' : 'translation'
+
 /** The direction is a demo configuration, not a claim about the school's current programme. */
 export const SECONDARY_CLASSES = Array.from({ length: 6 }, (_, index) => ({
   key: `english-2023-${index + 1}`,
   no: index + 1,
-  major: (index < 4 ? 'english' : 'translation') as SecondaryMajorKey,
+  major: secondaryMajorOf(index),
   name: `${index < 4 ? '英语' : '翻译'}2023级${index + 1}班`,
   direction: index < 2 ? '国际传播' : null,
   size: 30,
