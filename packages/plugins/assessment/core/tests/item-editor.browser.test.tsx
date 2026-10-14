@@ -3387,6 +3387,15 @@ describe('review waiting for a reviewer', () => {
     expect(page.getByTestId('page-notices').elements()).toHaveLength(0)
   })
 
+  /** no ancestor is still carried by a transform, such as an entrance animation */
+  const atRest = (node: Element) => {
+    for (let at: Element | null = node; at !== null; at = at.parentElement) {
+      const transform = getComputedStyle(at).transform
+      if (transform !== 'none' && transform !== 'matrix(1, 0, 0, 1, 0, 0)') return false
+    }
+    return true
+  }
+
   for (const locale of ['zh-CN', 'en-US'] as const) {
     it(`does not move the paper when the gap summary arrives on a phone in ${locale}`, async () => {
       await page.viewport(390, 844)
@@ -3396,7 +3405,11 @@ describe('review waiting for a reviewer', () => {
       })
       await open({ alerts: gaps, locale, alertsAfter: answer, inShell: true })
       await expect.element(page.getByTestId('structure-table')).toBeVisible()
-      const top = page.getByTestId('structure-table').element().getBoundingClientRect().top
+      // the batch body arrives with a short rise; measure where it comes to rest,
+      // or a slow machine reads the rise itself as the paper moving
+      const table = page.getByTestId('structure-table').element()
+      await expect.poll(() => atRest(table)).toBe(true)
+      const top = table.getBoundingClientRect().top
       reply()
       await expect.element(page.getByTestId('review-gap-notice')).toBeVisible()
       expect(page.getByTestId('structure-table').element().getBoundingClientRect().top).toBe(top)
