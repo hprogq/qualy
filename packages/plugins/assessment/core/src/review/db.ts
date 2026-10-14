@@ -1297,6 +1297,79 @@ export const siblingEntries = (tenantId: string, itemId: string, participantId: 
       ),
     )
 
+/** one claim beside the judged one, whole: the version handed in and its form */
+export interface SiblingFilingRow {
+  entryId: string
+  status: string
+  itemType: string
+  formConfig: unknown
+  revisionNo: number
+  payload: unknown
+  note: string | null
+  submittedAt: number
+}
+
+/**
+ * A claim on the same question by the same participant, read whole for the
+ * reviewer comparing it with the judged one. The version shown is the one
+ * last handed in, never the owner's working copy, and only for claims the
+ * sibling strip lists: drafts and voided claims answer nothing.
+ */
+export const siblingFilingOf = (input: {
+  tenantId: string
+  entryId: string
+  itemId: string
+  participantId: string
+}) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('Entry as e')
+        .innerJoin('EntryRevision as er', (join) =>
+          join
+            .onRef('er.tenantId', '=', 'e.tenantId')
+            .onRef('er.id', '=', 'e.lastSubmittedRevisionId'),
+        )
+        .innerJoin('AssessmentItem as i', (join) =>
+          join.onRef('i.tenantId', '=', 'e.tenantId').onRef('i.id', '=', 'e.itemId'),
+        )
+        .leftJoin('AssessmentItemRevision as ir', (join) =>
+          join.onRef('ir.tenantId', '=', 'er.tenantId').onRef('ir.id', '=', 'er.itemRevisionId'),
+        )
+        .select([
+          'e.id as entryId',
+          'e.status',
+          'i.itemType',
+          'ir.formConfig',
+          'er.revisionNo',
+          'er.payload',
+          'er.note',
+          epoch('er.created_at').as('createdMs'),
+        ])
+        .where('e.tenantId', '=', input.tenantId)
+        .where('e.id', '=', input.entryId)
+        .where('e.itemId', '=', input.itemId)
+        .where('e.participantId', '=', input.participantId)
+        .where('e.status', 'not in', ['voided', 'draft'])
+        .executeTakeFirst(),
+    )
+    .pipe(
+      Effect.map((row): SiblingFilingRow | null =>
+        row === undefined
+          ? null
+          : {
+              entryId: row.entryId,
+              status: row.status,
+              itemType: row.itemType,
+              formConfig: row.formConfig ?? null,
+              revisionNo: row.revisionNo,
+              payload: row.payload ?? null,
+              note: row.note ?? null,
+              submittedAt: msOf(row.createdMs),
+            },
+      ),
+    )
+
 /** how the round before this one ended, with the word that ended it */
 /**
  * The version filed just before the judged one, with the form it answered.

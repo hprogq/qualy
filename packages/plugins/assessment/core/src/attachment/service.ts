@@ -9,6 +9,7 @@ import { userMayReadReview } from '../review/db.ts'
 import {
   citingEntries,
   citingInstances,
+  peerCitingInstances,
   supplementCitingEntries,
   supplementCitingInstances,
 } from './db.ts'
@@ -23,7 +24,9 @@ import {
 // the staff whose administrative reach covers a citing round, and whoever
 // the reviewer's READ predicate admits to a round that judged it - the
 // read one, not the act one, so a round waiting on an ask stops answering
-// for the colleague it has been taken from (§32.70). A retired
+// for the colleague it has been taken from (§32.70) - and, through the same
+// predicate, a round on another claim the person holds on the same question,
+// for the version last handed in (§32.74 revised 2026-10-15). A retired
 // attachment answers the same question the same way: retirement stops new
 // citations, never the reading of history.
 
@@ -137,6 +140,9 @@ export const makeAttachmentMethods = (deps: AttachmentDeps): AttachmentMethods =
       const instances = [
         ...(yield* withDb(citingInstances(tenantId, meta.id))),
         ...(yield* withDb(supplementCitingInstances(tenantId, meta.id))),
+        // the rounds on the person's other claims on the same question:
+        // their reader compares this filing with the one being judged
+        ...(yield* withDb(peerCitingInstances(tenantId, meta.id))),
       ]
       for (const instance of instances) {
         const judge = yield* withDb(

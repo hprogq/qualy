@@ -729,4 +729,92 @@ describe.runIf(postgresAvailable)('the review read boundary', () => {
     )
     expect(answerOf(Exit.die(new Error('a query failed')))).toBe('DIED')
   })
+
+  it('opens the other claims on the same question, whole, for exactly as long as a round is', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('access-sibling')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f, { profile: REVIEW_OPEN })
+          const s1 = f.principal(f.s1)
+          const reviewer = f.principal(f.reviewer)
+          yield* runSql(sql`update assessment_items set max_entries = null where id = ${g.item.id}`)
+          // an earlier claim, judged and done: its own round no longer
+          // hands the reviewer anything
+          const file = yield* staged(f.t, f.s1)
+          const earlier = yield* assessment.createEntry(
+            f.t,
+            { itemId: g.item.id, participantId: g.p1, payload: { files: [file] } },
+            s1,
+          )
+          const earlierRound = (yield* assessment.setEntryStatus(f.t, earlier.id, 'in_review', s1))
+            .currentReviewInstanceId!
+          yield* assessment.decideReview(f.t, earlierRound, { decision: 'approve' }, reviewer)
+          const fileBefore = answerOf(
+            yield* Effect.exit(assessment.openAttachment(f.t, file, reviewer)),
+          )
+
+          // a second claim on the same question goes to the same reviewer
+          const judged = yield* assessment.createEntry(
+            f.t,
+            { itemId: g.item.id, participantId: g.p1, payload: {} },
+            s1,
+          )
+          const round = (yield* assessment.setEntryStatus(f.t, judged.id, 'in_review', s1))
+            .currentReviewInstanceId!
+          // a draft beside it, and somebody else's claim on the question
+          const draft = yield* assessment.createEntry(
+            f.t,
+            { itemId: g.item.id, participantId: g.p1, payload: {} },
+            s1,
+          )
+          const other = yield* assessment.createEntry(
+            f.t,
+            { itemId: g.item.id, participantId: g.p2, payload: {} },
+            f.principal(f.s2),
+          )
+          yield* assessment.setEntryStatus(f.t, other.id, 'in_review', f.principal(f.s2))
+
+          const sibling = (entryId: string, who: string) =>
+            Effect.exit(assessment.getReviewSibling(f.t, round, entryId, f.principal(who)))
+          const read = yield* assessment.getReviewSibling(f.t, round, earlier.id, reviewer)
+          const during = {
+            earlier: answerOf(yield* sibling(earlier.id, f.reviewer)),
+            draft: answerOf(yield* sibling(draft.id, f.reviewer)),
+            other: answerOf(yield* sibling(other.id, f.reviewer)),
+            stranger: answerOf(yield* sibling(earlier.id, f.s2)),
+            file: answerOf(yield* Effect.exit(assessment.openAttachment(f.t, file, reviewer))),
+            strangerFile: answerOf(
+              yield* Effect.exit(assessment.openAttachment(f.t, file, f.principal(f.s2))),
+            ),
+          }
+
+          // the round decided, the door it opened shuts with it
+          yield* assessment.decideReview(f.t, round, { decision: 'approve' }, reviewer)
+          const after = {
+            earlier: answerOf(yield* sibling(earlier.id, f.reviewer)),
+            file: answerOf(yield* Effect.exit(assessment.openAttachment(f.t, file, reviewer))),
+          }
+          return { fileBefore, read, during, after, file }
+        }),
+      ),
+    )
+    expect(result.fileBefore).toBe('ASSESSMENT_ATTACHMENT_NOT_FOUND')
+    expect(result.read.status).toBe('approved')
+    expect(result.read.revision.payload).toEqual({ files: [result.file] })
+    expect(result.during).toEqual({
+      earlier: 'ok',
+      draft: 'ASSESSMENT_REVIEW_NOT_FOUND',
+      other: 'ASSESSMENT_REVIEW_NOT_FOUND',
+      stranger: 'ASSESSMENT_REVIEW_NOT_FOUND',
+      file: 'ok',
+      strangerFile: 'ASSESSMENT_ATTACHMENT_NOT_FOUND',
+    })
+    expect(result.after).toEqual({
+      earlier: 'ASSESSMENT_REVIEW_NOT_FOUND',
+      file: 'ASSESSMENT_ATTACHMENT_NOT_FOUND',
+    })
+  })
 })

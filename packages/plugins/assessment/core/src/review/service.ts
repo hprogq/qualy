@@ -126,6 +126,7 @@ import {
   setInstanceState,
   setInstanceSupplementState,
   siblingEntries,
+  siblingFilingOf,
   supersedeOpenPanels,
   supplementAttachmentHistory,
   supplementRequestOf,
@@ -332,6 +333,19 @@ export interface ReviewDetailView {
     readonly canCancelSupplement: boolean
     readonly canAnswerSupplement: boolean
   }
+}
+
+/** one claim beside the judged one, whole, for reading it against the judged filing */
+export interface ReviewSiblingView {
+  readonly entryId: string
+  readonly status: string
+  readonly submittedAt: number
+  readonly revision: {
+    readonly revisionNo: number
+    readonly payload: unknown
+    readonly note: string | null
+  }
+  readonly form: { readonly itemType: string; readonly formConfig: unknown }
 }
 
 /** what stands around the judged filing, resolved only for page reads */
@@ -565,6 +579,12 @@ export interface ReviewMethods {
     instanceId: string,
     as: Principal,
   ) => Effect.Effect<ReviewDetailView, ReviewNotFound>
+  readonly getReviewSibling: (
+    tenantId: string,
+    instanceId: string,
+    entryId: string,
+    as: Principal,
+  ) => Effect.Effect<ReviewSiblingView, ReviewNotFound>
   readonly decideReview: (
     tenantId: string,
     instanceId: string,
@@ -1218,6 +1238,45 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
         }),
       ),
     )
+  })
+
+  /**
+   * Another claim by the same participant on the same question, whole. The
+   * door is the round's: whoever may read the judged filing may read what
+   * stands beside it, which is how a duplicate is caught.
+   */
+  const getReviewSibling: ReviewMethods['getReviewSibling'] = Effect.fn(
+    'Assessment.getReviewSibling',
+  )(function* (tenantId, instanceId, entryId, as) {
+    const row = yield* dieQuery(withDb(instanceOf(tenantId, instanceId)))
+    if (row === null) return yield* new ReviewNotFound()
+    const judge = yield* dieQuery(withDb(mayRead(tenantId, row, as)))
+    if (row.subjectUserId !== as.userId && !judge) {
+      const admin = yield* deps.rosterReach(as, tenantId, row.batchId)
+      if (!admin) return yield* new ReviewNotFound()
+    }
+    const sibling = yield* dieQuery(
+      withDb(
+        siblingFilingOf({
+          tenantId,
+          entryId,
+          itemId: row.itemId,
+          participantId: row.participantId,
+        }),
+      ),
+    )
+    if (sibling === null) return yield* new ReviewNotFound()
+    return {
+      entryId: sibling.entryId,
+      status: sibling.status,
+      submittedAt: sibling.submittedAt,
+      revision: {
+        revisionNo: sibling.revisionNo,
+        payload: sibling.payload,
+        note: sibling.note,
+      },
+      form: { itemType: sibling.itemType, formConfig: sibling.formConfig },
+    }
   })
 
   /**
@@ -3263,6 +3322,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
     listReviewInbox,
     listAwaitingSupplements,
     getReviewInstance,
+    getReviewSibling,
     decideReview,
     appealEntry,
     reopenEntry,

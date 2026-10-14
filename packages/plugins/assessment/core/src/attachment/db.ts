@@ -215,3 +215,68 @@ export const supplementCitingInstances = (tenantId: string, attachmentId: string
         })),
       ),
     )
+
+/**
+ * The open rounds on a claim beside one that cites this file: same
+ * participant, same question. A reviewer compares the claims a person holds
+ * on one question to catch a duplicate, so the round's reader reads the
+ * others' files too - only as last handed in, and only for claims still
+ * standing (not drafts, not voided), which is what the sibling strip lists.
+ */
+export const peerCitingInstances = (tenantId: string, attachmentId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('EntryRevisionAttachment as era')
+        .innerJoin('Entry as cited', (join) =>
+          join
+            .onRef('cited.tenantId', '=', 'era.tenantId')
+            .onRef('cited.lastSubmittedRevisionId', '=', 'era.revisionId'),
+        )
+        .innerJoin('Entry as peer', (join) =>
+          join
+            .onRef('peer.tenantId', '=', 'cited.tenantId')
+            .onRef('peer.itemId', '=', 'cited.itemId')
+            .onRef('peer.participantId', '=', 'cited.participantId'),
+        )
+        .innerJoin('ReviewInstance as ri', (join) =>
+          join.onRef('ri.tenantId', '=', 'peer.tenantId').onRef('ri.entryId', '=', 'peer.id'),
+        )
+        .innerJoin('EntryRevision as er', (join) =>
+          join.onRef('er.tenantId', '=', 'ri.tenantId').onRef('er.id', '=', 'ri.revisionId'),
+        )
+        .innerJoin('BatchParticipant as bp', (join) =>
+          join.onRef('bp.tenantId', '=', 'peer.tenantId').onRef('bp.id', '=', 'peer.participantId'),
+        )
+        .select([
+          'ri.id',
+          'peer.batchId',
+          'ri.state',
+          'ri.currentRoute',
+          'ri.currentNodeId',
+          'ri.currentRoleIds',
+          'bp.userId as subjectUserId',
+          'er.actorId',
+        ])
+        .distinct()
+        .where('era.tenantId', '=', tenantId)
+        .where('era.attachmentId', '=', attachmentId)
+        .where('cited.status', 'not in', ['voided', 'draft'])
+        .whereRef('peer.id', '!=', 'cited.id')
+        .where('ri.state', 'in', [...OPEN_REVIEW_STATES])
+        .execute(),
+    )
+    .pipe(
+      Effect.map((rows) =>
+        rows.map((row): CitingInstanceRow => ({
+          id: row.id,
+          batchId: row.batchId,
+          state: row.state,
+          currentRoute: row.currentRoute as CitingInstanceRow['currentRoute'],
+          currentNodeId: row.currentNodeId,
+          currentRoleIds: row.currentRoleIds,
+          subjectUserId: row.subjectUserId,
+          actorId: row.actorId,
+        })),
+      ),
+    )

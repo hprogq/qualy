@@ -1921,6 +1921,31 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
     }).middleware(Authenticated),
   )
   .add(
+    // another claim by the same participant on the same question, whole:
+    // read on demand when the reviewer opens it from the sibling strip
+    HttpApiEndpoint.get(
+      'getReviewSibling',
+      '/assessment/review/instances/:instanceId/siblings/:entryId',
+      {
+        params: Schema.Struct({ instanceId: uuidInput, entryId: uuidInput }),
+        success: Schema.Struct({
+          sibling: Schema.Struct({
+            entryId: Schema.String,
+            status: Schema.String,
+            submittedAt: Schema.String,
+            revision: Schema.Struct({
+              revisionNo: Schema.Number,
+              payload: configJson,
+              note: Schema.NullOr(Schema.String),
+            }),
+            form: Schema.Struct({ itemType: Schema.String, formConfig: configJson }),
+          }),
+        }),
+        error: [ReviewNotFound],
+      },
+    ).middleware(Authenticated),
+  )
+  .add(
     // what a determination would come to, asked while it is being written:
     // the same judge and the same arithmetic the decision runs, so a screen
     // can say "3.50" or "the rule refuses this" before anything is staged

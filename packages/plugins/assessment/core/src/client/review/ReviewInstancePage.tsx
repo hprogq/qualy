@@ -23,7 +23,6 @@ import { AsyncSection, ConfirmDialog } from '@qualy/ui/admin'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
 import { Kbd } from '@qualy/ui/kbd'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@qualy/ui/dialog'
 import { BenchSkeleton } from './BenchSkeleton.tsx'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@qualy/ui/tooltip'
 import { toast } from '@qualy/ui/toast'
@@ -31,7 +30,6 @@ import { assessmentApi } from '../api.ts'
 import { useBatchLive } from '../live.ts'
 
 import { BatchScreen } from '../batch/BatchScreen.tsx'
-import { entryStatusMessage, type EntryDto } from '../entry/model.ts'
 import { sayEntryFailure } from '../entry/refusals.ts'
 import { reviewOutcomeMessage } from './events.ts'
 import { readRunScope, type ReviewDto } from './model.ts'
@@ -53,6 +51,7 @@ import { queuePlaceOf } from './queue-place.ts'
 import { FlowColumn } from './FlowColumn.tsx'
 import { FilingColumn } from './FilingColumn.tsx'
 import { ContextRail } from './ContextRail.tsx'
+import { SiblingSheet } from './SiblingSheet.tsx'
 import { useBeside, useFinePointer } from './pointer.ts'
 import { useDeferredDecision, type StagedDecision } from './useDeferredDecision.ts'
 import { useDraftSweep } from './use-draft.ts'
@@ -81,13 +80,6 @@ import * as m from '#messages'
 const lg = '@media (min-width: 1024px)'
 
 const styles = stylex.create({
-  siblingTitle: {
-    display: 'flex',
-    alignItems: 'baseline',
-    gap: 8,
-    fontSize: 14,
-    lineHeight: '1.25rem',
-  },
   capWide: { width: '100%', justifyContent: 'center' },
   fill: {
     display: 'flex',
@@ -442,30 +434,6 @@ const styles = stylex.create({
   // tooltip never changes the row
   keySeat: {
     display: 'inline-flex',
-  },
-  siblingList: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 12,
-  },
-  siblingRow: {
-    display: 'grid',
-    gridTemplateColumns: '7rem minmax(0, 1fr)',
-    gap: 12,
-  },
-  siblingStanding: {
-    fontSize: 12,
-    fontWeight: 400,
-    color: tokens.mutedForeground,
-  },
-  siblingLabel: {
-    fontSize: 14,
-    whiteSpace: 'nowrap',
-    color: tokens.mutedForeground,
-  },
-  siblingValue: {
-    minWidth: 0,
-    fontSize: 14,
   },
   undoPill: {
     display: 'flex',
@@ -1522,10 +1490,12 @@ function Workbench({ batch }: { batch: BatchDto }) {
         {review !== undefined && (
           <SiblingSheet
             open={openSibling !== null}
+            instanceId={instanceId}
             itemTitle={review.itemTitle}
-            sibling={
-              (review.context?.siblings ?? []).find((one) => one.entryId === lingeringSibling) ??
-              null
+            entryId={
+              (review.context?.siblings ?? []).some((one) => one.entryId === lingeringSibling)
+                ? lingeringSibling
+                : null
             }
             onClose={() => setOpenSibling(null)}
           />
@@ -1842,44 +1812,6 @@ const actionBlockedMessage = (reason: string | null): Message => {
     default:
       return m.review_blockedUnavailable
   }
-}
-
-function SiblingSheet({
-  open,
-  itemTitle,
-  sibling,
-  onClose,
-}: {
-  open: boolean
-  itemTitle: string
-  /** null once the claim it named is gone; the panel is shutting anyway */
-  sibling: NonNullable<ReviewDto['context']>['siblings'][number] | null
-  onClose: () => void
-}) {
-  return (
-    <Dialog open={open && sibling !== null} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent size="32rem">
-        <DialogHeader>
-          <DialogTitle className={stylex.props(styles.siblingTitle).className}>
-            {itemTitle}
-            <span {...stylex.props(styles.siblingStanding)}>
-              {sibling === null
-                ? ''
-                : (entryStatusMessage[sibling.status as EntryDto['status']] ?? m.event_other)()}
-            </span>
-          </DialogTitle>
-        </DialogHeader>
-        <dl {...stylex.props(styles.siblingList)}>
-          {(sibling?.values ?? []).map((pair) => (
-            <div key={pair.label} {...stylex.props(styles.siblingRow)}>
-              <dt {...stylex.props(styles.siblingLabel)}>{pair.label}</dt>
-              <dd {...stylex.props(styles.siblingValue)}>{pair.value === '' ? '–' : pair.value}</dd>
-            </div>
-          ))}
-        </dl>
-      </DialogContent>
-    </Dialog>
-  )
 }
 
 /** the five seconds a decision can still be taken back */

@@ -1898,6 +1898,7 @@ export class Assessment extends Context.Service<
     readonly listReviewInbox: ReviewMethods['listReviewInbox']
     readonly listAwaitingSupplements: ReviewMethods['listAwaitingSupplements']
     readonly getReviewInstance: ReviewMethods['getReviewInstance']
+    readonly getReviewSibling: ReviewMethods['getReviewSibling']
     readonly previewDetermination: ReviewMethods['previewDetermination']
     readonly decideReview: ReviewMethods['decideReview']
     readonly appealEntry: ReviewMethods['appealEntry']
@@ -8604,6 +8605,22 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
           principal,
         )
         return { review: reviewDto(review) }
+      }),
+    )
+    .handle(
+      'getReviewSibling',
+      Effect.fn('assessment.getReviewSibling.handler')(function* ({ params }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        const sibling = yield* assessment.getReviewSibling(
+          principal.tenantId,
+          params.instanceId,
+          params.entryId,
+          principal,
+        )
+        return {
+          sibling: { ...sibling, submittedAt: new Date(sibling.submittedAt).toISOString() },
+        }
       }),
     )
     .handle(

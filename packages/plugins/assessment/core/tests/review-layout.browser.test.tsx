@@ -1960,6 +1960,67 @@ describe('where the person being judged stands', () => {
     }
   }
 
+  // A claim whose only answer is a file has no summary; opened from the
+  // strip it still shows its form, the file in its own field.
+  it('opens another claim whole, files included, when it is read', async () => {
+    await page.viewport(1600, 900)
+    const SIBLING_ID = '66666666-6666-4666-8666-666666666666'
+    const FILE_ID = '77777777-7777-4777-8777-777777777777'
+    const asked: string[] = []
+    await open({
+      getReviewInstance: () =>
+        Effect.succeed({
+          review: {
+            ...review,
+            context: {
+              ...review.context,
+              siblings: [
+                { entryId: ENTRY_ID, values: [], status: 'in_review', current: true },
+                { entryId: SIBLING_ID, values: [], status: 'approved', current: false },
+              ],
+            },
+          },
+        }),
+      getReviewSibling: ({ params }: { params: { entryId: string } }) => {
+        asked.push(params.entryId)
+        return Effect.succeed({
+          sibling: {
+            entryId: SIBLING_ID,
+            status: 'approved',
+            submittedAt: '2026-03-02T00:00:00.000Z',
+            revision: { revisionNo: 1, payload: { scan: [FILE_ID] }, note: null },
+            form: {
+              itemType: 'evidence',
+              formConfig: { fields: [{ key: 'scan', type: 'attachment', label: '考核表扫描件' }] },
+            },
+          },
+        })
+      },
+      listAttachmentDescriptors: () =>
+        Effect.succeed({
+          attachments: [
+            {
+              id: FILE_ID,
+              filename: '考核表.pdf',
+              declaredMime: 'application/pdf',
+              size: '204800',
+              status: 'bound',
+              delivery: { kind: 'content' as const },
+            },
+          ],
+        }),
+    })
+    // nothing is fetched for a claim nobody opened
+    await expect.element(page.getByText(review.itemTitle).first()).toBeVisible()
+    expect(asked).toEqual([])
+    await userEvent.keyboard('{Alt>}2{/Alt}')
+    const sheet = page.getByRole('dialog')
+    await expect.element(sheet.getByText('考核表扫描件')).toBeVisible()
+    await expect.element(sheet.getByText('考核表.pdf').first()).toBeVisible()
+    // only the claim that was opened
+    expect(new Set(asked)).toEqual(new Set([SIBLING_ID]))
+  })
+
   // On a desk the item wraps under the name and reads from the line's start,
   // rather than being pushed to the far end with a gap before it.
   it('starts the item under the name on a wide screen', async () => {
