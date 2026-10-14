@@ -264,8 +264,45 @@ export const clientFor = <ApiId extends string, Groups extends HttpApiGroup.Cons
   }).pipe(Effect.provide(FetchHttpClient.layer))
 }
 
-/** the typed client an api definition derives to */
-export type ClientOf<Api extends HttpApi.Constraint> = HttpApiClient.ForApi<Api>
+/**
+ * A generated client method as this product calls it: decoded values only.
+ *
+ * Each generated method is generic over a response mode - the decoded value,
+ * the raw response, or both - and a type read off the method (`ReturnType`,
+ * `infer`) widens that mode to all three, so every derived type would carry
+ * the two shapes nobody here asks for. No caller passes `responseMode`, so
+ * what runs is always the decoded-only call; this states that at the one
+ * boundary every client is typed through, rather than at each place a
+ * screen names a result. The error and service channels are taken as they
+ * are: upstream narrows them only for `response-only`, so the widened
+ * method already has the decoded-only ones.
+ */
+type DecodedOnly<Method> = Method extends (
+  request: infer Request,
+) => Effect.Effect<infer A, infer E, infer R>
+  ? (
+      request: Request extends { readonly responseMode?: unknown }
+        ? Omit<Request, 'responseMode'>
+        : Request,
+    ) => Effect.Effect<
+      Exclude<
+        A,
+        | HttpApiClient.Client.Response<unknown, 'response-only'>
+        | HttpApiClient.Client.Response<unknown, 'decoded-and-response'>
+      >,
+      E,
+      R
+    >
+  : Method
+
+/** the typed client an api definition derives to, as this product calls it */
+export type ClientOf<Api extends HttpApi.Constraint> = {
+  readonly [Group in keyof HttpApiClient.ForApi<Api>]: {
+    readonly [Endpoint in keyof HttpApiClient.ForApi<Api>[Group]]: DecodedOnly<
+      HttpApiClient.ForApi<Api>[Group][Endpoint]
+    >
+  }
+}
 
 /**
  * What one endpoint answers with.

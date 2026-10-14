@@ -1,4 +1,4 @@
-# effect(v4 beta)实查笔记
+# effect(v4)实查笔记
 
 ## Schema 对多余对象键的行为(2026-08-31,rc.111)
 
@@ -24,6 +24,26 @@ schema 体)不做对象结构解析,不受影响——恰好实现「envelope �
 后果:`decodePluginConfig(Schema.Struct({}), block)` 不能表达「这个插件不读任何清单配置」——
 它会把整块静默放行,正是该 helper 要防的失败。database 插件的 `server/config.ts` 因此在 decode 之后
 自己检查 `Object.keys(block)` 非空即拒绝并指路。其他想声明「零配置」的插件照此办理,不要依赖空 Struct。
+
+## rc.118 → 4.0.4(2026-10-15)
+
+4.0.0 正式版发布后连同 4.0.1 至 4.0.4 一次升级,`@effect/tsgo` 同步到 0.52.0。依据是 `repos/effect`
+(tag `effect@4.0.4`)与这五个版本的发布说明:
+
+- **HttpApi client 方法变成按 `responseMode` 泛型**(`src/http-api/HttpApiClient.ts` 的 `Client.Method`):
+  `decoded-only`(默认)返回解码值,`response-only` 返回原始响应,`decoded-and-response` 返回二者。调用处
+  不传参数时类型正确;但从方法类型上推导(`ReturnType`、`infer`)会把模式放宽为三者之一,首次 typecheck
+  报 3587 个错误。本产品从不传 `responseMode`,所以在所有浏览器 client 共经的边界
+  `packages/web/runtime/src/api.ts` 的 `ClientOf` 上把每个方法收窄为只解码的签名(去掉 `responseMode`
+  参数,成功通道去掉上游 `Client.Response` 的另两种形状;错误与服务通道上游只在 `response-only` 下收窄,
+  原样沿用),不在 47 处调用方各自套辅助类型。`QueryUtils` 去掉 `Client` 约束:泛型 api 的 client 是延迟
+  求值的映射类型,约束看不进去,逐方法由 `Bound` 判定。
+- **`api-kit/src/error-codes.ts` 用的三个内部导出**仍在(`node -e` 实查 `collectSentinels`、
+  `getConstructorDescriptor`、`getErrorSchemas` 均为函数),`tools/tests/error-codes.test.ts` 通过。
+- 其余破坏面本仓库不涉及:`Schema.brand`/`fromBrand`、`partition`/`separate` 返回顺序对调、
+  `Crypto.randomUUIDv4/v7` 改为函数(`git grep` 均无使用)。`Effect.race` 系列改为中断落败方(5 个文件使用),
+  属于修正。
+- format、lint、typecheck、lint:types、数据库四项检查、全量 Node、Chromium、WebKit 与构建门禁均通过。
 
 ## rc.115 → rc.118(2026-09-30)
 

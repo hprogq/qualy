@@ -151,7 +151,9 @@ type Bound<Fn> = Fn extends (...args: infer Args) => Effect.Effect<infer A, infe
     }
   : never
 
-export type QueryUtils<C extends Client> = {
+// Unconstrained, because a client typed through a generic api is a deferred
+// mapped type the constraint cannot see into; Bound settles each method.
+export type QueryUtils<C> = {
   [Group in keyof C]: { [Endpoint in keyof C[Group]]: Bound<C[Group][Endpoint]> } & {
     /** every entry of this group, for invalidating a whole domain at once */
     key: () => QueryKey

@@ -1,6 +1,6 @@
 # Effect Source Policy
 
-本项目运行在 Effect v4 预发布版上。**这些 API 有一半标着 `@stability unstable`,预发布版本允许破坏它们**
+本项目运行在 Effect v4 上。**这些 API 有一半标着 `@stability unstable`,minor 版本仍允许破坏它们**
 (rc.118 起它们从 `effect/unstable/*` 移到了 `effect/*`:`effect/http`、`effect/http-api`、`effect/rpc`、
 `effect/socket`、`effect/observability`,旧路径已删除)。
 因此「按 Effect 最佳实践」不是依据,记忆里的 API 也不是。依据是 `repos/` 里那份与 `pnpm-workspace.yaml`

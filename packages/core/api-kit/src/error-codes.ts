@@ -10,8 +10,8 @@ import {
   ClientReleaseUnsupported,
 } from './schema.ts'
 
-// rc.118 exports these helpers at runtime but strips @internal declarations
-// from its .d.ts. Keep this version-specific assembly boundary in one place.
+// Effect exports these helpers at runtime but strips @internal declarations
+// from its .d.ts (checked again on 4.0.4). Keep this version-specific assembly boundary in one place.
 const astTools = SchemaAST as typeof SchemaAST & {
   collectSentinels(ast: SchemaAST.AST): readonly { key: PropertyKey; literal: unknown }[]
   getConstructorDescriptor(ast: SchemaAST.AST): { isConstructed: unknown } | undefined
