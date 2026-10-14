@@ -43,14 +43,14 @@ catalogs:
       specifier: 5.1.1
       version: 5.1.1
     '@mikro-orm/core':
-      specifier: 7.2.2
-      version: 7.2.2
+      specifier: 7.2.5
+      version: 7.2.5
     '@mikro-orm/migrations':
-      specifier: 7.2.2
-      version: 7.2.2
+      specifier: 7.2.5
+      version: 7.2.5
     '@mikro-orm/postgresql':
-      specifier: 7.2.2
-      version: 7.2.2
+      specifier: 7.2.5
+      version: 7.2.5
     '@shikijs/langs':
       specifier: 4.4.3
       version: 4.4.3
@@ -145,8 +145,8 @@ catalogs:
       specifier: 6.8.8
       version: 6.8.8
     pg:
-      specifier: 8.23.0
-      version: 8.23.0
+      specifier: 8.23.1
+      version: 8.23.1
     playwright:
       specifier: 1.62.1
       version: 1.62.1
@@ -407,7 +407,7 @@ importers:
         version: 7.0.2002
       pg:
         specifier: 'catalog:'
-        version: 8.23.0
+        version: 8.23.1
       playwright:
         specifier: 'catalog:'
         version: 1.62.1
@@ -981,7 +981,7 @@ importers:
     dependencies:
       '@mikro-orm/core':
         specifier: 'catalog:'
-        version: 7.2.2
+        version: 7.2.5
       '@qualy/api-kit':
         specifier: workspace:*
         version: link:../../../core/api-kit
@@ -1129,7 +1129,7 @@ importers:
         version: 4.0.4(effect@4.0.4)(redis@6.2.1)
       '@mikro-orm/core':
         specifier: 'catalog:'
-        version: 7.2.2
+        version: 7.2.5
       '@qualy/api-kit':
         specifier: workspace:*
         version: link:../../../core/api-kit
@@ -1262,7 +1262,7 @@ importers:
     dependencies:
       '@mikro-orm/core':
         specifier: 'catalog:'
-        version: 7.2.2
+        version: 7.2.5
       '@qualy/api-kit':
         specifier: workspace:*
         version: link:../../../core/api-kit
@@ -1341,7 +1341,7 @@ importers:
     dependencies:
       '@mikro-orm/core':
         specifier: 'catalog:'
-        version: 7.2.2
+        version: 7.2.5
       '@qualy/api-kit':
         specifier: workspace:*
         version: link:../../../core/api-kit
@@ -1673,7 +1673,7 @@ importers:
     dependencies:
       '@mikro-orm/core':
         specifier: 'catalog:'
-        version: 7.2.2
+        version: 7.2.5
       '@qualy/api-kit':
         specifier: workspace:*
         version: link:../../../core/api-kit
@@ -1831,7 +1831,7 @@ importers:
     dependencies:
       '@mikro-orm/core':
         specifier: 'catalog:'
-        version: 7.2.2
+        version: 7.2.5
       '@qualy/api-kit':
         specifier: workspace:*
         version: link:../../../core/api-kit
@@ -1922,7 +1922,7 @@ importers:
     dependencies:
       '@mikro-orm/core':
         specifier: 'catalog:'
-        version: 7.2.2
+        version: 7.2.5
       '@qualy/api-kit':
         specifier: workspace:*
         version: link:../../../core/api-kit
@@ -2010,7 +2010,7 @@ importers:
     dependencies:
       '@mikro-orm/core':
         specifier: 'catalog:'
-        version: 7.2.2
+        version: 7.2.5
       '@qualy/api-kit':
         specifier: workspace:*
         version: link:../../../core/api-kit
@@ -2095,7 +2095,7 @@ importers:
     dependencies:
       '@mikro-orm/core':
         specifier: 'catalog:'
-        version: 7.2.2
+        version: 7.2.5
       '@qualy/api-kit':
         specifier: workspace:*
         version: link:../../../core/api-kit
@@ -2202,7 +2202,7 @@ importers:
     dependencies:
       '@mikro-orm/core':
         specifier: 'catalog:'
-        version: 7.2.2
+        version: 7.2.5
       '@qualy/plugin-captcha':
         specifier: workspace:*
         version: link:../captcha
@@ -2270,13 +2270,13 @@ importers:
     dependencies:
       '@mikro-orm/core':
         specifier: 'catalog:'
-        version: 7.2.2
+        version: 7.2.5
       '@mikro-orm/migrations':
         specifier: 'catalog:'
-        version: 7.2.2(@mikro-orm/core@7.2.2)
+        version: 7.2.5(@mikro-orm/core@7.2.5)
       '@mikro-orm/postgresql':
         specifier: 'catalog:'
-        version: 7.2.2(@mikro-orm/core@7.2.2)
+        version: 7.2.5(@mikro-orm/core@7.2.5)
       '@qualy/api-kit':
         specifier: workspace:*
         version: link:../../../core/api-kit
@@ -2297,7 +2297,7 @@ importers:
         version: 0.29.6
       pg:
         specifier: 'catalog:'
-        version: 8.23.0
+        version: 8.23.1
     devDependencies:
       '@types/pg':
         specifier: 'catalog:'
@@ -2463,7 +2463,7 @@ importers:
     dependencies:
       '@mikro-orm/core':
         specifier: 'catalog:'
-        version: 7.2.2
+        version: 7.2.5
       '@qualy/plugin-database':
         specifier: workspace:*
         version: link:../database
@@ -2481,7 +2481,7 @@ importers:
     dependencies:
       '@mikro-orm/core':
         specifier: 'catalog:'
-        version: 7.2.2
+        version: 7.2.5
       '@qualy/api-kit':
         specifier: workspace:*
         version: link:../../../core/api-kit
@@ -3394,8 +3394,8 @@ packages:
   '@messageformat/parser@5.1.1':
     resolution: {integrity: sha512-3p0YRGCcTUCYvBKLIxtDDyrJ0YijGIwrTRu1DT8gIviIDZru8H23+FkY6MJBzM1n9n20CiM4VeDYuBsrrwnLjg==}
 
-  '@mikro-orm/core@7.2.2':
-    resolution: {integrity: sha512-+KNiaYK4GHOYohPJzhhogIu5hD3kE5YZi+V+zmx50Jaw1UNJsDP8MCaVNAZ8yFWiODIACZuIFsEYQClSdTNvcA==}
+  '@mikro-orm/core@7.2.5':
+    resolution: {integrity: sha512-YF2q2Druxw4PQf/DoN1jZgYZdWfgQUWZWEapXIs0Oc/mC5HvD21nVncruDz2qMitmihro1oPhb9gI4LR5u8BEw==}
     engines: {node: '>= 22.17.0'}
     peerDependencies:
       dataloader: 2.2.3
@@ -3403,23 +3403,23 @@ packages:
       dataloader:
         optional: true
 
-  '@mikro-orm/migrations@7.2.2':
-    resolution: {integrity: sha512-CZwJQbljVkiZrcUy/4xkGmmuPhdwlL/IyQz/hVBUM4G5f7qlCLIwiqJ+SJspTZu+NiPznmMmS9GpcknzfGNhMw==}
+  '@mikro-orm/migrations@7.2.5':
+    resolution: {integrity: sha512-1nq+ger9gpPTTjxJF4GyrIXtTO/fhZGjlYjw6MSLcnVyCy0xoCMpz/cYYcz95J9HuT2tEInK41oi+ZUqIfTUEg==}
     engines: {node: '>= 22.17.0'}
     peerDependencies:
-      '@mikro-orm/core': 7.2.2
+      '@mikro-orm/core': 7.2.5
 
-  '@mikro-orm/postgresql@7.2.2':
-    resolution: {integrity: sha512-aVdTt3LeOGT7KRoPlazQwB/KgdF4w6EUL9bVCHVMg5/ERZPpJPJ/Ku29iBVnlBvvSKvxiMcyE56/354rgc2A7w==}
+  '@mikro-orm/postgresql@7.2.5':
+    resolution: {integrity: sha512-2mDdd3DBQLxtLIyzkNahwxeZdDeSbQjwnp26JRnElXkq6u/X5AUwBagbrf/iu9m3a83GvkP6xxOnGL4bPeAJNA==}
     engines: {node: '>= 22.17.0'}
     peerDependencies:
-      '@mikro-orm/core': 7.2.2
+      '@mikro-orm/core': 7.2.5
 
-  '@mikro-orm/sql@7.2.2':
-    resolution: {integrity: sha512-biH6xuFtrNEa7Lg130lD0WoncP+FGhDDVZJmeYhQCPljI9KRHw6iqFyOPNDkduaGbnvnpxE2diZIqS6NVCTfJA==}
+  '@mikro-orm/sql@7.2.5':
+    resolution: {integrity: sha512-sXctGMJ/QKeugdX3xKltKXVeHavkuGuo/LhH0In1htw+uylAXjyzxzsO8rTb/sS+Ay3tZaaB/Y2eK5dCl4ZAVw==}
     engines: {node: '>= 22.17.0'}
     peerDependencies:
-      '@mikro-orm/core': 7.2.2
+      '@mikro-orm/core': 7.2.5
 
   '@napi-rs/wasm-runtime@1.2.1':
     resolution: {integrity: sha512-KjZdi8Q1wh89gsVmghvbrMgWl6ZWmRmHV6wjB7/g4Zf0dyO+hH3neZUtuDNPO00qq5YE5RITVWvrIZKRaAmzGQ==}
@@ -5295,14 +5295,14 @@ packages:
   performance-now@2.1.0:
     resolution: {integrity: sha512-7EAHlyLHI56VEIdK57uwHdHKIaAGbnXPiw0yWbarQZOKaKpvUIgW0jWRVLiatnM+XXlSwsanIBH/hzGMJulMow==}
 
-  pg-cloudflare@1.4.0:
-    resolution: {integrity: sha512-Vo7z/6rrQYxpNRylp4Tlob2elzbh+N/MOQbxFVWCxS7oEx6jF53GTJFxK2WWpKuBRkmiin4Mt+xofFDjx09R0A==}
+  pg-cloudflare@1.4.1:
+    resolution: {integrity: sha512-6PQbsFWZcp9EmJEwy5cGQ2La+AMWpP46lgbb8X+U/XsHIUweYDNCpeuKck5RxL2MdVFi7krbbEi5nX4Zh7JhrQ==}
 
-  pg-connection-string@2.14.0:
-    resolution: {integrity: sha512-XwWDGcLRGCXAR8F/AM5bG7Q+A3Wm2s6QeEjlOKZLlH3UYcguiqCWKyWXVag5TLTIjR7oOJUY8kcADaZgWPyLeg==}
+  pg-connection-string@2.14.1:
+    resolution: {integrity: sha512-qR3kGNPBLpCNtz0evbKA0Y/MRFXwSSdT+pTJvYp/bXTcReZbvX1kzF0IyTc1QnxqF7AZbOeBhNL8R5mYQZV/MA==}
 
-  pg-cursor@2.22.0:
-    resolution: {integrity: sha512-knzXLKqarTjOvb3qDSW0JiGsazmxwEKXrqHfWRte7XUsOYccQRafn3BLnQobWwInkzFJSyOej8y8cQRh2z3kGw==}
+  pg-cursor@2.22.1:
+    resolution: {integrity: sha512-X10ldv3wwBONQkOSwgWEbaEITMGLd92V2Zd+xsFPhDt3nhhU3hpAT08SERBChnIFmomczLax6lKXLJrHPPXfxA==}
     peerDependencies:
       pg: ^8
 
@@ -5318,12 +5318,15 @@ packages:
   pg-protocol@1.16.0:
     resolution: {integrity: sha512-sILXutLVjCLjcDuOmvhX5e2Z4cS5qG/6Bu3VkpFwdf/633ElGLpEh9bgmuI5I4sqKqkifQiGyiCcx1HdtrK7tg==}
 
+  pg-protocol@1.16.1:
+    resolution: {integrity: sha512-p9VOFMiHB/ZbJATetbg+99PxssTVSQRnyuPSQ67mN1+1KBOjZaZ83ZQzltnxPhJwSsC3nwVjJ10DVJlerbFzLg==}
+
   pg-types@2.2.0:
     resolution: {integrity: sha512-qTAAlrEsl8s4OiEQY69wDvcMIdQN6wdz5ojQiOy6YRMuynxenON0O5oCpJI6lshc6scgAY8qvJ2On/p+CXY0GA==}
     engines: {node: '>=4'}
 
-  pg@8.23.0:
-    resolution: {integrity: sha512-Ip2EQCngowJLGOfCwkFhPXU7/ljlhn6Rxlmy4XYfL2Y+vyRM59+8uR2xqRWKdYmbXmxCFOAmKxBuSUCdF34qLg==}
+  pg@8.23.1:
+    resolution: {integrity: sha512-aL96AHANtWjPLDOLqnhx+ngp9+UK7ETEU8VJrDCGvsSSi/mGLcWYsS6Herg7lmaBJe4uwrfqsa7gTEFaSizDoQ==}
     engines: {node: '>= 16.0.0'}
     peerDependencies:
       pg-native: '>=3.0.1'
@@ -6534,29 +6537,29 @@ snapshots:
     dependencies:
       moo: 0.5.3
 
-  '@mikro-orm/core@7.2.2': {}
+  '@mikro-orm/core@7.2.5': {}
 
-  '@mikro-orm/migrations@7.2.2(@mikro-orm/core@7.2.2)':
+  '@mikro-orm/migrations@7.2.5(@mikro-orm/core@7.2.5)':
     dependencies:
-      '@mikro-orm/core': 7.2.2
-      '@mikro-orm/sql': 7.2.2(@mikro-orm/core@7.2.2)
+      '@mikro-orm/core': 7.2.5
+      '@mikro-orm/sql': 7.2.5(@mikro-orm/core@7.2.5)
 
-  '@mikro-orm/postgresql@7.2.2(@mikro-orm/core@7.2.2)':
+  '@mikro-orm/postgresql@7.2.5(@mikro-orm/core@7.2.5)':
     dependencies:
-      '@mikro-orm/core': 7.2.2
-      '@mikro-orm/sql': 7.2.2(@mikro-orm/core@7.2.2)
+      '@mikro-orm/core': 7.2.5
+      '@mikro-orm/sql': 7.2.5(@mikro-orm/core@7.2.5)
       kysely: 0.29.6
-      pg: 8.23.0
-      pg-cursor: 2.22.0(pg@8.23.0)
+      pg: 8.23.1
+      pg-cursor: 2.22.1(pg@8.23.1)
       postgres-array: 3.0.4
       postgres-date: 2.1.0
       postgres-interval: 4.1.0
     transitivePeerDependencies:
       - pg-native
 
-  '@mikro-orm/sql@7.2.2(@mikro-orm/core@7.2.2)':
+  '@mikro-orm/sql@7.2.5(@mikro-orm/core@7.2.5)':
     dependencies:
-      '@mikro-orm/core': 7.2.2
+      '@mikro-orm/core': 7.2.5
       kysely: 0.29.6
 
   '@napi-rs/wasm-runtime@1.2.1(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)':
@@ -8131,22 +8134,24 @@ snapshots:
 
   performance-now@2.1.0: {}
 
-  pg-cloudflare@1.4.0:
+  pg-cloudflare@1.4.1:
     optional: true
 
-  pg-connection-string@2.14.0: {}
+  pg-connection-string@2.14.1: {}
 
-  pg-cursor@2.22.0(pg@8.23.0):
+  pg-cursor@2.22.1(pg@8.23.1):
     dependencies:
-      pg: 8.23.0
+      pg: 8.23.1
 
   pg-int8@1.0.1: {}
 
-  pg-pool@3.14.0(pg@8.23.0):
+  pg-pool@3.14.0(pg@8.23.1):
     dependencies:
-      pg: 8.23.0
+      pg: 8.23.1
 
   pg-protocol@1.16.0: {}
+
+  pg-protocol@1.16.1: {}
 
   pg-types@2.2.0:
     dependencies:
@@ -8156,15 +8161,15 @@ snapshots:
       postgres-date: 1.0.7
       postgres-interval: 1.2.0
 
-  pg@8.23.0:
+  pg@8.23.1:
     dependencies:
-      pg-connection-string: 2.14.0
-      pg-pool: 3.14.0(pg@8.23.0)
-      pg-protocol: 1.16.0
+      pg-connection-string: 2.14.1
+      pg-pool: 3.14.0(pg@8.23.1)
+      pg-protocol: 1.16.1
       pg-types: 2.2.0
       pgpass: 1.0.5
     optionalDependencies:
-      pg-cloudflare: 1.4.0
+      pg-cloudflare: 1.4.1
 
   pgpass@1.0.5:
     dependencies:
