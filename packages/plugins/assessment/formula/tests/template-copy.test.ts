@@ -280,10 +280,27 @@ describe.runIf(postgresAvailable)('forking a template', () => {
           const published = yield* publishedVersion(f.t, f.authorA, '争用公式')
           yield* offer(f.t, published.versionId, f.root, f.authorA)
 
-          // a withdrawal that takes the version row FOR UPDATE first, the
-          // way the sharing writer does
+          // a withdrawal that takes the version row FOR UPDATE, the way the
+          // sharing writer does - once the copy below is holding its lock,
+          // so the race is the one under test rather than which side the
+          // scheduler happens to start first
           const contender = yield* Effect.forkChild(
             Effect.promise(async () => {
+              const deadline = Date.now() + 10_000
+              for (;;) {
+                const holding = await db.query(
+                  // past its FOR SHARE: the draft it writes after the lock is
+                  // still uncommitted, so its table lock is still held
+                  `select 1 from pg_locks l join pg_stat_activity a on a.pid = l.pid
+                   where a.datname = current_database() and a.pid <> pg_backend_pid()
+                     and a.state = 'idle in transaction'
+                     and l.relation = 'assessment_formula_functions'::regclass
+                     and l.mode = 'RowExclusiveLock'`,
+                )
+                if (holding.rows.length > 0) break
+                if (Date.now() > deadline) throw new Error('the copy never held its transaction')
+                await new Promise((done) => setTimeout(done, 5))
+              }
               const started = Date.now()
               await db.query(
                 `update assessment_formula_versions set published_at = published_at where id = $1`,
