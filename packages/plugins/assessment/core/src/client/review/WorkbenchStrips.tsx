@@ -217,7 +217,9 @@ const styles = stylex.create({
     containerType: 'inline-size',
     display: 'flex',
     alignItems: 'center',
-    justifyContent: 'flex-end',
+    // read on from the unit before it, or from the line's start once it
+    // wraps under the name; only the phone grid sets it against the right
+    justifyContent: { default: 'flex-start', [breakpoints.phone]: 'flex-end' },
     gap: 4,
     flexGrow: { default: 1, [lg]: 0 },
     flexShrink: 1,

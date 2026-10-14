@@ -1960,6 +1960,22 @@ describe('where the person being judged stands', () => {
     }
   }
 
+  // On a desk the item wraps under the name and reads from the line's start,
+  // rather than being pushed to the far end with a gap before it.
+  it('starts the item under the name on a wide screen', async () => {
+    await page.viewport(1600, 900)
+    await open()
+    const named = page.getByRole('heading', { level: 2, name: review.participantName })
+    await expect.element(named).toBeVisible()
+    await expect.element(page.getByTestId('review-item')).toBeVisible()
+    const heading = named.element()
+    const itemElement = page.getByTestId('review-item').element()
+    const item = itemElement.getBoundingClientRect()
+    const glyph = itemElement.querySelector('svg')!.getBoundingClientRect()
+    expect(item.top).toBeGreaterThanOrEqual(heading.getBoundingClientRect().bottom - 1)
+    expect(Math.abs(glyph.left - heading.getBoundingClientRect().left)).toBeLessThan(2)
+  })
+
   // A unit deleted from the organization since the round froze the lineage
   // comes back unnamed. It is said to be gone, once for a run of them, and
   // never with the mark the line puts in front of the levels it left off.
