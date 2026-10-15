@@ -21,7 +21,7 @@ export const db = Db.scope(closure)
 export type Db = ScopedKysely<typeof closure>
 
 /** the tables the closure names, for a predicate that builds its own subquery */
-type Schema = Db extends Kysely<infer Tables> ? Tables : never
+export type Schema = Db extends Kysely<infer Tables> ? Tables : never
 
 /** the same row org and auth lock, so the three cannot interleave */
 export const lockTenant = (tenantId: string) =>
@@ -150,11 +150,20 @@ export interface RoleEligibilityRef {
  * grant - and four hand-written copies of "is it in the list, unless the mode
  * says everything" is four chances to forget the mode.
  */
-export const admitsUserType = (role: RoleEligibilityRef, userTypeId: Expression<string>) =>
-  sql<boolean>`(${role.eligibilityMode} = 'unrestricted' or exists (
-    select 1 from role_allowed_user_types t
-    where t.tenant_id = ${role.tenantId} and t.role_id = ${role.id}
-      and t.user_type_id = ${userTypeId}))`
+export const admitsUserType = (role: RoleEligibilityRef, userTypeId: Expression<string>) => {
+  const eb = expressionBuilder<Schema>()
+  return eb.or([
+    eb(role.eligibilityMode, '=', 'unrestricted'),
+    eb.exists(
+      eb
+        .selectFrom('RoleAllowedUserType as t')
+        .select('t.roleId')
+        .where('t.tenantId', '=', role.tenantId)
+        .where('t.roleId', '=', role.id)
+        .where('t.userTypeId', '=', userTypeId),
+    ),
+  ])
+}
 
 /**
  * Nullable, because the node is outer-joined wherever a tenant grant may be in
@@ -162,11 +171,20 @@ export const admitsUserType = (role: RoleEligibilityRef, userTypeId: Expression<
  * caller says so with a null test rather than by handing over a node that is
  * not there.
  */
-export const admitsOrgType = (role: RoleEligibilityRef, orgTypeId: Expression<string | null>) =>
-  sql<boolean>`(${role.anchorMode} = 'unrestricted' or exists (
-    select 1 from role_allowed_org_types t
-    where t.tenant_id = ${role.tenantId} and t.role_id = ${role.id}
-      and t.org_type_id = ${orgTypeId}))`
+export const admitsOrgType = (role: RoleEligibilityRef, orgTypeId: Expression<string | null>) => {
+  const eb = expressionBuilder<Schema>()
+  return eb.or([
+    eb(role.anchorMode, '=', 'unrestricted'),
+    eb.exists(
+      eb
+        .selectFrom('RoleAllowedOrgType as t')
+        .select('t.roleId')
+        .where('t.tenantId', '=', role.tenantId)
+        .where('t.roleId', '=', role.id)
+        .where('t.orgTypeId', '=', orgTypeId),
+    ),
+  ])
+}
 
 /** the grant columns that say whether it still stands, wherever a query aliased them */
 export interface GrantValidityRef {
@@ -191,6 +209,37 @@ export const inForce = (grant: GrantValidityRef) => sql<boolean>`(
   and (${grant.validFrom} is null or ${grant.validFrom} <= now())
   and (${grant.validUntil} is null or ${grant.validUntil} > now())
 )`
+
+/** an aggregate over no rows is null; the projections promise a list */
+const emptyArray = sql<string[]>`'{}'::text[]`
+
+/** the user types or node types a role's allow-list names, as text ids */
+export const allowedTypeIds = (
+  kind: 'user' | 'org',
+  role: {
+    readonly tenantId: Expression<string> | string
+    readonly id: Expression<string> | string
+  },
+) => {
+  const eb = expressionBuilder<Schema>()
+  const ids =
+    kind === 'user'
+      ? eb
+          .selectFrom('RoleAllowedUserType as t')
+          .select((agg) =>
+            agg.fn.agg<string[]>('array_agg', [agg.cast('t.userTypeId', 'text')]).as('ids'),
+          )
+          .where('t.tenantId', '=', role.tenantId)
+          .where('t.roleId', '=', role.id)
+      : eb
+          .selectFrom('RoleAllowedOrgType as t')
+          .select((agg) =>
+            agg.fn.agg<string[]>('array_agg', [agg.cast('t.orgTypeId', 'text')]).as('ids'),
+          )
+          .where('t.tenantId', '=', role.tenantId)
+          .where('t.roleId', '=', role.id)
+  return eb.fn.coalesce(ids, emptyArray)
+}
 
 const roleProjection = (k: Db, tenantId: string) =>
   k
@@ -234,19 +283,25 @@ const roleProjection = (k: Db, tenantId: string) =>
         )
         .$castTo<boolean>()
         .as('everGranted'),
-      sql<string[]>`coalesce((select array_agg(p.code order by p.code)
-        from role_permissions rp join permissions p on p.id = rp.permission_id
-        where rp.tenant_id = ${eb.ref('r.tenantId')} and rp.role_id = ${eb.ref('r.id')}), '{}')`.as(
-        'permissions',
-      ),
+      eb.fn
+        .coalesce(
+          eb
+            .selectFrom('RolePermission as rp')
+            .innerJoin('Permission as p', 'p.id', 'rp.permissionId')
+            .select((agg) =>
+              agg.fn.agg<string[]>('array_agg', ['p.code']).orderBy('p.code').as('codes'),
+            )
+            .whereRef('rp.tenantId', '=', 'r.tenantId')
+            .whereRef('rp.roleId', '=', 'r.id'),
+          emptyArray,
+        )
+        .as('permissions'),
       eb.ref('r.eligibilityMode').$castTo<'unrestricted' | 'allow-list'>().as('eligibilityMode'),
       eb.ref('r.anchorMode').$castTo<'unrestricted' | 'allow-list'>().as('anchorMode'),
-      sql<string[]>`coalesce((select array_agg(t.user_type_id::text) from role_allowed_user_types t
-        where t.tenant_id = ${eb.ref('r.tenantId')} and t.role_id = ${eb.ref('r.id')}), '{}')`.as(
+      allowedTypeIds('user', { tenantId: eb.ref('r.tenantId'), id: eb.ref('r.id') }).as(
         'allowedUserTypes',
       ),
-      sql<string[]>`coalesce((select array_agg(t.org_type_id::text) from role_allowed_org_types t
-        where t.tenant_id = ${eb.ref('r.tenantId')} and t.role_id = ${eb.ref('r.id')}), '{}')`.as(
+      allowedTypeIds('org', { tenantId: eb.ref('r.tenantId'), id: eb.ref('r.id') }).as(
         'allowedOrgTypes',
       ),
     ])
@@ -451,21 +506,29 @@ export const grantRuleSources = (tenantId: string, targetRoleId: string) =>
 export const appointmentCycleExists = (tenantId: string, roleId: string) =>
   db
     .query((k) =>
-      sql<{ cycled: boolean }>`
-        with recursive walk (role_id) as (
-          select rule.target_role_id
-          from role_grant_rules rule
-          where rule.tenant_id = ${tenantId} and rule.granter_role_id = ${roleId}
-          union
-          select rule.target_role_id
-          from role_grant_rules rule
-          join walk on walk.role_id = rule.granter_role_id
-          where rule.tenant_id = ${tenantId}
+      k
+        .withRecursive('walk(roleId)', (q) =>
+          q
+            .selectFrom('RoleGrantRule as rule')
+            .select('rule.targetRoleId as roleId')
+            .where('rule.tenantId', '=', tenantId)
+            .where('rule.granterRoleId', '=', roleId)
+            .union(
+              q
+                .selectFrom('RoleGrantRule as rule')
+                .innerJoin('walk', 'walk.roleId', 'rule.granterRoleId')
+                .select('rule.targetRoleId as roleId')
+                .where('rule.tenantId', '=', tenantId),
+            ),
         )
-        select exists (select 1 from walk where walk.role_id = ${roleId}) as cycled
-      `.execute(k),
+        .selectNoFrom((eb) =>
+          eb
+            .exists(eb.selectFrom('walk').select('walk.roleId').where('walk.roleId', '=', roleId))
+            .as('cycled'),
+        )
+        .executeTakeFirstOrThrow(),
     )
-    .pipe(Effect.map(({ rows }) => Boolean(rows[0]!.cycled)))
+    .pipe(Effect.map((row) => Boolean(row.cycled)))
 
 /** what appointment validation needs to know about each named target */
 /** an office an appointment edge may point at, with the authority it carries */

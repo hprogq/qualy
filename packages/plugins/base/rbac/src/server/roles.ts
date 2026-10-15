@@ -5,6 +5,7 @@ import {
   db,
   admitsOrgType,
   admitsUserType,
+  allowedTypeIds,
   appointmentCycleExists,
   grantRuleSources,
   grantRuleTargets,
@@ -459,12 +460,8 @@ const roleEligibility = (tenantId: string, roleId: string) =>
       .select((eb) => [
         eb.ref('r.eligibilityMode').$castTo<'unrestricted' | 'allow-list'>().as('eligibilityMode'),
         eb.ref('r.anchorMode').$castTo<'unrestricted' | 'allow-list' | null>().as('anchorMode'),
-        sql<string[]>`coalesce((select array_agg(user_type_id::text)
-          from role_allowed_user_types
-          where tenant_id = ${tenantId} and role_id = ${roleId}), '{}')`.as('userTypeIds'),
-        sql<string[]>`coalesce((select array_agg(org_type_id::text)
-          from role_allowed_org_types
-          where tenant_id = ${tenantId} and role_id = ${roleId}), '{}')`.as('orgTypeIds'),
+        allowedTypeIds('user', { tenantId, id: roleId }).as('userTypeIds'),
+        allowedTypeIds('org', { tenantId, id: roleId }).as('orgTypeIds'),
       ])
       .executeTakeFirstOrThrow(),
   )

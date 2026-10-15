@@ -944,6 +944,63 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
     }
   })
 
+  it('refuses an appointment edge that closes a ring, and keeps the ones that do not', async () => {
+    const db = await createTestContext('effect-role-appointment-ring')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const access = yield* Access
+          // three offices that may each appoint, at version 2 once they can
+          const office = (code: string) =>
+            Effect.gen(function* () {
+              const id = yield* access.roles.create(
+                f.tenant,
+                { code, name: code, kind: 'tenant' },
+                f.principal,
+              )
+              yield* access.roles.setPermissions(
+                f.tenant,
+                id,
+                ['iam.tenant-grant.manage'],
+                1,
+                f.principal,
+              )
+              return id
+            })
+          const a = yield* office('ring-a')
+          const b = yield* office('ring-b')
+          const c = yield* office('ring-c')
+          const appoint = (role: string, targets: readonly string[], version: number) =>
+            Effect.result(
+              access.roles.setGrantableRoles(f.tenant, role, targets, version, f.principal),
+            )
+          const chain = [yield* appoint(a, [b], 2), yield* appoint(b, [c], 2)]
+          // c appointing a would let a reach itself through b and c
+          const closing = yield* appoint(c, [a], 2)
+          // a shortcut beside the chain is a second path, not a ring
+          const shortcut = yield* appoint(a, [b, c], 3)
+          return {
+            chain: chain.map((one) => one._tag),
+            closing:
+              closing._tag === 'Failure'
+                ? [closing.failure._tag, (closing.failure as { reason?: string }).reason]
+                : closing._tag,
+            shortcut: shortcut._tag,
+          }
+        }),
+      )
+      expect(ok(exit)).toEqual({
+        chain: ['Success', 'Success'],
+        closing: ['ROLE_APPOINTMENT_INVALID', 'cycle'],
+        shortcut: 'Success',
+      })
+    } finally {
+      await db.dispose()
+    }
+  })
+
   it('will not let an author activate a role beyond their own authority', async () => {
     const db = await createTestContext('effect-role-escalation')
     try {

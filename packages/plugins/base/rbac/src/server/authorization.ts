@@ -1,7 +1,7 @@
 import { render, type Text } from '@qualy/text'
 import { Effect } from 'effect'
-import { db, type Db, admitsOrgType, admitsUserType, inForce } from './db.ts'
-import { sql, type Expression } from 'kysely'
+import { db, type Db, type Schema, admitsOrgType, admitsUserType, inForce } from './db.ts'
+import { expressionBuilder, sql, type Expression } from 'kysely'
 import {
   canonicalTenantAdmin,
   scopeCoverage,
@@ -38,7 +38,7 @@ interface HeldRef {
  * made it, not a second one that agrees today.
  */
 export const reachesEveryNode = (role: RoleRef) =>
-  sql<boolean>`${role.permissionMode} = 'all-active'`
+  expressionBuilder<Schema>()(role.permissionMode, '=', 'all-active')
 
 /**
  * Whether an active role carries this exact permission.
@@ -46,16 +46,26 @@ export const reachesEveryNode = (role: RoleRef) =>
  * Pinned to what the registry verified, so a permission row edited out of band
  * stops authorizing rather than starting to.
  */
-const carries = (role: RoleRef, def: ActivePermission) => sql<boolean>`(
-  ${reachesEveryNode(role)}
-  or exists (
-    select 1 from role_permissions rp
-    join permissions p on p.id = rp.permission_id
-      and p.code = ${def.code} and p.plugin = ${def.plugin}
-      and p.target_kind = ${def.target}
-    where rp.tenant_id = ${role.tenantId} and rp.role_id = ${role.id}
-  )
-)`
+const carries = (role: RoleRef, def: ActivePermission) => {
+  const eb = expressionBuilder<Schema>()
+  return eb.or([
+    reachesEveryNode(role),
+    eb.exists(
+      eb
+        .selectFrom('RolePermission as rp')
+        .innerJoin('Permission as p', (join) =>
+          join
+            .onRef('p.id', '=', 'rp.permissionId')
+            .on('p.code', '=', def.code)
+            .on('p.plugin', '=', def.plugin)
+            .on('p.targetKind', '=', def.target),
+        )
+        .select('rp.roleId')
+        .where('rp.tenantId', '=', role.tenantId)
+        .where('rp.roleId', '=', role.id),
+    ),
+  ])
+}
 
 /**
  * Whether a role carries the permission row this query joined.
@@ -64,14 +74,20 @@ const carries = (role: RoleRef, def: ActivePermission) => sql<boolean>`(
  * is a different shape from `carries`: that one names a permission, this one
  * relates a role to whichever row the join is considering.
  */
-const rolePermits = (role: RoleRef, permissionId: Expression<string>) => sql<boolean>`(
-  ${reachesEveryNode(role)}
-  or exists (
-    select 1 from role_permissions rp
-    where rp.tenant_id = ${role.tenantId} and rp.role_id = ${role.id}
-      and rp.permission_id = ${permissionId}
-  )
-)`
+const rolePermits = (role: RoleRef, permissionId: Expression<string>) => {
+  const eb = expressionBuilder<Schema>()
+  return eb.or([
+    reachesEveryNode(role),
+    eb.exists(
+      eb
+        .selectFrom('RolePermission as rp')
+        .select('rp.roleId')
+        .where('rp.tenantId', '=', role.tenantId)
+        .where('rp.roleId', '=', role.id)
+        .where('rp.permissionId', '=', permissionId),
+    ),
+  ])
+}
 
 /**
  * Whether a grant reaches one node.
@@ -445,21 +461,44 @@ export const applicableAssignments = (input: {
                 ]),
               ]),
         )
-        .where(
-          sql<boolean>`(
-            g.org_node_id is null
-            or exists (
-              select 1 from org_nodes scope
-              where scope.tenant_id = g.tenant_id
-                and scope.id = any(${input.nodeIds as string[]}::uuid[])
-                and (
-                  case when g.coverage = 'subtree'
-                    then anchor.path @> scope.path or scope.path @> anchor.path
-                    else anchor.id = scope.id or scope.path @> anchor.path
-                  end
+        .where((eb) =>
+          eb.or([
+            eb('g.orgNodeId', 'is', null),
+            eb.exists(
+              eb
+                .selectFrom('OrgNode as scope')
+                .select('scope.id')
+                .whereRef('scope.tenantId', '=', 'g.tenantId')
+                .where(
+                  'scope.id',
+                  '=',
+                  eb.fn.any(sql<string[]>`${input.nodeIds as string[]}::uuid[]`),
                 )
-            )
-          )`,
+                .where((inner) => {
+                  // ltree containment is PostgreSQL's own operator; the rest is the builder's
+                  const contains = (
+                    outer: 'anchor.path' | 'scope.path',
+                    within: 'anchor.path' | 'scope.path',
+                  ) => sql<boolean>`${inner.ref(outer)} @> ${inner.ref(within)}`
+                  return inner
+                    .case()
+                    .when('g.coverage', '=', 'subtree')
+                    .then(
+                      inner.or([
+                        contains('anchor.path', 'scope.path'),
+                        contains('scope.path', 'anchor.path'),
+                      ]),
+                    )
+                    .else(
+                      inner.or([
+                        inner('anchor.id', '=', inner.ref('scope.id')),
+                        contains('scope.path', 'anchor.path'),
+                      ]),
+                    )
+                    .end()
+                }),
+            ),
+          ]),
         )
         .execute(),
     )

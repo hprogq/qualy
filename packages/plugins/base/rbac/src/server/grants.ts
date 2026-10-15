@@ -220,13 +220,13 @@ const grantRows = (
         'r.name as roleName',
         // the check constraint is what makes these two closed sets; the column
         // is a string as far as the schema's type is concerned
-        sql<'tenant' | 'org'>`r.kind`.as('roleKind'),
+        eb.ref('r.kind').$castTo<'tenant' | 'org'>().as('roleKind'),
         // a grant of a disabled role confers nothing; a screen that lists it
         // beside live authority has to be able to say so
-        sql<'draft' | 'active' | 'disabled'>`r.status`.as('roleStatus'),
+        eb.ref('r.status').$castTo<'draft' | 'active' | 'disabled'>().as('roleStatus'),
         'g.orgNodeId',
         'n.name as orgNodeName',
-        sql<'self' | 'subtree' | null>`g.coverage`.as('coverage'),
+        eb.ref('g.coverage').$castTo<'self' | 'subtree' | null>().as('coverage'),
         // A grant confined to one object confers nothing outside it - every
         // general authorization question filters these rows out. Listed here
         // without saying so, they read as ordinary organizational authority
@@ -235,45 +235,50 @@ const grantRows = (
         // object itself is named so that whoever owns that kind of object
         // can say what it is; the window is named because it is part of
         // what the grant IS, and the screen that shows one says when it ends.
-        sql<boolean>`g.resource_id is not null`.as('scoped'),
+        eb('g.resourceId', 'is not', null).$castTo<boolean>().as('scoped'),
         'g.resourceNamespace',
         'g.resourceType',
         'g.resourceId',
         'g.validFrom',
         'g.validUntil',
         (scope === undefined
-          ? sql<boolean>`true`
-          : sql<boolean>`(${withinScope(
-              {
-                orgNodeId: eb.ref('g.orgNodeId'),
-                id: eb.ref('n.id'),
-                tenantId: eb.ref('n.tenantId'),
-                path: eb.ref('n.path'),
-              },
-              scope.manage,
-              scope.tenantGrants.manage,
-              eb.ref('g.coverage'),
-            )} and ${
+          ? eb.lit(true)
+          : eb.and([
+              withinScope(
+                {
+                  orgNodeId: eb.ref('g.orgNodeId'),
+                  id: eb.ref('n.id'),
+                  tenantId: eb.ref('n.tenantId'),
+                  path: eb.ref('n.path'),
+                },
+                scope.manage,
+                scope.tenantGrants.manage,
+                eb.ref('g.coverage'),
+              ),
               // the revoke asks this too: the administrator role is only
               // given or taken back by somebody who holds it
               scope.administrator
-                ? sql<boolean>`true`
-                : sql<boolean>`${eb.ref('r.systemKey')} is distinct from ${CANONICAL_ADMIN_ROLE}`
-            } and ${
+                ? eb.lit(true)
+                : eb('r.systemKey', 'is distinct from', CANONICAL_ADMIN_ROLE),
               // and somebody else's grant goes only with the authority that
               // would make it: the office is the caller's to appoint where
               // the grant stands. One's own is exempt, and the administrator
               // appoints without edges - the write's own two exceptions.
               scope.administrator
-                ? sql<boolean>`true`
-                : sql<boolean>`(${eb.ref('g.userId')} = ${scope.userId} or ${appointmentHeld({
-                    tenantId: eb.ref('g.tenantId'),
-                    actorUserId: scope.userId,
-                    targetRoleId: eb.ref('g.roleId'),
-                    orgNodeId: eb.ref('g.orgNodeId'),
-                  })})`
-            })`
-        ).as('manageable'),
+                ? eb.lit(true)
+                : eb.or([
+                    eb('g.userId', '=', scope.userId),
+                    appointmentHeld({
+                      tenantId: eb.ref('g.tenantId'),
+                      actorUserId: scope.userId,
+                      targetRoleId: eb.ref('g.roleId'),
+                      orgNodeId: eb.ref('g.orgNodeId'),
+                    }),
+                  ]),
+            ])
+        )
+          .$castTo<boolean>()
+          .as('manageable'),
       ])
 
     // stated only when asked for, rather than `(? is null or ...)` wrapped
