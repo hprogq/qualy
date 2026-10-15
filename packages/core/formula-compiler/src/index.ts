@@ -23,5 +23,5 @@ export {
   type FormulaDiagnostic,
   type ParsedDiagnostics,
 } from './staging.ts'
-export { esbuildVersion, tscEntry, typescriptVersion } from './toolchain.ts'
+export { esbuildVersion, tscExecutable, typescriptVersion } from './toolchain.ts'
 export { dropLspWorkspace, makeLspWorkspace, type LspWorkspace } from './lsp-workspace.ts'

@@ -36,7 +36,7 @@ import {
   dropLspWorkspace,
   makeLspWorkspace,
   sourcePolicy,
-  tscEntry,
+  tscExecutable,
   type LspWorkspace,
 } from '@qualy/formula-compiler'
 import { encodeFrame, FrameParser } from './frames.ts'
@@ -365,7 +365,7 @@ export const makeLspManager = (): LspManager => {
     Effect.gen(function* () {
       const id = randomBytes(24).toString('base64url')
       const workspace = makeLspWorkspace(initialSource)
-      const child = spawn(process.execPath, [tscEntry, '--lsp', '-stdio'], {
+      const child = spawn(tscExecutable, ['--lsp', '-stdio'], {
         // least privilege: the server's working directory is its own
         // session, never the app's
         cwd: workspace.root,

@@ -95,21 +95,20 @@ export interface CheckOutcome {
 }
 
 /**
- * Run a TypeScript entry (the module behind `tsc`, executed with the current
- * node) over a staged workspace. Argv array only — no shell ever sees a
- * formula's text — a wall-clock timeout because a compiler is still a
- * program someone else feeds, and a bounded output buffer because so are
- * its diagnostics.
+ * Run the native TypeScript compiler over a staged workspace. Argv array
+ * only — no shell ever sees a formula's text — a wall-clock timeout because
+ * a compiler is still a program someone else feeds, and a bounded output
+ * buffer because so are its diagnostics.
  */
 export const checkFormulaWorkspace = (
   root: string,
-  tscEntry: string,
+  tscExecutable: string,
   timeoutMs = 30_000,
 ): Promise<CheckOutcome> =>
   new Promise((resolve, reject) => {
     execFile(
-      process.execPath,
-      [tscEntry, '-p', root, '--pretty', 'false'],
+      tscExecutable,
+      ['-p', root, '--pretty', 'false'],
       { timeout: timeoutMs, maxBuffer: 4 * 1024 * 1024 },
       (error, stdout, stderr) => {
         const killed = error !== null && 'killed' in error && error.killed === true

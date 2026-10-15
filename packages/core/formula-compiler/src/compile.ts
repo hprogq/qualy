@@ -22,7 +22,7 @@ import {
   stageFormulaWorkspace,
   type FormulaDiagnostic,
 } from './staging.ts'
-import { esbuildVersion, tscEntry, typescriptVersion } from './toolchain.ts'
+import { esbuildVersion, tscExecutable, typescriptVersion } from './toolchain.ts'
 
 export { MAX_COMPILED_ARTIFACT_BYTES, SOURCE_LIMIT }
 
@@ -75,7 +75,7 @@ export const compileFormula = async (source: string): Promise<CompileOutcome> =>
   const root = stageFormulaWorkspace(source)
   let checked
   try {
-    checked = await checkFormulaWorkspace(root, tscEntry)
+    checked = await checkFormulaWorkspace(root, tscExecutable)
   } finally {
     dropWorkspace(root)
   }

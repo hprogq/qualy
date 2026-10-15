@@ -4,7 +4,7 @@ import {
   dropWorkspace,
   parseDiagnostics,
   stageFormulaWorkspace,
-  tscEntry,
+  tscExecutable,
 } from './support/workspace.ts'
 
 // The stage-two gate: TypeScript 7, invoked exactly the way publication will
@@ -20,7 +20,7 @@ afterAll(() => {
 const check = async (source: string) => {
   const root = stageFormulaWorkspace(source)
   staged.push(root)
-  return checkFormulaWorkspace(root, tscEntry)
+  return checkFormulaWorkspace(root, tscExecutable)
 }
 
 const COMPETITION = `import { Schema, defineFormula } from '@qualy/formula'

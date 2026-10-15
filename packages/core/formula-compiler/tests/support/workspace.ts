@@ -6,4 +6,4 @@ export {
   parseDiagnostics,
   stageFormulaWorkspace,
 } from '../../src/staging.ts'
-export { tscEntry } from '../../src/toolchain.ts'
+export { tscExecutable } from '../../src/toolchain.ts'
