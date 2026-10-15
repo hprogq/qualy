@@ -1,15 +1,25 @@
 import { pageWindow } from '@qualy/api-kit/schema'
 import { transaction } from '@qualy/plugin-database/server'
 import { Effect } from 'effect'
-import { sql, type RawBuilder } from 'kysely'
+import {
+  sql,
+  type Expression,
+  type ExpressionBuilder,
+  type InferResult,
+  type SelectQueryBuilder,
+} from 'kysely'
 import { readEntryChannels, type EntryChannel } from '../item/channels.ts'
 import { heldThroughOpenAsk, mayActOn } from '../review/db.ts'
-import { db, staffReachOver } from '../server/db.ts'
+import { db, staffReachOver, type Schema } from '../server/db.ts'
 import { PARTICIPANT_SOURCES, type HeldEntries, type HeldInRound } from './limit.ts'
 
 // The entry rows and everything the resource policy needs to know about the
 // people around them. Same conventions as the neighbouring modules: epoch
 // milliseconds out, jsonb parsed, no floats.
+
+/** an instant as the ISO text the wire carries, on the server's own clock */
+const isoUtc = (instant: Expression<Date | null>) =>
+  sql<string>`to_char(${instant} at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`
 
 /** a text path as the ltree column it is written to */
 const ltree = (path: string | null) => sql<string | null>`${path}::ltree`
@@ -1762,72 +1772,91 @@ export const myActionRowsOf = (input: {
 }) =>
   db
     .query((k) =>
-      sql<{
-        kind: string
-        entry_id: string
-        item_id: string
-        item_title: string
-        at: string
-        at_ms: number
-        who: string | null
-        who_id: string | null
-        summary: string | null
-      }>`
-        select 'supplement' as kind,
-               e.id as entry_id, e.item_id, i.title as item_title,
-               to_char(sr.created_at at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as at,
-               (extract(epoch from sr.created_at) * 1000)::float8 as at_ms,
-               u.display_name as who,
-               sr.requested_by as who_id,
-               sr.instructions as summary
-        from review_supplement_requests sr
-        join review_instances ri
-          on ri.tenant_id = sr.tenant_id and ri.id = sr.review_instance_id
-        join entries e on e.tenant_id = ri.tenant_id and e.id = ri.entry_id
-        join assessment_items i on i.tenant_id = e.tenant_id and i.id = e.item_id
-        left join users u on u.tenant_id = sr.tenant_id and u.id = sr.requested_by
-        where sr.tenant_id = ${input.tenantId}
-          and e.batch_id = ${input.batchId}
-          and e.participant_id = ${input.participantId}
-          and sr.status = 'open'
-          and ri.state = 'awaiting_supplement'
-        union all
-        select 'revision',
-               e.id, e.item_id, i.title,
-               to_char(ev.created_at at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
-               (extract(epoch from ev.created_at) * 1000)::float8,
-               u.display_name,
-               ev.actor_id,
-               ev.reason
-        from entries e
-        join assessment_items i on i.tenant_id = e.tenant_id and i.id = e.item_id
-        left join lateral (
-          select ee.created_at, ee.reason, ee.actor_id
-          from entry_events ee
-          where ee.tenant_id = e.tenant_id and ee.entry_id = e.id
-            and ee.kind = 'revision-required'
-          order by ee.created_at desc
-          limit 1
-        ) ev on true
-        left join users u on u.tenant_id = e.tenant_id and u.id = ev.actor_id
-        where e.tenant_id = ${input.tenantId}
-          and e.batch_id = ${input.batchId}
-          and e.participant_id = ${input.participantId}
-          and e.status = 'needs_revision'
-        order by at_ms desc
-      `.execute(k),
+      k
+        .selectFrom('ReviewSupplementRequest as sr')
+        .innerJoin('ReviewInstance as ri', (join) =>
+          join.onRef('ri.tenantId', '=', 'sr.tenantId').onRef('ri.id', '=', 'sr.reviewInstanceId'),
+        )
+        .innerJoin('Entry as e', (join) =>
+          join.onRef('e.tenantId', '=', 'ri.tenantId').onRef('e.id', '=', 'ri.entryId'),
+        )
+        .innerJoin('AssessmentItem as i', (join) =>
+          join.onRef('i.tenantId', '=', 'e.tenantId').onRef('i.id', '=', 'e.itemId'),
+        )
+        .leftJoin('User as u', (join) =>
+          join.onRef('u.tenantId', '=', 'sr.tenantId').onRef('u.id', '=', 'sr.requestedBy'),
+        )
+        .select((eb) => [
+          eb.val<'supplement' | 'revision'>('supplement').as('kind'),
+          'e.id as entryId',
+          'e.itemId as itemId',
+          'i.title as itemTitle',
+          isoUtc(eb.ref('sr.createdAt')).as('at'),
+          epoch('sr.created_at').as('atMs'),
+          'u.displayName as who',
+          eb.ref('sr.requestedBy').$castTo<string | null>().as('whoId'),
+          eb.ref('sr.instructions').$castTo<string | null>().as('summary'),
+        ])
+        .where('sr.tenantId', '=', input.tenantId)
+        .where('e.batchId', '=', input.batchId)
+        .where('e.participantId', '=', input.participantId)
+        .where('sr.status', '=', 'open')
+        .where('ri.state', '=', 'awaiting_supplement')
+        .unionAll(
+          k
+            .selectFrom('Entry as e')
+            .innerJoin('AssessmentItem as i', (join) =>
+              join.onRef('i.tenantId', '=', 'e.tenantId').onRef('i.id', '=', 'e.itemId'),
+            )
+            // the latest return for revision standing against the claim
+            .leftJoinLateral(
+              (q) =>
+                q
+                  .selectFrom('EntryEvent as ee')
+                  .select(['ee.createdAt', 'ee.reason', 'ee.actorId'])
+                  .whereRef('ee.tenantId', '=', 'e.tenantId')
+                  .whereRef('ee.entryId', '=', 'e.id')
+                  .where('ee.kind', '=', 'revision-required')
+                  .orderBy('ee.createdAt', 'desc')
+                  .limit(1)
+                  .as('ev'),
+              (join) => join.onTrue(),
+            )
+            .leftJoin('User as u', (join) =>
+              join.onRef('u.tenantId', '=', 'e.tenantId').onRef('u.id', '=', 'ev.actorId'),
+            )
+            .select((eb) => [
+              eb.val<'supplement' | 'revision'>('revision').as('kind'),
+              'e.id as entryId',
+              'e.itemId as itemId',
+              'i.title as itemTitle',
+              isoUtc(eb.ref('ev.createdAt')).as('at'),
+              sql<number | null>`(extract(epoch from ${eb.ref('ev.createdAt')}) * 1000)::float8`.as(
+                'atMs',
+              ),
+              'u.displayName as who',
+              'ev.actorId as whoId',
+              'ev.reason as summary',
+            ])
+            .where('e.tenantId', '=', input.tenantId)
+            .where('e.batchId', '=', input.batchId)
+            .where('e.participantId', '=', input.participantId)
+            .where('e.status', '=', 'needs_revision'),
+        )
+        .orderBy('atMs', 'desc')
+        .execute(),
     )
     .pipe(
-      Effect.map(({ rows }) =>
+      Effect.map((rows) =>
         rows.map((row): MyActionRow => ({
-          kind: row.kind as MyActionRow['kind'],
-          entryId: row.entry_id,
-          itemId: row.item_id,
-          itemTitle: row.item_title,
+          kind: row.kind,
+          entryId: row.entryId,
+          itemId: row.itemId,
+          itemTitle: row.itemTitle,
           at: row.at,
-          atMs: row.at_ms,
+          atMs: Number(row.atMs),
           who: row.who,
-          whoId: row.who_id,
+          whoId: row.whoId,
           summary: row.summary,
         })),
       ),
@@ -1883,32 +1912,43 @@ export const entrySummaryRowsOf = (tenantId: string, entryIds: readonly string[]
       )
     : db
         .query((k) =>
-          sql<{
-            entry_id: string
-            form_config: unknown
-            display_config: unknown
-            payload: unknown
-          }>`
-            select e.id as entry_id, ir.form_config, ir.display_config, er.payload
-            from entries e
-            join entry_revisions er
-              on er.tenant_id = e.tenant_id and er.id = e.current_revision_id
-            join assessment_item_revisions ir
-              on ir.tenant_id = er.tenant_id and ir.id = er.item_revision_id
-            where e.tenant_id = ${tenantId}
-              and e.id = any(${sql.val(`{${entryIds.join(',')}}`)}::uuid[])
-          `.execute(k),
+          k
+            .selectFrom('Entry as e')
+            .innerJoin('EntryRevision as er', (join) =>
+              join
+                .onRef('er.tenantId', '=', 'e.tenantId')
+                .onRef('er.id', '=', 'e.currentRevisionId'),
+            )
+            .innerJoin('AssessmentItemRevision as ir', (join) =>
+              join
+                .onRef('ir.tenantId', '=', 'er.tenantId')
+                .onRef('ir.id', '=', 'er.itemRevisionId'),
+            )
+            .select(['e.id as entryId', 'ir.formConfig', 'ir.displayConfig', 'er.payload'])
+            .where('e.tenantId', '=', tenantId)
+            .where((eb) => eb('e.id', '=', eb.fn.any(uuids(entryIds))))
+            .execute(),
         )
         .pipe(
-          Effect.map(({ rows }) =>
+          Effect.map((rows) =>
             rows.map((row) => ({
-              entryId: String(row.entry_id),
-              formConfig: row.form_config,
-              displayConfig: row.display_config,
-              payload: row.payload,
+              entryId: String(row.entryId),
+              formConfig: row.formConfig as unknown,
+              displayConfig: row.displayConfig as unknown,
+              payload: row.payload as unknown,
             })),
           ),
         )
+
+/** the joins a reviewer's activity branch reads its round through */
+type ReviewedRow = ExpressionBuilder<
+  Schema & {
+    ri: Schema['ReviewInstance']
+    er: Schema['EntryRevision']
+    bp: Schema['BatchParticipant']
+  },
+  'ri' | 'er' | 'bp'
+>
 
 export const userActivityPage = (input: {
   tenantId: string
@@ -1920,261 +1960,10 @@ export const userActivityPage = (input: {
   page: number
   limit: number
 }) => {
-  const pieces: RawBuilder<unknown>[] = []
-  if (input.perspectives.includes('participant') && input.participantId !== null) {
-    pieces.push(sql`
-          select er.id, 'revision' as source, 'participant' as perspective,
-                 case when er.revision_no = 1 then 'entry-created' else 'entry-revised' end as kind,
-                 m.id as entry_id, m.item_id, m.title as item_title,
-                 null::text as subject_name, null::uuid as instance_id,
-                 null::uuid as actor_id,
-                 null::text as actor_name, null::text as reason, null::text as comment,
-                 er.created_at
-          from entry_revisions er
-          join mine m on m.id = er.entry_id
-          where er.tenant_id = ${input.tenantId}
-
-          union all
-          select re.id, 'review-event', 'participant',
-                 case re.kind
-                   when 'submitted' then 'entry-submitted'
-                   when 'appealed' then 'appeal-filed'
-                   when 'reopened' then 'review-reopened'
-                   when 'escalated' then 'review-escalated'
-                   when 'cancelled-item-voided' then 'entry-voided-with-item'
-                 end,
-                 m.id, m.item_id, m.title,
-                 null, null,
-                 re.actor_id, u.display_name, re.reason, re.comment,
-                 re.created_at
-          from review_events re
-          join review_instances ri
-            on ri.tenant_id = re.tenant_id and ri.id = re.review_instance_id
-          join mine m on m.id = ri.entry_id
-          left join users u on u.tenant_id = re.tenant_id and u.id = re.actor_id
-          where re.tenant_id = ${input.tenantId}
-            and re.kind in ('submitted', 'appealed', 'reopened', 'escalated',
-                            'cancelled-item-voided')
-
-          union all
-          select ee.id, 'entry-event', 'participant',
-                 case ee.kind
-                   when 'withdrawn-by-submitter' then 'entry-withdrawn'
-                   when 'abandoned-by-submitter' then 'entry-abandoned'
-                   when 'voided-by-staff' then 'entry-voided'
-                   when 'revision-required' then 'revision-required'
-                   when 'auto-approved' then 'review-approved'
-                   when 'voided-with-item' then 'entry-voided-with-item'
-                   when 'recognition-corrected' then 'recognition-corrected'
-                   when 'approval-revoked' then 'approval-revoked'
-                   when 'rejection-overturned' then 'rejection-overturned'
-                 end,
-                 m.id, m.item_id, m.title,
-                 null, null,
-                 ee.actor_id, u.display_name, ee.reason, null,
-                 ee.created_at
-          from entry_events ee
-          join mine m on m.id = ee.entry_id
-          left join users u on u.tenant_id = ee.tenant_id and u.id = ee.actor_id
-          where ee.tenant_id = ${input.tenantId}
-            and ee.kind in ('withdrawn-by-submitter', 'abandoned-by-submitter',
-                            'voided-by-staff', 'revision-required', 'auto-approved',
-                            'voided-with-item', 'recognition-corrected', 'approval-revoked',
-                            'rejection-overturned')
-
-          union all
-          select ri.id, 'verdict', 'participant',
-                 case ri.outcome when 'approved' then 'review-approved' else 'review-rejected' end,
-                 m.id, m.item_id, m.title,
-                 null, null,
-                 said.actor_id, said.display_name, said.reason, said.comment,
-                 ri.completed_at
-          from review_instances ri
-          join mine m on m.id = ri.entry_id
-          left join lateral (
-            select re2.actor_id, u.display_name, re2.reason, re2.comment
-            from review_events re2
-            left join users u on u.tenant_id = re2.tenant_id and u.id = re2.actor_id
-            where re2.tenant_id = ri.tenant_id
-              and re2.review_instance_id = ri.id
-              and re2.kind = ri.outcome
-            order by re2.created_at desc
-            limit 1
-          ) said on true
-          where ri.tenant_id = ${input.tenantId}
-            and ri.state = 'completed'
-            and ri.outcome in ('approved', 'rejected')
-            and ri.completed_at is not null
-
-          union all
-          select sr.id, 'supp-req', 'participant', 'supplement-requested',
-                 m.id, m.item_id, m.title,
-                 null, null,
-                 sr.requested_by, u.display_name, null, sr.instructions,
-                 sr.created_at
-          from review_supplement_requests sr
-          join review_instances ri
-            on ri.tenant_id = sr.tenant_id and ri.id = sr.review_instance_id
-          join mine m on m.id = ri.entry_id
-          left join users u on u.tenant_id = sr.tenant_id and u.id = sr.requested_by
-          where sr.tenant_id = ${input.tenantId}
-
-          union all
-          select sr.id, 'supp-ans', 'participant', 'supplement-submitted',
-                 m.id, m.item_id, m.title,
-                 null, null,
-                 null, null, null, null,
-                 sr.answered_at
-          from review_supplement_requests sr
-          join review_instances ri
-            on ri.tenant_id = sr.tenant_id and ri.id = sr.review_instance_id
-          join mine m on m.id = ri.entry_id
-          where sr.tenant_id = ${input.tenantId}
-            and sr.answered_at is not null
-
-          union all
-          select sr.id, 'supp-cxl', 'participant', 'supplement-cancelled',
-                 m.id, m.item_id, m.title,
-                 null, null,
-                 sr.cancelled_by, u.display_name, null, null,
-                 sr.cancelled_at
-          from review_supplement_requests sr
-          join review_instances ri
-            on ri.tenant_id = sr.tenant_id and ri.id = sr.review_instance_id
-          join mine m on m.id = ri.entry_id
-          left join users u on u.tenant_id = sr.tenant_id and u.id = sr.cancelled_by
-          where sr.tenant_id = ${input.tenantId}
-            and sr.status = 'cancelled'
-            and sr.cancelled_at is not null`)
-  }
-  if (input.perspectives.includes('reviewer')) {
-    // The way back in, decided here rather than guessed by the browser
-    // (§32.74): a round is this reader's to open only while it is live and
-    // the read rule would admit them - the same predicate the queue uses.
-    // A finished round yields a plain, unlinked line. The open-ask rule
-    // (§32.70) narrows this the same way the round's own reader does:
-    // while a round waits for material it belongs to whoever asked, so a
-    // colleague handed a link here would have been refused at the door.
-    const openDoor = sql`case
-      when ri.state in ('active', 'blocked', 'awaiting_supplement')
-       and ${heldThroughOpenAsk({
-         tenantId: sql.ref('ri.tenant_id'),
-         instanceId: sql.ref('ri.id'),
-         state: sql.ref('ri.state'),
-         userId: sql`${input.userId}`,
-       })}
-       and ${mayActOn({
-         tenantId: sql`${input.tenantId}`,
-         batchId: sql`${input.batchId}`,
-         nodeId: sql.ref('ri.current_node_id'),
-         roleIds: sql.ref('ri.current_role_ids'),
-         userId: sql`${input.userId}`,
-         subjectUserId: sql.ref('theirs.subject_user_id'),
-         actorId: sql.ref('er.actor_id'),
-         instanceId: sql.ref('ri.id'),
-         route: sql.ref('ri.current_route'),
-       })}
-      then ri.id else null end`
-    const revisionJoin = sql`join entry_revisions er
-            on er.tenant_id = ri.tenant_id and er.id = ri.revision_id`
-    pieces.push(sql`
-          select re.id, 'r-event' as source, 'reviewer' as perspective,
-                 case re.kind
-                   when 'approved' then case
-                     when ri.state = 'completed' and ri.outcome = 'approved'
-                      and not exists (
-                        select 1 from review_events re2
-                        where re2.tenant_id = re.tenant_id
-                          and re2.review_instance_id = re.review_instance_id
-                          and re2.kind = 'approved'
-                          and (re2.created_at, re2.id) > (re.created_at, re.id)
-                      ) then 'review-approved'
-                     else 'review-stage-approved' end
-                   when 'rejected' then 'review-rejected'
-                   when 'escalated' then 'review-escalated'
-                   when 'opinion-rejected' then 'review-opinion-rejected'
-                   -- a middle step of the escalation route agreeing: the
-                   -- round went on, the same as a confirmation that hands it on
-                   when 'opinion-approved' then 'review-stage-approved'
-                 end as kind,
-                 theirs.entry_id, theirs.item_id, theirs.item_title,
-                 theirs.subject_name, ${openDoor} as instance_id,
-                 null::uuid as actor_id,
-                 null::text as actor_name, re.reason, re.comment,
-                 re.created_at
-          from review_events re
-          join review_instances ri
-            on ri.tenant_id = re.tenant_id and ri.id = re.review_instance_id
-          ${revisionJoin}
-          join theirs on theirs.entry_id = ri.entry_id
-          where re.tenant_id = ${input.tenantId}
-            and re.actor_id = ${input.userId}
-            and re.kind in ('approved', 'rejected', 'escalated', 'opinion-approved',
-                            'opinion-rejected')
-
-          union all
-          select sr.id, 'r-supp-req', 'reviewer', 'supplement-requested',
-                 theirs.entry_id, theirs.item_id, theirs.item_title,
-                 theirs.subject_name, ${openDoor},
-                 null, null, null, sr.instructions,
-                 sr.created_at
-          from review_supplement_requests sr
-          join review_instances ri
-            on ri.tenant_id = sr.tenant_id and ri.id = sr.review_instance_id
-          ${revisionJoin}
-          join theirs on theirs.entry_id = ri.entry_id
-          where sr.tenant_id = ${input.tenantId}
-            and sr.requested_by = ${input.userId}
-
-          union all
-          select sr.id, 'r-supp-cxl', 'reviewer', 'supplement-cancelled',
-                 theirs.entry_id, theirs.item_id, theirs.item_title,
-                 theirs.subject_name, ${openDoor},
-                 null, null, null, null,
-                 sr.cancelled_at
-          from review_supplement_requests sr
-          join review_instances ri
-            on ri.tenant_id = sr.tenant_id and ri.id = sr.review_instance_id
-          ${revisionJoin}
-          join theirs on theirs.entry_id = ri.entry_id
-          where sr.tenant_id = ${input.tenantId}
-            and sr.cancelled_by = ${input.userId}
-            and sr.status = 'cancelled'
-            and sr.cancelled_at is not null
-
-          union all
-          select sr.id, 'r-supp-ans', 'reviewer', 'supplement-answered',
-                 theirs.entry_id, theirs.item_id, theirs.item_title,
-                 theirs.subject_name, ${openDoor},
-                 null, null, null, null,
-                 sr.answered_at
-          from review_supplement_requests sr
-          join review_instances ri
-            on ri.tenant_id = sr.tenant_id and ri.id = sr.review_instance_id
-          ${revisionJoin}
-          join theirs on theirs.entry_id = ri.entry_id
-          where sr.tenant_id = ${input.tenantId}
-            and sr.requested_by = ${input.userId}
-            and sr.answered_at is not null
-
-          union all
-          select v.id, 'r-vote', 'reviewer',
-                 case v.decision when 'approve' then 'review-vote-approved'
-                                 else 'review-vote-rejected' end,
-                 theirs.entry_id, theirs.item_id, theirs.item_title,
-                 theirs.subject_name, ${openDoor},
-                 null, null, v.reason, v.comment,
-                 v.created_at
-          from review_votes v
-          join review_panels pnl on pnl.tenant_id = v.tenant_id and pnl.id = v.panel_id
-          join review_instances ri
-            on ri.tenant_id = pnl.tenant_id and ri.id = pnl.review_instance_id
-          ${revisionJoin}
-          join theirs on theirs.entry_id = ri.entry_id
-          where v.tenant_id = ${input.tenantId}
-            and v.voter_user_id = ${input.userId}`)
-  }
-  if (pieces.length === 0)
+  const participantId = input.participantId
+  const asParticipant = input.perspectives.includes('participant') && participantId !== null
+  const asReviewer = input.perspectives.includes('reviewer')
+  if (!asParticipant && !asReviewer)
     return Effect.succeed({
       items: [] as readonly UserActivityRow[],
       total: 0,
@@ -2183,69 +1972,576 @@ export const userActivityPage = (input: {
     })
   return db
     .query(async (k) => {
-      const source = sql<{
-        id: string
-        source: string
-        perspective: string
-        kind: string
-        entry_id: string
-        item_id: string
-        item_title: string
-        subject_name: string | null
-        instance_id: string | null
-        actor_id: string | null
-        actor_name: string | null
-        reason: string | null
-        comment: string | null
-        at: string
-        at_ms: number
-        cursor_at: string
-        sort_at: Date
-      }>`(
-        with mine as (
-          select e.id, e.item_id, i.title
-          from entries e
-          join assessment_items i on i.tenant_id = e.tenant_id and i.id = e.item_id
-          where e.tenant_id = ${input.tenantId}
-            and e.batch_id = ${input.batchId}
-            and e.participant_id = ${input.participantId}::uuid
-        ),
-        theirs as (
-          select e.id as entry_id, e.item_id, i.title as item_title,
-                 su.display_name as subject_name, bp.user_id as subject_user_id
-          from entries e
-          join assessment_items i on i.tenant_id = e.tenant_id and i.id = e.item_id
-          join batch_participants bp on bp.tenant_id = e.tenant_id and bp.id = e.participant_id
-          join users su on su.tenant_id = bp.tenant_id and su.id = bp.user_id
-          where e.tenant_id = ${input.tenantId}
-            and e.batch_id = ${input.batchId}
-            and bp.user_id is distinct from ${input.userId}::uuid
-        ),
-        activity as (${sql.join(
-          pieces,
-          sql`
-          union all`,
-        )}
-        )
-        select id, source, perspective, kind, entry_id, item_id, item_title,
-               subject_name, instance_id, actor_id, actor_name, reason, comment,
-               to_char(created_at at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as at,
-               (extract(epoch from created_at) * 1000)::float8 as at_ms,
-               created_at::text as cursor_at, created_at as sort_at
-        from activity
-        where kind is not null
-      )`
-      const query = k.selectFrom(source.as('activity_page'))
-      const counted = await query
+      // Every branch says the same fourteen things, in the same order. The
+      // names stay apart from the source tables' property names (claimId,
+      // questionId, byId, sortAt): the entity naming reads the union as its
+      // first table's entity and would rewrite an outer reference spelled
+      // like one of its properties (docs/notes/kysely.md).
+      const noUuid = () => sql<string | null>`null::uuid`
+      const noText = () => sql<string | null>`null::text`
+      const said = (word: string) => sql<string | null>`${word}::text`
+
+      // The participant's own claims in this round: the claim and its question.
+      const ownClaims = () =>
+        k
+          .selectFrom('Entry as m')
+          .innerJoin('AssessmentItem as i', (join) =>
+            join.onRef('i.tenantId', '=', 'm.tenantId').onRef('i.id', '=', 'm.itemId'),
+          )
+          .where('m.tenantId', '=', input.tenantId)
+          .where('m.batchId', '=', input.batchId)
+          .where('m.participantId', '=', participantId ?? '')
+      // Rounds of this round's claims filed by somebody other than the reader.
+      const othersRounds = () =>
+        k
+          .selectFrom('ReviewInstance as ri')
+          .innerJoin('EntryRevision as er', (join) =>
+            join.onRef('er.tenantId', '=', 'ri.tenantId').onRef('er.id', '=', 'ri.revisionId'),
+          )
+          .innerJoin('Entry as e', (join) =>
+            join.onRef('e.tenantId', '=', 'ri.tenantId').onRef('e.id', '=', 'ri.entryId'),
+          )
+          .innerJoin('AssessmentItem as i', (join) =>
+            join.onRef('i.tenantId', '=', 'e.tenantId').onRef('i.id', '=', 'e.itemId'),
+          )
+          .innerJoin('BatchParticipant as bp', (join) =>
+            join.onRef('bp.tenantId', '=', 'e.tenantId').onRef('bp.id', '=', 'e.participantId'),
+          )
+          .innerJoin('User as su', (join) =>
+            join.onRef('su.tenantId', '=', 'bp.tenantId').onRef('su.id', '=', 'bp.userId'),
+          )
+          .where('ri.tenantId', '=', input.tenantId)
+          .where('e.batchId', '=', input.batchId)
+          .where('bp.userId', 'is distinct from', input.userId)
+
+      // The way back in, decided here rather than guessed by the browser
+      // (§32.74): a round is this reader's to open only while it is live and
+      // the read rule would admit them - the same predicate the queue uses.
+      // A finished round yields a plain, unlinked line. The open-ask rule
+      // (§32.70) narrows this the same way the round's own reader does:
+      // while a round waits for material it belongs to whoever asked, so a
+      // colleague handed a link here would have been refused at the door.
+      const openDoor = (eb: ReviewedRow) =>
+        eb
+          .case()
+          .when(
+            eb.and([
+              eb('ri.state', 'in', ['active', 'blocked', 'awaiting_supplement']),
+              heldThroughOpenAsk({
+                tenantId: eb.ref('ri.tenantId'),
+                instanceId: eb.ref('ri.id'),
+                state: eb.ref('ri.state'),
+                userId: eb.val(input.userId),
+              }),
+              mayActOn({
+                tenantId: eb.val(input.tenantId),
+                batchId: eb.val(input.batchId),
+                nodeId: eb.ref('ri.currentNodeId'),
+                roleIds: eb.ref('ri.currentRoleIds'),
+                userId: eb.val(input.userId),
+                subjectUserId: eb.ref('bp.userId'),
+                actorId: eb.ref('er.actorId'),
+                instanceId: eb.ref('ri.id'),
+                route: eb.ref('ri.currentRoute'),
+              }),
+            ]),
+          )
+          .then(eb.ref('ri.id').$castTo<string | null>())
+          .else(noUuid())
+          .end()
+
+      const participantBranches = () => [
+        ownClaims()
+          .innerJoin('EntryRevision as er', (join) =>
+            join.onRef('er.tenantId', '=', 'm.tenantId').onRef('er.entryId', '=', 'm.id'),
+          )
+          .select((eb) => [
+            'er.id as id',
+            said('revision').as('source'),
+            said('participant').as('perspective'),
+            eb
+              .case()
+              .when('er.revisionNo', '=', 1)
+              .then(said('entry-created'))
+              .else(said('entry-revised'))
+              .end()
+              .as('kind'),
+            'm.id as claimId',
+            'm.itemId as questionId',
+            'i.title as itemTitle',
+            noText().as('subjectName'),
+            noUuid().as('instanceId'),
+            noUuid().as('byId'),
+            noText().as('actorName'),
+            noText().as('reason'),
+            noText().as('comment'),
+            eb.ref('er.createdAt').$castTo<Date | null>().as('sortAt'),
+          ]),
+        ownClaims()
+          .innerJoin('ReviewInstance as ri', (join) =>
+            join.onRef('ri.tenantId', '=', 'm.tenantId').onRef('ri.entryId', '=', 'm.id'),
+          )
+          .innerJoin('ReviewEvent as re', (join) =>
+            join
+              .onRef('re.tenantId', '=', 'ri.tenantId')
+              .onRef('re.reviewInstanceId', '=', 'ri.id'),
+          )
+          .leftJoin('User as u', (join) =>
+            join.onRef('u.tenantId', '=', 're.tenantId').onRef('u.id', '=', 're.actorId'),
+          )
+          .select((eb) => [
+            're.id as id',
+            said('review-event').as('source'),
+            said('participant').as('perspective'),
+            eb
+              .case('re.kind')
+              .when('submitted')
+              .then(said('entry-submitted'))
+              .when('appealed')
+              .then(said('appeal-filed'))
+              .when('reopened')
+              .then(said('review-reopened'))
+              .when('escalated')
+              .then(said('review-escalated'))
+              .when('cancelled-item-voided')
+              .then(said('entry-voided-with-item'))
+              .end()
+              .as('kind'),
+            'm.id as claimId',
+            'm.itemId as questionId',
+            'i.title as itemTitle',
+            noText().as('subjectName'),
+            noUuid().as('instanceId'),
+            eb.ref('re.actorId').$castTo<string | null>().as('byId'),
+            'u.displayName as actorName',
+            're.reason as reason',
+            're.comment as comment',
+            eb.ref('re.createdAt').$castTo<Date | null>().as('sortAt'),
+          ])
+          .where('re.kind', 'in', [
+            'submitted',
+            'appealed',
+            'reopened',
+            'escalated',
+            'cancelled-item-voided',
+          ]),
+        ownClaims()
+          .innerJoin('EntryEvent as ee', (join) =>
+            join.onRef('ee.tenantId', '=', 'm.tenantId').onRef('ee.entryId', '=', 'm.id'),
+          )
+          .leftJoin('User as u', (join) =>
+            join.onRef('u.tenantId', '=', 'ee.tenantId').onRef('u.id', '=', 'ee.actorId'),
+          )
+          .select((eb) => [
+            'ee.id as id',
+            said('entry-event').as('source'),
+            said('participant').as('perspective'),
+            eb
+              .case('ee.kind')
+              .when('withdrawn-by-submitter')
+              .then(said('entry-withdrawn'))
+              .when('abandoned-by-submitter')
+              .then(said('entry-abandoned'))
+              .when('voided-by-staff')
+              .then(said('entry-voided'))
+              .when('revision-required')
+              .then(said('revision-required'))
+              .when('auto-approved')
+              .then(said('review-approved'))
+              .when('voided-with-item')
+              .then(said('entry-voided-with-item'))
+              .when('recognition-corrected')
+              .then(said('recognition-corrected'))
+              .when('approval-revoked')
+              .then(said('approval-revoked'))
+              .when('rejection-overturned')
+              .then(said('rejection-overturned'))
+              .end()
+              .as('kind'),
+            'm.id as claimId',
+            'm.itemId as questionId',
+            'i.title as itemTitle',
+            noText().as('subjectName'),
+            noUuid().as('instanceId'),
+            eb.ref('ee.actorId').$castTo<string | null>().as('byId'),
+            'u.displayName as actorName',
+            'ee.reason as reason',
+            noText().as('comment'),
+            eb.ref('ee.createdAt').$castTo<Date | null>().as('sortAt'),
+          ])
+          .where('ee.kind', 'in', [
+            'withdrawn-by-submitter',
+            'abandoned-by-submitter',
+            'voided-by-staff',
+            'revision-required',
+            'auto-approved',
+            'voided-with-item',
+            'recognition-corrected',
+            'approval-revoked',
+            'rejection-overturned',
+          ]),
+        ownClaims()
+          .innerJoin('ReviewInstance as ri', (join) =>
+            join.onRef('ri.tenantId', '=', 'm.tenantId').onRef('ri.entryId', '=', 'm.id'),
+          )
+          // the word that ended the round, with whoever said it
+          .leftJoinLateral(
+            (q) =>
+              q
+                .selectFrom('ReviewEvent as re2')
+                .leftJoin('User as u', (join) =>
+                  join.onRef('u.tenantId', '=', 're2.tenantId').onRef('u.id', '=', 're2.actorId'),
+                )
+                .select([
+                  're2.actorId',
+                  'u.displayName as speakerName',
+                  're2.reason',
+                  're2.comment',
+                ])
+                .whereRef('re2.tenantId', '=', 'ri.tenantId')
+                .whereRef('re2.reviewInstanceId', '=', 'ri.id')
+                .whereRef('re2.kind', '=', 'ri.outcome')
+                .orderBy('re2.createdAt', 'desc')
+                .limit(1)
+                .as('said'),
+            (join) => join.onTrue(),
+          )
+          .select((eb) => [
+            'ri.id as id',
+            said('verdict').as('source'),
+            said('participant').as('perspective'),
+            eb
+              .case('ri.outcome')
+              .when('approved')
+              .then(said('review-approved'))
+              .else(said('review-rejected'))
+              .end()
+              .as('kind'),
+            'm.id as claimId',
+            'm.itemId as questionId',
+            'i.title as itemTitle',
+            noText().as('subjectName'),
+            noUuid().as('instanceId'),
+            eb.ref('said.actorId').$castTo<string | null>().as('byId'),
+            'said.speakerName as actorName',
+            'said.reason as reason',
+            'said.comment as comment',
+            eb.ref('ri.completedAt').$castTo<Date | null>().as('sortAt'),
+          ])
+          .where('ri.state', '=', 'completed')
+          .where('ri.outcome', 'in', ['approved', 'rejected'])
+          .where('ri.completedAt', 'is not', null),
+        ownClaims()
+          .innerJoin('ReviewInstance as ri', (join) =>
+            join.onRef('ri.tenantId', '=', 'm.tenantId').onRef('ri.entryId', '=', 'm.id'),
+          )
+          .innerJoin('ReviewSupplementRequest as sr', (join) =>
+            join
+              .onRef('sr.tenantId', '=', 'ri.tenantId')
+              .onRef('sr.reviewInstanceId', '=', 'ri.id'),
+          )
+          .leftJoin('User as u', (join) =>
+            join.onRef('u.tenantId', '=', 'sr.tenantId').onRef('u.id', '=', 'sr.requestedBy'),
+          )
+          .select((eb) => [
+            'sr.id as id',
+            said('supp-req').as('source'),
+            said('participant').as('perspective'),
+            said('supplement-requested').as('kind'),
+            'm.id as claimId',
+            'm.itemId as questionId',
+            'i.title as itemTitle',
+            noText().as('subjectName'),
+            noUuid().as('instanceId'),
+            eb.ref('sr.requestedBy').$castTo<string | null>().as('byId'),
+            'u.displayName as actorName',
+            noText().as('reason'),
+            eb.ref('sr.instructions').$castTo<string | null>().as('comment'),
+            eb.ref('sr.createdAt').$castTo<Date | null>().as('sortAt'),
+          ]),
+        ownClaims()
+          .innerJoin('ReviewInstance as ri', (join) =>
+            join.onRef('ri.tenantId', '=', 'm.tenantId').onRef('ri.entryId', '=', 'm.id'),
+          )
+          .innerJoin('ReviewSupplementRequest as sr', (join) =>
+            join
+              .onRef('sr.tenantId', '=', 'ri.tenantId')
+              .onRef('sr.reviewInstanceId', '=', 'ri.id'),
+          )
+          .select((eb) => [
+            'sr.id as id',
+            said('supp-ans').as('source'),
+            said('participant').as('perspective'),
+            said('supplement-submitted').as('kind'),
+            'm.id as claimId',
+            'm.itemId as questionId',
+            'i.title as itemTitle',
+            noText().as('subjectName'),
+            noUuid().as('instanceId'),
+            noUuid().as('byId'),
+            noText().as('actorName'),
+            noText().as('reason'),
+            noText().as('comment'),
+            eb.ref('sr.answeredAt').$castTo<Date | null>().as('sortAt'),
+          ])
+          .where('sr.answeredAt', 'is not', null),
+        ownClaims()
+          .innerJoin('ReviewInstance as ri', (join) =>
+            join.onRef('ri.tenantId', '=', 'm.tenantId').onRef('ri.entryId', '=', 'm.id'),
+          )
+          .innerJoin('ReviewSupplementRequest as sr', (join) =>
+            join
+              .onRef('sr.tenantId', '=', 'ri.tenantId')
+              .onRef('sr.reviewInstanceId', '=', 'ri.id'),
+          )
+          .leftJoin('User as u', (join) =>
+            join.onRef('u.tenantId', '=', 'sr.tenantId').onRef('u.id', '=', 'sr.cancelledBy'),
+          )
+          .select((eb) => [
+            'sr.id as id',
+            said('supp-cxl').as('source'),
+            said('participant').as('perspective'),
+            said('supplement-cancelled').as('kind'),
+            'm.id as claimId',
+            'm.itemId as questionId',
+            'i.title as itemTitle',
+            noText().as('subjectName'),
+            noUuid().as('instanceId'),
+            eb.ref('sr.cancelledBy').$castTo<string | null>().as('byId'),
+            'u.displayName as actorName',
+            noText().as('reason'),
+            noText().as('comment'),
+            eb.ref('sr.cancelledAt').$castTo<Date | null>().as('sortAt'),
+          ])
+          .where('sr.status', '=', 'cancelled')
+          .where('sr.cancelledAt', 'is not', null),
+      ]
+
+      const reviewerBranches = () => [
+        othersRounds()
+          .innerJoin('ReviewEvent as re', (join) =>
+            join
+              .onRef('re.tenantId', '=', 'ri.tenantId')
+              .onRef('re.reviewInstanceId', '=', 'ri.id'),
+          )
+          .select((eb) => [
+            're.id as id',
+            said('r-event').as('source'),
+            said('reviewer').as('perspective'),
+            eb
+              .case('re.kind')
+              .when('approved')
+              .then(
+                // the last approval of a round that ended approved is the
+                // verdict; any earlier one handed the round on
+                eb
+                  .case()
+                  .when(
+                    eb.and([
+                      eb('ri.state', '=', 'completed'),
+                      eb('ri.outcome', '=', 'approved'),
+                      eb.not(
+                        eb.exists(
+                          eb
+                            .selectFrom('ReviewEvent as re2')
+                            .select('re2.id')
+                            .whereRef('re2.tenantId', '=', 're.tenantId')
+                            .whereRef('re2.reviewInstanceId', '=', 're.reviewInstanceId')
+                            .where('re2.kind', '=', 'approved')
+                            .where((later) =>
+                              later(
+                                later.refTuple('re2.createdAt', 're2.id'),
+                                '>',
+                                later.refTuple('re.createdAt', 're.id'),
+                              ),
+                            ),
+                        ),
+                      ),
+                    ]),
+                  )
+                  .then(said('review-approved'))
+                  .else(said('review-stage-approved'))
+                  .end(),
+              )
+              .when('rejected')
+              .then(said('review-rejected'))
+              .when('escalated')
+              .then(said('review-escalated'))
+              .when('opinion-rejected')
+              .then(said('review-opinion-rejected'))
+              // a middle step of the escalation route agreeing: the round
+              // went on, the same as a confirmation that hands it on
+              .when('opinion-approved')
+              .then(said('review-stage-approved'))
+              .end()
+              .as('kind'),
+            'e.id as claimId',
+            'e.itemId as questionId',
+            'i.title as itemTitle',
+            eb.ref('su.displayName').$castTo<string | null>().as('subjectName'),
+            openDoor(eb).as('instanceId'),
+            noUuid().as('byId'),
+            noText().as('actorName'),
+            're.reason as reason',
+            're.comment as comment',
+            eb.ref('re.createdAt').$castTo<Date | null>().as('sortAt'),
+          ])
+          .where('re.actorId', '=', input.userId)
+          .where('re.kind', 'in', [
+            'approved',
+            'rejected',
+            'escalated',
+            'opinion-approved',
+            'opinion-rejected',
+          ]),
+        othersRounds()
+          .innerJoin('ReviewSupplementRequest as sr', (join) =>
+            join
+              .onRef('sr.tenantId', '=', 'ri.tenantId')
+              .onRef('sr.reviewInstanceId', '=', 'ri.id'),
+          )
+          .select((eb) => [
+            'sr.id as id',
+            said('r-supp-req').as('source'),
+            said('reviewer').as('perspective'),
+            said('supplement-requested').as('kind'),
+            'e.id as claimId',
+            'e.itemId as questionId',
+            'i.title as itemTitle',
+            eb.ref('su.displayName').$castTo<string | null>().as('subjectName'),
+            openDoor(eb).as('instanceId'),
+            noUuid().as('byId'),
+            noText().as('actorName'),
+            noText().as('reason'),
+            eb.ref('sr.instructions').$castTo<string | null>().as('comment'),
+            eb.ref('sr.createdAt').$castTo<Date | null>().as('sortAt'),
+          ])
+          .where('sr.requestedBy', '=', input.userId),
+        othersRounds()
+          .innerJoin('ReviewSupplementRequest as sr', (join) =>
+            join
+              .onRef('sr.tenantId', '=', 'ri.tenantId')
+              .onRef('sr.reviewInstanceId', '=', 'ri.id'),
+          )
+          .select((eb) => [
+            'sr.id as id',
+            said('r-supp-cxl').as('source'),
+            said('reviewer').as('perspective'),
+            said('supplement-cancelled').as('kind'),
+            'e.id as claimId',
+            'e.itemId as questionId',
+            'i.title as itemTitle',
+            eb.ref('su.displayName').$castTo<string | null>().as('subjectName'),
+            openDoor(eb).as('instanceId'),
+            noUuid().as('byId'),
+            noText().as('actorName'),
+            noText().as('reason'),
+            noText().as('comment'),
+            eb.ref('sr.cancelledAt').$castTo<Date | null>().as('sortAt'),
+          ])
+          .where('sr.cancelledBy', '=', input.userId)
+          .where('sr.status', '=', 'cancelled')
+          .where('sr.cancelledAt', 'is not', null),
+        othersRounds()
+          .innerJoin('ReviewSupplementRequest as sr', (join) =>
+            join
+              .onRef('sr.tenantId', '=', 'ri.tenantId')
+              .onRef('sr.reviewInstanceId', '=', 'ri.id'),
+          )
+          .select((eb) => [
+            'sr.id as id',
+            said('r-supp-ans').as('source'),
+            said('reviewer').as('perspective'),
+            said('supplement-answered').as('kind'),
+            'e.id as claimId',
+            'e.itemId as questionId',
+            'i.title as itemTitle',
+            eb.ref('su.displayName').$castTo<string | null>().as('subjectName'),
+            openDoor(eb).as('instanceId'),
+            noUuid().as('byId'),
+            noText().as('actorName'),
+            noText().as('reason'),
+            noText().as('comment'),
+            eb.ref('sr.answeredAt').$castTo<Date | null>().as('sortAt'),
+          ])
+          .where('sr.requestedBy', '=', input.userId)
+          .where('sr.answeredAt', 'is not', null),
+        othersRounds()
+          .innerJoin('ReviewPanel as pnl', (join) =>
+            join
+              .onRef('pnl.tenantId', '=', 'ri.tenantId')
+              .onRef('pnl.reviewInstanceId', '=', 'ri.id'),
+          )
+          .innerJoin('ReviewVote as v', (join) =>
+            join.onRef('v.tenantId', '=', 'pnl.tenantId').onRef('v.panelId', '=', 'pnl.id'),
+          )
+          .select((eb) => [
+            'v.id as id',
+            said('r-vote').as('source'),
+            said('reviewer').as('perspective'),
+            eb
+              .case('v.decision')
+              .when('approve')
+              .then(said('review-vote-approved'))
+              .else(said('review-vote-rejected'))
+              .end()
+              .as('kind'),
+            'e.id as claimId',
+            'e.itemId as questionId',
+            'i.title as itemTitle',
+            eb.ref('su.displayName').$castTo<string | null>().as('subjectName'),
+            openDoor(eb).as('instanceId'),
+            noUuid().as('byId'),
+            noText().as('actorName'),
+            'v.reason as reason',
+            'v.comment as comment',
+            eb.ref('v.createdAt').$castTo<Date | null>().as('sortAt'),
+          ])
+          .where('v.voterUserId', '=', input.userId),
+      ]
+
+      // One line type for every branch, read off the first rather than
+      // restated; the constraint holds each branch's columns to it.
+      type Line = InferResult<ReturnType<typeof participantBranches>[0]>[number]
+      // any for the tables: the branches join different ones, and only their
+      // output is shared
+      type AnyLine = SelectQueryBuilder<any, any, Line>
+      const asLine = <B extends AnyLine>(branch: B): AnyLine => branch
+      const [first, ...rest] = [
+        ...(asParticipant ? participantBranches() : []),
+        ...(asReviewer ? reviewerBranches() : []),
+      ].map(asLine)
+      let union = first!
+      for (const branch of rest) union = union.unionAll(branch)
+      const activity = () =>
+        k.selectFrom(union.as('activity')).where('activity.kind', 'is not', null)
+      const counted = await activity()
         .select((eb) => eb.fn.countAll<string>().as('total'))
         .executeTakeFirstOrThrow()
       const total = Number(counted.total)
       const window = pageWindow(input.page, input.limit, total)
-      const rows = await query
-        .selectAll()
-        .orderBy('sort_at', 'desc')
-        .orderBy('source', 'desc')
-        .orderBy('id', 'desc')
+      const rows = await activity()
+        .select((eb) => [
+          'activity.id',
+          'activity.source',
+          'activity.perspective',
+          'activity.kind',
+          'activity.claimId',
+          'activity.questionId',
+          'activity.itemTitle',
+          'activity.subjectName',
+          'activity.instanceId',
+          'activity.byId',
+          'activity.actorName',
+          'activity.reason',
+          'activity.comment',
+          isoUtc(eb.ref('activity.sortAt')).as('at'),
+          sql<number>`(extract(epoch from ${eb.ref('activity.sortAt')}) * 1000)::float8`.as('atMs'),
+          eb.cast<string>('activity.sortAt', 'text').as('cursorAt'),
+        ])
+        .orderBy('activity.sortAt', 'desc')
+        .orderBy('activity.source', 'desc')
+        .orderBy('activity.id', 'desc')
         .limit(input.limit)
         .offset(window.offset)
         .execute()
@@ -2256,21 +2552,21 @@ export const userActivityPage = (input: {
         ...pagination,
         items: rows.map((row): UserActivityRow => ({
           id: row.id,
-          source: row.source,
+          source: String(row.source),
           perspective: row.perspective as UserActivityRow['perspective'],
-          kind: row.kind,
-          entryId: row.entry_id,
-          itemId: row.item_id,
-          itemTitle: row.item_title,
-          subjectName: row.subject_name,
-          instanceId: row.instance_id,
-          actorId: row.actor_id,
-          actorName: row.actor_name,
+          kind: String(row.kind),
+          entryId: row.claimId,
+          itemId: row.questionId,
+          itemTitle: row.itemTitle,
+          subjectName: row.subjectName,
+          instanceId: row.instanceId,
+          actorId: row.byId,
+          actorName: row.actorName,
           reason: row.reason,
           comment: row.comment,
           at: row.at,
-          atMs: row.at_ms,
-          cursorAt: row.cursor_at,
+          atMs: row.atMs,
+          cursorAt: row.cursorAt,
         })),
       })),
       (effect) => transaction(effect, { isolation: 'repeatable read', readOnly: true }),
@@ -2409,17 +2705,21 @@ export const listAdministrativeEntriesPage = (input: {
         )
       }
       if (input.orgNodeIds !== undefined && input.orgNodeIds.length > 0) {
-        query = query.where(
-          sql<boolean>`exists (
-            select 1 from org_nodes scope
-             where scope.tenant_id = p.tenant_id
-               and scope.id = any(${input.orgNodeIds as string[]}::uuid[])
-               and ${
-                 input.orgScope === 'self'
-                   ? sql<boolean>`p.assessment_anchor_node_id = scope.id`
-                   : sql<boolean>`p.anchor_path <@ scope.path`
-               }
-          )`,
+        const orgNodeIds = input.orgNodeIds
+        query = query.where((eb) =>
+          eb.exists(
+            eb
+              .selectFrom('OrgNode as scope')
+              .select('scope.id')
+              .whereRef('scope.tenantId', '=', 'p.tenantId')
+              .where('scope.id', '=', eb.fn.any(uuids(orgNodeIds)))
+              .where((q) =>
+                input.orgScope === 'self'
+                  ? q('p.assessmentAnchorNodeId', '=', q.ref('scope.id'))
+                  : // ltree containment, PostgreSQL's own operator
+                    sql<boolean>`${q.ref('p.anchorPath')} <@ ${q.ref('scope.path')}`,
+              ),
+          ),
         )
       }
       const counted = await query
