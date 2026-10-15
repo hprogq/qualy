@@ -495,8 +495,9 @@ export const readSnapshot = db.query((k) =>
  * A new node, with its path written atomically with the row.
  *
  * The id comes from uuidv7() inside the statement so there is no window where
- * the row exists with a placeholder path. Written out rather than built,
- * because the path is derived from the id the same statement generates.
+ * the row exists with a placeholder path: an insert from a one-row select that
+ * mints the id, and derives the path from it in the same breath. The ltree
+ * concatenation is PostgreSQL's own; the columns are the builder's.
  */
 export const insertNode = (input: {
   tenantId: string
@@ -507,17 +508,37 @@ export const insertNode = (input: {
   name: string
   sortOrder: number
 }) =>
-  db.query(async (k) => {
-    const { rows } = await sql<NodeRow>`
-      insert into org_nodes (id, tenant_id, parent_id, org_type_id, name, path, depth, sort_order)
-      select v.id, ${input.tenantId}, ${input.parentId}, ${input.orgTypeId},
-        ${input.name}, (${input.parentPath} || '.' || replace(v.id::text, '-', ''))::ltree,
-        ${input.parentDepth + 1}, ${input.sortOrder}
-      from (select uuidv7() as id) v
-      returning id, parent_id as "parentId", org_type_id as "orgTypeId", name,
-        path::text as path, depth, sort_order as "sortOrder"`.execute(k)
-    return rows[0]!
-  })
+  db.query((k) =>
+    k
+      .insertInto('OrgNode')
+      .columns(['id', 'tenantId', 'parentId', 'orgTypeId', 'name', 'path', 'depth', 'sortOrder'])
+      .expression((eb) =>
+        eb
+          .selectFrom(k.selectNoFrom(sql<string>`uuidv7()`.as('id')).as('v'))
+          .select((row) => [
+            'v.id',
+            row.val(input.tenantId).as('tenantId'),
+            row.val(input.parentId).as('parentId'),
+            row.val(input.orgTypeId).as('orgTypeId'),
+            row.val(input.name).as('name'),
+            sql<string>`(${input.parentPath} || '.' || replace(${row.ref('v.id')}::text, '-', ''))::ltree`.as(
+              'path',
+            ),
+            row.val(input.parentDepth + 1).as('depth'),
+            row.val(input.sortOrder).as('sortOrder'),
+          ]),
+      )
+      .returning((eb) => [
+        'id',
+        'parentId',
+        'orgTypeId',
+        'name',
+        eb.cast<string>('path', 'text').as('path'),
+        'depth',
+        'sortOrder',
+      ])
+      .executeTakeFirstOrThrow(),
+  )
 
 /**
  * The whole subtree relocated by one statement.
