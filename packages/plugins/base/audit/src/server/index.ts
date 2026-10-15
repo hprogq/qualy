@@ -55,13 +55,13 @@ const matching = (k: Kysely, tenantId: string, filters: ListFilters) => {
     query = query.where('AuditEvent.targetId', '=', filters.targetId)
   }
   if (filters.from !== undefined) {
-    query = query.where(
-      (eb) => sql<boolean>`${eb.ref('AuditEvent.occurredAt')} >= ${filters.from}::timestamptz`,
+    query = query.where((eb) =>
+      eb('AuditEvent.occurredAt', '>=', eb.cast<Date>(eb.val(filters.from!), 'timestamptz')),
     )
   }
   if (filters.to !== undefined) {
-    query = query.where(
-      (eb) => sql<boolean>`${eb.ref('AuditEvent.occurredAt')} < ${filters.to}::timestamptz`,
+    query = query.where((eb) =>
+      eb('AuditEvent.occurredAt', '<', eb.cast<Date>(eb.val(filters.to!), 'timestamptz')),
     )
   }
   return query

@@ -22,12 +22,14 @@ const matching = (k: Kysely, query: SubjectEventsQuery, codes: readonly string[]
     .where('AuditEvent.outcome', '=', 'success')
     .where('AuditEvent.actionCode', 'in', [...codes])
     .$if(query.from !== undefined, (q) =>
-      q.where(
-        (eb) => sql<boolean>`${eb.ref('AuditEvent.occurredAt')} >= ${query.from}::timestamptz`,
+      q.where((eb) =>
+        eb('AuditEvent.occurredAt', '>=', eb.cast<Date>(eb.val(query.from!), 'timestamptz')),
       ),
     )
     .$if(query.to !== undefined, (q) =>
-      q.where((eb) => sql<boolean>`${eb.ref('AuditEvent.occurredAt')} < ${query.to}::timestamptz`),
+      q.where((eb) =>
+        eb('AuditEvent.occurredAt', '<', eb.cast<Date>(eb.val(query.to!), 'timestamptz')),
+      ),
     )
 
 /** one page of them, with how many there are in all */
