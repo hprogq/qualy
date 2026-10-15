@@ -92,10 +92,10 @@ catalog:
   # the message compiler (docs/adr/0011-i18n-paraglide.md): build-time only,
   # pinned exactly and upgraded on their own, since the ICU plugin is young
   # and a range would move the compiler of every sentence silently
-  '@inlang/paraglide-js': 2.25.4
-  '@inlang/plugin-icu1': 1.1.0
-  '@inlang/sdk': 3.0.6
-  '@messageformat/parser': 5.1.1
+  '@inlang/paraglide-js': 2.27.0
+  '@inlang/plugin-icu1': 1.3.3
+  '@inlang/sdk': 4.0.3
+  '@messageformat/parser': 5.2.0
   react: 19.2.8
   react-dom: 19.2.8
   react-router: 8.4.0
