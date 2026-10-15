@@ -255,6 +255,35 @@ and point the server at it in `.env` (`OTEL_EXPORTER_OTLP_ENDPOINT`,
 out over the region's private-network endpoints. An endpoint it cannot reach
 is a retry in the background, never a failed start.
 
+## Statement statistics
+
+`query-stats.sh` keeps PostgreSQL's per-statement counts (pg_stat_statements):
+how often each statement shape runs, and how long it spends planning and
+running, without the values it ran with. Turned on once per cluster:
+
+```sh
+QUALY_ENV_FILE=/opt/qualy/.env /opt/qualy/current/deploy/query-stats.sh enable
+```
+
+That appends the library to `shared_preload_libraries` with ALTER SYSTEM,
+restarts the postgres service alone (seconds; the colors reconnect), and
+installs the extension in the `monitoring` schema. The setting lives in the
+data volume, not in `compose.yaml`: every upgrade runs `up -d postgres` with
+the new release's compose file, and a changed postgres command would recreate
+the database mid-upgrade. Planning is counted as well; `query-stats.sh
+planning off` stops that on a reload if it ever costs too much, and leaves
+the rest counting.
+
+```sh
+query-stats.sh status                       # loaded, installed, planning counted
+query-stats.sh report plan 20               # since counting began, by plan, exec or calls
+query-stats.sh window 600 exec              # the next ten minutes only
+```
+
+Both only read; a window diffs two snapshots instead of resetting anybody's
+counts. A demonstration restore installs the extension again on the database
+it makes (`query-stats.sh install`, which never restarts anything).
+
 ## Staging
 
 The same compose file, pulled up on demand on the same host and taken down

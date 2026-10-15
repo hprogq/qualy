@@ -124,6 +124,12 @@ step="applying the release's migrations"
 echo "$step"
 deploy_job "$release"
 
+# the baseline is a dump of a database that never had the statement
+# statistics; a deployment that counts them goes on counting
+step="installing the statement statistics where they are loaded"
+echo "$step"
+"$here/query-stats.sh" install
+
 step="giving the imported accounts this deployment's passwords"
 echo "$step"
 # the password never leaves the container's own environment: the command is
