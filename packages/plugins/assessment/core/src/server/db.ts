@@ -54,6 +54,9 @@ const instant = (ms: number) => sql<Date>`to_timestamp(${ms} / 1000.0)`
 
 const jsonb = (value: unknown) => sql`${JSON.stringify(value)}::jsonb`
 
+/** a bound list of ids as the uuid[] = any() compares against */
+const uuids = (ids: readonly string[]) => sql<readonly string[]>`${[...ids]}::uuid[]`
+
 /**
  * Serializes this plugin's structural writes with org's, auth's and rbac's.
  *
@@ -3018,8 +3021,9 @@ export const resolveRecordTargets = (
         )`,
       )
       if (target.userTypeIds.length > 0) {
-        query = query.where(
-          sql<boolean>`batch_participants.user_type_id = any(${target.userTypeIds as string[]}::uuid[])`,
+        const userTypeIds = target.userTypeIds
+        query = query.where((eb) =>
+          eb('BatchParticipant.userTypeId', '=', eb.fn.any(uuids(userTypeIds))),
         )
       }
     }
@@ -3197,27 +3201,38 @@ export const listParticipantsPage = (
       if (filter.orgNodeIds !== undefined && filter.orgNodeIds.length > 0) {
         // against the frozen anchor, not against where the person lives now:
         // the list says who this round admitted and from where
-        query = query.where(
-          sql<boolean>`exists (
-            select 1 from org_nodes scope
-             where scope.tenant_id = batch_participants.tenant_id
-               and scope.id = any(${filter.orgNodeIds as string[]}::uuid[])
-               and ${
-                 filter.orgScope === 'self'
-                   ? sql<boolean>`batch_participants.assessment_anchor_node_id = scope.id`
-                   : sql<boolean>`batch_participants.anchor_path <@ scope.path`
-               }
-          )`,
+        const orgNodeIds = filter.orgNodeIds
+        query = query.where((eb) =>
+          eb.exists(
+            eb
+              .selectFrom('OrgNode as scope')
+              .select('scope.id')
+              .whereRef('scope.tenantId', '=', 'BatchParticipant.tenantId')
+              .where('scope.id', '=', eb.fn.any(uuids(orgNodeIds)))
+              .where((q) =>
+                filter.orgScope === 'self'
+                  ? q('BatchParticipant.assessmentAnchorNodeId', '=', q.ref('scope.id'))
+                  : // ltree containment, PostgreSQL's own operator
+                    sql<boolean>`${q.ref('BatchParticipant.anchorPath')} <@ ${q.ref('scope.path')}`,
+              ),
+          ),
         )
       }
       if (filter.after !== undefined) {
-        query = query.where(
-          sql<boolean>`(batch_participants.anchor_path::text, batch_participants.id)
-            > (${filter.after.path}, ${filter.after.id}::uuid)`,
+        const after = filter.after
+        query = query.where((eb) =>
+          eb(
+            eb.tuple(
+              eb.cast<string>('BatchParticipant.anchorPath', 'text'),
+              eb.ref('BatchParticipant.id'),
+            ),
+            '>',
+            eb.tuple(eb.val(after.path), eb.val(after.id)),
+          ),
         )
       }
       return query
-        .orderBy(sql`batch_participants.anchor_path`)
+        .orderBy('BatchParticipant.anchorPath')
         .orderBy('BatchParticipant.id')
         .limit(filter.limit)
         .execute()
@@ -3307,7 +3322,7 @@ const rosterAccountsQuery = (
     // the filter and the tree in two coordinate systems once a unit moves
     query = query.where(
       filter.orgScope === 'self'
-        ? sql<boolean>`batch_participants.assessment_anchor_node_id = any(${units}::uuid[])`
+        ? sql<boolean>`${sql.ref('batch_participants.assessment_anchor_node_id')} = any(${units}::uuid[])`
         : sql<boolean>`exists (
             select 1 from jsonb_array_elements(batch_participants.anchor_lineage) as step
              where (step.value ->> 'nodeId')::uuid = any(${units}::uuid[])
@@ -3823,12 +3838,18 @@ export const scopeOptions = (tenantId: string, held: AuthorizationScope) =>
       k
         .selectFrom('OrgNode')
         .select(['id', 'name', 'depth', 'orgTypeId'])
-        .select([
-          sql<string | null>`(
-            select parent.id::text from org_nodes parent
-            where parent.tenant_id = org_nodes.tenant_id
-              and parent.path = subpath(org_nodes.path, 0, nlevel(org_nodes.path) - 1)
-          )`.as('parentId'),
+        .select((eb) => [
+          eb
+            .selectFrom('OrgNode as parent')
+            .select((q) => q.cast<string>('parent.id', 'text').as('id'))
+            .whereRef('parent.tenantId', '=', 'OrgNode.tenantId')
+            // the path one level up, by ltree's own functions
+            .where(
+              'parent.path',
+              '=',
+              sql<string>`subpath(${eb.ref('OrgNode.path')}, 0, nlevel(${eb.ref('OrgNode.path')}) - 1)`,
+            )
+            .as('parentId'),
         ])
         .where('tenantId', '=', tenantId)
         .where('deletedAt', 'is', null)
