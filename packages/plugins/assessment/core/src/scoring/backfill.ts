@@ -151,6 +151,10 @@ const BATCH = 200
  * own statement finished and two booting processes would compile the same
  * rows against each other.
  */
+// Raw sql on purpose, unlike the rest of this package: an upgrade sweep runs
+// against the schema as a migration left it, while the entity metadata the
+// query builder maps names through describes the latest one - and the
+// upgrade tests run it with no entity metadata at all (docs/notes/kysely.md).
 export const sweepScoringPlans = (deps: BackfillDeps) =>
   Effect.gen(function* () {
     // one process at a time across the deployment; a second one finds

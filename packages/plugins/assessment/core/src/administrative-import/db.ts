@@ -1,8 +1,8 @@
 import { pageWindow } from '@qualy/api-kit/schema'
 import { transaction } from '@qualy/plugin-database/server'
 import { Effect } from 'effect'
-import { sql } from 'kysely'
-import { db, staffReachOver } from '../server/db.ts'
+import { expressionBuilder, sql, type Expression } from 'kysely'
+import { db, staffReachOver, type Schema } from '../server/db.ts'
 import type { EntryStatus } from '../entry/db.ts'
 import { PARTICIPANT_SOURCES, type HeldEntries } from '../entry/limit.ts'
 
@@ -375,23 +375,37 @@ export const standingOfImports = (tenantId: string, importIds: readonly string[]
  * the import named: the reach is over the frozen anchor, not the roster's
  * present state, because history does not change when a roster does.
  */
-const reachesEveryoneIn = (input: { tenantId: string; batchId: string; userId: string }) =>
-  sql<boolean>`not exists (
-    select 1
-      from administrative_entry_import_rows r
-      join batch_participants p
-        on p.tenant_id = r.tenant_id and p.id = r.participant_id
-     where r.tenant_id = i.tenant_id
-       and r.import_id = i.id
-       and not ${staffReachOver({
-         tenantId: input.tenantId,
-         batchId: input.batchId,
-         userId: input.userId,
-         permissionCode: 'assessment.entry.record',
-         anchorNodeId: sql.ref('p.assessment_anchor_node_id'),
-         anchorPath: sql.ref('p.anchor_path'),
-       })}
-  )`
+const reachesEveryoneIn = (
+  input: { tenantId: string; batchId: string; userId: string },
+  /** the import, wherever the query aliased it */
+  imported: { readonly tenantId: Expression<string>; readonly id: Expression<string> },
+) => {
+  const eb = expressionBuilder<Schema>()
+  return eb.not(
+    eb.exists(
+      eb
+        .selectFrom('AdministrativeEntryImportRow as r')
+        .innerJoin('BatchParticipant as p', (join) =>
+          join.onRef('p.tenantId', '=', 'r.tenantId').onRef('p.id', '=', 'r.participantId'),
+        )
+        .select('r.id')
+        .where('r.tenantId', '=', imported.tenantId)
+        .where('r.importId', '=', imported.id)
+        .where((row) =>
+          row.not(
+            staffReachOver({
+              tenantId: input.tenantId,
+              batchId: input.batchId,
+              userId: input.userId,
+              permissionCode: 'assessment.entry.record',
+              anchorNodeId: row.ref('p.assessmentAnchorNodeId'),
+              anchorPath: row.ref('p.anchorPath'),
+            }),
+          ),
+        ),
+    ),
+  )
+}
 
 /** the reach rule above, for one import */
 export const importReachable = (input: {
@@ -407,7 +421,9 @@ export const importReachable = (input: {
         .select(sql<number>`1`.as('one'))
         .where('i.tenantId', '=', input.tenantId)
         .where('i.id', '=', input.importId)
-        .where(reachesEveryoneIn(input))
+        .where((eb) =>
+          reachesEveryoneIn(input, { tenantId: eb.ref('i.tenantId'), id: eb.ref('i.id') }),
+        )
         .executeTakeFirst(),
     )
     .pipe(Effect.map((row) => row !== undefined))

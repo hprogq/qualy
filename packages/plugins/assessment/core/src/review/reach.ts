@@ -1,6 +1,6 @@
 import { Effect } from 'effect'
-import { sql } from 'kysely'
-import { db } from '../server/db.ts'
+import { expressionBuilder, sql, type Expression } from 'kysely'
+import { db, type Schema } from '../server/db.ts'
 import { readEntryChannels } from '../item/channels.ts'
 import { policyModeOf, readPolicy, routeLevels, type ReviewRoute } from './chain.ts'
 
@@ -228,11 +228,24 @@ export const admittedGroupsOf = (tenantId: string, participantIds: readonly stri
         .pipe(Effect.map(warningGroups))
 
 /** the unit kinds above somebody's live placement, the unit included, once each */
-const liveLevels = sql<string[]>`coalesce((
-  select array_agg(distinct a.org_type_id::text order by a.org_type_id::text)
-    from org_nodes a
-   where a.tenant_id = ${sql.ref('n.tenant_id')} and a.path @> ${sql.ref('n.path')}
-), '{}')`
+const liveLevelsOf = (node: { tenantId: Expression<string>; path: Expression<string> }) => {
+  const eb = expressionBuilder<Schema>()
+  return eb.fn.coalesce(
+    eb
+      .selectFrom('OrgNode as a')
+      .select((agg) =>
+        agg.fn
+          .agg<string[]>('array_agg', [agg.cast('a.orgTypeId', 'text')])
+          .distinct()
+          .orderBy(agg.cast('a.orgTypeId', 'text'))
+          .as('levels'),
+      )
+      .where('a.tenantId', '=', node.tenantId)
+      // ltree containment, PostgreSQL's own operator
+      .where((q) => sql<boolean>`${q.ref('a.path')} @> ${node.path}`),
+    sql<string[]>`'{}'::text[]`,
+  )
+}
 
 /**
  * The same grouping for people not yet on the roster, by where the
@@ -255,9 +268,14 @@ export const candidateGroupsOf = (tenantId: string, userIds: readonly string[]) 
                 .innerJoin('UserType as ut', (join) =>
                   join.onRef('ut.tenantId', '=', 'u.tenantId').onRef('ut.id', '=', 'u.userTypeId'),
                 )
-                .select([liveLevels.as('levels'), 'ut.isSystem as system'])
+                .select((eb) => [
+                  liveLevelsOf({ tenantId: eb.ref('n.tenantId'), path: eb.ref('n.path') }).as(
+                    'levels',
+                  ),
+                  'ut.isSystem as system',
+                ])
                 .where('u.tenantId', '=', tenantId)
-                .where(sql<boolean>`${sql.ref('u.id')} = any(${[...userIds]}::uuid[])`)
+                .where((eb) => eb('u.id', '=', eb.fn.any(sql<string[]>`${[...userIds]}::uuid[]`)))
                 .as('member'),
             )
             .select([
