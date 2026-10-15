@@ -1,5 +1,12 @@
 import { Effect } from 'effect'
-import { expressionBuilder, sql, type Expression, type RawBuilder } from 'kysely'
+import {
+  expressionBuilder,
+  sql,
+  type Expression,
+  type ExpressionBuilder,
+  type RawBuilder,
+} from 'kysely'
+import { jsonArrayFrom } from 'kysely/helpers/postgres'
 import { db, type Schema } from '../server/db.ts'
 import { readResolved, type ResolvedPolicy } from './chain.ts'
 
@@ -408,11 +415,11 @@ export const isOpenReviewState = (state: string): boolean =>
 
 /** what the open-ask rule is asked about; values or column references alike */
 export interface OpenAskRefs {
-  readonly tenantId: RawBuilder<unknown>
-  readonly instanceId: RawBuilder<unknown>
+  readonly tenantId: Expression<string>
+  readonly instanceId: Expression<string>
   /** the round's state, so the fragment can stay out of the way when no ask is out */
-  readonly state: RawBuilder<unknown>
-  readonly userId: RawBuilder<unknown>
+  readonly state: Expression<string>
+  readonly userId: Expression<string>
 }
 
 /**
@@ -429,14 +436,21 @@ export interface OpenAskRefs {
  * fragment: the narrowing first landed on the round's own reader alone, and
  * the file and history doors went on serving the colleague it had refused.
  */
-export const heldThroughOpenAsk = (r: OpenAskRefs) => sql<boolean>`(
-  ${r.state} <> 'awaiting_supplement'
-  or exists (
-    select 1 from review_supplement_requests ask
-    where ask.tenant_id = ${r.tenantId} and ask.review_instance_id = ${r.instanceId}
-      and ask.status = 'open' and ask.requested_by = ${r.userId}
-  )
-)`
+export const heldThroughOpenAsk = (r: OpenAskRefs) => {
+  const eb = expressionBuilder<Schema>()
+  return eb.or([
+    eb(r.state, '<>', 'awaiting_supplement'),
+    eb.exists(
+      eb
+        .selectFrom('ReviewSupplementRequest as ask')
+        .select('ask.id')
+        .where('ask.tenantId', '=', r.tenantId)
+        .where('ask.reviewInstanceId', '=', r.instanceId)
+        .where('ask.status', '=', 'open')
+        .where('ask.requestedBy', '=', r.userId),
+    ),
+  ])
+}
 
 /** one round as the callers hold it in memory, for the per-row predicates */
 export interface RoundRef {
@@ -449,16 +463,43 @@ export interface RoundRef {
   actorId: string
 }
 
-const refsOf = (tenantId: string, userId: string, instance: RoundRef): RoundActorRefs => ({
-  tenantId: sql`${tenantId}`,
-  batchId: sql`${instance.batchId}`,
-  nodeId: sql`${instance.currentNodeId}`,
-  roleIds: uuidArray(instance.currentRoleIds),
-  userId: sql`${userId}`,
-  subjectUserId: sql`${instance.subjectUserId}`,
-  actorId: sql`${instance.actorId}`,
-  instanceId: sql`${instance.id}`,
-  route: sql`${instance.currentRoute}`,
+const refsOf = (tenantId: string, userId: string, instance: RoundRef): RoundActorRefs => {
+  const eb = expressionBuilder<Schema>()
+  return {
+    tenantId: eb.val(tenantId),
+    batchId: eb.val(instance.batchId),
+    nodeId: eb.val(instance.currentNodeId),
+    roleIds: uuidArray(instance.currentRoleIds),
+    userId: eb.val(userId),
+    subjectUserId: eb.val(instance.subjectUserId),
+    actorId: eb.val(instance.actorId),
+    instanceId: eb.val(instance.id),
+    route: eb.val<string>(instance.currentRoute),
+  }
+}
+
+/** the tables a queue row joins under the aliases every queue uses */
+type QueueRow = ExpressionBuilder<
+  Schema & {
+    ri: Schema['ReviewInstance']
+    e: Schema['Entry']
+    bp: Schema['BatchParticipant']
+    er: Schema['EntryRevision']
+  },
+  'ri' | 'e' | 'bp' | 'er'
+>
+
+/** the round a queue row names, as mayActOn asks about it */
+const roundActor = (eb: QueueRow, tenantId: string, userId: string): RoundActorRefs => ({
+  tenantId: eb.val(tenantId),
+  batchId: eb.ref('e.batchId'),
+  nodeId: eb.ref('ri.currentNodeId'),
+  roleIds: eb.ref('ri.currentRoleIds'),
+  userId: eb.val(userId),
+  subjectUserId: eb.ref('bp.userId'),
+  actorId: eb.ref('er.actorId'),
+  instanceId: eb.ref('ri.id'),
+  route: eb.ref('ri.currentRoute'),
 })
 
 /** one person against one instance's stage, for the decision endpoints */
@@ -467,11 +508,11 @@ export const userMayReview = (input: { tenantId: string; userId: string; instanc
     ? Effect.succeed(false)
     : db
         .query((k) =>
-          sql<{ ok: boolean }>`
-            select ${mayActOn(refsOf(input.tenantId, input.userId, input.instance))} as ok
-          `.execute(k),
+          k
+            .selectNoFrom(mayActOn(refsOf(input.tenantId, input.userId, input.instance)).as('ok'))
+            .executeTakeFirstOrThrow(),
         )
-        .pipe(Effect.map(({ rows }) => Boolean(rows[0]!.ok)))
+        .pipe(Effect.map((row) => Boolean(row.ok)))
 
 /**
  * The same person against a round they mean only to READ. Matching the
@@ -488,19 +529,23 @@ export const userMayReadReview = (input: {
     ? Effect.succeed(false)
     : db
         .query((k) =>
-          sql<{ ok: boolean }>`
-            select (
-              ${mayActOn(refsOf(input.tenantId, input.userId, input.instance))}
-              and ${heldThroughOpenAsk({
-                tenantId: sql`${input.tenantId}`,
-                instanceId: sql`${input.instance.id}`,
-                state: sql`${input.instance.state}`,
-                userId: sql`${input.userId}`,
-              })}
-            ) as ok
-          `.execute(k),
+          k
+            .selectNoFrom((eb) =>
+              eb
+                .and([
+                  mayActOn(refsOf(input.tenantId, input.userId, input.instance)),
+                  heldThroughOpenAsk({
+                    tenantId: eb.val(input.tenantId),
+                    instanceId: eb.val(input.instance.id),
+                    state: eb.val(input.instance.state),
+                    userId: eb.val(input.userId),
+                  }),
+                ])
+                .as('ok'),
+            )
+            .executeTakeFirstOrThrow(),
         )
-        .pipe(Effect.map(({ rows }) => Boolean(rows[0]!.ok)))
+        .pipe(Effect.map((row) => Boolean(row.ok)))
 
 export interface ReviewInstanceDetailRow {
   id: string
@@ -678,15 +723,16 @@ export const instanceOf = (tenantId: string, instanceId: string) =>
           'er.actorId',
           'er.itemRevisionId',
         ])
-        .select([
-          sql<string>`b.material_range::text`.as('batchMaterialRange'),
-          // the lineage is stored from the unit up, so it is read backwards
+        .select((eb) => [
+          eb.cast<string>('b.materialRange', 'text').as('batchMaterialRange'),
+          // the lineage is stored from the unit up, so it is read backwards;
+          // walking jsonb with its ordinality is PostgreSQL's own
           sql<(string | null)[]>`coalesce((
             select array_agg(n.name order by step.at desc)
-            from jsonb_array_elements(${sql.ref('bp.anchor_lineage')})
+            from jsonb_array_elements(${eb.ref('bp.anchorLineage')})
               with ordinality as step(element, at)
             left join org_nodes n
-              on n.tenant_id = ${sql.ref('bp.tenant_id')}
+              on n.tenant_id = ${eb.ref('bp.tenantId')}
               and n.id = (step.element->>'nodeId')::uuid
           ), '{}')`.as('unitPath'),
           epoch('ri.created_at').as('createdMs'),
@@ -802,34 +848,29 @@ export const reviewsWaitingByBatchOf = (input: {
     ? Effect.succeed([] as { batchId: string; waiting: number }[])
     : db
         .query((k) =>
-          sql<{ batch_id: string; waiting: string }>`
-            select e.batch_id, count(*)::text as waiting
-            from review_instances ri
-            join entries e on e.tenant_id = ri.tenant_id and e.id = ri.entry_id
-            join batch_participants bp
-              on bp.tenant_id = e.tenant_id and bp.id = e.participant_id
-            join entry_revisions er on er.tenant_id = ri.tenant_id and er.id = ri.revision_id
-            where ri.tenant_id = ${input.tenantId}
-              and e.batch_id = any(${sql.val(`{${input.batchIds.join(',')}}`)}::uuid[])
-              and ri.state = 'active'
-              and ${atHeldNode(input.tenantId, input.userId, sql.ref('ri.current_node_id'))}
-              and ${mayActOn({
-                tenantId: sql`${input.tenantId}`,
-                batchId: sql.ref('e.batch_id'),
-                nodeId: sql.ref('ri.current_node_id'),
-                roleIds: sql.ref('ri.current_role_ids'),
-                userId: sql`${input.userId}`,
-                subjectUserId: sql.ref('bp.user_id'),
-                actorId: sql.ref('er.actor_id'),
-                instanceId: sql.ref('ri.id'),
-                route: sql.ref('ri.current_route'),
-              })}
-            group by e.batch_id
-          `.execute(k),
+          k
+            .selectFrom('ReviewInstance as ri')
+            .innerJoin('Entry as e', (join) =>
+              join.onRef('e.tenantId', '=', 'ri.tenantId').onRef('e.id', '=', 'ri.entryId'),
+            )
+            .innerJoin('BatchParticipant as bp', (join) =>
+              join.onRef('bp.tenantId', '=', 'e.tenantId').onRef('bp.id', '=', 'e.participantId'),
+            )
+            .innerJoin('EntryRevision as er', (join) =>
+              join.onRef('er.tenantId', '=', 'ri.tenantId').onRef('er.id', '=', 'ri.revisionId'),
+            )
+            .select((eb) => ['e.batchId', eb.fn.countAll<string>().as('waiting')])
+            .where('ri.tenantId', '=', input.tenantId)
+            .where((eb) => eb('e.batchId', '=', eb.fn.any(uuidArray(input.batchIds))))
+            .where('ri.state', '=', 'active')
+            .where((eb) => atHeldNode(input.tenantId, input.userId, eb.ref('ri.currentNodeId')))
+            .where((eb) => mayActOn(roundActor(eb, input.tenantId, input.userId)))
+            .groupBy('e.batchId')
+            .execute(),
         )
         .pipe(
-          Effect.map(({ rows }) =>
-            rows.map((row) => ({ batchId: row.batch_id, waiting: Number(row.waiting) })),
+          Effect.map((rows) =>
+            rows.map((row) => ({ batchId: row.batchId, waiting: Number(row.waiting) })),
           ),
         )
 
@@ -893,35 +934,25 @@ export const inboxQuery = (
       'ir.formConfig',
       'ir.displayConfig',
     ])
-    .select([
+    .select((eb) => [
       epoch('ri.created_at').as('submittedMs'),
-      sql<string>`ri.created_at::text`.as('submittedIso'),
-      sql<string>`(
-                select count(*) from entry_revision_attachments era
-                where era.tenant_id = ri.tenant_id and era.revision_id = ri.revision_id
-              )`.as('attachmentCount'),
+      eb.cast<string>('ri.createdAt', 'text').as('submittedIso'),
+      eb
+        .selectFrom('EntryRevisionAttachment as era')
+        .select((count) => count.fn.countAll<string>().as('n'))
+        .whereRef('era.tenantId', '=', 'ri.tenantId')
+        .whereRef('era.revisionId', '=', 'ri.revisionId')
+        .as('attachmentCount'),
     ])
     .where('ri.tenantId', '=', input.tenantId)
     .where('ri.state', '=', 'active')
-    .where(
+    .where((eb) =>
       input.batchIds.length === 0
-        ? sql<boolean>`false`
-        : sql<boolean>`e.batch_id = any(${uuidArray(input.batchIds)})`,
+        ? eb.lit(false)
+        : eb('e.batchId', '=', eb.fn.any(uuidArray(input.batchIds))),
     )
     .where((eb) => atHeldNode(input.tenantId, input.userId, eb.ref('ri.currentNodeId')))
-    .where(
-      mayActOn({
-        tenantId: sql`${input.tenantId}`,
-        batchId: sql.ref('e.batch_id'),
-        nodeId: sql.ref('ri.current_node_id'),
-        roleIds: sql.ref('ri.current_role_ids'),
-        userId: sql`${input.userId}`,
-        subjectUserId: sql.ref('bp.user_id'),
-        actorId: sql.ref('er.actor_id'),
-        instanceId: sql.ref('ri.id'),
-        route: sql.ref('ri.current_route'),
-      }),
-    )
+    .where((eb) => mayActOn(roundActor(eb, input.tenantId, input.userId)))
 }
 
 /**
@@ -1225,42 +1256,54 @@ export const setInstanceState = (input: {
 export const blockedGroups = (tenantId: string, batchId: string) =>
   db
     .query((k) =>
-      sql<{
-        node_id: string | null
-        node_name: string | null
-        unit_path: string[] | null
-        role_ids: string[]
-        reason: string | null
-        waiting: string
-      }>`
-        select ri.current_node_id as node_id, n.name as node_name,
-               -- the unit from the root down, as the organization names it
-               -- today: two classes called 1 are told apart by where they sit
-               (select array_agg(a.name order by a.depth)
-                  from org_nodes a
-                 where a.tenant_id = ${tenantId} and a.path @> n.path) as unit_path,
-               ri.current_role_ids as role_ids, ri.blocked_reason as reason,
-               count(*)::text as waiting
-        from review_instances ri
-        join entries e on e.tenant_id = ri.tenant_id and e.id = ri.entry_id
-        -- left, because a round stopped at a step that resolved to no unit
-        -- has no node to join to, and those are exactly the ones an
-        -- administrator most needs to see: a duty nobody anywhere holds
-        left join org_nodes n on n.tenant_id = ri.tenant_id and n.id = ri.current_node_id
-        where ri.tenant_id = ${tenantId} and e.batch_id = ${batchId} and ri.state = 'blocked'
-        group by ri.current_node_id, n.name, n.path, ri.current_role_ids, ri.blocked_reason
-        -- read from the root down, so the classes of one college stand
-        -- together and two classes of one name keep one order between them
-        order by unit_path nulls first, node_id, role_ids, reason
-      `.execute(k),
+      k
+        .selectFrom('ReviewInstance as ri')
+        .innerJoin('Entry as e', (join) =>
+          join.onRef('e.tenantId', '=', 'ri.tenantId').onRef('e.id', '=', 'ri.entryId'),
+        )
+        // left, because a round stopped at a step that resolved to no unit
+        // has no node to join to, and those are exactly the ones an
+        // administrator most needs to see: a duty nobody anywhere holds
+        .leftJoin('OrgNode as n', (join) =>
+          join.onRef('n.tenantId', '=', 'ri.tenantId').onRef('n.id', '=', 'ri.currentNodeId'),
+        )
+        .select((eb) => [
+          'ri.currentNodeId as nodeId',
+          'n.name as nodeName',
+          // the unit from the root down, as the organization names it
+          // today: two classes called 1 are told apart by where they sit
+          eb
+            .selectFrom('OrgNode as a')
+            .select((agg) =>
+              agg.fn.agg<string[]>('array_agg', ['a.name']).orderBy('a.depth').as('p'),
+            )
+            .where('a.tenantId', '=', tenantId)
+            // ltree containment, PostgreSQL's own operator
+            .where((q) => sql<boolean>`${q.ref('a.path')} @> ${q.ref('n.path')}`)
+            .as('unitPath'),
+          'ri.currentRoleIds as roleIds',
+          'ri.blockedReason as reason',
+          eb.fn.countAll<string>().as('waiting'),
+        ])
+        .where('ri.tenantId', '=', tenantId)
+        .where('e.batchId', '=', batchId)
+        .where('ri.state', '=', 'blocked')
+        .groupBy(['ri.currentNodeId', 'n.name', 'n.path', 'ri.currentRoleIds', 'ri.blockedReason'])
+        // read from the root down, so the classes of one college stand
+        // together and two classes of one name keep one order between them
+        .orderBy('unitPath', (order) => order.asc().nullsFirst())
+        .orderBy('nodeId')
+        .orderBy('roleIds')
+        .orderBy('reason')
+        .execute(),
     )
     .pipe(
-      Effect.map(({ rows }) =>
+      Effect.map((rows) =>
         rows.map((row) => ({
-          nodeId: row.node_id === null ? null : String(row.node_id),
-          nodeName: row.node_name === null ? null : String(row.node_name),
-          unitPath: (row.unit_path ?? []).map(String),
-          roleIds: row.role_ids.map(String),
+          nodeId: row.nodeId === null ? null : String(row.nodeId),
+          nodeName: row.nodeName === null ? null : String(row.nodeName),
+          unitPath: (row.unitPath ?? []).map(String),
+          roleIds: row.roleIds.map(String),
           // why these wait: a staffing gap and a conflict rule read differently
           reason: (row.reason ?? 'no-assignee') as
             | 'no-assignee'
@@ -1579,6 +1622,22 @@ export const earlierConclusions = (tenantId: string, entryId: string, beforeRoun
     ),
   )
 
+/** the event kinds a day's work counts: every word a reviewer said on a round */
+const DECIDING_KINDS = [
+  'approved',
+  'rejected',
+  'escalated',
+  'opinion-approved',
+  'opinion-rejected',
+  'comment',
+  'recommend-approve',
+  'recommend-reject',
+]
+
+/** midnight of today on a timezone's own calendar, as an instant */
+const startOfDayIn = (timezone: string) =>
+  sql<Date>`date_trunc('day', now() at time zone ${timezone}) at time zone ${timezone}`
+
 /**
  * Decisions this person recorded on this batch today, on the batch's own
  * calendar. "Today" is the batch timezone's day, not the server's: the
@@ -1592,22 +1651,23 @@ export const decisionsToday = (input: {
 }) =>
   db
     .query((k) =>
-      sql<{ count: string }>`
-        select count(*) as count
-        from review_events re
-        join review_instances ri
-          on ri.tenant_id = re.tenant_id and ri.id = re.review_instance_id
-        join entries e on e.tenant_id = ri.tenant_id and e.id = ri.entry_id
-        where re.tenant_id = ${input.tenantId}
-          and e.batch_id = ${input.batchId}
-          and re.actor_id = ${input.userId}
-          and re.kind in ('approved', 'rejected', 'escalated', 'opinion-approved',
-                          'opinion-rejected', 'comment', 'recommend-approve', 'recommend-reject')
-          and re.created_at >=
-            date_trunc('day', now() at time zone ${input.timezone}) at time zone ${input.timezone}
-      `.execute(k),
+      k
+        .selectFrom('ReviewEvent as re')
+        .innerJoin('ReviewInstance as ri', (join) =>
+          join.onRef('ri.tenantId', '=', 're.tenantId').onRef('ri.id', '=', 're.reviewInstanceId'),
+        )
+        .innerJoin('Entry as e', (join) =>
+          join.onRef('e.tenantId', '=', 'ri.tenantId').onRef('e.id', '=', 'ri.entryId'),
+        )
+        .select((eb) => eb.fn.countAll<string>().as('count'))
+        .where('re.tenantId', '=', input.tenantId)
+        .where('e.batchId', '=', input.batchId)
+        .where('re.actorId', '=', input.userId)
+        .where('re.kind', 'in', DECIDING_KINDS)
+        .where('re.createdAt', '>=', startOfDayIn(input.timezone))
+        .executeTakeFirstOrThrow(),
     )
-    .pipe(Effect.map(({ rows }) => Number(rows[0]!.count)))
+    .pipe(Effect.map((row) => Number(row.count)))
 
 /**
  * Panel votes this person cast on this batch today - counted beside the
@@ -1623,20 +1683,25 @@ export const votesToday = (input: {
 }) =>
   db
     .query((k) =>
-      sql<{ count: string }>`
-        select count(*) as count
-        from review_votes v
-        join review_panels p on p.tenant_id = v.tenant_id and p.id = v.panel_id
-        join review_instances ri on ri.tenant_id = p.tenant_id and ri.id = p.review_instance_id
-        join entries e on e.tenant_id = ri.tenant_id and e.id = ri.entry_id
-        where v.tenant_id = ${input.tenantId}
-          and e.batch_id = ${input.batchId}
-          and v.voter_user_id = ${input.userId}
-          and v.created_at >=
-            date_trunc('day', now() at time zone ${input.timezone}) at time zone ${input.timezone}
-      `.execute(k),
+      k
+        .selectFrom('ReviewVote as v')
+        .innerJoin('ReviewPanel as p', (join) =>
+          join.onRef('p.tenantId', '=', 'v.tenantId').onRef('p.id', '=', 'v.panelId'),
+        )
+        .innerJoin('ReviewInstance as ri', (join) =>
+          join.onRef('ri.tenantId', '=', 'p.tenantId').onRef('ri.id', '=', 'p.reviewInstanceId'),
+        )
+        .innerJoin('Entry as e', (join) =>
+          join.onRef('e.tenantId', '=', 'ri.tenantId').onRef('e.id', '=', 'ri.entryId'),
+        )
+        .select((eb) => eb.fn.countAll<string>().as('count'))
+        .where('v.tenantId', '=', input.tenantId)
+        .where('e.batchId', '=', input.batchId)
+        .where('v.voterUserId', '=', input.userId)
+        .where('v.createdAt', '>=', startOfDayIn(input.timezone))
+        .executeTakeFirstOrThrow(),
     )
-    .pipe(Effect.map(({ rows }) => Number(rows[0]!.count)))
+    .pipe(Effect.map((row) => Number(row.count)))
 
 /** the group a question adds into, for the aside that says what it may total */
 export const scoreGroupOf = (tenantId: string, groupId: string) =>
@@ -1644,8 +1709,7 @@ export const scoreGroupOf = (tenantId: string, groupId: string) =>
     .query((k) =>
       k
         .selectFrom('ScoreGroup')
-        .select(['name'])
-        .select([sql<string | null>`cap::text`.as('cap')])
+        .select((eb) => ['name', eb.cast<string | null>('cap', 'text').as('cap')])
         .where('tenantId', '=', tenantId)
         .where('id', '=', groupId)
         .executeTakeFirst(),
@@ -1877,12 +1941,14 @@ export const openAskRequesterOf = (tenantId: string, instanceId: string) =>
 export const nextSupplementNo = (tenantId: string, instanceId: string) =>
   db
     .query((k) =>
-      sql<{ next: string }>`
-        select coalesce(max(request_no), 0) + 1 as next from review_supplement_requests
-        where tenant_id = ${tenantId} and review_instance_id = ${instanceId}
-      `.execute(k),
+      k
+        .selectFrom('ReviewSupplementRequest')
+        .select((eb) => eb(eb.fn.coalesce(eb.fn.max('requestNo'), eb.lit(0)), '+', 1).as('next'))
+        .where('tenantId', '=', tenantId)
+        .where('reviewInstanceId', '=', instanceId)
+        .executeTakeFirstOrThrow(),
     )
-    .pipe(Effect.map(({ rows }) => Number(rows[0]!.next)))
+    .pipe(Effect.map((row) => Number(row.next)))
 
 export const insertSupplementRequest = (input: {
   tenantId: string
@@ -2036,90 +2102,65 @@ export interface AwaitingRow {
  */
 export const reviewerDeskOf = (input: { tenantId: string; batchId: string; userId: string }) =>
   db
-    .query((k) =>
-      sql<{ queue_groups: unknown; answered_asks: unknown }>`
-        select
-          coalesce((
-            select json_agg(grouped order by grouped.count desc, grouped.name)
-            from (
-              select sg.name, count(*)::int as count
-              from review_instances ri
-              join entries e on e.tenant_id = ri.tenant_id and e.id = ri.entry_id
-              join assessment_items i on i.tenant_id = e.tenant_id and i.id = e.item_id
-              join score_groups sg on sg.tenant_id = i.tenant_id and sg.id = i.score_group_id
-              join batch_participants bp
-                on bp.tenant_id = e.tenant_id and bp.id = e.participant_id
-              join entry_revisions er on er.tenant_id = ri.tenant_id and er.id = ri.revision_id
-              where ri.tenant_id = ${input.tenantId}
-                and e.batch_id = ${input.batchId}
-                and ri.state = 'active'
-                and ${atHeldNode(input.tenantId, input.userId, sql.ref('ri.current_node_id'))}
-                and ${mayActOn({
-                  tenantId: sql`${input.tenantId}`,
-                  batchId: sql.ref('e.batch_id'),
-                  nodeId: sql.ref('ri.current_node_id'),
-                  roleIds: sql.ref('ri.current_role_ids'),
-                  userId: sql`${input.userId}`,
-                  subjectUserId: sql.ref('bp.user_id'),
-                  actorId: sql.ref('er.actor_id'),
-                  instanceId: sql.ref('ri.id'),
-                  route: sql.ref('ri.current_route'),
-                })}
-              group by sg.name
-            ) grouped
-          ), '[]'::json) as queue_groups,
-          coalesce((
-            select json_agg(asked order by asked.answered_at desc)
-            from (
-              select su.display_name as who, i.title as item_title, sr.answered_at
-              from review_supplement_requests sr
-              join review_instances ri
-                on ri.tenant_id = sr.tenant_id and ri.id = sr.review_instance_id
-              join entries e on e.tenant_id = ri.tenant_id and e.id = ri.entry_id
-              join assessment_items i on i.tenant_id = e.tenant_id and i.id = e.item_id
-              join batch_participants bp
-                on bp.tenant_id = e.tenant_id and bp.id = e.participant_id
-              join users su on su.tenant_id = bp.tenant_id and su.id = bp.user_id
-              join entry_revisions er on er.tenant_id = ri.tenant_id and er.id = ri.revision_id
-              where sr.tenant_id = ${input.tenantId}
-                and e.batch_id = ${input.batchId}
-                and sr.requested_by = ${input.userId}
-                and sr.status = 'answered'
-                and ri.state in ('active', 'blocked')
-                and ${atHeldNode(input.tenantId, input.userId, sql.ref('ri.current_node_id'))}
-                and ${mayActOn({
-                  tenantId: sql`${input.tenantId}`,
-                  batchId: sql.ref('e.batch_id'),
-                  nodeId: sql.ref('ri.current_node_id'),
-                  roleIds: sql.ref('ri.current_role_ids'),
-                  userId: sql`${input.userId}`,
-                  subjectUserId: sql.ref('bp.user_id'),
-                  actorId: sql.ref('er.actor_id'),
-                  instanceId: sql.ref('ri.id'),
-                  route: sql.ref('ri.current_route'),
-                })}
-            ) asked
-          ), '[]'::json) as answered_asks
-      `.execute(k),
-    )
+    .query((k) => {
+      const myRounds = () =>
+        k
+          .selectFrom('ReviewInstance as ri')
+          .innerJoin('Entry as e', (join) =>
+            join.onRef('e.tenantId', '=', 'ri.tenantId').onRef('e.id', '=', 'ri.entryId'),
+          )
+          .innerJoin('AssessmentItem as i', (join) =>
+            join.onRef('i.tenantId', '=', 'e.tenantId').onRef('i.id', '=', 'e.itemId'),
+          )
+          .innerJoin('BatchParticipant as bp', (join) =>
+            join.onRef('bp.tenantId', '=', 'e.tenantId').onRef('bp.id', '=', 'e.participantId'),
+          )
+          .innerJoin('EntryRevision as er', (join) =>
+            join.onRef('er.tenantId', '=', 'ri.tenantId').onRef('er.id', '=', 'ri.revisionId'),
+          )
+          .where('ri.tenantId', '=', input.tenantId)
+          .where('e.batchId', '=', input.batchId)
+          .where((eb) => atHeldNode(input.tenantId, input.userId, eb.ref('ri.currentNodeId')))
+          .where((eb) => mayActOn(roundActor(eb, input.tenantId, input.userId)))
+      return k
+        .selectNoFrom(() => [
+          jsonArrayFrom(
+            myRounds()
+              .innerJoin('ScoreGroup as sg', (join) =>
+                join.onRef('sg.tenantId', '=', 'i.tenantId').onRef('sg.id', '=', 'i.scoreGroupId'),
+              )
+              .select((eb) => ['sg.name', eb.cast<number>(eb.fn.countAll(), 'integer').as('count')])
+              .where('ri.state', '=', 'active')
+              .groupBy('sg.name')
+              .orderBy('count', 'desc')
+              .orderBy('sg.name'),
+          ).as('queueGroups'),
+          jsonArrayFrom(
+            myRounds()
+              .innerJoin('ReviewSupplementRequest as sr', (join) =>
+                join
+                  .onRef('sr.tenantId', '=', 'ri.tenantId')
+                  .onRef('sr.reviewInstanceId', '=', 'ri.id'),
+              )
+              .innerJoin('User as su', (join) =>
+                join.onRef('su.tenantId', '=', 'bp.tenantId').onRef('su.id', '=', 'bp.userId'),
+              )
+              .select(['su.displayName as who', 'i.title as itemTitle', 'sr.answeredAt'])
+              .where('sr.requestedBy', '=', input.userId)
+              .where('sr.status', '=', 'answered')
+              .where('ri.state', 'in', ['active', 'blocked'])
+              .orderBy('sr.answeredAt', 'desc'),
+          ).as('answeredAsks'),
+        ])
+        .executeTakeFirstOrThrow()
+    })
     .pipe(
-      Effect.map(({ rows }) => {
-        const row = rows[0]
-        const groups = (Array.isArray(row?.queue_groups) ? row.queue_groups : []) as readonly {
-          name: string
-          count: number
-        }[]
-        const asks = (Array.isArray(row?.answered_asks) ? row.answered_asks : []) as readonly {
-          who: string | null
-          item_title: string
-        }[]
-        return {
-          pendingCount: groups.reduce((sum, group) => sum + group.count, 0),
-          answeredAskCount: asks.length,
-          queueGroups: groups.map((group) => ({ name: group.name, count: group.count })),
-          answeredAsks: asks.map((ask) => ({ who: ask.who, itemTitle: ask.item_title })),
-        }
-      }),
+      Effect.map((row) => ({
+        pendingCount: row.queueGroups.reduce((sum, group) => sum + group.count, 0),
+        answeredAskCount: row.answeredAsks.length,
+        queueGroups: row.queueGroups.map((group) => ({ name: group.name, count: group.count })),
+        answeredAsks: row.answeredAsks.map((ask) => ({ who: ask.who, itemTitle: ask.itemTitle })),
+      })),
     )
 
 export const awaitingQuery = (
@@ -2161,9 +2202,9 @@ export const awaitingQuery = (
       'su.businessNo',
       'i.title as itemTitle',
     ])
-    .select([
+    .select((eb) => [
       epoch('sr.created_at').as('requestedMs'),
-      sql<string>`sr.created_at::text`.as('requestedIso'),
+      eb.cast<string>('sr.createdAt', 'text').as('requestedIso'),
       epoch('sr.answered_at').as('answeredMs'),
     ])
     .where('sr.tenantId', '=', input.tenantId)
@@ -2183,19 +2224,7 @@ export const awaitingQuery = (
       ]),
     )
     .where((eb) => atHeldNode(input.tenantId, input.userId, eb.ref('ri.currentNodeId')))
-    .where(
-      mayActOn({
-        tenantId: sql`${input.tenantId}`,
-        batchId: sql.ref('e.batch_id'),
-        nodeId: sql.ref('ri.current_node_id'),
-        roleIds: sql.ref('ri.current_role_ids'),
-        userId: sql`${input.userId}`,
-        subjectUserId: sql.ref('bp.user_id'),
-        actorId: sql.ref('er.actor_id'),
-        instanceId: sql.ref('ri.id'),
-        route: sql.ref('ri.current_route'),
-      }),
-    )
+    .where((eb) => mayActOn(roundActor(eb, input.tenantId, input.userId)))
 }
 
 export const supplementAttachmentHistory = (tenantId: string, entryId: string) =>
@@ -2292,37 +2321,44 @@ export const openSupplementsOfEntries = (tenantId: string, entryIds: readonly st
 export const mayReviewEntry = (input: { tenantId: string; userId: string; entryId: string }) =>
   db
     .query((k) =>
-      sql<{ ok: boolean }>`
-        select exists (
-          select 1
-          from review_instances ri
-          join entries e on e.tenant_id = ri.tenant_id and e.id = ri.entry_id
-          join batch_participants bp on bp.tenant_id = e.tenant_id and bp.id = e.participant_id
-          join entry_revisions er on er.tenant_id = ri.tenant_id and er.id = ri.revision_id
-          where ri.tenant_id = ${input.tenantId}
-            and ri.entry_id = ${input.entryId}
-            and ri.state in (${sql.join(OPEN_REVIEW_STATES.map((state) => sql`${state}`))})
-            and ${heldThroughOpenAsk({
-              tenantId: sql.ref('ri.tenant_id'),
-              instanceId: sql.ref('ri.id'),
-              state: sql.ref('ri.state'),
-              userId: sql`${input.userId}`,
-            })}
-            and ${mayActOn({
-              tenantId: sql`${input.tenantId}`,
-              batchId: sql.ref('e.batch_id'),
-              nodeId: sql.ref('ri.current_node_id'),
-              roleIds: sql.ref('ri.current_role_ids'),
-              userId: sql`${input.userId}`,
-              subjectUserId: sql.ref('bp.user_id'),
-              actorId: sql.ref('er.actor_id'),
-              instanceId: sql.ref('ri.id'),
-              route: sql.ref('ri.current_route'),
-            })}
-        ) as ok
-      `.execute(k),
+      k
+        .selectNoFrom((eb) =>
+          eb
+            .exists(
+              eb
+                .selectFrom('ReviewInstance as ri')
+                .innerJoin('Entry as e', (join) =>
+                  join.onRef('e.tenantId', '=', 'ri.tenantId').onRef('e.id', '=', 'ri.entryId'),
+                )
+                .innerJoin('BatchParticipant as bp', (join) =>
+                  join
+                    .onRef('bp.tenantId', '=', 'e.tenantId')
+                    .onRef('bp.id', '=', 'e.participantId'),
+                )
+                .innerJoin('EntryRevision as er', (join) =>
+                  join
+                    .onRef('er.tenantId', '=', 'ri.tenantId')
+                    .onRef('er.id', '=', 'ri.revisionId'),
+                )
+                .select('ri.id')
+                .where('ri.tenantId', '=', input.tenantId)
+                .where('ri.entryId', '=', input.entryId)
+                .where('ri.state', 'in', [...OPEN_REVIEW_STATES])
+                .where((row) =>
+                  heldThroughOpenAsk({
+                    tenantId: row.ref('ri.tenantId'),
+                    instanceId: row.ref('ri.id'),
+                    state: row.ref('ri.state'),
+                    userId: row.val(input.userId),
+                  }),
+                )
+                .where((row) => mayActOn(roundActor(row, input.tenantId, input.userId))),
+            )
+            .as('ok'),
+        )
+        .executeTakeFirstOrThrow(),
     )
-    .pipe(Effect.map(({ rows }) => Boolean(rows[0]!.ok)))
+    .pipe(Effect.map((row) => Boolean(row.ok)))
 
 // --- panels -----------------------------------------------------------------
 //
@@ -2351,13 +2387,15 @@ export const openRoundOf = (tenantId: string, entryId: string) =>
 export const lockReviewInstance = (tenantId: string, instanceId: string) =>
   db
     .query((k) =>
-      sql<{ id: string }>`
-        select id from review_instances
-        where tenant_id = ${tenantId} and id = ${instanceId}
-        for update
-      `.execute(k),
+      k
+        .selectFrom('ReviewInstance')
+        .select('id')
+        .where('tenantId', '=', tenantId)
+        .where('id', '=', instanceId)
+        .forUpdate()
+        .execute(),
     )
-    .pipe(Effect.map(({ rows }) => rows.length > 0))
+    .pipe(Effect.map((rows) => rows.length > 0))
 
 export interface PanelRow {
   id: string
@@ -2476,16 +2514,27 @@ export const endPanelAssignment = (input: {
 }) =>
   db
     .query((k) =>
-      sql<{ id: string }>`
-        update review_panel_assignments pa
-        set ended_at = now(), ended_reason = ${input.reason}
-        where pa.tenant_id = ${input.tenantId} and pa.id = ${input.assignmentId}
-          and pa.ended_at is null
-          and not exists (select 1 from review_votes v where v.assignment_id = pa.id)
-        returning pa.id
-      `.execute(k),
+      k
+        // unaliased: the entity naming does not reach an aliased update target
+        .updateTable('ReviewPanelAssignment')
+        .set({ endedAt: sql<Date>`now()`, endedReason: input.reason })
+        .where('ReviewPanelAssignment.tenantId', '=', input.tenantId)
+        .where('ReviewPanelAssignment.id', '=', input.assignmentId)
+        .where('ReviewPanelAssignment.endedAt', 'is', null)
+        .where((eb) =>
+          eb.not(
+            eb.exists(
+              eb
+                .selectFrom('ReviewVote as v')
+                .select('v.id')
+                .whereRef('v.assignmentId', '=', 'ReviewPanelAssignment.id'),
+            ),
+          ),
+        )
+        .returning('ReviewPanelAssignment.id')
+        .execute(),
     )
-    .pipe(Effect.map(({ rows }) => rows.length > 0))
+    .pipe(Effect.map((rows) => rows.length > 0))
 
 /**
  * Takes an empty seat, atomically: the seat number is whichever of 1..count
@@ -2551,31 +2600,34 @@ export interface PanelVoteRow {
 export const votesOfPanel = (tenantId: string, panelId: string) =>
   db
     .query((k) =>
-      sql<{
-        voter_user_id: string
-        voter_name: string | null
-        decision: string
-        reason: string | null
-        comment: string | null
-        created_ms: number
-      }>`
-        select v.voter_user_id, u.display_name as voter_name, v.decision, v.reason, v.comment,
-               (extract(epoch from v.created_at) * 1000)::float8 as created_ms
-        from review_votes v
-        left join users u on u.tenant_id = v.tenant_id and u.id = v.voter_user_id
-        where v.tenant_id = ${tenantId} and v.panel_id = ${panelId}
-        order by v.created_at, v.id
-      `.execute(k),
+      k
+        .selectFrom('ReviewVote as v')
+        .leftJoin('User as u', (join) =>
+          join.onRef('u.tenantId', '=', 'v.tenantId').onRef('u.id', '=', 'v.voterUserId'),
+        )
+        .select([
+          'v.voterUserId',
+          'u.displayName as voterName',
+          'v.decision',
+          'v.reason',
+          'v.comment',
+          epoch('v.created_at').as('createdMs'),
+        ])
+        .where('v.tenantId', '=', tenantId)
+        .where('v.panelId', '=', panelId)
+        .orderBy('v.createdAt')
+        .orderBy('v.id')
+        .execute(),
     )
     .pipe(
-      Effect.map(({ rows }) =>
+      Effect.map((rows) =>
         rows.map((row): PanelVoteRow => ({
-          voterUserId: String(row.voter_user_id),
-          voterName: row.voter_name,
+          voterUserId: String(row.voterUserId),
+          voterName: row.voterName,
           decision: String(row.decision) as PanelVoteRow['decision'],
           reason: row.reason,
           comment: row.comment,
-          createdAt: Number(row.created_ms),
+          createdAt: Number(row.createdMs),
         })),
       ),
     )
@@ -2635,40 +2687,45 @@ export interface StageOpinionRow {
 export const resolvedPanelOpinions = (tenantId: string, instanceId: string) =>
   db
     .query((k) =>
-      sql<{
-        stage_id: string
-        voter_user_id: string
-        voter_name: string | null
-        decision: string
-        reason: string | null
-        comment: string | null
-        created_ms: number
-      }>`
-        select p.stage_id, v.voter_user_id, u.display_name as voter_name, v.decision,
-               v.reason, v.comment,
-               (extract(epoch from v.created_at) * 1000)::float8 as created_ms
-        from review_panels p
-        join review_votes v on v.tenant_id = p.tenant_id and v.panel_id = p.id
-        left join users u on u.tenant_id = v.tenant_id and u.id = v.voter_user_id
-        where p.tenant_id = ${tenantId} and p.review_instance_id = ${instanceId}
-          and p.state = 'resolved'
-        order by p.created_at, v.created_at, v.id
-      `.execute(k),
+      k
+        .selectFrom('ReviewPanel as p')
+        .innerJoin('ReviewVote as v', (join) =>
+          join.onRef('v.tenantId', '=', 'p.tenantId').onRef('v.panelId', '=', 'p.id'),
+        )
+        .leftJoin('User as u', (join) =>
+          join.onRef('u.tenantId', '=', 'v.tenantId').onRef('u.id', '=', 'v.voterUserId'),
+        )
+        .select([
+          'p.stageId',
+          'v.voterUserId',
+          'u.displayName as voterName',
+          'v.decision',
+          'v.reason',
+          'v.comment',
+          epoch('v.created_at').as('createdMs'),
+        ])
+        .where('p.tenantId', '=', tenantId)
+        .where('p.reviewInstanceId', '=', instanceId)
+        .where('p.state', '=', 'resolved')
+        .orderBy('p.createdAt')
+        .orderBy('v.createdAt')
+        .orderBy('v.id')
+        .execute(),
     )
     .pipe(
-      Effect.map(({ rows }) => {
+      Effect.map((rows) => {
         const byStage = new Map<string, PanelVoteRow[]>()
         for (const row of rows) {
-          const bucket = byStage.get(String(row.stage_id)) ?? []
+          const bucket = byStage.get(String(row.stageId)) ?? []
           bucket.push({
-            voterUserId: String(row.voter_user_id),
-            voterName: row.voter_name,
+            voterUserId: String(row.voterUserId),
+            voterName: row.voterName,
             decision: String(row.decision) as PanelVoteRow['decision'],
             reason: row.reason,
             comment: row.comment,
-            createdAt: Number(row.created_ms),
+            createdAt: Number(row.createdMs),
           })
-          byStage.set(String(row.stage_id), bucket)
+          byStage.set(String(row.stageId), bucket)
         }
         return byStage
       }),
