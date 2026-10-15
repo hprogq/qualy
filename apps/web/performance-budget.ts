@@ -36,5 +36,7 @@ export const screenBudgets: readonly ScreenBudget[] = [
     small2: 61,
   },
 ]
-export const entryBrotliBudget = 62 * 1024
+// Entry re-measured 2026-10-15 at 64256 bytes after React 19.3.0 (react-dom
+// grew by about 7 KB Brotli); +10% rounded up to 1 KiB gives 70 KiB (ADR 0011).
+export const entryBrotliBudget = 70 * 1024
 export const messagePoolBytes = 48 * 1024

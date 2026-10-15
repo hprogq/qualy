@@ -70,11 +70,11 @@ catalogs:
       specifier: 8.23.1
       version: 8.23.1
     '@types/react':
-      specifier: 19.2.18
-      version: 19.2.18
+      specifier: 19.3.0
+      version: 19.3.0
     '@types/react-dom':
-      specifier: 19.2.4
-      version: 19.2.4
+      specifier: 19.3.0
+      version: 19.3.0
     '@vitejs/plugin-react':
       specifier: 6.1.2
       version: 6.1.2
@@ -163,11 +163,11 @@ catalogs:
       specifier: 2.8.6
       version: 2.8.6
     react:
-      specifier: 19.2.8
-      version: 19.2.8
+      specifier: 19.3.0
+      version: 19.3.0
     react-dom:
-      specifier: 19.2.8
-      version: 19.2.8
+      specifier: 19.3.0
+      version: 19.3.0
     react-router:
       specifier: 8.4.0
       version: 8.4.0
@@ -425,7 +425,7 @@ importers:
         version: 5.0.4(@types/node@24.13.3)(@vitest/browser-playwright@5.0.4)(@vitest/coverage-v8@5.0.4)(@vitest/ui@5.0.4)(vite@8.3.4(@types/node@24.13.3)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
       vitest-browser-react:
         specifier: 'catalog:'
-        version: 2.3.0(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(vitest@5.0.4)
+        version: 2.3.0(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(vitest@5.0.4)
       yaml:
         specifier: 'catalog:'
         version: 2.9.1
@@ -606,16 +606,16 @@ importers:
         version: link:../../packages/web/value-form
       lucide-react:
         specifier: ^0.552.0
-        version: 0.552.0(react@19.2.8)
+        version: 0.552.0(react@19.3.0)
       react:
         specifier: 'catalog:'
-        version: 19.2.8
+        version: 19.3.0
       react-dom:
         specifier: 'catalog:'
-        version: 19.2.8(react@19.2.8)
+        version: 19.3.0(react@19.3.0)
       react-router:
         specifier: 'catalog:'
-        version: 8.4.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 8.4.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
     devDependencies:
       '@qualy/assembly':
         specifier: workspace:*
@@ -646,13 +646,13 @@ importers:
         version: 0.19.1(patch_hash=a57e4fbec0feb76635e8fabc7e1e1a3c0c8d3a66557f2313ed2b661796e98266)(supports-color@7.2.0)(unplugin@2.3.11)
       '@tanstack/react-query':
         specifier: 'catalog:'
-        version: 5.104.2(react@19.2.8)
+        version: 5.104.2(react@19.3.0)
       '@types/react':
         specifier: 'catalog:'
-        version: 19.2.18
+        version: 19.3.0
       '@types/react-dom':
         specifier: 'catalog:'
-        version: 19.2.4(@types/react@19.2.18)
+        version: 19.3.0(@types/react@19.3.0)
       '@vitejs/plugin-react':
         specifier: 'catalog:'
         version: 6.1.2(vite@8.3.4(@types/node@24.13.3)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
@@ -1062,7 +1062,7 @@ importers:
         version: 0.19.1
       '@tanstack/react-query':
         specifier: 'catalog:'
-        version: 5.104.2(react@19.2.8)
+        version: 5.104.2(react@19.3.0)
       effect:
         specifier: 'catalog:'
         version: 4.0.4
@@ -1074,16 +1074,16 @@ importers:
         version: 0.29.6
       lucide-react:
         specifier: ^0.552.0
-        version: 0.552.0(react@19.2.8)
+        version: 0.552.0(react@19.3.0)
       motion:
         specifier: 'catalog:'
-        version: 12.43.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 12.43.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       react:
         specifier: 'catalog:'
-        version: 19.2.8
+        version: 19.3.0
       react-router:
         specifier: 'catalog:'
-        version: 8.4.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 8.4.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
     devDependencies:
       '@qualy/plugin-assessment-evidence':
         specifier: workspace:*
@@ -1105,7 +1105,7 @@ importers:
         version: link:../../../build/tsconfig
       '@types/react':
         specifier: 'catalog:'
-        version: 19.2.18
+        version: 19.3.0
 
   packages/plugins/assessment/evidence:
     dependencies:
@@ -1210,7 +1210,7 @@ importers:
         version: 0.19.1
       '@tanstack/react-query':
         specifier: 'catalog:'
-        version: 5.104.2(react@19.2.8)
+        version: 5.104.2(react@19.3.0)
       effect:
         specifier: 'catalog:'
         version: 4.0.4
@@ -1219,13 +1219,13 @@ importers:
         version: 0.29.6
       lucide-react:
         specifier: ^0.552.0
-        version: 0.552.0(react@19.2.8)
+        version: 0.552.0(react@19.3.0)
       monaco-editor:
         specifier: 0.57.0
         version: 0.57.0
       react:
         specifier: 'catalog:'
-        version: 19.2.8
+        version: 19.3.0
       shiki:
         specifier: 'catalog:'
         version: 4.5.0
@@ -1250,7 +1250,7 @@ importers:
         version: link:../../../build/tsconfig
       '@types/react':
         specifier: 'catalog:'
-        version: 19.2.18
+        version: 19.3.0
       '@types/ws':
         specifier: ^8.18.2
         version: 8.18.2
@@ -1313,7 +1313,7 @@ importers:
         version: 0.19.1
       '@tanstack/react-query':
         specifier: 'catalog:'
-        version: 5.104.2(react@19.2.8)
+        version: 5.104.2(react@19.3.0)
       effect:
         specifier: 'catalog:'
         version: 4.0.4
@@ -1322,10 +1322,10 @@ importers:
         version: 0.29.6
       lucide-react:
         specifier: ^0.552.0
-        version: 0.552.0(react@19.2.8)
+        version: 0.552.0(react@19.3.0)
       react:
         specifier: 'catalog:'
-        version: 19.2.8
+        version: 19.3.0
     devDependencies:
       '@qualy/testkit':
         specifier: workspace:*
@@ -1335,7 +1335,7 @@ importers:
         version: link:../../../build/tsconfig
       '@types/react':
         specifier: 'catalog:'
-        version: 19.2.18
+        version: 19.3.0
 
   packages/plugins/base/auth:
     dependencies:
@@ -1416,7 +1416,7 @@ importers:
         version: 0.19.1
       '@tanstack/react-query':
         specifier: 'catalog:'
-        version: 5.104.2(react@19.2.8)
+        version: 5.104.2(react@19.3.0)
       effect:
         specifier: 'catalog:'
         version: 4.0.4
@@ -1428,16 +1428,16 @@ importers:
         version: 0.29.6
       lucide-react:
         specifier: ^0.552.0
-        version: 0.552.0(react@19.2.8)
+        version: 0.552.0(react@19.3.0)
       motion:
         specifier: 'catalog:'
-        version: 12.43.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 12.43.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       react:
         specifier: 'catalog:'
-        version: 19.2.8
+        version: 19.3.0
       react-router:
         specifier: 'catalog:'
-        version: 8.4.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 8.4.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       undici:
         specifier: 'catalog:'
         version: 8.11.2
@@ -1477,7 +1477,7 @@ importers:
         version: link:../../../build/tsconfig
       '@types/react':
         specifier: 'catalog:'
-        version: 19.2.18
+        version: 19.3.0
       altcha-lib:
         specifier: 'catalog:'
         version: 2.5.0
@@ -1605,19 +1605,19 @@ importers:
         version: 4.0.4
       lucide-react:
         specifier: ^0.552.0
-        version: 0.552.0(react@19.2.8)
+        version: 0.552.0(react@19.3.0)
       motion:
         specifier: 'catalog:'
-        version: 12.43.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 12.43.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       pinyin-pro:
         specifier: 3.29.5
         version: 3.29.5
       react:
         specifier: 'catalog:'
-        version: 19.2.8
+        version: 19.3.0
       react-router:
         specifier: 'catalog:'
-        version: 8.4.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 8.4.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
     devDependencies:
       '@qualy/plugin-database':
         specifier: workspace:*
@@ -1630,7 +1630,7 @@ importers:
         version: link:../../../build/tsconfig
       '@types/react':
         specifier: 'catalog:'
-        version: 19.2.18
+        version: 19.3.0
 
   packages/plugins/base/auth-oidc:
     dependencies:
@@ -1742,7 +1742,7 @@ importers:
         version: 0.19.1
       '@tanstack/react-query':
         specifier: 'catalog:'
-        version: 5.104.2(react@19.2.8)
+        version: 5.104.2(react@19.3.0)
       effect:
         specifier: 'catalog:'
         version: 4.0.4
@@ -1751,10 +1751,10 @@ importers:
         version: 0.29.6
       lucide-react:
         specifier: ^0.552.0
-        version: 0.552.0(react@19.2.8)
+        version: 0.552.0(react@19.3.0)
       react:
         specifier: 'catalog:'
-        version: 19.2.8
+        version: 19.3.0
     devDependencies:
       '@qualy/plugin-audit':
         specifier: workspace:*
@@ -1773,7 +1773,7 @@ importers:
         version: link:../../../build/tsconfig
       '@types/react':
         specifier: 'catalog:'
-        version: 19.2.18
+        version: 19.3.0
       exceljs:
         specifier: 'catalog:'
         version: 4.4.0
@@ -1812,20 +1812,20 @@ importers:
         version: 4.0.4
       lucide-react:
         specifier: ^0.552.0
-        version: 0.552.0(react@19.2.8)
+        version: 0.552.0(react@19.3.0)
       react:
         specifier: 'catalog:'
-        version: 19.2.8
+        version: 19.3.0
       react-router:
         specifier: 'catalog:'
-        version: 8.4.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 8.4.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
     devDependencies:
       '@qualy/tsconfig':
         specifier: workspace:*
         version: link:../../../build/tsconfig
       '@types/react':
         specifier: 'catalog:'
-        version: 19.2.18
+        version: 19.3.0
 
   packages/plugins/base/org:
     dependencies:
@@ -1882,7 +1882,7 @@ importers:
         version: 0.19.1
       '@tanstack/react-query':
         specifier: 'catalog:'
-        version: 5.104.2(react@19.2.8)
+        version: 5.104.2(react@19.3.0)
       effect:
         specifier: 'catalog:'
         version: 4.0.4
@@ -1891,10 +1891,10 @@ importers:
         version: 0.29.6
       lucide-react:
         specifier: ^0.552.0
-        version: 0.552.0(react@19.2.8)
+        version: 0.552.0(react@19.3.0)
       react:
         specifier: 'catalog:'
-        version: 19.2.8
+        version: 19.3.0
     devDependencies:
       '@qualy/plugin-audit':
         specifier: workspace:*
@@ -1916,7 +1916,7 @@ importers:
         version: link:../../../build/tsconfig
       '@types/react':
         specifier: 'catalog:'
-        version: 19.2.18
+        version: 19.3.0
 
   packages/plugins/base/rbac:
     dependencies:
@@ -1979,7 +1979,7 @@ importers:
         version: 0.19.1
       '@tanstack/react-query':
         specifier: 'catalog:'
-        version: 5.104.2(react@19.2.8)
+        version: 5.104.2(react@19.3.0)
       effect:
         specifier: 'catalog:'
         version: 4.0.4
@@ -1988,10 +1988,10 @@ importers:
         version: 0.29.6
       lucide-react:
         specifier: ^0.552.0
-        version: 0.552.0(react@19.2.8)
+        version: 0.552.0(react@19.3.0)
       react:
         specifier: 'catalog:'
-        version: 19.2.8
+        version: 19.3.0
     devDependencies:
       '@qualy/plugin-audit':
         specifier: workspace:*
@@ -2004,7 +2004,7 @@ importers:
         version: link:../../../build/tsconfig
       '@types/react':
         specifier: 'catalog:'
-        version: 19.2.18
+        version: 19.3.0
 
   packages/plugins/base/settings:
     dependencies:
@@ -2061,7 +2061,7 @@ importers:
         version: 0.19.1
       '@tanstack/react-query':
         specifier: 'catalog:'
-        version: 5.104.2(react@19.2.8)
+        version: 5.104.2(react@19.3.0)
       effect:
         specifier: 'catalog:'
         version: 4.0.4
@@ -2070,7 +2070,7 @@ importers:
         version: 0.29.6
       react:
         specifier: 'catalog:'
-        version: 19.2.8
+        version: 19.3.0
     devDependencies:
       '@qualy/plugin-audit':
         specifier: workspace:*
@@ -2089,7 +2089,7 @@ importers:
         version: link:../../../build/tsconfig
       '@types/react':
         specifier: 'catalog:'
-        version: 19.2.18
+        version: 19.3.0
 
   packages/plugins/demo/ping:
     dependencies:
@@ -2128,7 +2128,7 @@ importers:
         version: 0.19.1
       '@tanstack/react-query':
         specifier: 'catalog:'
-        version: 5.104.2(react@19.2.8)
+        version: 5.104.2(react@19.3.0)
       effect:
         specifier: 'catalog:'
         version: 4.0.4
@@ -2137,14 +2137,14 @@ importers:
         version: 0.29.6
       react:
         specifier: 'catalog:'
-        version: 19.2.8
+        version: 19.3.0
     devDependencies:
       '@qualy/tsconfig':
         specifier: workspace:*
         version: link:../../../build/tsconfig
       '@types/react':
         specifier: 'catalog:'
-        version: 19.2.18
+        version: 19.3.0
 
   packages/plugins/infra/captcha:
     dependencies:
@@ -2180,7 +2180,7 @@ importers:
         version: 4.0.4
       motion:
         specifier: 'catalog:'
-        version: 12.43.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 12.43.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
     devDependencies:
       '@qualy/plugin-database':
         specifier: workspace:*
@@ -2193,10 +2193,10 @@ importers:
         version: link:../../../build/tsconfig
       '@types/react':
         specifier: 'catalog:'
-        version: 19.2.18
+        version: 19.3.0
       react:
         specifier: 'catalog:'
-        version: 19.2.8
+        version: 19.3.0
 
   packages/plugins/infra/captcha-altcha:
     dependencies:
@@ -2383,13 +2383,13 @@ importers:
         version: link:../../../web/runtime
       '@types/react':
         specifier: 'catalog:'
-        version: 19.2.18
+        version: 19.3.0
       react:
         specifier: 'catalog:'
-        version: 19.2.8
+        version: 19.3.0
       react-router:
         specifier: 'catalog:'
-        version: 8.4.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 8.4.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
 
   packages/plugins/infra/rum-tencent:
     dependencies:
@@ -2653,23 +2653,23 @@ importers:
         version: 4.0.4
       react:
         specifier: 'catalog:'
-        version: 19.2.8
+        version: 19.3.0
       react-router:
         specifier: 'catalog:'
-        version: 8.4.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 8.4.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
     devDependencies:
       '@qualy/tsconfig':
         specifier: workspace:*
         version: link:../../build/tsconfig
       '@types/react':
         specifier: 'catalog:'
-        version: 19.2.18
+        version: 19.3.0
       vitest:
         specifier: 'catalog:'
         version: 5.0.4(@types/node@24.13.3)(@vitest/browser-playwright@5.0.4)(@vitest/coverage-v8@5.0.4)(@vitest/ui@5.0.4)(vite@8.3.4(@types/node@24.13.3)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
       vitest-browser-react:
         specifier: 'catalog:'
-        version: 2.3.0(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(vitest@5.0.4)
+        version: 2.3.0(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(vitest@5.0.4)
 
   packages/web/brand:
     dependencies:
@@ -2678,14 +2678,14 @@ importers:
         version: 0.19.1
       react:
         specifier: 'catalog:'
-        version: 19.2.8
+        version: 19.3.0
     devDependencies:
       '@qualy/tsconfig':
         specifier: workspace:*
         version: link:../../build/tsconfig
       '@types/react':
         specifier: 'catalog:'
-        version: 19.2.18
+        version: 19.3.0
 
   packages/web/i18n:
     dependencies:
@@ -2694,14 +2694,14 @@ importers:
         version: link:../../contracts/i18n
       react:
         specifier: 'catalog:'
-        version: 19.2.8
+        version: 19.3.0
     devDependencies:
       '@qualy/tsconfig':
         specifier: workspace:*
         version: link:../../build/tsconfig
       '@types/react':
         specifier: 'catalog:'
-        version: 19.2.18
+        version: 19.3.0
 
   packages/web/observability:
     dependencies:
@@ -2744,26 +2744,26 @@ importers:
         version: 0.19.1
       '@tanstack/react-query':
         specifier: 'catalog:'
-        version: 5.104.2(react@19.2.8)
+        version: 5.104.2(react@19.3.0)
       effect:
         specifier: 'catalog:'
         version: 4.0.4
       lucide-react:
         specifier: ^0.552.0
-        version: 0.552.0(react@19.2.8)
+        version: 0.552.0(react@19.3.0)
       react:
         specifier: 'catalog:'
-        version: 19.2.8
+        version: 19.3.0
       react-router:
         specifier: 'catalog:'
-        version: 8.4.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 8.4.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
     devDependencies:
       '@qualy/tsconfig':
         specifier: workspace:*
         version: link:../../build/tsconfig
       '@types/react':
         specifier: 'catalog:'
-        version: 19.2.18
+        version: 19.3.0
 
   packages/web/ui:
     dependencies:
@@ -2772,13 +2772,13 @@ importers:
         version: 5.3.0
       '@mantine/core':
         specifier: 'catalog:'
-        version: 9.7.2(@mantine/hooks@9.7.2(react@19.2.8))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 9.7.2(@mantine/hooks@9.7.2(react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       '@mantine/dates':
         specifier: 'catalog:'
-        version: 9.7.2(@mantine/core@9.7.2(@mantine/hooks@9.7.2(react@19.2.8))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@mantine/hooks@9.7.2(react@19.2.8))(dayjs@1.11.23)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 9.7.2(@mantine/core@9.7.2(@mantine/hooks@9.7.2(react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(@mantine/hooks@9.7.2(react@19.3.0))(dayjs@1.11.23)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       '@mantine/hooks':
         specifier: 'catalog:'
-        version: 9.7.2(react@19.2.8)
+        version: 9.7.2(react@19.3.0)
       '@qualy/brand':
         specifier: workspace:*
         version: link:../brand
@@ -2793,35 +2793,35 @@ importers:
         version: 1.11.23
       lucide-react:
         specifier: ^0.552.0
-        version: 0.552.0(react@19.2.8)
+        version: 0.552.0(react@19.3.0)
       motion:
         specifier: 'catalog:'
-        version: 12.43.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 12.43.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       react:
         specifier: 'catalog:'
-        version: 19.2.8
+        version: 19.3.0
       react-dom:
         specifier: 'catalog:'
-        version: 19.2.8(react@19.2.8)
+        version: 19.3.0(react@19.3.0)
       react-dropzone:
         specifier: ^20.1.3
-        version: 20.1.3(@types/react@19.2.18)(react@19.2.8)
+        version: 20.1.3(@types/react@19.3.0)(react@19.3.0)
       react-photo-view:
         specifier: ^1.2.7
-        version: 1.2.7(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 1.2.7(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       sonner:
         specifier: ^2.0.8
-        version: 2.0.8(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 2.0.8(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
     devDependencies:
       '@qualy/tsconfig':
         specifier: workspace:*
         version: link:../../build/tsconfig
       '@types/react':
         specifier: 'catalog:'
-        version: 19.2.18
+        version: 19.3.0
       '@types/react-dom':
         specifier: 'catalog:'
-        version: 19.2.4(@types/react@19.2.18)
+        version: 19.3.0(@types/react@19.3.0)
 
   packages/web/value-form:
     dependencies:
@@ -2836,14 +2836,14 @@ importers:
         version: 0.19.1
       react:
         specifier: 'catalog:'
-        version: 19.2.8
+        version: 19.3.0
     devDependencies:
       '@qualy/tsconfig':
         specifier: workspace:*
         version: link:../../build/tsconfig
       '@types/react':
         specifier: 'catalog:'
-        version: 19.2.18
+        version: 19.3.0
 
   tools/fixtures/acme-browser-probe:
     devDependencies:
@@ -2855,10 +2855,10 @@ importers:
         version: link:../../../packages/build/tsconfig
       '@types/react':
         specifier: 'catalog:'
-        version: 19.2.18
+        version: 19.3.0
       react:
         specifier: 'catalog:'
-        version: 19.2.8
+        version: 19.3.0
       vitest:
         specifier: 'catalog:'
         version: 5.0.4(@types/node@24.13.3)(@vitest/browser-playwright@5.0.4)(@vitest/coverage-v8@5.0.4)(@vitest/ui@5.0.4)(vite@8.3.4(@types/node@24.13.3)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
@@ -4031,13 +4031,13 @@ packages:
   '@types/pg@8.23.1':
     resolution: {integrity: sha512-fKVHpikPdg4GKks3JuLEhvwSyvwzF23hnabPy6DD8ljVbC7+6J5dQzdv4arV6jqq57djnMgs1HKBxX4P8aBI3A==}
 
-  '@types/react-dom@19.2.4':
-    resolution: {integrity: sha512-Bsc+QHgp+P/F02XDzNCY9jnZNCUuLki36KT7VKrTXXLdHf+vHMNZnW1rVu5DNW/rCK+fya3DATySbLM4yhtKUw==}
+  '@types/react-dom@19.3.0':
+    resolution: {integrity: sha512-ZI7bU42mZXXKHn/qNLEw2IrbiINU7X5+vfgdixBHkCNpYWXjKgfQ/P+uyGb5CjOLB9UcnTeg3rylQtV2hym44Q==}
     peerDependencies:
-      '@types/react': ^19.2.0
+      '@types/react': ^19.3.0
 
-  '@types/react@19.2.18':
-    resolution: {integrity: sha512-AnzbBERsrLKtk2XSfTbYRLjQPdy116Sty4q+T+Bp3IC4l6jNBvreVPAHmpq9qhXQM7CXZPjLVmGMw9sy+hxQ3w==}
+  '@types/react@19.3.0':
+    resolution: {integrity: sha512-N0rFCuH9YoxG9/m61l9MfpJKfmLOVU0em7ipIz6TRgSSkvReLB9vL85GB+yr8Bs5leqpvg96JSwF4ZS1s4viQg==}
 
   '@types/trusted-types@2.0.7':
     resolution: {integrity: sha512-ScaPdn1dQczgbl0QFTeTOmVHFULt394XJgOQNoyVhZ6r2vLnMLJfBPd53SB52T/3G36VI1/g2MZaX0cwDuXsfw==}
@@ -5408,10 +5408,10 @@ packages:
     resolution: {integrity: sha512-xLgQil4kIUCrAzVk9fRSkxkFNwmygLFjVxXrLc65aE1F0+Zsb8rxumFBy4XKyvgMCTL6kilDq3EZ0piE2dP/Dg==}
     engines: {node: '>=18.0.0'}
 
-  react-dom@19.2.8:
-    resolution: {integrity: sha512-rVprimfGBG3DR+Tq0IQG2DT5PxKth1WIGDmj5yPmlzr4YBe7uyE+Du4oVqTDXZSHGGGXRtTJEGSSePyQCMBglQ==}
+  react-dom@19.3.0:
+    resolution: {integrity: sha512-JDk8dgif51OjFoDE70+OT9ICyYr+69HlmihNwp1+Nsfbna3t5sIiCa9ZJktDmQ4/1b/rn26hIAR2uYXDMr5r0Q==}
     peerDependencies:
-      react: ^19.2.8
+      react: ^19.3.0
 
   react-dropzone@20.1.3:
     resolution: {integrity: sha512-84ilFcyPItmPIOEU0P2u976sb8UctgcMbbQHTDmAKo7+i9m1Im2Q9swEZnv3FWNg9xdbMhGG7eUMJk1l6Ltsgw==}
@@ -5475,8 +5475,8 @@ packages:
       '@types/react':
         optional: true
 
-  react@19.2.8:
-    resolution: {integrity: sha512-PWaYA1L/q9u2u7xYQi+Y3L3Yfnie7XyLeaJICV1MGD6LprsBxcAqGjYyr0eY3p+QdsA+x/Irkt4Qif8D63+Sbw==}
+  react@19.3.0:
+    resolution: {integrity: sha512-E8LUcbtBWt20bbl2YoHfx4ZDBdxVTfOKtCZn9cDSJ4l6/nuoApcpIBcj47t2wZoVX8g2ZHuMHbiShgCR1T5Sog==}
     engines: {node: '>=0.10.0'}
 
   readable-stream@2.3.8:
@@ -5536,8 +5536,8 @@ packages:
     resolution: {integrity: sha512-5LBh1Tls8c9xgGjw3QrMwETmTMVk0oFgvrFSvWx62llR2hcEInrKNZ2GZCCuuy2lvWrdl5jhbpeqc5hRYKFOcw==}
     engines: {node: '>=10'}
 
-  scheduler@0.27.0:
-    resolution: {integrity: sha512-eNv+WrVbKu1f3vbYJT/xtiF5syA5HPIMtf9IgY/nKg0sWqzAUEvqY/xm7OcZc/qafLx/iO9FgOmeSAp4v5ti/Q==}
+  scheduler@0.28.0:
+    resolution: {integrity: sha512-juorfCmIkIw8tT+p5BXSm6PJjQF/ycEYmKyzURCIt/RaZIhL+PulbQ9Yu2z1HdOJDdqDTlxA1+xKBmHXJsczAw==}
 
   semver@6.3.1:
     resolution: {integrity: sha512-BR7VvDCVHO+q2xBEWskxS6DJE1qRnb7DxzUrogb71CWoSficBxYsiAGd+Kl0mmq/MprG9yArRkyrQxTO6XjMzA==}
@@ -6340,18 +6340,18 @@ snapshots:
       '@floating-ui/core': 1.8.0
       '@floating-ui/utils': 0.2.12
 
-  '@floating-ui/react-dom@2.1.9(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
+  '@floating-ui/react-dom@2.1.9(react-dom@19.3.0(react@19.3.0))(react@19.3.0)':
     dependencies:
       '@floating-ui/dom': 1.8.0
-      react: 19.2.8
-      react-dom: 19.2.8(react@19.2.8)
+      react: 19.3.0
+      react-dom: 19.3.0(react@19.3.0)
 
-  '@floating-ui/react@0.27.20(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
+  '@floating-ui/react@0.27.20(react-dom@19.3.0(react@19.3.0))(react@19.3.0)':
     dependencies:
-      '@floating-ui/react-dom': 2.1.9(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@floating-ui/react-dom': 2.1.9(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       '@floating-ui/utils': 0.2.12
-      react: 19.2.8
-      react-dom: 19.2.8(react@19.2.8)
+      react: 19.3.0
+      react-dom: 19.3.0(react@19.3.0)
       tabbable: 6.5.0
 
   '@floating-ui/utils@0.2.12': {}
@@ -6425,31 +6425,31 @@ snapshots:
       binaryen: 130.0.0
       fflate: 0.8.3
 
-  '@mantine/core@9.7.2(@mantine/hooks@9.7.2(react@19.2.8))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
+  '@mantine/core@9.7.2(@mantine/hooks@9.7.2(react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)':
     dependencies:
-      '@floating-ui/react': 0.27.20(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      '@mantine/hooks': 9.7.2(react@19.2.8)
+      '@floating-ui/react': 0.27.20(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      '@mantine/hooks': 9.7.2(react@19.3.0)
       clsx: 2.1.1
-      react: 19.2.8
-      react-dom: 19.2.8(react@19.2.8)
-      react-number-format: 5.4.5(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      react-remove-scroll: 2.7.2(@types/react@19.2.18)(react@19.2.8)
+      react: 19.3.0
+      react-dom: 19.3.0(react@19.3.0)
+      react-number-format: 5.4.5(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      react-remove-scroll: 2.7.2(@types/react@19.3.0)(react@19.3.0)
       type-fest: 5.10.0
     transitivePeerDependencies:
       - '@types/react'
 
-  '@mantine/dates@9.7.2(@mantine/core@9.7.2(@mantine/hooks@9.7.2(react@19.2.8))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@mantine/hooks@9.7.2(react@19.2.8))(dayjs@1.11.23)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
+  '@mantine/dates@9.7.2(@mantine/core@9.7.2(@mantine/hooks@9.7.2(react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(@mantine/hooks@9.7.2(react@19.3.0))(dayjs@1.11.23)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)':
     dependencies:
-      '@mantine/core': 9.7.2(@mantine/hooks@9.7.2(react@19.2.8))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      '@mantine/hooks': 9.7.2(react@19.2.8)
+      '@mantine/core': 9.7.2(@mantine/hooks@9.7.2(react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      '@mantine/hooks': 9.7.2(react@19.3.0)
       clsx: 2.1.1
       dayjs: 1.11.23
-      react: 19.2.8
-      react-dom: 19.2.8(react@19.2.8)
+      react: 19.3.0
+      react-dom: 19.3.0(react@19.3.0)
 
-  '@mantine/hooks@9.7.2(react@19.2.8)':
+  '@mantine/hooks@9.7.2(react@19.3.0)':
     dependencies:
-      react: 19.2.8
+      react: 19.3.0
 
   '@messageformat/parser@5.2.0':
     dependencies:
@@ -6838,10 +6838,10 @@ snapshots:
 
   '@tanstack/query-core@5.104.2': {}
 
-  '@tanstack/react-query@5.104.2(react@19.2.8)':
+  '@tanstack/react-query@5.104.2(react@19.3.0)':
     dependencies:
       '@tanstack/query-core': 5.104.2
-      react: 19.2.8
+      react: 19.3.0
 
   '@tybys/wasm-util@0.10.3':
     dependencies:
@@ -6877,11 +6877,11 @@ snapshots:
       pg-protocol: 1.16.1
       pg-types: 2.2.0
 
-  '@types/react-dom@19.2.4(@types/react@19.2.18)':
+  '@types/react-dom@19.3.0(@types/react@19.3.0)':
     dependencies:
-      '@types/react': 19.2.18
+      '@types/react': 19.3.0
 
-  '@types/react@19.2.18':
+  '@types/react@19.3.0':
     dependencies:
       csstype: 3.2.3
 
@@ -7534,14 +7534,14 @@ snapshots:
       hasown: 2.0.4
       mime-types: 2.1.35
 
-  framer-motion@12.43.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8):
+  framer-motion@12.43.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0):
     dependencies:
       motion-dom: 12.43.0
       motion-utils: 12.39.0
       tslib: 2.8.1
     optionalDependencies:
-      react: 19.2.8
-      react-dom: 19.2.8(react@19.2.8)
+      react: 19.3.0
+      react-dom: 19.3.0(react@19.3.0)
 
   fs-constants@1.0.0: {}
 
@@ -7815,9 +7815,9 @@ snapshots:
     dependencies:
       yallist: 3.1.1
 
-  lucide-react@0.552.0(react@19.2.8):
+  lucide-react@0.552.0(react@19.3.0):
     dependencies:
-      react: 19.2.8
+      react: 19.3.0
 
   magic-string@1.4.3:
     dependencies:
@@ -7895,13 +7895,13 @@ snapshots:
 
   motion-utils@12.39.0: {}
 
-  motion@12.43.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8):
+  motion@12.43.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0):
     dependencies:
-      framer-motion: 12.43.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      framer-motion: 12.43.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       tslib: 2.8.1
     optionalDependencies:
-      react: 19.2.8
-      react-dom: 19.2.8(react@19.2.8)
+      react: 19.3.0
+      react-dom: 19.3.0(react@19.3.0)
 
   mrmime@2.0.1: {}
 
@@ -8153,65 +8153,65 @@ snapshots:
 
   re2js@2.8.6: {}
 
-  react-dom@19.2.8(react@19.2.8):
+  react-dom@19.3.0(react@19.3.0):
     dependencies:
-      react: 19.2.8
-      scheduler: 0.27.0
+      react: 19.3.0
+      scheduler: 0.28.0
 
-  react-dropzone@20.1.3(@types/react@19.2.18)(react@19.2.8):
+  react-dropzone@20.1.3(@types/react@19.3.0)(react@19.3.0):
     dependencies:
       attr-accept: 4.0.1
       file-selector: 5.0.1
-      react: 19.2.8
+      react: 19.3.0
     optionalDependencies:
-      '@types/react': 19.2.18
+      '@types/react': 19.3.0
 
-  react-number-format@5.4.5(react-dom@19.2.8(react@19.2.8))(react@19.2.8):
+  react-number-format@5.4.5(react-dom@19.3.0(react@19.3.0))(react@19.3.0):
     dependencies:
-      react: 19.2.8
-      react-dom: 19.2.8(react@19.2.8)
+      react: 19.3.0
+      react-dom: 19.3.0(react@19.3.0)
 
-  react-photo-view@1.2.7(react-dom@19.2.8(react@19.2.8))(react@19.2.8):
+  react-photo-view@1.2.7(react-dom@19.3.0(react@19.3.0))(react@19.3.0):
     dependencies:
-      react: 19.2.8
-      react-dom: 19.2.8(react@19.2.8)
+      react: 19.3.0
+      react-dom: 19.3.0(react@19.3.0)
 
-  react-remove-scroll-bar@2.3.8(@types/react@19.2.18)(react@19.2.8):
+  react-remove-scroll-bar@2.3.8(@types/react@19.3.0)(react@19.3.0):
     dependencies:
-      react: 19.2.8
-      react-style-singleton: 2.2.3(@types/react@19.2.18)(react@19.2.8)
+      react: 19.3.0
+      react-style-singleton: 2.2.3(@types/react@19.3.0)(react@19.3.0)
       tslib: 2.8.1
     optionalDependencies:
-      '@types/react': 19.2.18
+      '@types/react': 19.3.0
 
-  react-remove-scroll@2.7.2(@types/react@19.2.18)(react@19.2.8):
+  react-remove-scroll@2.7.2(@types/react@19.3.0)(react@19.3.0):
     dependencies:
-      react: 19.2.8
-      react-remove-scroll-bar: 2.3.8(@types/react@19.2.18)(react@19.2.8)
-      react-style-singleton: 2.2.3(@types/react@19.2.18)(react@19.2.8)
+      react: 19.3.0
+      react-remove-scroll-bar: 2.3.8(@types/react@19.3.0)(react@19.3.0)
+      react-style-singleton: 2.2.3(@types/react@19.3.0)(react@19.3.0)
       tslib: 2.8.1
-      use-callback-ref: 1.3.3(@types/react@19.2.18)(react@19.2.8)
-      use-sidecar: 1.1.3(@types/react@19.2.18)(react@19.2.8)
+      use-callback-ref: 1.3.3(@types/react@19.3.0)(react@19.3.0)
+      use-sidecar: 1.1.3(@types/react@19.3.0)(react@19.3.0)
     optionalDependencies:
-      '@types/react': 19.2.18
+      '@types/react': 19.3.0
 
-  react-router@8.4.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8):
+  react-router@8.4.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0):
     dependencies:
       '@remix-run/route-pattern': 0.22.1
       cookie-es: 3.1.1
-      react: 19.2.8
+      react: 19.3.0
     optionalDependencies:
-      react-dom: 19.2.8(react@19.2.8)
+      react-dom: 19.3.0(react@19.3.0)
 
-  react-style-singleton@2.2.3(@types/react@19.2.18)(react@19.2.8):
+  react-style-singleton@2.2.3(@types/react@19.3.0)(react@19.3.0):
     dependencies:
       get-nonce: 1.0.1
-      react: 19.2.8
+      react: 19.3.0
       tslib: 2.8.1
     optionalDependencies:
-      '@types/react': 19.2.18
+      '@types/react': 19.3.0
 
-  react@19.2.8: {}
+  react@19.3.0: {}
 
   readable-stream@2.3.8:
     dependencies:
@@ -8295,7 +8295,7 @@ snapshots:
     dependencies:
       xmlchars: 2.2.0
 
-  scheduler@0.27.0: {}
+  scheduler@0.28.0: {}
 
   semver@6.3.1: {}
 
@@ -8352,12 +8352,12 @@ snapshots:
       mrmime: 2.0.1
       totalist: 3.0.1
 
-  sonner@2.0.8(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8):
+  sonner@2.0.8(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0):
     dependencies:
-      react: 19.2.8
-      react-dom: 19.2.8(react@19.2.8)
+      react: 19.3.0
+      react-dom: 19.3.0(react@19.3.0)
     optionalDependencies:
-      '@types/react': 19.2.18
+      '@types/react': 19.3.0
 
   source-map-js@1.2.2: {}
 
@@ -8577,20 +8577,20 @@ snapshots:
 
   urlpattern-polyfill@10.1.0: {}
 
-  use-callback-ref@1.3.3(@types/react@19.2.18)(react@19.2.8):
+  use-callback-ref@1.3.3(@types/react@19.3.0)(react@19.3.0):
     dependencies:
-      react: 19.2.8
+      react: 19.3.0
       tslib: 2.8.1
     optionalDependencies:
-      '@types/react': 19.2.18
+      '@types/react': 19.3.0
 
-  use-sidecar@1.1.3(@types/react@19.2.18)(react@19.2.8):
+  use-sidecar@1.1.3(@types/react@19.3.0)(react@19.3.0):
     dependencies:
       detect-node-es: 1.1.0
-      react: 19.2.8
+      react: 19.3.0
       tslib: 2.8.1
     optionalDependencies:
-      '@types/react': 19.2.18
+      '@types/react': 19.3.0
 
   util-deprecate@1.0.2: {}
 
@@ -8635,14 +8635,14 @@ snapshots:
       tsx: 4.23.15
       yaml: 2.9.1
 
-  vitest-browser-react@2.3.0(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(vitest@5.0.4):
+  vitest-browser-react@2.3.0(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(vitest@5.0.4):
     dependencies:
-      react: 19.2.8
-      react-dom: 19.2.8(react@19.2.8)
+      react: 19.3.0
+      react-dom: 19.3.0(react@19.3.0)
       vitest: 5.0.4(@types/node@24.13.3)(@vitest/browser-playwright@5.0.4)(@vitest/coverage-v8@5.0.4)(@vitest/ui@5.0.4)(vite@8.3.4(@types/node@24.13.3)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
     optionalDependencies:
-      '@types/react': 19.2.18
-      '@types/react-dom': 19.2.4(@types/react@19.2.18)
+      '@types/react': 19.3.0
+      '@types/react-dom': 19.3.0(@types/react@19.3.0)
 
   vitest@5.0.4(@types/node@24.13.3)(@vitest/browser-playwright@5.0.4)(@vitest/coverage-v8@5.0.4)(@vitest/ui@5.0.4)(vite@8.3.4(@types/node@24.13.3)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)):
     dependencies:

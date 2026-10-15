@@ -247,6 +247,8 @@ Brotli 上限340/400/470/375 KiB,按 baseline +5%(至少5 requests)与 +10%(向�
 小 chunk 各增长超过4个告警,环与原始boot 2MiB继续硬卡;LCP/FCP仍不作逐提交硬门禁。
 预算不随本次测量自动抬升;越界须检查图,合法新功能带测量与预算修改一起 review。
 
+**修订 2026-10-15(React 19.3.0)**:react-dom 19.3.0 让入口由 57115 增至 64256 Brotli bytes(+7141,构建报告的首位贡献者即 `react-dom-client.production.js`;Effect 4.0.4 下 React 19.2.8 的入口为 57115,与 10-01 的 57129 持平,说明增长不来自 Effect)。按同一规则(+10% 向上 1 KiB 取整)入口预算改为 **70 KiB**;四页静态闭包仍在原预算内(login/batches/my-entries/org-tree 为 68/102/132/91 请求,Brotli 327591/381300/453687/355694 bytes),页面预算不变。体验影响未做节流时间线实测。
+
 入口主要贡献为 react-dom-client(453202 rendered bytes);剩余全量 surface/lifecycle table为7613 rendered bytes,
 不再包含领域错误文案。保留静态可分析 lazy imports 与 Vite preload,本轮不另加 registry waterfall,
 也不改成服务器下发 hashed URL。是否进一步拆表应另做有 preload/release recovery 验收的实验。
