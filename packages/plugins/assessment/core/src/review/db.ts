@@ -4,7 +4,6 @@ import {
   sql,
   type Expression,
   type ExpressionBuilder,
-  type RawBuilder,
 } from 'kysely'
 import { jsonArrayFrom } from 'kysely/helpers/postgres'
 import { db, type Schema } from '../server/db.ts'
