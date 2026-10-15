@@ -15,7 +15,6 @@ import type { ReauthenticationRequired } from '@qualy/auth-contract/sign-in-fail
 import { db } from './db.ts'
 import { requireReauthenticated } from './reauthentication.ts'
 import { safeReturnPath } from '@qualy/ui-contract/return-path'
-import type { SignInDevice } from '@qualy/auth-contract/device'
 import { deviceAtStart, recordFlowDevice } from './sign-in-device.ts'
 
 // One redirect through somebody else's server, from the moment it leaves to
