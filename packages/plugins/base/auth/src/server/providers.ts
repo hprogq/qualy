@@ -91,14 +91,26 @@ const providerRows = (tenantId: string) =>
         eb.ref('p.prominence').$castTo<LoginProminence>().as('prominence'),
         'p.version',
         eb.ref('p.audienceMode').$castTo<'unrestricted' | 'allow-list'>().as('audienceMode'),
-        sql<string[]>`coalesce((select array_agg(a.user_type_id::text order by a.user_type_id)
-          from auth_provider_user_types a
-          where a.tenant_id = p.tenant_id and a.auth_provider_id = p.id), '{}')`.as('userTypeIds'),
+        eb.fn
+          .coalesce(
+            eb
+              .selectFrom('AuthProviderUserType as a')
+              .select((agg) =>
+                agg.fn
+                  .agg<string[]>('array_agg', [agg.cast('a.userTypeId', 'text')])
+                  .orderBy('a.userTypeId')
+                  .as('ids'),
+              )
+              .whereRef('a.tenantId', '=', 'p.tenantId')
+              .whereRef('a.authProviderId', '=', 'p.id'),
+            sql<string[]>`'{}'::text[]`,
+          )
+          .as('userTypeIds'),
       ])
       // a door taken out of service for good is history, not a door
       .where('p.deletedAt', 'is', null)
       // the order of the sign-in page: the doors listed in full, then the rest
-      .orderBy(sql`p.prominence = 'primary'`, 'desc')
+      .orderBy((eb) => eb('p.prominence', '=', 'primary'), 'desc')
       .orderBy('p.sortOrder')
       .orderBy('p.code')
       .execute(),

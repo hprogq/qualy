@@ -172,7 +172,7 @@ const insertChallenge = (
           purpose,
           targetEmail,
           tokenHash: digest(token),
-          expiresAt: sql<Date>`now() + ${sql.raw(`interval '${TTL[purpose]}'`)}`,
+          expiresAt: sql<Date>`now() + ${TTL[purpose]}::interval`,
         } as never)
         .returning('id')
         .executeTakeFirstOrThrow(),

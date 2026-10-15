@@ -48,10 +48,10 @@ const signInsMatching = (k: Kysely, tenantId: string, userId: string, filter: Si
     .where('e.userId', '=', userId)
     .$if(filter.outcome !== undefined, (q) => q.where('e.outcome', '=', filter.outcome!))
     .$if(filter.from !== undefined, (q) =>
-      q.where((eb) => sql<boolean>`${eb.ref('e.occurredAt')} >= ${filter.from}::timestamptz`),
+      q.where((eb) => eb('e.occurredAt', '>=', eb.cast<Date>(eb.val(filter.from!), 'timestamptz'))),
     )
     .$if(filter.to !== undefined, (q) =>
-      q.where((eb) => sql<boolean>`${eb.ref('e.occurredAt')} < ${filter.to}::timestamptz`),
+      q.where((eb) => eb('e.occurredAt', '<', eb.cast<Date>(eb.val(filter.to!), 'timestamptz'))),
     )
 
 /** one numbered page of the reader's sign-ins, newest first, with how many there are */

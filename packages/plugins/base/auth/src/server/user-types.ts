@@ -1,7 +1,14 @@
 import { Effect } from 'effect'
 import { transaction, withDatabase } from '@qualy/plugin-database/server'
 import { failedWith, translateConstraints } from '@qualy/plugin-database/server/constraints'
-import { db, lockTenant, userTypeGuard, type Db } from './db.ts'
+import {
+  allowedOrgTypeIds,
+  db,
+  livingUsersCount,
+  lockTenant,
+  userTypeGuard,
+  type Db,
+} from './db.ts'
 import { sql } from 'kysely'
 import { Rbac } from '@qualy/rbac-contract/effect'
 import type { Principal } from '@qualy/rbac-contract'
@@ -75,13 +82,12 @@ const userTypeProjection = (k: Db) =>
       't.sortOrder',
       't.version',
       't.placementMode',
-      sql<number>`(select count(*)::int from users u
-        where u.tenant_id = ${eb.ref('t.tenantId')} and u.user_type_id = ${eb.ref('t.id')}
-          and u.deleted_at is null)`.as('userCount'),
-      sql<string[]>`coalesce(
-        (select array_agg(a.org_type_id::text) from user_type_allowed_org_types a
-         where a.tenant_id = ${eb.ref('t.tenantId')} and a.user_type_id = ${eb.ref('t.id')}),
-        '{}')`.as('allowedOrgTypes'),
+      eb.fn
+        .coalesce(livingUsersCount(eb.ref('t.tenantId'), 'userTypeId', eb.ref('t.id')), eb.lit(0))
+        .as('userCount'),
+      allowedOrgTypeIds({ tenantId: eb.ref('t.tenantId'), id: eb.ref('t.id') }).as(
+        'allowedOrgTypes',
+      ),
     ])
     .orderBy('t.sortOrder')
     .orderBy('t.code')

@@ -78,13 +78,21 @@ const nextFlowId = db
 
 /** flows nobody came back for, long past any use */
 const sweep = db.query((k) =>
-  sql`
-    delete from auth_flows
-     where ctid in (
-       select ctid from auth_flows
-        where expires_at < now() - ${sql.raw(`interval '${String(SWEEP_AFTER_HOURS)} hours'`)}
-        limit ${SWEEP_LIMIT}
-     )`.execute(k),
+  k
+    .deleteFrom('AuthFlow')
+    // a batch by physical row, PostgreSQL's own handle: a delete takes no limit
+    .where((eb) =>
+      eb(
+        sql.ref('ctid'),
+        'in',
+        eb
+          .selectFrom('AuthFlow')
+          .select(sql<string>`ctid`.as('ctid'))
+          .where('expiresAt', '<', sql<Date>`now() - make_interval(hours => ${SWEEP_AFTER_HOURS})`)
+          .limit(SWEEP_LIMIT),
+      ),
+    )
+    .execute(),
 )
 
 export const makeFlows = Effect.fn('Auth.makeFlows')(function* () {
@@ -155,7 +163,7 @@ export const makeFlows = Effect.fn('Auth.makeFlows')(function* () {
                 returnPath: safeReturnPath(input.returnPath) ?? null,
                 payloadSealed: sealed,
                 device,
-                expiresAt: sql<Date>`now() + ${sql.raw(`interval '${String(FLOW_TTL_MINUTES)} minutes'`)}`,
+                expiresAt: sql<Date>`now() + make_interval(mins => ${FLOW_TTL_MINUTES})`,
               })
               .returning(['expiresAt'])
               .executeTakeFirstOrThrow(),
@@ -185,71 +193,71 @@ export const makeFlows = Effect.fn('Auth.makeFlows')(function* () {
       transaction(
         Effect.gen(function* () {
           const hash = digest(input.state)
-          const taken = yield* db.query((k) =>
-            sql<{
-              id: string
-              tenant_id: string
-              auth_provider_id: string
-              purpose: string
-              user_id: string | null
-              session_id: string | null
-              return_path: string | null
-              payload_sealed: string | null
-              device: SignInDevice
-            }>`
-              update auth_flows
-                 set consumed_at = now()
-               where state_hash = ${hash}
-                 and consumed_at is null
-                 and expires_at > now()
-              returning id, tenant_id, auth_provider_id, purpose, user_id, session_id,
-                        return_path, payload_sealed, device`.execute(k),
+          const row = yield* db.query((k) =>
+            k
+              .updateTable('AuthFlow')
+              .set({ consumedAt: sql<Date>`now()` })
+              .where('stateHash', '=', hash)
+              .where('consumedAt', 'is', null)
+              .where('expiresAt', '>', sql<Date>`now()`)
+              .returning([
+                'id',
+                'tenantId',
+                'authProviderId',
+                'purpose',
+                'userId',
+                'sessionId',
+                'returnPath',
+                'payloadSealed',
+                'device',
+              ])
+              .executeTakeFirst(),
           )
-          const row = taken.rows[0]
           if (row === undefined) {
             // why it could not be taken, for the record the caller keeps
-            const known = yield* db.query((k) =>
-              sql<{ consumed: boolean }>`
-                select consumed_at is not null as consumed from auth_flows
-                 where state_hash = ${hash}`.execute(k),
+            const seen = yield* db.query((k) =>
+              k
+                .selectFrom('AuthFlow')
+                .select((eb) => eb('consumedAt', 'is not', null).$castTo<boolean>().as('consumed'))
+                .where('stateHash', '=', hash)
+                .executeTakeFirst(),
             )
-            const seen = known.rows[0]
             const reason: FlowRejection =
               seen === undefined ? 'unknown' : seen.consumed ? 'consumed' : 'expired'
             return { ok: false as const, reason }
           }
           if (
-            row.tenant_id !== input.provider.tenantId ||
-            row.auth_provider_id !== input.provider.providerId
+            row.tenantId !== input.provider.tenantId ||
+            row.authProviderId !== input.provider.providerId
           ) {
             return { ok: false as const, reason: 'provider-mismatch' as const }
           }
           const purpose = row.purpose as 'login' | 'bind'
           if (purpose === 'bind') {
             const held =
-              row.user_id !== null &&
-              row.session_id !== null &&
-              (yield* liveSession(row.tenant_id, row.user_id, row.session_id))
+              row.userId !== null &&
+              row.sessionId !== null &&
+              (yield* liveSession(row.tenantId, row.userId, row.sessionId))
             if (!held) return { ok: false as const, reason: 'session-mismatch' as const }
           }
           const payload =
-            row.payload_sealed === null
+            row.payloadSealed === null
               ? undefined
               : // a payload that does not open is a database somebody edited
                 // or a master key that changed: nothing this call can answer
                 yield* secrets
                   .open(
                     payloadRef({
-                      tenantId: row.tenant_id,
+                      tenantId: row.tenantId,
                       flowId: String(row.id),
-                      providerId: row.auth_provider_id,
+                      providerId: row.authProviderId,
                       purpose,
                     }),
-                    row.payload_sealed,
+                    row.payloadSealed,
                   )
                   .pipe(Effect.orDie)
           // judged again on the way out, for a row stored under an older rule
-          const returnPath = safeReturnPath(row.return_path)
+          const returnPath = safeReturnPath(row.returnPath)
           // the session this flow ends in is made for the device it left on
           yield* recordFlowDevice(row.device === 'shared' ? 'shared' : 'personal')
           return {
@@ -257,8 +265,8 @@ export const makeFlows = Effect.fn('Auth.makeFlows')(function* () {
             flow: {
               flowId: String(row.id),
               purpose,
-              ...(row.user_id === null ? {} : { userId: row.user_id }),
-              ...(row.session_id === null ? {} : { sessionId: row.session_id }),
+              ...(row.userId === null ? {} : { userId: row.userId }),
+              ...(row.sessionId === null ? {} : { sessionId: row.sessionId }),
               ...(returnPath === undefined ? {} : { returnPath }),
               ...(payload === undefined ? {} : { payload }),
             } satisfies ConsumedFlow,

@@ -3,7 +3,14 @@ import { UserProvisioning, UserProvisioningRefused } from '@qualy/auth-contract/
 import { Effect } from 'effect'
 import { transaction, withDatabase } from '@qualy/plugin-database/server'
 import { translateConstraints } from '@qualy/plugin-database/server/constraints'
-import { db, type Db, lockTenant, userTypeGuard } from './db.ts'
+import {
+  allowedOrgTypeIds,
+  db,
+  livingUsersCount,
+  type Db,
+  lockTenant,
+  userTypeGuard,
+} from './db.ts'
 import { sql } from 'kysely'
 import { AccessDenied, Rbac } from '@qualy/rbac-contract/effect'
 import { scopeCoverage, type AuthorizationScope, type Principal } from '@qualy/rbac-contract'
@@ -527,9 +534,12 @@ const placeableNodes = (
         // with no numbers on it cannot answer "is this unit empty", which is
         // the question every reader arrives at it with - and the one that
         // decides whether a unit may be deleted.
-        sql<number>`(select count(*)::int from users u
-          where u.tenant_id = ${eb.ref('n.tenantId')} and u.primary_org_node_id = ${eb.ref('n.id')}
-            and u.deleted_at is null)`.as('userCount'),
+        eb.fn
+          .coalesce(
+            livingUsersCount(eb.ref('n.tenantId'), 'primaryOrgNodeId', eb.ref('n.id')),
+            eb.lit(0),
+          )
+          .as('userCount'),
         scopeCoverage(scopes.manage, {
           id: eb.ref('n.id'),
           tenantId: eb.ref('n.tenantId'),
@@ -586,11 +596,10 @@ const placementPolicyOf = (tenantId: string, userTypeId: string) =>
       .selectFrom('UserType as t')
       .select((eb) => [
         't.isSystem',
-        sql<'unrestricted' | 'allow-list'>`t.placement_mode`.as('placementMode'),
-        sql<string[]>`coalesce(
-          (select array_agg(a.org_type_id::text) from user_type_allowed_org_types a
-           where a.tenant_id = ${eb.ref('t.tenantId')} and a.user_type_id = ${eb.ref('t.id')}),
-          '{}')`.as('allowedOrgTypeIds'),
+        eb.ref('t.placementMode').$castTo<'unrestricted' | 'allow-list'>().as('placementMode'),
+        allowedOrgTypeIds({ tenantId: eb.ref('t.tenantId'), id: eb.ref('t.id') }).as(
+          'allowedOrgTypeIds',
+        ),
       ])
       .where('t.tenantId', '=', tenantId)
       .where('t.id', '=', userTypeId)
@@ -605,11 +614,10 @@ const assignableUserTypes = (tenantId: string) =>
         't.id',
         't.code',
         't.name',
-        sql<'unrestricted' | 'allow-list'>`t.placement_mode`.as('placementMode'),
-        sql<string[]>`coalesce(
-          (select array_agg(a.org_type_id::text) from user_type_allowed_org_types a
-           where a.tenant_id = ${eb.ref('t.tenantId')} and a.user_type_id = ${eb.ref('t.id')}),
-          '{}')`.as('allowedOrgTypeIds'),
+        eb.ref('t.placementMode').$castTo<'unrestricted' | 'allow-list'>().as('placementMode'),
+        allowedOrgTypeIds({ tenantId: eb.ref('t.tenantId'), id: eb.ref('t.id') }).as(
+          'allowedOrgTypeIds',
+        ),
       ])
       .where('t.tenantId', '=', tenantId)
       .where('t.enabled', '=', true)

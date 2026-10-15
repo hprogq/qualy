@@ -1,5 +1,5 @@
 import { Db, type ScopedKysely } from '@qualy/plugin-database/plugin'
-import { sql } from 'kysely'
+import { expressionBuilder, sql, type Expression, type Kysely } from 'kysely'
 import { entities as orgEntities } from '@qualy/plugin-org/db'
 import { entities } from '../db/entities.ts'
 
@@ -17,6 +17,9 @@ export const db = Db.scope(closure)
 
 /** the builder fragment helpers receive, inside a query's callback */
 export type Db = ScopedKysely<typeof closure>
+
+/** the tables the closure names, for a predicate that builds its own subquery */
+export type Schema = Db extends Kysely<infer Tables> ? Tables : never
 
 /**
  * The tenant row, held for the rest of the transaction.
@@ -53,3 +56,36 @@ export const userTypeGuard = (tenantId: string, userTypeId: string) =>
       .where('id', '=', userTypeId)
       .executeTakeFirst(),
   )
+
+/** the node types a user type's allow-list names, as text ids; empty for none */
+export const allowedOrgTypeIds = (type: {
+  readonly tenantId: Expression<string>
+  readonly id: Expression<string>
+}) => {
+  const eb = expressionBuilder<Schema>()
+  return eb.fn.coalesce(
+    eb
+      .selectFrom('UserTypeAllowedOrgType as a')
+      .select((agg) =>
+        agg.fn.agg<string[]>('array_agg', [agg.cast('a.orgTypeId', 'text')]).as('ids'),
+      )
+      .where('a.tenantId', '=', type.tenantId)
+      .where('a.userTypeId', '=', type.id),
+    sql<string[]>`'{}'::text[]`,
+  )
+}
+
+/** how many living people one column of theirs points at a given row, as a number */
+export const livingUsersCount = (
+  tenantId: Expression<string>,
+  column: 'userTypeId' | 'primaryOrgNodeId',
+  value: Expression<string>,
+) => {
+  const eb = expressionBuilder<Schema>()
+  return eb
+    .selectFrom('User as u')
+    .select((count) => count.cast<number>(count.fn.countAll(), 'integer').as('count'))
+    .where('u.tenantId', '=', tenantId)
+    .where(`u.${column}`, '=', value)
+    .where('u.deletedAt', 'is', null)
+}

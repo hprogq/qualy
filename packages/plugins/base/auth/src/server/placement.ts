@@ -1,6 +1,6 @@
 import { Effect } from 'effect'
-import { sql, type Expression } from 'kysely'
-import { db, type Db } from './db.ts'
+import { expressionBuilder, sql, type Expression } from 'kysely'
+import { db, type Db, type Schema } from './db.ts'
 
 // The placement rule, owned in one place because four callers decide by it and
 // both plugins that can break it consult it.
@@ -36,19 +36,33 @@ export const placementLegal = (
   type: UserTypeRef,
   orgTypeId: Expression<string>,
   atRoot: Expression<boolean>,
-) => sql<boolean>`
-  case
-    -- a system identity is the tenant's way back in, so it stands at the root
-    -- and nowhere else: authority over a person is authority over the node
-    -- they stand at, and every node below the root has managers who are not
-    -- the tenant's own administrators
-    when ${type.isSystem} then ${atRoot}
-    when ${type.placementMode} = 'unrestricted' then true
-    else exists (
-      select 1 from user_type_allowed_org_types a
-      where a.tenant_id = ${type.tenantId} and a.user_type_id = ${type.id}
-        and a.org_type_id = ${orgTypeId})
-  end`
+) => {
+  const eb = expressionBuilder<Schema>()
+  return (
+    eb
+      .case()
+      // a system identity is the tenant's way back in, so it stands at the root
+      // and nowhere else: authority over a person is authority over the node
+      // they stand at, and every node below the root has managers who are not
+      // the tenant's own administrators
+      .when(type.isSystem)
+      .then(atRoot)
+      .when(type.placementMode, '=', 'unrestricted')
+      .then(eb.lit(true))
+      .else(
+        eb.exists(
+          eb
+            .selectFrom('UserTypeAllowedOrgType as a')
+            .select('a.userTypeId')
+            .where('a.tenantId', '=', type.tenantId)
+            .where('a.userTypeId', '=', type.id)
+            .where('a.orgTypeId', '=', orgTypeId),
+        ),
+      )
+      .end()
+      .$castTo<boolean>()
+  )
+}
 
 /** every living person, joined to the type that rules them and the node they stand at */
 const standing = (k: Db) =>

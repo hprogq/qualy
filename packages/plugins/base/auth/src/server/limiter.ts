@@ -175,13 +175,25 @@ export const makeLimiter = Effect.gen(function* () {
 
   const sweep = withDb(
     db.query((k) =>
-      sql`
-        delete from auth_rate_limit_buckets
-         where ctid in (
-           select ctid from auth_rate_limit_buckets
-            where updated_at < now() - ${sql.raw(`interval '${String(SWEEP_AFTER_HOURS)} hours'`)}
-            limit ${SWEEP_LIMIT}
-         )`.execute(k),
+      k
+        .deleteFrom('AuthRateLimitBucket')
+        // a batch by physical row, PostgreSQL's own handle: a delete takes no limit
+        .where((eb) =>
+          eb(
+            sql.ref('ctid'),
+            'in',
+            eb
+              .selectFrom('AuthRateLimitBucket')
+              .select(sql<string>`ctid`.as('ctid'))
+              .where(
+                'updatedAt',
+                '<',
+                sql<Date>`now() - make_interval(hours => ${SWEEP_AFTER_HOURS})`,
+              )
+              .limit(SWEEP_LIMIT),
+          ),
+        )
+        .execute(),
     ),
   ).pipe(Effect.orDie, Effect.asVoid)
 
