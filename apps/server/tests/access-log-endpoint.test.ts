@@ -1,4 +1,15 @@
-import { Context, Effect, Exit, Layer, Logger, Option, References, Scope, Tracer } from 'effect'
+import {
+  Cause,
+  Context,
+  Effect,
+  Exit,
+  Layer,
+  Logger,
+  Option,
+  References,
+  Scope,
+  Tracer,
+} from 'effect'
 import { createServer } from 'node:http'
 import {
   HttpRouter,
@@ -32,7 +43,10 @@ const capture = Logger.layer([
   Logger.make((options) => {
     const message = String(Array.isArray(options.message) ? options.message[0] : options.message)
     logged.push(message)
-    leveled.push(`${options.logLevel} ${message}`)
+    // what a failure died of travels as the record's cause, as the stdout
+    // logger prints it
+    const failure = options.cause.reasons.length === 0 ? '' : `\n${Cause.pretty(options.cause)}`
+    leveled.push(`${options.logLevel} ${message}${failure}`)
     const span = Option.getOrUndefined(Context.getOption(options.fiber.context, Tracer.ParentSpan))
     correlated.push({
       message,
@@ -204,7 +218,7 @@ describe('the access log', () => {
         leveled.some(
           (line) =>
             line.startsWith('Error websocket /api/probe/socket ') &&
-            line.endsWith('(connection failed)'),
+            line.split('\n', 1)[0]!.endsWith('(connection failed)'),
         ),
       ).toBe(true)
     } finally {

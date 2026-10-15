@@ -1,4 +1,4 @@
-import { Cause, Context, Effect, Option, type LogLevel } from 'effect'
+import { Context, Effect, Option, type LogLevel } from 'effect'
 import { HttpServerError, HttpServerRequest } from 'effect/http'
 import { insideApi } from '@qualy/api-kit/route-fallback'
 import {
@@ -114,7 +114,9 @@ export const accessLog =
             const failed = Option.isSome(cause) && !clientWentAway(cause.value)
             const message = `${established.protocol} ${endpointOf(bound, path)} ${elapsed}ms (connection ${failed ? 'failed' : 'closed'})`
             const log = failed
-              ? Effect.logError(message, Cause.pretty(cause.value))
+              ? // the cause itself, not its printout: an exported record writes
+                // a cause the way telemetry may carry it, and a string it whole
+                Effect.logError(message, cause.value)
               : Effect.logDebug(message)
             return Effect.andThen(Effect.annotateLogs(log, 'source', 'connection'), exit)
           }
@@ -141,12 +143,9 @@ export const accessLog =
             interrupted || (isEventStream(response) && response.status < 400)
               ? Effect.logDebug(line(interrupted ? 'client closed' : response.status))
               : response.status >= 500
-                ? Effect.logError(
-                    line(
-                      response.status,
-                      Option.isSome(remainder) ? `\n${Cause.pretty(remainder.value)}` : '',
-                    ),
-                  )
+                ? Option.isSome(remainder)
+                  ? Effect.logError(line(response.status), remainder.value)
+                  : Effect.logError(line(response.status))
                 : response.status === 429
                   ? Effect.logWarning(line(response.status))
                   : successLog(settings.level, line(response.status))
