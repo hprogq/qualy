@@ -13,24 +13,30 @@
  */
 
 import { Cause, Effect, Predicate, Result, Schema } from 'effect'
+import { logSandboxRpcFailure } from '@qualy/sandbox-rpc'
 
 /** a defect that means the peer is unusable rather than that we are broken */
 const peerIsUnusable = (defect: unknown): boolean =>
   Predicate.isTagged(defect, 'SocketError') || Schema.isSchemaError(defect)
 
 export const tameTransport =
-  <EOut>(unavailable: () => EOut) =>
+  <EOut>(unavailable: () => EOut, operation?: string) =>
   <A, E>(effect: Effect.Effect<A, E>): Effect.Effect<A, E | EOut> =>
     effect.pipe(
       Effect.catchCause((cause): Effect.Effect<never, E | EOut> => {
+        const refuse = (failure: unknown) =>
+          (operation === undefined
+            ? Effect.void
+            : logSandboxRpcFailure('authoring', operation, failure)
+          ).pipe(Effect.andThen(Effect.fail(unavailable())))
         const failure = Cause.findError(cause)
         if (Result.isSuccess(failure)) {
           return Predicate.isTagged(failure.success, 'RpcClientError')
-            ? Effect.fail(unavailable())
+            ? refuse(failure.success)
             : Effect.failCause(cause)
         }
         return peerIsUnusable(Cause.squash(cause))
-          ? Effect.fail(unavailable())
+          ? refuse(Cause.squash(cause))
           : Effect.failCause(cause)
       }),
     )

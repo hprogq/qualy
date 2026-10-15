@@ -28,6 +28,13 @@ export {
 } from './protocol.ts'
 export { RuntimeCapabilities, RuntimeSandboxRpcs, RuntimeTimings } from './runtime.ts'
 export {
+  SANDBOX_RPC_PING_INTERVAL_MS,
+  SANDBOX_RPC_PING_TIMEOUT_MS,
+  logSandboxRpcFailure,
+  sandboxRpcFailureAttributes,
+  sandboxRpcProtocolLayer,
+} from './client.ts'
+export {
   AuthoringCapabilities,
   CompileBundleFailed,
   CompileBusy,

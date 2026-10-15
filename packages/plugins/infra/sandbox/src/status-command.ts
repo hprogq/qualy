@@ -8,6 +8,7 @@ import {
   RuntimeSandboxRpcs,
   SANDBOX_ABI_VERSION,
   SANDBOX_RPC_MAX_FRAME_BYTES,
+  sandboxRpcProtocolLayer,
 } from '@qualy/sandbox-rpc'
 import { runtimeSocketPath } from './service.ts'
 
@@ -29,8 +30,8 @@ const authoringSocketPath = (): string =>
   process.env.QUALY_SANDBOX_AUTHORING_SOCKET ?? '.qualy/run/sandbox/authoring/authoring.sock'
 
 /** the client transport over one unix socket, as the server builds it */
-const over = (socketPath: string) =>
-  RpcClient.layerProtocolSocket().pipe(
+const over = (socketPath: string, peer: 'runtime' | 'authoring') =>
+  sandboxRpcProtocolLayer(peer).pipe(
     Layer.provide(NodeSocket.layerNet({ path: socketPath }).pipe(Layer.orDie)),
     Layer.provide(RpcSerialization.layerNdjsonWith({ maxBufferSize: SANDBOX_RPC_MAX_FRAME_BYTES })),
   )
@@ -41,6 +42,7 @@ class NoAnswer extends Error {
 
 const ask = async <A>(
   socketPath: string,
+  peer: 'runtime' | 'authoring',
   // the client lives in a scope of its own, closed once the answer is in
   call: Effect.Effect<A, unknown, RpcClient.Protocol | Scope.Scope>,
 ): Promise<{ ok: true; answer: A } | { ok: false; reason: string }> => {
@@ -49,7 +51,7 @@ const ask = async <A>(
       duration: ANSWER_WITHIN,
       orElse: () => Effect.fail(new NoAnswer(`did not answer within ${ANSWER_WITHIN}`)),
     }),
-    Effect.provide(over(socketPath)),
+    Effect.provide(over(socketPath, peer)),
     Effect.scoped,
   )
   // the CLI edge: the one place a command runs its effect
@@ -86,6 +88,7 @@ export async function run(_context: CliContext): Promise<void> {
   const runtimeAt = runtimeSocketPath()
   const runtime = await ask(
     runtimeAt,
+    'runtime',
     Effect.gen(function* () {
       const client = yield* RpcClient.make(RuntimeSandboxRpcs)
       return yield* client.GetRuntimeCapabilities()
@@ -111,6 +114,7 @@ export async function run(_context: CliContext): Promise<void> {
   const authoringAt = authoringSocketPath()
   const authoring = await ask(
     authoringAt,
+    'authoring',
     Effect.gen(function* () {
       const client = yield* RpcClient.make(FormulaAuthoringRpcs)
       return yield* client.GetAuthoringCapabilities()

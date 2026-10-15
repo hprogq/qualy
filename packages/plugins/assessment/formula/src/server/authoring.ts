@@ -14,6 +14,8 @@ import {
   CompiledFormulaWire,
   FormulaAuthoringRpcs,
   SANDBOX_RPC_MAX_FRAME_BYTES,
+  logSandboxRpcFailure,
+  sandboxRpcProtocolLayer,
   type AuthoringCompileError,
   type CompileTimings,
 } from '@qualy/sandbox-rpc'
@@ -94,6 +96,9 @@ const deadline = <A, E>(call: Effect.Effect<A, E>, refuse: () => E): Effect.Effe
       )
       if (settled === undefined) {
         yield* abandon
+        yield* logSandboxRpcFailure('authoring', 'CompileFormula', {
+          _tag: 'TransportDeadlineExceeded',
+        })
         return yield* Effect.fail(refuse())
       }
       return yield* settled
@@ -143,7 +148,14 @@ export const formulaAuthoringLayer = (options?: {
         deadline(
           client.CompileFormula({ source }).pipe(
             Effect.tap((compiled) => insideCompile(compiled.timings)),
-            Effect.catchTag('RpcClientError', () => Effect.fail(new FormulaCompileUnavailable())),
+            Effect.tapErrorTag('CompileBusy', (failure) =>
+              logSandboxRpcFailure('authoring', 'CompileFormula', failure),
+            ),
+            Effect.catchTag('RpcClientError', (failure) =>
+              logSandboxRpcFailure('authoring', 'CompileFormula', failure).pipe(
+                Effect.andThen(Effect.fail(new FormulaCompileUnavailable())),
+              ),
+            ),
             Effect.catch((failure) =>
               failure instanceof FormulaCompileUnavailable
                 ? Effect.fail(failure)
@@ -159,7 +171,9 @@ export const formulaAuthoringLayer = (options?: {
               if (Result.isSuccess(Cause.findError(cause))) return Effect.failCause(cause)
               const defect = Cause.squash(cause)
               return Predicate.isTagged(defect, 'SocketError') || Schema.isSchemaError(defect)
-                ? Effect.fail(new FormulaCompileUnavailable())
+                ? logSandboxRpcFailure('authoring', 'CompileFormula', defect).pipe(
+                    Effect.andThen(Effect.fail(new FormulaCompileUnavailable())),
+                  )
                 : Effect.failCause(cause)
             }),
           ),
@@ -168,7 +182,7 @@ export const formulaAuthoringLayer = (options?: {
       return { compile }
     }),
   ).pipe(
-    Layer.provide(RpcClient.layerProtocolSocket()),
+    Layer.provide(sandboxRpcProtocolLayer('authoring')),
     // layerNet's signature carries SocketError, but building it only wraps
     // a lazy open: boot stays independent of the sandbox being up
     Layer.provide(

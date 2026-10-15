@@ -26,6 +26,8 @@ import {
   SANDBOX_RPC_ENVELOPE_BUDGET,
   SANDBOX_RPC_MAX_FRAME_BYTES,
   limitIssue,
+  logSandboxRpcFailure,
+  sandboxRpcProtocolLayer,
   type JsonValue,
   type RuntimeSandboxError,
   type RuntimeTimings,
@@ -246,8 +248,12 @@ export const sandboxLayer = (options?: { readonly socketPath?: string }): Layer.
             ...(answer.timings === undefined ? {} : { timings: answer.timings }),
           })),
           Effect.catchTag('RpcClientError', (failure) =>
-            Effect.fail(
-              new SandboxUnavailable({ reason: `runtime unreachable: ${failure.reason._tag}` }),
+            logSandboxRpcFailure('runtime', 'Invoke', failure).pipe(
+              Effect.andThen(
+                Effect.fail(
+                  new SandboxUnavailable({ reason: `runtime unreachable: ${failure.reason._tag}` }),
+                ),
+              ),
             ),
           ),
           Effect.catch((failure) =>
@@ -263,8 +269,10 @@ export const sandboxLayer = (options?: { readonly socketPath?: string }): Layer.
             // a mid-call socket failure (vendored RpcClient.ts:1156
             // `Effect.orDie(write(...))`)
             if (Predicate.isTagged(defect, 'SocketError')) {
-              return Effect.fail(
-                new SandboxUnavailable({ reason: 'the connection failed mid-call' }),
+              return logSandboxRpcFailure('runtime', 'Invoke', defect).pipe(
+                Effect.andThen(
+                  Effect.fail(new SandboxUnavailable({ reason: 'the connection failed mid-call' })),
+                ),
               )
             }
             // An answer this host cannot read (vendored RpcClient.ts:748,
@@ -277,10 +285,14 @@ export const sandboxLayer = (options?: { readonly socketPath?: string }): Layer.
             // an answer that omits it is refused rather than accepted with
             // a hole where the proof should be.
             if (Schema.isSchemaError(defect)) {
-              return Effect.fail(
-                new SandboxUnavailable({
-                  reason: `cannot read the runtime's answer, which is a generation apart from this host: ${defect.message}`,
-                }),
+              return logSandboxRpcFailure('runtime', 'Invoke', defect).pipe(
+                Effect.andThen(
+                  Effect.fail(
+                    new SandboxUnavailable({
+                      reason: "cannot read the runtime's answer: incompatible schema",
+                    }),
+                  ),
+                ),
               )
             }
             return Effect.failCause(cause)
@@ -304,7 +316,7 @@ export const sandboxLayer = (options?: { readonly socketPath?: string }): Layer.
       return { invoke: (invocation: SandboxInvocation) => measuredInvoke(invoke(invocation)) }
     }),
   ).pipe(
-    Layer.provide(RpcClient.layerProtocolSocket()),
+    Layer.provide(sandboxRpcProtocolLayer('runtime')),
     // layerNet's signature carries SocketError, but its make only wraps a
     // lazy open (vendored NodeSocket.ts:59-99): building the layer cannot
     // actually fail, so orDie converts the phantom channel and boot stays
