@@ -3,7 +3,7 @@ import { decodeFormulaEnvelope } from './envelope.ts'
 import { Clock, Context, Effect, Fiber, Layer, Option, Ref, Semaphore } from 'effect'
 import { HttpApiBuilder } from 'effect/http-api'
 import { HttpServerRequest, HttpServerResponse } from 'effect/http'
-import { sql } from 'kysely'
+import { sql, type ExpressionBuilder } from 'kysely'
 import { Api } from '@qualy/api-kit/local'
 import { DEFAULT_PAGE_SIZE, encodeQueryCursor, readQueryCursor } from '@qualy/api-kit'
 import {
@@ -65,7 +65,7 @@ import {
 import { formulaApiGroup } from '../api.ts'
 import { FormulaLanguage } from './language.ts'
 import { FormulaLspQuota, bridgeSocket, refuseSeat } from './lsp-bridge.ts'
-import { db } from './db.ts'
+import { db, type Schema } from './db.ts'
 import { isoInstant } from './instant.ts'
 import {
   FormulaTemplateLibrary,
@@ -840,19 +840,24 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
   const admitted = seatedIn(running, RUNS_PER_PERSON)
   const admittedPreview = seatedIn(previewing, PREVIEWS_PER_PERSON)
 
-  const latestNoSubquery = sql<number | null>`(
-    select max(v.version_no) from assessment_formula_versions v
-    where v.tenant_id = assessment_formula_functions.tenant_id
-      and v.function_id = assessment_formula_functions.id
-  )`
-
-  const latestReleaseSubquery = sql<string | null>`(
-    select v.release_name from assessment_formula_versions v
-    where v.tenant_id = assessment_formula_functions.tenant_id
-      and v.function_id = assessment_formula_functions.id
-    order by v.version_no desc
-    limit 1
-  )`
+  /** a function's newest version number and release name, beside the function row */
+  const latestOf = (eb: ExpressionBuilder<Schema, 'FormulaFunction'>) => {
+    const versions = () =>
+      eb
+        .selectFrom('FormulaVersion as v')
+        .whereRef('v.tenantId', '=', 'FormulaFunction.tenantId')
+        .whereRef('v.functionId', '=', 'FormulaFunction.id')
+    return [
+      versions()
+        .select((q) => q.fn.max('v.versionNo').as('n'))
+        .as('latestVersionNo'),
+      versions()
+        .select('v.releaseName')
+        .orderBy('v.versionNo', 'desc')
+        .limit(1)
+        .as('latestReleaseName'),
+    ] as const
+  }
 
   /** one published version with the publisher's name a screen shows */
   const versionRow = (
@@ -1028,8 +1033,7 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
         k
           .selectFrom('FormulaFunction')
           .selectAll()
-          .select(latestNoSubquery.as('latestVersionNo'))
-          .select(latestReleaseSubquery.as('latestReleaseName'))
+          .select(latestOf)
           .where('tenantId', '=', tenantId)
           .where('id', '=', functionId)
           .executeTakeFirst(),
@@ -1629,8 +1633,7 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
               'FormulaFunction.archivedAt',
               'FormulaFunction.updatedAt',
             ])
-            .select(latestNoSubquery.as('latestVersionNo'))
-            .select(latestReleaseSubquery.as('latestReleaseName'))
+            .select(latestOf)
             .orderBy('FormulaFunction.updatedAt', 'desc')
             .orderBy('FormulaFunction.id', 'desc')
             .limit(size)

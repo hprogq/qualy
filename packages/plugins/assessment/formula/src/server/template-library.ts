@@ -17,7 +17,7 @@
 
 import { Effect, Layer, Context } from 'effect'
 import { createHash } from 'node:crypto'
-import { sql, type RawBuilder } from 'kysely'
+import { expressionBuilder, sql, type Expression } from 'kysely'
 import { sha256Hex } from './contract-identity.ts'
 import { transaction, withDatabase } from '@qualy/plugin-database/server'
 import { Rbac } from '@qualy/rbac-contract/effect'
@@ -27,7 +27,7 @@ import { DEFAULT_PAGE_SIZE } from '@qualy/api-kit'
 import { BadRequest, likeContains, pageNumber, pageSize, pageWindow } from '@qualy/api-kit/schema'
 import type { Principal } from '@qualy/rbac-contract'
 import { Audit } from '@qualy/audit-contract/effect'
-import { db } from './db.ts'
+import { db, type Schema } from './db.ts'
 import { FormulaTemplateCopied, FormulaVersionSharingChanged } from '../actions.ts'
 import { SOURCE_LIMIT } from '@qualy/sandbox-rpc'
 import {
@@ -325,21 +325,29 @@ export const make = Effect.fn('FormulaTemplateLibrary.make')(function* () {
     tenantId: string,
     viewerUserId: string,
     viewerNodeId: string,
-  ): RawBuilder<boolean> =>
-    sql<boolean>`(
-      f.created_by <> ${viewerUserId}::uuid
-      and exists (
-        select 1
-          from assessment_formula_share_scopes s
-          join org_nodes scope
-            on scope.tenant_id = s.tenant_id and scope.id = s.org_node_id
-          join org_nodes viewer
-            on viewer.tenant_id = s.tenant_id and viewer.id = ${viewerNodeId}::uuid
-         where s.tenant_id = ${tenantId}::uuid
-           and s.version_id = v.id
-           and viewer.path <@ scope.path
-      )
-    )`
+    /** the template's function author and version, wherever the query aliased them */
+    template: { readonly createdBy: Expression<string>; readonly versionId: Expression<string> },
+  ) => {
+    const eb = expressionBuilder<Schema>()
+    return eb.and([
+      eb(template.createdBy, '<>', viewerUserId),
+      eb.exists(
+        eb
+          .selectFrom('FormulaShareScope as s')
+          .innerJoin('OrgNode as scope', (join) =>
+            join.onRef('scope.tenantId', '=', 's.tenantId').onRef('scope.id', '=', 's.orgNodeId'),
+          )
+          .innerJoin('OrgNode as viewer', (join) =>
+            join.onRef('viewer.tenantId', '=', 's.tenantId').on('viewer.id', '=', viewerNodeId),
+          )
+          .select('s.versionId')
+          .where('s.tenantId', '=', tenantId)
+          .where('s.versionId', '=', template.versionId)
+          // ltree containment, PostgreSQL's own operator
+          .where((q) => sql<boolean>`${q.ref('viewer.path')} <@ ${q.ref('scope.path')}`),
+      ),
+    ])
+  }
 
   const summaryOf = (row: TemplateRow): TemplateSummary => ({
     versionId: row.versionId,
@@ -375,7 +383,12 @@ export const make = Effect.fn('FormulaTemplateLibrary.make')(function* () {
                   join.onRef('f.tenantId', '=', 'v.tenantId').onRef('f.id', '=', 'v.functionId'),
                 )
                 .where('v.tenantId', '=', tenantId)
-                .where(visibleTemplate(tenantId, viewer.userId, nodeId))
+                .where((eb) =>
+                  visibleTemplate(tenantId, viewer.userId, nodeId, {
+                    createdBy: eb.ref('f.createdBy'),
+                    versionId: eb.ref('v.id'),
+                  }),
+                )
               if (page?.search?.trim())
                 query = query.where('f.name', 'ilike', likeContains(page.search.trim()))
               return query
@@ -435,7 +448,12 @@ export const make = Effect.fn('FormulaTemplateLibrary.make')(function* () {
               .select('v.outputSchema as outputSchema')
               .where('v.tenantId', '=', tenantId)
               .where('v.id', '=', versionId)
-              .where(visibleTemplate(tenantId, viewer.userId, nodeId))
+              .where((eb) =>
+                visibleTemplate(tenantId, viewer.userId, nodeId, {
+                  createdBy: eb.ref('f.createdBy'),
+                  versionId: eb.ref('v.id'),
+                }),
+              )
               .executeTakeFirst(),
           ),
         ).pipe(Effect.orDie)
@@ -514,7 +532,12 @@ export const make = Effect.fn('FormulaTemplateLibrary.make')(function* () {
                   .select('v.id as versionId')
                   .where('v.tenantId', '=', tenantId)
                   .where('v.id', '=', versionId)
-                  .where(visibleTemplate(tenantId, as.userId, nodeId))
+                  .where((eb) =>
+                    visibleTemplate(tenantId, as.userId, nodeId, {
+                      createdBy: eb.ref('f.createdBy'),
+                      versionId: eb.ref('v.id'),
+                    }),
+                  )
                   .executeTakeFirst(),
               )
               .pipe(Effect.orDie)
