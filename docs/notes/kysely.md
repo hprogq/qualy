@@ -36,3 +36,27 @@
 派生表、CTE 与 lateral 子查询都适用第 2 条：申报动态的 union 输出列改名为 `claimId`、`questionId`、`byId`、`sortAt`，撤回谱系的递归 CTE 用 `rootId`，lateral 子查询里的 `u.displayName` 起别名 `speakerName`。
 
 这些失败都由现有测试抓到（合议座位、名册站位、申报动态、升级回填），修正后对应套件通过。
+
+## 授权查询的规划开销（2026-10-15，实测）
+
+APM 上审核收件箱约 420 ms，巡检 `patrolReviewRounds` 约 1.4 s。在演示基线（10-08）上复现：
+收件箱本地 160 ms，巡检 640 ms。打开 `log_min_duration_statement` 按协议阶段汇总后，
+时间几乎都在 bind，也就是未命名语句每次执行前的查询规划。
+
+- 收件箱：一页 7 条授权查询，每条规划 16–28 ms，执行 1–2 ms。外层 9 张表的连接加上
+  `mayActOn` 提升出的半连接，规划器在连接顺序上穷举。
+- 巡检：`reviewersAt` 每次运行约 270 次，每次规划约 1.4 ms，执行约 0.05 ms。
+
+处理：
+
+- 收件箱与待补充列表在各自的只读事务里 `set local join_collapse_limit = 1`，按书写顺序连接
+  （先按租户、状态、审核人所在单位收窄审核轮次，再逐行主键查找）。规划降到约 4 ms，
+  执行合计从 70 ms 增至 94 ms，单页 160 ms 降到 48 ms（50 条的辅导员 170 ms 降到 75 ms）。
+  `SET LOCAL` 随事务结束，不会留在连接池的会话上。
+- 巡检把（批次、节点、角色）的成员名单缓存下来，普通路线的轮次在内存里去掉申报人与提交人，
+  这正是 `mayReview` 末尾两项比较；只有复核路线还要查本轮已作过决定的人。17 种组合、
+  92 个复核轮次，查询从约 270 次降到约 109 次，单次 640 ms 降到 320 ms。
+
+判断依据：同样的语句 `explain (analyze, summary)` 在 `join_collapse_limit` 为 8 与 1 时
+Planning Time 分别为 16/28 ms 与 4/4 ms，Execution Time 基本不变；`from_collapse_limit`
+与 `geqo_threshold` 无改善。数据规模变大后若执行计划变差，应先看 `ri` 的过滤索引是否仍被选中。

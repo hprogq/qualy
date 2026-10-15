@@ -6258,7 +6258,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
         // question: acceptance and denies are recorded per batch, so two
         // batches standing at the same class with the same role can hold
         // different answers, and this loop sees every batch of the tenant.
-        const staffing = new Map<string, number>()
+        const staffing = new Map<string, readonly string[]>()
         for (const round of rounds) {
           // A round stopped at a vacant step - a `nearestRole` nobody held
           // anywhere on the participant's lineage - has no unit to ask about.
@@ -6309,9 +6309,9 @@ export const make = Effect.fn('Assessment.make')(function* () {
             nodeId = found
           }
           const key = `${round.batchId}:${nodeId}:${[...round.currentRoleIds].sort().join(',')}`
-          let members = staffing.get(key)
-          if (members === undefined) {
-            members = (yield* dieQuery(
+          let staff = staffing.get(key)
+          if (staff === undefined) {
+            staff = yield* dieQuery(
               withDb(
                 reviewersAt({
                   tenantId,
@@ -6322,33 +6322,42 @@ export const make = Effect.fn('Assessment.make')(function* () {
                   actorId: NOBODY,
                 }),
               ),
-            )).length
-            staffing.set(key, members)
+            )
+            staffing.set(key, staff)
           }
+          const members = staff.length
           // Who could act on this very round: the filing's own people out,
           // and on an escalation step whoever already judged an earlier one.
           // Every answer below belongs to the step this round stood on when
           // the sweep read it, so every write below names that step and
           // simply misses a round that has moved on since - the next tick
           // will look at it where it now is.
+          //
+          // Off the escalation route the filing's own people are the whole
+          // difference between membership and eligibility - mayReview's last
+          // two terms, the participant and whoever submitted - so they are
+          // taken out of the membership already read. Asked of the database
+          // once per round instead, the same question cost a query each,
+          // almost all of it planning: 270 a sweep over the demonstration's
+          // 253 open rounds, against 17 distinct memberships.
           const eligible =
             members === 0
               ? ([] as readonly string[])
-              : yield* dieQuery(
-                  withDb(
-                    reviewersAt({
-                      tenantId,
-                      batchId: round.batchId,
-                      nodeId,
-                      roleIds: round.currentRoleIds,
-                      subjectUserId: round.subjectUserId,
-                      actorId: round.actorId,
-                      ...(round.currentRoute === 'escalation'
-                        ? { excludeJudgedOfInstanceId: round.id }
-                        : {}),
-                    }),
-                  ),
-                )
+              : round.currentRoute === 'escalation'
+                ? yield* dieQuery(
+                    withDb(
+                      reviewersAt({
+                        tenantId,
+                        batchId: round.batchId,
+                        nodeId,
+                        roleIds: round.currentRoleIds,
+                        subjectUserId: round.subjectUserId,
+                        actorId: round.actorId,
+                        excludeJudgedOfInstanceId: round.id,
+                      }),
+                    ),
+                  )
+                : staff.filter((one) => one !== round.subjectUserId && one !== round.actorId)
           const stage = stageById(round.effectivePolicy, round.currentRoute, round.currentStageId)
           let actionable = eligible.length > 0
           let reason = members === 0 ? 'no-assignee' : 'no-independent-reviewer'

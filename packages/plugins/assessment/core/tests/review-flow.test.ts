@@ -929,6 +929,66 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
   // The escalation route is a pipeline (re-ruled 2026-09-25): a middle step
   // agreeing is an opinion the next step starts from, and only the route's
   // last live step concludes.
+  // The patrol reads a stage's membership once and takes each round's own
+  // people out of it itself: the participant, and whoever submitted. Both
+  // stay out - a class whose only other member is the one who filed has
+  // nobody to judge it - and the round comes back once that changes.
+  it('holds a round whose remaining members are only the people who filed it', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('rf-patrol-own-people')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f, { profile: REVIEW_OPEN })
+          // the participant and a classmate both hold the stage's role
+          for (const who of [f.s1, f.s2]) {
+            const grant = one<{ id: string }>(
+              yield* runSql(sql`
+                insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
+                values (${f.t}, ${who}, ${f.reviewRole}, ${f.classA}, 'self') returning id`),
+            ).id
+            yield* accept(f.t, g.batch.id, who, grant)
+          }
+          const { instanceId } = yield* submitted(f, g, g.p1, f.s1)
+          // the class's own reviewer steps down: the classmate is left
+          yield* runSql(sql`
+            update role_grants set revoked_at = now()
+             where tenant_id = ${f.t} and user_id = ${f.reviewer} and role_id = ${f.reviewRole}`)
+          const state = () =>
+            Effect.map(
+              runSql(
+                sql`select state, blocked_reason from review_instances where id = ${instanceId}`,
+              ),
+              (rows) => one<{ state: string; blocked_reason: string | null }>(rows),
+            )
+          yield* assessment.patrolReviewRounds
+          const withClassmate = yield* state()
+          // the claim was submitted by the classmate: nobody independent is left
+          const submittedBy = (who: string) =>
+            runSql(sql`
+              update entry_revisions er set actor_id = ${who}
+                from review_instances ri
+               where ri.id = ${instanceId} and er.id = ri.revision_id`)
+          yield* submittedBy(f.s2)
+          yield* assessment.patrolReviewRounds
+          const ownPeopleOnly = yield* state()
+          // submitted by the participant after all: the classmate may judge
+          yield* submittedBy(f.s1)
+          yield* assessment.patrolReviewRounds
+          const released = yield* state()
+          return { withClassmate, ownPeopleOnly, released }
+        }),
+      ),
+    )
+    expect(result.withClassmate).toEqual({ state: 'active', blocked_reason: null })
+    expect(result.ownPeopleOnly).toEqual({
+      state: 'blocked',
+      blocked_reason: 'no-independent-reviewer',
+    })
+    expect(result.released).toEqual({ state: 'active', blocked_reason: null })
+  })
+
   it('hands an escalation to the route, where a middle step only gives an opinion', async () => {
     const result = ok(
       await run(
