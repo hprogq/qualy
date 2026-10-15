@@ -11,13 +11,20 @@ import { PARTICIPANT_SOURCES, type HeldEntries, type HeldInRound } from './limit
 // people around them. Same conventions as the neighbouring modules: epoch
 // milliseconds out, jsonb parsed, no floats.
 
+/** a text path as the ltree column it is written to */
+const ltree = (path: string | null) => sql<string | null>`${path}::ltree`
+
+/** a bound list of ids as the uuid[] = any() compares against */
+const uuids = (ids: readonly string[]) => sql<string[]>`${[...ids]}::uuid[]`
+
 const epoch = (column: string) =>
   sql<number | null>`(extract(epoch from ${sql.ref(column)}) * 1000)::float8`
 
 const msOf = (value: unknown): number =>
   value instanceof Date ? value.getTime() : Number(value ?? 0)
 
-const jsonb = (value: unknown) => sql`${JSON.stringify(value)}::jsonb`
+const jsonb = <T = Record<string, unknown>>(value: unknown) =>
+  sql<T>`${JSON.stringify(value)}::jsonb`
 
 export type EntryStatus =
   | 'draft'
@@ -343,12 +350,14 @@ export const entryRevisionOf = (tenantId: string, revisionId: string) =>
 export const nextEntryRevisionNo = (tenantId: string, entryId: string) =>
   db
     .query((k) =>
-      sql<{ next: string }>`
-        select coalesce(max(revision_no), 0) + 1 as next from entry_revisions
-        where tenant_id = ${tenantId} and entry_id = ${entryId}
-      `.execute(k),
+      k
+        .selectFrom('EntryRevision')
+        .select((eb) => eb(eb.fn.coalesce(eb.fn.max('revisionNo'), eb.lit(0)), '+', 1).as('next'))
+        .where('tenantId', '=', tenantId)
+        .where('entryId', '=', entryId)
+        .executeTakeFirstOrThrow(),
     )
-    .pipe(Effect.map(({ rows }) => Number(rows[0]!.next)))
+    .pipe(Effect.map((row) => Number(row.next)))
 
 export const insertEntryRevision = (input: {
   tenantId: string
@@ -576,10 +585,12 @@ export const markMyEntryRead = (input: {
   db.query((k) =>
     k
       .updateTable('Entry')
-      .set({
-        participantSeenRevision: sql<number>`(select snapshot.participant_attention_revision
-          from entries snapshot where snapshot.id = entries.id)`,
-      })
+      .set((eb) => ({
+        participantSeenRevision: eb
+          .selectFrom('Entry as snapshot')
+          .select('snapshot.participantAttentionRevision')
+          .whereRef('snapshot.id', '=', 'Entry.id'),
+      }))
       .where('tenantId', '=', input.tenantId)
       .where('batchId', '=', input.batchId)
       .where('id', '=', input.entryId)
@@ -937,18 +948,20 @@ export const staffReachesParticipant = (input: {
 }) =>
   db
     .query((k) =>
-      sql<{ reaches: boolean }>`
-        select ${staffReachOver({
-          tenantId: input.tenantId,
-          batchId: input.batchId,
-          userId: input.userId,
-          permissionCode: input.permissionCode,
-          anchorNodeId: sql`${input.participant.anchorNodeId}`,
-          anchorPath: sql`${input.participant.anchorPath}`,
-        })} as reaches
-      `.execute(k),
+      k
+        .selectNoFrom((eb) =>
+          staffReachOver({
+            tenantId: input.tenantId,
+            batchId: input.batchId,
+            userId: input.userId,
+            permissionCode: input.permissionCode,
+            anchorNodeId: eb.val(input.participant.anchorNodeId),
+            anchorPath: eb.val(input.participant.anchorPath),
+          }).as('reaches'),
+        )
+        .executeTakeFirstOrThrow(),
     )
-    .pipe(Effect.map(({ rows }) => Boolean(rows[0]!.reaches)))
+    .pipe(Effect.map((row) => Boolean(row.reaches)))
 
 /** the live path of a frozen node, or null when the node no longer exists */
 export const nodePathOf = (tenantId: string, nodeId: string) =>
@@ -956,7 +969,7 @@ export const nodePathOf = (tenantId: string, nodeId: string) =>
     .query((k) =>
       k
         .selectFrom('OrgNode')
-        .select([sql<string>`path::text`.as('pathText')])
+        .select((eb) => [eb.cast<string>('path', 'text').as('pathText')])
         .where('tenantId', '=', tenantId)
         .where('id', '=', nodeId)
         .executeTakeFirst(),
@@ -1030,63 +1043,89 @@ export interface RefusalRow {
  * A screen that showed only the first would leave the second as a status
  * word with no explanation anywhere near it.
  *
- * Raw sql for `distinct on`, which is how postgres says "the latest per
- * claim" without a window function and a wrapping select.
+ * `distinct on` is how postgres says "the latest per claim" without a window
+ * function and a wrapping select. The common table's columns are named apart
+ * from ReviewEvent's properties where the entity naming would rename them
+ * (docs/notes/kysely.md).
  */
 export const latestRefusalOf = (tenantId: string, entryIds: readonly string[]) =>
   entryIds.length === 0
     ? Effect.succeed(new Map<string, RefusalRow>())
     : db
         .query((k) =>
-          sql<{
-            entry_id: string
-            kind: string
-            reason: string | null
-            comment: string | null
-            suggested_payload: unknown
-            actor_name: string | null
-            at_ms: number
-          }>`
-            with said as (
-              select ri.entry_id, re.kind, re.reason, re.comment, re.suggested_payload,
-                     u.display_name as actor_name, re.created_at
-              from review_events re
-              join review_instances ri
-                on ri.tenant_id = re.tenant_id and ri.id = re.review_instance_id
-              left join users u on u.tenant_id = re.tenant_id and u.id = re.actor_id
-              where re.tenant_id = ${tenantId}
-                and ri.entry_id = any(${sql.val(`{${entryIds.join(',')}}`)}::uuid[])
-                and re.kind = 'rejected'
-              union all
-              select ee.entry_id, ee.kind, ee.reason, null::text, null::jsonb,
-                     u.display_name as actor_name, ee.created_at
-              from entry_events ee
-              left join users u on u.tenant_id = ee.tenant_id and u.id = ee.actor_id
-              where ee.tenant_id = ${tenantId}
-                and ee.entry_id = any(${sql.val(`{${entryIds.join(',')}}`)}::uuid[])
-                and ee.kind in ('revision-required', 'returned-for-revision')
+          k
+            .with('said', (q) =>
+              q
+                .selectFrom('ReviewEvent as re')
+                .innerJoin('ReviewInstance as ri', (join) =>
+                  join
+                    .onRef('ri.tenantId', '=', 're.tenantId')
+                    .onRef('ri.id', '=', 're.reviewInstanceId'),
+                )
+                .leftJoin('User as u', (join) =>
+                  join.onRef('u.tenantId', '=', 're.tenantId').onRef('u.id', '=', 're.actorId'),
+                )
+                .select([
+                  'ri.entryId as entryId',
+                  're.kind as kind',
+                  're.reason as reason',
+                  're.comment as comment',
+                  're.suggestedPayload as suggestion',
+                  'u.displayName as actorName',
+                  're.createdAt as saidAt',
+                ])
+                .where('re.tenantId', '=', tenantId)
+                .where((eb) => eb('ri.entryId', '=', eb.fn.any(uuids(entryIds))))
+                .where('re.kind', '=', 'rejected')
+                .unionAll(
+                  q
+                    .selectFrom('EntryEvent as ee')
+                    .leftJoin('User as u', (join) =>
+                      join.onRef('u.tenantId', '=', 'ee.tenantId').onRef('u.id', '=', 'ee.actorId'),
+                    )
+                    .select([
+                      'ee.entryId as entryId',
+                      'ee.kind as kind',
+                      'ee.reason as reason',
+                      sql<string | null>`null::text`.as('comment'),
+                      sql<Record<string, unknown> | null>`null::jsonb`.as('suggestion'),
+                      'u.displayName as actorName',
+                      'ee.createdAt as saidAt',
+                    ])
+                    .where('ee.tenantId', '=', tenantId)
+                    .where((eb) => eb('ee.entryId', '=', eb.fn.any(uuids(entryIds))))
+                    .where('ee.kind', 'in', ['revision-required', 'returned-for-revision']),
+                ),
             )
-            select distinct on (entry_id)
-              entry_id, kind, reason, comment, suggested_payload, actor_name,
-              (extract(epoch from created_at) * 1000)::float8 as at_ms
-            from said
-            order by entry_id, created_at desc
-          `.execute(k),
+            .selectFrom('said')
+            .distinctOn('said.entryId')
+            .select([
+              'said.entryId',
+              'said.kind',
+              'said.reason',
+              'said.comment',
+              'said.suggestion',
+              'said.actorName',
+              epoch('said.saidAt').as('atMs'),
+            ])
+            .orderBy('said.entryId')
+            .orderBy('said.saidAt', 'desc')
+            .execute(),
         )
         .pipe(
           Effect.map(
-            ({ rows }) =>
+            (rows) =>
               new Map(
                 rows.map((row): [string, RefusalRow] => [
-                  String(row.entry_id),
+                  String(row.entryId),
                   {
-                    entryId: String(row.entry_id),
+                    entryId: String(row.entryId),
                     kind: String(row.kind),
                     reason: row.reason,
                     comment: row.comment,
-                    suggestedPayload: row.suggested_payload ?? null,
-                    actorName: row.actor_name,
-                    at: Number(row.at_ms ?? 0),
+                    suggestedPayload: row.suggestion ?? null,
+                    actorName: row.actorName,
+                    at: Number(row.atMs ?? 0),
                   },
                 ]),
               ),
@@ -1096,12 +1135,14 @@ export const latestRefusalOf = (tenantId: string, entryIds: readonly string[]) =
 export const nextRoundNo = (tenantId: string, entryId: string) =>
   db
     .query((k) =>
-      sql<{ next: string }>`
-        select coalesce(max(round_no), 0) + 1 as next from review_instances
-        where tenant_id = ${tenantId} and entry_id = ${entryId}
-      `.execute(k),
+      k
+        .selectFrom('ReviewInstance')
+        .select((eb) => eb(eb.fn.coalesce(eb.fn.max('roundNo'), eb.lit(0)), '+', 1).as('next'))
+        .where('tenantId', '=', tenantId)
+        .where('entryId', '=', entryId)
+        .executeTakeFirstOrThrow(),
     )
-    .pipe(Effect.map(({ rows }) => Number(rows[0]!.next)))
+    .pipe(Effect.map((row) => Number(row.next)))
 
 /**
  * Whether a round of this claim is still running.
@@ -1171,27 +1212,34 @@ export const insertReviewInstance = (input: {
 }) =>
   db
     .query((k) =>
-      sql<{ id: string }>`
-        insert into review_instances
-          (tenant_id, entry_id, revision_id, round_no, origin, initiator,
-           supersedes_instance_id, appealed_instance_id, appealed_recognition_id,
-           appealed_event_id, policy_revision_id, recognition_revision_id, effective_chain,
-           current_route, current_stage_id, state, blocked_reason,
-           current_role_ids, current_node_id, current_node_path)
-        values (${input.tenantId}, ${input.entryId}, ${input.revisionId}, ${input.roundNo},
-                ${input.origin ?? 'initial'}, ${input.initiator ?? 'participant'},
-                ${input.supersedesInstanceId ?? null}, ${input.appealedInstanceId ?? null},
-                ${input.appealedRecognitionId ?? null}, ${input.appealedEventId ?? null},
-                ${input.policyRevisionId}, ${input.recognitionRevisionId},
-                ${jsonb(input.effectivePolicy)},
-                ${input.route}, ${input.stageId}, ${input.state},
-                ${input.state === 'blocked' ? (input.blockedReason ?? 'no-assignee') : null},
-                ${sql.val(`{${input.roleIds.join(',')}}`)}::uuid[], ${input.nodeId},
-                ${input.nodePath}::ltree)
-        returning id
-      `.execute(k),
+      k
+        .insertInto('ReviewInstance')
+        .values({
+          tenantId: input.tenantId,
+          entryId: input.entryId,
+          revisionId: input.revisionId,
+          roundNo: input.roundNo,
+          origin: input.origin ?? 'initial',
+          initiator: input.initiator ?? 'participant',
+          supersedesInstanceId: input.supersedesInstanceId ?? null,
+          appealedInstanceId: input.appealedInstanceId ?? null,
+          appealedRecognitionId: input.appealedRecognitionId ?? null,
+          appealedEventId: input.appealedEventId ?? null,
+          policyRevisionId: input.policyRevisionId,
+          recognitionRevisionId: input.recognitionRevisionId,
+          effectiveChain: jsonb(input.effectivePolicy),
+          currentRoute: input.route,
+          currentStageId: input.stageId,
+          state: input.state,
+          blockedReason: input.state === 'blocked' ? (input.blockedReason ?? 'no-assignee') : null,
+          currentRoleIds: uuids(input.roleIds),
+          currentNodeId: input.nodeId,
+          currentNodePath: ltree(input.nodePath),
+        })
+        .returning('id')
+        .executeTakeFirstOrThrow(),
     )
-    .pipe(Effect.map(({ rows }) => String(rows[0]!.id)))
+    .pipe(Effect.map((row) => String(row.id)))
 
 /**
  * Moves an open round to the step it just entered, whether that came of an
@@ -1216,25 +1264,26 @@ export const advanceReviewInstance = (input: {
 }) =>
   db
     .query((k) =>
-      sql<{ id: string }>`
-        update review_instances
-        set current_route = ${input.toRoute},
-            current_stage_id = ${input.toStageId},
-            current_role_ids = ${sql.val(`{${input.roleIds.join(',')}}`)}::uuid[],
-            current_node_id = ${input.nodeId},
-            current_node_path = ${input.nodePath}::ltree,
-            state = ${input.state},
-            blocked_reason =
-              ${input.state === 'blocked' ? (input.blockedReason ?? 'no-assignee') : null}
-        where tenant_id = ${input.tenantId}
-          and id = ${input.instanceId}
-          and state in ('active', 'blocked')
-          and current_route = ${input.fromRoute}
-          and current_stage_id = ${input.fromStageId}
-        returning id
-      `.execute(k),
+      k
+        .updateTable('ReviewInstance')
+        .set({
+          currentRoute: input.toRoute,
+          currentStageId: input.toStageId,
+          currentRoleIds: uuids(input.roleIds),
+          currentNodeId: input.nodeId,
+          currentNodePath: ltree(input.nodePath),
+          state: input.state,
+          blockedReason: input.state === 'blocked' ? (input.blockedReason ?? 'no-assignee') : null,
+        })
+        .where('tenantId', '=', input.tenantId)
+        .where('id', '=', input.instanceId)
+        .where('state', 'in', ['active', 'blocked'])
+        .where('currentRoute', '=', input.fromRoute)
+        .where('currentStageId', '=', input.fromStageId)
+        .returning('id')
+        .execute(),
     )
-    .pipe(Effect.map(({ rows }) => rows.length > 0))
+    .pipe(Effect.map((rows) => rows.length > 0))
 
 /**
  * Ends the open round, if it is still open; the loser of a race writes
