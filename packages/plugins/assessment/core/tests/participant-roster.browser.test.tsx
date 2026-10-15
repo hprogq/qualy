@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { commands, page, userEvent } from 'vitest/browser'
 import { Effect, Queue, Stream } from 'effect'
 import { addressNow, apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
+import { atRest } from './support/motion.tsx'
 
 // The roster as the results page walks it: by page number, narrowed and
 // ordered by the server, each row saying what that person's claims wait on
@@ -1759,7 +1760,10 @@ describe('people the review steps find nowhere', () => {
           locale,
         )
         await expect.element(rows().first()).toBeVisible()
-        const top = page.getByTestId('roster').element().getBoundingClientRect().top
+        // measured where the roster comes to rest, not mid entrance
+        const roster = page.getByTestId('roster').element()
+        await expect.poll(() => atRest(roster)).toBe(true)
+        const top = roster.getBoundingClientRect().top
         const height = page.getByTestId('roster-heading').element().getBoundingClientRect().height
         release()
         await expect.element(page.getByTestId('placement-notice')).toBeVisible()

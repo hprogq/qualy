@@ -8,6 +8,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { page, userEvent } from 'vitest/browser'
 import { Effect } from 'effect'
 import { addressNow, apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
+import { atRest } from './support/motion.tsx'
 
 // The question editor as its author works it: handling chosen in the open,
 // the arithmetic's parameters fed from fixed values or determinations, a
@@ -3386,15 +3387,6 @@ describe('review waiting for a reviewer', () => {
     expect(page.getByTestId('items-unappealable-notice').elements()).toHaveLength(0)
     expect(page.getByTestId('page-notices').elements()).toHaveLength(0)
   })
-
-  /** no ancestor is still carried by a transform, such as an entrance animation */
-  const atRest = (node: Element) => {
-    for (let at: Element | null = node; at !== null; at = at.parentElement) {
-      const transform = getComputedStyle(at).transform
-      if (transform !== 'none' && transform !== 'matrix(1, 0, 0, 1, 0, 0)') return false
-    }
-    return true
-  }
 
   for (const locale of ['zh-CN', 'en-US'] as const) {
     it(`does not move the paper when the gap summary arrives on a phone in ${locale}`, async () => {
