@@ -15,7 +15,7 @@ import {
   pageSize,
 } from '@qualy/api-kit/schema'
 import { originMatches, publicOriginOf, trustedProxies } from '@qualy/api-kit/origin'
-import { currentRequestContext } from '@qualy/api-kit/request'
+import { currentRequestContext, webSocketSession } from '@qualy/api-kit/request'
 import { CurrentUser } from '@qualy/auth-contract/session'
 import { transaction, withDatabase, type Orm } from '@qualy/plugin-database/server'
 import { AccessDenied, Rbac } from '@qualy/rbac-contract/effect'
@@ -3271,7 +3271,7 @@ export const formulaApiHandlers = HttpApiBuilder.group(local, 'assessmentFormula
     )
     .handleRaw(
       'formulaLsp',
-      Effect.fn('assessmentFormula.lsp.handler')(function* ({ params }) {
+      Effect.fnUntraced(function* ({ params }) {
         const request = yield* HttpServerRequest.HttpServerRequest
 
         // a browser-initiated WebSocket carries the ambient qualy_session
@@ -3298,30 +3298,35 @@ export const formulaApiHandlers = HttpApiBuilder.group(local, 'assessmentFormula
         // can tell apart from an outage, and it opens no language session
         const quota = yield* FormulaLspQuota
         const admitted = yield* quota.acquire(`${principal.tenantId}:${principal.userId}`)
-        if (!admitted) {
-          const refused = yield* request.upgrade.pipe(Effect.orElseSucceed(() => null))
-          if (refused === null) return HttpServerResponse.empty({ status: 429 })
-          yield* refuseSeat(refused)
-          return HttpServerResponse.empty()
-        }
+        return yield* webSocketSession(
+          Effect.fnUntraced(function* (upgrade) {
+            if (!admitted) {
+              const refused = yield* upgrade.pipe(Effect.orElseSucceed(() => null))
+              if (refused === null) return HttpServerResponse.empty({ status: 429 })
+              yield* refuseSeat(refused)
+              return HttpServerResponse.empty()
+            }
 
-        // open BEFORE upgrading: while this is still plain http, refusal can
-        // still be a status code instead of an instantly-closed socket
-        const language = yield* FormulaLanguage
-        const session = yield* language.open(draft.draftSourceTs).pipe(
-          Effect.catchTags({
-            FormulaLanguageBusy: () => Effect.succeed(HttpServerResponse.empty({ status: 429 })),
-            FormulaLanguageUnavailable: () =>
-              Effect.succeed(HttpServerResponse.empty({ status: 503 })),
+            // open BEFORE upgrading: while this is still plain http, refusal can
+            // still be a status code instead of an instantly-closed socket
+            const language = yield* FormulaLanguage
+            const session = yield* language.open(draft.draftSourceTs).pipe(
+              Effect.catchTags({
+                FormulaLanguageBusy: () =>
+                  Effect.succeed(HttpServerResponse.empty({ status: 429 })),
+                FormulaLanguageUnavailable: () =>
+                  Effect.succeed(HttpServerResponse.empty({ status: 503 })),
+              }),
+            )
+            if (HttpServerResponse.isHttpServerResponse(session)) return session
+
+            const socket = yield* upgrade.pipe(Effect.orElseSucceed(() => null))
+            if (socket === null) return HttpServerResponse.empty({ status: 400 })
+
+            yield* bridgeSocket(socket, session)
+            return HttpServerResponse.empty()
           }),
         )
-        if (HttpServerResponse.isHttpServerResponse(session)) return session
-
-        const socket = yield* request.upgrade.pipe(Effect.orElseSucceed(() => null))
-        if (socket === null) return HttpServerResponse.empty({ status: 400 })
-
-        yield* bridgeSocket(socket, session)
-        return HttpServerResponse.empty()
       }),
     ),
 )

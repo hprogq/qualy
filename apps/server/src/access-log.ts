@@ -1,7 +1,13 @@
 import { Cause, Context, Effect, Option, type LogLevel } from 'effect'
 import { HttpServerError, HttpServerRequest } from 'effect/http'
 import { insideApi } from '@qualy/api-kit/route-fallback'
-import { clientWentAway, RequestContext, type RequestContextShape } from '@qualy/api-kit/request'
+import {
+  clientWentAway,
+  onResponseEstablished,
+  RequestContext,
+  type EstablishedResponse,
+  type RequestContextShape,
+} from '@qualy/api-kit/request'
 import type { LoggingSettings } from './logging.ts'
 
 // The access log, replacing the upstream one.
@@ -79,44 +85,72 @@ export const accessLog =
           (value as { headers?: Record<string, string> }).headers?.['content-type'] ??
           ''
         ).startsWith('text/event-stream')
-      return Effect.flatMap(Effect.exit(httpApp), (exit) => {
+      let established: EstablishedResponse | undefined
+      const recordEstablishment = onResponseEstablished((response) => {
+        established = response
         const elapsed = Math.round(performance.now() - started)
-        const line = (status: number | string, suffix = '') =>
-          `${request.method} ${endpointOf(bound, path)} ${status} ${elapsed}ms${suffix}`
-        const annotated = <X>(effect: Effect.Effect<X>) =>
-          Effect.annotateLogs(effect, 'source', 'http')
-        if (exit._tag === 'Success') {
-          const status = exit.value.status
-          const streamed = isEventStream(exit.value)
-          const log =
-            status >= 500
-              ? Effect.logError(line(status))
-              : status === 429
-                ? Effect.logWarning(line(status))
-                : streamed && status < 400
-                  ? Effect.logDebug(line(status, ' (event stream closed)'))
-                  : successLog(settings.level, line(status))
-          return Effect.andThen(annotated(log), exit)
-        }
-        // A failed exit usually carries the response that was already sent -
-        // upstream strips it out of the cause - and a client hanging up is a
-        // 499 or a bare interruption, not a fault of this process.
-        const [response, remainder] = HttpServerError.causeResponseStripped(exit.cause)
-        // the same judgement the server span ends by (api-kit's clientWentAway)
-        const interrupted = clientWentAway(exit.cause)
-        const log =
-          interrupted || (isEventStream(response) && response.status < 400)
-            ? Effect.logDebug(line(interrupted ? 'client closed' : response.status))
-            : response.status >= 500
-              ? Effect.logError(
-                  line(
-                    response.status,
-                    Option.isSome(remainder) ? `\n${Cause.pretty(remainder.value)}` : '',
-                  ),
-                )
-              : response.status === 429
-                ? Effect.logWarning(line(response.status))
-                : successLog(settings.level, line(response.status))
-        return Effect.andThen(annotated(log), exit)
+        return Effect.annotateLogs(
+          successLog(
+            settings.level,
+            `${request.method} ${endpointOf(bound, path)} ${response.status} ${elapsed}ms`,
+          ),
+          'source',
+          'http',
+        )
       })
+      return Effect.andThen(
+        recordEstablishment,
+        Effect.flatMap(Effect.exit(httpApp), (exit) => {
+          const elapsed = Math.round(performance.now() - started)
+          const line = (status: number | string, suffix = '') =>
+            `${request.method} ${endpointOf(bound, path)} ${status} ${elapsed}ms${suffix}`
+          const annotated = <X>(effect: Effect.Effect<X>) =>
+            Effect.annotateLogs(effect, 'source', 'http')
+          if (established !== undefined) {
+            const cause =
+              exit._tag === 'Failure'
+                ? HttpServerError.causeResponseStripped(exit.cause)[1]
+                : Option.none()
+            const failed = Option.isSome(cause) && !clientWentAway(cause.value)
+            const message = `${established.protocol} ${endpointOf(bound, path)} ${elapsed}ms (connection ${failed ? 'failed' : 'closed'})`
+            const log = failed
+              ? Effect.logError(message, Cause.pretty(cause.value))
+              : Effect.logDebug(message)
+            return Effect.andThen(Effect.annotateLogs(log, 'source', 'connection'), exit)
+          }
+          if (exit._tag === 'Success') {
+            const status = exit.value.status
+            const streamed = isEventStream(exit.value)
+            const log =
+              status >= 500
+                ? Effect.logError(line(status))
+                : status === 429
+                  ? Effect.logWarning(line(status))
+                  : streamed && status < 400
+                    ? Effect.logDebug(line(status, ' (event stream closed)'))
+                    : successLog(settings.level, line(status))
+            return Effect.andThen(annotated(log), exit)
+          }
+          // A failed exit usually carries the response that was already sent -
+          // upstream strips it out of the cause - and a client hanging up is a
+          // 499 or a bare interruption, not a fault of this process.
+          const [response, remainder] = HttpServerError.causeResponseStripped(exit.cause)
+          // the same judgement the server span ends by (api-kit's clientWentAway)
+          const interrupted = clientWentAway(exit.cause)
+          const log =
+            interrupted || (isEventStream(response) && response.status < 400)
+              ? Effect.logDebug(line(interrupted ? 'client closed' : response.status))
+              : response.status >= 500
+                ? Effect.logError(
+                    line(
+                      response.status,
+                      Option.isSome(remainder) ? `\n${Cause.pretty(remainder.value)}` : '',
+                    ),
+                  )
+                : response.status === 429
+                  ? Effect.logWarning(line(response.status))
+                  : successLog(settings.level, line(response.status))
+          return Effect.andThen(annotated(log), exit)
+        }),
+      )
     })

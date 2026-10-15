@@ -1,4 +1,4 @@
-import { Effect, Exit, Layer, Logger, References, Scope } from 'effect'
+import { Context, Effect, Exit, Layer, Logger, Option, References, Scope, Tracer } from 'effect'
 import { createServer } from 'node:http'
 import {
   HttpRouter,
@@ -10,7 +10,7 @@ import {
 import { NodeHttpServer } from '@effect/platform-node'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { QUALY_API_PREFIX } from '@qualy/api-kit'
-import { nameEndpoint } from '@qualy/api-kit/request'
+import { nameEndpoint, RequestContext, webSocketSession } from '@qualy/api-kit/request'
 import { unavailable, unavailableDependencies } from '@qualy/api-kit/unavailable'
 import { serveMiddleware } from '../src/serve-middleware.ts'
 
@@ -27,12 +27,18 @@ const quietPort = 3298
 const logged: string[] = []
 /** each line again, with the level it was written at */
 const leveled: string[] = []
+const correlated: { message: string; traceId?: string; source?: unknown }[] = []
 const capture = Logger.layer([
   Logger.make((options) => {
     const message = String(Array.isArray(options.message) ? options.message[0] : options.message)
     logged.push(message)
     leveled.push(`${options.logLevel} ${message}`)
-    void options.fiber.getRef(References.CurrentLogAnnotations)
+    const span = Option.getOrUndefined(Context.getOption(options.fiber.context, Tracer.ParentSpan))
+    correlated.push({
+      message,
+      traceId: span?.traceId,
+      source: options.fiber.getRef(References.CurrentLogAnnotations).source,
+    })
   }),
 ])
 
@@ -69,6 +75,23 @@ beforeAll(async () => {
     HttpRouter.add('PUT', `${QUALY_API_PREFIX}/probe/uploads/:reservationId`, ticketed),
     HttpRouter.add('GET', `${QUALY_API_PREFIX}/probe/plain`, ok),
     HttpRouter.add('GET', `${QUALY_API_PREFIX}/probe/down`, down),
+    HttpRouter.add(
+      'GET',
+      `${QUALY_API_PREFIX}/probe/socket`,
+      webSocketSession((upgrade) =>
+        Effect.gen(function* () {
+          const context = yield* RequestContext
+          const socket = yield* upgrade
+          const { pull } = yield* socket.reader
+          const { write } = yield* socket.writer
+          yield* write(context.traceId!)
+          for (;;) {
+            if ((yield* pull).includes('fail'))
+              return yield* Effect.die(new Error('connection broke after handshake'))
+          }
+        }).pipe(Effect.ignore, Effect.as(HttpServerResponse.empty())),
+      ),
+    ),
     unavailableDependencies,
   )
   const answering = (status: number) => Effect.succeed(HttpServerResponse.empty({ status }))
@@ -144,6 +167,50 @@ describe('the access log', () => {
     expect(lines.some((line) => line.includes('/probe/uploads/:reservationId'))).toBe(true)
     expect(lines.some((line) => line.includes('/probe/plain'))).toBe(true)
   }, 30_000)
+
+  it('logs the WebSocket HTTP handshake immediately with its HTTP trace, then reports connection failure separately', async () => {
+    const start = correlated.length
+    const socket = new WebSocket(`ws://127.0.0.1:${port}${QUALY_API_PREFIX}/probe/socket`)
+    const traceId = await new Promise<string>((resolve, reject) => {
+      socket.addEventListener('message', (event) => resolve(String(event.data)), { once: true })
+      socket.addEventListener('error', reject, { once: true })
+    })
+    try {
+      const handshake = correlated
+        .slice(start)
+        .find((entry) => entry.source === 'http' && entry.message.includes('/probe/socket 101 '))
+      expect(handshake).toBeDefined()
+      expect(handshake?.traceId).toBe(traceId)
+      expect(socket.readyState).toBe(WebSocket.OPEN)
+      expect(Number(/ (\d+)ms/.exec(handshake!.message)![1])).toBeLessThan(200)
+      await new Promise((resolve) => setTimeout(resolve, 400))
+      socket.send('fail')
+      await expect
+        .poll(() =>
+          correlated
+            .slice(start)
+            .find(
+              (entry) =>
+                entry.source === 'connection' && entry.message.includes('(connection failed)'),
+            ),
+        )
+        .toBeDefined()
+      expect(
+        correlated
+          .slice(start)
+          .filter((entry) => entry.source === 'http' && entry.message.includes('/probe/socket')),
+      ).toHaveLength(1)
+      expect(
+        leveled.some(
+          (line) =>
+            line.startsWith('Error websocket /api/probe/socket ') &&
+            line.endsWith('(connection failed)'),
+        ),
+      ).toBe(true)
+    } finally {
+      socket.close()
+    }
+  })
 
   it('writes a 503 for an unavailable dependency at Error, with what it died of', async () => {
     const response = await fetch(`http://127.0.0.1:${port}${QUALY_API_PREFIX}/probe/down`)

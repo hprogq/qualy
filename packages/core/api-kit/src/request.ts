@@ -381,6 +381,63 @@ export const publicOriginOf = (
   }
 }
 
+/** A successful HTTP response that starts a longer-lived connection. */
+export interface EstablishedResponse {
+  readonly status: number
+  readonly protocol: 'sse' | 'websocket'
+}
+
+class RequestEstablishment extends Context.Service<
+  RequestEstablishment,
+  {
+    readonly observe: (handler: (response: EstablishedResponse) => Effect.Effect<void>) => void
+    readonly establish: (response: EstablishedResponse) => Effect.Effect<void>
+  }
+>()('@qualy/api-kit/RequestEstablishment') {}
+
+/** Subscribe to the real establishment boundary, before running the handler. */
+export const onResponseEstablished = Effect.fnUntraced(function* (
+  handler: (response: EstablishedResponse) => Effect.Effect<void>,
+) {
+  const lifecycle = yield* Effect.serviceOption(RequestEstablishment)
+  if (Option.isSome(lifecycle)) lifecycle.value.observe(handler)
+})
+
+/**
+ * Keep connection work in its own linked INTERNAL trace. Node's upgrade effect
+ * only allocates a Socket; its reader performs the actual WebSocket handshake.
+ * Observing reader success therefore records 101 only after a real upgrade.
+ * Session acquisition and cleanup run in the connection's own scope.
+ */
+export const webSocketSession = Effect.fnUntraced(function* <A, E, R>(
+  use: (upgrade: HttpServerRequest.HttpServerRequest['upgrade']) => Effect.Effect<A, E, R>,
+) {
+  const request = yield* HttpServerRequest.HttpServerRequest
+  const lifecycle = yield* Effect.serviceOption(RequestEstablishment)
+  const parent = yield* Effect.serviceOption(Tracer.ParentSpan)
+  const span = Option.isSome(parent) && parent.value._tag === 'Span' ? parent.value : undefined
+  const upgrade = Effect.map(request.upgrade, (socket) => ({
+    ...socket,
+    reader: Effect.tap(socket.reader, () =>
+      Option.isSome(lifecycle)
+        ? lifecycle.value.establish({ status: 101, protocol: 'websocket' })
+        : Effect.void,
+    ),
+  }))
+  const route = span?.attributes.get('http.route')
+  // Session acquisition and its finalizers belong to the connection trace too.
+  // A finalizer registered under the HTTP parent would otherwise emit spans
+  // minutes after that request ended, stretching the original APM trace again.
+  return yield* Effect.scoped(use(upgrade)).pipe(
+    Effect.withSpan('websocket.connection', {
+      root: true,
+      kind: 'internal',
+      links: span === undefined ? [] : [{ span, attributes: {} }],
+      attributes: typeof route === 'string' ? { 'http.route': route } : {},
+    }),
+  )
+})
+
 /**
  * The server span of a request, opened here instead of by the platform.
  *
@@ -439,24 +496,43 @@ export const serverSpans = (options?: {
         (span) => {
           const writePath = () => {
             const route = span.attributes.get('http.route')
+            if (typeof route === 'string')
+              (span as { name: string }).name = `${request.method} ${route}`
             span.attribute('url.path', typeof route === 'string' ? route : pathOf(request.url))
           }
-          // an event stream's request is over once the stream is open
-          HttpEffect.appendPreResponseHandlerUnsafe(request, (_request, response) =>
-            isEventStream(response)
-              ? Effect.flatMap(Clock.currentTimeNanos, (now) =>
-                  Effect.sync(() => {
-                    if (span.status._tag !== 'Ended') {
+          const observers: ((response: EstablishedResponse) => Effect.Effect<void>)[] = []
+          let established = false
+          const lifecycle: RequestEstablishment['Service'] = {
+            observe: (handler) => observers.push(handler),
+            establish: (response) =>
+              Effect.suspend(() => {
+                if (established) return Effect.void
+                established = true
+                return Effect.flatMap(Clock.currentTimeNanos, (now) =>
+                  Effect.andThen(
+                    Effect.sync(() => {
                       span.attribute('http.response.status_code', response.status)
                       writePath()
                       span.end(now, Exit.succeed(response))
-                    }
-                    return response
-                  }),
+                    }),
+                    Effect.withParentSpan(
+                      Effect.forEach(observers, (observe) => observe(response), { discard: true }),
+                      span,
+                    ),
+                  ),
+                )
+              }),
+          }
+          HttpEffect.appendPreResponseHandlerUnsafe(request, (_request, response) =>
+            isEventStream(response)
+              ? Effect.as(
+                  lifecycle.establish({ status: response.status, protocol: 'sse' }),
+                  response,
                 )
               : Effect.succeed(response),
           )
           return Effect.withParentSpan(httpApp, span).pipe(
+            Effect.provideService(RequestEstablishment, lifecycle),
             Effect.tap((response) =>
               Effect.sync(() => {
                 if (span.status._tag !== 'Ended')
@@ -623,14 +699,14 @@ export const httpMetrics = (options?: {
             seconds,
           )
         })
-      // an event stream is measured when it opens, like its span (serverSpans)
       let recorded = false
-      HttpEffect.appendPreResponseHandlerUnsafe(request, (_request, response) => {
-        if (!isEventStream(response)) return Effect.succeed(response)
-        recorded = true
-        return Effect.as(record(response.status), response)
-      })
-      return Effect.onExit(httpApp, (exit) => (recorded ? Effect.void : record(endedStatus(exit))))
+      return Effect.andThen(
+        onResponseEstablished((response) => {
+          recorded = true
+          return record(response.status)
+        }),
+        Effect.onExit(httpApp, (exit) => (recorded ? Effect.void : record(endedStatus(exit)))),
+      )
     })
 }
 

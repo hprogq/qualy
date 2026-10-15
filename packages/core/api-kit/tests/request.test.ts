@@ -15,6 +15,7 @@ import {
   serverSpans,
   clientWentAway,
   trustedProxies,
+  webSocketSession,
 } from '../src/request.ts'
 
 // The identity of one request: a minted id, the client address behind the
@@ -100,6 +101,10 @@ const receiverPort = 3209
 interface ExportedSpan {
   name: string
   traceId: string
+  spanId: string
+  kind: number
+  parentSpanId?: string
+  links?: { traceId: string; spanId: string }[]
   attributes: { key: string; value: { stringValue?: string; intValue?: string | number } }[]
   /** OTLP's status: 1 is ok, 2 is error */
   status?: { code?: number; message?: string }
@@ -152,6 +157,32 @@ beforeAll(async () => {
           { contentType: 'text/event-stream' },
         ),
       ),
+    ),
+    HttpRouter.add(
+      'GET',
+      '/socket/:mode',
+      Effect.gen(function* () {
+        const request = yield* HttpServerRequest.HttpServerRequest
+        const context = yield* RequestContext
+        if (request.url.endsWith('/unavailable')) return HttpServerResponse.empty({ status: 503 })
+        yield* webSocketSession((upgrade) =>
+          Effect.gen(function* () {
+            yield* Effect.addFinalizer(() =>
+              Effect.void.pipe(Effect.withSpan('connection.cleanup')),
+            )
+            const connected = yield* upgrade
+            const { pull } = yield* connected.reader
+            const { write } = yield* connected.writer
+            yield* write(context.traceId!)
+            for (;;) {
+              const messages = yield* pull
+              if (messages.includes('fail'))
+                return yield* Effect.die(new Error('connection failed after upgrade'))
+            }
+          }).pipe(Effect.ignore),
+        )
+        return HttpServerResponse.empty()
+      }),
     ),
     HttpRouter.add('GET', '/defect', Effect.die(new Error('a defect in the handler'))),
     // an answer that takes a while, for a reader who does not wait for it
@@ -356,6 +387,9 @@ describe('the span a request exports', () => {
     })
     const reader = response.body!.getReader()
     await reader.read()
+    const early = await exportedSpan((candidate) => candidate.traceId === inbound)
+    expect(early.name).toBe('GET /events')
+    expect(early.kind).toBe(2)
     // the reader stays a while, as a page does
     await new Promise((resolve) => setTimeout(resolve, 400))
     leaving.abort()
@@ -378,6 +412,87 @@ describe('the span a request exports', () => {
     )
     expect(measured?.type).toBe('Histogram')
     if (measured?.type === 'Histogram') expect(measured.state.max).toBeLessThan(0.2)
+  })
+
+  it('exports a WebSocket handshake before close and keeps connection failures in a linked internal trace', async () => {
+    const socket = new WebSocket(`${base.replace('http:', 'ws:')}/socket/failure`)
+    const traceId = await new Promise<string>((resolve, reject) => {
+      socket.addEventListener('message', (event) => resolve(String(event.data)), { once: true })
+      socket.addEventListener('error', reject, { once: true })
+    })
+    try {
+      const handshake = await exportedSpan((span) => span.traceId === traceId && span.kind === 2)
+      expect(handshake.name).toBe('GET /socket/:mode')
+      expect(
+        handshake.attributes.find((a) => a.key === 'http.response.status_code')?.value.intValue,
+      ).toBe(101)
+      expect(handshake.status?.code).not.toBe(2)
+      expect(socket.readyState).toBe(WebSocket.OPEN)
+      const before = (await Effect.runPromise(Metric.snapshot)).find(
+        (state) =>
+          state.id === 'http.server.request.duration' &&
+          state.attributes?.['http.route'] === '/socket/:mode',
+      )
+      expect(before?.type).toBe('Histogram')
+      if (before?.type === 'Histogram') expect(before.state.count).toBe(1)
+      await new Promise((resolve) => setTimeout(resolve, 400))
+      socket.send('fail')
+      const connection = await exportedSpan(
+        (span) =>
+          span.name === 'websocket.connection' &&
+          span.links?.some((link) => link.traceId === traceId) === true,
+      )
+      expect(connection.kind).toBe(1)
+      expect(connection.traceId).not.toBe(traceId)
+      expect(connection.parentSpanId).toBeUndefined()
+      expect(connection.status?.code).toBe(2)
+      expect(connection.status?.message).toContain('connection failed after upgrade')
+      const cleanup = await exportedSpan(
+        (span) => span.name === 'connection.cleanup' && span.traceId === connection.traceId,
+      )
+      expect(cleanup.traceId).not.toBe(traceId)
+      for (const span of exported.filter((span) => span.traceId === traceId)) {
+        expect(BigInt(span.endTimeUnixNano!)).toBeLessThanOrEqual(
+          BigInt(handshake.endTimeUnixNano!),
+        )
+      }
+      const handshakeMs =
+        Number(BigInt(handshake.endTimeUnixNano!) - BigInt(handshake.startTimeUnixNano!)) / 1e6
+      const connectionMs =
+        Number(BigInt(connection.endTimeUnixNano!) - BigInt(connection.startTimeUnixNano!)) / 1e6
+      expect(handshakeMs).toBeLessThan(200)
+      expect(connectionMs).toBeGreaterThan(400)
+      const after = (await Effect.runPromise(Metric.snapshot)).find(
+        (state) =>
+          state.id === 'http.server.request.duration' &&
+          state.attributes?.['http.route'] === '/socket/:mode',
+      )
+      if (after?.type === 'Histogram') {
+        expect(after.state.count).toBe(1)
+        expect(after.state.max).toBeLessThan(0.2)
+      }
+    } finally {
+      socket.close()
+    }
+  })
+
+  it('keeps a refused WebSocket handshake as an HTTP failure without creating a connection trace', async () => {
+    const before = exported.length
+    const socket = new WebSocket(`${base.replace('http:', 'ws:')}/socket/unavailable`)
+    await new Promise<void>((resolve) =>
+      socket.addEventListener('error', () => resolve(), { once: true }),
+    )
+    const failed = await exportedSpan(
+      (span) =>
+        exported.indexOf(span) >= before &&
+        span.name === 'GET /socket/:mode' &&
+        Number(
+          span.attributes.find((a) => a.key === 'http.response.status_code')?.value.intValue,
+        ) === 503,
+    )
+    expect(
+      exported.some((span) => span.links?.some((link) => link.traceId === failed.traceId)),
+    ).toBe(false)
   })
 
   it('ends a request the reader gave up on before its answer as a 499, not as an error', async () => {
