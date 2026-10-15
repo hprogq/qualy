@@ -604,3 +604,11 @@ docs/archive/designs/browser-rum.md §42 的三条否决条件:
 
 升级 SDK 时按本文的同一组用例重跑:包形态、四个钩子的契约、CSP 三项、哨兵 0 命中、
 level 覆盖面、Ajax 静默、sourcemap 还原。
+
+## 1.41.15 → 1.41.16(2026-10-15)
+
+两版 `npm pack` 后比对:`lib/` 下五个产物与 `core.d.ts`、`package.json` 有差异,其余文件相同。把
+`lib/aegis.min.js` 按语句拆行(版本号与发布时间替换掉)后的 diff 只有一处:传输失败计数「累计 60 次即
+`destroy()`」从行内表达式改为原型方法 `shouldDestroyOnTransportFail()`(`core.d.ts` 新增同名 protected
+声明,注释说明供子类覆盖,`403 forbidden` 分支不经过它)。阈值、403 即销毁、上报内容与请求形状都没有变化,
+上文的四个钩子、CSP、隐私与错误覆盖结论沿用,未重新真机实测。

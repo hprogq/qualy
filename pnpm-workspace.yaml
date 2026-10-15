@@ -19,7 +19,7 @@ catalog:
   # read by the staged-web gate, which re-minifies the served css to ask
   # whether the build left anything undone
   lightningcss: 1.33.0
-  '@types/node': 24.13.3
+  '@types/node': 24.19.2
   chokidar: 5.0.0
   typescript: 7.0.2
   # instance validation for the value-schema scoring contracts (json schema
@@ -122,8 +122,8 @@ catalog:
   # library's default entry is its v2 challenge format; v1 lives under /v1
   # and is not to be used. The widget ships an /external build whose workers
   # are imported separately, so the strict CSP's worker-src 'self' holds.
-  altcha-lib: 2.5.0
-  altcha: 3.2.3
+  altcha-lib: 2.6.0
+  altcha: 3.3.0
   # the OpenID Connect relying party: discovery, the code grant with PKCE,
   # ID Token validation (signature, issuer, audience, nonce, time) and
   # UserInfo. Every request it makes goes through the auth outbound port,
@@ -138,7 +138,7 @@ catalog:
   # screens that animate something those primitives do not cover. Every
   # package that animates names it here, so the browser holds one copy and
   # the ui's reduced-motion setting reaches every animated component
-  motion: 12.43.0
+  motion: 14.2.0
   # the icon set behind @qualy/ui and every plugin's screens: one version, so
   # the browser holds one copy
   lucide-react: 1.56.0
@@ -148,7 +148,7 @@ catalog:
   simple-icons: 16.35.0
   '@vitest/browser-playwright': 5.0.4
   'vitest-browser-react': 2.3.0
-  playwright: 1.62.1
+  playwright: 1.64.0
   # UI platform migration (docs/archive/designs/mantine-ui-migration.md): StyleX is
   # the styling compiler for product layout and visuals. One version across
   # the workspace - two copies of the stylex runtime would split the
@@ -175,7 +175,7 @@ catalog:
   # Pinned exactly, because a minor release of it changes what leaves a
   # browser - the behaviour that was actually verified is recorded in
   # docs/notes/aegis-web-sdk.md, and an upgrade repeats those checks.
-  aegis-web-sdk: 1.41.15
+  aegis-web-sdk: 1.41.16
   # the rum control plane, for the source map uploader a release pipeline runs.
   # The per-product package rather than `tencentcloud-sdk-nodejs`: the whole
   # sdk unpacks to 44 MB for three calls, and this one to 220 KB.
