@@ -58,7 +58,7 @@ export const ALTCHA_TUNING: AltchaTuning = {
   ttlMs: 5 * 60_000,
 }
 /** a spent challenge is remembered this long past its expiry */
-const REMEMBERED_AFTER_EXPIRY = "interval '1 hour'"
+const REMEMBERED_AFTER_EXPIRY_HOURS = 1
 /** a proof larger than this is not one: a challenge and a solution are well under 2 KiB */
 const PAYLOAD_MAX_LENGTH = 4096
 const SWEEP_EVERY = 100
@@ -138,13 +138,25 @@ export const registrationLayerWith = (
 
       const sweep = withDb(
         db.query((k) =>
-          sql`
-            delete from captcha_altcha_used_challenges
-             where ctid in (
-               select ctid from captcha_altcha_used_challenges
-                where expires_at < now() - ${sql.raw(REMEMBERED_AFTER_EXPIRY)}
-                limit ${SWEEP_LIMIT}
-             )`.execute(k),
+          k
+            .deleteFrom('CaptchaAltchaUsedChallenge')
+            // a batch by physical row, PostgreSQL's own handle: a delete takes no limit
+            .where((eb) =>
+              eb(
+                sql.ref('ctid'),
+                'in',
+                eb
+                  .selectFrom('CaptchaAltchaUsedChallenge')
+                  .select(sql<string>`ctid`.as('ctid'))
+                  .where(
+                    'expiresAt',
+                    '<',
+                    sql<Date>`now() - make_interval(hours => ${REMEMBERED_AFTER_EXPIRY_HOURS})`,
+                  )
+                  .limit(SWEEP_LIMIT),
+              ),
+            )
+            .execute(),
         ),
       ).pipe(Effect.orDie, Effect.asVoid)
 
