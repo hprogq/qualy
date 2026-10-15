@@ -13,7 +13,7 @@
     "@qualy/telemetry": "workspace:*",
     "@qualy/text": "workspace:*",
     "@qualy/web-build": "workspace:*",
-    "chalk": "^6.0.0",
+    "chalk": "^6.0.1",
     "chokidar": "catalog:",
     "effect": "catalog:"
   },

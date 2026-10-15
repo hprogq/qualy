@@ -40,7 +40,7 @@
     "effect": "catalog:",
     "lucide-react": "^0.552.0",
     "motion": "catalog:",
-    "pinyin-pro": "3.29.4",
+    "pinyin-pro": "3.29.5",
     "react-router": "catalog:"
   },
   "devDependencies": {

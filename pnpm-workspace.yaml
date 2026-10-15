@@ -44,15 +44,15 @@ catalog:
   # fine grains - the core, the JS regex engine, the TypeScript grammar -
   # so no other language, theme or wasm engine reaches the browser. The two
   # packages move as one version: langs are built against the core's types
-  shiki: 4.4.3
-  '@shikijs/langs': 4.4.3
+  shiki: 4.5.0
+  '@shikijs/langs': 4.5.0
   # reads and writes the administrative import workbook, server-side only:
   # the template a recorder downloads and the file they send back. It never
   # reaches the browser - the parser lives behind the api, because a
   # workbook parsed in the browser and posted as json is a workbook the
   # stored original no longer accounts for
   exceljs: 4.4.0
-  tsx: 4.23.1
+  tsx: 4.23.15
   # every @mikro-orm package sits on one version: the driver re-exports core's
   # types, and two copies of core would make an entity defined against one
   # unassignable to the other
@@ -80,15 +80,15 @@ catalog:
   # copies: the type came from ours and the Pool instance from the ORM's
   pg: 8.23.1
   '@types/pg': 8.23.1
-  yaml: 2.9.0
-  vitest: 5.0.1
+  yaml: 2.9.1
+  vitest: 5.0.4
   # the V8 coverage provider moves with vitest: it peers on the exact version
-  '@vitest/coverage-v8': 5.0.1
+  '@vitest/coverage-v8': 5.0.4
   # accessibility rules the end-to-end journeys run on key screens (tools/e2e)
-  axe-core: 4.13.0
+  axe-core: 4.14.0
   # not the repository's formatter (that is oxfmt): the formula editor's
   # language server in sandbox-authoring formats documents with it at runtime
-  prettier: 3.9.6
+  prettier: 3.9.10
   # the message compiler (docs/adr/0011-i18n-paraglide.md): build-time only,
   # pinned exactly and upgraded on their own, since the ICU plugin is young
   # and a range would move the compiler of every sentence silently
@@ -98,12 +98,12 @@ catalog:
   '@messageformat/parser': 5.1.1
   react: 19.2.8
   react-dom: 19.2.8
-  react-router: 8.3.0
-  vite: 8.2.0
-  '@vitejs/plugin-react': 6.0.5
+  react-router: 8.4.0
+  vite: 8.3.4
+  '@vitejs/plugin-react': 6.1.2
   '@types/react': 19.2.18
   '@types/react-dom': 19.2.4
-  '@tanstack/react-query': 5.101.4
+  '@tanstack/react-query': 5.104.2
   sirv: 3.0.2
   argon2: 0.45.1
   # the connection a login entrance's upstream is reached over: an Agent whose
@@ -115,7 +115,7 @@ catalog:
   # driver refuses any document type or entity declaration before it runs,
   # turns its entity processing off and decodes the five predefined entities
   # itself. 5.10.1 is the floor its recent entity-expansion advisories set.
-  fast-xml-parser: 5.11.1
+  fast-xml-parser: 5.11.2
   # ALTCHA, the default CAPTCHA provider: a proof of work computed in the
   # visitor's browser and checked on the server, with no third party in the
   # loop, which is what a deployment in mainland China needs. The server
@@ -132,14 +132,14 @@ catalog:
   openid-client: 6.8.8
   # handing mail to an SMTP relay: the smtp mail backend's transport, with
   # its own TLS modes and timeouts. Ships its own types.
-  nodemailer: 10.0.10
+  nodemailer: 10.1.0
   clsx: 2.1.1
   # the animation library behind @qualy/ui's motion primitives, and behind
   # screens that animate something those primitives do not cover. Every
   # package that animates names it here, so the browser holds one copy and
   # the ui's reduced-motion setting reaches every animated component
   motion: 12.43.0
-  '@vitest/browser-playwright': 5.0.1
+  '@vitest/browser-playwright': 5.0.4
   'vitest-browser-react': 2.3.0
   playwright: 1.62.1
   # UI platform migration (docs/archive/designs/mantine-ui-migration.md): StyleX is
@@ -150,12 +150,12 @@ catalog:
   '@stylexjs/unplugin': 0.19.1
   # Mantine is the commodity widget substrate behind @qualy/ui (ADR 0010);
   # hooks is core's peer dependency and must match its version exactly
-  '@mantine/core': 9.6.1
-  '@mantine/dates': 9.6.1
-  '@mantine/hooks': 9.6.1
+  '@mantine/core': 9.7.2
+  '@mantine/dates': 9.7.2
+  '@mantine/hooks': 9.7.2
   # the date components' own formatting engine; nothing else in the product
   # uses it, and no domain date logic moves onto it
-  dayjs: 1.11.13
+  dayjs: 1.11.23
   # tencent cloud object storage, in three parts that never meet: the node sdk
   # is the control plane (head/delete/sign), the sts package mints the
   # exact-object upload credential, and the browser sdk is the only one that
@@ -217,14 +217,14 @@ minimumReleaseAgeExclude:
   # The Vitest 5 line, whole. `@vitest/browser-playwright` peers on an exact
   # vitest, and `@vitest/browser` pulls the ui package for its orchestrator,
   # so this set moves together or not at all - a partial exemption would just
-  # be an install that cannot resolve. Taken at 5.0.1 rather than 5.0.0 for
-  # the self-referencing `extends` fix (the webkit config is one) and the
+  # be an install that cannot resolve. Never below 5.0.1, which carries the
+  # self-referencing `extends` fix (the webkit config is one) and the
   # doctor's pool measurement.
-  - '@vitest/browser-playwright@5.0.1'
-  - '@vitest/browser@5.0.1'
-  - '@vitest/mocker@5.0.1'
-  - '@vitest/pretty-format@5.0.1'
-  - '@vitest/spy@5.0.1'
-  - '@vitest/ui@5.0.1'
-  - '@vitest/utils@5.0.1'
-  - vitest@5.0.1
+  - '@vitest/browser-playwright@5.0.4'
+  - '@vitest/browser@5.0.4'
+  - '@vitest/mocker@5.0.4'
+  - '@vitest/pretty-format@5.0.4'
+  - '@vitest/spy@5.0.4'
+  - '@vitest/ui@5.0.4'
+  - '@vitest/utils@5.0.4'
+  - vitest@5.0.4

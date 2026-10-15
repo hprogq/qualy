@@ -97,7 +97,7 @@
     "dayjs": "catalog:",
     "lucide-react": "^0.552.0",
     "motion": "catalog:",
-    "react-dropzone": "^20.1.0",
+    "react-dropzone": "^20.1.3",
     "react-photo-view": "^1.2.7",
     "sonner": "^2.0.8"
   },
