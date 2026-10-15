@@ -214,7 +214,9 @@ export const admittedGroupsOf = (tenantId: string, participantIds: readonly stri
                 )
                 .select([lineageLevels.as('levels'), 'ut.isSystem as system'])
                 .where('bp.tenantId', '=', tenantId)
-                .where(sql<boolean>`${sql.ref('bp.id')} = any(${[...participantIds]}::uuid[])`)
+                .where((eb) =>
+                  eb('bp.id', '=', eb.fn.any(sql<string[]>`${[...participantIds]}::uuid[]`)),
+                )
                 .as('member'),
             )
             .select([

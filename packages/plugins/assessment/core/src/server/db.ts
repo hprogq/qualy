@@ -1903,41 +1903,57 @@ export const importCandidates = (
 ) =>
   db
     .query((k) =>
-      sql<{ id: string; nodeId: string }>`
-        select u.id, u.primary_org_node_id as "nodeId"
-          from users u
-          join org_nodes n on n.tenant_id = u.tenant_id and n.id = u.primary_org_node_id
-         where u.tenant_id = ${tenantId}::uuid
-           and u.enabled
-           and u.deleted_at is null
-           and u.user_type_id = any(${userTypeIds as string[]}::uuid[])
-           and exists (
-             select 1 from org_nodes scope
-              where scope.tenant_id = u.tenant_id
-                and scope.id = any(${nodeIds as string[]}::uuid[])
-                and n.path <@ scope.path
-           )
-           -- and inside the caller's own reach, not merely under a node they
-           -- may act at: authority at a college held with self coverage does
-           -- not reach the classes beneath it, and asking for the college
-           -- would otherwise have swept them all in
-           and ${scopeCoverage(held, {
-             id: sql.ref('n.id') as never,
-             tenantId: sql.ref('n.tenant_id') as never,
-             path: sql.ref('n.path') as never,
-           })}
-           and not exists (
-             select 1 from batch_participants bp
-              where bp.tenant_id = u.tenant_id
-                and bp.batch_id = ${batchId}::uuid
-                and bp.user_id = u.id
-                and bp.status = 'active'
-           )
-         order by u.display_name, u.id
-      `.execute(k),
+      k
+        .selectFrom('User as u')
+        .innerJoin('OrgNode as n', (join) =>
+          join.onRef('n.tenantId', '=', 'u.tenantId').onRef('n.id', '=', 'u.primaryOrgNodeId'),
+        )
+        .select(['u.id as id', 'u.primaryOrgNodeId as nodeId'])
+        .where('u.tenantId', '=', tenantId)
+        .where('u.enabled', '=', true)
+        .where('u.deletedAt', 'is', null)
+        .where((eb) => eb('u.userTypeId', '=', eb.fn.any(uuids(userTypeIds))))
+        .where((eb) =>
+          eb.exists(
+            eb
+              .selectFrom('OrgNode as scope')
+              .select('scope.id')
+              .whereRef('scope.tenantId', '=', 'u.tenantId')
+              .where('scope.id', '=', eb.fn.any(uuids(nodeIds)))
+              // ltree containment, PostgreSQL's own operator
+              .where((q) => sql<boolean>`${q.ref('n.path')} <@ ${q.ref('scope.path')}`),
+          ),
+        )
+        // and inside the caller's own reach, not merely under a node they
+        // may act at: authority at a college held with self coverage does
+        // not reach the classes beneath it, and asking for the college
+        // would otherwise have swept them all in
+        .where((eb) =>
+          scopeCoverage(held, {
+            id: eb.ref('n.id'),
+            tenantId: eb.ref('n.tenantId'),
+            path: eb.ref('n.path'),
+          }),
+        )
+        .where((eb) =>
+          eb.not(
+            eb.exists(
+              eb
+                .selectFrom('BatchParticipant as bp')
+                .select('bp.id')
+                .whereRef('bp.tenantId', '=', 'u.tenantId')
+                .where('bp.batchId', '=', batchId)
+                .whereRef('bp.userId', '=', 'u.id')
+                .where('bp.status', '=', 'active'),
+            ),
+          ),
+        )
+        .orderBy('u.displayName')
+        .orderBy('u.id')
+        .execute(),
     )
     .pipe(
-      Effect.map((result) => result.rows.map((row) => ({ userId: row.id, nodeId: row.nodeId }))),
+      Effect.map((rows) => rows.map((row) => ({ userId: row.id, nodeId: row.nodeId as string }))),
     )
 
 export interface CandidateFilter {
@@ -3056,42 +3072,51 @@ export const listRosterUnits = (
   },
 ) =>
   db.query((k) =>
-    sql<{ id: string; name: string; parentId: string | null; orgTypeId: string }>`
-        select n.id::text as id, n.name as name, n.parent_id::text as "parentId",
-               n.org_type_id::text as "orgTypeId"
-          from org_nodes n
-         where n.tenant_id = ${tenantId}::uuid
-           and exists (
-             select 1
-               from batch_participants bp
-               cross join lateral jsonb_array_elements(bp.anchor_lineage) as step
-              where bp.tenant_id = n.tenant_id
-                and bp.batch_id = ${batchId}::uuid
-                and ${
-                  (filter.status ?? 'active') === 'all'
-                    ? sql<boolean>`true`
-                    : sql<boolean>`bp.status = ${filter.status ?? 'active'}`
-                }
-                and (step.value ->> 'nodeId')::uuid = n.id
-                and ${
-                  filter.userTypeId === undefined || filter.userTypeId === ''
-                    ? sql<boolean>`true`
-                    : sql<boolean>`bp.user_type_id = ${filter.userTypeId}::uuid`
-                }
-                and ${
-                  filter.reach === undefined
-                    ? sql<boolean>`true`
-                    : staffReachOver({
-                        tenantId,
-                        batchId,
-                        userId: filter.reach.userId,
-                        permissionCode: filter.reach.permissionCode,
-                        anchorNodeId: sql.ref('bp.assessment_anchor_node_id'),
-                        anchorPath: sql.ref('bp.anchor_path'),
-                      })
-                }
-           )
-         order by n.path`.execute(k),
+    k
+      .selectFrom('OrgNode as n')
+      .select((eb) => [
+        eb.cast<string>('n.id', 'text').as('id'),
+        'n.name as name',
+        eb.cast<string | null>('n.parentId', 'text').as('parentId'),
+        eb.cast<string>('n.orgTypeId', 'text').as('orgTypeId'),
+      ])
+      .where('n.tenantId', '=', tenantId)
+      .where((eb) =>
+        eb.exists(
+          eb
+            .selectFrom('BatchParticipant as bp')
+            .select('bp.id')
+            .whereRef('bp.tenantId', '=', 'n.tenantId')
+            .where('bp.batchId', '=', batchId)
+            .$if((filter.status ?? 'active') !== 'all', (q) =>
+              q.where('bp.status', '=', filter.status ?? 'active'),
+            )
+            // the unit is somewhere in the member's frozen lineage; walking
+            // jsonb is PostgreSQL's own
+            .where(
+              (q) => sql<boolean>`exists (
+                select 1 from jsonb_array_elements(${q.ref('bp.anchorLineage')}) as step
+                 where (step.value ->> 'nodeId')::uuid = ${q.ref('n.id')})`,
+            )
+            .$if(filter.userTypeId !== undefined && filter.userTypeId !== '', (q) =>
+              q.where('bp.userTypeId', '=', filter.userTypeId!),
+            )
+            .$if(filter.reach !== undefined, (q) =>
+              q.where((row) =>
+                staffReachOver({
+                  tenantId,
+                  batchId,
+                  userId: filter.reach!.userId,
+                  permissionCode: filter.reach!.permissionCode,
+                  anchorNodeId: row.ref('bp.assessmentAnchorNodeId'),
+                  anchorPath: row.ref('bp.anchorPath'),
+                }),
+              ),
+            ),
+        ),
+      )
+      .orderBy('n.path')
+      .execute(),
   )
 
 /**
@@ -3320,11 +3345,11 @@ const rosterAccountsQuery = (
     // the round's own account of where it drew somebody from, the same
     // lineage its unit tree is built out of: a live node's path would put
     // the filter and the tree in two coordinate systems once a unit moves
-    query = query.where(
+    query = query.where((eb) =>
       filter.orgScope === 'self'
-        ? sql<boolean>`${sql.ref('batch_participants.assessment_anchor_node_id')} = any(${units}::uuid[])`
+        ? eb('BatchParticipant.assessmentAnchorNodeId', '=', eb.fn.any(uuids(units)))
         : sql<boolean>`exists (
-            select 1 from jsonb_array_elements(batch_participants.anchor_lineage) as step
+            select 1 from jsonb_array_elements(${eb.ref('BatchParticipant.anchorLineage')}) as step
              where (step.value ->> 'nodeId')::uuid = any(${units}::uuid[])
           )`,
     )

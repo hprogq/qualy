@@ -5747,9 +5747,9 @@ export const make = Effect.fn('Assessment.make')(function* () {
         )
         const userTypes = yield* dieQuery(withDb(listRosterUserTypes(tenantId, batchId, members)))
         const orgTypes = yield* dieQuery(
-          withDb(orgTypesNamed(tenantId, [...new Set(units.rows.map((unit) => unit.orgTypeId))])),
+          withDb(orgTypesNamed(tenantId, [...new Set(units.map((unit) => unit.orgTypeId))])),
         )
-        return { units: units.rows, orgTypes, userTypes }
+        return { units, orgTypes, userTypes }
       },
     ),
 

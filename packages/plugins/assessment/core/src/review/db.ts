@@ -606,48 +606,88 @@ export interface ReviewInstanceDetailRow {
  * policy edit would quietly re-open a door the work had closed. Arrival
  * noise (submitted, assignee-not-found, stage-skipped) is not work.
  */
-const WORK_KINDS = `('approved', 'rejected', 'escalated', 'opinion-approved', 'opinion-rejected', 'supplement-requested')`
+const WORK_KINDS = [
+  'approved',
+  'rejected',
+  'escalated',
+  'opinion-approved',
+  'opinion-rejected',
+  'supplement-requested',
+]
 
 export const withdrawStandingsOf = (tenantId: string, instanceIds: readonly string[]) =>
   instanceIds.length === 0
     ? Effect.succeed(new Map<string, { origin: string; begun: boolean; open: boolean }>())
     : db
         .query((k) =>
-          sql<{ id: string; origin: string; begun: boolean; open: boolean }>`
-            with recursive lineage (root_id, id) as (
-              select ri.id, ri.id from review_instances ri
-              where ri.tenant_id = ${tenantId} and ri.id = any(${uuidArray(instanceIds)})
-              union all
-              select l.root_id, prior.id
-              from lineage l
-              join review_instances cur
-                on cur.tenant_id = ${tenantId} and cur.id = l.id
-              join review_instances prior
-                on prior.tenant_id = ${tenantId} and prior.id = cur.supersedes_instance_id
+          k
+            // each round with every round it continues, back along supersedes
+            .withRecursive('lineage(rootId, id)', (q) =>
+              q
+                .selectFrom('ReviewInstance as ri')
+                .select(['ri.id as rootId', 'ri.id as id'])
+                .where('ri.tenantId', '=', tenantId)
+                .where((eb) => eb('ri.id', '=', eb.fn.any(uuidArray(instanceIds))))
+                .unionAll(
+                  q
+                    .selectFrom('lineage as l')
+                    .innerJoin('ReviewInstance as cur', (join) =>
+                      join.on('cur.tenantId', '=', tenantId).onRef('cur.id', '=', 'l.id'),
+                    )
+                    .innerJoin('ReviewInstance as prior', (join) =>
+                      join
+                        .on('prior.tenantId', '=', tenantId)
+                        .onRef('prior.id', '=', 'cur.supersedesInstanceId'),
+                    )
+                    .select(['l.rootId', 'prior.id as id']),
+                ),
             )
-            select ri.id, ri.origin,
-              (
-                exists (
-                  select 1 from review_events ev
-                  join lineage l on l.root_id = ri.id and l.id = ev.review_instance_id
-                  where ev.tenant_id = ${tenantId}
-                    and ev.kind in ${sql.raw(WORK_KINDS)}
-                )
-                or exists (
-                  select 1 from review_votes v
-                  join review_panels pn on pn.tenant_id = v.tenant_id and pn.id = v.panel_id
-                  join lineage l2 on l2.root_id = ri.id and l2.id = pn.review_instance_id
-                  where v.tenant_id = ${tenantId}
-                )
-              ) as begun,
-              (ri.state <> 'completed') as open
-            from review_instances ri
-            where ri.tenant_id = ${tenantId} and ri.id = any(${uuidArray(instanceIds)})
-          `.execute(k),
+            .selectFrom('ReviewInstance as ri')
+            .select((eb) => [
+              'ri.id as id',
+              'ri.origin as origin',
+              eb
+                .or([
+                  eb.exists(
+                    eb
+                      .selectFrom('ReviewEvent as ev')
+                      .innerJoin('lineage as l', (join) =>
+                        join
+                          .onRef('l.rootId', '=', 'ri.id')
+                          .onRef('l.id', '=', 'ev.reviewInstanceId'),
+                      )
+                      .select('ev.id')
+                      .where('ev.tenantId', '=', tenantId)
+                      .where('ev.kind', 'in', WORK_KINDS),
+                  ),
+                  eb.exists(
+                    eb
+                      .selectFrom('ReviewVote as v')
+                      .innerJoin('ReviewPanel as pn', (join) =>
+                        join
+                          .onRef('pn.tenantId', '=', 'v.tenantId')
+                          .onRef('pn.id', '=', 'v.panelId'),
+                      )
+                      .innerJoin('lineage as l2', (join) =>
+                        join
+                          .onRef('l2.rootId', '=', 'ri.id')
+                          .onRef('l2.id', '=', 'pn.reviewInstanceId'),
+                      )
+                      .select('v.id')
+                      .where('v.tenantId', '=', tenantId),
+                  ),
+                ])
+                .$castTo<boolean>()
+                .as('begun'),
+              eb('ri.state', '<>', 'completed').$castTo<boolean>().as('open'),
+            ])
+            .where('ri.tenantId', '=', tenantId)
+            .where((eb) => eb('ri.id', '=', eb.fn.any(uuidArray(instanceIds))))
+            .execute(),
         )
         .pipe(
           Effect.map(
-            ({ rows }) =>
+            (rows) =>
               new Map(
                 rows.map((row) => [
                   row.id,
