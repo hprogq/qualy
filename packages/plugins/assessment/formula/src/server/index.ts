@@ -3323,7 +3323,10 @@ export const formulaApiHandlers = HttpApiBuilder.group(local, 'assessmentFormula
             const socket = yield* upgrade.pipe(Effect.orElseSucceed(() => null))
             if (socket === null) return HttpServerResponse.empty({ status: 400 })
 
-            yield* bridgeSocket(socket, session)
+            // the conversation runs untraced: a span per message, and the
+            // event stream's span lasting the whole session, made each
+            // editor one trace as long as the page stayed open
+            yield* bridgeSocket(socket, session).pipe(Effect.withTracerEnabled(false))
             return HttpServerResponse.empty()
           }),
         )

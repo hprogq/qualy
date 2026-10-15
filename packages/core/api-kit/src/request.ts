@@ -408,6 +408,15 @@ export const onResponseEstablished = Effect.fnUntraced(function* (
  * only allocates a Socket; its reader performs the actual WebSocket handshake.
  * Observing reader success therefore records 101 only after a real upgrade.
  * Session acquisition and cleanup run in the connection's own scope.
+ *
+ * The connection span ends at that same moment, as an event stream's server
+ * span does: it measures opening the connection, not how long a page kept it.
+ * A span held to the close made every latency figure of the service a figure
+ * about how long people keep editors open. A connection that never upgrades
+ * ends the span with the handler's exit; how a connection ended is the
+ * access log's line. What the connection carries afterwards is the caller's
+ * to trace or not - a span per message would make one trace as long as the
+ * connection again - so the session's traffic should run untraced.
  */
 export const webSocketSession = Effect.fnUntraced(function* <A, E, R>(
   use: (upgrade: HttpServerRequest.HttpServerRequest['upgrade']) => Effect.Effect<A, E, R>,
@@ -416,25 +425,37 @@ export const webSocketSession = Effect.fnUntraced(function* <A, E, R>(
   const lifecycle = yield* Effect.serviceOption(RequestEstablishment)
   const parent = yield* Effect.serviceOption(Tracer.ParentSpan)
   const span = Option.isSome(parent) && parent.value._tag === 'Span' ? parent.value : undefined
-  const upgrade = Effect.map(request.upgrade, (socket) => ({
-    ...socket,
-    reader: Effect.tap(socket.reader, () =>
-      Option.isSome(lifecycle)
-        ? lifecycle.value.establish({ status: 101, protocol: 'websocket' })
-        : Effect.void,
-    ),
-  }))
   const route = span?.attributes.get('http.route')
   // Session acquisition and its finalizers belong to the connection trace too.
   // A finalizer registered under the HTTP parent would otherwise emit spans
   // minutes after that request ended, stretching the original APM trace again.
-  return yield* Effect.scoped(use(upgrade)).pipe(
-    Effect.withSpan('websocket.connection', {
+  return yield* Effect.useSpan(
+    'websocket.connection',
+    {
       root: true,
       kind: 'internal',
       links: span === undefined ? [] : [{ span, attributes: {} }],
       attributes: typeof route === 'string' ? { 'http.route': route } : {},
-    }),
+    },
+    (connection) => {
+      const established = Effect.flatMap(Clock.currentTimeNanos, (now) =>
+        Effect.sync(() => {
+          if (connection.status._tag !== 'Ended') connection.end(now, Exit.void)
+        }),
+      )
+      const upgrade = Effect.map(request.upgrade, (socket) => ({
+        ...socket,
+        reader: Effect.tap(socket.reader, () =>
+          Effect.andThen(
+            established,
+            Option.isSome(lifecycle)
+              ? lifecycle.value.establish({ status: 101, protocol: 'websocket' })
+              : Effect.void,
+          ),
+        ),
+      }))
+      return Effect.scoped(use(upgrade)).pipe(Effect.withParentSpan(connection))
+    },
   )
 })
 

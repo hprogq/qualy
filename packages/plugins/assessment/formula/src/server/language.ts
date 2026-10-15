@@ -103,13 +103,17 @@ export const formulaLanguageLayer = (options?: {
           // process to die (up to seconds), and holding the request scope -
           // and with it the per-user seat - for a funeral makes every dev
           // remount answer 429. The sandbox's own fail-closed permit keeps
-          // guarding the real resource.
+          // guarding the real resource. It is untraced for the reason the
+          // conversation is: it happens when the editor closes, and a span
+          // then would stretch the connection's trace to the page's lifetime.
+          // Its failure is still logged.
           yield* Effect.addFinalizer(() =>
             client
               .CloseLsp({ sessionId: opened.sessionId })
               .pipe(
                 tameTransport(unavailable, 'CloseLsp'),
                 Effect.ignore,
+                Effect.withTracerEnabled(false),
                 Effect.forkDetach,
                 Effect.asVoid,
               ),

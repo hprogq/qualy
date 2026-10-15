@@ -414,7 +414,7 @@ describe('the span a request exports', () => {
     if (measured?.type === 'Histogram') expect(measured.state.max).toBeLessThan(0.2)
   })
 
-  it('exports a WebSocket handshake before close and keeps connection failures in a linked internal trace', async () => {
+  it('exports a WebSocket handshake and its connection span before close, with cleanup in the linked internal trace', async () => {
     const socket = new WebSocket(`${base.replace('http:', 'ws:')}/socket/failure`)
     const traceId = await new Promise<string>((resolve, reject) => {
       socket.addEventListener('message', (event) => resolve(String(event.data)), { once: true })
@@ -435,18 +435,20 @@ describe('the span a request exports', () => {
       )
       expect(before?.type).toBe('Histogram')
       if (before?.type === 'Histogram') expect(before.state.count).toBe(1)
-      await new Promise((resolve) => setTimeout(resolve, 400))
-      socket.send('fail')
+      // the connection span is exported while the socket is still open: it
+      // measures the opening, not how long the page kept the connection
       const connection = await exportedSpan(
         (span) =>
           span.name === 'websocket.connection' &&
           span.links?.some((link) => link.traceId === traceId) === true,
       )
+      expect(socket.readyState).toBe(WebSocket.OPEN)
       expect(connection.kind).toBe(1)
       expect(connection.traceId).not.toBe(traceId)
       expect(connection.parentSpanId).toBeUndefined()
-      expect(connection.status?.code).toBe(2)
-      expect(connection.status?.message).toContain('connection failed after upgrade')
+      expect(connection.status?.code).not.toBe(2)
+      await new Promise((resolve) => setTimeout(resolve, 400))
+      socket.send('fail')
       const cleanup = await exportedSpan(
         (span) => span.name === 'connection.cleanup' && span.traceId === connection.traceId,
       )
@@ -461,7 +463,7 @@ describe('the span a request exports', () => {
       const connectionMs =
         Number(BigInt(connection.endTimeUnixNano!) - BigInt(connection.startTimeUnixNano!)) / 1e6
       expect(handshakeMs).toBeLessThan(200)
-      expect(connectionMs).toBeGreaterThan(400)
+      expect(connectionMs).toBeLessThan(200)
       const after = (await Effect.runPromise(Metric.snapshot)).find(
         (state) =>
           state.id === 'http.server.request.duration' &&

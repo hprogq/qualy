@@ -82,3 +82,20 @@ span link 或本地日志 request ID 关联 HTTP 503，不能假定两者的 tra
 
 本次生产操作仅诊断。上述代码修复仍需经过发布流程上线，生产对照探测不代表现有
 常驻客户端已采用修复。
+
+## 会话 span 同样在建立时结束（2026-10-15）
+
+上线后 APM 仍有约 196 秒的 `websocket.connection`（INTERNAL）和 `LspEvents`（CLIENT）。
+前者覆盖整段会话，后者是 RPC 客户端为流式调用建立的 span，随事件流存活。两者都是
+连接存活时间，不是操作耗时。
+
+现行做法：`webSocketSession` 在握手成功时结束 `websocket.connection`，与 SSE 的
+server span 取同一时刻；连接未升级时以 handler 的结果结束。会话期间的往来
+（每条消息一次 `SendLsp`、整段 `LspEvents`）以 `Effect.withTracerEnabled(false)` 运行，
+结束时分离执行的 `CloseLsp` 同样不追踪，失败仍写日志。连接如何结束（时长、关闭或失败
+及原因）由访问日志的 connection 行记录。
+
+依据：`repos/effect/packages/effect/src/rpc/RpcClient.ts` 的流式请求用
+`makeSpanScoped` 建 span，生命周期等于流；`internal/effect.ts` 的 `makeSpanUnsafe`
+在 tracer 关闭时返回 noop span。回归由 api-kit 的真实 WebSocket 测试覆盖：连接 span
+在套接字仍打开时已导出且短于 200 ms；去掉提前结束后该测试失败。
