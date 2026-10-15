@@ -1,10 +1,5 @@
 import { Effect } from 'effect'
-import {
-  expressionBuilder,
-  sql,
-  type Expression,
-  type ExpressionBuilder,
-} from 'kysely'
+import { expressionBuilder, sql, type Expression, type ExpressionBuilder } from 'kysely'
 import { jsonArrayFrom } from 'kysely/helpers/postgres'
 import { db, type Schema } from '../server/db.ts'
 import { readResolved, type ResolvedPolicy } from './chain.ts'
