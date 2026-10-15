@@ -257,18 +257,23 @@ const roleProjection = (k: Db, tenantId: string) =>
       eb.ref('r.permissionMode').$castTo<'explicit' | 'all-active'>().as('permissionMode'),
       // coalesced because a scalar subquery is nullable to the type system,
       // where count(*) is not: the projection promises a number
-      sql<number>`coalesce(${eb
-        .selectFrom('RoleGrant as g')
-        .select(sql<number>`count(*)::int`.as('count'))
-        .whereRef('g.tenantId', '=', 'r.tenantId')
-        .whereRef('g.roleId', '=', 'r.id')
-        .where((grant) =>
-          inForce({
-            revokedAt: grant.ref('g.revokedAt'),
-            validFrom: grant.ref('g.validFrom'),
-            validUntil: grant.ref('g.validUntil'),
-          }),
-        )}, 0)`.as('grantCount'),
+      eb.fn
+        .coalesce(
+          eb
+            .selectFrom('RoleGrant as g')
+            .select((count) => count.cast<number>(count.fn.countAll(), 'integer').as('count'))
+            .whereRef('g.tenantId', '=', 'r.tenantId')
+            .whereRef('g.roleId', '=', 'r.id')
+            .where((grant) =>
+              inForce({
+                revokedAt: grant.ref('g.revokedAt'),
+                validFrom: grant.ref('g.validFrom'),
+                validUntil: grant.ref('g.validUntil'),
+              }),
+            ),
+          eb.lit(0),
+        )
+        .as('grantCount'),
       // Any grant at all, withdrawn or lapsed included. A role anybody was
       // ever granted is only disabled, never deleted, so the grants that
       // record it keep its name; the delete guard reads this same column, so
