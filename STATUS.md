@@ -1,6 +1,6 @@
 # Qualy 当前状态
 
-更新时间：2026-10-02
+更新时间：2026-10-15
 
 本文件只记录当前工作、验证和生产状态。完成过程、终端输出和历史迁移保存在 Git、ADR、`docs/notes` 与 `docs/archive`，不再按会话追加。
 
@@ -23,7 +23,8 @@
 - 生产消息编译和 Web 构建只读取 active assembly；全仓消息完整性检查可以显式读取全部已安装包。
 - 文档已分为现行架构、领域、开发、证据、ADR 和历史材料；根 `AGENTS.md` 与本文件不再承担实施历史台账。
 
-当前没有已知的在途代码功能或未提交业务改动。
+Formula RPC 心跳误断线和 WebSocket HTTP 计时问题已完成本地修复与针对性验证，尚未发布；
+生产诊断与修复依据见[实测笔记](docs/notes/formula-rpc-heartbeat.md)。
 
 ## 最近验证的代码状态
 
@@ -43,15 +44,15 @@ Release：https://github.com/hprogq/qualy/actions/runs/36926331266
 
 ## 生产状态
 
-- 当前已知生产版本：`v0.1.0-rc.24`。
-- 发布源码：`7ceb08ca8fe230654790f4dbc26e094b16fbbbc7`。
-- Web release：`r__Fq1eZUUtLTnqB2igCmiaQ`。
-- 部署方式：生产从 blue 的 rc.22 切换到 green 的 rc.24；green 就绪且公网核对后切流，blue 排空 20 秒后停止。rc.23 构建完成但没有部署。
-- 部署后独立验证：`/__qualy/release` 与 release metadata 一致，`/health/ready` 和登录方法 API 返回 200；真实 Chromium 登录页无 page error 或 server 5xx，检查到的 JS/CSS 均为 200。
+- 2026-10-15 只读核对的生产版本：`v0.1.0-rc.31`，服务颜色为 green。
+- 生产镜像 revision：`8e8f4591bc6470f3289f4584ea2232f01a8d8b00`。
+- Web release：`r_GW933cT4B0P49rI2AOTUWA`，主机诊断确认公网与服务中的 release 一致。
+- `qualy-deploy doctor` 全部通过；三个应用容器无重启，两只沙箱无 OOM。
+- 生产仍有 Formula 连接故障：默认 RPC 心跳在只读 50 秒对照探测中误断线 4 次，
+  相同对端采用 5 秒心跳 / 15 秒超时的临时客户端稳定。健康检查不覆盖这一长连接行为。
 
-Deploy：https://github.com/hprogq/qualy/actions/runs/36927585864
-
-以上公网 smoke 只覆盖匿名登录页、静态资源和探针，没有在生产数据上执行测试写入。
+本次没有重新发布、重启、执行生产写入或进行浏览器业务 smoke；上面的 rc.24 CI 记录
+仅为历史验证证据，不能替代当前版本或待发布修复的验证。
 
 ## 仍需用户确认的业务语义
 
@@ -80,6 +81,6 @@ Deploy：https://github.com/hprogq/qualy/actions/runs/36927585864
 
 ## 下一步
 
-1. 审阅本轮文档整理提交，重点检查新的阅读入口、历史归档边界和上面的未决事项。
+1. 将 Formula 心跳与 WebSocket 观测修复经独立发布流程上线，再核对生产连接。
 2. 新业务继续按现行 contract 开发；不要重新打开已经关账的基础设施迁移。
 3. 运维事项取得相应权限后逐项验证，把长期有效的结果更新到部署文档或窄 notes，而不是追加会话流水账。
