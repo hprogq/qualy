@@ -1,5 +1,5 @@
 import { NodeHttpClient } from '@effect/platform-node'
-import { Config, ConfigProvider, Effect, Layer, Option } from 'effect'
+import { Config, ConfigProvider, Context, Effect, Layer, Logger, Option, Tracer } from 'effect'
 import {
   OtlpExporter,
   OtlpLogger,
@@ -7,6 +7,7 @@ import {
   OtlpSerialization,
   OtlpTracer,
 } from 'effect/observability'
+import { redactingLogger, redactingTracer } from './redaction.ts'
 import { resourceFromEnv } from './resource.ts'
 import { runtimeMetricsLoop } from './runtime-metrics.ts'
 
@@ -39,6 +40,35 @@ const specDefaults = ConfigProvider.layerAdd(
     OTEL_METRIC_EXPORT_INTERVAL: '60000',
   }),
 )
+
+type Resource = Effect.Success<typeof resourceFromEnv>
+
+/** the exporting tracer, its failures written out as they may leave the process */
+const exportedTraces = (resource: Resource) =>
+  Layer.effect(Tracer.Tracer, Effect.map(Effect.service(Tracer.Tracer), redactingTracer)).pipe(
+    Layer.provideMerge(OtlpTracer.layerFromConfig({ resource })),
+  )
+
+/**
+ * The exporting logger beside the ones already installed, its failures
+ * written out as they may leave the process. Built on its own - into an
+ * empty set, so a disabled exporter contributes nothing rather than a copy
+ * of the default - then wrapped and added; the stdout logger is not wrapped
+ * and keeps printing everything.
+ */
+const exportedLogs = (resource: Resource) =>
+  Layer.effectContext(
+    Effect.gen(function* () {
+      const existing = yield* Effect.service(Logger.CurrentLoggers)
+      const built = yield* Layer.build(
+        OtlpLogger.layerFromConfig({ resource, mergeWithExisting: false }).pipe(
+          Layer.provideMerge(Layer.succeed(Logger.CurrentLoggers)(new Set())),
+        ),
+      )
+      const exporting = [...Context.get(built, Logger.CurrentLoggers)].map(redactingLogger)
+      return Context.add(built, Logger.CurrentLoggers, new Set([...existing, ...exporting]))
+    }),
+  )
 
 /**
  * The whole telemetry installation as one layer for the composition root.
@@ -76,14 +106,14 @@ export const telemetryLayer: Layer.Layer<OtlpExporter.Flusher> = Layer.unwrap(
     }
     const resource = yield* resourceFromEnv
     return Layer.mergeAll(
-      OtlpTracer.layerFromConfig({ resource }),
+      exportedTraces(resource),
       OtlpMetrics.layerFromConfig({ resource }),
       // Logs stay OPT-IN: no exporter default is overlaid, so nothing is
       // exported until OTEL_LOGS_EXPORTER=otlp is set explicitly - the
       // stdout JSON logger remains the primary log surface either way
-      // (mergeWithExisting), and every exported record carries the
-      // trace/span ids of the emitting fiber, same as the stdout keys.
-      OtlpLogger.layerFromConfig({ resource, mergeWithExisting: true }),
+      // (merged with the existing ones), and every exported record carries
+      // the trace/span ids of the emitting fiber, same as the stdout keys.
+      exportedLogs(resource),
       // the process's own numbers, polled from stable Node APIs; the fiber
       // dies with the telemetry scope
       Layer.effectDiscard(Effect.forkScoped(runtimeMetricsLoop)),

@@ -2,6 +2,7 @@ import { createServer, type Server } from 'node:http'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { Cause, ConfigProvider, Effect, Exit, Layer, Metric } from 'effect'
 import { telemetryLayer } from '../src/sdk.ts'
+import { exportMessage } from '../src/redaction.ts'
 import { resourceFromEnv } from '../src/resource.ts'
 
 // What the telemetry layer promises the composition root.
@@ -176,6 +177,52 @@ describe('what the telemetry layer promises', () => {
     expect(line.spanId).toBe(spoke.spanId)
     const resource = attributesOf(logs[0]!.body.resourceLogs![0]!.resource.attributes)
     expect(resource['service.name']).toBe('qualy-server')
+  })
+
+  // A driver's message can carry the value a request was made with, and the
+  // exporters write a failure out whole - status, exception events, the stack
+  // with every cause below it - at every span the failure ends and every log
+  // that names it. An error marked with an export message leaves the process
+  // as that message alone, wherever it surfaces; the program still holds the
+  // error it was given.
+  it('exports a marked failure by its export message alone, at every span and log it reaches', async () => {
+    const secret = 'value-a-request-carried-7f3a'
+    const driver = new Error(`invalid input syntax for type uuid: "${secret}"`)
+    const marked = Object.assign(
+      new Error(`a database query failed: ${driver.message}`, { cause: driver }),
+      { [exportMessage]: 'a database query failed (SQLSTATE 22P02)' },
+    )
+    const above = new Error('the handler could not answer', { cause: marked })
+    const exits = await Effect.runPromise(
+      Effect.gen(function* () {
+        const failed = yield* Effect.exit(
+          Effect.fail(marked).pipe(Effect.withSpan('db.query'), Effect.withSpan('the service')),
+        )
+        const died = yield* Effect.exit(Effect.die(above).pipe(Effect.withSpan('the handler')))
+        yield* Effect.logError('the patrol failed', Cause.fail(marked))
+        yield* Effect.logError('the request failed', above)
+        return { failed, died }
+      }).pipe(
+        Effect.provide(
+          stack({
+            OTEL_EXPORTER_OTLP_ENDPOINT: `http://127.0.0.1:${port}`,
+            OTEL_EXPORTER_OTLP_PROTOCOL: 'http/json',
+            OTEL_LOGS_EXPORTER: 'otlp',
+          }),
+        ),
+      ),
+    )
+    const exported = JSON.stringify(captured.map((capture) => capture.body))
+    expect(captured.some((capture) => capture.path === '/v1/traces')).toBe(true)
+    expect(captured.some((capture) => capture.path === '/v1/logs')).toBe(true)
+    expect(exported).not.toContain(secret)
+    expect(exported).toContain('a database query failed (SQLSTATE 22P02)')
+    // an error above the marked one keeps its own words
+    expect(exported).toContain('the handler could not answer')
+    // what the program was given is untouched
+    expect(Exit.isFailure(exits.failed) && Cause.squash(exits.failed.cause)).toBe(marked)
+    expect(Exit.isFailure(exits.died) && Cause.squash(exits.died.cause)).toBe(above)
+    expect(driver.message).toContain(secret)
   })
 
   it('is genuinely off when disabled, endpoint or not', async () => {
