@@ -1,6 +1,6 @@
 import { Effect } from 'effect'
-import { sql, type RawBuilder } from 'kysely'
-import { db } from '../server/db.ts'
+import { expressionBuilder, sql, type Expression, type RawBuilder } from 'kysely'
+import { db, type Schema } from '../server/db.ts'
 import { readResolved, type ResolvedPolicy } from './chain.ts'
 
 // The review rows and the one definition of who may judge them.
@@ -14,18 +14,19 @@ const epoch = (column: string) =>
 const msOf = (value: unknown): number =>
   value instanceof Date ? value.getTime() : Number(value ?? 0)
 
-const uuidArray = (ids: readonly string[]) => sql`${sql.val(`{${ids.join(',')}}`)}::uuid[]`
+const uuidArray = (ids: readonly string[]) =>
+  sql<readonly string[]>`${sql.val(`{${ids.join(',')}}`)}::uuid[]`
 
 /** what the predicate is asked about; values or column references alike */
 export interface ReviewerRefs {
-  readonly tenantId: RawBuilder<unknown>
-  readonly batchId: RawBuilder<unknown>
-  readonly nodeId: RawBuilder<unknown>
+  readonly tenantId: Expression<string>
+  readonly batchId: Expression<string>
+  readonly nodeId: Expression<string | null>
   /** a uuid[] expression: the stage's roles */
-  readonly roleIds: RawBuilder<unknown>
-  readonly userId: RawBuilder<unknown>
-  readonly subjectUserId: RawBuilder<unknown>
-  readonly actorId: RawBuilder<unknown>
+  readonly roleIds: Expression<readonly string[]>
+  readonly userId: Expression<string>
+  readonly subjectUserId: Expression<string>
+  readonly actorId: Expression<string | null>
 }
 
 /**
@@ -53,68 +54,98 @@ export interface ReviewerRefs {
  * also answers submit's "does anyone exist to receive this" - asked during
  * an entry phase, when the review phase has usually not begun.
  */
-const mayReview = (r: ReviewerRefs) => sql<boolean>`(
-  exists (
-    select 1
-    from role_grants rg
-    join roles ro on ro.tenant_id = rg.tenant_id and ro.id = rg.role_id
-    join users u on u.tenant_id = rg.tenant_id and u.id = rg.user_id
-    join batch_access_sources bas
-      on bas.tenant_id = rg.tenant_id
-      and bas.role_assignment_id = rg.id
-      and bas.batch_id = ${r.batchId}
-      and bas.subject_id = rg.user_id
-    join batch_access_source_permissions sp
-      on sp.tenant_id = bas.tenant_id
-      and sp.source_id = bas.id
-      and sp.permission_code = 'assessment.review.process'
-    where rg.tenant_id = ${r.tenantId}
-      and rg.user_id = ${r.userId}
-      and rg.org_node_id = ${r.nodeId}
-      and rg.role_id = any(${r.roleIds})
-      and rg.revoked_at is null
-      and (rg.valid_from is null or rg.valid_from <= now())
-      and (rg.valid_until is null or rg.valid_until > now())
-      and ro.status = 'active'
-      and u.enabled
-      and (
-        ro.permission_mode = 'all-active'
-        or exists (
-          select 1 from role_permissions rp
-          join permissions pe on pe.id = rp.permission_id
-          where rp.tenant_id = ro.tenant_id and rp.role_id = ro.id
-            and pe.code = sp.permission_code
+const mayReview = (r: ReviewerRefs) => {
+  const eb = expressionBuilder<Schema>()
+  return eb.and([
+    eb.exists(
+      eb
+        .selectFrom('RoleGrant as rg')
+        .innerJoin('Role as ro', (join) =>
+          join.onRef('ro.tenantId', '=', 'rg.tenantId').onRef('ro.id', '=', 'rg.roleId'),
         )
-      )
-      and not exists (
-        select 1 from batch_access_denies dn
-        where dn.tenant_id = bas.tenant_id and dn.batch_id = bas.batch_id
-          and dn.subject_id = bas.subject_id
-          and dn.permission_code = sp.permission_code
-      )
-      and (
-        rg.resource_namespace is null
-        or (
-          rg.resource_namespace = 'assessment'
-          and rg.resource_type = 'batch'
-          and rg.resource_id = ${r.batchId}
+        .innerJoin('User as u', (join) =>
+          join.onRef('u.tenantId', '=', 'rg.tenantId').onRef('u.id', '=', 'rg.userId'),
         )
-      )
-  )
-  and ${r.userId} <> ${r.subjectUserId}
-  and ${r.actorId} is distinct from ${r.userId}
-)`
+        .innerJoin('BatchAccessSource as bas', (join) =>
+          join
+            .onRef('bas.tenantId', '=', 'rg.tenantId')
+            .onRef('bas.roleAssignmentId', '=', 'rg.id')
+            .on('bas.batchId', '=', r.batchId)
+            .onRef('bas.subjectId', '=', 'rg.userId'),
+        )
+        .innerJoin('BatchAccessSourcePermission as sp', (join) =>
+          join
+            .onRef('sp.tenantId', '=', 'bas.tenantId')
+            .onRef('sp.sourceId', '=', 'bas.id')
+            .on('sp.permissionCode', '=', 'assessment.review.process'),
+        )
+        .select('rg.id')
+        .where('rg.tenantId', '=', r.tenantId)
+        .where('rg.userId', '=', r.userId)
+        .where('rg.orgNodeId', '=', r.nodeId)
+        .where((q) => q('rg.roleId', '=', q.fn.any(r.roleIds)))
+        .where('rg.revokedAt', 'is', null)
+        .where((q) =>
+          q.or([q('rg.validFrom', 'is', null), q('rg.validFrom', '<=', sql<Date>`now()`)]),
+        )
+        .where((q) =>
+          q.or([q('rg.validUntil', 'is', null), q('rg.validUntil', '>', sql<Date>`now()`)]),
+        )
+        .where('ro.status', '=', 'active')
+        .where('u.enabled', '=', true)
+        .where((q) =>
+          q.or([
+            q('ro.permissionMode', '=', 'all-active'),
+            q.exists(
+              q
+                .selectFrom('RolePermission as rp')
+                .innerJoin('Permission as pe', 'pe.id', 'rp.permissionId')
+                .select('rp.roleId')
+                .whereRef('rp.tenantId', '=', 'ro.tenantId')
+                .whereRef('rp.roleId', '=', 'ro.id')
+                .whereRef('pe.code', '=', 'sp.permissionCode'),
+            ),
+          ]),
+        )
+        .where((q) =>
+          q.not(
+            q.exists(
+              q
+                .selectFrom('BatchAccessDeny as dn')
+                .select('dn.id')
+                .whereRef('dn.tenantId', '=', 'bas.tenantId')
+                .whereRef('dn.batchId', '=', 'bas.batchId')
+                .whereRef('dn.subjectId', '=', 'bas.subjectId')
+                .whereRef('dn.permissionCode', '=', 'sp.permissionCode'),
+            ),
+          ),
+        )
+        .where((q) =>
+          q.or([
+            q('rg.resourceNamespace', 'is', null),
+            q.and([
+              q('rg.resourceNamespace', '=', 'assessment'),
+              q('rg.resourceType', '=', 'batch'),
+              q('rg.resourceId', '=', r.batchId),
+            ]),
+          ]),
+        ),
+    ),
+    eb(r.userId, '<>', r.subjectUserId),
+    eb(r.actorId, 'is distinct from', r.userId),
+  ])
+}
 
 /** what acting on one specific round adds to stage membership */
 export interface RoundActorRefs extends ReviewerRefs {
   /** the instance's id, as a value or column reference */
-  readonly instanceId: RawBuilder<unknown>
+  readonly instanceId: Expression<string>
   /** the route the round currently walks */
-  readonly route: RawBuilder<unknown>
+  readonly route: Expression<string>
 }
 
 /** the event kinds that count as a formal judgment by their actor */
-const JUDGED_KINDS = `('approved', 'rejected', 'escalated', 'opinion-approved', 'opinion-rejected')`
+const JUDGED_KINDS = ['approved', 'rejected', 'escalated', 'opinion-approved', 'opinion-rejected']
 
 /**
  * Same-round independence (§32.66): once a round is in the escalation
@@ -130,26 +161,37 @@ const JUDGED_KINDS = `('approved', 'rejected', 'escalated', 'opinion-approved', 
  * that still count (a superseded panel's votes were about evidence that
  * has since changed, and voting again after a supplement is the point).
  */
-const independentAt = (r: RoundActorRefs) => sql<boolean>`(
-  ${r.route} <> 'escalation'
-  or not (
-    exists (
-      select 1 from review_events xe
-      where xe.tenant_id = ${r.tenantId}
-        and xe.review_instance_id = ${r.instanceId}
-        and xe.actor_id = ${r.userId}
-        and xe.kind in ${sql.raw(JUDGED_KINDS)}
-    )
-    or exists (
-      select 1 from review_votes xv
-      join review_panels xp on xp.tenant_id = xv.tenant_id and xp.id = xv.panel_id
-      where xv.tenant_id = ${r.tenantId}
-        and xp.review_instance_id = ${r.instanceId}
-        and xv.voter_user_id = ${r.userId}
-        and xp.state <> 'superseded'
-    )
-  )
-)`
+const independentAt = (r: RoundActorRefs) => {
+  const eb = expressionBuilder<Schema>()
+  return eb.or([
+    eb(r.route, '<>', 'escalation'),
+    eb.not(
+      eb.or([
+        eb.exists(
+          eb
+            .selectFrom('ReviewEvent as xe')
+            .select('xe.id')
+            .where('xe.tenantId', '=', r.tenantId)
+            .where('xe.reviewInstanceId', '=', r.instanceId)
+            .where('xe.actorId', '=', r.userId)
+            .where('xe.kind', 'in', JUDGED_KINDS),
+        ),
+        eb.exists(
+          eb
+            .selectFrom('ReviewVote as xv')
+            .innerJoin('ReviewPanel as xp', (join) =>
+              join.onRef('xp.tenantId', '=', 'xv.tenantId').onRef('xp.id', '=', 'xv.panelId'),
+            )
+            .select('xv.id')
+            .where('xv.tenantId', '=', r.tenantId)
+            .where('xp.reviewInstanceId', '=', r.instanceId)
+            .where('xv.voterUserId', '=', r.userId)
+            .where('xp.state', '<>', 'superseded'),
+        ),
+      ]),
+    ),
+  ])
+}
 
 /**
  * A sitting panel admits its own UNVOTED members and lets a newcomer fill
@@ -165,46 +207,72 @@ const independentAt = (r: RoundActorRefs) => sql<boolean>`(
  * and membership alone decides.
  */
 const seatedOrSeatable = (r: {
-  readonly tenantId: RawBuilder<unknown>
-  readonly instanceId: RawBuilder<unknown>
-  readonly userId: RawBuilder<unknown>
-}) => sql<boolean>`(
-  not exists (
-    select 1 from review_panels op
-    where op.tenant_id = ${r.tenantId}
-      and op.review_instance_id = ${r.instanceId}
-      and op.state = 'open'
-  )
-  or exists (
-    select 1 from review_panels op
-    join review_panel_assignments pa
-      on pa.tenant_id = op.tenant_id and pa.panel_id = op.id
-    where op.tenant_id = ${r.tenantId}
-      and op.review_instance_id = ${r.instanceId}
-      and op.state = 'open'
-      and pa.user_id = ${r.userId}
-      and pa.ended_at is null
-      and not exists (
-        select 1 from review_votes sv
-        where sv.tenant_id = pa.tenant_id and sv.assignment_id = pa.id
-      )
-  )
-  or exists (
-    select 1 from review_panels op
-    where op.tenant_id = ${r.tenantId}
-      and op.review_instance_id = ${r.instanceId}
-      and op.state = 'open'
-      and (
-        select count(*) from review_panel_assignments pa2
-        where pa2.tenant_id = op.tenant_id and pa2.panel_id = op.id and pa2.ended_at is null
-      ) < op.seat_count
-      and not exists (
-        select 1 from review_panel_assignments pa3
-        where pa3.tenant_id = op.tenant_id and pa3.panel_id = op.id
-          and pa3.user_id = ${r.userId} and pa3.ended_at is null
-      )
-  )
-)`
+  readonly tenantId: Expression<string>
+  readonly instanceId: Expression<string>
+  readonly userId: Expression<string>
+}) => {
+  const eb = expressionBuilder<Schema>()
+  const openPanels = () =>
+    eb
+      .selectFrom('ReviewPanel as op')
+      .where('op.tenantId', '=', r.tenantId)
+      .where('op.reviewInstanceId', '=', r.instanceId)
+      .where('op.state', '=', 'open')
+  return eb.or([
+    eb.not(eb.exists(openPanels().select('op.id'))),
+    // an unvoted seat of one's own
+    eb.exists(
+      openPanels()
+        .innerJoin('ReviewPanelAssignment as pa', (join) =>
+          join.onRef('pa.tenantId', '=', 'op.tenantId').onRef('pa.panelId', '=', 'op.id'),
+        )
+        .select('pa.id')
+        .where('pa.userId', '=', r.userId)
+        .where('pa.endedAt', 'is', null)
+        .where((q) =>
+          q.not(
+            q.exists(
+              q
+                .selectFrom('ReviewVote as sv')
+                .select('sv.id')
+                .whereRef('sv.tenantId', '=', 'pa.tenantId')
+                .whereRef('sv.assignmentId', '=', 'pa.id'),
+            ),
+          ),
+        ),
+    ),
+    // an empty chair, for somebody not already seated
+    eb.exists(
+      openPanels()
+        .select('op.id')
+        .where((q) =>
+          q(
+            q
+              .selectFrom('ReviewPanelAssignment as pa2')
+              .select((count) => count.fn.countAll<number>().as('n'))
+              .whereRef('pa2.tenantId', '=', 'op.tenantId')
+              .whereRef('pa2.panelId', '=', 'op.id')
+              .where('pa2.endedAt', 'is', null),
+            '<',
+            q.ref('op.seatCount'),
+          ),
+        )
+        .where((q) =>
+          q.not(
+            q.exists(
+              q
+                .selectFrom('ReviewPanelAssignment as pa3')
+                .select('pa3.id')
+                .whereRef('pa3.tenantId', '=', 'op.tenantId')
+                .whereRef('pa3.panelId', '=', 'op.id')
+                .where('pa3.userId', '=', r.userId)
+                .where('pa3.endedAt', 'is', null),
+            ),
+          ),
+        ),
+    ),
+  ])
+}
 
 /**
  * The rounds standing at a node the reader holds any live grant at.
@@ -216,14 +284,29 @@ const seatedOrSeatable = (r: {
  * the whole predicate over every open round of the batch before sorting and
  * paging. A reader with no grants anywhere reads nothing at all.
  */
-export const atHeldNode = (tenantId: string, userId: string) => sql<boolean>`
-  ri.current_node_id = any(array(
-    select rg.org_node_id from role_grants rg
-    where rg.tenant_id = ${tenantId}
-      and rg.user_id = ${userId}
-      and rg.revoked_at is null
-      and rg.org_node_id is not null
-  ))`
+export const atHeldNode = (
+  tenantId: string,
+  userId: string,
+  /** the round's current node, wherever the query aliased it */
+  currentNodeId: Expression<string | null>,
+) => {
+  const eb = expressionBuilder<Schema>()
+  return eb(
+    currentNodeId,
+    '=',
+    eb.fn.any(
+      eb.fn<string[]>('array', [
+        eb
+          .selectFrom('RoleGrant as rg')
+          .select('rg.orgNodeId')
+          .where('rg.tenantId', '=', tenantId)
+          .where('rg.userId', '=', userId)
+          .where('rg.revokedAt', 'is', null)
+          .where('rg.orgNodeId', 'is not', null),
+      ]),
+    ),
+  )
+}
 
 /**
  * The whole of "may act on this round now": stage membership, same-round
@@ -231,11 +314,8 @@ export const atHeldNode = (tenantId: string, userId: string) => sql<boolean>`
  * writer of a round's queue asks this one composition, so "the queue
  * shows what the decision refuses" cannot be written.
  */
-export const mayActOn = (r: RoundActorRefs) => sql<boolean>`(
-  ${mayReview(r)}
-  and ${independentAt(r)}
-  and ${seatedOrSeatable(r)}
-)`
+export const mayActOn = (r: RoundActorRefs) =>
+  expressionBuilder<Schema>().and([mayReview(r), independentAt(r), seatedOrSeatable(r)])
 
 /** the stage's judges as submit must find them: enumerate, then hold each to the definition */
 export const reviewersAt = (input: {
@@ -256,40 +336,38 @@ export const reviewersAt = (input: {
     ? Effect.succeed([] as readonly string[])
     : db
         .query((k) =>
-          sql<{ user_id: string }>`
-            select distinct rg0.user_id
-            from role_grants rg0
-            where rg0.tenant_id = ${input.tenantId}
-              and rg0.org_node_id = ${input.nodeId}
-              and rg0.role_id = any(${uuidArray(input.roleIds)})
-              and rg0.revoked_at is null
-              and ${mayReview({
-                tenantId: sql`${input.tenantId}`,
-                batchId: sql`${input.batchId}`,
-                nodeId: sql`${input.nodeId}`,
+          k
+            .selectFrom('RoleGrant as rg0')
+            .select('rg0.userId')
+            .distinct()
+            .where('rg0.tenantId', '=', input.tenantId)
+            .where('rg0.orgNodeId', '=', input.nodeId)
+            .where((eb) => eb('rg0.roleId', '=', eb.fn.any(uuidArray(input.roleIds))))
+            .where('rg0.revokedAt', 'is', null)
+            .where((eb) => {
+              const refs = {
+                tenantId: eb.val(input.tenantId),
+                batchId: eb.val(input.batchId),
+                nodeId: eb.val(input.nodeId),
                 roleIds: uuidArray(input.roleIds),
-                userId: sql.ref('rg0.user_id'),
-                subjectUserId: sql`${input.subjectUserId}`,
-                actorId: sql`${input.actorId}`,
-              })}
-              and ${
-                input.excludeJudgedOfInstanceId === undefined
-                  ? sql<boolean>`true`
-                  : independentAt({
-                      tenantId: sql`${input.tenantId}`,
-                      batchId: sql`${input.batchId}`,
-                      nodeId: sql`${input.nodeId}`,
-                      roleIds: uuidArray(input.roleIds),
-                      userId: sql.ref('rg0.user_id'),
-                      subjectUserId: sql`${input.subjectUserId}`,
-                      actorId: sql`${input.actorId}`,
-                      instanceId: sql`${input.excludeJudgedOfInstanceId}`,
-                      route: sql`${'escalation'}`,
-                    })
+                userId: eb.ref('rg0.userId'),
+                subjectUserId: eb.val(input.subjectUserId),
+                actorId: eb.val(input.actorId),
               }
-          `.execute(k),
+              return input.excludeJudgedOfInstanceId === undefined
+                ? mayReview(refs)
+                : eb.and([
+                    mayReview(refs),
+                    independentAt({
+                      ...refs,
+                      instanceId: eb.val(input.excludeJudgedOfInstanceId),
+                      route: eb.val('escalation'),
+                    }),
+                  ])
+            })
+            .execute(),
         )
-        .pipe(Effect.map(({ rows }) => rows.map((row) => String(row.user_id))))
+        .pipe(Effect.map((rows) => rows.map((row) => String(row.userId))))
 
 /**
  * The states in which a round still belongs to its stage's reviewers.
@@ -734,7 +812,7 @@ export const reviewsWaitingByBatchOf = (input: {
             where ri.tenant_id = ${input.tenantId}
               and e.batch_id = any(${sql.val(`{${input.batchIds.join(',')}}`)}::uuid[])
               and ri.state = 'active'
-              and ${atHeldNode(input.tenantId, input.userId)}
+              and ${atHeldNode(input.tenantId, input.userId, sql.ref('ri.current_node_id'))}
               and ${mayActOn({
                 tenantId: sql`${input.tenantId}`,
                 batchId: sql.ref('e.batch_id'),
@@ -830,7 +908,7 @@ export const inboxQuery = (
         ? sql<boolean>`false`
         : sql<boolean>`e.batch_id = any(${uuidArray(input.batchIds)})`,
     )
-    .where(atHeldNode(input.tenantId, input.userId))
+    .where((eb) => atHeldNode(input.tenantId, input.userId, eb.ref('ri.currentNodeId')))
     .where(
       mayActOn({
         tenantId: sql`${input.tenantId}`,
@@ -1975,7 +2053,7 @@ export const reviewerDeskOf = (input: { tenantId: string; batchId: string; userI
               where ri.tenant_id = ${input.tenantId}
                 and e.batch_id = ${input.batchId}
                 and ri.state = 'active'
-                and ${atHeldNode(input.tenantId, input.userId)}
+                and ${atHeldNode(input.tenantId, input.userId, sql.ref('ri.current_node_id'))}
                 and ${mayActOn({
                   tenantId: sql`${input.tenantId}`,
                   batchId: sql.ref('e.batch_id'),
@@ -2008,7 +2086,7 @@ export const reviewerDeskOf = (input: { tenantId: string; batchId: string; userI
                 and sr.requested_by = ${input.userId}
                 and sr.status = 'answered'
                 and ri.state in ('active', 'blocked')
-                and ${atHeldNode(input.tenantId, input.userId)}
+                and ${atHeldNode(input.tenantId, input.userId, sql.ref('ri.current_node_id'))}
                 and ${mayActOn({
                   tenantId: sql`${input.tenantId}`,
                   batchId: sql.ref('e.batch_id'),
@@ -2104,7 +2182,7 @@ export const awaitingQuery = (
         eb.and([eb('sr.status', '=', 'answered'), eb('ri.state', 'in', ['active', 'blocked'])]),
       ]),
     )
-    .where(atHeldNode(input.tenantId, input.userId))
+    .where((eb) => atHeldNode(input.tenantId, input.userId, eb.ref('ri.currentNodeId')))
     .where(
       mayActOn({
         tenantId: sql`${input.tenantId}`,

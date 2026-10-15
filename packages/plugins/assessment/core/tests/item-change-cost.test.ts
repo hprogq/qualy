@@ -47,7 +47,10 @@ const watchStatements = Effect.gen(function* () {
   const plugin: KyselyPlugin = {
     transformQuery: (args) => {
       const node = args.node as { kind: string; sqlFragments?: readonly string[] }
-      if (node.kind === 'RawNode') seen.push((node.sqlFragments ?? []).join(' ? '))
+      // a raw statement by its text, a built one by its tree
+      seen.push(
+        node.kind === 'RawNode' ? (node.sqlFragments ?? []).join(' ? ') : JSON.stringify(node),
+      )
       return args.node
     },
     transformResult: (args) => Promise.resolve(args.result),
@@ -59,8 +62,11 @@ const watchStatements = Effect.gen(function* () {
 })
 
 /** the authorization query that enumerates a step's judges, however it is asked */
+/** the reviewer-enumeration statement, whose grants alone are aliased rg0 */
 const reviewerProbes = (seen: readonly string[]) =>
-  seen.filter((text) => text.includes('from role_grants rg0')).length
+  seen.filter(
+    (text) => text.startsWith('{"kind":"SelectQueryNode"') && text.includes('"name":"rg0"'),
+  ).length
 
 const submitted = (f: Seeded, itemId: string, participantId: string, who: string) =>
   Effect.gen(function* () {
