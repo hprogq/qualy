@@ -1,5 +1,4 @@
 import { Effect } from 'effect'
-import { sql } from 'kysely'
 import { pageWindow } from '@qualy/api-kit/schema'
 import { PERSON_TARGET } from '@qualy/audit-contract/action'
 import type { SubjectEventsPage, SubjectEventsQuery } from '@qualy/audit-contract/effect'
