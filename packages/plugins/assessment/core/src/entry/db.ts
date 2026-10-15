@@ -2347,14 +2347,15 @@ export const listAdministrativeEntriesPage = (input: {
         )
       }
       if (input.reach !== undefined) {
-        query = query.where(
+        const reach = input.reach
+        query = query.where((eb) =>
           staffReachOver({
             tenantId: input.tenantId,
             batchId: input.batchId,
-            userId: input.reach.userId,
-            permissionCode: input.reach.permissionCode,
-            anchorNodeId: sql.ref('p.assessment_anchor_node_id'),
-            anchorPath: sql.ref('p.anchor_path'),
+            userId: reach.userId,
+            permissionCode: reach.permissionCode,
+            anchorNodeId: eb.ref('p.assessmentAnchorNodeId'),
+            anchorPath: eb.ref('p.anchorPath'),
           }),
         )
       }

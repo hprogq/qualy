@@ -187,14 +187,14 @@ export const reversalCandidatesOfOperation = (
           'e.source',
           'e.currentReviewInstanceId',
         ])
-        .select(
+        .select((eb) =>
           staffReachOver({
             tenantId,
             batchId: reader.batchId,
             userId: reader.userId,
             permissionCode: 'assessment.entry.record',
-            anchorNodeId: sql.ref('p.assessment_anchor_node_id'),
-            anchorPath: sql.ref('p.anchor_path'),
+            anchorNodeId: eb.ref('p.assessmentAnchorNodeId'),
+            anchorPath: eb.ref('p.anchorPath'),
           }).as('reached'),
         )
         .where('r.tenantId', '=', tenantId)
@@ -374,14 +374,15 @@ export const operationRowsPage = (input: {
       query = query.where(sql<boolean>`r.participant_id > ${input.after}::uuid`)
     }
     if (input.reach !== undefined) {
-      query = query.where(
+      const reach = input.reach
+      query = query.where((eb) =>
         staffReachOver({
           tenantId: input.tenantId,
-          batchId: input.reach.batchId,
-          userId: input.reach.userId,
-          permissionCode: input.reach.permissionCode,
-          anchorNodeId: sql.ref('p.assessment_anchor_node_id'),
-          anchorPath: sql.ref('p.anchor_path'),
+          batchId: reach.batchId,
+          userId: reach.userId,
+          permissionCode: reach.permissionCode,
+          anchorNodeId: eb.ref('p.assessmentAnchorNodeId'),
+          anchorPath: eb.ref('p.anchorPath'),
         }),
       )
     }

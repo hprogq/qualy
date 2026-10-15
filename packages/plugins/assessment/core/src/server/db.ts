@@ -1,8 +1,15 @@
 import { likeContains, pageWindow } from '@qualy/api-kit/schema'
 import { transaction } from '@qualy/plugin-database/server'
 import { Effect } from 'effect'
-import { Db } from '@qualy/plugin-database/plugin'
-import { sql, type OrderByModifiers, type RawBuilder } from 'kysely'
+import { Db, type ScopedKysely } from '@qualy/plugin-database/plugin'
+import {
+  expressionBuilder,
+  sql,
+  type Expression,
+  type Kysely,
+  type OrderByModifiers,
+  type RawBuilder,
+} from 'kysely'
 import { scopeCoverage, type AuthorizationScope } from '@qualy/rbac-contract'
 import { entities as authEntities } from '@qualy/plugin-auth/db'
 import { entities as orgEntities } from '@qualy/plugin-org/db'
@@ -21,6 +28,9 @@ import { entities } from '../db/entities.ts'
 const closure = [...orgEntities, ...authEntities, ...rbacEntities, ...entities] as const
 
 export const db = Db.scope(closure)
+
+/** the tables the closure names, for a predicate that builds its own subquery */
+export type Schema = ScopedKysely<typeof closure> extends Kysely<infer Tables> ? Tables : never
 
 /** a timestamptz column as epoch milliseconds, exact at our precision */
 const epoch = (column: string) =>
@@ -683,11 +693,11 @@ export const userEntriesPage = (
           const reachOver = (permissionCode: readonly string[]) =>
             staffReachOver({
               tenantId,
-              batchId: sql.ref('e.batch_id'),
+              batchId: eb.ref('e.batchId'),
               userId: viewer.userId,
               permissionCode,
-              anchorNodeId: sql.ref('bp.assessment_anchor_node_id'),
-              anchorPath: sql.ref('bp.anchor_path'),
+              anchorNodeId: eb.ref('bp.assessmentAnchorNodeId'),
+              anchorPath: eb.ref('bp.anchorPath'),
             })
           return eb.or([
             eb('bp.userId', '=', viewer.userId),
@@ -2707,68 +2717,98 @@ const toParticipantRow = (row: Record<string, unknown>): ParticipantRow =>
 export const staffReachOver = (input: {
   tenantId: string
   /** one round, or a column naming it for a list that spans rounds */
-  batchId: string | RawBuilder<unknown>
+  batchId: string | Expression<string>
   userId: string
   /** several codes read as any one of them covering the anchor */
   permissionCode: string | readonly string[]
-  anchorNodeId: RawBuilder<unknown>
-  anchorPath: RawBuilder<unknown>
-}) => sql<boolean>`exists (
-  select 1
-  from batch_access_sources bas
-  join role_grants rg
-    on rg.tenant_id = bas.tenant_id and rg.id = bas.role_assignment_id
-  join roles ro on ro.tenant_id = rg.tenant_id and ro.id = rg.role_id
-  join batch_access_source_permissions sp
-    on sp.tenant_id = bas.tenant_id and sp.source_id = bas.id
-  where bas.tenant_id = ${input.tenantId}
-    and bas.batch_id = ${input.batchId}
-    and bas.subject_id = ${input.userId}
-    and rg.user_id = ${input.userId}
-    and rg.revoked_at is null
-    and (rg.valid_from is null or rg.valid_from <= now())
-    and (rg.valid_until is null or rg.valid_until > now())
-    and ro.status = 'active'
-    and ${
-      typeof input.permissionCode === 'string'
-        ? sql`sp.permission_code = ${input.permissionCode}`
-        : sql`sp.permission_code = any(${[...input.permissionCode]}::text[])`
-    }
-    and (
-      ro.permission_mode = 'all-active'
-      or exists (
-        select 1 from role_permissions rp
-        join permissions pe on pe.id = rp.permission_id
-        where rp.tenant_id = ro.tenant_id and rp.role_id = ro.id
-          and pe.code = sp.permission_code
+  anchorNodeId: Expression<string | null>
+  anchorPath: Expression<string | null>
+}) => {
+  const eb = expressionBuilder<Schema>()
+  return eb.exists(
+    eb
+      .selectFrom('BatchAccessSource as bas')
+      .innerJoin('RoleGrant as rg', (join) =>
+        join.onRef('rg.tenantId', '=', 'bas.tenantId').onRef('rg.id', '=', 'bas.roleAssignmentId'),
       )
-    )
-    and not exists (
-      select 1 from batch_access_denies dn
-      where dn.tenant_id = bas.tenant_id and dn.batch_id = bas.batch_id
-        and dn.subject_id = bas.subject_id
-        and dn.permission_code = sp.permission_code
-    )
-    and (
-      rg.resource_namespace is null
-      or (
-        rg.resource_namespace = 'assessment'
-        and rg.resource_type = 'batch'
-        and rg.resource_id = ${input.batchId}
+      .innerJoin('Role as ro', (join) =>
+        join.onRef('ro.tenantId', '=', 'rg.tenantId').onRef('ro.id', '=', 'rg.roleId'),
       )
-    )
-    and (
-      rg.org_node_id is null
-      or (rg.coverage = 'self' and rg.org_node_id = ${input.anchorNodeId})
-      or (
-        rg.coverage = 'subtree'
-        and ${input.anchorPath}::ltree <@ (
-          select path from org_nodes n
-          where n.tenant_id = rg.tenant_id and n.id = rg.org_node_id
-        )
+      .innerJoin('BatchAccessSourcePermission as sp', (join) =>
+        join.onRef('sp.tenantId', '=', 'bas.tenantId').onRef('sp.sourceId', '=', 'bas.id'),
       )
-    )
-)`
+      .select('bas.id')
+      .where('bas.tenantId', '=', input.tenantId)
+      .where('bas.batchId', '=', input.batchId)
+      .where('bas.subjectId', '=', input.userId)
+      .where('rg.userId', '=', input.userId)
+      .where('rg.revokedAt', 'is', null)
+      .where((q) =>
+        q.or([q('rg.validFrom', 'is', null), q('rg.validFrom', '<=', sql<Date>`now()`)]),
+      )
+      .where((q) =>
+        q.or([q('rg.validUntil', 'is', null), q('rg.validUntil', '>', sql<Date>`now()`)]),
+      )
+      .where('ro.status', '=', 'active')
+      .where((q) =>
+        typeof input.permissionCode === 'string'
+          ? q('sp.permissionCode', '=', input.permissionCode)
+          : q('sp.permissionCode', '=', q.fn.any(q.val([...input.permissionCode]))),
+      )
+      .where((q) =>
+        q.or([
+          q('ro.permissionMode', '=', 'all-active'),
+          q.exists(
+            q
+              .selectFrom('RolePermission as rp')
+              .innerJoin('Permission as pe', 'pe.id', 'rp.permissionId')
+              .select('rp.roleId')
+              .whereRef('rp.tenantId', '=', 'ro.tenantId')
+              .whereRef('rp.roleId', '=', 'ro.id')
+              .whereRef('pe.code', '=', 'sp.permissionCode'),
+          ),
+        ]),
+      )
+      .where((q) =>
+        q.not(
+          q.exists(
+            q
+              .selectFrom('BatchAccessDeny as dn')
+              .select('dn.id')
+              .whereRef('dn.tenantId', '=', 'bas.tenantId')
+              .whereRef('dn.batchId', '=', 'bas.batchId')
+              .whereRef('dn.subjectId', '=', 'bas.subjectId')
+              .whereRef('dn.permissionCode', '=', 'sp.permissionCode'),
+          ),
+        ),
+      )
+      .where((q) =>
+        q.or([
+          q('rg.resourceNamespace', 'is', null),
+          q.and([
+            q('rg.resourceNamespace', '=', 'assessment'),
+            q('rg.resourceType', '=', 'batch'),
+            q('rg.resourceId', '=', input.batchId),
+          ]),
+        ]),
+      )
+      .where((q) =>
+        q.or([
+          q('rg.orgNodeId', 'is', null),
+          q.and([q('rg.coverage', '=', 'self'), q('rg.orgNodeId', '=', input.anchorNodeId)]),
+          q.and([
+            q('rg.coverage', '=', 'subtree'),
+            // ltree containment, PostgreSQL's own operator
+            sql<boolean>`${input.anchorPath}::ltree <@ ${q
+              .selectFrom('OrgNode as n')
+              .select('n.path')
+              .whereRef('n.tenantId', '=', 'rg.tenantId')
+              .whereRef('n.id', '=', 'rg.orgNodeId')}`,
+          ]),
+        ]),
+      ),
+  )
+}
 
 /**
  * The organization as this round froze it.
@@ -2852,14 +2892,14 @@ export const resolveRecordTargets = (
       }
     }
     if (reach !== null) {
-      query = query.where(
+      query = query.where((eb) =>
         staffReachOver({
           tenantId,
           batchId,
           userId: reach.userId,
           permissionCode: reach.permissionCode,
-          anchorNodeId: sql.ref('batch_participants.assessment_anchor_node_id'),
-          anchorPath: sql.ref('batch_participants.anchor_path'),
+          anchorNodeId: eb.ref('BatchParticipant.assessmentAnchorNodeId'),
+          anchorPath: eb.ref('BatchParticipant.anchorPath'),
         }),
       )
     }
@@ -2944,14 +2984,15 @@ export const listRosterUserTypes = (
     const status = filter.status ?? 'active'
     if (status !== 'all') query = query.where('bp.status', '=', status)
     if (filter.reach !== undefined) {
-      query = query.where(
+      const reach = filter.reach
+      query = query.where((eb) =>
         staffReachOver({
           tenantId,
           batchId,
-          userId: filter.reach.userId,
-          permissionCode: filter.reach.permissionCode,
-          anchorNodeId: sql.ref('bp.assessment_anchor_node_id'),
-          anchorPath: sql.ref('bp.anchor_path'),
+          userId: reach.userId,
+          permissionCode: reach.permissionCode,
+          anchorNodeId: eb.ref('bp.assessmentAnchorNodeId'),
+          anchorPath: eb.ref('bp.anchorPath'),
         }),
       )
     }
@@ -3006,14 +3047,15 @@ export const listParticipantsPage = (
         )
       }
       if (filter.reach !== undefined) {
-        query = query.where(
+        const reach = filter.reach
+        query = query.where((eb) =>
           staffReachOver({
             tenantId,
             batchId,
-            userId: filter.reach.userId,
-            permissionCode: filter.reach.permissionCode,
-            anchorNodeId: sql.ref('batch_participants.assessment_anchor_node_id'),
-            anchorPath: sql.ref('batch_participants.anchor_path'),
+            userId: reach.userId,
+            permissionCode: reach.permissionCode,
+            anchorNodeId: eb.ref('BatchParticipant.assessmentAnchorNodeId'),
+            anchorPath: eb.ref('BatchParticipant.anchorPath'),
           }),
         )
       }
@@ -3141,14 +3183,15 @@ const rosterAccountsQuery = (
     )
   }
   if (filter.reach !== undefined) {
-    query = query.where(
+    const reach = filter.reach
+    query = query.where((eb) =>
       staffReachOver({
         tenantId,
         batchId,
-        userId: filter.reach.userId,
-        permissionCode: filter.reach.permissionCode,
-        anchorNodeId: sql.ref('batch_participants.assessment_anchor_node_id'),
-        anchorPath: sql.ref('batch_participants.anchor_path'),
+        userId: reach.userId,
+        permissionCode: reach.permissionCode,
+        anchorNodeId: eb.ref('BatchParticipant.assessmentAnchorNodeId'),
+        anchorPath: eb.ref('BatchParticipant.anchorPath'),
       }),
     )
   }
@@ -3371,14 +3414,14 @@ export const participantIdsWithin = (
             .where('BatchParticipant.batchId', '=', batchId)
             .where('BatchParticipant.id', 'in', [...participantIds])
           if (reach !== undefined) {
-            query = query.where(
+            query = query.where((eb) =>
               staffReachOver({
                 tenantId,
                 batchId,
                 userId: reach.userId,
                 permissionCode: reach.permissionCode,
-                anchorNodeId: sql.ref('batch_participants.assessment_anchor_node_id'),
-                anchorPath: sql.ref('batch_participants.anchor_path'),
+                anchorNodeId: eb.ref('BatchParticipant.assessmentAnchorNodeId'),
+                anchorPath: eb.ref('BatchParticipant.anchorPath'),
               }),
             )
           }

@@ -58,14 +58,14 @@ export const resolveImportParticipants = (input: {
             // roster that still lists them would otherwise answer it twice
             .where('u.deletedAt', 'is', null)
             .where('u.businessNo', 'in', [...input.businessNos])
-            .where(
+            .where((eb) =>
               staffReachOver({
                 tenantId: input.tenantId,
                 batchId: input.batchId,
                 userId: input.actorId,
                 permissionCode: 'assessment.entry.record',
-                anchorNodeId: sql.ref('p.assessment_anchor_node_id'),
-                anchorPath: sql.ref('p.anchor_path'),
+                anchorNodeId: eb.ref('p.assessmentAnchorNodeId'),
+                anchorPath: eb.ref('p.anchorPath'),
               }),
             )
             .orderBy('p.id')
@@ -596,14 +596,14 @@ export const reversalCandidatesOf = (
           'e.source',
           'e.currentReviewInstanceId',
         ])
-        .select(
+        .select((eb) =>
           staffReachOver({
             tenantId,
             batchId: reader.batchId,
             userId: reader.userId,
             permissionCode: 'assessment.entry.record',
-            anchorNodeId: sql.ref('p.assessment_anchor_node_id'),
-            anchorPath: sql.ref('p.anchor_path'),
+            anchorNodeId: eb.ref('p.assessmentAnchorNodeId'),
+            anchorPath: eb.ref('p.anchorPath'),
           }).as('reached'),
         )
         .where('r.tenantId', '=', tenantId)

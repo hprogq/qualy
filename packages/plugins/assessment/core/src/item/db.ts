@@ -44,23 +44,25 @@ export const groupsOf = (tenantId: string, batchId: string) =>
       k
         .selectFrom('ScoreGroup')
         .select(['id', 'parentGroupId', 'name', 'sortOrder'])
-        .select([
-          sql<string | null>`cap::text`.as('capText'),
-          sql<string | null>`floor::text`.as('floorText'),
-          epoch('score_groups.created_at').as('createdMs'),
-          // two counts because two things are being asked, and one number
-          // cannot answer both: what the group holds decides whether it may
-          // be removed, what it asks is what a reader is told
-          sql<string>`(select count(*) from assessment_items ai
-             where ai.tenant_id = score_groups.tenant_id
-               and ai.batch_id = score_groups.batch_id
-               and ai.score_group_id = score_groups.id)`.as('heldCount'),
-          sql<string>`(select count(*) from assessment_items ai
-             where ai.tenant_id = score_groups.tenant_id
-               and ai.batch_id = score_groups.batch_id
-               and ai.score_group_id = score_groups.id
-               and ai.status = 'active')`.as('activeCount'),
-        ])
+        .select((eb) => {
+          const items = () =>
+            eb
+              .selectFrom('AssessmentItem as ai')
+              .select((count) => count.fn.countAll<string>().as('n'))
+              .whereRef('ai.tenantId', '=', 'ScoreGroup.tenantId')
+              .whereRef('ai.batchId', '=', 'ScoreGroup.batchId')
+              .whereRef('ai.scoreGroupId', '=', 'ScoreGroup.id')
+          return [
+            eb.cast<string | null>('cap', 'text').as('capText'),
+            eb.cast<string | null>('floor', 'text').as('floorText'),
+            epoch('score_groups.created_at').as('createdMs'),
+            // two counts because two things are being asked, and one number
+            // cannot answer both: what the group holds decides whether it may
+            // be removed, what it asks is what a reader is told
+            items().as('heldCount'),
+            items().where('ai.status', '=', 'active').as('activeCount'),
+          ]
+        })
         .where('tenantId', '=', tenantId)
         .where('batchId', '=', batchId)
         .orderBy('sortOrder')
@@ -73,12 +75,12 @@ export const groupsOf = (tenantId: string, batchId: string) =>
           id: row.id,
           parentGroupId: row.parentGroupId ?? null,
           name: row.name,
-          cap: (row as { capText: string | null }).capText,
-          floor: (row as { floorText: string | null }).floorText,
+          cap: row.capText,
+          floor: row.floorText,
           sortOrder: row.sortOrder,
-          activeItemCount: Number((row as { activeCount: unknown }).activeCount),
-          heldItemCount: Number((row as { heldCount: unknown }).heldCount),
-          createdAt: msOf((row as { createdMs: unknown }).createdMs),
+          activeItemCount: Number(row.activeCount),
+          heldItemCount: Number(row.heldCount),
+          createdAt: msOf(row.createdMs),
         })),
       ),
     )
@@ -491,13 +493,14 @@ export const mintRecognitionIds = (count: number) =>
 export const nextRevisionNo = (tenantId: string, itemId: string) =>
   db
     .query((k) =>
-      sql<{ next: string }>`
-        select coalesce(max(revision_no), 0) + 1 as next
-        from assessment_item_revisions
-        where tenant_id = ${tenantId} and item_id = ${itemId}
-      `.execute(k),
+      k
+        .selectFrom('AssessmentItemRevision')
+        .select((eb) => eb(eb.fn.coalesce(eb.fn.max('revisionNo'), eb.lit(0)), '+', 1).as('next'))
+        .where('tenantId', '=', tenantId)
+        .where('itemId', '=', itemId)
+        .executeTakeFirstOrThrow(),
     )
-    .pipe(Effect.map(({ rows }) => Number(rows[0]!.next)))
+    .pipe(Effect.map((row) => Number(row.next)))
 
 export const setCurrentRevision = (tenantId: string, itemId: string, revisionId: string) =>
   db.query((k) =>
