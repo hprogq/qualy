@@ -1,5 +1,6 @@
 import fs from 'node:fs'
 import { lockedPackages, readLockfile } from '../lib/lockfile.ts'
+import { fetchSbom } from '../lib/sbom.ts'
 
 // Whether GitHub's dependency graph still sees what this repository installs.
 //
@@ -15,6 +16,11 @@ import { lockedPackages, readLockfile } from '../lib/lockfile.ts'
 // The graph is rebuilt a few minutes after a push, so a package or two locked
 // in the last minutes may be missing for a while: that is a warning, and only
 // a graph missing a real share of the lockfile fails.
+//
+// The graph comes through GitHub's asynchronous export (tools/lib/sbom.ts).
+// A report that could not be had - the job failed or never finished, the
+// download broke - exits 3 and says that no conclusion was drawn: it is not
+// an empty graph, and it is not a graph that sees everything.
 
 const MISSING_ALLOWED = 0.05
 
@@ -25,22 +31,17 @@ if (!token || !repository) {
   process.exit(2)
 }
 
-const response = await fetch(`https://api.github.com/repos/${repository}/dependency-graph/sbom`, {
-  headers: {
-    accept: 'application/vnd.github+json',
-    authorization: `Bearer ${token}`,
-    'x-github-api-version': '2022-11-28',
-  },
-})
-if (!response.ok) {
-  console.error(`check-dependency-graph: the SBOM request answered ${response.status}`)
-  process.exit(1)
+const outcome = await fetchSbom(repository, token)
+if (outcome.kind === 'unavailable') {
+  const said = `could not get the dependency graph (${outcome.reason}); nothing is concluded about it this run`
+  console.error(`check-dependency-graph: ${said}`)
+  const summary = process.env.GITHUB_STEP_SUMMARY
+  if (summary) fs.appendFileSync(summary, ['### Dependency graph', '', said, ''].join('\n'))
+  process.exit(3)
 }
-const { sbom } = (await response.json()) as {
-  sbom: {
-    creationInfo: { created: string }
-    packages: { name: string; versionInfo?: string }[]
-  }
+const sbom = {
+  creationInfo: { created: outcome.document.created },
+  packages: outcome.document.packages,
 }
 
 const inGraph = new Set(sbom.packages.map((one) => `${one.name}@${one.versionInfo ?? ''}`))
