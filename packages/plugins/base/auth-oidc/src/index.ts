@@ -378,13 +378,16 @@ const handlers = HttpApiBuilder.group(local, 'authOidc', (handlers) =>
         // origin it was issued with: the library reads the response from it
         // and checks the redirect it was issued to
         const returned = new URL(request.url, callback.value.origin)
+        // its own span: the exchange with the provider (the token, its keys,
+        // the user info) is time spent elsewhere, and inside the callback's
+        // span it could not be told apart from this side's own sign-in work
         const answer = yield* Effect.promise(() =>
           identify(configured.config, returned, {
             verifier: carried.verifier,
             state: query.state!,
             nonce: carried.nonce,
           }),
-        )
+        ).pipe(Effect.withSpan('authOidc.identify', { kind: 'client' }))
         if (answer.kind !== 'account') {
           yield* Effect.logWarning('oidc provider did not name an account').pipe(
             Effect.annotateLogs({ provider: provider.code, reason: answer.reason }),
