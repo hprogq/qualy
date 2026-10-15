@@ -1,10 +1,14 @@
+import { useState } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
 import { render } from 'vitest-browser-react'
+import { Dialog, DialogContent, DialogTitle } from '@qualy/ui/dialog'
+import { UiProvider } from '@qualy/ui/provider'
 import type { ReleaseProbe } from '@qualy/release-contract'
 import { bootstrapMessages } from '@qualy/web-i18n/bootstrap'
 import { createReleaseCoordinator } from '@qualy/web-runtime/release'
 import { ReleaseRecoveryGate } from '../src/release-ui.tsx'
+import '../src/app.css'
 
 // The gate as the reader meets it: a notice that lets the page go on, a
 // screen that does not, in the words of the locale the root is marked
@@ -17,6 +21,15 @@ const current = {
   clientProtocol: 1,
 }
 const probeFor = (releaseId: string): ReleaseProbe => ({ schema: 2, releaseId })
+
+/** the z-index of the nearest positioned layer holding the element */
+const layerOf = (element: Element): number => {
+  for (let node: Element | null = element; node !== null; node = node.parentElement) {
+    const style = getComputedStyle(node)
+    if (style.position !== 'static' && style.zIndex !== 'auto') return Number(style.zIndex)
+  }
+  return 0
+}
 
 const setUp = (answer: ReleaseProbe) => {
   const reload = vi.fn()
@@ -152,4 +165,44 @@ it('offers a reload for another tab language without changing this document or i
   } finally {
     other.close()
   }
+})
+
+it('waits under a modal that holds the page, and answers once it closes', async () => {
+  // A modal makes everything behind it inert, the notice included. Drawn
+  // above the modal it looked live and answered nothing: a reader faced
+  // with the sign-in lock and the update notice could press only one.
+  document.documentElement.dataset['locale'] = 'zh-CN'
+  const copy = bootstrapMessages['zh-CN']
+  const { coordinator, reload } = setUp(probeFor('B'))
+  function Locked() {
+    const [open, setOpen] = useState(true)
+    return (
+      <Dialog open={open}>
+        <DialogContent showCloseButton={false}>
+          <DialogTitle>locked</DialogTitle>
+          <button type="button" onClick={() => setOpen(false)}>
+            unlock
+          </button>
+        </DialogContent>
+      </Dialog>
+    )
+  }
+  await render(
+    <UiProvider scheme="light">
+      <ReleaseRecoveryGate coordinator={coordinator} copy={bootstrapMessages}>
+        <Locked />
+      </ReleaseRecoveryGate>
+    </UiProvider>,
+  )
+  await expect.element(page.getByRole('dialog')).toBeVisible()
+  await coordinator.check({ force: true })
+  await expect.poll(() => document.querySelector('[data-release-update="B"]')).not.toBeNull()
+  const notice = document.querySelector<HTMLElement>('[data-release-update="B"]')!
+  // hit testing skips an inert element, so the order is read off the
+  // layers themselves: both stack in the root context
+  expect(layerOf(notice)).toBeLessThan(layerOf(page.getByRole('dialog').element()))
+  await page.getByRole('button', { name: 'unlock' }).click()
+  await expect.element(page.getByRole('dialog')).not.toBeInTheDocument()
+  await page.getByRole('button', { name: copy.reloadNow }).click()
+  expect(reload).toHaveBeenCalledTimes(1)
 })

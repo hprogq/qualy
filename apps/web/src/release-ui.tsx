@@ -50,9 +50,14 @@ const styles = stylex.create({
     lineHeight: '1.25rem',
     color: tokens.mutedForeground,
   },
+  // Under the modal layer (the widget library's 200), above the page. A
+  // modal makes everything behind it inert, this notice included; drawn on
+  // top it looked live and answered nothing, so a reader facing the sign-in
+  // lock saw two ways on and could take one. Behind the veil it waits, and
+  // answers again once the modal is gone.
   notice: {
     position: 'fixed',
-    zIndex: 3000,
+    zIndex: 150,
     bottom: {
       default: 24,
       [breakpoints.phone]: 16,
