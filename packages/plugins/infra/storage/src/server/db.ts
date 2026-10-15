@@ -206,47 +206,60 @@ export interface OwnerUsage {
 export const usageOf = (input: { tenantId: string; ownerUserId: string; rateWindowFrom: number }) =>
   db
     .query((k) =>
-      sql<{
-        recent_prepares: string
-        active_reservations: string
-        reserved_bytes: string
-        staged_bytes: string
-        stored_bytes: string
-        tenant_committed_bytes: string
-      }>`
-        select
-          (select count(*) from storage_upload_reservations
-             where tenant_id = ${input.tenantId} and owner_user_id = ${input.ownerUserId}
-               and created_at >= ${at(input.rateWindowFrom)}) as recent_prepares,
-          (select count(*) from storage_upload_reservations
-             where tenant_id = ${input.tenantId} and owner_user_id = ${input.ownerUserId}
-               and status = 'issued') as active_reservations,
-          (select coalesce(sum(reserved_bytes), 0) from storage_upload_reservations
-             where tenant_id = ${input.tenantId} and owner_user_id = ${input.ownerUserId}
-               and status = 'issued') as reserved_bytes,
-          (select coalesce(sum(size), 0) from storage_attachments
-             where tenant_id = ${input.tenantId} and owner_user_id = ${input.ownerUserId}
-               and status = 'staged') as staged_bytes,
-          (select coalesce(sum(size), 0) from storage_attachments
-             where tenant_id = ${input.tenantId} and owner_user_id = ${input.ownerUserId}) as stored_bytes,
-          (select coalesce(sum(size), 0) from storage_attachments where tenant_id = ${input.tenantId})
-            + (select coalesce(sum(reserved_bytes), 0) from storage_upload_reservations
-                 where tenant_id = ${input.tenantId} and status = 'issued')
-            as tenant_committed_bytes
-      `.execute(k),
+      k
+        .selectNoFrom((eb) => {
+          const reservations = () =>
+            eb.selectFrom('UploadReservation as r').where('r.tenantId', '=', input.tenantId)
+          const attachments = () =>
+            eb.selectFrom('Attachment as a').where('a.tenantId', '=', input.tenantId)
+          const ownReservations = () =>
+            reservations().where('r.ownerUserId', '=', input.ownerUserId)
+          const ownAttachments = () => attachments().where('a.ownerUserId', '=', input.ownerUserId)
+          const count = () => eb.fn.countAll<string>().as('n')
+          return [
+            ownReservations()
+              .where('r.createdAt', '>=', at(input.rateWindowFrom))
+              .select(count)
+              .as('recentPrepares'),
+            ownReservations()
+              .where('r.status', '=', 'issued')
+              .select(count)
+              .as('activeReservations'),
+            ownReservations()
+              .where('r.status', '=', 'issued')
+              .select((q) => q.fn.coalesce(q.fn.sum<string>('r.reservedBytes'), q.lit(0)).as('n'))
+              .as('reservedBytes'),
+            ownAttachments()
+              .where('a.status', '=', 'staged')
+              .select((q) => q.fn.coalesce(q.fn.sum<string>('a.size'), q.lit(0)).as('n'))
+              .as('stagedBytes'),
+            ownAttachments()
+              .select((q) => q.fn.coalesce(q.fn.sum<string>('a.size'), q.lit(0)).as('n'))
+              .as('storedBytes'),
+            eb(
+              attachments().select((q) =>
+                q.fn.coalesce(q.fn.sum<string>('a.size'), q.lit(0)).as('n'),
+              ),
+              '+',
+              reservations()
+                .where('r.status', '=', 'issued')
+                .select((q) =>
+                  q.fn.coalesce(q.fn.sum<string>('r.reservedBytes'), q.lit(0)).as('n'),
+                ),
+            ).as('tenantCommittedBytes'),
+          ]
+        })
+        .executeTakeFirstOrThrow(),
     )
     .pipe(
-      Effect.map(({ rows }) => {
-        const row = rows[0]!
-        return {
-          recentPrepares: Number(row.recent_prepares),
-          activeReservations: Number(row.active_reservations),
-          reservedBytes: bytesOf(row.reserved_bytes),
-          stagedBytes: bytesOf(row.staged_bytes),
-          storedBytes: bytesOf(row.stored_bytes),
-          tenantCommittedBytes: bytesOf(row.tenant_committed_bytes),
-        }
-      }),
+      Effect.map((row) => ({
+        recentPrepares: Number(row.recentPrepares),
+        activeReservations: Number(row.activeReservations),
+        reservedBytes: bytesOf(String(row.reservedBytes)),
+        stagedBytes: bytesOf(String(row.stagedBytes)),
+        storedBytes: bytesOf(String(row.storedBytes)),
+        tenantCommittedBytes: bytesOf(String(row.tenantCommittedBytes)),
+      })),
     )
 
 /** the id the object key is built from, minted where every other id is */
