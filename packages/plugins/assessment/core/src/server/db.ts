@@ -6,6 +6,7 @@ import {
   expressionBuilder,
   sql,
   type Expression,
+  type ExpressionBuilder,
   type Kysely,
   type OrderByModifiers,
   type RawBuilder,
@@ -49,7 +50,7 @@ const msOf = (value: unknown): number | null =>
   value == null ? null : value instanceof Date ? value.getTime() : Number(value)
 
 /** an epoch-millisecond instant as a bindable timestamptz value */
-const instant = (ms: number) => sql`to_timestamp(${ms} / 1000.0)`
+const instant = (ms: number) => sql<Date>`to_timestamp(${ms} / 1000.0)`
 
 const jsonb = (value: unknown) => sql`${JSON.stringify(value)}::jsonb`
 
@@ -109,6 +110,17 @@ export interface BatchRow {
   manageable: boolean
 }
 
+/** a builder for predicates over the batch row a query reads unaliased */
+const batchRow = () => expressionBuilder<Schema, 'AssessmentBatch'>()
+
+/** what the batch's current phase is called, beside the batch row */
+const currentPhaseName = (eb: ExpressionBuilder<Schema, 'AssessmentBatch'>) =>
+  eb
+    .selectFrom('BatchPhase as p')
+    .select('p.displayName')
+    .whereRef('p.tenantId', '=', 'AssessmentBatch.tenantId')
+    .whereRef('p.id', '=', 'AssessmentBatch.currentPhaseId')
+
 const batchSelection = (k: Parameters<Parameters<typeof db.query>[0]>[0]) =>
   k
     .selectFrom('AssessmentBatch')
@@ -122,22 +134,19 @@ const batchSelection = (k: Parameters<Parameters<typeof db.query>[0]>[0]) =>
       'currentPhaseId',
       'reviewReasons',
     ])
-    .select([
-      sql<string>`material_range::text`.as('materialRange'),
+    .select((eb) => [
+      eb.cast<string>('materialRange', 'text').as('materialRange'),
       epoch('created_at').as('createdAt'),
-      sql<string>`(
-        select count(*) from batch_participants bp
-        where bp.tenant_id = assessment_batches.tenant_id
-          and bp.batch_id = assessment_batches.id
-          and bp.status = 'active'
-      )`.as('participantCount'),
+      eb
+        .selectFrom('BatchParticipant as bp')
+        .select((count) => count.fn.countAll<string>().as('n'))
+        .whereRef('bp.tenantId', '=', 'AssessmentBatch.tenantId')
+        .whereRef('bp.batchId', '=', 'AssessmentBatch.id')
+        .where('bp.status', '=', 'active')
+        .as('participantCount'),
       // the first thing anybody asks of a running batch is where it has got
       // to, and an id does not answer that
-      sql<string | null>`(
-        select p.display_name from batch_phases p
-        where p.tenant_id = assessment_batches.tenant_id
-          and p.id = assessment_batches.current_phase_id
-      )`.as('currentPhaseName'),
+      currentPhaseName(eb).as('currentPhaseName'),
     ])
 
 const toBatchRow = (row: Record<string, unknown>): BatchRow =>
@@ -184,49 +193,62 @@ export const oneBatch = (
  * college, who could then fill it with their own people. The frozen anchors
  * are what an empty round still belongs to; the roster is what it has become.
  */
-export const withinReach = (held: AuthorizationScope) =>
-  held.tenantWide
-    ? sql<boolean>`true`
-    : held.anchors.length > 0
-      ? sql<boolean>`(
-        not exists (
-          select 1 from batch_management_anchors ma
-          join org_nodes mn on mn.tenant_id = ma.tenant_id and mn.id = ma.org_node_id
-          where ma.tenant_id = assessment_batches.tenant_id
-            and ma.batch_id = assessment_batches.id
-            and not ${scopeCoverage(held, {
-              id: sql.ref('mn.id') as never,
-              tenantId: sql.ref('mn.tenant_id') as never,
-              path: sql.ref('mn.path') as never,
-            })}
-        )
-        and not exists (
-          select 1 from batch_participants bp
-          where bp.tenant_id = assessment_batches.tenant_id
-            and bp.batch_id = assessment_batches.id
-            and bp.status = 'active'
-            and not ${scopeCoverage(held, {
-              id: sql.ref('bp.assessment_anchor_node_id') as never,
-              tenantId: sql.ref('bp.tenant_id') as never,
-              path: sql.ref('bp.anchor_path') as never,
-            })}
-        )
-        -- and it has to belong to somewhere: a round with no boundary and
-        -- nobody on it is nobody's, and "nobody's" must not resolve to
-        -- "anybody holding the permission somewhere". Tenant-wide authority
-        -- reads it above; a scoped administrator does not.
-        and exists (
-          select 1 from batch_management_anchors ma
-          where ma.tenant_id = assessment_batches.tenant_id
-            and ma.batch_id = assessment_batches.id
-          union all
-          select 1 from batch_participants bp
-          where bp.tenant_id = assessment_batches.tenant_id
-            and bp.batch_id = assessment_batches.id
-            and bp.status = 'active'
-        )
-      )`
-      : sql<boolean>`false`
+export const withinReach = (held: AuthorizationScope) => {
+  const eb = batchRow()
+  if (held.tenantWide) return eb.lit(true)
+  if (held.anchors.length === 0) return eb.lit(false)
+  const anchors = () =>
+    eb
+      .selectFrom('BatchManagementAnchor as ma')
+      .whereRef('ma.tenantId', '=', 'AssessmentBatch.tenantId')
+      .whereRef('ma.batchId', '=', 'AssessmentBatch.id')
+  const roster = () =>
+    eb
+      .selectFrom('BatchParticipant as bp')
+      .whereRef('bp.tenantId', '=', 'AssessmentBatch.tenantId')
+      .whereRef('bp.batchId', '=', 'AssessmentBatch.id')
+      .where('bp.status', '=', 'active')
+  return eb.and([
+    eb.not(
+      eb.exists(
+        anchors()
+          .innerJoin('OrgNode as mn', (join) =>
+            join.onRef('mn.tenantId', '=', 'ma.tenantId').onRef('mn.id', '=', 'ma.orgNodeId'),
+          )
+          .select('ma.orgNodeId')
+          .where((q) =>
+            q.not(
+              scopeCoverage(held, {
+                id: q.ref('mn.id'),
+                tenantId: q.ref('mn.tenantId'),
+                path: q.ref('mn.path'),
+              }),
+            ),
+          ),
+      ),
+    ),
+    eb.not(
+      eb.exists(
+        roster()
+          .select('bp.id')
+          .where((q) =>
+            q.not(
+              scopeCoverage(held, {
+                id: q.ref('bp.assessmentAnchorNodeId'),
+                tenantId: q.ref('bp.tenantId'),
+                path: q.ref('bp.anchorPath'),
+              }),
+            ),
+          ),
+      ),
+    ),
+    // and it has to belong to somewhere: a round with no boundary and
+    // nobody on it is nobody's, and "nobody's" must not resolve to
+    // "anybody holding the permission somewhere". Tenant-wide authority
+    // reads it above; a scoped administrator does not.
+    eb.or([eb.exists(anchors().select('ma.orgNodeId')), eb.exists(roster().select('bp.id'))]),
+  ])
+}
 
 /**
  * Whether a stage of this round has actually begun, by the clock.
@@ -242,12 +264,19 @@ export const withinReach = (held: AuthorizationScope) =>
  * happened once, and waiting for its next stage does not take back what its
  * participants filed and were scored in it.
  */
-const hasBegun = sql<boolean>`exists (
-  select 1 from batch_phases ph
-  where ph.tenant_id = assessment_batches.tenant_id
-    and ph.batch_id = assessment_batches.id
-    and coalesce(ph.actual_entry_at, ph.planned_entry_at) <= now()
-)`
+const hasBegun = () => {
+  const eb = batchRow()
+  return eb.exists(
+    eb
+      .selectFrom('BatchPhase as ph')
+      .select('ph.id')
+      .whereRef('ph.tenantId', '=', 'AssessmentBatch.tenantId')
+      .whereRef('ph.batchId', '=', 'AssessmentBatch.id')
+      .where((q) =>
+        q(q.fn.coalesce('ph.actualEntryAt', 'ph.plannedEntryAt'), '<=', sql<Date>`now()`),
+      ),
+  )
+}
 
 /**
  * A batch a participant is in, or was in.
@@ -262,16 +291,23 @@ const hasBegun = sql<boolean>`exists (
  * plan its administrators are still writing - and they keep it afterwards: a
  * round is archived to stop the work, not to take back what happened in it.
  */
-const isParticipant = (userId: string) =>
-  sql<boolean>`(
-    (assessment_batches.status = 'archived' or (assessment_batches.status = 'active' and ${hasBegun}))
-    and exists (
-      select 1 from batch_participants bp
-      where bp.tenant_id = assessment_batches.tenant_id
-        and bp.batch_id = assessment_batches.id
-        and bp.user_id = ${userId}::uuid
-    )
-  )`
+const isParticipant = (userId: string) => {
+  const eb = batchRow()
+  return eb.and([
+    eb.or([
+      eb('AssessmentBatch.status', '=', 'archived'),
+      eb.and([eb('AssessmentBatch.status', '=', 'active'), hasBegun()]),
+    ]),
+    eb.exists(
+      eb
+        .selectFrom('BatchParticipant as bp')
+        .select('bp.id')
+        .whereRef('bp.tenantId', '=', 'AssessmentBatch.tenantId')
+        .whereRef('bp.batchId', '=', 'AssessmentBatch.id')
+        .where('bp.userId', '=', userId),
+    ),
+  ])
+}
 
 /**
  * A batch somebody works on, measured by what they can actually do in it.
@@ -283,41 +319,62 @@ const isParticipant = (userId: string) =>
  * this round accepted has no authority here, and reading the round is one of
  * the things authority is for.
  */
-export const isStaff = (userId: string) =>
-  sql<boolean>`exists (
-    select 1
-    from batch_access_sources bas
-    join role_grants rg
-      on rg.tenant_id = bas.tenant_id and rg.id = bas.role_assignment_id
-    join roles ro on ro.tenant_id = rg.tenant_id and ro.id = rg.role_id
-    join batch_access_source_permissions sp
-      on sp.tenant_id = bas.tenant_id and sp.source_id = bas.id
-    where bas.tenant_id = assessment_batches.tenant_id
-      and bas.batch_id = assessment_batches.id
-      and bas.subject_id = ${userId}::uuid
-      and rg.user_id = ${userId}::uuid
-      and rg.revoked_at is null
-      and (rg.valid_from is null or rg.valid_from <= now())
-      and (rg.valid_until is null or rg.valid_until > now())
-      and ro.status = 'active'
-      and (
-        ro.permission_mode = 'all-active'
-        or exists (
-          select 1 from role_permissions rp
-          join permissions pe on pe.id = rp.permission_id
-          where rp.tenant_id = ro.tenant_id
-            and rp.role_id = ro.id
-            and pe.code = sp.permission_code
-        )
+export const isStaff = (userId: string) => {
+  const eb = batchRow()
+  return eb.exists(
+    eb
+      .selectFrom('BatchAccessSource as bas')
+      .innerJoin('RoleGrant as rg', (join) =>
+        join.onRef('rg.tenantId', '=', 'bas.tenantId').onRef('rg.id', '=', 'bas.roleAssignmentId'),
       )
-      and not exists (
-        select 1 from batch_access_denies dn
-        where dn.tenant_id = bas.tenant_id
-          and dn.batch_id = bas.batch_id
-          and dn.subject_id = bas.subject_id
-          and dn.permission_code = sp.permission_code
+      .innerJoin('Role as ro', (join) =>
+        join.onRef('ro.tenantId', '=', 'rg.tenantId').onRef('ro.id', '=', 'rg.roleId'),
       )
-  )`
+      .innerJoin('BatchAccessSourcePermission as sp', (join) =>
+        join.onRef('sp.tenantId', '=', 'bas.tenantId').onRef('sp.sourceId', '=', 'bas.id'),
+      )
+      .select('bas.id')
+      .whereRef('bas.tenantId', '=', 'AssessmentBatch.tenantId')
+      .whereRef('bas.batchId', '=', 'AssessmentBatch.id')
+      .where('bas.subjectId', '=', userId)
+      .where('rg.userId', '=', userId)
+      .where('rg.revokedAt', 'is', null)
+      .where((q) =>
+        q.or([q('rg.validFrom', 'is', null), q('rg.validFrom', '<=', sql<Date>`now()`)]),
+      )
+      .where((q) =>
+        q.or([q('rg.validUntil', 'is', null), q('rg.validUntil', '>', sql<Date>`now()`)]),
+      )
+      .where('ro.status', '=', 'active')
+      .where((q) =>
+        q.or([
+          q('ro.permissionMode', '=', 'all-active'),
+          q.exists(
+            q
+              .selectFrom('RolePermission as rp')
+              .innerJoin('Permission as pe', 'pe.id', 'rp.permissionId')
+              .select('rp.roleId')
+              .whereRef('rp.tenantId', '=', 'ro.tenantId')
+              .whereRef('rp.roleId', '=', 'ro.id')
+              .whereRef('pe.code', '=', 'sp.permissionCode'),
+          ),
+        ]),
+      )
+      .where((q) =>
+        q.not(
+          q.exists(
+            q
+              .selectFrom('BatchAccessDeny as dn')
+              .select('dn.id')
+              .whereRef('dn.tenantId', '=', 'bas.tenantId')
+              .whereRef('dn.batchId', '=', 'bas.batchId')
+              .whereRef('dn.subjectId', '=', 'bas.subjectId')
+              .whereRef('dn.permissionCode', '=', 'sp.permissionCode'),
+          ),
+        ),
+      ),
+  )
+}
 
 /**
  * What one person may see of the batches.
@@ -328,11 +385,7 @@ export const isStaff = (userId: string) =>
  * three quietly decided the other two.
  */
 export const visibleTo = (viewer: { held: AuthorizationScope; userId: string }) =>
-  sql<boolean>`(
-    ${withinReach(viewer.held)}
-    or ${isStaff(viewer.userId)}
-    or ${isParticipant(viewer.userId)}
-  )`
+  batchRow().or([withinReach(viewer.held), isStaff(viewer.userId), isParticipant(viewer.userId)])
 
 /** whether one batch is one this person may read at all */
 export const batchVisibleTo = (
@@ -464,19 +517,29 @@ export const runningBatchesVisibleTo = (
         .where('tenantId', '=', tenantId)
         .where('status', '=', 'active')
         .where(visibleTo(viewer))
-        .where(sql<boolean>`exists (
-          select 1 from batch_phases ph
-          where ph.tenant_id = assessment_batches.tenant_id
-            and ph.batch_id = assessment_batches.id
-            and coalesce(ph.actual_entry_at, ph.planned_entry_at) <= ${new Date(now)}
-            and coalesce(ph.actual_entry_at, ph.planned_entry_at) > coalesce((
-              select max(event.occurred_at)
-              from batch_lifecycle_events event
-              where event.tenant_id = assessment_batches.tenant_id
-                and event.batch_id = assessment_batches.id
-                and event.kind = 'archived'
-            ), '-infinity'::timestamptz)
-        )`)
+        .where((eb) =>
+          eb.exists(
+            eb
+              .selectFrom('BatchPhase as ph')
+              .select('ph.id')
+              .whereRef('ph.tenantId', '=', 'AssessmentBatch.tenantId')
+              .whereRef('ph.batchId', '=', 'AssessmentBatch.id')
+              .where((q) => {
+                const entry = q.fn.coalesce('ph.actualEntryAt', 'ph.plannedEntryAt')
+                // begun, and begun after the round was last closed, if it ever was
+                const lastArchived = q
+                  .selectFrom('BatchLifecycleEvent as event')
+                  .select((agg) => agg.fn.max('event.occurredAt').as('at'))
+                  .whereRef('event.tenantId', '=', 'AssessmentBatch.tenantId')
+                  .whereRef('event.batchId', '=', 'AssessmentBatch.id')
+                  .where('event.kind', '=', 'archived')
+                return q.and([
+                  q(entry, '<=', new Date(now)),
+                  q(entry, '>', q.fn.coalesce(lastArchived, sql<Date>`'-infinity'::timestamptz`)),
+                ])
+              }),
+          ),
+        )
         .orderBy('createdAt', 'desc')
         .orderBy('id', 'desc')
         .limit(limit)
@@ -607,13 +670,9 @@ export const userBatchesPage = (
           'AssessmentBatch.timezone',
           'AssessmentBatch.currentPhaseId',
         ])
-        .select([
-          sql<string>`material_range::text`.as('materialRange'),
-          sql<string | null>`(
-          select p.display_name from batch_phases p
-          where p.tenant_id = assessment_batches.tenant_id
-            and p.id = assessment_batches.current_phase_id
-        )`.as('currentPhaseName'),
+        .select((eb) => [
+          eb.cast<string>('AssessmentBatch.materialRange', 'text').as('materialRange'),
+          currentPhaseName(eb).as('currentPhaseName'),
           withinReach(viewer.held).as('manageable'),
         ])
         .where('bp.tenantId', '=', tenantId)
@@ -621,7 +680,7 @@ export const userBatchesPage = (
         .where(
           userId === viewer.userId
             ? visibleTo(viewer)
-            : sql<boolean>`(${withinReach(viewer.held)} or ${isStaff(viewer.userId)})`,
+            : batchRow().or([withinReach(viewer.held), isStaff(viewer.userId)]),
         )
       const counted = await query
         .clearSelect()
@@ -1238,13 +1297,28 @@ const accessSourcesOf = (tenantId: string, batchId: string, subjectIds?: readonl
           'rg.orgNodeId as orgNodeId',
           'rg.coverage as coverage',
         ])
-        .select([
+        .select((eb) => [
           epoch('s.accepted_at').as('acceptedAt'),
-          sql<string[]>`coalesce((select array_agg(sp.permission_code order by sp.permission_code)
-            from batch_access_source_permissions sp
-            where sp.tenant_id = s.tenant_id and sp.source_id = s.id), '{}')`.as('accepted'),
-          sql<boolean>`rg.revoked_at is not null`.as('revoked'),
-          sql<boolean>`coalesce(rg.valid_until <= now(), false)`.as('expired'),
+          eb.fn
+            .coalesce(
+              eb
+                .selectFrom('BatchAccessSourcePermission as sp')
+                .select((agg) =>
+                  agg.fn
+                    .agg<string[]>('array_agg', ['sp.permissionCode'])
+                    .orderBy('sp.permissionCode')
+                    .as('codes'),
+                )
+                .whereRef('sp.tenantId', '=', 's.tenantId')
+                .whereRef('sp.sourceId', '=', 's.id'),
+              sql<string[]>`'{}'::text[]`,
+            )
+            .as('accepted'),
+          eb('rg.revokedAt', 'is not', null).$castTo<boolean>().as('revoked'),
+          eb.fn
+            .coalesce(eb('rg.validUntil', '<=', sql<Date>`now()`), eb.lit(false))
+            .$castTo<boolean>()
+            .as('expired'),
         ])
         .where('s.tenantId', '=', tenantId)
         .where('s.batchId', '=', batchId)
@@ -1472,13 +1546,22 @@ export const explicitAssignments = (tenantId: string, batchId: string, which: 'a
 export const dropEmptyAccessSources = (tenantId: string, batchId: string) =>
   db
     .query((k) =>
-      sql`delete from batch_access_sources s
-        where s.tenant_id = ${tenantId}::uuid
-          and s.batch_id = ${batchId}::uuid
-          and not exists (
-            select 1 from batch_access_source_permissions p
-            where p.tenant_id = s.tenant_id and p.source_id = s.id
-          )`.execute(k),
+      k
+        .deleteFrom('BatchAccessSource')
+        .where('BatchAccessSource.tenantId', '=', tenantId)
+        .where('BatchAccessSource.batchId', '=', batchId)
+        .where((eb) =>
+          eb.not(
+            eb.exists(
+              eb
+                .selectFrom('BatchAccessSourcePermission as p')
+                .select('p.id')
+                .whereRef('p.tenantId', '=', 'BatchAccessSource.tenantId')
+                .whereRef('p.sourceId', '=', 'BatchAccessSource.id'),
+            ),
+          ),
+        )
+        .execute(),
     )
     .pipe(Effect.asVoid)
 
@@ -2326,15 +2409,17 @@ export const batchesWithDueBoundaries = (now: number, limit: number) =>
         .selectFrom('AssessmentBatch')
         .select(['AssessmentBatch.tenantId', 'AssessmentBatch.id'])
         .where('AssessmentBatch.status', '=', 'active')
-        .where(
-          sql<boolean>`exists (
-            select 1 from batch_phases due
-            where due.tenant_id = assessment_batches.tenant_id
-              and due.batch_id = assessment_batches.id
-              and due.actual_entry_at is null
-              and due.planned_entry_at is not null
-              and due.planned_entry_at <= ${instant(now)}
-          )`,
+        .where((eb) =>
+          eb.exists(
+            eb
+              .selectFrom('BatchPhase as due')
+              .select('due.id')
+              .whereRef('due.tenantId', '=', 'AssessmentBatch.tenantId')
+              .whereRef('due.batchId', '=', 'AssessmentBatch.id')
+              .where('due.actualEntryAt', 'is', null)
+              .where('due.plannedEntryAt', 'is not', null)
+              .where('due.plannedEntryAt', '<=', instant(now)),
+          ),
         )
         .orderBy('AssessmentBatch.id')
         .limit(limit)
@@ -2540,69 +2625,116 @@ export const participantPlacements = (
   only?: readonly string[],
 ) =>
   db
-    .query((k) =>
-      sql<Record<string, unknown>>`
-        select * from (
-          select p.id as participant_id, p.user_id, u.display_name, u.business_no,
-                 p.assessment_anchor_node_id as frozen_node_id, p.anchor_path::text as frozen_path,
-                 p.anchor_lineage as frozen_lineage, p.user_type_id as frozen_type_id,
-                 case when u.deleted_at is not null then 'gone'
-                      when not u.enabled then 'disabled'
-                      when n.id is null then 'unplaced' end as unavailable,
-                 n.id as live_node_id, n.path::text as live_path, u.user_type_id as live_type_id,
-                 (select jsonb_agg(jsonb_build_object('nodeId', a.id, 'nodeTypeId', a.org_type_id)
-                                   order by a.depth desc)
-                    from org_nodes a
-                   where n.id is not null and a.tenant_id = n.tenant_id and a.path @> n.path)
-                   as live_lineage,
-                 case when n.id is null then null else ${fingerprintOf(livePlacement('u', 'n'))} end
-                   as live_fingerprint,
-                 ${fingerprintOf(frozenPlacement('p'))} as frozen_fingerprint,
-                 p.reconciled_org_state_hash
-            from batch_participants p
-            join users u on u.tenant_id = p.tenant_id and u.id = p.user_id
-            left join org_nodes n on n.tenant_id = u.tenant_id and n.id = u.primary_org_node_id
-           where p.tenant_id = ${tenantId}::uuid
-             and p.batch_id = ${batchId}::uuid
-             and p.status = 'active'
-             ${only === undefined ? sql`` : sql`and p.id = any(${[...only]}::uuid[])`}
-        ) placements
-        ${
-          only === undefined
-            ? sql`where unavailable is not null
-                     or (live_fingerprint <> frozen_fingerprint
-                         and live_fingerprint is distinct from reconciled_org_state_hash)`
-            : sql``
-        }
-        order by business_no nulls last, display_name, participant_id
-      `.execute(k),
-    )
+    .query((k) => {
+      const placements = k
+        .selectFrom('BatchParticipant as p')
+        .innerJoin('User as u', (join) =>
+          join.onRef('u.tenantId', '=', 'p.tenantId').onRef('u.id', '=', 'p.userId'),
+        )
+        .leftJoin('OrgNode as n', (join) =>
+          join.onRef('n.tenantId', '=', 'u.tenantId').onRef('n.id', '=', 'u.primaryOrgNodeId'),
+        )
+        .select((eb) => [
+          'p.id as participantId',
+          // Aliased one by one, and never with a BatchParticipant property's
+          // name: the entity naming reads this derived table as that entity,
+          // so an outer reference spelled like one of its properties is
+          // rewritten to the column's snake_case name (docs/notes/kysely.md)
+          'p.userId as userId',
+          'u.displayName as displayName',
+          'u.businessNo as businessNo',
+          'p.assessmentAnchorNodeId as frozenNodeId',
+          eb.cast<string>('p.anchorPath', 'text').as('frozenPath'),
+          'p.anchorLineage as frozenLineage',
+          'p.userTypeId as frozenTypeId',
+          eb
+            .case()
+            .when('u.deletedAt', 'is not', null)
+            .then('gone' as const)
+            .when('u.enabled', '=', false)
+            .then('disabled' as const)
+            .when('n.id', 'is', null)
+            .then('unplaced' as const)
+            .end()
+            .as('unavailable'),
+          'n.id as liveNodeId',
+          eb.cast<string | null>('n.path', 'text').as('livePath'),
+          'u.userTypeId as liveTypeId',
+          // the unit's ancestry from the unit up, as the organization has it
+          // now; ltree containment and jsonb assembly are PostgreSQL's own
+          sql<unknown>`(select jsonb_agg(jsonb_build_object('nodeId', a.id, 'nodeTypeId', a.org_type_id)
+                                order by a.depth desc)
+                 from org_nodes a
+                where ${eb.ref('n.id')} is not null and a.tenant_id = ${eb.ref('n.tenantId')}
+                  and a.path @> ${eb.ref('n.path')})`.as('liveLineage'),
+          eb
+            .case()
+            .when('n.id', 'is', null)
+            .then(eb.val<string | null>(null))
+            .else(fingerprintOf(livePlacement('u', 'n')))
+            .end()
+            .as('liveFingerprint'),
+          fingerprintOf(frozenPlacement('p')).as('frozenFingerprint'),
+          'p.reconciledOrgStateHash as reconciledHash',
+        ])
+        .where('p.tenantId', '=', tenantId)
+        .where('p.batchId', '=', batchId)
+        .where('p.status', '=', 'active')
+        .$if(only !== undefined, (q) => q.where('p.id', 'in', [...(only ?? [])]))
+      return (
+        k
+          .selectFrom(placements.as('placements'))
+          .selectAll()
+          // the members whose placement needs a decision, unless named
+          .$if(only === undefined, (q) =>
+            q.where((eb) =>
+              eb.or([
+                eb('unavailable', 'is not', null),
+                eb.and([
+                  eb('liveFingerprint', '<>', eb.ref('frozenFingerprint')),
+                  eb('liveFingerprint', 'is distinct from', eb.ref('reconciledHash')),
+                ]),
+              ]),
+            ),
+          )
+          .orderBy('businessNo', (order) => order.asc().nullsLast())
+          .orderBy('displayName')
+          .orderBy('participantId')
+          .execute()
+      )
+    })
     .pipe(
-      Effect.map((result) =>
-        result.rows.map((row): PlacementRow => ({
-          participantId: row.participant_id as string,
-          userId: row.user_id as string,
-          displayName: row.display_name as string,
-          businessNo: (row.business_no ?? null) as string | null,
+      Effect.map((rows) =>
+        rows.map((row): PlacementRow => ({
+          participantId: row.participantId,
+          userId: row.userId,
+          displayName: row.displayName,
+          businessNo: row.businessNo ?? null,
           frozen: {
-            nodeId: row.frozen_node_id as string,
-            path: row.frozen_path as string,
-            lineage: stepsOf(row.frozen_lineage),
-            userTypeId: row.frozen_type_id as string,
+            nodeId: row.frozenNodeId,
+            path: row.frozenPath,
+            lineage: stepsOf(row.frozenLineage),
+            userTypeId: row.frozenTypeId,
           },
-          unavailable: (row.unavailable ?? null) as PlacementRow['unavailable'],
+          unavailable: row.unavailable ?? null,
+          // a live person always has a unit, its path and a type (users'
+          // check constraint); only a deleted one detaches them, and that one
+          // is unavailable above
           live:
-            row.unavailable != null || row.live_node_id == null
+            row.unavailable != null ||
+            row.liveNodeId == null ||
+            row.livePath == null ||
+            row.liveTypeId == null
               ? null
               : {
-                  nodeId: row.live_node_id as string,
-                  path: row.live_path as string,
-                  lineage: stepsOf(row.live_lineage),
-                  userTypeId: row.live_type_id as string,
+                  nodeId: row.liveNodeId,
+                  path: row.livePath,
+                  lineage: stepsOf(row.liveLineage),
+                  userTypeId: row.liveTypeId,
                 },
-          liveFingerprint: (row.live_fingerprint ?? null) as string | null,
-          frozenFingerprint: row.frozen_fingerprint as string,
-          reconciledFingerprint: (row.reconciled_org_state_hash ?? null) as string | null,
+          liveFingerprint: row.liveFingerprint ?? null,
+          frozenFingerprint: row.frozenFingerprint,
+          reconciledFingerprint: row.reconciledHash ?? null,
         })),
       ),
     )
