@@ -93,8 +93,9 @@ describe('interrupting a query', () => {
   // A caller that was cancelled is not a database that refused. The statement
   // here succeeds; only the fiber waiting on it went away, so recording it as
   // a failed query would put every shutdown into the error rate of a server
-  // that did nothing wrong.
-  it('records a cancelled caller as interrupted, not as a query that failed', async () => {
+  // that did nothing wrong. The duration is a statement's now (statements.ts),
+  // and a statement that completed is a success whoever stopped waiting.
+  it('records no failure for a cancelled caller', async () => {
     const { open, run } = gated()
     const registry = new Map()
     const fiber = Effect.runFork(
@@ -109,9 +110,11 @@ describe('interrupting a query', () => {
     const snapshot = await Effect.runPromise(
       Metric.snapshot.pipe(Effect.provideService(Metric.MetricRegistry, registry)),
     )
-    const kinds = snapshot
-      .filter((state) => state.id === 'db.client.operation.duration')
-      .map((state) => state.attributes?.['error.type'])
-    expect(kinds).toEqual(['Interrupted'])
+    const failures = snapshot.filter(
+      (state) =>
+        state.id === 'db.client.operation.duration' &&
+        state.attributes?.['error.type'] !== undefined,
+    )
+    expect(failures).toEqual([])
   })
 })

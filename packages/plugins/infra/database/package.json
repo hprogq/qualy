@@ -26,6 +26,7 @@
     "@qualy/assembly": "workspace:*",
     "@qualy/assembly-contract": "workspace:*",
     "@qualy/plugin-kit": "workspace:*",
+    "@qualy/telemetry": "workspace:*",
     "effect": "catalog:",
     "kysely": "catalog:",
     "pg": "catalog:"

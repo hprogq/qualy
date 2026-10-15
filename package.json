@@ -78,6 +78,7 @@
     "playwright": "catalog:",
     "tsx": "catalog:",
     "typescript": "catalog:",
+    "typescript6": "npm:typescript@6.0.3",
     "vite": "catalog:",
     "vitest": "catalog:",
     "vitest-browser-react": "catalog:",

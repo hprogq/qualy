@@ -147,6 +147,35 @@ export const databaseUnavailable = (error: unknown): boolean =>
       (value instanceof Error && unavailableMessage(value.message)),
   )
 
+const SQLSTATE = /^[0-9A-Z]{5}$/
+
+/**
+ * What kind of failure this was, in words that may leave the process: the
+ * SQLSTATE when the server gave one, the socket's code when it is one of
+ * the known ways a connection fails, a fixed name for the pool's own
+ * coded-less refusals, and `QueryFailed` for anything else. Never the
+ * message - the server's can quote the value it refused.
+ */
+export const failureClassOf = (error: unknown): { type: string; sqlstate?: string } => {
+  let sqlstate: string | undefined
+  let syscall: string | undefined
+  let pool = false
+  anywhereInChain(error, (value) => {
+    const code = value.code
+    if (typeof code === 'string') {
+      // a socket's EPIPE is five capitals too; only the server's own errors,
+      // which say how severe they are, carry a SQLSTATE
+      if (UNAVAILABLE_SYSCALLS.has(code)) syscall ??= code
+      else if (SQLSTATE.test(code) && typeof value.severity === 'string') sqlstate ??= code
+    }
+    if (value instanceof Error && unavailableMessage(value.message)) pool = true
+    return false
+  })
+  if (sqlstate !== undefined) return { type: sqlstate, sqlstate }
+  if (syscall !== undefined) return { type: syscall }
+  return { type: pool ? 'ConnectionUnavailable' : 'QueryFailed' }
+}
+
 /**
  * Replaces a named constraint violation with the domain error it means.
  *

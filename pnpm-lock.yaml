@@ -423,6 +423,9 @@ importers:
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
+      typescript6:
+        specifier: npm:typescript@6.0.3
+        version: typescript@6.0.3
       vite:
         specifier: 'catalog:'
         version: 8.3.4(@types/node@24.19.2)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)
@@ -2298,6 +2301,9 @@ importers:
       '@qualy/plugin-kit':
         specifier: workspace:*
         version: link:../../../core/plugin-kit
+      '@qualy/telemetry':
+        specifier: workspace:*
+        version: link:../../../core/telemetry
       effect:
         specifier: 'catalog:'
         version: 4.0.4

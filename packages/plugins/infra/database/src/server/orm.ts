@@ -2,7 +2,6 @@ import { MikroORM, type EntityManager as PostgresEntityManager } from '@mikro-or
 import { type EntitySchema } from '@mikro-orm/core'
 import type { Pool } from 'pg'
 import {
-  Cause,
   Context,
   Duration,
   Effect,
@@ -19,8 +18,9 @@ import { driverConnection } from '../connection.ts'
 import { DATABASE_TIMEOUTS, type DatabaseTimeouts } from '../defaults.ts'
 import { QualyNamingStrategy } from '../naming.ts'
 import { DatabaseConfig } from './config.ts'
-import { databaseUnavailable } from './constraints.ts'
-import { unwrapPgError } from '../pg-errors.ts'
+import { exportMessage } from '@qualy/telemetry/redaction'
+import { databaseUnavailable, failureClassOf } from './constraints.ts'
+import { forStatements, instrumentPool } from './statements.ts'
 import {
   checkoutOwner,
   describeBackend,
@@ -128,56 +128,19 @@ export const entityManager = <const T extends readonly unknown[]>(): Effect.Effe
  * cannot see its caller's writes.
  */
 /**
- * The database boundary in a trace, and nothing more.
+ * The database operation in a trace: the callback a query or transaction
+ * runs, as an internal span. The database calls themselves are the
+ * statements under it (statements.ts), one client span each, with their
+ * text and their own timing - so this span is the grouping, not a second
+ * count of the same calls, and carries no `db.*` attributes for a backend
+ * to take it for one.
  *
- * pg auto-instrumentation was considered and refused for now: it needs the
- * `@opentelemetry/*` SDK family this process deliberately does not run (the
- * Effect tracer owns the spans; there is no OTel context for a patched driver
- * to parent into without the bridge package), plus an ESM loader hook whose
- * reliability under Node 24 + tsx the observability design itself flags. What
- * a slow request needs first is the boundary: these spans say the time went
- * to the database and inside which transaction, and deliberately carry no
- * SQL text, parameters or rows - this layer only ever sees an opaque thunk.
+ * pg auto-instrumentation is still not used: it needs the `@opentelemetry/*`
+ * SDK family this process deliberately does not run (the Effect tracer owns
+ * the spans), plus an ESM loader hook whose reliability under Node 24 the
+ * observability design itself flags. The driver's client is wrapped instead.
  */
-const DB_SPAN = { kind: 'client', attributes: { 'db.system.name': 'postgresql' } } as const
-
-/**
- * The stable-semconv duration of every database operation, recorded at the
- * same funnel the span wraps. Success and failure both count: a query that
- * fails still held a connection for that long. A failure carries the
- * SQLSTATE as `error.type` and `db.response.status_code` when the driver
- * gave a valid one - five characters, a bounded vocabulary - and the class
- * name otherwise; never the message.
- */
-const operationDuration = Metric.histogram('db.client.operation.duration', {
-  description: 'Duration of database client operations.',
-  boundaries: [0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5, 10],
-})
-
-const DB_METRIC = { 'db.system.name': 'postgresql', unit: 's' } as const
-
-const SQLSTATE = /^[0-9A-Z]{5}$/
-
-const operationAttributes = (exit: Exit.Exit<unknown, QueryFailed>): Record<string, string> => {
-  if (Exit.isSuccess(exit)) return DB_METRIC
-  // A caller that was cancelled is not a database that refused. The statement
-  // may well have succeeded - this effect waits for it either way - so calling
-  // it `QueryFailed` would put every shutdown into the error rate of a server
-  // that did nothing wrong. It still carries an `error.type`, because an
-  // operation nobody waited for has no completion to report as a success.
-  if (Cause.hasInterruptsOnly(exit.cause)) return { ...DB_METRIC, 'error.type': 'Interrupted' }
-  let code: string | undefined
-  for (const reason of exit.cause.reasons) {
-    if (reason._tag !== 'Fail') continue
-    const pg = unwrapPgError(reason.error)
-    if (pg?.code !== undefined && SQLSTATE.test(pg.code)) code = pg.code
-  }
-  return {
-    ...DB_METRIC,
-    'error.type': code ?? 'QueryFailed',
-    ...(code === undefined ? {} : { 'db.response.status_code': code }),
-  }
-}
+const DB_SPAN = { kind: 'internal' } as const
 
 export interface TransactionOptions {
   /**
@@ -321,15 +284,17 @@ export const transaction = <A, E, R>(
       // a begin that got no connection is the database being unavailable,
       // and the defect says so the way a statement's failure would
       Effect.tryPromise({
-        try: () => checkoutOwner.run(owner, () => em.begin()),
+        try: () => checkoutOwner.run(owner, () => forStatements(() => em.begin())),
         catch: (cause) => new QueryFailed(cause),
       }).pipe(Effect.orDie),
       () =>
         (mode === ''
           ? body
-          : Effect.promise(() => em.execute(`set transaction ${mode}`)).pipe(Effect.andThen(body))
+          : Effect.promise(() => forStatements(() => em.execute(`set transaction ${mode}`))).pipe(
+              Effect.andThen(body),
+            )
         ).pipe(Effect.provideService(TransactionManager, em)),
-      (_, exit) => Effect.promise(() => settle(orm, em, owner, exit)),
+      (_, exit) => Effect.promise(() => forStatements(() => settle(orm, em, owner, exit))),
     ).pipe(Effect.withSpan('db.transaction', DB_SPAN))
   })
 
@@ -363,6 +328,8 @@ export class QueryFailed extends Error {
    * that dies of one is answered 503 by the http boundary instead of 500.
    */
   readonly [unavailable]: 'database' | undefined
+  /** what telemetry may say about it (@qualy/telemetry/redaction) */
+  readonly [exportMessage]: string
   // no parameter property: strip-only node loads this source when resolution
   // imports descriptors, and refuses syntax with runtime semantics
   constructor(cause: unknown) {
@@ -370,6 +337,9 @@ export class QueryFailed extends Error {
       cause,
     })
     this[unavailable] = databaseUnavailable(cause) ? 'database' : undefined
+    // the message above quotes the server, and the server can quote the value
+    // it refused; telemetry carries the class of failure instead
+    this[exportMessage] = `a database query failed (${failureClassOf(cause).type})`
   }
 }
 
@@ -388,7 +358,6 @@ export class QueryFailed extends Error {
  */
 export const query = <A>(run: () => Promise<A>): Effect.Effect<A, QueryFailed> =>
   Effect.suspend(() => {
-    const started = performance.now()
     // A statement outside a transaction gives its connection back in the
     // driver's own finally, so this only has to say who was mid-statement
     // if the pool is asked while one is - read synchronously off the fiber,
@@ -399,7 +368,7 @@ export const query = <A>(run: () => Promise<A>): Effect.Effect<A, QueryFailed> =
     // path can wait on the SAME one rather than start another.
     const holder: { running: Promise<A> | undefined } = { running: undefined }
     return Effect.tryPromise({
-      try: () => (holder.running = checkoutOwner.run(owner, run)),
+      try: () => (holder.running = checkoutOwner.run(owner, () => forStatements(run))),
       catch: (cause) => new QueryFailed(cause),
     }).pipe(
       // Interruption does not cancel a promise - nothing cancels a promise -
@@ -437,12 +406,6 @@ export const query = <A>(run: () => Promise<A>): Effect.Effect<A, QueryFailed> =
                 () => undefined,
               ),
             ),
-      ),
-      Effect.onExit((exit) =>
-        Metric.update(
-          Metric.withAttributes(operationDuration, operationAttributes(exit)),
-          (performance.now() - started) / 1000,
-        ),
       ),
       Effect.withSpan('db.query', DB_SPAN),
     )
@@ -617,6 +580,7 @@ export const layer: Layer.Layer<Orm, DatabaseStartupFailed, DatabaseConfig | Ent
                 onPoolCreated: (created: Pool) => {
                   pool = created
                   ledger.attach(created)
+                  instrumentPool(created)
                 },
                 ...sessionLimits(config.timeouts ?? DATABASE_TIMEOUTS),
               }),
