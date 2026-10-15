@@ -113,15 +113,15 @@ nav: { label: 'Ping', order: 10 },
 })
 
 const impl = implement(pingContract).$context<ApiContext>()
-  ctx.server.contribute(
-    'ping',
-    impl.router({
-      // services are reached through the plugin's own ctx (inject-checked);
-      // ApiContext.cordis carries request plumbing, not service access
-      hello: impl.hello.handler(async ({ input }) => {
-        const visitor = input.name ?? 'world'
-        await ctx.db.drizzle.insert(pingLogs).values({ name: visitor })
-        return { msg: `${config.greeting}, ${visitor}` }
+ctx.server.contribute(
+'ping',
+impl.router({
+// services are reached through the plugin's own ctx (inject-checked);
+// ApiContext.cordis carries request plumbing, not service access
+hello: impl.hello.handler(async ({ input }) => {
+const visitor = input.name ?? 'world'
+await ctx.db.drizzle.insert(pingLogs).values({ name: visitor })
+return { msg: `${config.greeting}, ${visitor}` }
 }),
 }),
 )

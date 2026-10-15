@@ -104,13 +104,13 @@ staging 脚本归属挪进 web 插件后再上(所有权先于命令)。
 - ~~M3b-2a~~ **已完成 2026-08-07**:契约加可选钩子 `contributionFromDescriptor`
   ——钩子存在即**单源**,同键的 package.json 声明按 orphaned 硬拒,不做回退链。
   permissions 首个换轨:rbac assembly provider 经 `Plugin.contributionsOf(descriptor,
-PermissionDeclarations)` 读声明,lock 记 `{owner, codes}`(评审 diff 直接看到码面),
+  PermissionDeclarations)` 读声明,lock 记 `{owner, codes}`(评审 diff 直接看到码面),
   resolve 期用运行时同一个 `compileCatalog` 查重(正则源码扫描、catalogFile/exports
   一致性检查全删);auth/org/rbac 的 `qualy.contributions.permissions` 删除;
   seed(scripts/lib/permission-entries.ts)改读描述器,owner 来自声明本身。
   lock 只变内容不变版本(contribution 形状归 provider 所有)。
 - ~~M3b-2b~~ **已完成 2026-08-07**,两刀:①database 走同一钩子——`Db.entities(entities,
-{dependsOn, compositeForeignKeys, baselineDir})` 一个 feature 携带全部声明,
+  {dependsOn, compositeForeignKeys, baselineDir})` 一个 feature 携带全部声明,
   entitiesEntry/loadEntityModules 路径机械死掉,generate/deploy/adopt 经
   `context.descriptors` 直接拿声明值(与运行时同一批常量);lock 投影
   `{entities(实体名,总是可得;表名可来自命名策略), baselineDir?, dependsOn}`,

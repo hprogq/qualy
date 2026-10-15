@@ -1860,7 +1860,7 @@ require 注册表服务（缺拥有方 = 编译错，而非静默不激活）。
 
 - 声明：`qualy.runtime.config: true` = 「我的 runtime entry 导出 `config`」。声明不探测。
 - 插件侧：`export const config = (manifest: AuthManifestConfig, context: { manifestDir: string })
-=> Layer.Layer<AuthConfig, ConfigError>`——环境变量读取、默认值、校验全归插件。
+  => Layer.Layer<AuthConfig, ConfigError>`——环境变量读取、默认值、校验全归插件。
 - 生成器把清单里该插件的 `config:` 节**作为字面量**写进 `runtime.gen.ts` 的调用：
   `databaseConfig({ migrationsFolder: './db/migrations' }, { manifestDir })`。字面量由插件导出的
   参数类型在 typecheck 期检查——yml 形状错 = 编译错，与 runtime.gen 现有的

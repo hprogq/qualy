@@ -446,7 +446,7 @@ record/import 来源 ──创建即──▶ approved（trusted，不建审核�
   `publication_id/anchor_line_id = NULL`，锚定 revision_id + 触发事件 id；**每个触发事实限
   一轮**）。实现零新权限：resubmit 在申诉与申诉处理两阶段开放，ResourcePolicy 收窄——普通
   终态条目仅在申诉窗内且有 S1 锚时放行；S1 后新立不利终局（`source='record' ∧ created_at >
-S1 冻结时刻`，或存在 S1 冻结后的撤销决定事件）额外放行。学生端入口 = 条目卡与成绩页行上的
+  S1 冻结时刻`，或存在 S1 冻结后的撤销决定事件）额外放行。学生端入口 = 条目卡与成绩页行上的
   "对此认定提出异议"；文案区分承诺："对公示结果的申诉已截止；本条为公示后新增认定，可在最终
   公示前提出异议"。S2 preflight 的"任何 active 轮 = blocker"天然保证 final 前清账。
 - **无条目的争议**（派生题分数、cap/floor 调整行、总分性异议——这些行没有 entry 可锚）：

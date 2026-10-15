@@ -49,7 +49,7 @@ timeout 3 node -e "require('fs').readFileSync('.env','utf8')"      # exit 124:�
 现在:
 
 - `apps/server/src/dev/env.ts` 是唯一的读取点,`developmentEnv({envFile, manifest,
-shell, notice})` 一次读入,返回不可变快照;
+  shell, notice})` 一次读入,返回不可变快照;
 - `host.ts` 在模块顶层读一次,`env` 与 `origin` 都是 `const`,后端/Vite/其他 dev
   service 的每一次 fork 与每一次 reload 都继承同一份;
 - `.env` 从 watch plan 的 bootstrap 里移除,`classify('/repo/.env')` 现在返回 `null`;
