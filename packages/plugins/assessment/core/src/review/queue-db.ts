@@ -58,11 +58,29 @@ const summaryMatches = (pattern: string) => sql<boolean>`exists (
   ) summary where value ilike ${pattern}
 )`
 
+/**
+ * Join the queue's tables in the order they are written, for the rest of the
+ * read-only transaction the page runs in.
+ *
+ * The authorised queue is one round joined to eight tables, with the
+ * reviewer's standing pulled up beside them as semi-joins, and every one of
+ * its statements was planned afresh: about 25 ms of planning against 2 ms of
+ * running, seven times a page. The written order is already the one worth
+ * running - the rounds narrowed by tenant, state and the reviewer's units,
+ * then a key lookup per joined row - so searching for another bought nothing.
+ * Measured on the demonstration baseline: planning 16-28 ms down to 4 ms,
+ * running unchanged. SET LOCAL ends with the transaction, which is the
+ * caller's (the service opens one per page) and never a pooled session.
+ */
+const inWrittenOrder = (k: Parameters<Parameters<typeof db.query>[0]>[0]) =>
+  sql`set local join_collapse_limit = 1`.execute(k)
+
 const msOf = (value: unknown): number =>
   value instanceof Date ? value.getTime() : Number(value ?? 0)
 
 export const inboxNumberedPage = (input: InboxQuery) =>
   db.query(async (k) => {
+    await inWrittenOrder(k)
     let authorized = inboxQuery(k, input)
     if (input.exclude !== undefined && input.exclude.length > 0)
       authorized = authorized.where('ri.id', 'not in', [...input.exclude])
@@ -305,6 +323,7 @@ export const awaitingNumberedPage = (input: {
   limit: number
 }) =>
   db.query(async (k) => {
+    await inWrittenOrder(k)
     const query = awaitingQuery(k, input)
     const counted = await query
       .clearSelect()
