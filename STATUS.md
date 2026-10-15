@@ -23,8 +23,13 @@
 - 生产消息编译和 Web 构建只读取 active assembly；全仓消息完整性检查可以显式读取全部已安装包。
 - 文档已分为现行架构、领域、开发、证据、ADR 和历史材料；根 `AGENTS.md` 与本文件不再承担实施历史台账。
 
-Formula RPC 心跳误断线和 WebSocket HTTP 计时问题已完成本地修复与针对性验证，尚未发布；
-生产诊断与修复依据见[实测笔记](docs/notes/formula-rpc-heartbeat.md)。
+Formula RPC 心跳误断线和 WebSocket HTTP 计时的修复已随 `v0.1.0-rc.32` 上线
+（[实测笔记](docs/notes/formula-rpc-heartbeat.md)）。
+
+`main` 上另有尚未发布的提交：WebSocket 会话 span 在握手时结束、语句级数据库追踪与遥测导出清理
+（[笔记](docs/notes/statement-tracing.md)）、收件箱与巡检的规划开销优化
+（[笔记](docs/notes/kysely.md)）、原生 tsc 直接启动、模态框下的更新提示层级、
+依赖图巡检改用异步 SBOM 接口。
 
 ## 最近验证的代码状态
 
@@ -44,15 +49,11 @@ Release：https://github.com/hprogq/qualy/actions/runs/36926331266
 
 ## 生产状态
 
-- 2026-10-15 只读核对的生产版本：`v0.1.0-rc.31`，服务颜色为 green。
-- 生产镜像 revision：`8e8f4591bc6470f3289f4584ea2232f01a8d8b00`。
-- Web release：`r_GW933cT4B0P49rI2AOTUWA`，主机诊断确认公网与服务中的 release 一致。
-- `qualy-deploy doctor` 全部通过；三个应用容器无重启，两只沙箱无 OOM。
-- 生产仍有 Formula 连接故障：默认 RPC 心跳在只读 50 秒对照探测中误断线 4 次，
-  相同对端采用 5 秒心跳 / 15 秒超时的临时客户端稳定。健康检查不覆盖这一长连接行为。
-
-本次没有重新发布、重启、执行生产写入或进行浏览器业务 smoke；上面的 rc.24 CI 记录
-仅为历史验证证据，不能替代当前版本或待发布修复的验证。
+- 2026-10-15 部署 `v0.1.0-rc.32`（revision `bb1a21cd13902d7082fd13ea4d2911af224a4195`），服务颜色为 blue。
+- 2026-10-15 生产数据库启用 `pg_stat_statements`（含 `track_planning`），扩展装在 `monitoring` schema；
+  设置写在数据卷的 `postgresql.auto.conf`，不在 compose 文件里。查看与开关方式见
+  `deploy/README.md` 的 Statement statistics（`deploy/query-stats.sh` 随下一个 release 上机）。
+- 演示数据为 10-08 基线；旧库保留为 `qualy_previous`。
 
 ## 仍需用户确认的业务语义
 
@@ -81,6 +82,6 @@ Release：https://github.com/hprogq/qualy/actions/runs/36926331266
 
 ## 下一步
 
-1. 将 Formula 心跳与 WebSocket 观测修复经独立发布流程上线，再核对生产连接。
+1. 发布 `main` 上未发布的提交，上线后在 APM 核对语句级 span、导出内容与上报量（全量上报，先观察一周数据）。
 2. 新业务继续按现行 contract 开发；不要重新打开已经关账的基础设施迁移。
 3. 运维事项取得相应权限后逐项验证，把长期有效的结果更新到部署文档或窄 notes，而不是追加会话流水账。
