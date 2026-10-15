@@ -80,7 +80,7 @@
     "effect": "catalog:",
     "exceljs": "catalog:",
     "kysely": "catalog:",
-    "lucide-react": "^0.552.0",
+    "lucide-react": "catalog:",
     "motion": "catalog:",
     "react-router": "catalog:"
   },

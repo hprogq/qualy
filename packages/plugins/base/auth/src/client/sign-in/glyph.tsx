@@ -1,8 +1,6 @@
 import { useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import {
-  GithubIcon,
-  GitlabIcon,
   GlobeIcon,
   IdCardIcon,
   KeyRoundIcon,
@@ -12,6 +10,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { useIconSurface, type IconSurface } from './surface.ts'
+import { GithubIcon, GitlabIcon } from './brand-icons.ts'
 import type { BuiltinLoginIcon } from '@qualy/auth-contract/login-icons'
 import type { LoginMethodIcon } from '@qualy/auth-contract/login'
 import { authUrls } from '../api.ts'
@@ -37,6 +36,7 @@ const OUTLINED: Partial<Record<BuiltinLoginIcon, LucideIcon>> = {
   'id-card': IdCardIcon,
   shield: ShieldCheckIcon,
   globe: GlobeIcon,
+  // the owners' own filled marks, not outlines (brand-icons.ts)
   github: GithubIcon,
   gitlab: GitlabIcon,
 }

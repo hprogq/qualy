@@ -139,6 +139,13 @@ catalog:
   # package that animates names it here, so the browser holds one copy and
   # the ui's reduced-motion setting reaches every animated component
   motion: 12.43.0
+  # the icon set behind @qualy/ui and every plugin's screens: one version, so
+  # the browser holds one copy
+  lucide-react: 1.56.0
+  # brand marks lucide no longer carries (it dropped them in 1.0): the sign-in
+  # doors' GitHub and GitLab, as their owners draw them. One named export per
+  # icon and no side effects, so the browser takes only the marks it imports
+  simple-icons: 16.35.0
   '@vitest/browser-playwright': 5.0.4
   'vitest-browser-react': 2.3.0
   playwright: 1.62.1

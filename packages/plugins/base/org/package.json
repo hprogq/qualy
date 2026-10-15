@@ -55,6 +55,6 @@
     "@tanstack/react-query": "catalog:",
     "effect": "catalog:",
     "kysely": "catalog:",
-    "lucide-react": "^0.552.0"
+    "lucide-react": "catalog:"
   }
 }

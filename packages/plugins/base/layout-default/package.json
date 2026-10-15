@@ -34,7 +34,7 @@
     "@qualy/web-runtime": "workspace:*",
     "@stylexjs/stylex": "catalog:",
     "effect": "catalog:",
-    "lucide-react": "^0.552.0",
+    "lucide-react": "catalog:",
     "react-router": "catalog:"
   },
   "devDependencies": {
