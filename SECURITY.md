@@ -15,8 +15,10 @@ released first and disclosed after, with credit if you want it.
 ## Scope
 
 - The code in this repository, on its `main` branch.
-- The deployment at `https://qualy.hprogq.com`. It serves demonstration data
-  only; there are no real students' records on it.
+- The demonstration deployment linked from this repository's GitHub
+  **Deployments** page. Its current address is deployment configuration,
+  separate from the source code. It serves demonstration data only; there
+  are no real students' records on it.
 
 When testing the deployment, please do not:
 

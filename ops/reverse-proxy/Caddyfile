@@ -8,6 +8,8 @@
 # passes through here untouched.
 #
 # Replace the site address; the rest is the contract.
+# For automatic HTTPS prerequisites and mixed DNS providers, see README.md
+# beside this file. Do not inherit a global DNS challenge for another zone.
 #
 # Where requests go is not written here. deploy/compose.yaml runs the
 # application in two colors on two ports, and deploy/upgrade.sh and

@@ -18,7 +18,7 @@ Cookie + 不透明 session token(库存 sha256),不用 JWT/localStorage:
 2. 全部写操作走非安全方法,71 个 GET 都是读,登出是 `DELETE /auth/session`;`tools/tests/effect-api-parity.test.ts` 断言 OpenAPI 里没有任何 GET 声明 requestBody;
 3. HttpApi 的 `decodePayload` 按 Content-Type 选解码器,JSON 端点收到表单编码直接 415;服务端没装 `HttpMiddleware.cors`,跨域 fetch 的 `application/json` 过不了预检。公式编辑器的 WebSocket 握手校验 `Origin` 与公开 host;本地存储 `PUT /api/storage/local/uploads/:reservationId` 认 reservation 不认 session。
 
-**唯一的缺口是同站不同源**:SameSite 不区分 `qualy-dev.hprogq.com` 与 `rec.hprogq.com`,也不区分将来学校域名下的任何兄弟子域,兄弟子域发出的请求带着 Cookie。这一格现在只靠「JSON + 无 CORS + 无副作用 GET」挡着,任何一条将来松动(multipart 端点、有副作用的 GET、某天加上的 CORS)就漏。
+**唯一的缺口是同站不同源**:SameSite 不区分 `qualy-dev.example.edu` 与 `records.example.edu`,也不区分将来学校域名下的任何兄弟子域,兄弟子域发出的请求带着 Cookie。这一格现在只靠「JSON + 无 CORS + 无副作用 GET」挡着,任何一条将来松动(multipart 端点、有副作用的 GET、某天加上的 CORS)就漏。
 
 **守卫**(`@qualy/api-kit/origin` 的 `requestOriginGuard`,serve 中间件链最内层,`apps/server/src/serve-middleware.ts`):
 
@@ -89,7 +89,7 @@ Cookie + 不透明 session token(库存 sha256),不用 JWT/localStorage:
 | 登录成功   | 设新 Cookie,**并附带一次** `qualy_session=; Max-Age=0; Path=/` 清旧名(改名后的一次性卫生;父域投掷的清不掉也无妨,不再读它) | 设 Cookie                           |
 | 登出、无效 | 清 `__Host-qualy_session`                                                                                                 | 清 `qualy_session`                  |
 
-威胁:SameSite 只区分站不区分源。兄弟子域(`rec.hprogq.com` 对 `qualy-dev.hprogq.com`,学校域名下任何一个被 XSS 的系统对生产 Qualy)可以给父域种一个名叫 `qualy_session` 的 Cookie,浏览器会随请求一起发给 Qualy:塞进攻击者自己的合法 session 就是登录 CSRF 的 Cookie 版(受害者把材料提交进攻击者账号);塞一个垃圾值则服务端清 Cookie 只能清自己 host 的那个,该用户永久打不开 Qualy。`__Host-` 的浏览器语义正是堵这两条:必须 Secure、Path=/、无 Domain,任何子域都无法为父域创建同名 Cookie。
+威胁:SameSite 只区分站不区分源。兄弟子域(`records.example.edu` 对 `qualy-dev.example.edu`,学校域名下任何一个被 XSS 的系统对生产 Qualy)可以给父域种一个名叫 `qualy_session` 的 Cookie,浏览器会随请求一起发给 Qualy:塞进攻击者自己的合法 session 就是登录 CSRF 的 Cookie 版(受害者把材料提交进攻击者账号);塞一个垃圾值则服务端清 Cookie 只能清自己 host 的那个,该用户永久打不开 Qualy。`__Host-` 的浏览器语义正是堵这两条:必须 Secure、Path=/、无 Domain,任何子域都无法为父域创建同名 Cookie。
 
 **一个进程永远只认一个名字,而且不能靠两套 `security` 声明做到**(已核对 rc.111 源码,别再提议):`HttpApiBuilder.makeSecurityMiddleware` 对 `security` 记录里的每一项按声明顺序 `decode` 再调该项的 middleware,成功即返回、失败才试下一项(`HttpApiBuilder.ts:873-`);`securityDecode` 对 cookie 型 apiKey 缺 Cookie **不失败**,给出空凭据(`:492-505`)。于是同时声明两个名字,生产里被投掷的旧名仍会在某一轮被读到;而 `Viewer` 永不失败,第一项拿到空凭据就以匿名成功返回,第二项永远不会被尝试。再加上 `HttpApiSecurity.apiKey` 的 key 是静态的,而 `session-contract.ts` 被每个插件的 `api.ts` 引入、进浏览器包,名字不能在契约模块里按环境算。所以 `Authenticated` / `Viewer` 现在**不带 `security` 声明**(`provides` 与 `error` 不变;builder 对无 security 的 middleware 直接把 service 当 `(handler, options) => Effect` 调用,`HttpApiBuilder.ts:860-863`),名字由 `AuthConfig.sessionCookieName`(`sessionCookieNameFor(secureCookies)`,`server/session-cookie.ts`)决定,layer 里用 `request.cookies[name]` 按名读取,写入经同一模块的 `setSessionCookie` / `clearSessionCookie`(`HttpEffect.appendPreResponseHandler` + `HttpServerResponse.setCookie`)。`request.cookies` 对同名多值取**第一个**出现的(`Cookies.ts:946`,`Object.hasOwn`),浏览器按路径长度再按创建时间排序,只可能影响开发态的裸名。
 

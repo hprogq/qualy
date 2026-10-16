@@ -55,7 +55,7 @@ mise exec -- node --env-file-if-exists=.env --env-file=data/demo-private.env too
 - 演示收件域由 `QUALY_DEMO_EMAIL_DOMAIN` 指定，邮件提供方、发件身份、回跳地址和实际收件仍需独立验证。完整恢复会丢失基线生成后新增的外部提供方、密钥、身份绑定和邮箱验证状态。恢复后必须重新配置外部入口并设置受众，重新绑定身份、完成实际邮箱验证，再逐项验证登录与收件；不要伪造验证成功或自动发送演示邮件。
 
 Caddy 用 `ops/reverse-proxy/Caddyfile` 那一份：站点导入 `/etc/caddy/qualy/upstream.caddy`，由脚本改写指向服务中的那一色，
-502/503/504 时服务本目录的 `maintenance.html`。首次导入前先放一个指向维护页的片段，站点才加载得起来：
+502/503/504 时服务本目录的 `maintenance.html`。证书签发与 DNS 服务商配置见[反向代理说明](../../ops/reverse-proxy/README.md)。首次导入前先放一个指向维护页的片段，站点才加载得起来：
 
 ```sh
 sudo mkdir -p /etc/caddy/qualy

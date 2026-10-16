@@ -17,9 +17,12 @@ name: deploy
 # that release's own upgrade.sh. A rollback runs the serving release's
 # rollback.sh.
 #
-# Needs QUALY_DEPLOY_HOST and QUALY_DEPLOY_PORT (repository variables), and in
-# the production environment the secret QUALY_DEPLOY_SSH_KEY (the key the
-# server's forced command accepts) and the variable QUALY_DEPLOY_KNOWN_HOSTS
+# Needs repository variables QUALY_DEPLOY_HOST, QUALY_DEPLOY_PORT and
+# QUALY_PUBLIC_URL (the public HTTPS origin, matching the host's deployment
+# environment). QUALY_PUBLIC_URL must not rely on an environment-level
+# variable: the job's env and deployment link need it before runner setup.
+# The production environment supplies the secret QUALY_DEPLOY_SSH_KEY (the
+# key the server's forced command accepts) and QUALY_DEPLOY_KNOWN_HOSTS
 # (the server's host key line, as ssh-keyscan prints it).
 on:
   workflow_dispatch:
@@ -52,7 +55,7 @@ jobs:
     timeout-minutes: 30
     environment:
       name: production
-      url: https://qualy.hprogq.com
+      url: ${{ vars.QUALY_PUBLIC_URL }}
     env:
       ACTION: ${{ inputs.action }}
       RELEASE: ${{ inputs.release }}
@@ -60,8 +63,25 @@ jobs:
       REGISTRY: ${{ vars.QUALY_REGISTRY }}
       HOST: ${{ vars.QUALY_DEPLOY_HOST }}
       PORT: ${{ vars.QUALY_DEPLOY_PORT }}
+      PUBLIC_URL: ${{ vars.QUALY_PUBLIC_URL }}
       GH_TOKEN: ${{ github.token }}
     steps:
+      - name: validate the deployment public URL
+        run: |
+          node --input-type=module <<'NODE'
+          const value = process.env.PUBLIC_URL ?? ''
+          try {
+            const url = new URL(value)
+            if (
+              url.protocol !== 'https:' || url.username || url.password ||
+              url.pathname !== '/' || url.search || url.hash ||
+              (value !== url.origin && value !== `${url.origin}/`)
+            ) throw new Error('not an HTTPS origin')
+          } catch {
+            console.error('Set the repository variable QUALY_PUBLIC_URL to the deployment HTTPS origin, without credentials, path, query, or fragment.')
+            process.exit(1)
+          }
+          NODE
       - name: what to send the server
         run: |
           if [ "$MAINTENANCE" = true ] && [ "$ACTION" != deploy ]; then

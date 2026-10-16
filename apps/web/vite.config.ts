@@ -248,7 +248,8 @@ export default defineConfig(({ mode }) => ({
     // refuses to drift off it, and a proxy pointed at nothing looks exactly
     // like a backend that is down
     port: 5173,
-    allowedHosts: ['qualy-dev.hprogq.com'],
+    // Vite keeps localhost/IP defaults. A developer's extra hostnames come
+    // from __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS in the process environment.
     // What the server hands out under /@fs/. Vite's default is the whole
     // workspace root, and this one also holds database dumps, backups and
     // credentials that are nobody's business on a network the server listens

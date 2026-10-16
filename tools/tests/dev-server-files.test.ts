@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { isFileServingAllowed, resolveConfig, loadConfigFromFile } from 'vite'
@@ -12,6 +12,8 @@ import { isFileServingAllowed, resolveConfig, loadConfigFromFile } from 'vite'
 // source. The application's config narrows it to what a page actually loads.
 
 const repo = fileURLToPath(new URL('../..', import.meta.url))
+
+afterEach(() => vi.unstubAllEnvs())
 
 const resolved = async (file = 'apps/web/vite.config.ts') => {
   const loaded = await loadConfigFromFile(
@@ -45,6 +47,21 @@ const served = async () => {
 it('includes the host HTML entry in dependency discovery alongside plugin entries', async () => {
   const config = await resolved()
   expect(config.optimizeDeps.entries).toContain('index.html')
+})
+
+describe('development hostnames', () => {
+  it('keeps Vite defaults without a deployment-specific hostname', async () => {
+    vi.stubEnv('__VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS', '')
+    expect((await resolved()).server.allowedHosts).toEqual([])
+  })
+
+  it('accepts the explicitly configured development hostnames', async () => {
+    vi.stubEnv('__VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS', 'dev.example.test, preview.example.test')
+    expect((await resolved()).server.allowedHosts).toEqual([
+      'dev.example.test',
+      'preview.example.test',
+    ])
+  })
 })
 
 describe('what the development server serves from the file system', () => {

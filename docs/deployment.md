@@ -171,6 +171,7 @@ launcher 以非 root 身份被调起时把 `SSH_ORIGINAL_COMMAND` 按空白切�
 `vars.QUALY_REGISTRY` 之下,只把 release 名与三个 digest 发给 launcher。三个动作:`deploy`、`rollback`,以及只拉取不启动的 `fetch`
 (按 digest 拉取、核对、取出 `deploy/`,首次部署的第一步,也可以在部署前先把镜像拉到机器上)。连接只认 `production` 里那一行在控制台核对过的
 host key(不用 runner 自带的 known_hosts)。发布制品(tag)与批准部署是两件事,tag 工作流不进 `production`。
+部署记录的站点链接取自 GitHub **仓库级 Actions 变量** `QUALY_PUBLIC_URL`，须与服务器部署环境中的同名值一致；不要仅设为 `production` environment 变量，因为它到 runner 开始执行后才可用。工作流在远程操作前校验该地址是 HTTPS origin。站点换域、Caddy 自动证书与不同 DNS 服务商的边界见[反向代理说明](../ops/reverse-proxy/README.md)。
 
 ## 3. 部署(`deploy/`)
 
