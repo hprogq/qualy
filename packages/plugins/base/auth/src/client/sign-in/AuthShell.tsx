@@ -15,6 +15,8 @@ import {
   DropdownMenuTrigger,
 } from '@qualy/ui/dropdown-menu'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
+import { useColophon } from '@qualy/ui/screen'
+import { useIsBelow } from '@qualy/ui/use-mobile'
 import { VisuallyHidden } from '@qualy/ui/visually-hidden'
 import * as m from '#messages'
 
@@ -33,8 +35,7 @@ const spin = stylex.keyframes({ to: { transform: 'rotate(360deg)' } })
 const styles = stylex.create({
   frame: {
     display: 'flex',
-    flexGrow: 1,
-    minHeight: 0,
+    minHeight: '100dvh',
     backgroundColor: tokens.background,
     color: tokens.foreground,
   },
@@ -116,6 +117,19 @@ const styles = stylex.create({
     paddingBottom: { default: 32, [PHONE]: 24 },
   },
   footContent: { width: '100%', maxWidth: 400 },
+  // The column's optical centre sits a bar's height above the true one;
+  // the shell's last line takes part of that room rather than adding to it.
+  bodyNoted: { paddingBlock: { default: '0 32px', [PHONE]: '16px 32px' } },
+  // Whatever the shell hangs at the foot of the page. Wide, it closes the
+  // product half, under the product's name and away from the choices the
+  // column ends with; narrow, it is the column's last line, a step apart.
+  colophon: {
+    flexShrink: 0,
+    paddingInline: { default: 48, [PHONE]: 24 },
+    paddingTop: 12,
+    paddingBottom: 'max(20px, env(safe-area-inset-bottom))',
+  },
+  productColophon: { position: 'relative', alignSelf: 'flex-start', marginTop: 'auto' },
   itemCheck: { width: 14, height: 14, marginInlineStart: 'auto' },
   itemIcon: { width: 15, height: 15 },
   theme: {
@@ -232,12 +246,19 @@ export function AuthShell({
   footer?: ReactNode
 }) {
   const still = useReducedMotion() === true
+  const colophon = useColophon()
+  // the same width the product half appears at
+  const wide = !useIsBelow(1024)
+  const columnColophon = wide ? null : colophon
   return (
     <div data-testid="auth-shell" {...stylex.props(styles.frame)}>
-      <aside aria-hidden {...stylex.props(styles.product)}>
-        <span {...stylex.props(styles.lines)} />
+      <aside {...stylex.props(styles.product)}>
+        <span aria-hidden {...stylex.props(styles.lines)} />
         <Mark size={640} xstyle={styles.ghost} />
         <Wordmark height={20} xstyle={styles.productWordmark} />
+        {wide && colophon !== null && (
+          <footer {...stylex.props(styles.productColophon)}>{colophon}</footer>
+        )}
       </aside>
       <main {...stylex.props(styles.column)}>
         <div {...stylex.props(styles.bar)}>
@@ -248,7 +269,7 @@ export function AuthShell({
           <ThemeMenu />
           <LanguageMenu />
         </div>
-        <div {...stylex.props(styles.body)}>
+        <div {...stylex.props(styles.body, columnColophon !== null && styles.bodyNoted)}>
           {/* The column arrives rather than appears: a page reached from
               another one in this frame keeps the frame still and brings in
               only what changed. */}
@@ -265,6 +286,9 @@ export function AuthShell({
           <div {...stylex.props(styles.foot)}>
             <div {...stylex.props(styles.footContent)}>{footer}</div>
           </div>
+        )}
+        {columnColophon !== null && (
+          <footer {...stylex.props(styles.colophon)}>{columnColophon}</footer>
         )}
         {overlay !== undefined && <div {...stylex.props(styles.overlay)}>{overlay}</div>}
       </main>

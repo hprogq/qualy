@@ -1,6 +1,7 @@
 import * as stylex from '@stylexjs/stylex'
 import { Outlet } from 'react-router'
-import { SiteRegistrationFooter } from './SiteRegistration.tsx'
+import { ColophonScope } from '@qualy/ui/screen'
+import { useSiteRegistrationColophon } from './SiteRegistration.tsx'
 
 // blank-shell/v1 provider: no chrome, the page owns the whole viewport.
 //
@@ -10,7 +11,10 @@ import { SiteRegistrationFooter } from './SiteRegistration.tsx'
 // so a page that centres itself - and the not-found screen the host lands
 // here for a viewer with no other shell - has the room to do it in without
 // claiming the viewport's height on its own. A page that already takes the
-// viewport grows into it, leaving room for the deployment's optional footer.
+// viewport, as the login page does, stands in it as before.
+//
+// The deployment's filing records are handed down rather than drawn under
+// the page: the page owns every edge, so it decides where its last line goes.
 
 const styles = stylex.create({
   seat: {
@@ -23,8 +27,9 @@ const styles = stylex.create({
 export default function BlankShell() {
   return (
     <div {...stylex.props(styles.seat)}>
-      <Outlet />
-      <SiteRegistrationFooter />
+      <ColophonScope value={useSiteRegistrationColophon()}>
+        <Outlet />
+      </ColophonScope>
     </div>
   )
 }

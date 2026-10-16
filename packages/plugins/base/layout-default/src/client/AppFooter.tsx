@@ -3,11 +3,7 @@ import { Wordmark } from '@qualy/brand/wordmark'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { PageContainer } from '@qualy/ui/page-container'
-import {
-  hasSiteRegistration,
-  SiteRegistrationLinks,
-  useSiteRegistration,
-} from './SiteRegistration.tsx'
+import { SiteRegistrationLinks, useSiteRegistration } from './SiteRegistration.tsx'
 import * as m from '#messages'
 
 // The application's signature, once, under the page: the wordmark and its
@@ -24,8 +20,9 @@ import * as m from '#messages'
 
 const styles = stylex.create({
   foot: {
-    // The brand signature can fold away; configured site registration stays
-    // readable above the phone's navigation.
+    // Not on a phone. The signature is a desktop courtesy under the last
+    // row, and on a narrow screen it sits right above the real navigation,
+    // which the reader reaches by scrolling past the content they came for.
     display: { default: null, [breakpoints.phone]: 'none' },
     flexShrink: 0,
     width: '100%',
@@ -34,7 +31,6 @@ const styles = stylex.create({
     fontSize: 12,
     color: tokens.mutedForeground,
   },
-  registered: { display: 'block' },
   row: {
     display: 'flex',
     flexWrap: 'wrap',
@@ -47,7 +43,7 @@ const styles = stylex.create({
     borderTopColor: `color-mix(in oklch, ${tokens.foreground} 8%, transparent)`,
   },
   brand: {
-    display: { default: 'flex', [breakpoints.phone]: 'none' },
+    display: 'flex',
     alignItems: 'center',
     gap: 12,
     color: tokens.foreground,
@@ -55,22 +51,24 @@ const styles = stylex.create({
   tagline: {
     color: tokens.mutedForeground,
   },
+  // Across from the signature, ending where the page's measure ends. They
+  // fold away with it on a phone, where the sign-in page carries them: two
+  // lines of small print stacked on the bottom navigation read as part of
+  // the navigation.
+  records: { justifyContent: 'flex-end', marginInlineStart: 'auto' },
 })
 
 export function AppFooter() {
   const registration = useSiteRegistration()
   return (
-    <footer
-      data-shell-foot=""
-      {...stylex.props(styles.foot, hasSiteRegistration(registration) && styles.registered)}
-    >
+    <footer data-shell-foot="" {...stylex.props(styles.foot)}>
       <PageContainer>
         <div {...stylex.props(styles.row)}>
           <div {...stylex.props(styles.brand)}>
             <Wordmark height={12} title="Qualy" />
             <span {...stylex.props(styles.tagline)}>{m.footer_tagline()}</span>
           </div>
-          <SiteRegistrationLinks registration={registration} />
+          <SiteRegistrationLinks registration={registration} xstyle={styles.records} />
         </div>
       </PageContainer>
     </footer>

@@ -1,3 +1,4 @@
+import type { ReactElement } from 'react'
 import { afterEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import { layoutComponents, pageComponents } from 'virtual:qualy/plugins'
@@ -61,6 +62,11 @@ describe('deployment registration in the page shells', () => {
       })
       await expect.element(security).toHaveTextContent(registration.publicSecurity.record)
       await expect.element(security).toHaveAttribute('href', registration.publicSecurity.href)
+      // the filing emblem leads the public security record, named by its link
+      const emblem = security.element().querySelector('img')
+      expect(emblem).not.toBeNull()
+      expect(emblem!.getAttribute('alt')).toBe('')
+      expect(emblem!.getAttribute('src')).toMatch(/^data:image\/png;base64,/)
     },
   )
 
@@ -70,14 +76,32 @@ describe('deployment registration in the page shells', () => {
     await expect.element(page.getByTestId('sign-in-tenant')).toBeVisible()
     const footer = page.getByTestId('site-registration')
     await expect.element(footer).toBeVisible()
+    // drawn inside the sign-in frame rather than under it: the frame keeps
+    // the whole viewport and nothing is pushed up to make room
+    const shell = page.getByTestId('auth-shell').element()
+    expect(shell.contains(footer.element())).toBe(true)
+    expect(shell.getBoundingClientRect().height).toBe(800)
     const bounds = footer.element().getBoundingClientRect()
     expect(bounds.left).toBeGreaterThanOrEqual(0)
     expect(bounds.right).toBeLessThanOrEqual(width)
     expect(bounds.bottom).toBeLessThanOrEqual(800)
     expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(width)
+    const [icp, security] = footer.element().querySelectorAll('a')
+    const [first, second] = [icp!.getBoundingClientRect(), security!.getBoundingClientRect()]
+    if (width === 320) {
+      // one record to a line on a phone
+      expect(second.top).toBeGreaterThanOrEqual(first.bottom)
+      expect(footer.element().closest('main')).not.toBeNull()
+    } else {
+      // beside each other, closing the product half rather than piling up
+      // under the form column's own choices
+      expect(second.top).toBe(first.top)
+      expect(footer.element().closest('aside')).not.toBeNull()
+      expect(footer.element().closest('main')).toBeNull()
+    }
   })
 
-  it.each([320, 1280])(
+  it.each([768, 1280])(
     'shows the configured ICP record in the %ipx application shell',
     async (width) => {
       await page.viewport(width, 800)
@@ -104,55 +128,60 @@ describe('deployment registration in the page shells', () => {
     },
   )
 
-  it('keeps account registration above fixed phone navigation after scrolling', async () => {
-    await page.viewport(320, 800)
-    await renderScreen({
+  const twoApps = {
+    'app-shell/navigation-groups': [
+      { id: 'app/one', label: 'One', order: 1 },
+      { id: 'app/two', label: 'Two', order: 2 },
+    ],
+    'app-shell/navigation-primary': [
+      {
+        id: 'nav/one',
+        label: 'First',
+        group: 'app/one',
+        target: { kind: 'page', pageId: 'one/page', path: '/one' },
+      },
+      {
+        id: 'nav/two',
+        label: 'Second',
+        group: 'app/two',
+        target: { kind: 'page', pageId: 'two/page', path: '/two' },
+      },
+    ],
+  }
+
+  const authenticated = (shell: ReactElement) =>
+    renderScreen({
       client: fakeClient({
         app: {
           getManifest: {
             ...emptyManifest(),
             viewer: 'authenticated',
             context: { 'site/registration': registration },
-            collections: {
-              'app-shell/navigation-groups': [
-                { id: 'app/one', label: 'One', order: 1 },
-                { id: 'app/two', label: 'Two', order: 2 },
-              ],
-              'app-shell/navigation-primary': [
-                {
-                  id: 'nav/one',
-                  label: 'First',
-                  group: 'app/one',
-                  target: { kind: 'page', pageId: 'one/page', path: '/one' },
-                },
-                {
-                  id: 'nav/two',
-                  label: 'Second',
-                  group: 'app/two',
-                  target: { kind: 'page', pageId: 'two/page', path: '/two' },
-                },
-              ],
-            },
+            collections: twoApps,
           },
         },
       }),
-      route: '/account',
+      route: '/one',
       routes: [
         {
-          path: '/account',
-          element: <AccountShell />,
-          children: [{ element: <div style={{ minHeight: 1200 }}>Account content</div> }],
+          path: '/one',
+          element: shell,
+          children: [{ element: <div style={{ minHeight: 1200 }}>Page content</div> }],
         },
       ],
     })
-    const footer = page.getByTestId('site-registration')
-    await expect.element(footer).toBeVisible()
-    const main = document.querySelector('main')!
-    main.scrollTop = main.scrollHeight
-    const bar = document.querySelector('[data-shell-bottom]')!
-    expect(bar).not.toBeNull()
-    expect(footer.element().getBoundingClientRect().bottom).toBeLessThanOrEqual(
-      bar.getBoundingClientRect().top,
-    )
+
+  it('folds the application records away with the footer on a phone', async () => {
+    await page.viewport(320, 800)
+    await authenticated(<AppShell />)
+    await expect.element(page.getByText('Page content')).toBeVisible()
+    await expect.element(page.getByTestId('site-registration')).not.toBeVisible()
+  })
+
+  it.each([320, 1280])('leaves the records out of a feature shell at %ipx', async (width) => {
+    await page.viewport(width, 800)
+    await authenticated(<AccountShell />)
+    await expect.element(page.getByText('Page content')).toBeVisible()
+    await expect.element(page.getByTestId('site-registration')).not.toBeInTheDocument()
   })
 })

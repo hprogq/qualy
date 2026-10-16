@@ -16,6 +16,7 @@
 // shell, section furniture, tick lists, the rail, and the blank state.
 export { BandAction, BandActions, BandBack, Screen, Segmented } from './shell.tsx'
 export { BandFootScope, useBandFoot } from './band-foot.tsx'
+export { ColophonScope, useColophon } from './colophon.tsx'
 export { SectionHead, Facts, DefRow, Barred, EditorHead, ModeChoice, SaveBar } from './sections.tsx'
 export { PickGrid, PickList } from './pick.tsx'
 export { Rail, RailRow, RailSkeleton, EditorSkeleton } from './rail.tsx'
