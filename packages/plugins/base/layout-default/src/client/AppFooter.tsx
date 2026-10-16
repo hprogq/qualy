@@ -3,7 +3,8 @@ import { Wordmark } from '@qualy/brand/wordmark'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { PageContainer } from '@qualy/ui/page-container'
-import { SiteRegistrationLinks, useSiteRegistration } from './SiteRegistration.tsx'
+import { SiteRegistrationLinks } from './SiteRegistration.tsx'
+import { useSiteRegistration } from './site-registration.ts'
 import * as m from '#messages'
 
 // The application's signature, once, under the page: the wordmark and its

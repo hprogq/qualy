@@ -1,11 +1,11 @@
 import type { ReactNode } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import type { ColophonProps } from '@qualy/ui/screen'
-import { useDocumentContext } from '@qualy/web-runtime'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
-import { SITE_REGISTRATION_CONTEXT, type SiteRegistration } from '../site-registration.ts'
+import type { SiteRegistration } from '../site-registration.ts'
 import { publicSecurityEmblem } from './public-security-emblem.ts'
+import { hasSiteRegistration, useSiteRegistration } from './site-registration.ts'
 import * as m from '#messages'
 
 // The deployment's filing records, said where a visitor arrives: on the
@@ -57,12 +57,6 @@ const styles = stylex.create({
   },
   emblem: { display: 'block', flexShrink: 0, width: 'auto', height: 16 },
 })
-
-export const useSiteRegistration = () =>
-  useDocumentContext<SiteRegistration>(SITE_REGISTRATION_CONTEXT)
-
-export const hasSiteRegistration = (registration: SiteRegistration | undefined) =>
-  registration?.icp !== undefined || registration?.publicSecurity !== undefined
 
 export function SiteRegistrationLinks({
   registration,

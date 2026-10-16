@@ -1,11 +1,8 @@
 import * as stylex from '@stylexjs/stylex'
 import { Outlet } from 'react-router'
 import { ColophonScope } from '@qualy/ui/screen'
-import {
-  hasSiteRegistration,
-  SiteRegistrationColophon,
-  useSiteRegistration,
-} from './SiteRegistration.tsx'
+import { SiteRegistrationColophon } from './SiteRegistration.tsx'
+import { hasSiteRegistration, useSiteRegistration } from './site-registration.ts'
 
 // blank-shell/v1 provider: no chrome, the page owns the whole viewport.
 //
