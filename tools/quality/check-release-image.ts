@@ -46,6 +46,16 @@ const expectOut = (label: string, command: string, want: string) => {
 
 // --- who runs, on what
 expectOut('runs as the unprivileged node user', 'id -u', '1000')
+for (const [name, minimum] of [
+  ['perl-base', '5.36.0-7+deb12u4'],
+  ['libpcre2-8-0', '10.42-1+deb12u2'],
+] as const) {
+  const { code, out } = inside(
+    `dpkg --compare-versions "$(dpkg-query -W -f='\${Version}' ${name})" ge ${minimum}`,
+  )
+  if (code === 0) ok(`${name} includes security revision ${minimum} or later`)
+  else fail(`${name} is below security revision ${minimum}: ${out}`)
+}
 {
   // the version the Dockerfile pins, not merely the major line: a base image
   // that moved within 24.x is a different release input
