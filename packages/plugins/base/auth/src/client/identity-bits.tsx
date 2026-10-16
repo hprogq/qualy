@@ -1,6 +1,6 @@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@qualy/ui/select'
 import { ToggleGroup, ToggleGroupItem } from '@qualy/ui/toggle-group'
-import { MonitorIcon, MoonIcon, SunIcon } from 'lucide-react'
+import { SunMoonIcon, MoonIcon, SunIcon } from 'lucide-react'
 import { useTheme, type ThemeChoice } from '@qualy/web-runtime'
 import { localeNames, useLocale } from '@qualy/web-i18n'
 import { supportedLocales, type SupportedLocale } from '@qualy/i18n-contract'
@@ -17,7 +17,7 @@ export function ThemeChoicePicker() {
   const options: { value: ThemeChoice; label: string; icon: typeof SunIcon }[] = [
     { value: 'light', label: m.preference_themeLight(), icon: SunIcon },
     { value: 'dark', label: m.preference_themeDark(), icon: MoonIcon },
-    { value: 'system', label: m.preference_themeSystem(), icon: MonitorIcon },
+    { value: 'system', label: m.preference_themeSystem(), icon: SunMoonIcon },
   ]
   return (
     <ToggleGroup

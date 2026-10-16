@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { motion, useReducedMotion } from 'motion/react'
 import * as stylex from '@stylexjs/stylex'
-import { CheckIcon, ChevronDownIcon, GlobeIcon, MonitorIcon, MoonIcon, SunIcon } from 'lucide-react'
+import { CheckIcon, ChevronDownIcon, GlobeIcon, SunMoonIcon, MoonIcon, SunIcon } from 'lucide-react'
 import { useTheme, type ThemeChoice } from '@qualy/web-runtime'
 import { Mark } from '@qualy/brand/mark'
 import { Wordmark } from '@qualy/brand/wordmark'
@@ -206,9 +206,9 @@ function ThemeMenu() {
   const options: { value: ThemeChoice; label: string; icon: typeof SunIcon }[] = [
     { value: 'light', label: m.preference_themeLight(), icon: SunIcon },
     { value: 'dark', label: m.preference_themeDark(), icon: MoonIcon },
-    { value: 'system', label: m.preference_themeSystem(), icon: MonitorIcon },
+    { value: 'system', label: m.preference_themeSystem(), icon: SunMoonIcon },
   ]
-  const Current = options.find((option) => option.value === choice)?.icon ?? MonitorIcon
+  const Current = options.find((option) => option.value === choice)?.icon ?? SunMoonIcon
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
