@@ -20,25 +20,22 @@ const PublicSecurityRecord = Schema.String.check(
 
 const Settings = Schema.Struct({
   QUALY_ICP_RECORD: Schema.Union([Schema.Literal(''), IcpRecord]),
-  QUALY_PUBLIC_SECURITY_RECORD: Schema.Union([Schema.Literal(''), PublicSecurityRecord]),
-  QUALY_PUBLIC_SECURITY_RECORD_URL: Schema.String.check(
+  QUALY_MPS_RECORD: Schema.Union([Schema.Literal(''), PublicSecurityRecord]),
+  QUALY_MPS_RECORD_URL: Schema.String.check(
     Schema.isMaxLength(512),
     Schema.isPattern(/^\S*$/u, { expected: 'a URL without whitespace' }),
   ),
 }).check(
   Schema.makeFilter(
-    (settings) =>
-      (settings.QUALY_PUBLIC_SECURITY_RECORD === '') ===
-      (settings.QUALY_PUBLIC_SECURITY_RECORD_URL === ''),
+    (settings) => (settings.QUALY_MPS_RECORD === '') === (settings.QUALY_MPS_RECORD_URL === ''),
     {
-      expected:
-        'QUALY_PUBLIC_SECURITY_RECORD and QUALY_PUBLIC_SECURITY_RECORD_URL together, or neither',
+      expected: 'QUALY_MPS_RECORD and QUALY_MPS_RECORD_URL together, or neither',
     },
   ),
 )
 
 const PublicSecurityUrl = Schema.Struct({
-  QUALY_PUBLIC_SECURITY_RECORD_URL: Schema.URLFromString.check(
+  QUALY_MPS_RECORD_URL: Schema.URLFromString.check(
     Schema.makeFilter((url) => url.href.length <= 512, {
       expected: 'a serialized URL no longer than 512 characters',
     }),
@@ -51,6 +48,11 @@ const PublicSecurityUrl = Schema.Struct({
         url.password === '',
       { expected: 'an HTTPS URL on beian.mps.gov.cn or www.beian.gov.cn without credentials' },
     ),
+    // The query page routes by fragment, and an unquoted `#` in a .env file
+    // starts a comment: the link arrives as the bare home page, with no error.
+    Schema.makeFilter((url) => url.pathname !== '/' || url.search !== '' || url.hash !== '', {
+      expected: "this record's query page, not the home page (quote a value containing # in .env)",
+    }),
   ),
 })
 
@@ -61,18 +63,17 @@ export const siteRegistrationContext: DocumentContextProvider = {
       QUALY_ICP_RECORD: (yield* Config.String('QUALY_ICP_RECORD').pipe(
         Config.withDefault(''),
       )).trim(),
-      QUALY_PUBLIC_SECURITY_RECORD: (yield* Config.String('QUALY_PUBLIC_SECURITY_RECORD').pipe(
+      QUALY_MPS_RECORD: (yield* Config.String('QUALY_MPS_RECORD').pipe(
         Config.withDefault(''),
       )).trim(),
-      QUALY_PUBLIC_SECURITY_RECORD_URL: (yield* Config.String(
-        'QUALY_PUBLIC_SECURITY_RECORD_URL',
-      ).pipe(Config.withDefault(''))).trim(),
+      QUALY_MPS_RECORD_URL: (yield* Config.String('QUALY_MPS_RECORD_URL').pipe(
+        Config.withDefault(''),
+      )).trim(),
     })
     const publicSecurityUrl =
-      settings.QUALY_PUBLIC_SECURITY_RECORD_URL === ''
+      settings.QUALY_MPS_RECORD_URL === ''
         ? undefined
-        : (yield* Schema.decodeEffect(PublicSecurityUrl)(settings)).QUALY_PUBLIC_SECURITY_RECORD_URL
-            .href
+        : (yield* Schema.decodeEffect(PublicSecurityUrl)(settings)).QUALY_MPS_RECORD_URL.href
     // Spell out the public fields. No environment object or tenant data crosses
     // this boundary, even if this provider acquires other settings later.
     const registration: SiteRegistration = {
@@ -83,7 +84,7 @@ export const siteRegistrationContext: DocumentContextProvider = {
         ? {}
         : {
             publicSecurity: {
-              record: settings.QUALY_PUBLIC_SECURITY_RECORD,
+              record: settings.QUALY_MPS_RECORD,
               href: publicSecurityUrl,
             },
           }),

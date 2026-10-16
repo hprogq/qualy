@@ -34,8 +34,8 @@ describe('the deployment registration carried by each page', () => {
     {},
     {
       QUALY_ICP_RECORD: ' ',
-      QUALY_PUBLIC_SECURITY_RECORD: '',
-      QUALY_PUBLIC_SECURITY_RECORD_URL: '\n',
+      QUALY_MPS_RECORD: '',
+      QUALY_MPS_RECORD_URL: '\n',
     },
   ])('has no entries when the deployment has not configured them', async (env) => {
     const context = { [SITE_REGISTRATION_CONTEXT]: {} }
@@ -66,19 +66,19 @@ describe('the deployment registration carried by each page', () => {
     expect(
       await configured({
         QUALY_ICP_RECORD: ICP,
-        QUALY_PUBLIC_SECURITY_RECORD: PUBLIC_SECURITY,
-        QUALY_PUBLIC_SECURITY_RECORD_URL: href,
+        QUALY_MPS_RECORD: PUBLIC_SECURITY,
+        QUALY_MPS_RECORD_URL: href,
       }),
     ).toEqual(Exit.succeed({ anonymous: context, authenticated: context }))
   })
 
   it.each<Record<string, string>>([
-    { QUALY_PUBLIC_SECURITY_RECORD: PUBLIC_SECURITY },
-    { QUALY_PUBLIC_SECURITY_RECORD_URL: PUBLIC_SECURITY_URL },
+    { QUALY_MPS_RECORD: PUBLIC_SECURITY },
+    { QUALY_MPS_RECORD_URL: PUBLIC_SECURITY_URL },
   ])('refuses a half-configured public security record while binding', async (env) => {
     const exit = await configured(env)
     expect(Exit.isFailure(exit) && String(exit.cause)).toContain(
-      'QUALY_PUBLIC_SECURITY_RECORD and QUALY_PUBLIC_SECURITY_RECORD_URL together, or neither',
+      'QUALY_MPS_RECORD and QUALY_MPS_RECORD_URL together, or neither',
     )
   })
 
@@ -88,12 +88,12 @@ describe('the deployment registration carried by each page', () => {
     { QUALY_ICP_RECORD: '京ICP备00000000号-0\nextra' },
     { QUALY_ICP_RECORD: '京'.repeat(65) },
     {
-      QUALY_PUBLIC_SECURITY_RECORD: '京公网安备123号',
-      QUALY_PUBLIC_SECURITY_RECORD_URL: PUBLIC_SECURITY_URL,
+      QUALY_MPS_RECORD: '京公网安备123号',
+      QUALY_MPS_RECORD_URL: PUBLIC_SECURITY_URL,
     },
     {
-      QUALY_PUBLIC_SECURITY_RECORD: '京'.repeat(65),
-      QUALY_PUBLIC_SECURITY_RECORD_URL: PUBLIC_SECURITY_URL,
+      QUALY_MPS_RECORD: '京'.repeat(65),
+      QUALY_MPS_RECORD_URL: PUBLIC_SECURITY_URL,
     },
   ])('refuses malformed registration text', async (env) => {
     expect(Exit.isFailure(await configured(env))).toBe(true)
@@ -101,6 +101,9 @@ describe('the deployment registration carried by each page', () => {
 
   it.each([
     'http://beian.mps.gov.cn/',
+    // what an unquoted `#/query/...` link becomes after dotenv parsing
+    'https://beian.mps.gov.cn/',
+    'https://beian.mps.gov.cn',
     'javascript:alert(1)',
     'https://example.com/',
     'https://beian.mps.gov.cn.example.com/',
@@ -111,10 +114,10 @@ describe('the deployment registration carried by each page', () => {
     `https://beian.mps.gov.cn/${'中'.repeat(60)}`,
   ])('refuses an unsafe or oversized public security URL', async (href) => {
     const exit = await configured({
-      QUALY_PUBLIC_SECURITY_RECORD: PUBLIC_SECURITY,
-      QUALY_PUBLIC_SECURITY_RECORD_URL: href,
+      QUALY_MPS_RECORD: PUBLIC_SECURITY,
+      QUALY_MPS_RECORD_URL: href,
     })
-    expect(Exit.isFailure(exit) && String(exit.cause)).toContain('QUALY_PUBLIC_SECURITY_RECORD_URL')
+    expect(Exit.isFailure(exit) && String(exit.cause)).toContain('QUALY_MPS_RECORD_URL')
   })
 
   it.each([
@@ -124,8 +127,8 @@ describe('the deployment registration carried by each page', () => {
     const prefix = `${PUBLIC_SECURITY_URL}&padding=`
     const href = prefix + 'a'.repeat(length - prefix.length)
     const exit = await configured({
-      QUALY_PUBLIC_SECURITY_RECORD: PUBLIC_SECURITY,
-      QUALY_PUBLIC_SECURITY_RECORD_URL: href,
+      QUALY_MPS_RECORD: PUBLIC_SECURITY,
+      QUALY_MPS_RECORD_URL: href,
     })
     expect(Exit.isSuccess(exit)).toBe(accepted)
     if (Exit.isSuccess(exit)) {
