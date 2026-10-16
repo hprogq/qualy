@@ -172,13 +172,32 @@ export const qualyBootFrame = (options: {
  * none or several has changed shape under this and is refused.
  */
 export const deferShellStyle = (html: string): string => {
-  const links = [...html.matchAll(/<link rel="stylesheet"([^>]*)>/g)]
-  if (links.length !== 1) {
-    throw new Error(`the built shell links ${String(links.length)} stylesheets, expected exactly 1`)
+  const prefix = '<link rel="stylesheet"'
+  let cursor = 0
+  let count = 0
+  let firstStart = 0
+  let firstEnd = 0
+  for (;;) {
+    const start = html.indexOf(prefix, cursor)
+    if (start === -1) break
+    const end = html.indexOf('>', start + prefix.length)
+    // An unfinished tag cannot hide a later complete match. Stop instead of
+    // rescanning its suffix for every repeated link prefix.
+    if (end === -1) break
+    if (count === 0) {
+      firstStart = start
+      firstEnd = end
+    }
+    count += 1
+    cursor = end + 1
   }
-  return html.replace(
-    links[0]![0],
-    `<link rel="preload" as="style"${links[0]![1]!} ${SHELL_STYLE_ATTRIBUTE}>`,
+  if (count !== 1) {
+    throw new Error(`the built shell links ${String(count)} stylesheets, expected exactly 1`)
+  }
+  return (
+    html.slice(0, firstStart) +
+    `<link rel="preload" as="style"${html.slice(firstStart + prefix.length, firstEnd)} ${SHELL_STYLE_ATTRIBUTE}>` +
+    html.slice(firstEnd + 1)
   )
 }
 

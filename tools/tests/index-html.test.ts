@@ -227,4 +227,17 @@ describe('the shell as built, fetching', () => {
       /2 stylesheets/,
     )
   })
+
+  it('preserves surrounding content and literal dollar signs in link attributes', () => {
+    const attributes = ' crossorigin href="/assets/s-$&.css" data-template="$` $\' $$"'
+    expect(deferShellStyle(`<head><link rel="stylesheet"${attributes}></head>`)).toBe(
+      `<head><link rel="preload" as="style"${attributes} ${SHELL_STYLE_ATTRIBUTE}></head>`,
+    )
+  })
+
+  it('stops at an unfinished suffix even when it repeats the link prefix', () => {
+    const unfinished = '<link rel="stylesheet"='.repeat(30_000)
+    expect(() => deferShellStyle(unfinished)).toThrow(/0 stylesheets/)
+    expect(deferShellStyle(shell + unfinished)).toBe(deferShellStyle(shell) + unfinished)
+  })
 })
