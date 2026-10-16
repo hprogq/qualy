@@ -188,7 +188,7 @@ export default defineConfig(({ mode }) => ({
               name: 'shared',
               // Let tiny pools follow automatic chunking instead of turning
               // a constant into its own request. Keep larger pools unmerged.
-              minSize: 256,
+              minSize: 512,
               minShareCount: 2,
               maxModuleSize: 1024,
               entriesAware: true,
