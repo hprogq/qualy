@@ -510,6 +510,17 @@ const styles = stylex.create({
     paddingBlock: 12,
     textAlign: 'left',
   },
+  // the pager closes the card on the rows' own inset, ruled off like a row
+  feedFoot: {
+    display: 'flex',
+    alignItems: 'center',
+    minHeight: 44,
+    borderTopWidth: 1,
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.divider,
+    paddingInline: { default: 16, [wide]: 20 },
+    paddingBlock: 8,
+  },
   feedRowOpenable: {
     cursor: 'pointer',
     transitionProperty: 'color, background-color',
@@ -1403,30 +1414,32 @@ function Desk({
                 </section>
               ))}
               {activity.data && (
-                <Pager
-                  testId="activity-pager"
-                  label={m.overview_activityTitle()}
-                  previousLabel={m.action_previousPage()}
-                  nextLabel={m.action_nextPage()}
-                  page={activity.data.page}
-                  pageSize={activity.data.pageSize}
-                  total={activity.data.total}
-                  compact={compact}
-                  disabled={activity.isFetching}
-                  summary={m.review_pageSummary({
-                    from:
-                      activity.data.total === 0
-                        ? 0
-                        : (activity.data.page - 1) * activity.data.pageSize + 1,
-                    to: (activity.data.page - 1) * activity.data.pageSize + rows.length,
-                    total: activity.data.total,
-                  })}
-                  onPage={(next) => {
-                    activityRef.current?.focus({ preventScroll: true })
-                    activityRef.current?.scrollIntoView({ block: 'start' })
-                    setPageParam(next === 1 ? '' : String(next))
-                  }}
-                />
+                <div {...stylex.props(styles.feedFoot)}>
+                  <Pager
+                    testId="activity-pager"
+                    label={m.overview_activityTitle()}
+                    previousLabel={m.action_previousPage()}
+                    nextLabel={m.action_nextPage()}
+                    page={activity.data.page}
+                    pageSize={activity.data.pageSize}
+                    total={activity.data.total}
+                    compact={compact}
+                    disabled={activity.isFetching}
+                    summary={m.review_pageSummary({
+                      from:
+                        activity.data.total === 0
+                          ? 0
+                          : (activity.data.page - 1) * activity.data.pageSize + 1,
+                      to: (activity.data.page - 1) * activity.data.pageSize + rows.length,
+                      total: activity.data.total,
+                    })}
+                    onPage={(next) => {
+                      activityRef.current?.focus({ preventScroll: true })
+                      activityRef.current?.scrollIntoView({ block: 'start' })
+                      setPageParam(next === 1 ? '' : String(next))
+                    }}
+                  />
+                </div>
               )}
             </div>
           )}
