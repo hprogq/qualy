@@ -1,5 +1,6 @@
 import * as stylex from '@stylexjs/stylex'
 import { Outlet } from 'react-router'
+import { SiteRegistrationFooter } from './SiteRegistration.tsx'
 
 // blank-shell/v1 provider: no chrome, the page owns the whole viewport.
 //
@@ -9,7 +10,7 @@ import { Outlet } from 'react-router'
 // so a page that centres itself - and the not-found screen the host lands
 // here for a viewer with no other shell - has the room to do it in without
 // claiming the viewport's height on its own. A page that already takes the
-// viewport, as the login page does, stands in it as before.
+// viewport grows into it, leaving room for the deployment's optional footer.
 
 const styles = stylex.create({
   seat: {
@@ -23,6 +24,7 @@ export default function BlankShell() {
   return (
     <div {...stylex.props(styles.seat)}>
       <Outlet />
+      <SiteRegistrationFooter />
     </div>
   )
 }

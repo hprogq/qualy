@@ -44,6 +44,11 @@ import { Skeleton } from '@qualy/ui/skeleton'
 import { Sheet, SheetContent, SheetTitle } from '@qualy/ui/sheet'
 import { useIsBelow } from '@qualy/ui/use-mobile'
 import { TopBar } from './TopBar.tsx'
+import {
+  hasSiteRegistration,
+  SiteRegistrationFooter,
+  useSiteRegistration,
+} from './SiteRegistration.tsx'
 import { AppsBar, BottomBar } from './BottomBar.tsx'
 import { NavIcon } from './icons.tsx'
 import { useAppNavigation } from './useAppNavigation.ts'
@@ -521,6 +526,8 @@ const styles = stylex.create({
     // clear of the bar a narrow window carries at its foot
     paddingBottom: { default: 24, [breakpoints.phone]: 84 },
   },
+  // When a footer follows, navigation clearance belongs after that footer.
+  personSeatRegistered: { paddingBottom: 24 },
   personNav: {
     alignSelf: 'flex-start',
     position: 'sticky',
@@ -1060,6 +1067,7 @@ function CapableRailShell({
   // a screen that fills the room scrolls inside itself, and gives up the
   // strip the shell holds for a scrollbar that will never come
   const filled = useScreenFillClaimed()
+  const registrationShown = hasSiteRegistration(useSiteRegistration()) && !filled
   // The record the shell is drawn around, gone: its owner said so from the
   // band, and handed over what to show instead. Everything bound to the
   // record folds away - the band, the rail, the sections at the foot - and
@@ -1316,7 +1324,7 @@ function CapableRailShell({
             filled && styles.mainEdge,
             filled && styles.mainFilled,
             absent && styles.personMainBare,
-            absent && styles.mainApps,
+            (absent || registrationShown) && styles.mainApps,
           )}
         >
           {absent ? (
@@ -1326,7 +1334,9 @@ function CapableRailShell({
               {...stylex.props(styles.absence)}
             />
           ) : (
-            <div {...stylex.props(styles.personSeat)}>
+            <div
+              {...stylex.props(styles.personSeat, registrationShown && styles.personSeatRegistered)}
+            >
               {!narrow && (
                 <nav
                   aria-label={m.person_sections()}
@@ -1371,6 +1381,7 @@ function CapableRailShell({
               </Reveal>
             </div>
           )}
+          {!filled && <SiteRegistrationFooter />}
         </main>
       ) : (
         <div {...stylex.props(styles.body)}>
@@ -1433,6 +1444,7 @@ function CapableRailShell({
             ) : (
               <Outlet />
             )}
+            {!filled && <SiteRegistrationFooter />}
           </main>
         </div>
       )}

@@ -33,7 +33,8 @@ const spin = stylex.keyframes({ to: { transform: 'rotate(360deg)' } })
 const styles = stylex.create({
   frame: {
     display: 'flex',
-    minHeight: '100dvh',
+    flexGrow: 1,
+    minHeight: 0,
     backgroundColor: tokens.background,
     color: tokens.foreground,
   },

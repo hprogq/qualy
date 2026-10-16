@@ -1,5 +1,27 @@
 # 首屏性能与 Lighthouse
 
+## 可选页脚与微型分包（2026-10-16）
+
+新增可配置站点备案页脚后，通用 `shared` 分组把只有 41 B 的上下文键单独拆成脚本，
+登录页达到 73 个 JS 请求，超过原有 72 个请求的构建预算。
+现有分组增加 `minSize: 256`，让不足阈值的候选回到自动分包；保留 `maxModuleSize: 1024`、
+`entriesAware: true` 和 `entriesAwareMergeThreshold: 0`，不改变预算，也不添加业务插件路径规则。
+语义核对自当前安装的 `rolldown@1.2.13` 类型声明 `OutputOptions.codeSplitting.groups[].minSize`：
+组内模块总大小低于阈值时忽略该组，未被其他组接收的模块回到自动分包。
+
+诊断构建对比全部 69 个公开 surface 各自的 boot 加静态依赖闭包，模块集合均未变化；
+只有三个微型组改变归属：UI 身份常量进入 surfaces、批次状态常量进入 StatusBadge、备案上下文键进入页脚组件。
+最终 `pnpm build` 的静态图门禁与本地 Web release 安装通过：
+
+| 页面       | JS 请求 | Brotli 字节 |
+| ---------- | ------: | ----------: |
+| login      |      71 |      333851 |
+| batches    |     103 |      383392 |
+| my-entries |     133 |      452721 |
+| org-tree   |      93 |      357813 |
+
+这是构建依赖图与压缩字节的验证，没有运行本轮 Lighthouse、生产网络测量或部署。
+
 ## 怎么量
 
 `pnpm lighthouse [页面…] [--runs 3] [--form mobile|desktop|both]`(`tools/quality/lighthouse.ts`)对

@@ -1,5 +1,6 @@
 import { Plugin } from '@qualy/plugin-kit'
 import { Ui } from '@qualy/plugin-ui-registry/plugin'
+import { siteRegistrationContext } from './server/site-registration.ts'
 import {
   ACCOUNT_SHELL,
   APP_SHELL,
@@ -15,6 +16,7 @@ import {
 const plugin = Plugin.define(
   '@qualy/plugin-layout-default',
   { dependsOn: ['@qualy/plugin-ui-registry'] },
+  Ui.documentContext(siteRegistrationContext),
   Ui.layout({
     contract: APP_SHELL,
     component: Ui.react('./client/AppShell'),

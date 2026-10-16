@@ -8,5 +8,7 @@
   "workspace_sections": "批次分区",
   "shell_otherModules": "其他模块",
   "shell_apps": "应用",
-  "footer_tagline": "让每一份成长都有回响。"
+  "footer_tagline": "让每一份成长都有回响。",
+  "footer_icp": "ICP备案：{record}",
+  "footer_publicSecurity": "公安联网备案：{record}"
 }

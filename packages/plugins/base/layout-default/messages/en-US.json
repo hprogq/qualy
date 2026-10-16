@@ -8,5 +8,7 @@
   "workspace_sections": "Sections of this workspace",
   "shell_otherModules": "Other modules",
   "shell_apps": "Applications",
-  "footer_tagline": "Beyond the grade. Back to growth."
+  "footer_tagline": "Beyond the grade. Back to growth.",
+  "footer_icp": "ICP registration: {record}",
+  "footer_publicSecurity": "Public security registration: {record}"
 }

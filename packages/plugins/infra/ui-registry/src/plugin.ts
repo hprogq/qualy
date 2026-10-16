@@ -24,6 +24,8 @@ import {
 import { registerSurfaces, uiContributionsLayer, uiLayer } from './server/registry.ts'
 import { documentContext } from './document-context.ts'
 
+export type { DocumentContextProvider } from './document-context.ts'
+
 // The shell's face in the descriptor model.
 //
 // A surface declaration is prepare-phase data: it runs no query and touches
