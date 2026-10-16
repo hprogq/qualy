@@ -26,37 +26,43 @@
 Formula RPC 心跳误断线和 WebSocket HTTP 计时的修复已随 `v0.1.0-rc.32` 上线
 （[实测笔记](docs/notes/formula-rpc-heartbeat.md)）。
 
-`main` 上另有尚未发布的提交：WebSocket 会话 span 在握手时结束、语句级数据库追踪与遥测导出清理
+WebSocket 会话 span 在握手时结束、语句级数据库追踪与遥测导出清理
 （[笔记](docs/notes/statement-tracing.md)）、收件箱与巡检的规划开销优化
 （[笔记](docs/notes/kysely.md)）、原生 tsc 直接启动、模态框下的更新提示层级、
-依赖图巡检改用异步 SBOM 接口。
+依赖图巡检改用异步 SBOM 接口均已进入当前生产发布。
 
 站点入口、演示邮箱域和可选备案页脚已改为部署配置，见[部署说明](docs/deployment.md)与
-[演示数据说明](docs/notes/demo-data.md)。代码等待本地 dev 验收；尚未迁移既有演示账号或基线，未部署。
+[演示数据说明](docs/notes/demo-data.md)。已随 `v0.1.0-rc.34` 部署，现有演示账号与基线完成定向迁移。
+备案组件的 Fast Refresh 边界、Web 构建请求预算和本轮安全告警已完成修复与验证；
+依赖处置依据见[安全核对](docs/notes/security-dependency-review-2026-10.md)。
 
 ## 最近验证的代码状态
 
-rc.24 源码提交 `7ceb08ca8fe230654790f4dbc26e094b16fbbbc7` 的最终 CI 全部成功：
+rc.34 源码提交 `19d565ec8209c1ef12e3058a3049becd808fb6ba` 的最终 CI 全部成功：
 
 - static、Node CI、Chromium、WebKit、image、release-eligible 全部通过；
-- Node：413 个测试文件通过、3 个跳过；3098 个测试通过、29 个跳过；
-- Chromium：125 个测试文件、1605 个测试通过；
+- Node：433 个测试文件通过、3 个跳过；3354 个测试通过、29 个跳过；
+- Chromium：133 个测试文件、1749 个测试通过；
 - WebKit：5 个测试文件、50 个测试通过；
 - 正式 release 的 COS、三个镜像构建与检查、smoke、推送和 sourcemap 任务通过。
+- 2026-10-16 复核 GitHub Code Scanning 和 Dependabot 均为 0 项 Open；其中三个内嵌 Go 告警依据实际不可达路径处置，不能解释为已升级 Go。
 
-CI：https://github.com/hprogq/qualy/actions/runs/36924654216
+CI：https://github.com/hprogq/qualy/actions/runs/38896613995
 
-Release：https://github.com/hprogq/qualy/actions/runs/36926331266
+Release：https://github.com/hprogq/qualy/actions/runs/38898604227
 
 后续提交若修改代码，应按[验证指南](docs/development/validation.md)重新选择检查；这里的结果不能替代新改动的验收。
 
 ## 生产状态
 
-- 2026-10-15 部署 `v0.1.0-rc.32`（revision `bb1a21cd13902d7082fd13ea4d2911af224a4195`），服务颜色为 blue。
+- 2026-10-16 部署 `v0.1.0-rc.34`（revision `19d565ec8209c1ef12e3058a3049becd808fb6ba`），服务颜色为 blue，Web release 为 `r_VpEnXFsOm8OypOjQcdHR5A`。部署检查和 doctor 全部通过。
+- 新入口作为唯一应用主站；旧入口的普通导航由边缘永久跳转，旧 API、写请求及 WebSocket 不跨域续接。新入口使用独立的普通 ACME 签发策略。
+- 已验证真实本地登录、会话及退出、一个现有本地附件下载、三种外部登录入口生成的新回调地址，以及生产 COS 临时对象的写入、签名下载、CORS 和精确清理。未代替用户完成外部提供方授权，也未发送真实邮件。
 - 2026-10-15 生产数据库启用 `pg_stat_statements`（含 `track_planning`），扩展装在 `monitoring` schema；
   设置写在数据卷的 `postgresql.auto.conf`，不在 compose 文件里。查看与开关方式见
-  `deploy/README.md` 的 Statement statistics（`deploy/query-stats.sh` 随下一个 release 上机）。
-- 演示数据为 10-08 基线；旧库保留为 `qualy_previous`。
+  `deploy/README.md` 的 Statement statistics（`deploy/query-stats.sh` 已随发布上机）。
+- 演示数据保留原基线业务内容，仅定向更新 8 个受控邮箱；线上 1215 个用户、15503 个已绑定本地附件保留，4 个登录提供方、7 个身份绑定和 2 个 secret 原样保留。基线从独立临时库更新后复原校验，未重新生成或覆盖线上库。
+- 切换前已完成完整数据库与附件备份，并独立保存私密配置；原基线 dump 保留副本，附件归档摘要未变。
 
 ## 仍需用户确认的业务语义
 
@@ -85,6 +91,6 @@ Release：https://github.com/hprogq/qualy/actions/runs/36926331266
 
 ## 下一步
 
-1. 先本地验收站点配置与页脚，再安排既有演示数据的定向迁移和发布；上线后在 APM 核对语句级 span、导出内容与上报量（全量上报，先观察一周数据）。
+1. 由真实用户完成三种外部登录和邮件收发复核；在 APM 核对语句级 span、导出内容与上报量（全量上报，先观察一周数据）。
 2. 新业务继续按现行 contract 开发；不要重新打开已经关账的基础设施迁移。
 3. 运维事项取得相应权限后逐项验证，把长期有效的结果更新到部署文档或窄 notes，而不是追加会话流水账。
