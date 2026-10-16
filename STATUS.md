@@ -58,6 +58,7 @@ Release：https://github.com/hprogq/qualy/actions/runs/38898604227
 - 2026-10-16 部署 `v0.1.0-rc.34`（revision `19d565ec8209c1ef12e3058a3049becd808fb6ba`），服务颜色为 blue，Web release 为 `r_VpEnXFsOm8OypOjQcdHR5A`。部署检查和 doctor 全部通过。
 - 新入口作为唯一应用主站；旧入口的普通导航由边缘永久跳转，旧 API、写请求及 WebSocket 不跨域续接。新入口使用独立的普通 ACME 签发策略。
 - 已验证真实本地登录、会话及退出、一个现有本地附件下载、三种外部登录入口生成的新回调地址，以及生产 COS 临时对象的写入、签名下载、CORS 和精确清理。未代替用户完成外部提供方授权，也未发送真实邮件。
+- GitHub token 端点出现出站连接超时，已用宿主机单域名解析覆盖缓解；调整后首个登录仍超时，其后五次真实登录均成功，已核对生产登录记录。覆盖需要维护，诊断代码改进尚未部署，见[排查记录](docs/notes/github-oauth-connectivity.md)。
 - 2026-10-15 生产数据库启用 `pg_stat_statements`（含 `track_planning`），扩展装在 `monitoring` schema；
   设置写在数据卷的 `postgresql.auto.conf`，不在 compose 文件里。查看与开关方式见
   `deploy/README.md` 的 Statement statistics（`deploy/query-stats.sh` 已随发布上机）。

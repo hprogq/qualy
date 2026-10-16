@@ -234,7 +234,11 @@ const handlers = HttpApiBuilder.group(local, 'authGithub', (handlers) =>
         })
         if (answer.kind !== 'account') {
           yield* Effect.logWarning('github did not name an account').pipe(
-            Effect.annotateLogs({ provider: provider.code, reason: answer.reason }),
+            Effect.annotateLogs({
+              provider: provider.code,
+              stage: answer.stage,
+              reason: answer.reason,
+            }),
           )
           if (flow.purpose === 'login') {
             yield* sessions.failAttempt(provider, {

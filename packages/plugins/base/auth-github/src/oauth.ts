@@ -59,9 +59,9 @@ export const authorizeRedirect = (
 export type GithubAnswer =
   | { readonly kind: 'account'; readonly subject: string; readonly login: string }
   /** GitHub refused the code, or answered in a way that names nobody */
-  | { readonly kind: 'rejected'; readonly reason: string }
+  | { readonly kind: 'rejected'; readonly stage: 'token' | 'user'; readonly reason: string }
   /** GitHub could not be asked */
-  | { readonly kind: 'unavailable'; readonly reason: string }
+  | { readonly kind: 'unavailable'; readonly stage: 'token' | 'user'; readonly reason: string }
 
 const json = (response: OutboundResponse): unknown => {
   try {
@@ -74,6 +74,20 @@ const json = (response: OutboundResponse): unknown => {
 /** a reason for the log: the rule an outbound refusal names, or the status */
 const outboundReason = (error: { readonly _tag: string; readonly reason: string }) =>
   `${error._tag === 'OutboundRefused' ? 'refused' : 'failed'}:${error.reason}`
+
+/** Only GitHub's documented token error codes may reach the diagnostic log. */
+const tokenErrorReason = (error: unknown): string => {
+  // https://docs.github.com/en/apps/oauth-apps/maintaining-oauth-apps/troubleshooting-oauth-app-access-token-request-errors
+  switch (error) {
+    case 'incorrect_client_credentials':
+    case 'redirect_uri_mismatch':
+    case 'bad_verification_code':
+    case 'unverified_user_email':
+      return error
+    default:
+      return error === undefined ? 'no-token' : 'unknown-token-error'
+  }
+}
 
 export const identify = Effect.fn('authGithub.identify')(function* (
   endpoints: GithubEndpoints,
@@ -102,11 +116,16 @@ export const identify = Effect.fn('authGithub.identify')(function* (
     })
     .pipe(Effect.result)
   if (exchanged._tag === 'Failure') {
-    return { kind: 'unavailable', reason: outboundReason(exchanged.failure) } satisfies GithubAnswer
+    return {
+      kind: 'unavailable',
+      stage: 'token',
+      reason: outboundReason(exchanged.failure),
+    } satisfies GithubAnswer
   }
   if (exchanged.success.status !== 200) {
     return {
       kind: 'unavailable',
+      stage: 'token',
       reason: `token-status:${exchanged.success.status}`,
     } satisfies GithubAnswer
   }
@@ -114,7 +133,8 @@ export const identify = Effect.fn('authGithub.identify')(function* (
   if (typeof granted?.access_token !== 'string' || granted.access_token === '') {
     return {
       kind: 'rejected',
-      reason: typeof granted?.error === 'string' ? granted.error : 'no-token',
+      stage: 'token',
+      reason: tokenErrorReason(granted?.error),
     } satisfies GithubAnswer
   }
   // held for the next request only, and never anywhere else
@@ -133,18 +153,23 @@ export const identify = Effect.fn('authGithub.identify')(function* (
     })
     .pipe(Effect.result)
   if (asked._tag === 'Failure') {
-    return { kind: 'unavailable', reason: outboundReason(asked.failure) } satisfies GithubAnswer
+    return {
+      kind: 'unavailable',
+      stage: 'user',
+      reason: outboundReason(asked.failure),
+    } satisfies GithubAnswer
   }
   if (asked.success.status !== 200) {
     return {
       kind: 'unavailable',
+      stage: 'user',
       reason: `user-status:${asked.success.status}`,
     } satisfies GithubAnswer
   }
   const user = json(asked.success) as { id?: unknown; login?: unknown } | undefined
   // the id is the account; the login can be changed by its owner any day
   if (typeof user?.id !== 'number' || !Number.isSafeInteger(user.id) || user.id <= 0) {
-    return { kind: 'rejected', reason: 'no-id' } satisfies GithubAnswer
+    return { kind: 'rejected', stage: 'user', reason: 'no-id' } satisfies GithubAnswer
   }
   return {
     kind: 'account',
