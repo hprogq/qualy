@@ -1,7 +1,11 @@
 import * as stylex from '@stylexjs/stylex'
 import { Outlet } from 'react-router'
 import { ColophonScope } from '@qualy/ui/screen'
-import { useSiteRegistrationColophon } from './SiteRegistration.tsx'
+import {
+  hasSiteRegistration,
+  SiteRegistrationColophon,
+  useSiteRegistration,
+} from './SiteRegistration.tsx'
 
 // blank-shell/v1 provider: no chrome, the page owns the whole viewport.
 //
@@ -27,7 +31,9 @@ const styles = stylex.create({
 export default function BlankShell() {
   return (
     <div {...stylex.props(styles.seat)}>
-      <ColophonScope value={useSiteRegistrationColophon()}>
+      <ColophonScope
+        value={hasSiteRegistration(useSiteRegistration()) ? SiteRegistrationColophon : null}
+      >
         <Outlet />
       </ColophonScope>
     </div>

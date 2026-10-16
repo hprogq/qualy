@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import * as stylex from '@stylexjs/stylex'
+import type { ColophonProps } from '@qualy/ui/screen'
 import { useDocumentContext } from '@qualy/web-runtime'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
@@ -12,8 +13,10 @@ import * as m from '#messages'
 // pages where that foot is drawn. A workspace or a record somebody has
 // opened does not repeat them on every screen.
 //
-// One line where there is room, one record to a line on a phone, so a
-// record never breaks in the middle of its number.
+// Centred, they are one line where there is room and one record to a line
+// on a phone, so a record never breaks in the middle of its number. Set
+// flush to the start edge, under a name that stands there too, they are one
+// record to a line at every width.
 
 const styles = stylex.create({
   links: {
@@ -34,6 +37,8 @@ const styles = stylex.create({
     textAutospace: 'normal',
     color: tokens.mutedForeground,
   },
+  // as tall as the two lines of a choice set across from them
+  start: { flexDirection: 'column', alignItems: 'flex-start', rowGap: 4 },
   link: {
     display: 'inline-flex',
     alignItems: 'center',
@@ -61,9 +66,11 @@ export const hasSiteRegistration = (registration: SiteRegistration | undefined) 
 
 export function SiteRegistrationLinks({
   registration,
+  align = 'center',
   xstyle,
 }: {
   registration: SiteRegistration | undefined
+  align?: ColophonProps['align']
   xstyle?: stylex.StyleXStyles
 }) {
   if (!hasSiteRegistration(registration)) return null
@@ -90,7 +97,10 @@ export function SiteRegistrationLinks({
     },
   ]
   return (
-    <div data-testid="site-registration" {...stylex.props(styles.links, xstyle)}>
+    <div
+      data-testid="site-registration"
+      {...stylex.props(styles.links, align === 'start' && styles.start, xstyle)}
+    >
       {links.map(({ kind, value, label, lead }) =>
         value === undefined ? null : (
           <a
@@ -111,9 +121,6 @@ export function SiteRegistrationLinks({
 }
 
 /** the records, for a shell to hand to a page that places its own last line */
-export function useSiteRegistrationColophon(): ReactNode {
-  const registration = useSiteRegistration()
-  return hasSiteRegistration(registration) ? (
-    <SiteRegistrationLinks registration={registration} />
-  ) : null
+export function SiteRegistrationColophon({ align }: ColophonProps) {
+  return <SiteRegistrationLinks registration={useSiteRegistration()} align={align} />
 }

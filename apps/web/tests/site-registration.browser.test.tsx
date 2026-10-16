@@ -74,7 +74,7 @@ describe('deployment registration in the page shells', () => {
     },
   )
 
-  it.each([320, 1280])('fits the login and footer within a %ipx viewport', async (width) => {
+  it.each([320, 1024, 1280])('fits the login and footer within a %ipx viewport', async (width) => {
     await page.viewport(width, 800)
     await login('zh-CN', { 'site/registration': registration })
     await expect.element(page.getByTestId('sign-in-tenant')).toBeVisible()
@@ -97,11 +97,16 @@ describe('deployment registration in the page shells', () => {
       expect(second.top).toBeGreaterThanOrEqual(first.bottom)
       expect(footer.element().closest('main')).not.toBeNull()
     } else {
-      // beside each other, closing the product half rather than piling up
-      // under the form column's own choices
-      expect(second.top).toBe(first.top)
-      expect(footer.element().closest('aside')).not.toBeNull()
+      // one to a line, flush with the product's name above them, closing the
+      // product half rather than piling up under the form column's choices
+      const aside = footer.element().closest('aside')
+      expect(aside).not.toBeNull()
       expect(footer.element().closest('main')).toBeNull()
+      expect(second.top).toBeGreaterThanOrEqual(first.bottom)
+      expect(first.left).toBe(second.left)
+      expect(first.left).toBe(
+        aside!.querySelector(':scope > svg:last-of-type')!.getBoundingClientRect().left,
+      )
     }
   })
 
@@ -133,12 +138,14 @@ describe('deployment registration in the page shells', () => {
         // the choice closes the form's column, the records the product half
         expect(seat.element().closest('main')).not.toBeNull()
         expect(records.closest('aside')).not.toBeNull()
-        // and the two last lines share one bottom edge across the divide
-        expect(
-          Math.abs(
-            records.getBoundingClientRect().bottom - seat.element().getBoundingClientRect().bottom,
-          ),
-        ).toBeLessThanOrEqual(1)
+        // two lines across from two lines: one bottom edge across the divide,
+        // and the tops within the label's taller line of each other
+        const [ours, theirs] = [
+          records.getBoundingClientRect(),
+          seat.element().getBoundingClientRect(),
+        ]
+        expect(Math.abs(ours.bottom - theirs.bottom)).toBeLessThanOrEqual(1)
+        expect(Math.abs(ours.top - theirs.top)).toBeLessThanOrEqual(3)
       }
     },
   )

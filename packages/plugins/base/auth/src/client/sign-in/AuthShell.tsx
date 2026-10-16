@@ -256,18 +256,20 @@ export function AuthShell({
   footer?: ReactNode
 }) {
   const still = useReducedMotion() === true
-  const colophon = useColophon()
+  const Colophon = useColophon()
   // the same width the product half appears at
   const wide = !useIsBelow(1024)
-  const columnColophon = wide ? null : colophon
+  const inColumn = !wide && Colophon !== null
   return (
     <div data-testid="auth-shell" {...stylex.props(styles.frame)}>
       <aside {...stylex.props(styles.product)}>
         <span aria-hidden {...stylex.props(styles.lines)} />
         <Mark size={640} xstyle={styles.ghost} />
         <Wordmark height={20} xstyle={styles.productWordmark} />
-        {wide && colophon !== null && (
-          <footer {...stylex.props(styles.productColophon)}>{colophon}</footer>
+        {wide && Colophon !== null && (
+          <footer {...stylex.props(styles.productColophon)}>
+            <Colophon align="start" />
+          </footer>
         )}
       </aside>
       <main {...stylex.props(styles.column)}>
@@ -279,7 +281,7 @@ export function AuthShell({
           <ThemeMenu />
           <LanguageMenu />
         </div>
-        <div {...stylex.props(styles.body, columnColophon !== null && styles.bodyNoted)}>
+        <div {...stylex.props(styles.body, inColumn && styles.bodyNoted)}>
           {/* The column arrives rather than appears: a page reached from
               another one in this frame keeps the frame still and brings in
               only what changed. */}
@@ -290,18 +292,20 @@ export function AuthShell({
             transition={{ duration: 0.3, ease: [0.2, 0.8, 0.2, 1] }}
           >
             {children}
-            {footer !== undefined && columnColophon !== null && (
+            {footer !== undefined && inColumn && (
               <div {...stylex.props(styles.footInline)}>{footer}</div>
             )}
           </motion.div>
         </div>
-        {footer !== undefined && columnColophon === null && (
+        {footer !== undefined && !inColumn && (
           <div {...stylex.props(styles.foot)}>
             <div {...stylex.props(styles.footContent)}>{footer}</div>
           </div>
         )}
-        {columnColophon !== null && (
-          <footer {...stylex.props(styles.colophon)}>{columnColophon}</footer>
+        {!wide && Colophon !== null && (
+          <footer {...stylex.props(styles.colophon)}>
+            <Colophon align="center" />
+          </footer>
         )}
         {overlay !== undefined && <div {...stylex.props(styles.overlay)}>{overlay}</div>}
       </main>
