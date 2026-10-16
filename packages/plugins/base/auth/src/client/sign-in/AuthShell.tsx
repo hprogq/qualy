@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { motion, useReducedMotion } from 'motion/react'
 import * as stylex from '@stylexjs/stylex'
-import { CheckIcon, ChevronDownIcon, GlobeIcon, SunMoonIcon, MoonIcon, SunIcon } from 'lucide-react'
+import { CheckIcon, ChevronDownIcon, GlobeIcon, MonitorIcon, MoonIcon, SunIcon } from 'lucide-react'
 import { useTheme, type ThemeChoice } from '@qualy/web-runtime'
 import { Mark } from '@qualy/brand/mark'
 import { Wordmark } from '@qualy/brand/wordmark'
@@ -211,14 +211,16 @@ export function Ring() {
 
 /** the appearance, chosen from the corner beside the language */
 function ThemeMenu() {
-  const { choice, setChoice } = useTheme()
+  const { choice, resolved, setChoice } = useTheme()
 
   const options: { value: ThemeChoice; label: string; icon: typeof SunIcon }[] = [
     { value: 'light', label: m.preference_themeLight(), icon: SunIcon },
     { value: 'dark', label: m.preference_themeDark(), icon: MoonIcon },
-    { value: 'system', label: m.preference_themeSystem(), icon: SunMoonIcon },
+    { value: 'system', label: m.preference_themeSystem(), icon: MonitorIcon },
   ]
-  const Current = options.find((option) => option.value === choice)?.icon ?? SunMoonIcon
+  // The corner says how the page looks, not which rule made it look so: a
+  // lone monitor there read as a display setting. Which rule is in the menu.
+  const Current = resolved === 'dark' ? MoonIcon : SunIcon
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>

@@ -832,3 +832,39 @@ describe('a computer others use', () => {
     }
   })
 })
+
+describe('the appearance corner', () => {
+  it('shows how the page looks while following the system, and the rule in its menu', async () => {
+    const root = document.documentElement
+    const before = root.dataset['mode']
+    localStorage.setItem('qualy.theme', 'system')
+    // what the boot script resolved for a system that prefers dark
+    root.dataset['mode'] = 'dark'
+    try {
+      await renderScreen({
+        client: fakeClient({
+          app: { getManifest: emptyManifest() },
+          auth: { ...anonymous, listLoginMethods: context([password]) },
+        }),
+        route: '/login',
+        children: <LoginPage />,
+      })
+      const corner = page.getByTestId('sign-in-theme')
+      await expect.element(corner).toBeVisible()
+      // a moon for a dark page, never a third mark for "system"
+      expect(corner.element().querySelector('svg.lucide-moon')).not.toBeNull()
+      // pressing it asks rather than switches
+      await corner.click()
+      const system = page.getByRole('menuitem').nth(2)
+      await expect.element(system).toBeVisible()
+      expect(system.element().querySelector('svg.lucide-monitor')).not.toBeNull()
+      expect(root.dataset['mode']).toBe('dark')
+      await page.getByRole('menuitem').nth(0).click()
+      await expect.poll(() => corner.element().querySelector('svg.lucide-sun')).not.toBeNull()
+    } finally {
+      localStorage.removeItem('qualy.theme')
+      if (before === undefined) delete root.dataset['mode']
+      else root.dataset['mode'] = before
+    }
+  })
+})
