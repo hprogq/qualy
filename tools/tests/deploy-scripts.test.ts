@@ -521,26 +521,29 @@ describe('one deployment step at a time', () => {
   })
 
   it('stops a backup after TERM instead of continuing outside its released lock', async () => {
-    const started = Date.now()
-    const child = spawn(
-      'sh',
-      [
-        '-c',
-        [
-          'here="$1"; . "$2"',
-          'cleanup() { echo cleanup; }',
-          'trap cleanup EXIT',
-          "trap 'interrupt_step INT 130' INT",
-          "trap 'interrupt_step TERM 143' TERM",
-          "run_interruptible sh -c 'sleep 0.1; echo ready; sleep 10'",
-          'echo continued',
-        ].join('; '),
-        'sh',
-        path.dirname(LIB),
-        LIB,
-      ],
-      { env: { ...process.env, QUALY_ENV_FILE: envFile }, stdio: ['ignore', 'pipe', 'pipe'] },
+    const script = path.join(fake, 'interruptible-step.sh')
+    // Paths are arguments, even when their spelling has shell meaning.
+    const fixtureDeploy = path.join(fake, 'deploy $(touch injected) "quoted"; test')
+    fs.mkdirSync(fixtureDeploy)
+    const fixtureLib = path.join(fixtureDeploy, 'lib.sh')
+    fs.copyFileSync(LIB, fixtureLib)
+    fs.writeFileSync(
+      script,
+      `here="$1"; . "$2"
+cleanup() { echo cleanup; }
+trap cleanup EXIT
+trap 'interrupt_step INT 130' INT
+trap 'interrupt_step TERM 143' TERM
+run_interruptible sh -c 'sleep 0.1; echo ready; sleep 10'
+echo continued
+`,
     )
+    const started = Date.now()
+    const child = spawn('sh', [script, fixtureDeploy, fixtureLib], {
+      cwd: fake,
+      env: { ...process.env, QUALY_ENV_FILE: envFile },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
     let output = ''
     child.stdout.setEncoding('utf8').on('data', (chunk) => {
       output += chunk
@@ -554,6 +557,7 @@ describe('one deployment step at a time', () => {
     expect(Date.now() - started).toBeLessThan(2_000)
     expect(output).toContain('cleanup')
     expect(output).not.toContain('continued')
+    expect(fs.existsSync(path.join(fake, 'injected'))).toBe(false)
   })
 })
 
