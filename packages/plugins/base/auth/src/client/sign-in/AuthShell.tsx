@@ -30,6 +30,11 @@ import * as m from '#messages'
 const WIDE = '@media (min-width: 1024px)'
 const PHONE = '@media (max-width: 767.98px)'
 
+// How far the last line of either half stands off the bottom edge. One
+// number, so the product half's records and the column's own choice share
+// a baseline across the divide.
+const FOOT_INSET = 32
+
 const spin = stylex.keyframes({ to: { transform: 'rotate(360deg)' } })
 
 const styles = stylex.create({
@@ -46,7 +51,8 @@ const styles = stylex.create({
     maxWidth: 600,
     flexDirection: 'column',
     overflow: 'hidden',
-    paddingBlock: '40px 36px',
+    paddingTop: 40,
+    paddingBottom: FOOT_INSET,
     paddingInline: 48,
     backgroundColor: tokens.surfaceInset,
     borderRightWidth: 1,
@@ -114,9 +120,13 @@ const styles = stylex.create({
     flexShrink: 0,
     justifyContent: 'center',
     paddingInline: { default: 48, [PHONE]: 24 },
-    paddingBottom: { default: 32, [PHONE]: 24 },
+    paddingBottom: { default: FOOT_INSET, [PHONE]: 24 },
   },
   footContent: { width: '100%', maxWidth: 400 },
+  // Narrow, with the shell's last line taking the foot, the choice follows
+  // the ways in instead: two small blocks stacked at the bottom edge read as
+  // one heap, and the choice is about signing in, not about the site.
+  footInline: { marginTop: 40 },
   // The column's optical centre sits a bar's height above the true one;
   // the shell's last line takes part of that room rather than adding to it.
   bodyNoted: { paddingBlock: { default: '0 32px', [PHONE]: '16px 32px' } },
@@ -280,9 +290,12 @@ export function AuthShell({
             transition={{ duration: 0.3, ease: [0.2, 0.8, 0.2, 1] }}
           >
             {children}
+            {footer !== undefined && columnColophon !== null && (
+              <div {...stylex.props(styles.footInline)}>{footer}</div>
+            )}
           </motion.div>
         </div>
-        {footer !== undefined && (
+        {footer !== undefined && columnColophon === null && (
           <div {...stylex.props(styles.foot)}>
             <div {...stylex.props(styles.footContent)}>{footer}</div>
           </div>

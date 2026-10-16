@@ -21,7 +21,11 @@ const registration = {
 
 afterEach(() => page.viewport(1280, 800))
 
-const login = (locale: 'zh-CN' | 'en-US', context: Record<string, unknown>) =>
+const login = (
+  locale: 'zh-CN' | 'en-US',
+  context: Record<string, unknown>,
+  methods: readonly unknown[] = [],
+) =>
   renderScreen({
     locale,
     client: fakeClient({
@@ -30,7 +34,7 @@ const login = (locale: 'zh-CN' | 'en-US', context: Record<string, unknown>) =>
         getSession: () => Effect.fail(apiError('AUTH_REQUIRED')),
         listLoginMethods: {
           tenant: { name: 'Demo school' },
-          methods: [],
+          methods,
           passwordRule: { minLength: 15, maxLength: 128 },
         },
       },
@@ -100,6 +104,44 @@ describe('deployment registration in the page shells', () => {
       expect(footer.element().closest('main')).toBeNull()
     }
   })
+
+  it.each([320, 1280])(
+    'keeps the shared-device choice apart from the records at %ipx',
+    async (width) => {
+      await page.viewport(width, 800)
+      await login('zh-CN', { 'site/registration': registration }, [
+        {
+          code: 'cas',
+          type: 'cas',
+          name: 'CAS',
+          prominence: 'primary',
+          recommended: false,
+          icon: null,
+          mode: 'redirect',
+          href: '/api/auth/cas/cas/start',
+        },
+      ])
+      const seat = page.getByTestId('sign-in-shared-device-seat')
+      await expect.element(seat).toBeVisible()
+      const records = page.getByTestId('site-registration').element()
+      if (width === 320) {
+        // the choice follows the ways in; the records alone close the column
+        const gap =
+          records.getBoundingClientRect().top - seat.element().getBoundingClientRect().bottom
+        expect(gap).toBeGreaterThan(80)
+      } else {
+        // the choice closes the form's column, the records the product half
+        expect(seat.element().closest('main')).not.toBeNull()
+        expect(records.closest('aside')).not.toBeNull()
+        // and the two last lines share one bottom edge across the divide
+        expect(
+          Math.abs(
+            records.getBoundingClientRect().bottom - seat.element().getBoundingClientRect().bottom,
+          ),
+        ).toBeLessThanOrEqual(1)
+      }
+    },
+  )
 
   it.each([768, 1280])(
     'shows the configured ICP record in the %ipx application shell',
