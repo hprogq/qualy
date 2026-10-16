@@ -26,8 +26,8 @@ import { parseEnv } from 'node:util'
 // which is what `pnpm dev` is.
 
 export interface DevelopmentEnv {
-  /** where `.env` is, whether it is a file, a pipe, or absent */
-  readonly envFile: string
+  /** where `.env` is; null explicitly inherits an environment already loaded by the caller */
+  readonly envFile: string | null
   /** the manifest every child of this session reads */
   readonly manifest: string
   /** what the person running the command typed; defaults to this process's own */
@@ -39,11 +39,9 @@ export interface DevelopmentEnv {
 /**
  * One environment for every child of a session.
  *
- * Read here rather than inherited, because the supervisor outlives many
- * children: started with `--env-file`, its own `process.env` would hold the
- * `.env` of whenever it happened to start, and every later child would get
- * that instead of what was declared. The shell wins over the file, which is
- * what anyone typing a variable in front of a command expects.
+ * The ordinary entry reads here and the shell wins over the file. A wrapper
+ * that has already loaded the session's environment passes envFile: null;
+ * opening a mounted environment again could block or read a different value.
  */
 export const developmentEnv = ({
   envFile,
@@ -51,7 +49,7 @@ export const developmentEnv = ({
   shell = process.env,
   notice = () => {},
 }: DevelopmentEnv): NodeJS.ProcessEnv => {
-  const declared = readEnvFile(envFile, notice)
+  const declared = envFile === null ? {} : readEnvFile(envFile, notice)
   return {
     ...declared,
     ...shell,

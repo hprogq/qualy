@@ -56,6 +56,11 @@ timeout 3 node -e "require('fs').readFileSync('.env','utf8')"      # exit 124:�
 - 优先级不变:**`.env` 是基线,shell 里显式写的变量覆盖它**;
 - `NODE_ENV` / `QUALY_DEV_SUPERVISED` / `QUALY_CONFIG` 的逻辑一个字没动。
 
+`demo:preview` 的命令入口先用 Node 的 `--env-file-if-exists=.env` 读取环境，再校验演示邮箱域与基线。
+它启动 dev supervisor 时显式传入 `--inherit-env`，对应 `developmentEnv({ envFile: null, ... })`，
+让预览进程继承已经读入的同一份环境，避免再次打开 FIFO。普通 `pnpm dev` 仍在 supervisor 中读取一次。
+测试分别验证普通入口只读一次、已加载入口完全不读，以及真实 FIFO 的单次消费。
+
 **改环境变量 = 重启 `pnpm dev`。** 这本来就是老实的语义:一个进程已经用过的值,
 再读一遍也收不回来。
 
@@ -98,6 +103,7 @@ DEV, PROD}`)。
 | 入口                        | 怎么读 `.env`                    | FIFO 下                 |
 | --------------------------- | -------------------------------- | ----------------------- |
 | `pnpm dev`                  | `developmentEnv()` 一次          | 一次,session 内冻结     |
+| `pnpm demo:preview`         | Node 入口一次，dev 继承环境      | 一次，不在子进程重读    |
 | `pnpm start`                | `node --env-file-if-exists=.env` | 一次,进程生命周期内冻结 |
 | `pnpm qualy` / `pnpm seed`  | `process.loadEnvFile()`          | 一次                    |
 | `docker compose`            | `env_file: - .env`               | 实测 v5.5.0 正常读取    |

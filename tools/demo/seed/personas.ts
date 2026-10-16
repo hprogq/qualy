@@ -2,7 +2,7 @@ import { Effect } from 'effect'
 import { Iam } from '@qualy/plugin-auth/server'
 import type { Story } from './context.ts'
 import type { Student, World } from './world.ts'
-import { demoEmail } from './school.ts'
+import type { DemoAccounts, PersonaKey } from '../accounts.ts'
 
 // The people the demonstration signs in as.
 //
@@ -12,13 +12,6 @@ import { demoEmail } from './school.ts'
 //
 // The system administrator is not among them: that account can change how
 // everybody signs in, and its password comes from the environment only.
-
-export const PERSONA_ACCOUNTS = [
-  { key: 'student', label: '学生', email: demoEmail('student') },
-  { key: 'class-lead', label: '班级综测负责人', email: demoEmail('class-lead') },
-  { key: 'counsellor', label: '辅导员', email: demoEmail('counsellor') },
-  { key: 'lead', label: '综测负责人', email: demoEmail('lead') },
-] as const
 
 export const PERSONA_PASSWORD_REQUIRED =
   'QUALY_DEMO_PERSONA_PASSWORD must name the password the demonstration accounts share (15 characters or more)'
@@ -96,19 +89,24 @@ export const arrangeSignInPage = (world: World, story: Story) =>
   })
 
 /** gives each persona an address and a password, through the product */
-export const openPersonaAccounts = (world: World, story: Story, password: string) =>
+export const openPersonaAccounts = (
+  world: World,
+  story: Story,
+  password: string,
+  accounts: DemoAccounts,
+) =>
   Effect.gen(function* () {
     const iam = yield* Iam
     const provider = (yield* iam.providers.list(world.tenantId)).find(
       (one) => one.code === 'local',
     )!.id
-    const people: Record<(typeof PERSONA_ACCOUNTS)[number]['key'], string> = {
+    const people: Record<PersonaKey, string> = {
       student: world.cast.student.id,
       'class-lead': world.cast.classLead.id,
       counsellor: world.staff.counsellors[0]!.id,
       lead: world.staff.manager.id,
     }
-    for (const account of PERSONA_ACCOUNTS) {
+    for (const account of accounts.personas) {
       const userId = people[account.key]
       const row = (yield* iam.users.get(world.admin, userId)) as { version: number }
       yield* story.step(

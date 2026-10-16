@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { PERSONA_ACCOUNTS, choosePersonaStudents, personaAudience } from '../seed/personas.ts'
+import { choosePersonaStudents, personaAudience } from '../seed/personas.ts'
+import { demoAccountsFor } from '../accounts.ts'
 import { PRIVATE_IDENTITY_ENV, privateIdentityOf } from '../seed/private-identity.ts'
 import { SCHOOL_ORG_RULES, SECONDARY_CLASSES } from '../seed/school.ts'
 import type { Student } from '../seed/world.ts'
@@ -65,11 +66,11 @@ describe('private demonstration identities', () => {
   })
 
   it('uses the receiving demo domain for every named persona', () => {
-    expect(PERSONA_ACCOUNTS.map((account) => account.email)).toEqual([
-      'student@qualy.hprogq.com',
-      'class-lead@qualy.hprogq.com',
-      'counsellor@qualy.hprogq.com',
-      'lead@qualy.hprogq.com',
+    expect(demoAccountsFor('demo.example.edu').personas.map((account) => account.email)).toEqual([
+      'student@demo.example.edu',
+      'class-lead@demo.example.edu',
+      'counsellor@demo.example.edu',
+      'lead@demo.example.edu',
     ])
   })
 })

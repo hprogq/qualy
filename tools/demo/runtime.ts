@@ -96,9 +96,6 @@ export const runOverDemo = async <A>(
   url: string,
   program: Effect.Effect<A, unknown, never>,
 ): Promise<A> => {
-  try {
-    process.loadEnvFile()
-  } catch {}
   process.env.DATABASE_URL = url
   // a key Resend will refuse: whatever a service does while seeding, no
   // message leaves this machine

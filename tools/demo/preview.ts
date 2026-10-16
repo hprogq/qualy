@@ -14,8 +14,9 @@
 import { execFileSync, spawn } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
-import { PERSONA_ACCOUNTS } from './seed/personas.ts'
+import { assertPresenterAccounts, demoAccountsFrom } from './accounts.ts'
 
+const accounts = demoAccountsFrom(process.env)
 const CONTAINER = 'qualy-postgres-demo'
 const DATABASE = 'qualy_demo_preview'
 const BASELINE = process.env.QUALY_DEMO_SNAPSHOT_ROOT ?? 'data/demo-baseline'
@@ -78,18 +79,47 @@ if (!keep) {
   execFileSync('tar', ['-xzf', files, '-C', STORAGE])
 }
 
+// An old baseline can still contain the previous addresses. Fail before
+// starting the application rather than advertise accounts it cannot find.
+const expectedEmails = Object.values(accounts.presenters).map(({ email }) => email)
+const tenantSlug = process.env.QUALY_DEFAULT_TENANT || 'default'
+const foundEmails = execFileSync(
+  'docker',
+  [
+    'exec',
+    '-i',
+    CONTAINER,
+    'psql',
+    '-U',
+    'qualy',
+    '-d',
+    DATABASE,
+    '-XAt',
+    '-v',
+    'ON_ERROR_STOP=1',
+    '-v',
+    `tenant_slug=${tenantSlug}`,
+    ...expectedEmails.flatMap((email, index) => ['-v', `email${index}=${email}`]),
+  ],
+  {
+    input: `select u.email from users u join tenants t on t.id = u.tenant_id where t.slug = :'tenant_slug' and u.deleted_at is null and u.email = any(array[${expectedEmails.map((_, index) => `:'email${index}'`).join(', ')}]);\n`,
+    encoding: 'utf8',
+    stdio: ['pipe', 'pipe', 'inherit'],
+  },
+).trim()
+assertPresenterAccounts(accounts, foundEmails === '' ? [] : foundEmails.split('\n'))
+
 // Sign in privately with the credentials used to generate the baseline.
 console.log('\nsign in at http://localhost:5173 with one of:')
-for (const account of PERSONA_ACCOUNTS) {
+for (const account of accounts.personas) {
   console.log(`  ${account.label}: ${account.email}`)
 }
 console.log('  (use the credentials stored in your private environment file)')
 console.log('')
 
-// the shell's variables win over .env in a development session, so these
-// point the whole session at the preview copy and leave everything else as
-// the developer's own .env has it
-const child = spawn(process.execPath, ['apps/server/src/dev/host.ts'], {
+// This entry has already loaded .env. Every child inherits that same reading,
+// with the database and storage pointing at the isolated preview copy.
+const child = spawn(process.execPath, ['apps/server/src/dev/host.ts', '--inherit-env'], {
   stdio: 'inherit',
   env: {
     ...process.env,

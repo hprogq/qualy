@@ -3,6 +3,7 @@ import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import net from 'node:net'
 import path from 'node:path'
+import { demoAccountsFrom } from '../demo/accounts.ts'
 
 // A whole deployment on this machine, for the end-to-end journeys to walk.
 //
@@ -34,21 +35,6 @@ const edgeName = `${project}-edge`
 // as a real one does - Caddy with a certificate of its own for localhost
 const EDGE_IMAGE =
   'caddy:2.11.4-alpine@sha256:6aeddd44c3078b0f9a35206472a11420648a79c184603ef95957d0a20044cb2b'
-
-/** the accounts the baseline signs in with, and this stack's password for each */
-export const E2E_ACCOUNTS = {
-  admin: { email: 'admin@demo.example.edu', variable: 'QUALY_BASELINE_PASSWORD_ADMIN' },
-  student: { email: 'student@demo.qualy.example', variable: 'QUALY_BASELINE_PASSWORD_STUDENT' },
-  classLead: {
-    email: 'class-lead@demo.qualy.example',
-    variable: 'QUALY_BASELINE_PASSWORD_CLASS_LEAD',
-  },
-  counsellor: {
-    email: 'counsellor@demo.qualy.example',
-    variable: 'QUALY_BASELINE_PASSWORD_COUNSELLOR',
-  },
-  lead: { email: 'assessment-lead@demo.qualy.example', variable: 'QUALY_BASELINE_PASSWORD_LEAD' },
-} as const
 
 /**
  * Fixed and local, never a deployment's: long enough for the password policy
@@ -107,6 +93,7 @@ const down = () => {
 }
 
 const up = async (args: readonly string[]) => {
+  const accounts = demoAccountsFrom(process.env)
   const release = option(args, 'release') ?? 'e2e'
   const baseline = path.resolve(
     option(args, 'baseline') ?? path.join(repoRoot, 'data/demo-baseline'),
@@ -144,6 +131,7 @@ const up = async (args: readonly string[]) => {
       'QUALY_MAIL_SMTP_ALLOW_PLAINTEXT=1',
       'QUALY_MAIL_RESEND_API_KEY=re_e2e_only',
       `QUALY_PUBLIC_URL=${base}`,
+      `QUALY_DEMO_EMAIL_DOMAIN=${accounts.domain}`,
       // the edge stands on this network, and its forwarded headers are believed
       'QUALY_TRUSTED_PROXIES=172.30.55.0/24',
       `QUALY_PORT_BLUE=${String(bluePort)}`,
@@ -156,7 +144,7 @@ const up = async (args: readonly string[]) => {
       'QUALY_NETWORK_GATEWAY=172.30.55.1',
       'QUALY_LOG_FORMAT=json',
       'QUALY_LOG_LEVEL=info',
-      ...Object.entries(E2E_ACCOUNTS).map(
+      ...Object.entries(accounts.presenters).map(
         ([role, account]) => `${account.variable}=${passwordFor(role)}`,
       ),
       '',
@@ -207,7 +195,7 @@ const up = async (args: readonly string[]) => {
         base,
         release,
         accounts: Object.fromEntries(
-          Object.entries(E2E_ACCOUNTS).map(([role, account]) => [
+          Object.entries(accounts.presenters).map(([role, account]) => [
             role,
             { email: account.email, password: passwordFor(role) },
           ]),

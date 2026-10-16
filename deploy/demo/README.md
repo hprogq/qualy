@@ -13,6 +13,7 @@
 | `QUALY_DEMO_DATABASE_URL`           | 空的独立演示数据库，不能是开发库 |
 | `QUALY_DEMO_STORAGE_ROOT`           | 本次生成独占的附件目录           |
 | `QUALY_DEMO_SNAPSHOT_ROOT`          | 本次基线包的输出目录             |
+| `QUALY_DEMO_EMAIL_DOMAIN`           | 本次生成的演示账号邮箱域         |
 | `QUALY_DEMO_ADMIN_PASSWORD`         | 系统管理员的本地生成密码         |
 | `QUALY_DEMO_PERSONA_PASSWORD`       | 四个人物账号的本地生成密码       |
 | `QUALY_DEMO_STUDENT_BUSINESS_NO`    | 学生主角私下提供的 CAS 学号      |
@@ -48,9 +49,10 @@ mise exec -- node --env-file-if-exists=.env --env-file=data/demo-private.env too
 - `QUALY_BASELINE_PASSWORD_ADMIN`、`_STUDENT`、`_CLASS_LEAD`、`_COUNSELLOR`、`_LEAD`：五个账号在这台服务器上的密码，
   每个至少 15 位、不含本人的名字或邮箱。缺任何一个，导入在停服之前就拒绝。
 - `QUALY_PUBLIC_URL`：站点的 https 地址。找回密码、验证邮箱与第三方登录都用它拼回跳地址。
+- `QUALY_DEMO_EMAIL_DOMAIN`：基线中已有的账号邮箱域，必须与生成基线时一致。它与网站地址及 `QUALY_MAIL_FROM` 分别配置；恢复不会修改账号邮箱。脚本在临时库导入完成后、停服前核对五个账号，配置与基线不匹配时拒绝继续。
 - 不设 `QUALY_DEMO_ACCOUNTS`。它会把演示账号连同密码列在登录页上并冻结其凭据；本展示实例需要正常私有登录及可操作的账号流程。
 - GitHub、OIDC、CAS 的提供方、密钥、回调与身份绑定由部署后配置，seed 不创建。CAS 分别通过两项私有学号匹配学生和班级负责人。新增入口必须设置用户类型受众，不接纳普通背景学生。
-- `@qualy.hprogq.com` 是演示收件域，邮件提供方、发件身份、回跳地址和实际收件仍需独立验证。完整恢复会丢失基线生成后新增的外部提供方、密钥、身份绑定和邮箱验证状态。恢复后必须重新配置外部入口并设置受众，重新绑定身份、完成实际邮箱验证，再逐项验证登录与收件；不要伪造验证成功或自动发送演示邮件。
+- 演示收件域由 `QUALY_DEMO_EMAIL_DOMAIN` 指定，邮件提供方、发件身份、回跳地址和实际收件仍需独立验证。完整恢复会丢失基线生成后新增的外部提供方、密钥、身份绑定和邮箱验证状态。恢复后必须重新配置外部入口并设置受众，重新绑定身份、完成实际邮箱验证，再逐项验证登录与收件；不要伪造验证成功或自动发送演示邮件。
 
 Caddy 用 `ops/reverse-proxy/Caddyfile` 那一份：站点导入 `/etc/caddy/qualy/upstream.caddy`，由脚本改写指向服务中的那一色，
 502/503/504 时服务本目录的 `maintenance.html`。首次导入前先放一个指向维护页的片段，站点才加载得起来：
@@ -95,12 +97,14 @@ deploy/demo/restore.sh /opt/qualy/demo-baseline
 
 四个人物账号在服务器上各用对应的 `QUALY_BASELINE_PASSWORD_*`。系统管理员使用 `QUALY_BASELINE_PASSWORD_ADMIN`，同样不公开。完整点击顺序、预期状态和备用案例见[面试演示指南](../../docs/qualy-demo-guide.md)。
 
-| 邮箱                          | 主要用途                                                     |
-| ----------------------------- | ------------------------------------------------------------ |
-| `student@qualy.hprogq.com`    | 第六学期提交、补件、申诉与成绩；前五学期历史及推免材料       |
-| `class-lead@qualy.hprogq.com` | 本班审核、补件、自审回避，以及自己的申报                     |
-| `counsellor@qualy.hprogq.com` | 多轮审核、补件回件、复查、行政认定与导入更正                 |
-| `lead@qualy.hprogq.com`       | 推免复核、六学期阶段性成绩来源、批次管理及显式授权的重新认定 |
-| `admin@qualy.hprogq.com`      | 两院组织、权限与公式共享；通过显式督查任命获得重新认定权     |
+以下邮箱中的 `<邮箱域>` 指 `QUALY_DEMO_EMAIL_DOMAIN`，与站点域名不必相同。既有 dump 保留生成时的邮箱；切换网站入口不要求重建基线或重命名账号。
+
+| 邮箱                  | 主要用途                                                     |
+| --------------------- | ------------------------------------------------------------ |
+| `student@<邮箱域>`    | 第六学期提交、补件、申诉与成绩；前五学期历史及推免材料       |
+| `class-lead@<邮箱域>` | 本班审核、补件、自审回避，以及自己的申报                     |
+| `counsellor@<邮箱域>` | 多轮审核、补件回件、复查、行政认定与导入更正                 |
+| `lead@<邮箱域>`       | 推免复核、六学期阶段性成绩来源、批次管理及显式授权的重新认定 |
+| `admin@<邮箱域>`      | 两院组织、权限与公式共享；通过显式督查任命获得重新认定权     |
 
 其他人物用于填充真实可读的业务历史，不批量创建可登录身份。两名学生主角使用独立的演示学生类型，普通背景学生不在登录入口受众中。教务业务账号没有学工号，也不因此获得系统管理员权限。

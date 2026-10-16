@@ -1,6 +1,4 @@
 export const SCHOOL_NAME = '大连外国语大学'
-export const DEMO_EMAIL_DOMAIN = 'qualy.hprogq.com'
-export const demoEmail = (localPart: string) => `${localPart}@${DEMO_EMAIL_DOMAIN}`
 
 export const SCHOOL_ORG_TYPES = [
   '校区',

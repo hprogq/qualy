@@ -39,11 +39,9 @@ import { productRootFor } from '@qualy/assembly'
 import { compileMessages } from '@qualy/message-build'
 import { installProductMessages } from '@qualy/text/node'
 import { manifestPath } from '../lib/manifest.ts'
+import { demoAccountsFrom } from './accounts.ts'
 
-try {
-  process.loadEnvFile()
-} catch {}
-
+const accounts = demoAccountsFrom(process.env)
 const url = demoUrl()
 privateIdentityOf()
 // the one account that can change how everybody signs in: never a committed value
@@ -92,16 +90,16 @@ try {
       process.env.QUALY_DEFAULT_TENANT || 'default',
     ])
     await bootstrap(client, {
-      adminEmail: 'admin@qualy.hprogq.com',
+      adminEmail: accounts.presenters.admin.email,
       adminPassword,
     })
     await client.query('commit')
   })
   tenantId = (await client.query<{ id: string }>('select id from tenants')).rows[0]!.id
   adminId = (
-    await client.query<{ id: string }>(
-      `select id from users where email = 'admin@qualy.hprogq.com'`,
-    )
+    await client.query<{ id: string }>('select id from users where email = $1', [
+      accounts.presenters.admin.email,
+    ])
   ).rows[0]!.id
 } finally {
   client.release()
@@ -154,7 +152,7 @@ const program = Effect.gen(function* () {
   // the school takes the system on in February 2024, ahead of the first
   // assessment it runs in it
   story.set(cst('2024-02-19T09:30:00'))
-  const world = yield* buildWorld({ tenantId, admin, story, random })
+  const world = yield* buildWorld({ tenantId, admin, story, random, accounts })
   console.log(`world: ${world.students.length} students, ${world.classes.size} classes`)
   yield* arrangeSignInPage(world, story)
   // the students a visitor signs in as stay in the cohort from start to end
@@ -251,7 +249,7 @@ const program = Effect.gen(function* () {
 
   // the demonstration accounts open, a few weeks before the selection
   story.set(new Date(startedAt - 27 * 86_400_000))
-  const personas = yield* openPersonaAccounts(world, story, accountsPassword)
+  const personas = yield* openPersonaAccounts(world, story, accountsPassword, accounts)
 
   yield* runSecondaryCollege(world, story)
 

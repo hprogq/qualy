@@ -32,14 +32,6 @@ here=$(cd "$(dirname "$0")/.." && pwd)
 . "$here/lib.sh"
 baseline=${1:-/opt/qualy/demo-baseline}
 
-# who signs in with a password in the baseline, and where .env keeps the
-# password this deployment gives them (tools/demo/seed.ts, seed/personas.ts)
-ACCOUNTS='admin@qualy.hprogq.com QUALY_BASELINE_PASSWORD_ADMIN
-student@qualy.hprogq.com QUALY_BASELINE_PASSWORD_STUDENT
-class-lead@qualy.hprogq.com QUALY_BASELINE_PASSWORD_CLASS_LEAD
-counsellor@qualy.hprogq.com QUALY_BASELINE_PASSWORD_COUNSELLOR
-lead@qualy.hprogq.com QUALY_BASELINE_PASSWORD_LEAD'
-
 # The database commands run inside the postgres container, which already
 # knows the deployment's user and database: .env is compose's to read, and a
 # value in it (a sender like `Name <addr>`) need not be valid shell.
@@ -47,11 +39,64 @@ in_postgres() {
   compose exec -T postgres sh -c "$1"
 }
 
+# Only the two account-check scalars use this dotenv subset. Other deployment
+# settings keep lib.sh semantics. No shell evaluation or multiline values.
+baseline_scalar() {
+  env_get "$1" "${2:-}" | env LC_ALL=C awk '
+  {
+    if (NR != 1) exit 1
+    sub(/^[ \t\r]+/, "")
+    quote = substr($0, 1, 1)
+    if (quote == "\"" || quote == sprintf("%c", 39)) {
+      value = substr($0, 2)
+      closing = index(value, quote)
+      if (closing == 0 || substr(value, closing + 1) !~ /^[ \t\r]*(#.*)?$/) exit 1
+      $0 = substr(value, 1, closing - 1)
+    } else {
+      sub(/#.*/, "")
+      sub(/[ \t\r]+$/, "")
+    }
+    print
+  }
+  '
+}
+
 [ -f "$env_file" ] || refuse "no $env_file"
 [ -f "$baseline/qualy-demo.dump" ] || refuse "no $baseline/qualy-demo.dump"
 [ -f "$baseline/storage.tar.gz" ] || refuse "no $baseline/storage.tar.gz"
 release=$(env_get QUALY_RELEASE)
 [ -n "$release" ] || refuse "no QUALY_RELEASE in $env_file: which release runs the baseline?"
+# Match tools/demo/accounts.ts without depending on source files in the
+# release image. The domain names accounts already in the dump; it never
+# renames them and is independent of QUALY_PUBLIC_URL and QUALY_MAIL_FROM.
+demo_email_domain=$(baseline_scalar QUALY_DEMO_EMAIL_DOMAIN) ||
+  refuse "QUALY_DEMO_EMAIL_DOMAIN must be a single-line dotenv scalar"
+demo_email_domain=$(printf '%s' "$demo_email_domain" | env LC_ALL=C awk '
+  {
+    sub(/^[ \t\r]+/, ""); sub(/[ \t\r]+$/, "")
+    domain = tolower($0)
+    if (length(domain) == 0 || length(domain) > 238 || domain ~ /[^a-z0-9.-]/) exit 1
+    count = split(domain, labels, ".")
+    if (count < 2 || labels[count] !~ /[a-z]/) exit 1
+    for (i = 1; i <= count; i++) {
+      if (length(labels[i]) == 0 || length(labels[i]) > 63 ||
+          labels[i] !~ /^[a-z0-9]/ || labels[i] !~ /[a-z0-9]$/) exit 1
+    }
+    print domain
+  }
+') || refuse "QUALY_DEMO_EMAIL_DOMAIN must be a valid ASCII email domain (at most 238 characters)"
+[ -n "$demo_email_domain" ] || refuse "set QUALY_DEMO_EMAIL_DOMAIN in $env_file to the baseline's email domain"
+default_tenant=$(baseline_scalar QUALY_DEFAULT_TENANT default) ||
+  refuse "QUALY_DEFAULT_TENANT must be a single-line dotenv scalar"
+# AuthConfig treats an empty value as missing, but preserves quoted spaces.
+[ -n "$default_tenant" ] || default_tenant=default
+# Who signs in with a password in the baseline, and which variable keeps
+# the password this deployment gives them.
+ACCOUNTS="admin@$demo_email_domain QUALY_BASELINE_PASSWORD_ADMIN
+student@$demo_email_domain QUALY_BASELINE_PASSWORD_STUDENT
+class-lead@$demo_email_domain QUALY_BASELINE_PASSWORD_CLASS_LEAD
+counsellor@$demo_email_domain QUALY_BASELINE_PASSWORD_COUNSELLOR
+lead@$demo_email_domain QUALY_BASELINE_PASSWORD_LEAD"
 # every password is there before the site goes down, not found missing after
 unset_passwords=$(printf '%s\n' "$ACCOUNTS" | while read -r email variable; do
   [ -n "$(env_get "$variable")" ] || printf '%s ' "$variable"
@@ -85,6 +130,23 @@ in_postgres 'dropdb -U "$POSTGRES_USER" --if-exists --force "${POSTGRES_DB}_rest
 compose exec -T postgres sh -c \
   'pg_restore -U "$POSTGRES_USER" -d "${POSTGRES_DB}_restore" --no-owner --no-acl --exit-on-error' \
   < "$baseline/qualy-demo.dump"
+
+step="checking the baseline's account domain"
+baseline_account_count=$(compose exec -T postgres sh -c '
+  psql -U "$POSTGRES_USER" -d "${POSTGRES_DB}_restore" -XAt -v ON_ERROR_STOP=1 \
+    -v email_domain="$1" -v tenant_slug="$2"' sh "$demo_email_domain" "$default_tenant" <<'SQL'
+select count(*) as baseline_account_count
+from users u join tenants t on t.id = u.tenant_id
+where t.slug = :'tenant_slug' and u.deleted_at is null
+  and u.email in (
+    'admin@' || :'email_domain', 'student@' || :'email_domain',
+    'class-lead@' || :'email_domain', 'counsellor@' || :'email_domain',
+    'lead@' || :'email_domain'
+  );
+SQL
+) || refuse "could not verify the baseline's accounts; the serving color has not been stopped"
+[ "$baseline_account_count" = 5 ] ||
+  refuse "baseline accounts do not match QUALY_DEMO_EMAIL_DOMAIN and QUALY_DEFAULT_TENANT; the serving color has not been stopped"
 
 step="stopping the serving color"
 echo "$step"

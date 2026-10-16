@@ -10,13 +10,13 @@ import { makeNames } from './names.ts'
 import type { Random, Story } from './context.ts'
 import { choosePersonaStudents } from './personas.ts'
 import { privateIdentityOf } from './private-identity.ts'
+import type { DemoAccounts } from '../accounts.ts'
 import {
   SCHOOL_NAME,
   SCHOOL_ORG_TYPES,
   SCHOOL_ORG_RULES,
   SECONDARY_CLASSES,
   SECONDARY_MAJORS,
-  demoEmail,
   type SecondaryMajorKey,
 } from './school.ts'
 
@@ -153,9 +153,10 @@ export const buildWorld = (input: {
   admin: Principal
   story: Story
   random: Random
+  accounts: DemoAccounts
 }) =>
   Effect.gen(function* () {
-    const { tenantId, admin, story, random } = input
+    const { tenantId, admin, story, random, accounts } = input
     const privateIdentity = privateIdentityOf()
     const org = yield* Org
     const iam = yield* Iam
@@ -569,12 +570,12 @@ export const buildWorld = (input: {
       })
     const schoolFormulaAuthor = yield* createOffice(
       '校级综测规则维护',
-      demoEmail('school-rules'),
+      accounts.offices.schoolRules,
       academicOffice,
     )
     const primaryOffice = yield* createOffice(
       '软件学院教务办公室',
-      demoEmail('software-office'),
+      accounts.offices.software,
       collegeOffice,
     )
     yield* grant(primaryOffice.id, officeRecorder, college, 'subtree')
@@ -695,7 +696,7 @@ export const buildWorld = (input: {
     }
     const secondaryOffice = yield* createOffice(
       '英语学院教务办公室',
-      demoEmail('english-office'),
+      accounts.offices.english,
       secondaryOfficeNode,
     )
     yield* grant(secondaryOffice.id, officeRecorder, secondaryCollege, 'subtree')

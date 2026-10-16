@@ -31,7 +31,9 @@ import { productRootFor } from '@qualy/assembly'
 import { compileMessages } from '@qualy/message-build'
 import { installProductMessages } from '@qualy/text/node'
 import { manifestPath } from '../lib/manifest.ts'
+import { demoAccountsFrom } from './accounts.ts'
 
+const accounts = demoAccountsFrom(process.env)
 const url = demoUrl()
 const argv = process.argv.slice(2)
 const options = seedOptionsOf(argv)
@@ -50,8 +52,15 @@ await runOverDemo(
     const lead = (
       (yield* runSql(sql`
         select u.id, u.tenant_id from users u
-        where u.email = 'admin@qualy.hprogq.com'`)) as { rows: { id: string; tenant_id: string }[] }
-    ).rows[0]!
+        where u.email = ${accounts.presenters.admin.email}`)) as {
+        rows: { id: string; tenant_id: string }[]
+      }
+    ).rows[0]
+    if (lead === undefined) {
+      return yield* Effect.die(
+        new Error('The baseline has no administrator at QUALY_DEMO_EMAIL_DOMAIN'),
+      )
+    }
     const as = principalOf(lead.tenant_id, lead.id)
     const batches = (
       (yield* runSql(sql`select id, name, status from assessment_batches order by created_at`)) as {
@@ -211,7 +220,7 @@ await runOverDemo(
     }
 
     // the two students a visitor signs in as, batch by batch
-    const { batches: named, standings } = yield* personaStandings
+    const { batches: named, standings } = yield* personaStandings(accounts)
     console.log('\nthe demonstration students, batch by batch (claims of their own, total):')
     for (const name of named) {
       const cells = standings
@@ -228,7 +237,7 @@ await runOverDemo(
     // what each demonstration account opens onto; a run stopped short of
     // the last term (QUALY_DEMO_TERMS) is not asked for what only it writes
     const lastTerm = batches.some((batch) => batch.name === TERM_PLANS.at(-1)!.name)
-    const situations = yield* personaSituations
+    const situations = yield* personaSituations(accounts)
     const { missing, notExpected } = judgeSituations(situations, { ...options, lastTerm })
     console.log(
       `\nwhat the demonstration accounts open onto (selection at ${options.stage}${options.migrationBefore ? ', route change left for the demonstration' : ''}):`,
@@ -246,6 +255,6 @@ await runOverDemo(
       process.exitCode = 1
     }
     console.log('\naccount and active-batch coverage:')
-    if ((yield* checkDemoCoverage).length > 0) process.exitCode = 1
+    if ((yield* checkDemoCoverage(accounts)).length > 0) process.exitCode = 1
   }) as Effect.Effect<void, unknown, never>,
 )

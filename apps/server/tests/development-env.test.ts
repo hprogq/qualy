@@ -2,7 +2,7 @@ import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { developmentEnv } from '../src/dev/env.ts'
 
 // What one development session's environment is, and when it is read.
@@ -22,6 +22,7 @@ import { developmentEnv } from '../src/dev/env.ts'
 const made: string[] = []
 
 afterEach(() => {
+  vi.restoreAllMocks()
   for (const dir of made.splice(0)) fs.rmSync(dir, { recursive: true, force: true })
 })
 
@@ -72,6 +73,7 @@ describe("a development session's environment", () => {
   it('reads a plain .env and lets the shell override it', () => {
     const dir = workspace()
     fs.writeFileSync(path.join(dir, '.env'), 'PORT=3111\nDATABASE_URL=postgres://file/x\n')
+    const read = vi.spyOn(fs, 'readFileSync')
     const env = developmentEnv({
       envFile: path.join(dir, '.env'),
       manifest: '/repo/qualy.yml',
@@ -84,6 +86,30 @@ describe("a development session's environment", () => {
     expect(env.NODE_ENV).toBe('development')
     expect(env.QUALY_DEV_SUPERVISED).toBe('1')
     expect(env.QUALY_CONFIG).toBe('/repo/qualy.yml')
+    expect(read).toHaveBeenCalledExactlyOnceWith(path.join(dir, '.env'), 'utf8')
+  })
+
+  it('inherits an already-loaded environment without opening a file or mounted pipe', () => {
+    const read = vi.spyOn(fs, 'readFileSync').mockImplementation(() => {
+      throw new Error('The caller already consumed the mounted environment')
+    })
+    const notice = vi.fn()
+    const shell = { PORT: '3222', DATABASE_URL: 'postgres://inherited/preview' }
+    const env = developmentEnv({
+      envFile: null,
+      manifest: '/repo/qualy.yml',
+      shell,
+      notice,
+    })
+    expect(read).not.toHaveBeenCalled()
+    expect(notice).not.toHaveBeenCalled()
+    expect(env).toEqual({
+      ...shell,
+      NODE_ENV: 'development',
+      QUALY_DEV_SUPERVISED: '1',
+      QUALY_CONFIG: '/repo/qualy.yml',
+    })
+    expect(shell).toEqual({ PORT: '3222', DATABASE_URL: 'postgres://inherited/preview' })
   })
 
   it('runs with no .env at all', () => {

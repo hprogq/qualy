@@ -4,7 +4,7 @@ import { Assessment } from '@qualy/plugin-assessment/testkit'
 import { runSql } from '@qualy/plugin-database/testkit'
 import type { SeedOptions } from './options.ts'
 import { principalOf } from './seed/context.ts'
-import { PERSONA_ACCOUNTS } from './seed/personas.ts'
+import type { DemoAccounts, PersonaKey } from './accounts.ts'
 import { SECONDARY_BATCHES } from './seed/secondary.ts'
 
 // What each demonstration account opens onto, counted.
@@ -20,7 +20,7 @@ import { SECONDARY_BATCHES } from './seed/secondary.ts'
 // A count only says something about the account it is listed under: what
 // staff did is counted by who did it, not batch-wide.
 
-type Key = (typeof PERSONA_ACCOUNTS)[number]['key']
+type Key = PersonaKey
 
 /**
  * What a situation needs beyond the seeder having written it: the selection
@@ -116,17 +116,17 @@ const everyPage = <T, E, R>(
     }
   })
 
-export const personaSituations = Effect.gen(function* () {
+export const personaSituations = Effect.fnUntraced(function* (accounts: DemoAccounts) {
   const assessment = yield* Assessment
   const people = (
     (yield* runSql(sql`
       select u.id, u.email, u.tenant_id from users u
-       where u.email = any(${PERSONA_ACCOUNTS.map((account) => account.email)}::text[])`)) as {
+       where u.email = any(${accounts.personas.map((account) => account.email)}::text[])`)) as {
       rows: { id: string; email: string; tenant_id: string }[]
     }
   ).rows
   const idOf = (key: Key) => {
-    const email = PERSONA_ACCOUNTS.find((account) => account.key === key)!.email
+    const email = accounts.personas.find((account) => account.key === key)!.email
     return people.find((person) => person.email === email)?.id ?? null
   }
   const tenantId = people[0]?.tenant_id
@@ -636,7 +636,7 @@ export const judgeStandings = (
 }
 
 /** the two students' standings in every batch, oldest batch first */
-export const personaStandings = Effect.gen(function* () {
+export const personaStandings = Effect.fnUntraced(function* (accounts: DemoAccounts) {
   const assessment = yield* Assessment
   const batches = (
     (yield* runSql(
@@ -648,14 +648,14 @@ export const personaStandings = Effect.gen(function* () {
   const people = (
     (yield* runSql(sql`
       select u.id, u.email, u.tenant_id from users u
-       where u.email = any(${PERSONA_ACCOUNTS.map((account) => account.email)}::text[])`)) as {
+       where u.email = any(${accounts.personas.map((account) => account.email)}::text[])`)) as {
       rows: { id: string; email: string; tenant_id: string }[]
     }
   ).rows
   const standings: Standing[] = []
   for (const batch of batches) {
     for (const account of STUDENT_ACCOUNTS) {
-      const email = PERSONA_ACCOUNTS.find((one) => one.key === account)!.email
+      const email = accounts.personas.find((one) => one.key === account)!.email
       const person = people.find((one) => one.email === email)
       if (person === undefined) continue
       const participant = (

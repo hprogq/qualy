@@ -22,6 +22,12 @@ const FAKE_DOCKER = `#!/bin/sh
 printf '%s\\n' "$*" >> "$FAKE/docker.log"
 if [ "$1" = compose ]; then
   case "$*" in
+    *'-v email_domain='*)
+      cat > "$FAKE/baseline-account-query.sql"
+      if [ "\${FAKE_FAIL_BASELINE_QUERY:-}" = 1 ]; then echo 'account query failed' >&2; exit 2; fi
+      printf '%s\\n' "\${FAKE_BASELINE_ACCOUNT_COUNT:-5}"
+      exit 0
+      ;;
     *'select name from mikro_orm_migrations order by name'*)
       if [ "\${FAKE_FAIL_LEDGER:-}" = 1 ]; then echo 'ledger query failed' >&2; exit 2; fi
       [ ! -f "$FAKE/ledger" ] || cat "$FAKE/ledger"
@@ -125,6 +131,141 @@ beforeEach(() => {
 
 afterEach(() => {
   fs.rmSync(fake, { recursive: true, force: true })
+})
+
+describe('the demonstration baseline account domain', () => {
+  const restore = (domain: string | undefined, extra: Record<string, string> = {}) => {
+    const baseline = path.join(fake, 'baseline')
+    fs.mkdirSync(baseline)
+    fs.writeFileSync(path.join(baseline, 'qualy-demo.dump'), '')
+    fs.writeFileSync(path.join(baseline, 'storage.tar.gz'), '')
+    if (domain !== undefined) {
+      fs.appendFileSync(envFile, `QUALY_DEMO_EMAIL_DOMAIN=${domain}\n`)
+    }
+    for (const account of ['ADMIN', 'STUDENT', 'CLASS_LEAD', 'COUNSELLOR', 'LEAD']) {
+      fs.appendFileSync(envFile, `QUALY_BASELINE_PASSWORD_${account}=fixture-password-only\n`)
+    }
+    return spawnSync('sh', [path.join(ROOT, 'deploy/demo/restore.sh'), baseline], {
+      env: {
+        ...process.env,
+        PATH: `${path.join(fake, 'bin')}:${process.env.PATH ?? ''}`,
+        FAKE: fake,
+        QUALY_ENV_FILE: envFile,
+        QUALY_PROXY: 'none',
+        ...extra,
+      },
+      encoding: 'utf8',
+    })
+  }
+
+  it('uses the configured account domain independently of the website and sender', () => {
+    fs.appendFileSync(
+      envFile,
+      'QUALY_PUBLIC_URL=https://site.example.test\nQUALY_MAIL_FROM=Qualy <mail@sender.example.test>\n',
+    )
+    const ran = restore('  MAIL.Example.Test  ')
+    expect(ran.status, ran.stderr).toBe(0)
+    const asked = fs.readFileSync(path.join(fake, 'docker.log'), 'utf8')
+    for (const [local, variable] of [
+      ['admin', 'ADMIN'],
+      ['student', 'STUDENT'],
+      ['class-lead', 'CLASS_LEAD'],
+      ['counsellor', 'COUNSELLOR'],
+      ['lead', 'LEAD'],
+    ]) {
+      expect(asked).toContain(
+        `auth set-password --email ${local}@mail.example.test --from-env QUALY_BASELINE_PASSWORD_${variable}`,
+      )
+    }
+    expect(asked).not.toContain('fixture-password-only')
+    expect(asked.indexOf('-v email_domain=')).toBeLessThan(asked.indexOf('stop -t 40'))
+  })
+
+  it.each([
+    '"mail.example.test"',
+    "'mail.example.test'",
+    'mail.example.test # deployment mailbox domain',
+    '"  MAIL.Example.Test  " # deployment mailbox domain',
+    "'  MAIL.Example.Test  ' # deployment mailbox domain",
+  ])('reads the same dotenv scalar as the demo tools: %s', (domain) => {
+    const ran = restore(domain)
+    expect(ran.status, ran.stderr).toBe(0)
+    expect(fs.readFileSync(path.join(fake, 'docker.log'), 'utf8')).toContain(
+      'auth set-password --email admin@mail.example.test --from-env QUALY_BASELINE_PASSWORD_ADMIN',
+    )
+  })
+
+  it.each(['"demo-campus" # tenant comment', "'demo-campus'", 'demo-campus # tenant comment'])(
+    'checks the decoded tenant slug without treating it as shell syntax: %s',
+    (tenant) => {
+      fs.appendFileSync(envFile, `QUALY_DEFAULT_TENANT=${tenant}\n`)
+      const ran = restore('mail.example.test')
+      expect(ran.status, ran.stderr).toBe(0)
+      expect(fs.readFileSync(path.join(fake, 'docker.log'), 'utf8')).toContain(
+        'sh mail.example.test demo-campus',
+      )
+    },
+  )
+
+  it.each([
+    ['', 'default'],
+    ['""', 'default'],
+    ["''", 'default'],
+    [' # use the default tenant', 'default'],
+    ['"" # use the default tenant', 'default'],
+    ['" "', ' '],
+  ])(
+    'matches AuthConfig tenant fallback without trimming quoted spaces: %s',
+    (tenant, expected) => {
+      fs.appendFileSync(envFile, `QUALY_DEFAULT_TENANT=${tenant}\n`)
+      const ran = restore('mail.example.test')
+      expect(ran.status, ran.stderr).toBe(0)
+      expect(fs.readFileSync(path.join(fake, 'docker.log'), 'utf8')).toContain(
+        `sh mail.example.test ${expected}\n`,
+      )
+    },
+  )
+
+  it.each([
+    undefined,
+    '',
+    'localhost',
+    '127.0.0.1',
+    'https://demo.example.test',
+    'demo.example.test:443',
+    'user@demo.example.test',
+    '-demo.example.test',
+    'demo-.example.test',
+    'demo..example.test',
+    '"mail.example.test',
+    "'mail.example.test' trailing-data",
+    '"mail.example.test\nother.example.test"',
+    '"mail.example.test\n"',
+    `${'a'.repeat(64)}.example.test`,
+    `${'a'.repeat(63)}.${'b'.repeat(63)}.${'c'.repeat(63)}.${'d'.repeat(48)}`,
+  ])('rejects an invalid or missing domain before contacting the deployment: %s', (domain) => {
+    const ran = restore(domain)
+    expect(ran.status).toBe(1)
+    expect(ran.stderr).toContain('QUALY_DEMO_EMAIL_DOMAIN')
+    expect(fs.existsSync(path.join(fake, 'docker.log'))).toBe(false)
+  })
+
+  it('keeps the serving color up when the restored accounts do not match', () => {
+    const ran = restore('other.example.test', { FAKE_BASELINE_ACCOUNT_COUNT: '0' })
+    expect(ran.status).toBe(1)
+    expect(ran.stderr).toContain('baseline accounts do not match')
+    const asked = fs.readFileSync(path.join(fake, 'docker.log'), 'utf8')
+    expect(asked).toContain('pg_restore')
+    expect(asked).not.toContain('stop -t')
+    expect(asked).not.toContain('auth set-password')
+  })
+
+  it('keeps the serving color up when the account check cannot run', () => {
+    const ran = restore('mail.example.test', { FAKE_FAIL_BASELINE_QUERY: '1' })
+    expect(ran.status).toBe(1)
+    expect(ran.stderr).toContain('could not verify the baseline')
+    expect(fs.readFileSync(path.join(fake, 'docker.log'), 'utf8')).not.toContain('stop -t')
+  })
 })
 
 describe("the deploy scripts' record of what serves", () => {

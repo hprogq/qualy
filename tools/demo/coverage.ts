@@ -4,7 +4,7 @@ import { Assessment } from '@qualy/plugin-assessment/testkit'
 import { FormulaTemplateLibrary } from '@qualy/plugin-assessment-formula/testkit'
 import { runSql } from '@qualy/plugin-database/testkit'
 import { principalOf } from './seed/context.ts'
-import { PERSONA_ACCOUNTS } from './seed/personas.ts'
+import type { DemoAccounts } from './accounts.ts'
 import { TERM_PLANS } from './seed/term.ts'
 import { SECONDARY_BATCHES } from './seed/secondary.ts'
 import { termsToSeed } from './options.ts'
@@ -104,7 +104,7 @@ const historyCounts = (histories: readonly QueueHistory[]) => {
 }
 
 /** Checks each active main batch separately so one rich batch cannot hide another empty one. */
-export const checkDemoCoverage = Effect.gen(function* () {
+export const checkDemoCoverage = Effect.fnUntraced(function* (accounts: DemoAccounts) {
   const assessment = yield* Assessment
   const templates = yield* FormulaTemplateLibrary
   const problems: string[] = []
@@ -115,7 +115,7 @@ export const checkDemoCoverage = Effect.gen(function* () {
   const people = (
     (yield* runSql(sql`select u.id, u.tenant_id, u.email, u.primary_org_node_id,
     ut.code as type_code from users u join user_types ut on ut.id = u.user_type_id
-    where u.email = any(${['admin@qualy.hprogq.com', ...PERSONA_ACCOUNTS.map((a) => a.email)]}::text[])`)) as {
+    where u.email = any(${[accounts.presenters.admin.email, ...accounts.personas.map((a) => a.email)]}::text[])`)) as {
       rows: {
         id: string
         tenant_id: string
@@ -125,7 +125,7 @@ export const checkDemoCoverage = Effect.gen(function* () {
       }[]
     }
   ).rows
-  const admin = people.find((person) => person.email === 'admin@qualy.hprogq.com')
+  const admin = people.find((person) => person.email === accounts.presenters.admin.email)
   check(people.length === 5, 'all five private presenter accounts exist')
   if (admin === undefined) return problems
   const t = admin.tenant_id
@@ -152,7 +152,7 @@ export const checkDemoCoverage = Effect.gen(function* () {
   check(exposed === 0, 'ordinary students are excluded from every enabled login provider')
   for (const key of ['student', 'class-lead'] as const) {
     const person = people.find(
-      (one) => one.email === PERSONA_ACCOUNTS.find((one) => one.key === key)!.email,
+      (one) => one.email === accounts.personas.find((one) => one.key === key)!.email,
     )
     check(person?.type_code === 'demo-student', `${key} has the demonstration student type`)
   }
@@ -188,7 +188,7 @@ export const checkDemoCoverage = Effect.gen(function* () {
   for (const batch of mainActive) {
     for (const key of ['student', 'class-lead'] as const) {
       const person = people.find(
-        (one) => one.email === PERSONA_ACCOUNTS.find((one) => one.key === key)!.email,
+        (one) => one.email === accounts.personas.find((one) => one.key === key)!.email,
       )!
       const counts = (
         (yield* runSql(sql`select
@@ -209,7 +209,7 @@ export const checkDemoCoverage = Effect.gen(function* () {
     for (const key of ['class-lead', 'counsellor', 'lead'] as const) {
       if (key === 'lead' && batch.name === TERM_PLANS.at(-1)!.name) continue
       const person = people.find(
-        (one) => one.email === PERSONA_ACCOUNTS.find((one) => one.key === key)!.email,
+        (one) => one.email === accounts.personas.find((one) => one.key === key)!.email,
       )!
       const inbox = yield* assessment.listReviewInbox(
         t,

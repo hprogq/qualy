@@ -161,8 +161,10 @@ const manifest = manifestPath()
 const productRoot = productRootFor(manifest)
 // The session's environment, fixed here: every backend, every development
 // service and every reload of either inherits this one reading of `.env`.
+// Wrappers such as demo:preview explicitly inherit their already-loaded
+// environment so a mounted `.env` is not opened a second time.
 const env = developmentEnv({
-  envFile: path.join(productRoot, '.env'),
+  envFile: process.argv.includes('--inherit-env') ? null : path.join(productRoot, '.env'),
   manifest,
   notice: (message) => say(message),
 })
