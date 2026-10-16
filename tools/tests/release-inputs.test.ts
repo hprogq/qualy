@@ -1,5 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import { createHash } from 'node:crypto'
+import { createRequire } from 'node:module'
 import { describe, expect, it } from 'vitest'
 
 // What a release is built on, named exactly.
@@ -34,6 +36,27 @@ const toolchainNode = () => {
 }
 
 describe('what a release is built on', () => {
+  it('ships the official fixed DOMPurify bytes through Monaco, not only its dependency', () => {
+    const fromFormula = createRequire(
+      path.join(ROOT, 'packages/plugins/assessment/formula/package.json'),
+    )
+    const vendored = fromFormula.resolve('monaco-editor/base/browser/dompurify/dompurify')
+    const declared = createRequire(vendored).resolve('dompurify')
+    const source = fs.readFileSync(vendored, 'utf8')
+    // Upstream 3.4.16's npm ESM artifact, with only the unavailable source-map
+    // trailer removed, exactly as Monaco's original vendoring does.
+    expect(createHash('sha256').update(source).digest('hex')).toBe(
+      '9c52577e368cdc6f3fb2bc87de222c8139e30655eef54a2bebde6d4b0a85ccb8',
+    )
+    expect(source).toBe(
+      fs
+        .readFileSync(path.join(path.dirname(declared), 'purify.es.mjs'), 'utf8')
+        .replace(/\n\/\/# sourceMappingURL=purify\.es\.mjs\.map\s*$/, '\n'),
+    )
+    expect(source).toContain('@license DOMPurify 3.4.16')
+    expect(source).not.toContain('sourceMappingURL')
+  })
+
   it('starts every image from the node the toolchain pins, by digest', () => {
     const node = toolchainNode()
     for (const dockerfile of DOCKERFILES) {
