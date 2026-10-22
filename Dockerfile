@@ -30,7 +30,7 @@
 # the exact node the repository's toolchain pins (mise.toml, CI), by digest:
 # a tag is a name somebody can move, and a release rebuilt from the same
 # commit has to start from the same bytes
-ARG NODE_IMAGE=node:24.21.0-bookworm-slim@sha256:d6aa754f16b3197301076f047b5def2f02ea1dbbc2ca920407d46d7ec7f87b20
+ARG NODE_IMAGE=node:24.22.1-bookworm-slim@sha256:55fb5f5a527ea2c5c4a95f963e48ef90aa38c7b346054fdc8ee9957a2b55d205
 
 FROM ${NODE_IMAGE} AS source
 RUN corepack enable
@@ -73,12 +73,6 @@ COPY --from=web /app/.qualy/i18n/server /app/.qualy/i18n/server
 
 # --- the image ------------------------------------------------------------------
 FROM ${NODE_IMAGE}
-# The upstream rebuild includes the PCRE2 security update, but still carries
-# perl-base deb12u3. Install only its exact Debian security revision; keeping
-# the version explicit makes an unavailable fix fail rather than drift.
-RUN apt-get update \
- && apt-get install -y --no-install-recommends --only-upgrade perl-base=5.36.0-7+deb12u4 \
- && rm -rf /var/lib/apt/lists/*
 ARG QUALY_RELEASE=dev
 ARG QUALY_REVISION=unknown
 LABEL org.opencontainers.image.title="qualy-server" \
