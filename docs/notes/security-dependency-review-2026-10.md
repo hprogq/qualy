@@ -46,7 +46,16 @@ Qualy 的部分服务端出站请求使用 Node `fetch`，可进入自动解压�
 
 [发布输入测试](../../tools/tests/release-inputs.test.ts) 从公式包解析实际安装的 Monaco，核对 vendored 文件摘要、许可证头及其与 npm 产物的字节一致性。[浏览器回归](../../packages/plugins/assessment/formula/tests/monaco-sanitizer.browser.test.tsx) 直接导入这个文件，复核官方修复对应的五种 IN_PLACE hook 移除子树情形；公式编辑器原有测试也覆盖升级后的装配路径。未来 Monaco 自行升级净化器后，应同时移除补丁、约束与对应的固定摘要。
 
-## TypeScript 原生编译器内嵌 Go 的三个告警
+## HTTP 重定向依赖补丁（2026-10-22）
+
+本轮镜像扫描还报告 `follow-redirects@1.16.0` 的 CVE-2026-111755、CVE-2026-111756。
+依赖来源为 COS 插件的 `qcloud-cos-sts@3.1.3 → axios@1.20.0 → follow-redirects`。
+两项问题分别涉及自定义敏感头名称的正则转义和数组形式请求头在跨域重定向时的凭据清理，
+均由上游 [1.16.1 补丁](https://github.com/follow-redirects/follow-redirects/releases/tag/v1.16.1)修复。
+本次由 pnpm 更新该插件的间接依赖解析，lock 只变化这一包的版本、完整性摘要及引用；
+没有新增 override 或升级 Axios。COS 的真实桶验证由正式发布工作流执行。
+
+## TypeScript 原生编译器内嵌 Go 的告警
 
 扫描定位到 `@typescript/typescript-linux-x64@7.0.2/lib/tsc` 内嵌的 Go 1.26.4，报告修复版为 Go 1.26.9 或 1.27.2。核对时 npm 的 TypeScript 和原生平台包最新稳定版均仍为 7.0.2；没有可直接替换的稳定修复二进制。本次保留该工具链，不引入预发布 TypeScript 或自建 Go 编译流程，也不添加扫描忽略规则。
 
@@ -66,3 +75,18 @@ Qualy 的部分服务端出站请求使用 Node `fetch`，可进入自动解压�
 | CVE-2026-78667 | Go HTTP 文件服务解析恶意 Range header                 | 编译器不使用 FileServer、ServeContent 或 ServeFile |
 
 因此这三个具体漏洞在当前部署和调用方式下不适用，可以附上述证据进行告警处置；这不代表 Go 标准库版本已经修复。扫描仍可能按二进制版本报告它们。未来升级 TypeScript、改变编译器启动参数、引入 HTTP/TLS 接口或改变 sandbox 部署时必须重新核对，稳定上游二进制提供修复后仍应正常升级。
+
+### 2026-10-22 新增两项告警
+
+本轮扫描还按同一编译器二进制的依赖版本报告以下两项，告警保持 Open，未添加忽略规则：
+
+- [CVE-2026-111943](https://pkg.go.dev/vuln/GO-2026-6809)：`crypto/x509.Certificate.Verify` 对已不可信中间证书的拒绝列表；修复版为 Go 1.26.10 或 1.27.3。
+- [CVE-2026-56851](https://pkg.go.dev/vuln/GO-2026-6629)：`golang.org/x/text/secure/precis` 的 Nickname profile 在特制输入和短目标缓冲区下可能 panic；修复版为 x/text 0.41.0。
+
+重新取得上文相同提交的官方 TypeScript Go 源码，对 `cmd/tsgo` 以 `GOOS=linux`、
+`GOARCH=amd64`、`GOWORK=off` 执行 `go list -deps ./cmd/tsgo`，成功解析实际目标的传递依赖图。
+结果不包含 `crypto/x509`、`crypto/tls` 或 `golang.org/x/text/secure/precis`；
+x/text 仅包含 language、transform、unicode/norm 及其 internal 包。
+对非测试源码搜索受影响包和符号也未发现生产调用。
+因此这两项在当前编译器调用路径下不适用；这是对应源码依赖图的核对，没有重编译或替换 npm 分发的二进制。
+2026-10-22 查询 npm 稳定 TypeScript 仍为 7.0.2，继续跟踪上游重建，版本变化时重新评估。
