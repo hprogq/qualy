@@ -36,29 +36,35 @@ WebSocket 会话 span 在握手时结束、语句级数据库追踪与遥测导�
 备案组件的 Fast Refresh 边界、Web 构建请求预算和本轮安全告警已完成修复与验证；
 依赖处置依据见[安全核对](docs/notes/security-dependency-review-2026-10.md)。
 
+Node 安全运行时、COS 间接 HTTP 重定向依赖补丁和 GitHub 登录阶段诊断已随
+`v0.1.0-rc.35` 上线。三个生产应用容器均实测为 Node 24.22.1。
+
 ## 最近验证的代码状态
 
-rc.34 源码提交 `19d565ec8209c1ef12e3058a3049becd808fb6ba` 的最终 CI 全部成功：
+rc.35 源码提交 `5e68131186724f032386f3c39dab85b0d069fbbe` 的最终 CI 全部成功：
 
 - static、Node CI、Chromium、WebKit、image、release-eligible 全部通过；
-- Node：433 个测试文件通过、3 个跳过；3354 个测试通过、29 个跳过；
+- Node：433 个测试文件通过、3 个跳过；3371 个测试通过、29 个跳过；
 - Chromium：133 个测试文件、1749 个测试通过；
 - WebKit：5 个测试文件、50 个测试通过；
-- 正式 release 的 COS、三个镜像构建与检查、smoke、推送和 sourcemap 任务通过。
-- 2026-10-16 复核 GitHub Code Scanning 和 Dependabot 均为 0 项 Open；其中三个内嵌 Go 告警依据实际不可达路径处置，不能解释为已升级 Go。
+- 正式 release 的 COS 58 个测试全部通过、无跳过；三个镜像构建与检查、smoke、推送和 sourcemap 任务通过，333 份 sourcemap 登记完成。
+- CodeQL 的 JavaScript/TypeScript 和 Actions 分析通过；镜像中两项 HTTP 重定向依赖告警已随补丁消除。
+- 2026-10-22 复核仍有两项编译器内嵌 Go 告警 Open，对应源码的 Linux 目标依赖图不包含受影响包，依据见[安全核对](docs/notes/security-dependency-review-2026-10.md)。另有两项 Vitest 开发依赖中危告警待跟踪，不进入生产镜像。
 
-CI：https://github.com/hprogq/qualy/actions/runs/38896613995
+CI：https://github.com/hprogq/qualy/actions/runs/39724436009
 
-Release：https://github.com/hprogq/qualy/actions/runs/38898604227
+Release：https://github.com/hprogq/qualy/actions/runs/39726170976
+
+Deploy：https://github.com/hprogq/qualy/actions/runs/39727074440
 
 后续提交若修改代码，应按[验证指南](docs/development/validation.md)重新选择检查；这里的结果不能替代新改动的验收。
 
 ## 生产状态
 
-- 2026-10-16 部署 `v0.1.0-rc.34`（revision `19d565ec8209c1ef12e3058a3049becd808fb6ba`），服务颜色为 blue，Web release 为 `r_VpEnXFsOm8OypOjQcdHR5A`。部署检查和 doctor 全部通过。
+- 2026-10-22 部署 `v0.1.0-rc.35`（revision `5e68131186724f032386f3c39dab85b0d069fbbe`），服务颜色为 green，Web release 为 `r_6EUdv9tJt8nTaddG6Ub2Dw`。部署工作流、doctor 和独立公网 release 核对全部通过，三个运行容器的 Node、release、revision 逐一一致。
 - 新入口作为唯一应用主站；旧入口的普通导航由边缘永久跳转，旧 API、写请求及 WebSocket 不跨域续接。新入口使用独立的普通 ACME 签发策略。
-- 已验证真实本地登录、会话及退出、一个现有本地附件下载、三种外部登录入口生成的新回调地址，以及生产 COS 临时对象的写入、签名下载、CORS 和精确清理。未代替用户完成外部提供方授权，也未发送真实邮件。
-- GitHub token 端点出现出站连接超时，已用宿主机单域名解析覆盖缓解；调整后首个登录仍超时，其后五次真实登录均成功，已核对生产登录记录。覆盖需要维护，诊断代码改进尚未部署，见[排查记录](docs/notes/github-oauth-connectivity.md)。
+- rc.34 上线时已验证真实本地登录、会话及退出、一个现有本地附件下载、三种外部登录入口生成的新回调地址，以及生产 COS 临时对象的写入、签名下载、CORS 和精确清理。未代替用户完成外部提供方授权，也未发送真实邮件；rc.35 本轮未重复真人授权或生产存储写入。
+- GitHub token 端点出现出站连接超时，已用宿主机单域名解析覆盖缓解；调整后首个登录仍超时，其后五次真实登录均成功，已核对生产登录记录。覆盖需要维护，阶段诊断已随 rc.35 部署，见[排查记录](docs/notes/github-oauth-connectivity.md)。
 - 2026-10-15 生产数据库启用 `pg_stat_statements`（含 `track_planning`），扩展装在 `monitoring` schema；
   设置写在数据卷的 `postgresql.auto.conf`，不在 compose 文件里。查看与开关方式见
   `deploy/README.md` 的 Statement statistics（`deploy/query-stats.sh` 已随发布上机）。
