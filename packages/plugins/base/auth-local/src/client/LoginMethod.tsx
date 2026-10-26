@@ -224,7 +224,10 @@ export default function LocalLoginMethod({
         remember(keep && !onSharedDevice() ? address : null)
         onAuthenticated()
       },
-      onSettled: () => {
+      // signed in, the button stays pressed until the next page takes the
+      // form's place: there is nothing left to send
+      onSettled: (_data, error) => {
+        if (error === null) return
         setBusy(false)
         sending.current = false
       },

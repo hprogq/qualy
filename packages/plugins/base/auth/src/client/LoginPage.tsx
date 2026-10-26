@@ -514,6 +514,12 @@ export default function LoginPage() {
   const [resumed, setResumed] = useState(false)
   // the ending is decided once; the manifest changing under it is not a second sign-in
   const ended = useRef(false)
+  // Signed in here, and on the way in. The form that did it stays as it is
+  // until the next page takes its place: the session read it asks again on
+  // the way answers as signed in, which is not a visitor already signed in,
+  // and is neither a reason to show the waiting skeleton nor to set off a
+  // second change of identity.
+  const [entering, setEntering] = useState(false)
   useEffect(() => {
     if (!signedIn || ended.current) return
     const to: SessionDestination =
@@ -609,6 +615,8 @@ export default function LoginPage() {
       void present.refetch()
       return
     }
+    ended.current = true
+    setEntering(true)
     // a new identity must not inherit the previous one's cache
     void startSession({ destination })
   }
@@ -643,7 +651,7 @@ export default function LoginPage() {
       )
     }
     // the form waits until it is known nobody is signed in
-    if (context.isPending || !decided || signedIn) {
+    if (!entering && (context.isPending || !decided || signedIn)) {
       return (
         <div data-testid="sign-in-waiting" aria-busy {...stylex.props(styles.panel)}>
           <Skeleton className={stylex.props(styles.boneLine).className} />
@@ -759,9 +767,10 @@ export default function LoginPage() {
   })()
 
   // asked once for the whole visit, whichever way in is taken, and only while
-  // there are ways in to take
+  // there are ways in to take; it stays with the form on the way in
   const choosing =
-    !context.isPending && decided && !signedIn && context.isSuccess && methods.length > 0
+    entering ||
+    (!context.isPending && decided && !signedIn && context.isSuccess && methods.length > 0)
 
   return (
     <AuthShell

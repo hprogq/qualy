@@ -754,7 +754,7 @@ describe('the way back after signing in', () => {
   })
 })
 
-describe('the password form on its way', () => {
+describe('the password form on its way and on its way out', () => {
   it('holds exactly the place the form takes while its code arrives', async () => {
     let arrive!: () => void
     const arrived = new Promise<void>((resolve) => {
@@ -770,6 +770,71 @@ describe('the password form on its way', () => {
     arrive()
     await expect.element(page.getByTestId('local-submit')).toBeVisible()
     expect(column.getBoundingClientRect().height).toBeCloseTo(before, 0)
+  })
+
+  // The session read the sign-in asks again on its way answers as signed in.
+  // Taken as a visitor who was already signed in, it put the waiting skeleton
+  // in place of the form and set off a second change of identity.
+  it('keeps the form until home takes its place, and goes there once', async () => {
+    let signedIn = false
+    let sessionsAfter = 0
+    await renderScreen({
+      client: fakeClient({
+        app: {
+          getManifest: () =>
+            Effect.sync(() =>
+              signedIn
+                ? { ...emptyManifest(), viewer: 'authenticated' as const, identity: 'u1' }
+                : emptyManifest(),
+            ),
+        },
+        auth: {
+          getSession: () =>
+            Effect.suspend(() => {
+              if (!signedIn) return Effect.fail(apiError('AUTH_REQUIRED', undefined))
+              sessionsAfter += 1
+              return Effect.succeed({
+                user: { id: 'u1', displayName: '张三', email: 'zhang@school.edu', tenantId: 't1' },
+              })
+            }),
+          listLoginMethods: context([password]),
+        },
+        authLocal: {
+          login: () =>
+            Effect.sync(() => {
+              signedIn = true
+              return {}
+            }),
+        },
+      }),
+      registry: {
+        login: { local: lazy(() => import('@qualy/plugin-auth-local/client/LoginMethod')) },
+      },
+      route: '/login?method=password',
+      children: <LoginPage />,
+    })
+    await page.getByLabelText('邮箱').fill('zhang@school.edu')
+    await page.getByLabelText('密码').fill('a long enough password')
+    let skeleton = false
+    let enabledAgain = false
+    const watch = new MutationObserver(() => {
+      if (document.querySelector('[data-testid="sign-in-waiting"]') !== null) skeleton = true
+      const submit = document.querySelector<HTMLButtonElement>('[data-testid="local-submit"]')
+      if (submit !== null && !submit.disabled && signedIn) enabledAgain = true
+    })
+    watch.observe(document.body, { subtree: true, childList: true, attributes: true })
+    try {
+      await page.getByTestId('local-submit').click()
+      await expect.poll(addressNow).toBe('/')
+      await new Promise((settle) => setTimeout(settle, 300))
+    } finally {
+      watch.disconnect()
+    }
+    expect({ skeleton, enabledAgain, sessionsAfter }).toEqual({
+      skeleton: false,
+      enabledAgain: false,
+      sessionsAfter: 1,
+    })
   })
 })
 
