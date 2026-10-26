@@ -178,15 +178,24 @@ const styles = stylex.create({
   },
   eyebrow: { fontSize: 13.5, fontWeight: 500, color: tokens.mutedForeground },
   eyebrowTitle: { marginTop: 6 },
-  // the form's own shape while its code is on its way, so nothing above it moves
+  // The password form's own shape while its code is on its way, line for
+  // line and gap for gap, so neither the page nor the form moves when it
+  // arrives: the same sizes the form sets on itself (auth-local LoginMethod).
   boneLabel: { height: 14, width: 36, borderRadius: 4 },
   boneAside: { height: 13, width: 60, borderRadius: 4 },
-  boneRow: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  // a row of text: the forgotten-password link, the remember-me line
+  boneRow: {
+    display: 'flex',
+    height: 20,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
   boneRowStart: { justifyContent: 'flex-start' },
   boneBox: { width: 16, height: 16, borderRadius: 4 },
   boneWords: { height: 13, width: 128, borderRadius: 4 },
   boneField: { height: 44, borderRadius: 11 },
-  boneButton: { height: 48, borderRadius: 12, marginTop: 6 },
+  boneButton: { height: 40, borderRadius: 8, marginTop: 6 },
   boneForm: { display: 'flex', flexDirection: 'column', gap: 18 },
   boneStack: { display: 'flex', flexDirection: 'column', gap: 8 },
   divider: {
@@ -1255,11 +1264,15 @@ function MethodRenderer({
                 <Skeleton className={stylex.props(styles.boneAside).className} />
               </div>
               <Skeleton className={stylex.props(styles.boneField).className} />
+              {/* the line a refusal is said on, empty until there is one */}
+              <div />
             </div>
             <div {...stylex.props(styles.boneRow, styles.boneRowStart)}>
               <Skeleton className={stylex.props(styles.boneBox).className} />
               <Skeleton className={stylex.props(styles.boneWords).className} />
             </div>
+            {/* where a challenge would stand, empty until one is asked for */}
+            <div />
             <Skeleton className={stylex.props(styles.boneButton).className} />
           </div>
         }

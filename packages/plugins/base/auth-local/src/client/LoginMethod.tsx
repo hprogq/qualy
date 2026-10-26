@@ -89,6 +89,8 @@ const styles = stylex.create({
   passwordField: {
     display: 'grid',
     gridTemplateColumns: 'minmax(0, 1fr) auto',
+    // the label's row is the link's height whether or not the link is there
+    gridTemplateRows: '20px auto auto',
     gridTemplateAreas: '"label forgot" "input input" "said said"',
     alignItems: 'baseline',
     rowGap: 8,
@@ -115,9 +117,12 @@ const styles = stylex.create({
     color: { default: tokens.mutedForeground, ':hover': tokens.foreground },
     cursor: 'pointer',
   },
+  // the text rows say their own height, which the sign-in page's skeleton
+  // of this form repeats
   forgot: {
     gridArea: 'forgot',
     fontSize: 13,
+    lineHeight: '20px',
     color: { default: tokens.mutedForeground, ':hover': tokens.foreground },
     textDecoration: 'none',
   },
@@ -126,6 +131,7 @@ const styles = stylex.create({
     alignItems: 'center',
     gap: 8,
     fontSize: 13.5,
+    lineHeight: '20px',
     color: tokens.mutedForeground,
     cursor: 'pointer',
   },

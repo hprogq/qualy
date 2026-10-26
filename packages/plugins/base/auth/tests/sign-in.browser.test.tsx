@@ -754,6 +754,25 @@ describe('the way back after signing in', () => {
   })
 })
 
+describe('the password form on its way', () => {
+  it('holds exactly the place the form takes while its code arrives', async () => {
+    let arrive!: () => void
+    const arrived = new Promise<void>((resolve) => {
+      arrive = resolve
+    })
+    await screen({
+      local: lazy(() => arrived.then(() => import('@qualy/plugin-auth-local/client/LoginMethod'))),
+    })
+    const waiting = page.getByTestId('login-renderer-waiting')
+    await expect.element(waiting).toBeVisible()
+    const column = waiting.element().parentElement!
+    const before = column.getBoundingClientRect().height
+    arrive()
+    await expect.element(page.getByTestId('local-submit')).toBeVisible()
+    expect(column.getBoundingClientRect().height).toBeCloseTo(before, 0)
+  })
+})
+
 describe('a computer others use', () => {
   const COOKIE = 'qualy_sign_in_device'
   const said = () => document.cookie.split('; ').find((part) => part.startsWith(`${COOKIE}=`))
