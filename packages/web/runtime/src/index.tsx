@@ -40,7 +40,12 @@ import { handlePlatformFailure, type RateLimit } from './mutation-failure.ts'
 import { LoadingScreen } from '@qualy/ui/spinner'
 import { clientFor, type ClientIdentity, type ClientOf, type TransportOptions } from './api.ts'
 import { signingOut } from './identity.ts'
-import { announceSessionChanged, changingIdentity, presentedManifest } from './session-recovery.ts'
+import {
+  announceSessionChanged,
+  changingIdentity,
+  identityChanging,
+  presentedManifest,
+} from './session-recovery.ts'
 import { SessionRecoveryGate } from './session-recovery-gate.tsx'
 import { type ComponentRegistry } from './registry.ts'
 import {
@@ -216,11 +221,19 @@ export interface RuntimeProviderProps {
  * Many requests find out at once, so it runs once at a time; a manifest that
  * comes back still signed in (the session was renewed in another tab) ends it
  * there rather than asking everything again into the same refusal.
+ *
+ * A change of identity the page is making itself is not a session lost.
+ * Signing out reaches the sign-in page while the manifest in hand is still
+ * signed in, and that page's question about the session is refused as it
+ * should be. Taken as a loss, the refusal cancelled the change's own
+ * manifest request, the change ended without its answer, and the anonymous
+ * manifest this handler asked for then arrived as a session lost from under
+ * the reader.
  */
 function identityLostHandler(client: () => QueryClient, manifestKey: () => QueryKey) {
   let settling = false
   return (error: unknown) => {
-    if (settling || !isAuthenticationError(error)) return
+    if (settling || identityChanging() || !isAuthenticationError(error)) return
     const key = manifestKey()
     if (client().getQueryData<Manifest>(key)?.viewer !== 'authenticated') return
     settling = true
@@ -335,6 +348,39 @@ function RuntimeLoader({
   const query = utilsFor(appApi) as QueryUtils<ClientOf<typeof appApi>>
   const queryClient = useQueryClient()
   const asked = query.app.getManifest.queryOptions()
+  // The layouts this manifest names, and the page the address is on, are
+  // fetched before the routes render, so the shell and the page are drawn in
+  // the same commit the manifest arrives in rather than one after the other,
+  // each behind a fallback React holds for 300ms - and the page's own
+  // requests, which start only once it is drawn, with them.
+  //
+  // A manifest is handed over only once its layouts are here. One that
+  // named a layout not yet loaded - signing in, signing out - used to put the
+  // loading screen up in place of the routes, and the page under them was
+  // mounted again from nothing: the sign-in page asked who was signed in
+  // all over again, and showed its skeleton while it did.
+  const [warmLayouts] = useState(() => new Set<string>())
+  const [, rewarmed] = useState(0)
+  const warmUp = useCallback(
+    async (next: Manifest) => {
+      const here = next.pages.find((page) =>
+        matchPath({ path: page.path, end: true }, window.location.pathname),
+      )
+      await Promise.all([
+        // a layout or page whose code does not arrive says so where it
+        // stands, through its own boundary, rather than holding the loading
+        // screen up for good
+        ...next.layouts.map((layout) =>
+          registry.layouts[layout.contract]?.preload?.().catch(() => undefined),
+        ),
+        here === undefined
+          ? undefined
+          : registry.pages[here.id]?.preload?.().catch(() => undefined),
+      ])
+      for (const layout of next.layouts) warmLayouts.add(layout.contract)
+    },
+    [registry, warmLayouts],
+  )
   const manifest = useQuery({
     ...asked,
     // A signed-in page asked again (coming back to the tab, a refresh) can be
@@ -345,42 +391,32 @@ function RuntimeLoader({
     queryFn: async (context) => {
       const ask = asked.queryFn
       if (typeof ask !== 'function') throw new Error('the manifest query has nothing to ask with')
-      return presentedManifest(
+      const presented = presentedManifest(
         queryClient.getQueryData<Manifest>(asked.queryKey),
         await ask(context),
       )
+      await warmUp(presented)
+      return presented
     },
     // the whole application is behind this one, so it waits out a backend
     // replacement rather than dropping the reader onto a retry button
     retry: retryManifest,
     retryDelay,
   })
-  // The layouts this manifest names, and the page the address is on, are
-  // fetched before the routes render, so the shell and the page are drawn in
-  // the same commit the manifest arrives in rather than one after the other,
-  // each behind a fallback React holds for 300ms - and the page's own
-  // requests, which start only once it is drawn, with them. The loading
-  // screen keeps standing meanwhile, the same element in the same place.
-  const layouts = manifest.data?.layouts
-  const pages = manifest.data?.pages
-  const [warm, setWarm] = useState<typeof layouts>(undefined)
+  // A manifest placed in the cache by hand, not asked for through the query,
+  // is warmed here instead. The loading screen keeps standing meanwhile, the
+  // same element in the same place.
+  const warm = manifest.data?.layouts.every((layout) => warmLayouts.has(layout.contract)) === true
   useEffect(() => {
-    if (layouts === undefined) return
+    if (manifest.data === undefined || warm) return
     let cancelled = false
-    const here = pages?.find((page) =>
-      matchPath({ path: page.path, end: true }, window.location.pathname),
-    )
-    void Promise.all([
-      ...layouts.map((layout) => registry.layouts[layout.contract]?.preload?.()),
-      // a page whose code does not arrive says so where it stands, in its shell
-      here === undefined ? undefined : registry.pages[here.id]?.preload?.().catch(() => undefined),
-    ]).then(() => {
-      if (!cancelled) setWarm(layouts)
+    void warmUp(manifest.data).then(() => {
+      if (!cancelled) rewarmed((count) => count + 1)
     })
     return () => {
       cancelled = true
     }
-  }, [layouts, pages, registry])
+  }, [manifest.data, warm, warmUp])
   // Only a page that never had a manifest is stopped by not getting one. It
   // is asked again in the background - a reader coming back to the tab may
   // have been signed out, or had their access changed, meanwhile - and one of
@@ -409,7 +445,7 @@ function RuntimeLoader({
     }
     return <LoadingScreen />
   }
-  if (warm !== layouts) return <LoadingScreen />
+  if (!warm) return <LoadingScreen />
   return (
     <RuntimeContext.Provider value={{ clientFor, utilsFor, registry, manifest: known }}>
       {children}

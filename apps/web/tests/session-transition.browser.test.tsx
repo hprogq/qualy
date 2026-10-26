@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
 import { useEffect, useState } from 'react'
-import { Navigate } from 'react-router'
+import { Navigate, Outlet } from 'react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Effect } from 'effect'
-import { useManifest, useRunApi, useSessionTransition } from '@qualy/web-runtime'
+import { preloadable, useManifest, useRunApi, useSessionTransition } from '@qualy/web-runtime'
 import { onSignOut } from '@qualy/web-runtime/identity'
 import { apiError, emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
 
@@ -119,6 +119,140 @@ describe('a change of identity', () => {
     })
     await page.getByRole('button', { name: 'in' }).click()
     await expect.element(page.getByTestId('home')).toBeInTheDocument()
+  })
+  it('keeps the page it leaves in place while the next identity’s layout loads', async () => {
+    let signedIn = false
+    let mounts = 0
+    let arrive!: () => void
+    const arrived = new Promise<void>((resolve) => {
+      arrive = resolve
+    })
+    const Door = () => {
+      useEffect(() => {
+        mounts += 1
+      }, [])
+      const transition = useSessionTransition()
+      return (
+        <button
+          type="button"
+          onClick={() => {
+            signedIn = true
+            void transition({ destination: { kind: 'home' } })
+          }}
+        >
+          in
+        </button>
+      )
+    }
+    await renderScreen({
+      client: fakeClient({
+        app: {
+          getManifest: () =>
+            Effect.sync(() =>
+              signedIn
+                ? {
+                    ...emptyManifest(),
+                    viewer: 'authenticated' as const,
+                    identity: 'u1',
+                    layouts: [{ contract: 'shell/v1' }],
+                    pages: [{ id: 'auth/login', path: '/login', layout: 'blank' }],
+                  }
+                : {
+                    ...emptyManifest(),
+                    pages: [{ id: 'auth/login', path: '/login', layout: 'blank' }],
+                  },
+            ),
+        },
+      }),
+      registry: {
+        // the signed-in shell's code is still on its way when its manifest answers
+        layouts: {
+          'shell/v1': preloadable(() => arrived.then(() => ({ default: () => <Outlet /> }))),
+        },
+      },
+      routes: [
+        { path: '/login', element: <Door /> },
+        { path: '/', element: <main data-testid="home" /> },
+      ],
+      route: '/login',
+    })
+    await expect.element(page.getByRole('button', { name: 'in' })).toBeInTheDocument()
+    const mounted = mounts
+    await page.getByRole('button', { name: 'in' }).click()
+    await new Promise((settle) => setTimeout(settle, 200))
+    // not replaced by the loading screen, and so not mounted again from nothing
+    expect(page.getByRole('button', { name: 'in' }).elements()).toHaveLength(1)
+    arrive()
+    await expect.element(page.getByTestId('home')).toBeInTheDocument()
+    expect(mounts).toBe(mounted)
+  })
+
+  // Signing out lands on the sign-in page while the manifest in hand is still
+  // the signed-in one, and that page asks who is signed in: refused, as it
+  // should be. Taken for a session lost, the refusal cancelled the sign-out's
+  // own manifest request, and the anonymous manifest asked for in its place
+  // arrived after the sign-out had ended - as a session lost from under the
+  // reader, over the sign-in page.
+  it('signs out without taking the sign-in page’s refused session read for a lost session', async () => {
+    let signedIn = true
+    let manifests = 0
+    const Leave = () => {
+      const transition = useSessionTransition()
+      return (
+        <button
+          type="button"
+          onClick={() => {
+            signedIn = false
+            void transition({ destination: { kind: 'page', page: 'auth/login' } })
+          }}
+        >
+          out
+        </button>
+      )
+    }
+    const SignIn = () => {
+      const session = useQuery({
+        queryKey: ['probe', 'who'],
+        queryFn: () => Promise.reject(apiError('AUTH_REQUIRED', undefined)),
+        retry: false,
+      })
+      return <main data-testid="landed" data-asked={session.isError} />
+    }
+    await renderScreen({
+      client: fakeClient({
+        app: {
+          getManifest: () =>
+            Effect.sync(() => {
+              manifests += 1
+              return signedIn
+                ? {
+                    ...emptyManifest(),
+                    viewer: 'authenticated' as const,
+                    identity: 'u1',
+                    pages: [{ id: 'auth/login', path: '/login', layout: 'blank' }],
+                  }
+                : {
+                    ...emptyManifest(),
+                    pages: [{ id: 'auth/login', path: '/login', layout: 'blank' }],
+                  }
+              // the anonymous answer is slower than the refused session read
+            }).pipe(Effect.delay(signedIn ? '0 millis' : '150 millis')),
+        },
+      }),
+      routes: [
+        { path: '/home', element: <Leave /> },
+        { path: '/login', element: <SignIn /> },
+      ],
+      route: '/home',
+    })
+    await expect.element(page.getByRole('button', { name: 'out' })).toBeInTheDocument()
+    const before = manifests
+    await page.getByRole('button', { name: 'out' }).click()
+    await expect.element(page.getByTestId('landed')).toHaveAttribute('data-asked', 'true')
+    // past the manifest's answer and the recovery's grace
+    await new Promise((settle) => setTimeout(settle, 700))
+    expect(page.getByTestId('session-recovery').elements()).toHaveLength(0)
+    expect(manifests - before).toBe(1)
   })
 })
 
