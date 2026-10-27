@@ -227,6 +227,10 @@ const styles = stylex.create({
     width: 14,
     height: 14,
   },
+  downloadFrame: {
+    // The media reset overrides the browser's default [hidden] display.
+    display: 'none',
+  },
   fieldValue: {
     display: 'flex',
     minWidth: 0,
@@ -400,6 +404,7 @@ function DownloadAll({ attachmentIds }: { attachmentIds: readonly string[] }) {
         <iframe
           key={`${String(requested.attempt)}:${id}`}
           hidden
+          {...stylex.props(styles.downloadFrame)}
           title={m.review_downloadAll()}
           sandbox="allow-downloads"
           src={attachmentContentUrl(id)}

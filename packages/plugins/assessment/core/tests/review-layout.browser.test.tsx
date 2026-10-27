@@ -15,6 +15,8 @@ import {
   useScreenFootClaimed,
 } from '@qualy/web-runtime'
 import { addressNow, apiError, emptyManifest, renderScreen } from './support/screen.tsx'
+import { attachmentContentUrl } from '../src/client/entry/model.ts'
+import * as m from '#messages'
 // The only suite that needs the real stylesheet: what it asserts is which
 // parts a width shows, and without the sheet every breakpoint is the same
 // screen. Test files run in their own frame, so this stays here.
@@ -325,6 +327,65 @@ const parts = () =>
 afterEach(() => page.viewport(DEFAULT_VIEWPORT.width, DEFAULT_VIEWPORT.height))
 
 describe('one workbench, three widths', () => {
+  it.each([390, 1280])(
+    'keeps the filing layout unchanged while downloading at %i px',
+    async (width) => {
+      await page.viewport(width, 844)
+      const ids = ['77777777-7777-4777-8777-777777777777', '88888888-8888-4888-8888-888888888888']
+      await open({
+        getReviewInstance: () =>
+          Effect.succeed({
+            review: {
+              ...review,
+              revision: { ...review.revision, payload: { scan: ids } },
+              form: {
+                itemType: 'evidence',
+                formConfig: {
+                  fields: [{ key: 'scan', type: 'attachment', label: '考核表扫描件' }],
+                },
+              },
+            },
+          }),
+        listAttachmentDescriptors: () =>
+          Effect.succeed({
+            attachments: ids.map((id, index) => ({
+              id,
+              filename: `scan-${String(index)}.pdf`,
+              declaredMime: 'application/pdf',
+              size: '204800',
+              status: 'bound',
+              delivery: { kind: 'content' as const },
+            })),
+          }),
+      })
+      const download = page.getByRole('button', { name: m.review_downloadAll() })
+      await expect.element(page.getByRole('link', { name: 'scan-1.pdf' })).toBeVisible()
+      const field = download.element().closest('dt')!
+      const geometry = () =>
+        [field, field.firstElementChild!, download.element(), field.nextElementSibling!].map(
+          (element) => {
+            const { x, y, width, height } = element.getBoundingClientRect()
+            return { x, y, width, height }
+          },
+        )
+      const before = geometry()
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        await download.click()
+        const frames = [...field.querySelectorAll('iframe')]
+        expect(frames).toHaveLength(ids.length)
+        expect(frames.map((frame) => frame.getAttribute('src'))).toEqual(
+          ids.map(attachmentContentUrl),
+        )
+        // The real stylesheet resets iframe to display:block, overriding the
+        // browser's default [hidden] rule unless the download owns its display.
+        for (const frame of frames) {
+          expect(frame.getClientRects()).toHaveLength(0)
+        }
+        expect(geometry()).toEqual(before)
+      }
+    },
+  )
+
   it('keeps long mobile panes inside the room above the decisions', async () => {
     await page.viewport(390, 667)
     await open({
