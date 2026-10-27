@@ -11,7 +11,7 @@ import {
 import type { UploadTicket } from '../upload.ts'
 import { objectKeyOf, type BackendOpen } from './backend.ts'
 import { servedTypeOf } from './served-type.ts'
-import { measured } from './metrics.ts'
+import { AuthorizationRefused, measured } from './metrics.ts'
 import { StorageConfig } from './config.ts'
 import {
   attachmentOf,
@@ -56,6 +56,16 @@ export interface AttachmentMeta {
   readonly createdAt: number
   readonly boundAt: number | null
 }
+
+// What a caller's authorizer failed with, as the failure counter reads it: a
+// refusal is an answer, set apart until the operation is measured and then
+// handed back as it was; the database or a backend failing under it is
+// trouble, and is left to be counted (see `Storage.open`).
+const authorizationFailure = <E>(error: E): E | AuthorizationRefused<E> =>
+  error instanceof BackendUnavailable ||
+  (typeof error === 'object' && error !== null && '_tag' in error && error._tag === 'QueryFailed')
+    ? error
+    : new AuthorizationRefused(error)
 
 const metaOf = (row: AttachmentRow): AttachmentMeta => ({
   id: row.id,
@@ -143,6 +153,11 @@ export class Storage extends Context.Service<
      * The decision is the caller's whole business: storage runs the effect it
      * is handed and learns nothing from it, which is what keeps a plugin that
      * knows about buckets from also knowing about students.
+     *
+     * Whatever the authorizer fails with is a refusal - an answer, handed back
+     * to the caller unchanged and not counted as a storage failure - except a
+     * `QueryFailed` or a `BackendUnavailable`, which are trouble wherever they
+     * come from. An authorizer that hits any other kind of trouble dies.
      */
     readonly open: <E, R>(
       input: { readonly tenantId: string; readonly attachmentId: string },
@@ -430,7 +445,7 @@ const make = () =>
         const row = yield* attachmentOf({ tenantId: input.tenantId, id: input.attachmentId })
         if (row === null) return yield* Effect.fail(new AttachmentNotFound())
         const meta = metaOf(row)
-        yield* authorize(meta)
+        yield* authorize(meta).pipe(Effect.mapError(authorizationFailure))
         // the backend that wrote it, not the one this deployment writes to
         const backend = yield* backends.resolve(row.backend)
         const target = yield* backend.open(
@@ -449,6 +464,7 @@ const make = () =>
         Effect.catchTag('QueryFailed', (error) => Effect.die(error)),
         Effect.withSpan('Storage.open'),
         measured('open'),
+        Effect.mapError((error) => (error instanceof AuthorizationRefused ? error.error : error)),
       )
 
     const read = <E, R>(
@@ -459,7 +475,7 @@ const make = () =>
         const row = yield* attachmentOf({ tenantId: input.tenantId, id: input.attachmentId })
         if (row === null) return yield* Effect.fail(new AttachmentNotFound())
         const meta = metaOf(row)
-        yield* authorize(meta)
+        yield* authorize(meta).pipe(Effect.mapError(authorizationFailure))
         const backend = yield* backends.resolve(row.backend)
         const body = yield* backend.read({ key: row.storageKey, revision: row.storageVersion })
         return { meta, body }
@@ -467,6 +483,7 @@ const make = () =>
         Effect.catchTag('QueryFailed', (error) => Effect.die(error)),
         Effect.withSpan('Storage.read'),
         measured('read'),
+        Effect.mapError((error) => (error instanceof AuthorizationRefused ? error.error : error)),
       )
 
     const retire = (input: { tenantId: string; attachmentId: string }) =>

@@ -4,6 +4,33 @@ import {
   boundedCounter,
   boundedDurationHistogram,
 } from '@qualy/telemetry/metrics'
+import {
+  AttachmentInvalid,
+  AttachmentNotFound,
+  ReservationInvalid,
+  ReservationNotFound,
+  UploadRefused,
+} from '../errors.ts'
+
+/**
+ * A caller's authorizer refusing, carried past the counter and unwrapped
+ * before it leaves storage: the caller is told exactly what it failed with.
+ */
+export class AuthorizationRefused<E> {
+  readonly error: E
+  constructor(error: E) {
+    this.error = error
+  }
+}
+
+/** the answers an operation may give that are not failures: nothing to read, or a refusal */
+const expected = (error: unknown) =>
+  error instanceof AuthorizationRefused ||
+  error instanceof AttachmentNotFound ||
+  error instanceof AttachmentInvalid ||
+  error instanceof ReservationNotFound ||
+  error instanceof ReservationInvalid ||
+  error instanceof UploadRefused
 
 // How long storage work takes and how often it fails, one label: which
 // operation. Backends, buckets, object keys and tenants stay out - the
@@ -34,10 +61,11 @@ const duration = boundedDurationHistogram(
 const failure = boundedCounter('qualy.storage.operation.failure', { operation: OPERATIONS })
 
 /**
- * Wraps one storage operation: duration on every exit, failure on every
- * exit that is not a success and not a pure interruption. An operations
- * metric counts defects on purpose - a crashed upload is more of a failure
- * than a typed refusal, not less.
+ * Wraps one storage operation: duration on every exit, failure on every exit
+ * that holds a defect or a typed failure that is not one of the expected
+ * answers. An absent file or a refused reader is the operation working; a
+ * crashed upload or a backend down is not, and a cause mixing the two still
+ * counts. A pure interruption is neither.
  */
 export const measured =
   (operation: Operation) =>
@@ -46,7 +74,13 @@ export const measured =
       const started = performance.now()
       return effect.pipe(
         Effect.onExit((exit) => {
-          const failed = Exit.isFailure(exit) && !Cause.hasInterruptsOnly(exit.cause)
+          const failed =
+            Exit.isFailure(exit) &&
+            exit.cause.reasons.some(
+              (reason) =>
+                Cause.isDieReason(reason) ||
+                (Cause.isFailReason(reason) && !expected(reason.error)),
+            )
           return Effect.all(
             [
               duration({ operation }, (performance.now() - started) / 1000),
