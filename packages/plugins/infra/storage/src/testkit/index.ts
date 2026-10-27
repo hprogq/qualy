@@ -147,6 +147,22 @@ export const memoryBackend = (
           size: BigInt(bytes.byteLength),
         })
       }),
+    read: (ref) =>
+      Effect.suspend(() => {
+        lastRevision = ref.revision
+        const found =
+          ref.revision == null
+            ? current(ref.key)
+            : (store.get(ref.key) ?? []).find((entry) => entry.revision === ref.revision)
+        if (found?.bytes == null)
+          return Effect.fail(backendFailure('read', new Error('object missing')))
+        const bytes = found.bytes
+        return Effect.succeed(
+          (async function* () {
+            yield bytes
+          })(),
+        )
+      }),
     delete: (key) =>
       Effect.suspend(() => {
         if (fail('delete')) return Effect.die(new Error('memory backend was told to fail delete'))

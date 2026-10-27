@@ -110,7 +110,7 @@ export interface AdministrativeImportDeps {
   ) => Effect.Effect<boolean>
   readonly storage: Pick<
     Storage['Service'],
-    'prepareUpload' | 'completeUpload' | 'open' | 'metadata' | 'bind'
+    'prepareUpload' | 'completeUpload' | 'open' | 'read' | 'metadata' | 'bind'
   >
   /** the kinds of question, each the only reader of its own payloads */
   readonly itemTypes: ReadonlyMap<string, ItemTypeDriver>
@@ -589,7 +589,7 @@ export const makeAdministrativeImportMethods = (
     // the bytes, read back from the store rather than taken from anybody,
     // and read as a workbook under the process's one permit
     const source = storage
-      .open({ tenantId, attachmentId: input.attachmentId }, (meta) =>
+      .read({ tenantId, attachmentId: input.attachmentId }, (meta) =>
         meta.ownerUserId === as.userId ? Effect.void : Effect.fail(new AttachmentUnavailable()),
       )
       .pipe(
@@ -608,6 +608,7 @@ export const makeAdministrativeImportMethods = (
             ),
           ),
         ),
+        Effect.scoped,
       )
     const parsed = yield* readWorkbook({
       bytes: source,

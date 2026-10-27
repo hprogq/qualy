@@ -1,89 +1,70 @@
-import http from 'node:http'
-import type { AddressInfo } from 'node:net'
-import zlib from 'node:zlib'
+import { Readable } from 'node:stream'
 import { Effect, Exit } from 'effect'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import type { AttachmentOpen } from '@qualy/plugin-storage/server'
-import { readSourceBytes, SourceUnreadable } from '../src/server/read-source.ts'
+import { describe, expect, it } from 'vitest'
+import type { AttachmentRead } from '@qualy/plugin-storage/server'
+import { readSourceBytes } from '../src/server/read-source.ts'
 
-// A store that signs rather than streams hands out a url, and whatever comes
-// back from it is read with the same ceiling a stream is: counted as it
-// arrives, not buffered whole and measured after. An encoding the response
-// names would be inflated before anything could count it, so a response
-// that names one is not read at all.
+const source = (body: AsyncIterable<Uint8Array>, size: bigint) =>
+  ({ meta: { size }, body }) as AttachmentRead
 
-const MiB = 1024 * 1024
-const chunk = Buffer.alloc(64 * 1024, 0x61)
-const inflated = Buffer.alloc(4 * MiB)
-const deflated = zlib.gzipSync(inflated)
-const workbook = Buffer.from('PK these are the bytes of the file')
+const read = (body: Readable, size: bigint) =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      yield* Effect.addFinalizer(() =>
+        Effect.sync(() => {
+          body.destroy()
+        }),
+      )
+      return yield* readSourceBytes(source(body, size))
+    }),
+  )
 
-let served = 0
-let server: http.Server
-let base = ''
+describe('reading the stored import source', () => {
+  it('keeps original bytes without fetching a public delivery URL', async () => {
+    const bytes = await Effect.runPromise(read(Readable.from([Buffer.from('original')]), 8n))
+    expect(Buffer.from(bytes).toString()).toBe('original')
+  })
 
-beforeAll(async () => {
-  server = http.createServer((request, response) => {
-    if (request.url === '/encoded') {
-      response.writeHead(200, { 'content-encoding': 'gzip' })
-      response.end(deflated)
-      return
-    }
-    if (request.url === '/endless') {
-      served = 0
-      response.writeHead(200)
-      // far past any ceiling, written as fast as the reader takes it
-      const more = () => {
-        while (served < 64 * MiB) {
-          served += chunk.byteLength
-          if (!response.write(chunk)) return void response.once('drain', more)
+  it('stops and releases a body as soon as it outruns its recorded size', async () => {
+    let yielded = 0
+    let released = false
+    const body = (async function* () {
+      try {
+        for (;;) {
+          yielded += 1
+          yield Buffer.alloc(128)
         }
-        response.end()
+      } finally {
+        released = true
       }
-      response.on('close', () => response.removeAllListeners('drain'))
-      more()
-      return
-    }
-    response.writeHead(200)
-    response.end(workbook)
-  })
-  await new Promise<void>((done) => server.listen(0, '127.0.0.1', done))
-  base = `http://127.0.0.1:${String((server.address() as AddressInfo).port)}`
-})
-
-afterAll(async () => {
-  server.closeAllConnections()
-  await new Promise((done) => server.close(done))
-})
-
-const signed = (path: string, size: number): AttachmentOpen =>
-  ({
-    meta: { size: BigInt(size) },
-    target: { kind: 'redirect', url: `${base}${path}`, expiresInSeconds: 60 },
-  }) as unknown as AttachmentOpen
-
-const reasonOf = (exit: Exit.Exit<Uint8Array, SourceUnreadable>) =>
-  Exit.isFailure(exit) ? (exit.cause.toString().match(/source-[a-z-]+/)?.[0] ?? null) : null
-
-describe('reading a spreadsheet back from a signed url', () => {
-  it('reads the stored bytes as they are', async () => {
-    const bytes = await Effect.runPromise(readSourceBytes(signed('/', workbook.byteLength)))
-    expect(Buffer.from(bytes).equals(workbook)).toBe(true)
+    })()
+    const exit = await Effect.runPromiseExit(readSourceBytes(source(body, 256n)))
+    expect(Exit.isFailure(exit) && exit.cause.toString()).toContain('source-too-large')
+    expect(yielded).toBe(3)
+    expect(released).toBe(true)
   })
 
-  it('refuses a response that names an encoding, rather than inflating it', async () => {
-    const exit = await Effect.runPromiseExit(
-      readSourceBytes(signed('/encoded', deflated.byteLength)),
+  it('refuses truncated content instead of parsing a partial workbook', async () => {
+    const exit = await Effect.runPromiseExit(read(Readable.from([Buffer.from('short')]), 100n))
+    expect(Exit.isFailure(exit) && exit.cause.toString()).toContain('source-unavailable')
+  })
+
+  it('propagates a mid-stream failure and releases the body', async () => {
+    const body = Readable.from(
+      (async function* () {
+        yield Buffer.from('start')
+        throw new Error('read failed')
+      })(),
     )
-    expect(reasonOf(exit)).toBe('source-unavailable')
+    const exit = await Effect.runPromiseExit(read(body, 100n))
+    expect(Exit.isFailure(exit) && exit.cause.toString()).toContain('source-unavailable')
+    expect(body.destroyed).toBe(true)
   })
 
-  it('stops reading once the body outruns the ceiling', async () => {
-    const exit = await Effect.runPromiseExit(readSourceBytes(signed('/endless', MiB)))
-    expect(reasonOf(exit)).toBe('source-too-large')
-    // the connection was dropped, not drained: what was sent is the ceiling
-    // plus what the sockets had already buffered, nowhere near the whole body
-    await new Promise((done) => setTimeout(done, 50))
-    expect(served).toBeLessThan(32 * MiB)
+  it('closes a pending read when the caller times out', async () => {
+    const body = new Readable({ read() {} })
+    const exit = await Effect.runPromiseExit(read(body, 100n).pipe(Effect.timeout(20)))
+    expect(Exit.isFailure(exit)).toBe(true)
+    expect(body.destroyed).toBe(true)
   })
 })

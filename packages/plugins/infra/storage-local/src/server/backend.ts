@@ -231,6 +231,23 @@ export const localBackend = (root: string): StorageBackend => ({
 
   stat: (key) => Effect.tryPromise({ try: () => statLocal(root, key), catch: fault('stat') }),
 
+  read: ({ key }) =>
+    Effect.acquireRelease(
+      Effect.try({
+        try: () => {
+          const body = fs.createReadStream(objectPath(root, key))
+          // A body may be released without ever starting an iterator.
+          body.on('error', () => {})
+          return body
+        },
+        catch: fault('read'),
+      }),
+      (body) =>
+        Effect.sync(() => {
+          body.destroy()
+        }),
+    ),
+
   // a file is written once and a second write refused, so a key names one
   // object and there is no revision to honour
   open: ({ key }) =>

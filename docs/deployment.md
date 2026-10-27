@@ -438,6 +438,7 @@ current,旧镜像的 server 要这一步才肯启动;旧 release 已被保留策
   并 `gzip -t`;然后经 `tools` 跑 `qualy storage export --except local`(2026-09-28):local 以外每个后端(COS)里的每个附件,经写它的后端、按库里记的
   `storage_version` 取回,核对大小(指纹是 sha256 时也核对),连同 `attachments.tsv`(附件 id、租户、后端、key、版本、大小、指纹)打成
   `attachments.tar.gz`,任何一个取不回或对不上整次失败——开了版本控制的桶,「拷一份桶」拿到的是每个 key 的最新写入,不一定是附件读的那个版本;
+  服务端导出使用后端的 `read` 流直接读取原件；COS 经 SDK 按版本读取，不使用浏览器短期签名链接，也不经过 EO。启用 EO 不改变备份的读取权限和链路。
   写 `SHA256SUMS`;整个目录写完才改名就位(以时间戳命名的目录一定是完整备份);保留最近 `QUALY_BACKUP_KEEP`(默认 14)份;
   `QUALY_BACKUP_OFFSITE` 设了就以新目录为 `$1` 执行(rclone / scp / coscli 由运维选),失败则整次失败;异地副本必须是 append-only：复制命令遇到同名对象必须失败，远端权限也必须独立强制这一点。COS 使用另建的**未开版本控制**备份桶,
   与独立备份账号。按 COSCLI `cp` 的权限要求，账号授予 `HeadBucket` / `GetBucket` / `HeadObject`（只读桶列表与对象元数据，

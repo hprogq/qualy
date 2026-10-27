@@ -15,13 +15,14 @@ import {
   type SigningKey,
 } from '../edgeone/protocol.ts'
 import { credentialForObject } from './sts.ts'
+import { readObject } from './read.ts'
 
-// Tencent cloud object storage, as three calls and a signature.
+// Tencent Cloud object storage for uploads, browser delivery and server reads.
 //
-// The bytes never pass through this process: a browser writes them straight to
-// the bucket with a credential minted here, and everything this file does
-// afterwards is ask the bucket what actually arrived. That is the whole reason
-// `stat` is trusted and the uploader is not.
+// Upload bytes never pass through this process: a browser writes them straight to
+// the bucket with a credential minted here. The provider checks the stored
+// object, opens a browser delivery link, or reads the original for server-side
+// processing. `stat` trusts the store's evidence, not the uploader's account.
 //
 // A bucket is in one of two modes, read once when the deployment starts
 // (bucketModeOf). One that has never kept versions refuses a second write to a
@@ -244,6 +245,14 @@ export const cosBackend = (
 
   return {
     code: 'cos',
+
+    read: ({ key, revision }) => {
+      const version = readRevision(mode, revision)
+      return readObject(cos, {
+        ...object(key),
+        ...(version === null ? {} : { VersionId: version }),
+      })
+    },
 
     prepareUpload: (request) =>
       credentialForObject({

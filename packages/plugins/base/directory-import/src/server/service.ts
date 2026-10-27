@@ -264,7 +264,7 @@ export const make = Effect.gen(function* () {
     as: Principal,
   ) {
     const opened = yield* storage
-      .open({ tenantId, attachmentId }, (meta) =>
+      .read({ tenantId, attachmentId }, (meta) =>
         meta.ownerUserId === as.userId
           ? Effect.void
           : Effect.fail(new UserImportSourceUnavailable()),
@@ -284,7 +284,7 @@ export const make = Effect.gen(function* () {
         ),
       ),
     )
-  })
+  }, Effect.scoped)
 
   /** a refusal from the engine, said as the one issue it is */
   const unreadable = (error: unknown) =>

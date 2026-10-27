@@ -262,3 +262,81 @@ describe.skipIf(!postgresAvailable)('storage', () => {
     expect(tagOf(exit)).toBe('STORAGE_ATTACHMENT_NOT_FOUND')
   })
 })
+
+describe.skipIf(!postgresAvailable)('server-side attachment reads', () => {
+  let context: TestContext
+  beforeAll(async () => {
+    context = await createTestContext('storage-read')
+  })
+  afterAll(async () => {
+    await context?.dispose()
+  })
+
+  it('authorizes before reading and keeps the completed revision', async () => {
+    const { tenantId, ownerUserId } = owner()
+    const backend = memoryBackend('memory', { versioned: true })
+    const ticket = ok(await run(context.url, backend, prepare({ tenantId, ownerUserId })))
+    const key = `attachments/${tenantId}/${ticket.attachmentId}`
+    backend.put(key, Buffer.from('original'))
+    const meta = ok(
+      await run(
+        context.url,
+        backend,
+        Effect.flatMap(Storage, (storage) =>
+          storage.completeUpload({ tenantId, ownerUserId, reservationId: ticket.reservationId }),
+        ),
+      ),
+    )
+    backend.put(key, Buffer.from('replacement'))
+    const denied = await run(
+      context.url,
+      backend,
+      Effect.scoped(
+        Effect.gen(function* () {
+          const storage = yield* Storage
+          return yield* storage.read({ tenantId, attachmentId: meta.id }, () =>
+            Effect.fail('denied'),
+          )
+        }),
+      ),
+    )
+    expect(denied._tag).toBe('Failure')
+    expect(backend.openedRevision()).toBeUndefined()
+    const read = ok(
+      await run(
+        context.url,
+        backend,
+        Effect.scoped(
+          Effect.gen(function* () {
+            const storage = yield* Storage
+            const file = yield* storage.read({ tenantId, attachmentId: meta.id }, () => Effect.void)
+            return yield* Effect.promise(async () =>
+              Buffer.concat(
+                await (async () => {
+                  const chunks: Uint8Array[] = []
+                  for await (const chunk of file.body) chunks.push(chunk)
+                  return chunks
+                })(),
+              ).toString(),
+            )
+          }),
+        ),
+      ),
+    )
+    expect(read).toBe('original')
+    const foreign = await run(
+      context.url,
+      backend,
+      Effect.scoped(
+        Effect.gen(function* () {
+          const storage = yield* Storage
+          return yield* storage.read(
+            { tenantId: randomUUID(), attachmentId: meta.id },
+            () => Effect.void,
+          )
+        }),
+      ),
+    )
+    expect(tagOf(foreign)).toBe('STORAGE_ATTACHMENT_NOT_FOUND')
+  })
+})

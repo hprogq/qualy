@@ -1,13 +1,12 @@
-import type { Effect } from 'effect'
+import type { Effect, Scope } from 'effect'
 import type { BackendUnavailable, ReservationInvalid } from '../errors.ts'
 import type { UploadGrant } from '../upload.ts'
 
 // What a place to keep bytes has to be able to do, and nothing more.
 //
-// Four operations, because the upload itself is not one of them: the bytes go
-// from the browser to the store directly, and this process only ever hands out
-// the permission to write one object, asks whether it arrived, hands out a
-// short-lived way to read it, and deletes it.
+// Upload bytes go from the browser to the store directly. The provider grants
+// that write, checks what arrived, opens browser delivery links, streams
+// originals for server-side processing, and deletes objects.
 //
 // There is no promote or copy step. The key an upload is authorized for is the
 // key the object keeps. What makes the attachment immutable is that a
@@ -16,7 +15,7 @@ import type { UploadGrant } from '../upload.ts'
 // write to the key, or it keeps every write as a revision of its own and the
 // attachment names the revision it completed with. Core storage does not ask
 // which; it keeps whatever revision `stat` reports and hands it back to
-// `open`.
+// both `open` and `read`.
 //
 // Implementing this is the whole of being a storage provider. Everything above
 // it - what an attachment is, whose quota it spends, when an unclaimed one is
@@ -145,6 +144,17 @@ export interface StorageBackend {
     ref: BlobRef,
     options: { readonly filename: string; readonly mime: string },
   ) => Effect.Effect<BackendOpen, BackendUnavailable>
+
+  /**
+   * Server-side bytes from this store, never a public delivery URL. The
+   * revision has the same meaning as in open. The caller must consume the
+   * body inside the scope; closing it releases even an unread body, and
+   * stopping iteration releases a partially read body. Iteration failures
+   * are storage failures, not successful partial files.
+   */
+  readonly read: (
+    ref: BlobRef,
+  ) => Effect.Effect<AsyncIterable<Uint8Array>, BackendUnavailable, Scope.Scope>
 
   /**
    * Removes everything the store holds under the key - every revision and

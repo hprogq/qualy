@@ -15,6 +15,7 @@ const OPERATIONS = [
   'metadata',
   'bind',
   'open',
+  'read',
   'retire',
   'receive_upload',
   'sweep_abandoned_uploads',

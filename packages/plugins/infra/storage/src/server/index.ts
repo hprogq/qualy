@@ -25,6 +25,7 @@ export {
   Storage,
   type AttachmentMeta,
   type AttachmentOpen,
+  type AttachmentRead,
   type BindError,
   type CompleteUploadError,
   type PrepareUploadError,

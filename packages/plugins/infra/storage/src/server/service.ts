@@ -1,4 +1,4 @@
-import { Clock, Context, Effect, Layer } from 'effect'
+import { Clock, Context, Effect, Layer, type Scope } from 'effect'
 import { transaction, withDatabase, type Orm } from '@qualy/plugin-database/server'
 import {
   AttachmentInvalid,
@@ -97,6 +97,11 @@ export interface AttachmentOpen {
   readonly target: BackendOpen
 }
 
+export interface AttachmentRead {
+  readonly meta: AttachmentMeta
+  readonly body: AsyncIterable<Uint8Array>
+}
+
 export class Storage extends Context.Service<
   Storage,
   {
@@ -143,6 +148,11 @@ export class Storage extends Context.Service<
       input: { readonly tenantId: string; readonly attachmentId: string },
       authorize: (meta: AttachmentMeta) => Effect.Effect<void, E, R>,
     ) => Effect.Effect<AttachmentOpen, AttachmentNotFound | BackendUnavailable | E, R>
+    /** Server-side reading with the same authorization as open and a scoped body. */
+    readonly read: <E, R>(
+      input: { readonly tenantId: string; readonly attachmentId: string },
+      authorize: (meta: AttachmentMeta) => Effect.Effect<void, E, R>,
+    ) => Effect.Effect<AttachmentRead, AttachmentNotFound | BackendUnavailable | E, R | Scope.Scope>
     /**
      * Takes a bound attachment out of circulation, without deleting anything.
      *
@@ -440,6 +450,24 @@ const make = () =>
         measured('open'),
       )
 
+    const read = <E, R>(
+      input: { tenantId: string; attachmentId: string },
+      authorize: (meta: AttachmentMeta) => Effect.Effect<void, E, R>,
+    ) =>
+      Effect.gen(function* () {
+        const row = yield* attachmentOf({ tenantId: input.tenantId, id: input.attachmentId })
+        if (row === null) return yield* Effect.fail(new AttachmentNotFound())
+        const meta = metaOf(row)
+        yield* authorize(meta)
+        const backend = yield* backends.resolve(row.backend)
+        const body = yield* backend.read({ key: row.storageKey, revision: row.storageVersion })
+        return { meta, body }
+      }).pipe(
+        Effect.catchTag('QueryFailed', (error) => Effect.die(error)),
+        Effect.withSpan('Storage.read'),
+        measured('read'),
+      )
+
     const retire = (input: { tenantId: string; attachmentId: string }) =>
       Effect.gen(function* () {
         const moved = yield* retireAttachment({
@@ -495,6 +523,7 @@ const make = () =>
       metadata: (input) => withDb(metadata(input)),
       bind: (input) => withDb(bind(input)),
       open: (input, authorize) => withDb(open(input, authorize)),
+      read: (input, authorize) => withDb(read(input, authorize)),
       receiveUpload: (input) => withDb(receiveUpload(input)),
       retire: (input) => withDb(retire(input)).pipe(Effect.asVoid),
     })

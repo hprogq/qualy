@@ -1,4 +1,5 @@
 import COS from 'cos-nodejs-sdk-v5'
+import { PassThrough } from 'node:stream'
 import { Effect, Exit, Redacted } from 'effect'
 import { createLocalJWKSet, exportJWK, generateKeyPair } from 'jose'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -338,5 +339,63 @@ describe('a deployment that delivers through EdgeOne', () => {
       ok: true,
       grant: { key, revision: 'null', filename: 'a__b.pdf', mime: 'application/pdf' },
     })
+  })
+})
+
+describe('server reads independently of public delivery', () => {
+  it('uses the recorded revision and never asks for a public URL', async () => {
+    const requested: COS.GetObjectParams[] = []
+    answers('getObjectUrl', () => {
+      throw new Error('server read must not sign a URL')
+    })
+    answers(
+      'getObjectStream',
+      (params: COS.GetObjectParams, done: (error: unknown, data: unknown) => void) => {
+        requested.push(params)
+        const body = new PassThrough()
+        queueMicrotask(() => {
+          body.end('bytes')
+          done(null, { statusCode: 200, headers: {} })
+        })
+        return body
+      },
+    )
+    const { privateKey } = await generateKeyPair('ES256')
+    const configured = {
+      ...settings,
+      delivery: {
+        kind: 'edgeone' as const,
+        origin: 'https://files.example',
+        issuer: 'https://app.example',
+        signing: { key: privateKey, kid: 'test' },
+      },
+    }
+    for (const [mode, revision, expected] of [
+      ['versioned', undefined, 'null'],
+      ['versioned', null, 'null'],
+      ['versioned', 'v1', 'v1'],
+      ['single', null, undefined],
+    ] as const) {
+      const got = await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const body = yield* cosBackend(configured, mode).read({
+              key: 'attachments/t/a',
+              revision,
+            })
+            return yield* Effect.promise(() =>
+              (async () => {
+                const chunks: Uint8Array[] = []
+                for await (const chunk of body) chunks.push(chunk)
+                return chunks
+              })(),
+            )
+          }),
+        ),
+      )
+      expect(Buffer.concat(got).toString()).toBe('bytes')
+      expect(requested.at(-1)?.VersionId).toBe(expected)
+      expect(requested.at(-1)?.Headers).toEqual({ 'Accept-Encoding': 'identity' })
+    }
   })
 })
