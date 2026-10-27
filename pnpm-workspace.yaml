@@ -110,7 +110,7 @@ catalog:
   # lookup answers with the address the outbound policy already checked, so a
   # second resolution cannot move the request somewhere else. The same version
   # @effect/platform-node already installs.
-  undici: 8.11.2
+  undici: 8.12.2
   # the parser a CAS validation answer is split with, and nothing more: the
   # driver refuses any document type or entity declaration before it runs,
   # turns its entity processing off and decodes the five predefined entities
