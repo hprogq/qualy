@@ -22,7 +22,7 @@
 - API mutation 的平台失败由 runtime 处理；领域失败由调用处处理。多请求写工作流逐请求进入会话恢复边界，已成功的写入不会被整段重放。
 - 生产消息编译和 Web 构建只读取 active assembly；全仓消息完整性检查可以显式读取全部已安装包。
 - 文档已分为现行架构、领域、开发、证据、ADR 和历史材料；根 `AGENTS.md` 与本文件不再承担实施历史台账。
-- COS 的可选 EdgeOne 原件交付已实现，边缘函数的审计修复、热缓存下停用及恢复、临时对象清理已实测。服务端导入与备份改用独立的有作用域直读流，附件下载端点支持鉴权后 302，预览支持一次重新授权重试。候选发布 `v0.1.0-rc.36` 已完成正式镜像构建，生产应用和交付模式尚未切换；验证边界与平台限制见 [EO 联调记录](docs/notes/edgeone-file-delivery.md)。
+- COS 的可选 EdgeOne 原件交付已实现，边缘函数的审计修复、热缓存下停用及恢复、临时对象清理已实测。服务端导入与备份改用独立的有作用域直读流，附件下载端点支持鉴权后 302，预览支持一次重新授权重试。`v0.1.0-rc.36` 已部署，生产应用已启用 EO，正式函数 HEAD 长度修复及 COS 实际内网读流已验证；验证边界与平台限制见 [EO 联调记录](docs/notes/edgeone-file-delivery.md)。
 
 Formula RPC 心跳误断线和 WebSocket HTTP 计时的修复已随 `v0.1.0-rc.32` 上线
 （[实测笔记](docs/notes/formula-rpc-heartbeat.md)）。
@@ -42,13 +42,13 @@ Node 安全运行时、COS 间接 HTTP 重定向依赖补丁和 GitHub 登录阶
 
 ## 最近验证的代码状态
 
-rc.36 候选源码提交 `0267c6d965c00a8c155863ebbceeca870779895d` 的最终 CI 全部成功：
+rc.36 源码提交 `0267c6d965c00a8c155863ebbceeca870779895d` 的最终 CI 全部成功：
 
 - static、Node CI、Chromium、WebKit、image、release-eligible 全部通过；
 - Node：443 个测试文件通过、3 个跳过；3463 个测试通过、29 个跳过；其中 27 项 COS 真桶用例在正式 release 门禁补跑，另两项为既有的 vendor/CSP 环境条件跳过；
 - Chromium：134 个测试文件、1758 个测试通过；WebKit：5 个测试文件、50 个测试通过；
 - 正式 release 的 COS 135 个测试全部通过，无跳过；三个镜像构建、检查、部署/回退/备份/恢复 smoke、镜像推送和 release.json 发布成功。Sourcemap 任务成功，333 份全部登记到本次 Web release。
-- 本地两种文件交付配置均已验证签发和互斥行为；真实 Chromium 的跨域单个/全部下载、图片灯箱、PDF 画面与原件哈希检查通过。正式域名和生产对象的业务验收需在部署后执行，见 [EO 切换与回退](docs/notes/edgeone-rollout.md)。
+- 本地两种文件交付配置均已验证签发和互斥行为；真实 Chromium 的跨域单个/全部下载、图片灯箱、PDF 画面与原件哈希检查通过。正式 EO、直接 COS 回退通道和实际 COS 内网读流已通过上线验证；真实浏览器单个下载和图片预览通过，全部下载仍待测试审核记录验收，见 [EO 切换与回退](docs/notes/edgeone-rollout.md)。
 
 2026-10-22 的安全核对记录了两项编译器内嵌 Go 告警（Linux 目标依赖图不包含受影响包）及两项不进入生产镜像的 Vitest 开发依赖中危告警，依据见[安全核对](docs/notes/security-dependency-review-2026-10.md)。本轮未重新核对这些平台告警的当前状态。
 
@@ -60,7 +60,8 @@ Release：https://github.com/hprogq/qualy/actions/runs/40511587514
 
 ## 生产状态
 
-- 2026-10-22 部署 `v0.1.0-rc.35`（revision `5e68131186724f032386f3c39dab85b0d069fbbe`），服务颜色为 green，Web release 为 `r_6EUdv9tJt8nTaddG6Ub2Dw`。部署工作流、doctor 和独立公网 release 核对全部通过，三个运行容器的 Node、release、revision 逐一一致。
+- 2026-10-27 经用户批准部署 `v0.1.0-rc.36`（revision `0267c6d965c00a8c155863ebbceeca870779895d`），服务颜色为 blue，Web release 为 `r_EUFFloS2UR-IGb5GAnVf6A`。升级前整站及异地备份、部署入口、doctor、三个运行容器 revision 和公开 release 均已核验；旧 `rc.35` 保留用于回退。EO 模式启用，公安备案号及完整查询链接已在实际页脚生效。
+- EO 主站回源应答空闲超时已从默认 15 秒调整为 60 秒，解决 SSE 在 25 秒心跳前反复断开的问题；规则只匹配主站 HOST，不绑定业务 URL。真实浏览器已观察到跨过 60 秒的多轮心跳，见 [切换记录](docs/notes/edgeone-rollout.md#主站-sse-空闲超时修复)。上线后整站备份已实际导出 3 个 COS 附件并完成异地复制。
 - 新入口作为唯一应用主站；旧入口的普通导航由边缘永久跳转，旧 API、写请求及 WebSocket 不跨域续接。新入口使用独立的普通 ACME 签发策略。
 - rc.34 上线时已验证真实本地登录、会话及退出、一个现有本地附件下载、三种外部登录入口生成的新回调地址，以及生产 COS 临时对象的写入、签名下载、CORS 和精确清理。未代替用户完成外部提供方授权，也未发送真实邮件；rc.35 本轮未重复真人授权或生产存储写入。
 - GitHub token 端点出现出站连接超时，已用宿主机单域名解析覆盖缓解；调整后首个登录仍超时，其后五次真实登录均成功，已核对生产登录记录。覆盖需要维护，阶段诊断已随 rc.35 部署，见[排查记录](docs/notes/github-oauth-connectivity.md)。

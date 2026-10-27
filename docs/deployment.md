@@ -316,6 +316,14 @@ URL 原样交给驱动,应用连接池、迁移器与通知监听用的是同一
 浏览器里的 `useApiStream` 自己重拨(连接活过 15s 的 3s 后重拨,不是 EventSource,SSE 的 `retry:` 字段无人读取,所以不加),
 新色先发 `sync`,页面据此刷新数据,不整页重载。开着的旧 tab 照常从 `web_releases` 取自己的 chunk(见下)。
 
+**经过 CDN 的实时通道：**所有代理的响应空闲超时必须大于 SSE 的 25 秒心跳间隔，并为网络抖动留出余量。
+当前 EO 在主站 HOST 的动态加速规则中设置「回源超时时间 → HTTP 应答超时时间」为 60 秒，不绑定具体业务 URL；
+主站不缓存与原有加速设置保留，文件域名的交付规则独立。此值限制连续没有数据的时间，不是 SSE 的总连接寿命。
+EO 默认 15 秒会在首个心跳前关闭已返回 200 的响应，浏览器可能显示 `ERR_HTTP2_PROTOCOL_ERROR 200 (OK)`。
+修改后须用真实已登录浏览器确认初始 `sync`、多轮 `heartbeat` 及超过 60 秒的持续连接，不能仅以请求返回 200 验收。
+普通 API 的客户端取消和业务执行预算仍各自生效；不要把回源超时当作允许业务无限执行的设置。
+平台语义见 [EO 回源超时](https://edgeone.ai/zh/document/63618)，本次前后实测见 [EO 切换记录](notes/edgeone-rollout.md#主站-sse-空闲超时修复)。
+
 **迁移纪律**(同一时刻两个 release 对着一个库):新 release 必须能在旧 release 留下的 schema 上跑,旧 release 也必须能在新 schema 上跑,
 所以迁移先 expand(加表、加列、加索引、backfill),旧 release 不再用的东西晚一个 release 再 contract。
 
