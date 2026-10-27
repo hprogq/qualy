@@ -132,7 +132,7 @@ catalog:
   openid-client: 6.8.8
   # handing mail to an SMTP relay: the smtp mail backend's transport, with
   # its own TLS modes and timeouts. Ships its own types.
-  nodemailer: 10.1.0
+  nodemailer: 10.1.4
   clsx: 2.1.1
   # the animation library behind @qualy/ui's motion primitives, and behind
   # screens that animate something those primitives do not cover. Every
