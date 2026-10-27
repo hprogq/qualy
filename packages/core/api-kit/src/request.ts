@@ -544,7 +544,7 @@ export const serverSpans = (options?: {
                 )
               }),
           }
-          HttpEffect.appendPreResponseHandlerUnsafe(request, (_request, response) =>
+          HttpEffect.appendPreResponseHandlerUnsafe(fiber.context, (_request, response) =>
             isEventStream(response)
               ? Effect.as(
                   lifecycle.establish({ status: response.status, protocol: 'sse' }),

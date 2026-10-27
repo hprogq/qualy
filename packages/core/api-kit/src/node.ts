@@ -1,7 +1,7 @@
 import { Context, Effect } from 'effect'
 import { HttpServerRequest, HttpServerResponse } from 'effect/http'
 import { NodeHttpServerRequest } from '@effect/platform-node'
-import type * as Http from 'node:http'
+import * as Http from 'node:http'
 
 // The two Node-shaped things a plugin sometimes needs, and nowhere else to put
 // them.
@@ -62,6 +62,15 @@ export const fromConnect = (middleware: ConnectMiddleware) =>
     const request = yield* HttpServerRequest.HttpServerRequest
     const nodeRequest = NodeHttpServerRequest.toIncomingMessage(request)
     const nodeResponse = NodeHttpServerRequest.toServerResponse(request)
+    // The platform also serves HTTP/2, whose request and response a connect
+    // middleware cannot take. This server listens on HTTP/1.1 only, so one
+    // arriving here is a server set up wrong, not a request to decline.
+    if (
+      !(nodeRequest instanceof Http.IncomingMessage) ||
+      !(nodeResponse instanceof Http.ServerResponse)
+    ) {
+      return yield* Effect.die(new Error('a connect middleware needs an HTTP/1.1 request'))
+    }
 
     const declined = yield* Effect.callback<boolean>((resume) => {
       let settled = false

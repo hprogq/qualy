@@ -8,7 +8,7 @@ export const ideProjectSettings = {
   baseLocale: 'en-US',
   locales: supportedLocales,
   modules: [
-    'https://cdn.jsdelivr.net/npm/@inlang/plugin-icu1@1.3.3/dist/index.js',
+    'https://cdn.jsdelivr.net/npm/@inlang/plugin-icu1@1.3.4/dist/index.js',
     'https://cdn.jsdelivr.net/npm/@inlang/plugin-m-function-matcher@2.2.9/dist/index.js',
   ],
   'plugin.inlang.icu-messageformat-1': { pathPattern: './messages/{locale}.json' },

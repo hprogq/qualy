@@ -20,7 +20,7 @@ catalog:
   # whether the build left anything undone
   lightningcss: 1.33.0
   '@types/node': 24.19.2
-  chokidar: 5.0.0
+  chokidar: 6.0.0
   typescript: 7.0.2
   # instance validation for the value-schema scoring contracts (json schema
   # 2020-12 plus the x-qualy-* keywords); the assignability prover next to it
@@ -71,19 +71,19 @@ catalog:
   # on its own. rc.118 moved them from effect/unstable/*
   # to effect/* and removed the old paths; @effect/tsgo 0.47.0 is the first
   # language service built against that layout.
-  effect: 4.0.4
-  '@effect/vitest': 4.0.4
-  '@effect/platform-node': 4.0.4
-  '@effect/tsgo': 0.52.0
+  effect: 4.0.6
+  '@effect/vitest': 4.0.6
+  '@effect/platform-node': 4.0.6
+  '@effect/tsgo': 0.59.0
   # the SAME version @mikro-orm/postgresql depends on. It is the driver that
   # builds the pool this plugin measures, and at 8.22.0 the tree carried two
   # copies: the type came from ours and the Pool instance from the ORM's
   pg: 8.23.1
   '@types/pg': 8.23.1
   yaml: 2.9.1
-  vitest: 5.0.4
+  vitest: 5.0.5
   # the V8 coverage provider moves with vitest: it peers on the exact version
-  '@vitest/coverage-v8': 5.0.4
+  '@vitest/coverage-v8': 5.0.5
   # accessibility rules the end-to-end journeys run on key screens (tools/e2e)
   axe-core: 4.14.0
   # not the repository's formatter (that is oxfmt): the formula editor's
@@ -92,18 +92,18 @@ catalog:
   # the message compiler (docs/adr/0011-i18n-paraglide.md): build-time only,
   # pinned exactly and upgraded on their own, since the ICU plugin is young
   # and a range would move the compiler of every sentence silently
-  '@inlang/paraglide-js': 2.27.0
-  '@inlang/plugin-icu1': 1.3.3
-  '@inlang/sdk': 4.0.3
+  '@inlang/paraglide-js': 2.29.2
+  '@inlang/plugin-icu1': 1.3.4
+  '@inlang/sdk': 4.0.4
   '@messageformat/parser': 5.2.0
-  react: 19.3.0
-  react-dom: 19.3.0
-  react-router: 8.4.0
-  vite: 8.3.4
+  react: 19.3.1
+  react-dom: 19.3.1
+  react-router: 8.5.0
+  vite: 8.3.5
   '@vitejs/plugin-react': 6.1.2
   '@types/react': 19.3.0
   '@types/react-dom': 19.3.0
-  '@tanstack/react-query': 5.104.2
+  '@tanstack/react-query': 5.105.0
   sirv: 3.0.2
   argon2: 0.45.1
   # the connection a login entrance's upstream is reached over: an Agent whose
@@ -122,8 +122,8 @@ catalog:
   # library's default entry is its v2 challenge format; v1 lives under /v1
   # and is not to be used. The widget ships an /external build whose workers
   # are imported separately, so the strict CSP's worker-src 'self' holds.
-  altcha-lib: 2.6.0
-  altcha: 3.3.0
+  altcha-lib: 2.8.0
+  altcha: 3.5.0
   # the OpenID Connect relying party: discovery, the code grant with PKCE,
   # ID Token validation (signature, issuer, audience, nonce, time) and
   # UserInfo. Every request it makes goes through the auth outbound port,
@@ -132,23 +132,23 @@ catalog:
   openid-client: 6.8.8
   # handing mail to an SMTP relay: the smtp mail backend's transport, with
   # its own TLS modes and timeouts. Ships its own types.
-  nodemailer: 10.1.4
+  nodemailer: 10.2.1
   clsx: 2.1.1
   # the animation library behind @qualy/ui's motion primitives, and behind
   # screens that animate something those primitives do not cover. Every
   # package that animates names it here, so the browser holds one copy and
   # the ui's reduced-motion setting reaches every animated component
-  motion: 14.2.0
+  motion: 14.6.0
   # the icon set behind @qualy/ui and every plugin's screens: one version, so
   # the browser holds one copy
-  lucide-react: 1.56.0
+  lucide-react: 1.61.0
   # brand marks lucide no longer carries (it dropped them in 1.0): the sign-in
   # doors' GitHub and GitLab, as their owners draw them. One named export per
   # icon and no side effects, so the browser takes only the marks it imports
-  simple-icons: 16.35.0
-  '@vitest/browser-playwright': 5.0.4
+  simple-icons: 16.36.0
+  '@vitest/browser-playwright': 5.0.5
   'vitest-browser-react': 2.3.0
-  playwright: 1.64.0
+  playwright: 1.64.1
   # UI platform migration (docs/archive/designs/mantine-ui-migration.md): StyleX is
   # the styling compiler for product layout and visuals. One version across
   # the workspace - two copies of the stylex runtime would split the
@@ -157,9 +157,9 @@ catalog:
   '@stylexjs/unplugin': 0.19.1
   # Mantine is the commodity widget substrate behind @qualy/ui (ADR 0010);
   # hooks is core's peer dependency and must match its version exactly
-  '@mantine/core': 9.7.2
-  '@mantine/dates': 9.7.2
-  '@mantine/hooks': 9.7.2
+  '@mantine/core': 9.7.4
+  '@mantine/dates': 9.7.4
+  '@mantine/hooks': 9.7.4
   # the date components' own formatting engine; nothing else in the product
   # uses it, and no domain date logic moves onto it
   dayjs: 1.11.23
@@ -183,7 +183,7 @@ catalog:
   # the rum control plane, for the source map uploader a release pipeline runs.
   # The per-product package rather than `tencentcloud-sdk-nodejs`: the whole
   # sdk unpacks to 44 MB for three calls, and this one to 220 KB.
-  tencentcloud-sdk-nodejs-rum: 4.1.281
+  tencentcloud-sdk-nodejs-rum: 4.1.332
 # Transitive versions pinned forward, with the reason each one is here.
 #
 # qs: the tencent cos sdks carry it (cos-request, qcloud-cos-sts) and both
@@ -213,33 +213,7 @@ patchedDependencies:
   '@stylexjs/unplugin@0.19.1': patches/@stylexjs__unplugin@0.19.1.patch
   monaco-editor@0.57.0: patches/monaco-editor@0.57.0.patch
 minimumReleaseAgeExclude:
-  - effect@4.0.4
-  - '@effect/vitest@4.0.4'
-  - '@effect/platform-node-shared@4.0.4'
-  - '@effect/platform-node@4.0.4'
   - '@mikro-orm/core@7.2.5'
   - '@mikro-orm/migrations@7.2.5'
   - '@mikro-orm/postgresql@7.2.5'
   - '@mikro-orm/sql@7.2.5'
-  - '@effect/tsgo-darwin-arm64@0.52.0'
-  - '@effect/tsgo-darwin-x64@0.52.0'
-  - '@effect/tsgo-linux-arm64@0.52.0'
-  - '@effect/tsgo-linux-arm@0.52.0'
-  - '@effect/tsgo-linux-x64@0.52.0'
-  - '@effect/tsgo-win32-arm64@0.52.0'
-  - '@effect/tsgo-win32-x64@0.52.0'
-  - '@effect/tsgo@0.52.0'
-  # The Vitest 5 line, whole. `@vitest/browser-playwright` peers on an exact
-  # vitest, and `@vitest/browser` pulls the ui package for its orchestrator,
-  # so this set moves together or not at all - a partial exemption would just
-  # be an install that cannot resolve. Never below 5.0.1, which carries the
-  # self-referencing `extends` fix (the webkit config is one) and the
-  # doctor's pool measurement.
-  - '@vitest/browser-playwright@5.0.4'
-  - '@vitest/browser@5.0.4'
-  - '@vitest/mocker@5.0.4'
-  - '@vitest/pretty-format@5.0.4'
-  - '@vitest/spy@5.0.4'
-  - '@vitest/ui@5.0.4'
-  - '@vitest/utils@5.0.4'
-  - vitest@5.0.4

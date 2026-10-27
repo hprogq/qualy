@@ -1,11 +1,17 @@
-import { Context, Effect, identity } from 'effect'
+import { Context, Effect, identity, type Schema } from 'effect'
 import {
   FetchHttpClient,
   HttpClient,
   HttpClientRequest,
   type HttpClientResponse,
 } from 'effect/http'
-import { HttpApiClient, type HttpApi, type HttpApiGroup } from 'effect/http-api'
+import {
+  HttpApiClient,
+  type HttpApi,
+  type HttpApiEndpoint,
+  type HttpApiGroup,
+  type HttpApiSchema,
+} from 'effect/http-api'
 import { QUALY_ACTIVITY_HEADER, QUALY_LOCALE_HEADER } from '@qualy/api-kit'
 import { apiRouteTemplates } from '@qualy/api-kit/local'
 import { registerApiRoutes } from '@qualy/browser-observability/api-routes'
@@ -265,6 +271,39 @@ export const clientFor = <ApiId extends string, Groups extends HttpApiGroup.Cons
 }
 
 /**
+ * The services an endpoint's decoded-only call needs: what its request parts
+ * encode with and what its success and error decode with.
+ *
+ * The same union upstream's (private) `MethodReturn` puts in the service
+ * channel, minus the services of a streaming payload, which no endpoint here
+ * declares. It is spelled out because it can no longer be read off the
+ * method: since effect 4.0.6 each generated method is also generic over those
+ * payload services, and a type read off a generic method fills them with
+ * `unknown`, which would make every call require "unknown". Success decoding
+ * follows upstream's `SuccessDecodingServices` in http-api/HttpApiClient.ts.
+ */
+type SuccessServices<S> =
+  S extends HttpApiSchema.StreamSse<infer Events, infer Failure, infer _Value>
+    ? Events['DecodingServices'] | Failure['DecodingServices']
+    : S extends HttpApiSchema.StreamUint8Array
+      ? never
+      : S extends HttpApiSchema.StreamNdjson<infer Item>
+        ? Item['DecodingServices']
+        : S extends Schema.Constraint
+          ? S['DecodingServices']
+          : never
+
+type ServicesOf<Endpoint> = Endpoint extends HttpApiEndpoint.ConstraintRequest
+  ?
+      | Endpoint['~Params']['EncodingServices']
+      | Endpoint['~Query']['EncodingServices']
+      | Endpoint['~Payload']['EncodingServices']
+      | Endpoint['~Headers']['EncodingServices']
+      | SuccessServices<Endpoint['~Success']>
+      | Endpoint['~Error']['DecodingServices']
+  : never
+
+/**
  * A generated client method as this product calls it: decoded values only.
  *
  * Each generated method is generic over a response mode - the decoded value,
@@ -273,13 +312,13 @@ export const clientFor = <ApiId extends string, Groups extends HttpApiGroup.Cons
  * the two shapes nobody here asks for. No caller passes `responseMode`, so
  * what runs is always the decoded-only call; this states that at the one
  * boundary every client is typed through, rather than at each place a
- * screen names a result. The error and service channels are taken as they
- * are: upstream narrows them only for `response-only`, so the widened
- * method already has the decoded-only ones.
+ * screen names a result. The error channel is taken as it is (upstream
+ * narrows it only for `response-only`, so the widened method already has the
+ * decoded-only one); the service channel comes from the endpoint, above.
  */
-type DecodedOnly<Method> = Method extends (
+type DecodedOnly<Method, Endpoint> = Method extends (
   request: infer Request,
-) => Effect.Effect<infer A, infer E, infer R>
+) => Effect.Effect<infer A, infer E, infer _R>
   ? (
       request: Request extends { readonly responseMode?: unknown }
         ? Omit<Request, 'responseMode'>
@@ -291,15 +330,25 @@ type DecodedOnly<Method> = Method extends (
         | HttpApiClient.Client.Response<unknown, 'decoded-and-response'>
       >,
       E,
-      R
+      ServicesOf<Endpoint>
     >
   : Method
+
+/** the endpoint a client's group and method name stand for */
+type EndpointAt<Api extends HttpApi.Constraint, Group, Name> =
+  Api extends HttpApi.HttpApi<infer _Id, infer Groups>
+    ? Extract<
+        HttpApiGroup.Endpoints<Extract<Groups, { readonly identifier: Group }>>,
+        { readonly identifier: Name }
+      >
+    : never
 
 /** the typed client an api definition derives to, as this product calls it */
 export type ClientOf<Api extends HttpApi.Constraint> = {
   readonly [Group in keyof HttpApiClient.ForApi<Api>]: {
     readonly [Endpoint in keyof HttpApiClient.ForApi<Api>[Group]]: DecodedOnly<
-      HttpApiClient.ForApi<Api>[Group][Endpoint]
+      HttpApiClient.ForApi<Api>[Group][Endpoint],
+      EndpointAt<Api, Group, Endpoint>
     >
   }
 }
