@@ -187,7 +187,12 @@ describe('a bucket that keeps a version of every write', () => {
     expect(older?.revision).toBeUndefined()
   })
 
-  it('signs the version into a read, and signs none where there is none', async () => {
+  // An attachment that recorded no version completed before the bucket kept
+  // them; in a bucket that keeps them now, that object is the version cos
+  // calls "null". Read without a version it would be whatever was written to
+  // the key since - so it is read by that name, and only a bucket that never
+  // kept versions reads without one.
+  it('signs the version into a read, and the one from before versioning by its name', async () => {
     let asked: Record<string, unknown> = {}
     answers('getObjectUrl', (options: never, done: never) => {
       asked = options
@@ -207,6 +212,14 @@ describe('a bucket that keeps a version of every write', () => {
 
     await Effect.runPromise(
       cosBackend(settings, 'versioned').open(
+        { key: 'attachments/t/a', revision: null },
+        { filename: 'a.pdf', mime: 'application/pdf' },
+      ),
+    )
+    expect((asked['Query'] as Record<string, string>)['versionId']).toBe('null')
+
+    await Effect.runPromise(
+      cosBackend(settings, 'single').open(
         { key: 'attachments/t/a', revision: null },
         { filename: 'a.pdf', mime: 'application/pdf' },
       ),

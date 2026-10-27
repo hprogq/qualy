@@ -84,6 +84,23 @@ export const bucketModeOf = (settings: CosSettings) =>
     catch: (cause) => backendFailure('versioning', cause),
   })
 
+/**
+ * The version a read names, given how the bucket keeps them and what the
+ * attachment recorded: the one rule every read of an object follows,
+ * whichever way it reaches the bytes.
+ *
+ * A recorded version is read by name. Nothing recorded means the object
+ * completed in a bucket that never kept versions: read without one there.
+ * In a bucket that keeps them now, it is the object from before versioning
+ * was switched on, which cos calls "null" - read by that name, or the read
+ * would follow whatever was written to the key since.
+ */
+export const readRevision = (
+  mode: CosBucketMode,
+  revision: string | null | undefined,
+): string | null =>
+  revision !== undefined && revision !== null ? revision : mode === 'versioned' ? 'null' : null
+
 const statusOf = (error: unknown) =>
   typeof error === 'object' && error !== null && 'statusCode' in error
     ? Number((error as { statusCode?: unknown }).statusCode)
@@ -275,8 +292,9 @@ export const cosBackend = (
      * any attachment, and a link somebody copies out of the address bar stops
      * working before they can paste it anywhere useful.
      */
-    open: ({ key, revision }, options) =>
-      Effect.tryPromise({
+    open: ({ key, revision }, options) => {
+      const version = readRevision(mode, revision)
+      return Effect.tryPromise({
         try: async () => {
           const url = await new Promise<string>((resolve, reject) => {
             cos.getObjectUrl(
@@ -307,7 +325,7 @@ export const cosBackend = (
                   'response-content-type': options.mime,
                   // signed with the rest: the version the attachment
                   // completed with, whatever was written to the key since
-                  ...(revision === undefined || revision === null ? {} : { versionId: revision }),
+                  ...(version === null ? {} : { versionId: version }),
                 },
               },
               (error, data) => {
@@ -319,7 +337,8 @@ export const cosBackend = (
           return { kind: 'redirect' as const, url, expiresInSeconds: DOWNLOAD_TTL_SECONDS }
         },
         catch: (cause) => backendFailure('open', cause),
-      }),
+      })
+    },
 
     delete: (key) =>
       mode === 'versioned'
