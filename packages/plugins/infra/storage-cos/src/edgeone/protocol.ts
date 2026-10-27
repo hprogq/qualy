@@ -23,8 +23,12 @@ import { jwtVerify, SignJWT, type CryptoKey, type JWTVerifyGetKey } from 'jose'
 export const TOKEN_TYPE = 'qualy-download+jwt'
 /** the one algorithm a credential is signed with and verified against */
 export const ALGORITHM = 'ES256'
-/** the longest a credential may hold, from issue to expiry, whatever it says */
-export const MAX_LIFETIME_SECONDS = 300
+/**
+ * The longest a credential may hold, from issue to expiry, whatever it says.
+ * The server issues credentials for exactly this long; the verifier refuses
+ * any that claims longer, so a longer link needs both ends changed.
+ */
+export const MAX_LIFETIME_SECONDS = 60
 /** how far apart the two ends' clocks may be */
 export const CLOCK_TOLERANCE_SECONDS = 3
 /** a token longer than this is not one this protocol issues */
@@ -140,15 +144,57 @@ export type Refusal =
   | 'invalid'
   /** a token that was genuine and has run out */
   | 'expired'
+  /** no verification could be made: the keys or the runtime's cryptography failed, not the token */
+  | 'unavailable'
+
+/** which check refused a credential, for whoever diagnoses it; one of a fixed few, never a value */
+export type Detail =
+  | 'jwt_malformed'
+  | 'jwt_header'
+  | 'jwt_key'
+  | 'jwt_signature'
+  | 'jwt_expired'
+  | 'jwt_claims'
+  | 'jwt_other'
+  | 'header_members'
+  | 'payload_members'
+  | 'claim_types'
+  | 'grant'
+  | 'verifier'
 
 export type Verification =
   | { readonly ok: true; readonly grant: DownloadGrant }
-  | {
-      readonly ok: false
-      readonly refusal: Refusal
-      /** which check failed, for whoever diagnoses it: a library code or a member, never a value */
-      readonly detail?: string
-    }
+  | { readonly ok: false; readonly refusal: Refusal; readonly detail?: Detail }
+
+/** the token library's error codes, as the details a refusal names */
+const DETAILS: Readonly<Record<string, Detail>> = {
+  ERR_JWS_INVALID: 'jwt_malformed',
+  ERR_JWT_INVALID: 'jwt_malformed',
+  ERR_JOSE_ALG_NOT_ALLOWED: 'jwt_header',
+  ERR_JOSE_NOT_SUPPORTED: 'jwt_header',
+  ERR_JWKS_NO_MATCHING_KEY: 'jwt_key',
+  ERR_JWKS_MULTIPLE_MATCHING_KEYS: 'jwt_key',
+  ERR_JWS_SIGNATURE_VERIFICATION_FAILED: 'jwt_signature',
+  ERR_JWT_EXPIRED: 'jwt_expired',
+  ERR_JWT_CLAIM_VALIDATION_FAILED: 'jwt_claims',
+}
+
+/** why the token library refused, without anything the error carries */
+const refusalOf = (error: unknown): { readonly refusal: Refusal; readonly detail: Detail } => {
+  const code = (error as { code?: unknown } | null)?.code
+  // An error the library did not raise as one of its checks is the runtime
+  // failing an operation - importing a configured key, computing a
+  // signature - and so is a signature check that threw rather than answered
+  // (the library keeps that as the cause). Every link would fail the same
+  // way; it is the service's failure, not the link's.
+  if (typeof code !== 'string') return { refusal: 'unavailable', detail: 'verifier' }
+  if (code === 'ERR_JWS_SIGNATURE_VERIFICATION_FAILED' && (error as Error).cause !== undefined) {
+    return { refusal: 'unavailable', detail: 'verifier' }
+  }
+  // only "genuine and run out" is told apart, and only once the signature has held
+  if (code === 'ERR_JWT_EXPIRED') return { refusal: 'expired', detail: 'jwt_expired' }
+  return { refusal: 'invalid', detail: DETAILS[code] ?? 'jwt_other' }
+}
 
 const COMPACT = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/
 const HEADER_MEMBERS = ['alg', 'kid', 'typ']
@@ -193,28 +239,26 @@ export const verifyGrant = async (
       currentDate: new Date(expected.now * 1000),
     })
   } catch (error) {
-    // the library's code says which check failed; only "genuine and run out"
-    // is a refusal of its own, and only once the signature has held. Without
-    // a code it is the runtime refusing an operation, kept in its own short
-    // words for the detail (never a key or a value)
-    const code = (error as { code?: unknown }).code
-    const detail =
-      typeof code === 'string'
-        ? code
-        : error instanceof Error
-          ? `${error.name}: ${error.message}`.replace(/[^\x20-\x7e]/g, '?').slice(0, 160)
-          : 'unknown'
-    return { ok: false, refusal: code === 'ERR_JWT_EXPIRED' ? 'expired' : 'invalid', detail }
+    return { ok: false, ...refusalOf(error) }
   }
   const { payload, protectedHeader } = verified
-  if (!sameMembers(protectedHeader, HEADER_MEMBERS)) {
+  // the library compares a type loosely and finds a key by any kid; this
+  // profile names both exactly
+  if (
+    !sameMembers(protectedHeader, HEADER_MEMBERS) ||
+    protectedHeader.typ !== TOKEN_TYPE ||
+    typeof protectedHeader.kid !== 'string' ||
+    protectedHeader.kid === ''
+  ) {
     return { ok: false, refusal: 'invalid', detail: 'header_members' }
   }
   if (!sameMembers(payload, PAYLOAD_MEMBERS)) {
     return { ok: false, refusal: 'invalid', detail: 'payload_members' }
   }
-  const { iat, exp, k, r, f, m } = payload as Record<string, unknown>
+  const { aud, iat, exp, k, r, f, m } = payload as Record<string, unknown>
   if (
+    // one file service, named as a string: the library would take a list that includes it
+    aud !== expected.audience ||
     !Number.isInteger(iat) ||
     !Number.isInteger(exp) ||
     (exp as number) <= (iat as number) ||
@@ -226,7 +270,7 @@ export const verifyGrant = async (
   ) {
     return { ok: false, refusal: 'invalid', detail: 'claim_types' }
   }
-  const grant: DownloadGrant = { key: k, revision: r as string | null, filename: f, mime: m }
+  const grant: DownloadGrant = { key: k, revision: r, filename: f, mime: m }
   return grantAccepted(grant)
     ? { ok: true, grant }
     : { ok: false, refusal: 'invalid', detail: 'grant' }

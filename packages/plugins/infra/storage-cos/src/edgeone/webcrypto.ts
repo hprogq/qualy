@@ -11,8 +11,9 @@
 // The bundle injects this module in place of the global `crypto` (./bundle.ts),
 // so the token library verifies through it unchanged and nothing global is
 // touched. A public EC JWK is imported as the raw point it names and a hash is
-// passed by name, which every runtime accepts; signatures are re-encoded only
-// where the runtime was seen to sign in DER itself.
+// passed by name, which every runtime accepts; an ES256 signature is checked
+// to be the 64 bytes of r || s, and re-encoded only where the runtime was seen
+// to read DER (a fixed public test vector shows which, once per instance).
 
 import type { webcrypto } from 'node:crypto'
 
@@ -21,7 +22,6 @@ import type { webcrypto } from 'node:crypto'
 type Crypto = webcrypto.Crypto
 type SubtleCrypto = webcrypto.SubtleCrypto
 type CryptoKey = webcrypto.CryptoKey
-type CryptoKeyPair = webcrypto.CryptoKeyPair
 type BufferSource = webcrypto.BufferSource
 type JsonWebKey = webcrypto.JsonWebKey
 type AlgorithmIdentifier = webcrypto.AlgorithmIdentifier
@@ -93,27 +93,45 @@ export const derSignatureOf = (signature: Uint8Array): Uint8Array => {
   return out
 }
 
-let signsDer: Promise<boolean> | undefined
+// A public ES256 test vector: a P-256 point, a message and its r || s
+// signature. It holds no secret; it only shows which encoding this runtime's
+// verify reads, by the very operation a delivery depends on.
+const PROBE_POINT =
+  'BOUAheYYT3k4130wAXWuBpl_EtS-SO_aYy46YLDVLBsC0z4bN5MPFvjb9FPQRawoXTorTub8eLy-kC69oJNT6Eo'
+const PROBE_MESSAGE = 'qualy edge webcrypto probe'
+const PROBE_SIGNATURE =
+  'p67GiY9fi1thutx65T3wPZsxxSDc62m0dc3lnl1xO18agJT8kVSqO1mRl8qkylq-oplYRj34ldqgnF2RsK5qpQ'
 
-/** whether this runtime's ECDSA signatures are DER rather than r || s, found once by signing */
-const runtimeSignsDer = (): Promise<boolean> => {
-  signsDer ??= (async () => {
+type Encoding = 'p1363' | 'der'
+let encoding: Promise<Encoding> | undefined
+
+/**
+ * The signature encoding this runtime's ECDSA verify reads, found once per
+ * instance on its first verification. A runtime that reads neither is not
+ * one a delivery can verify on: the failure is the service's, not the link's,
+ * and it is tried again on the next verification.
+ */
+const runtimeEncoding = (): Promise<Encoding> => {
+  encoding ??= (async (): Promise<Encoding> => {
     const { subtle } = native()
-    const pair = (await subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, false, [
-      'sign',
-      'verify',
-    ])) as CryptoKeyPair
-    const signature = await subtle.sign(
-      { name: 'ECDSA', hash: 'SHA-256' },
-      pair.privateKey,
-      new Uint8Array(1),
+    const key = await subtle.importKey(
+      'raw',
+      decodeBase64url(PROBE_POINT),
+      { name: 'ECDSA', namedCurve: 'P-256' },
+      false,
+      ['verify'],
     )
-    return signature.byteLength !== 64
+    const algorithm = { name: 'ECDSA', hash: 'SHA-256' }
+    const message = new TextEncoder().encode(PROBE_MESSAGE)
+    const signature = decodeBase64url(PROBE_SIGNATURE)
+    if (await subtle.verify(algorithm, key, signature, message)) return 'p1363'
+    if (await subtle.verify(algorithm, key, derSignatureOf(signature), message)) return 'der'
+    throw new Error('this runtime verifies ECDSA in neither encoding')
   })().catch((error: unknown) => {
-    signsDer = undefined
+    encoding = undefined
     throw error
   })
-  return signsDer
+  return encoding
 }
 
 const isEcdsa = (algorithm: AlgorithmIdentifier | EcdsaParams): boolean =>
@@ -147,14 +165,15 @@ const verify = async (
 ): Promise<boolean> => {
   const { subtle } = native()
   const named = byName(algorithm)
-  if (!isEcdsa(algorithm) || !(await runtimeSignsDer())) {
-    return subtle.verify(named, key, signature, data)
-  }
-  // only the r || s an ES256 signature is; a DER-shaped one would verify on
-  // this runtime alone and is no signature anywhere else
+  const curve = (key.algorithm as { readonly namedCurve?: unknown }).namedCurve
+  if (!isEcdsa(algorithm) || curve !== 'P-256') return subtle.verify(named, key, signature, data)
+  // only the r || s an ES256 signature is, on every runtime: a DER-shaped
+  // one would verify on some runtimes alone and is no ES256 signature
   const bytes = bytesOf(signature)
   if (bytes.length !== 64) return false
-  return subtle.verify(named, key, derSignatureOf(bytes), data)
+  return (await runtimeEncoding()) === 'der'
+    ? subtle.verify(named, key, derSignatureOf(bytes), data)
+    : subtle.verify(named, key, bytes, data)
 }
 
 const subtle = new Proxy({} as SubtleCrypto, {
@@ -168,12 +187,12 @@ const subtle = new Proxy({} as SubtleCrypto, {
 })
 
 /** the `crypto` the edge bundle's modules see */
-const edgeCrypto = {
+const edgeCrypto: Crypto = {
   get subtle() {
     return subtle
   },
-  getRandomValues: ((array) => native().getRandomValues(array)) as Crypto['getRandomValues'],
+  getRandomValues: (array) => native().getRandomValues(array),
   randomUUID: () => native().randomUUID(),
-} as Crypto
+}
 
 export { edgeCrypto as crypto }

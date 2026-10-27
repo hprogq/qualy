@@ -164,7 +164,7 @@ const deliveryOf = (declared: CosManifestConfig, downloadDomain: string) =>
     const mode = yield* Config.String('QUALY_STORAGE_COS_DELIVERY').pipe(
       Config.withDefault(declared.delivery ?? 'direct'),
     )
-    if (mode === 'direct') return { kind: 'direct' } satisfies CosDelivery as CosDelivery
+    if (mode === 'direct') return { kind: 'direct' } satisfies CosDelivery
     if (mode !== 'edgeone') {
       return yield* Effect.die(
         new Error(`QUALY_STORAGE_COS_DELIVERY is ${mode}; it is either direct or edgeone`),
@@ -202,5 +202,5 @@ const deliveryOf = (declared: CosManifestConfig, downloadDomain: string) =>
       issuer: bareOrigin('QUALY_STORAGE_COS_EDGEONE_ISSUER', issuer.value),
     }))
     const signing = yield* signingKeyOf(key.value)
-    return { kind: 'edgeone', ...checked, signing } satisfies CosDelivery as CosDelivery
+    return { kind: 'edgeone', ...checked, signing } satisfies CosDelivery
   })

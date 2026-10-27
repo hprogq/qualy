@@ -1,6 +1,11 @@
 import { Effect } from 'effect'
 import { HttpServerRequest } from 'effect/http'
-import { defaultLocale, supportedLocales, type SupportedLocale } from '@qualy/i18n-contract'
+import {
+  defaultLocale,
+  localeOfAcceptLanguage,
+  supportedLocales,
+  type SupportedLocale,
+} from '@qualy/i18n-contract'
 import { QUALY_LOCALE_COOKIE, QUALY_LOCALE_HEADER } from './index.ts'
 
 // Which language an answer is written in.
@@ -14,29 +19,7 @@ import { QUALY_LOCALE_COOKIE, QUALY_LOCALE_HEADER } from './index.ts'
 const isSupported = (value: string | undefined): value is SupportedLocale =>
   value !== undefined && (supportedLocales as readonly string[]).includes(value)
 
-/** a supported locale an Accept-Language header asks for, by rank, then by language alone */
-export const localeOfAcceptLanguage = (header: string | undefined): SupportedLocale | undefined => {
-  if (header === undefined) return undefined
-  const ranked = header
-    .split(',')
-    .map((part, index) => {
-      const [tag = '', ...parameters] = part.trim().split(';')
-      const quality = parameters
-        .map((parameter) => /^\s*q\s*=\s*([0-9.]+)\s*$/.exec(parameter)?.[1])
-        .find((found) => found !== undefined)
-      return { tag: tag.trim(), weight: quality === undefined ? 1 : Number(quality), index }
-    })
-    .filter((entry) => entry.tag !== '' && entry.tag !== '*' && entry.weight > 0)
-    .sort((a, b) => b.weight - a.weight || a.index - b.index)
-  for (const { tag } of ranked) {
-    const exact = supportedLocales.find((locale) => locale.toLowerCase() === tag.toLowerCase())
-    if (exact !== undefined) return exact
-    const language = tag.split('-')[0]?.toLowerCase()
-    const near = supportedLocales.find((locale) => locale.split('-')[0]?.toLowerCase() === language)
-    if (near !== undefined) return near
-  }
-  return undefined
-}
+export { localeOfAcceptLanguage }
 
 /** the locale a request's answer is written in, from its headers and cookies */
 export const localeOfRequest = (request: {

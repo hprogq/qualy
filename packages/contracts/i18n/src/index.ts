@@ -36,3 +36,32 @@ export const commonErrorCodes = [
 ] as const
 
 export type CommonErrorCode = (typeof commonErrorCodes)[number]
+
+/**
+ * A supported locale an Accept-Language header asks for, by weight, then by
+ * order, matched exactly and then by language alone; `q=0` refuses a
+ * language and `*` names none. Framework-free, so a server answering a
+ * request and the edge function writing a refusal choose the same way.
+ */
+export const localeOfAcceptLanguage = (header: string | undefined): SupportedLocale | undefined => {
+  if (header === undefined) return undefined
+  const ranked = header
+    .split(',')
+    .map((part, index) => {
+      const [tag = '', ...parameters] = part.trim().split(';')
+      const quality = parameters
+        .map((parameter) => /^\s*q\s*=\s*([0-9.]+)\s*$/.exec(parameter)?.[1])
+        .find((found) => found !== undefined)
+      return { tag: tag.trim(), weight: quality === undefined ? 1 : Number(quality), index }
+    })
+    .filter((entry) => entry.tag !== '' && entry.tag !== '*' && entry.weight > 0)
+    .sort((a, b) => b.weight - a.weight || a.index - b.index)
+  for (const { tag } of ranked) {
+    const exact = supportedLocales.find((locale) => locale.toLowerCase() === tag.toLowerCase())
+    if (exact !== undefined) return exact
+    const language = tag.split('-')[0]?.toLowerCase()
+    const near = supportedLocales.find((locale) => locale.split('-')[0]?.toLowerCase() === language)
+    if (near !== undefined) return near
+  }
+  return undefined
+}

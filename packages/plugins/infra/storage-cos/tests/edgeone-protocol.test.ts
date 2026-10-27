@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   base64url,
   createLocalJWKSet,
@@ -61,9 +61,7 @@ const verify = (token: string, now = NOW) =>
 
 /** a token signed with our key whose header and payload are whatever a case needs */
 const forged = (header: Record<string, unknown>, payload: JWTPayload) =>
-  new SignJWT(payload)
-    .setProtectedHeader({ alg: 'ES256', ...header } as { alg: string })
-    .sign(ours.signing.key)
+  new SignJWT(payload).setProtectedHeader({ alg: 'ES256', ...header }).sign(ours.signing.key)
 
 const claims = {
   iss: ISSUER,
@@ -156,6 +154,9 @@ describe('what grants nothing', () => {
 
   it('a token of another type, or another algorithm', async () => {
     await refused(await forged({ ...header, typ: 'JWT' }, claims))
+    // the library reads these as the same type; this profile does not
+    await refused(await forged({ ...header, typ: `application/${TOKEN_TYPE}` }, claims))
+    await refused(await forged({ ...header, typ: TOKEN_TYPE.toUpperCase() }, claims))
     // the confusion a verifier that let the token choose would fall for
     const hmac = await new SignJWT(claims)
       .setProtectedHeader({ alg: 'HS256', ...header })
@@ -171,6 +172,11 @@ describe('what grants nothing', () => {
     await refused(await forged({ ...header, kid: 'download-unknown' }, claims))
   })
 
+  it('an audience that is a list, even one naming this file service', async () => {
+    await refused(await forged(header, { ...claims, aud: [AUDIENCE] }))
+    await refused(await forged(header, { ...claims, aud: [AUDIENCE, 'https://other.example'] }))
+  })
+
   it('a payload missing a claim, or carrying one more', async () => {
     const { iat: _iat, ...withoutIat } = claims
     await refused(await forged(header, withoutIat))
@@ -180,7 +186,7 @@ describe('what grants nothing', () => {
   it('claims of the wrong kind', async () => {
     await refused(await forged(header, { ...claims, iat: `${NOW}` as never }))
     await refused(await forged(header, { ...claims, iat: NOW + 0.5 }))
-    await refused(await forged(header, { ...claims, r: 7 as never }))
+    await refused(await forged(header, { ...claims, r: 7 }))
   })
 
   it('a grant this protocol does not deliver', async () => {
@@ -197,6 +203,53 @@ describe('what grants nothing', () => {
     await refused('not.a-token', 'malformed')
     await refused(`${'a'.repeat(4097)}.b.c`, 'malformed')
     await refused('a.b.c', 'invalid')
+  })
+})
+
+describe('why nothing was granted', () => {
+  it('is named by one of a few fixed details, never by what the error says', async () => {
+    const [head, body, signature] = (await issue()).split('.')
+    const altered = await verify(`${head}.${body}.${signature!.slice(0, -4)}AAAA`)
+    expect(altered).toEqual({ ok: false, refusal: 'invalid', detail: 'jwt_signature' })
+    expect(await verify(await issue(), NOW + 64)).toEqual({
+      ok: false,
+      refusal: 'expired',
+      detail: 'jwt_expired',
+    })
+    expect(await verify(await issue({ issuer: 'https://elsewhere.cn' }))).toEqual({
+      ok: false,
+      refusal: 'invalid',
+      detail: 'jwt_claims',
+    })
+  })
+
+  it('is the service, not the link, when no verification could be made at all', async () => {
+    const token = await issue()
+    const failing = (error: unknown) =>
+      verifyGrant(token, {
+        keys: () => {
+          throw error
+        },
+        issuer: ISSUER,
+        audience: AUDIENCE,
+        now: NOW,
+      })
+    // what the runtime said is not passed on, however it is worded
+    expect(await failing(new TypeError('Param Invalid: secret-marker'))).toEqual({
+      ok: false,
+      refusal: 'unavailable',
+      detail: 'verifier',
+    })
+  })
+
+  it('is the service too when the signature check throws instead of answering', async () => {
+    const token = await issue()
+    const spy = vi.spyOn(crypto.subtle, 'verify').mockRejectedValueOnce(new Error('Param Invalid'))
+    try {
+      expect(await verify(token)).toEqual({ ok: false, refusal: 'unavailable', detail: 'verifier' })
+    } finally {
+      spy.mockRestore()
+    }
   })
 })
 

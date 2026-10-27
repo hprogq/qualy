@@ -100,6 +100,11 @@ const load = (
     structuredClone,
     console,
   })
+  vm.runInContext(
+    `Uint8Array.fromBase64 = undefined; Uint8Array.prototype.toBase64 = undefined;
+    Error.captureStackTrace = undefined;`,
+    context,
+  )
   vm.runInContext(script, context)
   if (listener === undefined) throw new Error('the bundle registered no fetch listener')
   const handler = listener
@@ -111,6 +116,7 @@ const load = (
 
 describe('the edge function bundle', () => {
   it('is one script with nothing left for the runtime to resolve', () => {
+    expect(script).toMatch(/^\/\/ @ts-nocheck -- generated JavaScript;/)
     expect(script).not.toMatch(/^\s*import\s/m)
     expect(script).not.toMatch(/\bimport\s*\(/)
     expect(script).not.toMatch(/\brequire\s*\(/)
@@ -166,5 +172,53 @@ describe('the edge function bundle', () => {
     const reshaped = await deliver(new Request(`${FILES}/v1/${head}.${body}.${der}`))
     expect(reshaped.status).toBe(403)
     expect(reads).toHaveLength(1)
+  })
+
+  it('answers a runtime it cannot verify on as unavailable, not as a bad link', async () => {
+    const { privateKey, publicKey } = await generateKeyPair('ES256', { extractable: true })
+    const published = { ...(await exportJWK(publicKey)), kid: 'download-test', alg: 'ES256' }
+    const reads: string[] = []
+    const mute = {
+      subtle: new Proxy(crypto.subtle, {
+        get: (target, name) =>
+          name === 'verify'
+            ? async () => false
+            : (Reflect.get(target, name) as (...a: unknown[]) => unknown).bind(target),
+      }),
+      getRandomValues: (a: never) => crypto.getRandomValues(a),
+      randomUUID: () => crypto.randomUUID(),
+    } as unknown as Crypto
+    const deliver = load(
+      {
+        FILES_ORIGIN: FILES,
+        APP_ORIGIN: APP,
+        ISSUER: APP,
+        VERIFY_KEYS: JSON.stringify({ keys: [published] }),
+        QUALY_EDGE_KEY: 'k'.repeat(40),
+      },
+      (url) => {
+        reads.push(url)
+        return new Response(new Uint8Array([7]), { status: 200 })
+      },
+      mute,
+    )
+    const token = await signGrant({
+      signing: { key: privateKey, kid: 'download-test' },
+      issuer: APP,
+      audience: FILES,
+      issuedAt: Math.floor(Date.now() / 1000),
+      lifetime: 60,
+      grant: {
+        key: 'attachments/0190a7a0-0000-7000-8000-000000000001/0190a7a0-0000-7000-8000-000000000002',
+        revision: 'v1',
+        filename: 'a.pdf',
+        mime: 'application/pdf',
+      },
+    })
+    const answer = await deliver(new Request(`${FILES}/v1/${token}`))
+    expect(answer.status).toBe(502)
+    expect(answer.headers.get('x-qualy-reason')).toBe('unavailable')
+    expect(answer.headers.get('x-qualy-detail')).toBeNull()
+    expect(reads).toHaveLength(0)
   })
 })

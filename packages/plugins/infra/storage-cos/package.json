@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@qualy/api-kit": "workspace:*",
+    "@qualy/i18n-contract": "workspace:*",
     "@qualy/plugin-kit": "workspace:*",
     "@qualy/plugin-storage": "workspace:*",
     "@qualy/plugin-ui-registry": "workspace:*",

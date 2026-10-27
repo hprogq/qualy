@@ -124,7 +124,7 @@ describe('a delivery the link grants', () => {
     expect(sent).toEqual(['accept-encoding', EDGE_KEY_HEADER])
   })
 
-  it('serves one range, and ignores a request for several rather than mislabel them', async () => {
+  it('serves one range, and refuses any other byte range before reading', async () => {
     const { deliver, reads } = harness(() =>
       object(206, { 'content-range': 'bytes 0-2/300', 'content-length': '3' }),
     )
@@ -133,8 +133,46 @@ describe('a delivery the link grants', () => {
     expect(answer.headers.get('content-range')).toBe('bytes 0-2/300')
     expect(reads[0]!.headers.get('range')).toBe('bytes=0-2')
 
-    await deliver(new Request(await linkFor(), { headers: { range: 'bytes=0-1,5-6' } }))
-    expect(reads[1]!.headers.get('range')).toBeNull()
+    for (const range of ['bytes=0-1,5-6', 'bytes=abc', 'bytes=5-2x']) {
+      const refused = await deliver(new Request(await linkFor(), { headers: { range } }))
+      expect(refused.status).toBe(416)
+      expect(refused.headers.get('x-qualy-reason')).toBe('range')
+    }
+    expect(reads).toHaveLength(1)
+  })
+
+  it('reads a range only for a GET', async () => {
+    const { deliver, reads } = harness(() => object())
+    await deliver(
+      new Request(await linkFor(), {
+        method: 'HEAD',
+        headers: { range: 'bytes=0-2', 'if-range': '"v1"' },
+      }),
+    )
+    expect(reads[0]!.headers.get('range')).toBeNull()
+    expect(reads[0]!.headers.get('if-range')).toBeNull()
+  })
+
+  it('carries If-Range with the range, and gives the whole file for a part of another one', async () => {
+    const part = () => object(206, { 'content-range': 'bytes 0-2/300', etag: '"v2"' })
+    const { deliver, reads } = harness((_url, init) =>
+      new Headers(init.headers).has('range') ? part() : object(200, { etag: '"v2"' }),
+    )
+    const current = await deliver(
+      new Request(await linkFor(), { headers: { range: 'bytes=0-2', 'if-range': '"v2"' } }),
+    )
+    expect(current.status).toBe(206)
+    expect(reads[0]!.headers.get('if-range')).toBe('"v2"')
+    expect(reads).toHaveLength(1)
+
+    // the bucket answered a part although the reader holds an older representation
+    const stale = await deliver(
+      new Request(await linkFor(), { headers: { range: 'bytes=0-2', 'if-range': '"v1"' } }),
+    )
+    expect(stale.status).toBe(200)
+    expect(reads).toHaveLength(3)
+    expect(reads[2]!.headers.get('range')).toBeNull()
+    expect(reads[2]!.headers.get('if-range')).toBeNull()
   })
 
   it('answers HEAD with the object’s headers and no body', async () => {
@@ -165,6 +203,15 @@ describe('a delivery the link grants', () => {
     )
     expect(answer.status).toBe(204)
     expect(answer.headers.get('access-control-allow-origin')).toBe(APP)
+    expect(answer.headers.get('access-control-allow-headers')).toContain('If-Range')
+    const theirs = await deliver(
+      new Request(await linkFor(), {
+        method: 'OPTIONS',
+        headers: { origin: 'https://evil.example' },
+      }),
+    )
+    expect(theirs.status).toBe(403)
+    expect(theirs.headers.get('x-qualy-reason')).toBe('forbidden')
     expect(reads).toHaveLength(0)
   })
 })
@@ -197,12 +244,10 @@ describe('what gets no file', () => {
     const refused = await refusal(new Request(altered))
     expect(refused).toMatchObject({ status: 403, reason: 'invalid', read: false })
     // which check failed, named for whoever diagnoses it, and nothing of the token
-    expect(refused.response.headers.get('x-qualy-detail')).toBe(
-      'ERR_JWS_SIGNATURE_VERIFICATION_FAILED',
-    )
+    expect(refused.response.headers.get('x-qualy-detail')).toBeNull()
     expect(await refusal(new Request(`${FILES}/v1/garbage`))).toMatchObject({
       status: 400,
-      reason: 'malformed',
+      reason: 'invalid',
       read: false,
     })
   })
@@ -213,7 +258,7 @@ describe('what gets no file', () => {
     for (const extra of ['?versionId=x', '?eo-img.resize=w/9999', '?=', '?t=1']) {
       expect(await refusal(new Request(`${link}${extra}`))).toMatchObject({
         status: 400,
-        reason: 'unexpected_query',
+        reason: 'invalid',
         read: false,
       })
     }
@@ -224,12 +269,12 @@ describe('what gets no file', () => {
     const elsewhere = link.replace(FILES, 'https://qualy-file-delivery.eo-edgefunctions.com')
     expect(await refusal(new Request(elsewhere))).toMatchObject({
       status: 404,
-      reason: 'wrong_host',
+      reason: 'not_found',
       read: false,
     })
     expect(await refusal(new Request(`${FILES}/${grant.key}`))).toMatchObject({
       status: 404,
-      reason: 'not_a_delivery',
+      reason: 'not_found',
       read: false,
     })
   })
@@ -245,7 +290,7 @@ describe('what gets no file', () => {
       const { [name as keyof typeof env]: _gone, ...rest } = env
       const answer = await refusal(new Request(await linkFor()), undefined, rest)
       expect(answer.read).toBe(false)
-      expect(answer.status === 502 || answer.status === 404).toBe(true)
+      expect(answer.status).toBe(502)
     }
   })
 
@@ -253,7 +298,7 @@ describe('what gets no file', () => {
     const { body, watch } = watchedBody(new Uint8Array([9]))
     expect(
       await refusal(new Request(await linkFor()), () => new Response(body, { status: 404 })),
-    ).toMatchObject({ status: 404, reason: 'object_missing' })
+    ).toMatchObject({ status: 404, reason: 'missing' })
     expect(watch.cancelled).toBe(true)
   })
 
@@ -273,9 +318,9 @@ describe('what gets no file', () => {
         new Request(await linkFor()),
         () => new Response(body, { status, headers: { location: 'https://bucket.example/x' } }),
       )
-      expect(answer).toMatchObject({ status: 502, reason: 'upstream_status' })
+      expect(answer).toMatchObject({ status: 502, reason: 'unavailable' })
       expect(answer.response.headers.get('location')).toBeNull()
-      expect(answer.response.headers.get('x-qualy-upstream')).toBe(String(status))
+      expect(answer.response.headers.get('x-qualy-upstream')).toBeNull()
       expect(watch.cancelled).toBe(true)
     }
   })
@@ -285,7 +330,7 @@ describe('what gets no file', () => {
       await refusal(new Request(await linkFor()), () => {
         throw new Error('connection reset')
       }),
-    ).toMatchObject({ status: 502, reason: 'upstream_fetch_failed' })
+    ).toMatchObject({ status: 502, reason: 'unavailable' })
   })
 
   it('bytes that come back encoded, or as several ranges', async () => {
@@ -295,7 +340,7 @@ describe('what gets no file', () => {
         new Request(await linkFor()),
         () => new Response(body, { status: 200, headers: { 'content-encoding': 'gzip' } }),
       ),
-    ).toMatchObject({ status: 502, reason: 'unexpected_encoding' })
+    ).toMatchObject({ status: 502, reason: 'unavailable' })
     expect(watch.cancelled).toBe(true)
     expect(
       await refusal(
@@ -306,7 +351,7 @@ describe('what gets no file', () => {
             headers: { 'content-type': 'multipart/byteranges; boundary=b' },
           }),
       ),
-    ).toMatchObject({ status: 502, reason: 'unexpected_type' })
+    ).toMatchObject({ status: 502, reason: 'unavailable' })
   })
 
   it('says why in words, readable by the application’s scripts', async () => {
@@ -316,11 +361,118 @@ describe('what gets no file', () => {
     const answer = await refusal(expired)
     expect(answer.response.headers.get('access-control-allow-origin')).toBe(APP)
     expect(answer.response.headers.get('content-type')).toBe('text/plain; charset=utf-8')
-    expect(await answer.response.text()).toContain('下载链接已失效')
+    expect(answer.response.headers.get('content-language')).toBe('zh-CN')
+    expect(answer.response.headers.get('vary')).toBe('Origin, Accept-Language')
+    expect(await answer.response.text()).toBe('下载链接已过期\n')
 
     const fromScript = await refusal(
       new Request(await linkFor({}, NOW - 70), { headers: { accept: 'application/json' } }),
     )
-    expect(await fromScript.response.json()).toEqual({ code: 'expired' })
+    expect(fromScript.response.headers.get('content-type')).toBe('text/plain; charset=utf-8')
+    expect(await fromScript.response.text()).toBe('下载链接已过期\n')
+    expect(answer.response.headers.get('access-control-expose-headers')).toContain('X-Qualy-Reason')
+  })
+
+  it('negotiates language while always returning plain text', async () => {
+    const answered = async (headers: Record<string, string>) => {
+      const { response } = await refusal(new Request(await linkFor({}, NOW - 70), { headers }))
+      return {
+        language: response.headers.get('content-language'),
+        type: response.headers.get('content-type'),
+      }
+    }
+    expect(await answered({ 'accept-language': 'zh;q=0, en;q=1' })).toMatchObject({
+      language: 'en-US',
+    })
+    expect(await answered({ 'accept-language': 'en;q=0.2, zh;q=1' })).toMatchObject({
+      language: 'zh-CN',
+    })
+    expect(await answered({ 'accept-language': 'fr-FR, zh-CN;q=0.9, en;q=0.5' })).toMatchObject({
+      language: 'zh-CN',
+    })
+    // nothing it speaks asked for: the product's own language
+    expect(await answered({ 'accept-language': 'fr' })).toMatchObject({ language: 'zh-CN' })
+
+    const text = 'text/plain; charset=utf-8'
+    expect(await answered({ accept: 'application/json;q=0, text/plain;q=1' })).toMatchObject({
+      type: text,
+    })
+    expect(await answered({ accept: 'application/json;q=1, text/html;q=0.1' })).toMatchObject({
+      type: text,
+    })
+    expect(await answered({ accept: '*/*' })).toMatchObject({ type: text })
+    expect(
+      await answered({ accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8' }),
+    ).toMatchObject({ type: text })
+  })
+
+  it('tells a person what they can do, not what failed', async () => {
+    const words = async (request: Request, answer?: () => Response) => {
+      const { response } = await refusal(request, answer)
+      return (await response.text()).trim()
+    }
+    const zh = { 'accept-language': 'zh-CN' }
+    expect(await words(new Request(`${FILES}/v1/garbage`, { headers: zh }))).toBe('下载链接无效')
+    expect(
+      await words(
+        new Request(await linkFor(), { headers: zh }),
+        () => new Response(null, { status: 404 }),
+      ),
+    ).toBe('文件不存在')
+    expect(
+      await words(new Request(await linkFor(), { headers: { ...zh, range: 'bytes=0-1,4-5' } })),
+    ).toBe('无法完成下载')
+    expect(
+      await words(
+        new Request(await linkFor(), { headers: zh }),
+        () => new Response(null, { status: 503 }),
+      ),
+    ).toBe('下载失败，请稍后重试')
+    expect(await words(new Request(`https://elsewhere.example/v1/x`, { headers: zh }))).toBe(
+      '页面无法访问',
+    )
+  })
+
+  it('a failure nobody foresaw, answered like any other refusal', async () => {
+    const broken = () =>
+      ({
+        status: 200,
+        headers: {
+          get: () => {
+            throw new TypeError('not a response')
+          },
+        },
+      }) as unknown as Response
+    const answer = await refusal(
+      new Request(await linkFor(), { headers: { origin: APP, accept: 'application/json' } }),
+      broken,
+    )
+    expect(answer).toMatchObject({ status: 502, reason: 'unavailable' })
+    expect(answer.response.headers.get('access-control-allow-origin')).toBe(APP)
+    expect(await answer.response.text()).toBe('下载失败，请稍后重试\n')
+  })
+
+  it('a key set that could verify nothing, as the service’s failure rather than the link’s', async () => {
+    const { d: _d, ...withoutSecret } = (await exportJWK(privateKey)) as Record<string, unknown>
+    const secret = { ...(await exportJWK(privateKey)), kid: 'download-test' }
+    for (const keys of [
+      [],
+      [secret],
+      [published, published],
+      [{ ...published, kid: '' }],
+      [{ ...published, crv: 'P-384' }],
+      [{ ...published, key_ops: ['sign'] }],
+      [{ ...published, key_ops: ['verify', 'verify'] }],
+      [{ ...published, ext: 'true' }],
+      [{ ...published, x: 'A'.repeat(43), y: 'A'.repeat(43) }],
+      [published, { ...published, kid: 'rotation', x: 'A'.repeat(43), y: 'A'.repeat(43) }],
+      [{ ...withoutSecret, kid: 'download-test', alg: 'RS256' }],
+    ]) {
+      const answer = await refusal(new Request(await linkFor()), undefined, {
+        ...env,
+        VERIFY_KEYS: JSON.stringify({ keys }),
+      })
+      expect(answer).toMatchObject({ status: 502, reason: 'unavailable', read: false })
+    }
   })
 })

@@ -20,15 +20,7 @@ const delivery = createDelivery({
 })
 
 addEventListener('fetch', (event) => {
-  // only what happens before a response exists is caught here; a body that
-  // fails while it streams ends the download
-  event.respondWith(
-    delivery(event.request).catch(
-      () =>
-        new Response(null, {
-          status: 502,
-          headers: { 'cache-control': 'no-store', 'x-qualy-reason': 'unexpected' },
-        }),
-    ),
-  )
+  // createDelivery owns error responses, including unexpected exceptions.
+  // A stream failure after headers were sent cannot become a new response.
+  event.respondWith(delivery(event.request))
 })
