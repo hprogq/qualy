@@ -5,8 +5,8 @@ import { fileURLToPath } from 'node:url'
 //
 // Built from ./entry.ts, so the function that runs at the edge is the module
 // the tests exercise and the protocol the server signs with, not a copy of
-// them. esbuild is a development dependency and is loaded only here: this is
-// run from a checkout, never by the serving process.
+// them. esbuild is a CLI dependency and is loaded only by this build command,
+// never by the serving process.
 
 const ENTRY = fileURLToPath(new URL('./entry.ts', import.meta.url))
 const WEBCRYPTO = fileURLToPath(new URL('./webcrypto.ts', import.meta.url))
