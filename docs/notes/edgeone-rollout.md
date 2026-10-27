@@ -18,7 +18,7 @@
 - 发布：[`v0.1.0-rc.36`](https://github.com/hprogq/qualy/releases/tag/v0.1.0-rc.36)，源码 `0267c6d965c00a8c155863ebbceeca870779895d`，目标 `linux/amd64`，Web release `r_EUFFloS2UR-IGb5GAnVf6A`。
 - 部署只使用该发布的 [release.json](https://github.com/hprogq/qualy/releases/download/v0.1.0-rc.36/release.json) 中三个镜像 digest，已核对清单 revision 与不可变 tag 一致。本次尚未拉取或启动生产候选容器。
 - [main CI](https://github.com/hprogq/qualy/actions/runs/40509399940) 全部通过：Node 3463 项、Chromium 1758 项、WebKit 50 项；格式、lint、类型检查、三个镜像检查和发布资格均通过。Node 普通 CI 跳过 27 项真桶测试及两项既有 vendor/CSP 条件检查；真桶测试在下面的正式发布门禁补跑。
-- [正式发布](https://github.com/hprogq/qualy/actions/runs/40511587514) COS 135 项全部通过、无跳过；三个镜像构建、检查、部署/回退/备份/恢复 smoke 与镜像推送成功。Sourcemap 登记最后一次核对仍在 GitHub 排队，未记为通过；已发布镜像和清单不变。
+- [正式发布](https://github.com/hprogq/qualy/actions/runs/40511587514) COS 135 项全部通过、无跳过；三个镜像构建、检查、部署/回退/备份/恢复 smoke 与镜像推送成功。Sourcemap 任务也已成功，333 份全部登记到本次 Web release（189 份复用，144 份上传），发布流水线全部通过。
 - 本次与 `rc.35` 的 `db/migrations` 无差异。待更新的 EO 单文件脚本 SHA-256 为 `64ee189e0596573739403347a8ca3be712e0347a6b5dd94401d1dde5094e1853`，来自同一候选源码，包含 HEAD 空流修复。
 
 ## 两套互斥配置

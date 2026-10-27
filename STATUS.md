@@ -47,7 +47,7 @@ rc.36 候选源码提交 `0267c6d965c00a8c155863ebbceeca870779895d` 的最终 CI
 - static、Node CI、Chromium、WebKit、image、release-eligible 全部通过；
 - Node：443 个测试文件通过、3 个跳过；3463 个测试通过、29 个跳过；其中 27 项 COS 真桶用例在正式 release 门禁补跑，另两项为既有的 vendor/CSP 环境条件跳过；
 - Chromium：134 个测试文件、1758 个测试通过；WebKit：5 个测试文件、50 个测试通过；
-- 正式 release 的 COS 135 个测试全部通过，无跳过；三个镜像构建、检查、部署/回退/备份/恢复 smoke、镜像推送和 release.json 发布成功。Sourcemap 登记仍在 GitHub 排队，未记为通过。
+- 正式 release 的 COS 135 个测试全部通过，无跳过；三个镜像构建、检查、部署/回退/备份/恢复 smoke、镜像推送和 release.json 发布成功。Sourcemap 任务成功，333 份全部登记到本次 Web release。
 - 本地两种文件交付配置均已验证签发和互斥行为；真实 Chromium 的跨域单个/全部下载、图片灯箱、PDF 画面与原件哈希检查通过。正式域名和生产对象的业务验收需在部署后执行，见 [EO 切换与回退](docs/notes/edgeone-rollout.md)。
 
 2026-10-22 的安全核对记录了两项编译器内嵌 Go 告警（Linux 目标依赖图不包含受影响包）及两项不进入生产镜像的 Vitest 开发依赖中危告警，依据见[安全核对](docs/notes/security-dependency-review-2026-10.md)。本轮未重新核对这些平台告警的当前状态。
