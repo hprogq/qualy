@@ -1,6 +1,7 @@
 import { Effect, Layer } from 'effect'
 import { Plugin } from '@qualy/plugin-kit'
 import { Browser } from '@qualy/plugin-kit/browser'
+import { Cli } from '@qualy/plugin-kit/cli'
 import { ShellPolicy } from '@qualy/api-kit/shell-policy'
 import { Storage } from '@qualy/plugin-storage/plugin'
 import { StorageBackends, StorageConfig } from '@qualy/plugin-storage/server'
@@ -71,19 +72,21 @@ const registration: Layer.Layer<
     const policy = yield* ShellPolicy
     // Two origins and two directives. The browser WRITES to the bucket
     // endpoint, and it READS from wherever this deployment's download
-    // urls point - the same host unless a download domain is named. A
-    // redirect delivery is fetched, and an image among the evidence is
-    // drawn, so both of those doors have to be open or the shell blocks
-    // the product's own files.
+    // urls point - the bucket's own host unless a download domain is named,
+    // or the file host when delivery is through EdgeOne, in which case no
+    // read is let through to the bucket at all. A redirect delivery is
+    // fetched, and an image among the evidence is drawn, so both of those
+    // doors have to be open or the shell blocks the product's own files.
     const writesTo = cosOrigin(settings)
-    const readsFrom = cosDownloadOrigin(settings)
+    const readsFrom =
+      settings.delivery?.kind === 'edgeone' ? settings.delivery.origin : cosDownloadOrigin(settings)
     yield* policy.register({
       owner: '@qualy/plugin-storage-cos',
       'connect-src': readsFrom === writesTo ? [writesTo] : [writesTo, readsFrom],
       'img-src': [readsFrom],
     })
     yield* Effect.logDebug(
-      `cos storage writing to ${settings.bucket} in ${settings.region} (${mode === 'versioned' ? 'versions kept, reads pinned' : 'second writes refused'})`,
+      `cos storage writing to ${settings.bucket} in ${settings.region} (${mode === 'versioned' ? 'versions kept, reads pinned' : 'second writes refused'}), delivering ${settings.delivery?.kind === 'edgeone' ? `through ${settings.delivery.origin}` : 'directly'}`,
     )
   }),
 )
@@ -95,6 +98,23 @@ const plugin = Plugin.define(
   // the browser half announces how to spend this provider's grants
   Browser.module('./client/upload'),
   Plugin.layer(registration),
+  // The edge function an EdgeOne delivery needs, built from the same modules
+  // the server signs with, and the key pair its credentials use. Run from a
+  // checkout by whoever operates the file host, never by the serving process.
+  Cli.command({
+    namespace: 'cos',
+    name: 'edge-build',
+    summary: 'bundle the EdgeOne delivery function into the one script the platform runs',
+    context: 'assembly',
+    load: () => import('./cli/edge-build.ts'),
+  }),
+  Cli.command({
+    namespace: 'cos',
+    name: 'edge-keygen',
+    summary: 'make the key pair EdgeOne download credentials are signed and verified with',
+    context: 'assembly',
+    load: () => import('./cli/edge-keygen.ts'),
+  }),
 )
 
 export default plugin

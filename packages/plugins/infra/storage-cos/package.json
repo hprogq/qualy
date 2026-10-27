@@ -23,10 +23,12 @@
     "cos-js-sdk-v5": "catalog:",
     "cos-nodejs-sdk-v5": "catalog:",
     "effect": "catalog:",
+    "jose": "catalog:",
     "qcloud-cos-sts": "catalog:"
   },
   "devDependencies": {
     "@qualy/plugin-database": "workspace:*",
-    "@qualy/tsconfig": "workspace:*"
+    "@qualy/tsconfig": "workspace:*",
+    "esbuild": "catalog:"
   }
 }

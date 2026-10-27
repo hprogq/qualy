@@ -170,6 +170,10 @@ catalog:
   cos-nodejs-sdk-v5: 3.0.0
   qcloud-cos-sts: 3.1.3
   cos-js-sdk-v5: 1.10.1
+  # the download credential an EdgeOne delivery carries: signed here as an
+  # ES256 JWT, verified by the edge function, which is bundled from the same
+  # protocol module so both ends read the token through one implementation
+  jose: 6.2.13
   # tencent cloud real user monitoring, browser only: the reporting sdk the
   # rum-tencent provider loads when a deployment has reporting switched on.
   # Pinned exactly, because a minor release of it changes what leaves a

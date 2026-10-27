@@ -8,6 +8,12 @@ import type {
   StorageBackend,
 } from '@qualy/plugin-storage/backend'
 import type { CosUploadPayload } from '../payload.ts'
+import {
+  deliverableFilename,
+  DELIVERY_PREFIX,
+  signGrant,
+  type SigningKey,
+} from '../edgeone/protocol.ts'
 import { credentialForObject } from './sts.ts'
 
 // Tencent cloud object storage, as three calls and a signature.
@@ -27,13 +33,32 @@ import { credentialForObject } from './sts.ts'
 // are only hidden. A bucket whose versioning was switched on and then
 // suspended does neither, and is refused.
 
+/**
+ * How a reader is sent to the bytes. One answer per deployment, decided by
+ * its configuration and never by the reader: a deployment that delivers
+ * through EdgeOne signs no url that reaches the bucket directly, and one
+ * that does not keeps the bucket's own signed urls.
+ */
+export type CosDelivery =
+  | { readonly kind: 'direct' }
+  | {
+      readonly kind: 'edgeone'
+      /** the file host's origin, where a credential is presented */
+      readonly origin: string
+      /** who a credential says issued it */
+      readonly issuer: string
+      readonly signing: SigningKey
+    }
+
 export interface CosSettings {
   readonly region: string
   readonly bucket: string
   readonly secretId: Redacted.Redacted
   readonly secretKey: Redacted.Redacted
-  /** a download domain, when the deployment has one */
+  /** a download domain, when the deployment has one; direct delivery only */
   readonly downloadDomain?: string | undefined
+  /** direct when absent */
+  readonly delivery?: CosDelivery | undefined
 }
 
 /** how long a signed read url is good for; long enough to start a download */
@@ -287,13 +312,44 @@ export const cosBackend = (
     /**
      * A url that works for a minute and then does not.
      *
-     * Signed here with the deployment's own credential rather than handed to
-     * the browser: the bucket is private, there is no permanent public url for
-     * any attachment, and a link somebody copies out of the address bar stops
-     * working before they can paste it anywhere useful.
+     * Signed here rather than handed to the browser: the bucket is private,
+     * there is no permanent public url for any attachment, and a link
+     * somebody copies out of the address bar stops working before they can
+     * paste it anywhere useful. Directly, it is the bucket's own signed url;
+     * through EdgeOne, a credential the file host's edge function verifies
+     * (../edgeone/protocol.ts).
      */
     open: ({ key, revision }, options) => {
       const version = readRevision(mode, revision)
+      const delivery = settings.delivery ?? { kind: 'direct' as const }
+      if (delivery.kind === 'edgeone') {
+        // A credential for the file host, never a url to the bucket: this
+        // deployment's readers reach the bytes through EdgeOne only, and a
+        // signing that fails is a failure, not a reason to send them direct.
+        return Effect.tryPromise({
+          try: async () => {
+            const token = await signGrant({
+              signing: delivery.signing,
+              issuer: delivery.issuer,
+              audience: delivery.origin,
+              issuedAt: Math.floor(Date.now() / 1000),
+              lifetime: DOWNLOAD_TTL_SECONDS,
+              grant: {
+                key,
+                revision: version,
+                filename: deliverableFilename(options.filename),
+                mime: options.mime,
+              },
+            })
+            return {
+              kind: 'redirect' as const,
+              url: `${delivery.origin}${DELIVERY_PREFIX}${token}`,
+              expiresInSeconds: DOWNLOAD_TTL_SECONDS,
+            }
+          },
+          catch: (cause) => backendFailure('open', cause),
+        })
+      }
       return Effect.tryPromise({
         try: async () => {
           const url = await new Promise<string>((resolve, reject) => {

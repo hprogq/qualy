@@ -1,7 +1,9 @@
 import COS from 'cos-nodejs-sdk-v5'
 import { Effect, Exit, Redacted } from 'effect'
+import { createLocalJWKSet, exportJWK, generateKeyPair } from 'jose'
 import { afterEach, describe, expect, it } from 'vitest'
 import { cosBackend, type CosSettings } from '../src/server/backend.ts'
+import { verifyGrant } from '../src/edgeone/protocol.ts'
 
 // The adapter between this repository and the store's sdk, with the sdk
 // answering instead of a bucket.
@@ -288,5 +290,53 @@ describe('a bucket that keeps a version of every write', () => {
     await Effect.runPromise(backend.delete('attachments/t/a'))
     expect(listed).toBe(false)
     expect(asked['VersionId']).toBeUndefined()
+  })
+})
+
+// A deployment that delivers through EdgeOne: every read is a credential for
+// the file host, never a url to the bucket, and it grants exactly the object,
+// version, name and type the attachment has.
+describe('a deployment that delivers through EdgeOne', () => {
+  it('signs a credential for the file host and never a url to the bucket', async () => {
+    const { privateKey, publicKey } = await generateKeyPair('ES256', { extractable: true })
+    const published = { ...(await exportJWK(publicKey)), kid: 'download-test', alg: 'ES256' }
+    let bucketAsked = false
+    answers('getObjectUrl', () => {
+      bucketAsked = true
+    })
+    const edgeone: CosSettings = {
+      ...settings,
+      delivery: {
+        kind: 'edgeone',
+        origin: 'https://files.qualy.example.cn',
+        issuer: 'https://qualy.example.cn',
+        signing: { key: privateKey, kid: 'download-test' },
+      },
+    }
+    const key =
+      'attachments/0190a7a0-0000-7000-8000-000000000001/0190a7a0-0000-7000-8000-000000000002'
+    const opened = await Effect.runPromise(
+      cosBackend(edgeone, 'versioned').open(
+        { key, revision: null },
+        { filename: 'a\r\nb.pdf', mime: 'application/pdf' },
+      ),
+    )
+    if (opened.kind !== 'redirect') throw new Error('not a redirect')
+    expect(bucketAsked).toBe(false)
+    expect(opened.url).not.toContain('myqcloud.com')
+    expect(opened.url.startsWith('https://files.qualy.example.cn/v1/')).toBe(true)
+    expect(opened.expiresInSeconds).toBe(60)
+
+    const token = opened.url.slice('https://files.qualy.example.cn/v1/'.length)
+    const verified = await verifyGrant(token, {
+      keys: createLocalJWKSet({ keys: [published] }),
+      issuer: 'https://qualy.example.cn',
+      audience: 'https://files.qualy.example.cn',
+      now: Math.floor(Date.now() / 1000),
+    })
+    expect(verified).toEqual({
+      ok: true,
+      grant: { key, revision: 'null', filename: 'a__b.pdf', mime: 'application/pdf' },
+    })
   })
 })

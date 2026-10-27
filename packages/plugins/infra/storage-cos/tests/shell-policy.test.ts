@@ -1,4 +1,5 @@
 import { Effect, Exit, Layer, Redacted } from 'effect'
+import { generateKeyPair } from 'jose'
 import COS from 'cos-nodejs-sdk-v5'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { ShellPolicy, shellPolicyLayer } from '@qualy/api-kit/shell-policy'
@@ -125,6 +126,30 @@ describe('the shell policy contribution', () => {
         'connect-src': [bucket],
         // an image among the evidence is drawn, not fetched
         'img-src': [bucket],
+      },
+    ])
+  })
+
+  // Through EdgeOne the browser still writes to the bucket - an upload is a
+  // grant to put one object there - but it reads only from the file host:
+  // nothing in the shell lets an image or a fetch reach the bucket directly.
+  it('reads from the file host only, and still writes to the bucket, when delivery is EdgeOne', async () => {
+    const { privateKey } = await generateKeyPair('ES256')
+    expect(
+      await entriesFor({
+        ...settings,
+        delivery: {
+          kind: 'edgeone',
+          origin: 'https://files.qualy.example.cn',
+          issuer: 'https://qualy.example.cn',
+          signing: { key: privateKey, kid: 'download-test' },
+        },
+      }),
+    ).toEqual([
+      {
+        owner: '@qualy/plugin-storage-cos',
+        'connect-src': [bucket, 'https://files.qualy.example.cn'],
+        'img-src': ['https://files.qualy.example.cn'],
       },
     ])
   })
