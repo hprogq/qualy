@@ -114,6 +114,15 @@ digest 与 server 镜像携带的 web release id,写成 `release.json` 挂在该
 compose 与 `upgrade.sh` 不需要知道镜像仓库。`connectivity.yml` 是手动运行的测量:同一脚本以 `connectivity-<run>` 推一遍并逐个计时,
 另对服务器的 SSH 端口做一次 host key 扫描。
 
+**发布 tag 一律签名**(2026-10-28):`v*` tag 用 `git tag -s` 创建(签名方式随本机 git 配置,目前是 1Password 中的 SSH 签名密钥),或在本仓库开启 `git config --local tag.gpgSign true`
+(只作用于 Qualy 仓库,不改全局配置),否则 GitHub 上的 tag 不显示 Verified。签名不影响发布门禁:规则集只核对
+`release-eligible`。历史上 rc.1–rc.15、rc.19、rc.23–rc.37 是未签名的 annotated tag;tag 不可移动也不可删除,
+不为补签名重建历史 tag。
+
+**rc 一律是 prerelease**:`release.yml` 按 tag 后缀决定,`-rc`/`-beta`/`-alpha` 发为 prerelease,其余才标 Latest。
+rc.18 起由工作流自动如此;更早的 rc.1–rc.17(rc.10 没有 release)当时标成了正式 release,2026-10-28 已逐个改为
+prerelease。这个标记可以事后修改,不触发任何工作流,也不改 tag 与 `release.json`;目前仓库没有 Latest,直到第一个非 rc 发布。
+
 **CI 结论复用,不重跑**(2026-09-30):CI 只在 main 上跑一次。`ci.yml` 末尾的汇总 job 在 push 到 main 时名为
 `release-eligible`、在 PR 上名为 `ci-summary`(GitHub 把 skipped job 当作通过的检查,名字随事件变,未进 main 的 commit
 就不可能带着它),`if: always()` 并自行核对每个上游 job 都是 success。仓库规则集 `release tags`(目标 `refs/tags/v*`,
