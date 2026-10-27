@@ -47,9 +47,9 @@ import * as m from '#messages'
 // or one of several with a way to the others. The card asks the server its
 // own question - the running batches, whatever the list below is filtered
 // or paged to - because a filter narrows the list and the running round
-// is not in the list's second page any less. Typing a name folds the card
-// away: a search is looking for one batch, and the card would only push
-// the answer down. Under it every batch, running ones included, as a table
+// is not in the list's second page any less. Searching and filtering the
+// list leave this separate overview in place. Under it every batch,
+// running ones included, as a table
 // - the card says what to do, the table says what there is. Opening a
 // batch is a link to the batch, not a selection this screen keeps: the
 // address names the batch and the section, so it survives a reload and can
@@ -638,11 +638,9 @@ export default function BatchListPage() {
   // Polled on the same beat as the review rail's badge - the queue it
   // counts is the one that badge counts.
   const agendas = useQuery({
-    ...query.assessment.listMyStanding.queryOptions({
-      query: {
-        batchIds: (batches.data?.items ?? []).map((batch) => batch.id),
-      },
-    }),
+    // The server includes every running card and its standing independently
+    // of the paged list. Filter changes must not re-key this query.
+    ...query.assessment.listMyStanding.queryOptions({ query: {} }),
     refetchInterval: 30_000,
   })
 
@@ -663,8 +661,7 @@ export default function BatchListPage() {
   // a position that meant something only in the old one. A batch whose
   // status is running but whose first stage has not arrived is scheduled,
   // not running, and is not the card's.
-  const searching = search.trim() !== ''
-  const running = searching ? [] : (agendas.data?.running.items ?? [])
+  const running = agendas.data?.running.items ?? []
   const runningKey = running.map((row) => row.id).join('\n')
   const [hero, setHero] = useState<{
     key: string
@@ -741,7 +738,7 @@ export default function BatchListPage() {
   // the card's question is open until the running rounds are known, and
   // so is this reader's part in them, which the card draws too; its room
   // is kept meanwhile, so neither answer pushes the list down
-  const heroPending = agendas.isPending && !searching
+  const heroPending = agendas.isPending
   // the list's name tells it apart from the cards above it; a phone with no
   // card above has nothing to tell it from, and the page's own title
   // already says what it lists
@@ -835,7 +832,7 @@ export default function BatchListPage() {
           <AsyncSection
             pending={heroPending}
             error={
-              !searching && agendas.isError && !(batches.isError && batches.data === undefined)
+              agendas.isError && !(batches.isError && batches.data === undefined)
                 ? failure.of(agendas.error)
                 : null
             }
@@ -893,7 +890,7 @@ export default function BatchListPage() {
                 )}
           </AsyncSection>
 
-          {!searching && agendas.data?.running.hasMore === true && (
+          {agendas.data?.running.hasMore === true && (
             <div data-testid="running-overflow" {...stylex.props(styles.runningOverflow)}>
               <span>{m.batch_runningMore()}</span>
               <Button

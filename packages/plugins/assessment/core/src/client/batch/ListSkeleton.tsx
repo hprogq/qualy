@@ -3,6 +3,7 @@ import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { useIsMobile } from '@qualy/ui/use-mobile'
+import { styles as card, phone as phoneCard } from './card.stylex.ts'
 
 // The batch list before its answers arrive, in the page's own shape.
 //
@@ -17,88 +18,12 @@ import { useIsMobile } from '@qualy/ui/use-mobile'
 // answered separately.
 
 const styles = stylex.create({
-  card: {
-    display: 'grid',
-    gridTemplateColumns: {
-      default: 'minmax(0, 1.7fr) minmax(0, 1fr)',
-      [breakpoints.phone]: 'minmax(0, 1fr)',
-    },
-    overflow: 'hidden',
-    borderRadius: tokens.radiusLg,
-    backgroundColor: tokens.surface,
-    boxShadow: tokens.elevation2,
-  },
-  main: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 18,
-    paddingBlock: 22,
-    paddingInline: {
-      default: 26,
-      [breakpoints.phone]: 20,
-    },
-  },
-  head: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 10,
-  },
-  lanes: {
-    display: 'flex',
-    gap: 6,
-  },
-  lane: {
-    display: 'flex',
-    minWidth: 0,
-    flexDirection: 'column',
-    gap: 9,
-    flexGrow: 1,
-    flexShrink: 1,
-    flexBasis: '0%',
-  },
-  axis: {
-    display: 'flex',
-    justifyContent: 'space-between',
-  },
-  side: {
-    display: 'flex',
-    flexDirection: 'column',
-    justifyContent: 'center',
-    paddingBlock: 8,
-    paddingInline: 26,
-    borderLeftWidth: {
-      default: 1,
-      [breakpoints.phone]: 0,
-    },
-    borderTopWidth: {
-      default: 0,
-      [breakpoints.phone]: 1,
-    },
-    borderStyle: 'solid',
-    borderColor: tokens.divider,
-    backgroundColor: tokens.surfaceInset,
-  },
-  stage: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 8,
-    paddingBlock: 18,
-  },
-  agenda: {
+  boneLine: (height: number) => ({
     display: 'flex',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-    paddingBlock: 16,
-    borderTopWidth: 1,
-    borderTopStyle: 'solid',
-    borderTopColor: tokens.divider,
-  },
-  words: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 6,
-  },
+    height,
+  }),
+  axisBones: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
   list: {
     display: 'flex',
     flexDirection: 'column',
@@ -166,59 +91,6 @@ const styles = stylex.create({
 
 // the phone's card and rows, as BatchCard and the page draw them there
 const phone = stylex.create({
-  card: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 16,
-    paddingInline: 20,
-    paddingTop: 20,
-    paddingBottom: 18,
-    borderRadius: 16,
-    backgroundColor: tokens.surface,
-    boxShadow: tokens.elevation2,
-  },
-  head: {
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'flex-start',
-    gap: 8,
-  },
-  title: {
-    display: 'flex',
-    width: '100%',
-    height: '1lh',
-    alignItems: 'center',
-    fontSize: 18,
-    lineHeight: 1.35,
-  },
-  agenda: {
-    display: 'flex',
-    minHeight: 56,
-    flexDirection: 'column',
-    justifyContent: 'center',
-    gap: 6,
-    paddingInline: 16,
-    paddingBlock: 10,
-    borderRadius: 10,
-    backgroundColor: tokens.surfaceInset,
-  },
-  foot: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 14,
-  },
-  plan: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 8,
-  },
-  meta: {
-    display: 'flex',
-    height: '1lh',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    fontSize: 12,
-  },
   rows: {
     display: 'flex',
     flexDirection: 'column',
@@ -260,26 +132,37 @@ const phone = stylex.create({
   },
 })
 
-/** the running round's card, before it is known which round that is */
+/** The pending card uses the same container, spacing and reserved height. */
 export function HeroSkeleton() {
   const narrow = useIsMobile()
   if (narrow) {
     return (
-      <div data-testid="batch-hero-skeleton" aria-hidden {...stylex.props(phone.card)}>
-        <div {...stylex.props(phone.head)}>
+      <div data-testid="batch-hero-skeleton" aria-hidden {...stylex.props(phoneCard.card)}>
+        <div {...stylex.props(phoneCard.head)}>
           <Skeleton height={22} width={64} radius="xl" />
-          <span {...stylex.props(phone.title)}>
+          <span {...stylex.props(styles.boneLine(24.3))}>
             <Skeleton height={20} width="70%" radius="sm" />
           </span>
         </div>
-        <div {...stylex.props(phone.agenda)}>
-          <Skeleton height={12} width={72} radius="sm" />
-          <Skeleton height={15} width={120} radius="sm" />
+        <div {...stylex.props(phoneCard.agenda)}>
+          {[0, 1].map((row) => (
+            <div key={row} {...stylex.props(phoneCard.agendaRow)}>
+              <div {...stylex.props(phoneCard.agendaWords)}>
+                <span {...stylex.props(styles.boneLine(18))}>
+                  <Skeleton height={12} width={72} radius="sm" />
+                </span>
+                <span {...stylex.props(styles.boneLine(22.5))}>
+                  <Skeleton height={15} width={120} radius="sm" />
+                </span>
+              </div>
+              <Skeleton height={14} width={14} radius="sm" />
+            </div>
+          ))}
         </div>
-        <div {...stylex.props(phone.foot)}>
-          <div {...stylex.props(phone.plan)}>
+        <div {...stylex.props(phoneCard.foot)}>
+          <div {...stylex.props(phoneCard.plan)}>
             <Skeleton height={6} radius="xl" />
-            <span {...stylex.props(phone.meta)}>
+            <span {...stylex.props(styles.boneLine(18), styles.axisBones)}>
               <Skeleton height={11} width={96} radius="sm" />
               <Skeleton height={11} width={56} radius="sm" />
             </span>
@@ -290,44 +173,66 @@ export function HeroSkeleton() {
     )
   }
   return (
-    <div data-testid="batch-hero-skeleton" aria-hidden {...stylex.props(styles.card)}>
-      <div {...stylex.props(styles.main)}>
-        <div {...stylex.props(styles.head)}>
-          <Skeleton height={22} width={64} radius="xl" />
-          <Skeleton height={24} width="58%" radius="sm" />
-          <Skeleton height={12} width="40%" radius="sm" />
-        </div>
-        <div>
-          <div {...stylex.props(styles.lanes)}>
-            {[0, 1, 2, 3, 4].map((lane) => (
-              <div key={lane} {...stylex.props(styles.lane)}>
-                <Skeleton height={11} width="60%" radius="sm" />
-                <Skeleton height={6} radius="xl" />
-              </div>
-            ))}
-          </div>
-        </div>
-        <div {...stylex.props(styles.axis)}>
-          <Skeleton height={11} width={64} radius="sm" />
-          <Skeleton height={11} width={64} radius="sm" />
-        </div>
-        <Skeleton height={36} width={104} radius="md" />
-      </div>
-      <div {...stylex.props(styles.side)}>
-        <div {...stylex.props(styles.stage)}>
-          <Skeleton height={12} width={56} radius="sm" />
-          <Skeleton height={18} width={140} radius="sm" />
-          <Skeleton height={13} width={168} radius="sm" />
-        </div>
-        {[0, 1].map((row) => (
-          <div key={row} {...stylex.props(styles.agenda)}>
-            <div {...stylex.props(styles.words)}>
-              <Skeleton height={12} width={72} radius="sm" />
-              <Skeleton height={14} width={88} radius="sm" />
+    <div {...stylex.props(card.seat)}>
+      <div data-testid="batch-hero-skeleton" aria-hidden {...stylex.props(card.card)}>
+        <div {...stylex.props(card.main)}>
+          <div {...stylex.props(card.head)}>
+            <div {...stylex.props(card.headRow)}>
+              <Skeleton height={22} width={64} radius="xl" />
             </div>
-            <Skeleton height={13} width={56} radius="sm" />
+            <span {...stylex.props(styles.boneLine(27))}>
+              <Skeleton height={24} width="58%" radius="sm" />
+            </span>
+            <span {...stylex.props(styles.boneLine(18))}>
+              <Skeleton height={12} width="40%" radius="sm" />
+            </span>
           </div>
-        ))}
+          <div {...stylex.props(card.plan)}>
+            <div {...stylex.props(card.lanes)}>
+              {[0, 1, 2, 3, 4].map((lane) => (
+                <div key={lane} {...stylex.props(card.lane)}>
+                  <span {...stylex.props(styles.boneLine(16.5))}>
+                    <Skeleton height={11} width="60%" radius="sm" />
+                  </span>
+                  <Skeleton height={lane === 1 ? 8 : 6} radius="xl" />
+                </div>
+              ))}
+            </div>
+            <div {...stylex.props(card.axis, styles.axisBones)}>
+              <Skeleton height={11} width={64} radius="sm" />
+              <Skeleton height={11} width={64} radius="sm" />
+            </div>
+          </div>
+          <div {...stylex.props(card.actions)}>
+            <Skeleton height={36} width={104} radius="md" />
+          </div>
+        </div>
+        <div {...stylex.props(card.side)}>
+          <div {...stylex.props(card.stage, card.cell, card.cellFirst)}>
+            <span {...stylex.props(styles.boneLine(18))}>
+              <Skeleton height={12} width={56} radius="sm" />
+            </span>
+            <span {...stylex.props(styles.boneLine(27))}>
+              <Skeleton height={18} width="70%" radius="sm" />
+            </span>
+            <span {...stylex.props(styles.boneLine(19.5))}>
+              <Skeleton height={13} width="84%" radius="sm" />
+            </span>
+          </div>
+          {[0, 1].map((row) => (
+            <div key={row} {...stylex.props(card.agendaRow, card.cell)}>
+              <div {...stylex.props(card.agendaWords)}>
+                <span {...stylex.props(styles.boneLine(18))}>
+                  <Skeleton height={12} width={72} radius="sm" />
+                </span>
+                <span {...stylex.props(styles.boneLine(21))}>
+                  <Skeleton height={14} width={88} radius="sm" />
+                </span>
+              </div>
+              <Skeleton height={13} width={40} radius="sm" />
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   )

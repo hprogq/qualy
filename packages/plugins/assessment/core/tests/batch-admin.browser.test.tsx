@@ -576,6 +576,163 @@ describe('the batch list', () => {
     expect(listMyStanding).toHaveBeenCalled()
   })
 
+  it('keeps the running card and its selection through list filters, pages and searches', async () => {
+    const running = [
+      listRow({
+        id: 'first-running',
+        name: '进行中甲',
+        status: 'active',
+        currentPhaseId: ENTRY_PHASE_ID,
+      }),
+      listRow({
+        id: 'second-running',
+        name: '进行中乙',
+        status: 'active',
+        currentPhaseId: ENTRY_PHASE_ID,
+      }),
+    ]
+    const listMyStanding = vi.fn(() =>
+      Effect.succeed({ items: [], running: { items: running, hasMore: false } }),
+    )
+    const listBatches = vi.fn((request: Request) =>
+      Effect.succeed({
+        items: [listRow({ id: `${request.query?.status ?? 'all'}-${request.query?.page ?? '1'}` })],
+        page: Number(request.query?.page ?? 1),
+        pageSize: 20,
+        total: 21,
+        capabilities: { create: true },
+      }).pipe(Effect.delay(30)),
+    )
+    const view = await screen({ listBatches, listMyStanding }, '/assessment/batches')
+    try {
+      await expect
+        .element(page.getByTestId('batch-hero'))
+        .toHaveAttribute('data-batch', 'first-running')
+      await page.getByRole('button', { name: '下一个批次' }).click()
+      await expect
+        .element(page.getByTestId('batch-hero'))
+        .toHaveAttribute('data-batch', 'second-running')
+      const card = page.getByTestId('batch-hero').element()
+      const calls = listMyStanding.mock.calls.length
+      let replaced = false
+      const changes = new MutationObserver(() => {
+        if (!card.isConnected || document.querySelector('[data-testid="batch-hero-skeleton"]'))
+          replaced = true
+      })
+      changes.observe(document.body, { childList: true, subtree: true })
+      try {
+        for (const [label, status] of [
+          ['进行中', 'active'],
+          ['已结束', 'archived'],
+          ['草稿', 'draft'],
+          ['全部', 'all'],
+        ]) {
+          await page.getByRole('radio', { name: label, exact: true }).click()
+          await expect
+            .poll(() => document.querySelector(`tr[data-batch="${status}-1"]`))
+            .not.toBeNull()
+          expect(page.getByTestId('batch-hero').element()).toBe(card)
+        }
+        await page.getByRole('button', { name: '下一页' }).click()
+        await expect.poll(() => document.querySelector('tr[data-batch="all-2"]')).not.toBeNull()
+        await page.getByRole('textbox', { name: '搜索批次名称' }).fill('秋季')
+        await expect.poll(() => listBatches.mock.calls.at(-1)?.[0].query?.q).toBe('秋季')
+        expect(page.getByTestId('batch-hero').element()).toBe(card)
+        expect(replaced).toBe(false)
+        expect(listMyStanding).toHaveBeenCalledTimes(calls)
+      } finally {
+        changes.disconnect()
+      }
+    } finally {
+      await view.unmount()
+    }
+  })
+
+  for (const width of [390, 900, 1280]) {
+    for (const duties of [0, 1, 2]) {
+      it(`keeps the hero skeleton height at ${width}px with ${duties} agenda rows`, async () => {
+        await page.viewport(width, 900)
+        const row = listRow(
+          {
+            ...(duties === 2 ? { name: '2026 学年度软件学院学生综合素质测评批次' } : {}),
+            status: 'active',
+            currentPhaseId: ENTRY_PHASE_ID,
+            currentPhaseName: '正式填报',
+          },
+          [
+            {
+              phaseId: ENTRY_PHASE_ID,
+              displayName: '正式填报',
+              description: '',
+              entryNote: '',
+              status: 'current',
+              entry: { kind: 'entered', at: '2026-01-01T00:00:00Z' },
+            },
+            {
+              phaseId: REVIEW_PHASE_ID,
+              displayName: '审核',
+              description: '',
+              entryNote: '',
+              status: 'future',
+              entry: { kind: 'planned', at: '2030-01-01T00:00:00Z' },
+            },
+          ],
+        )
+        let finish!: () => void
+        const waiting = new Promise<void>((resolve) => {
+          finish = resolve
+        })
+        const view = await screen(
+          {
+            listMyStanding: () =>
+              Effect.promise(async () => {
+                await waiting
+                return {
+                  running: { items: [row], hasMore: false },
+                  items: [
+                    {
+                      batchId: BATCH_ID,
+                      reviewsWaiting: duties > 0 ? 2 : null,
+                      myEntries:
+                        duties > 1
+                          ? {
+                              toAnswer: 0,
+                              toFix: 0,
+                              draft: 1,
+                              rejected: 0,
+                              submitted: 0,
+                              approved: 0,
+                              filing: 'open',
+                              continuable: { draft: true, toFix: true },
+                            }
+                          : null,
+                    },
+                  ],
+                }
+              }),
+          },
+          '/assessment/batches',
+        )
+        try {
+          const skeleton = page.getByTestId('batch-hero-skeleton')
+          await expect.element(skeleton).toBeVisible()
+          const before = skeleton.element().getBoundingClientRect()
+          finish()
+          const card = page.getByTestId('batch-hero')
+          await expect.element(card).toBeVisible()
+          const after = card.element().getBoundingClientRect()
+          expect(Math.abs(after.height - before.height)).toBeLessThan(1)
+          expect(Math.abs(after.width - before.width)).toBeLessThan(1)
+          expect(card.element().scrollHeight).toBeLessThanOrEqual(Math.ceil(after.height))
+        } finally {
+          finish()
+          await view.unmount()
+          await page.viewport(1280, 800)
+        }
+      })
+    }
+  }
+
   it('retries the running projection after it fails', async () => {
     let reachable = false
     let failedRequests = 0
@@ -805,12 +962,16 @@ describe('the batch list', () => {
         [1280, 800],
       ] as const) {
         await page.viewport(width, height)
-        await screen(standing({ filing: 'unreachable' }, null), '/assessment/batches')
-        await expect.element(page.getByRole('heading', { name: '2026 春季综测' })).toBeVisible()
-        const line = page.getByTestId('hero-agenda')
-        await expect.element(line).toHaveAttribute('data-agenda-state', 'unreachable')
-        await expect.element(line).toHaveAttribute('data-agenda-asks', 'false')
-        expect(line.element().querySelector('[data-agenda-note]')).not.toBeNull()
+        const view = await screen(standing({ filing: 'unreachable' }, null), '/assessment/batches')
+        try {
+          await expect.element(page.getByRole('heading', { name: '2026 春季综测' })).toBeVisible()
+          const line = page.getByTestId('hero-agenda')
+          await expect.element(line).toHaveAttribute('data-agenda-state', 'unreachable')
+          await expect.element(line).toHaveAttribute('data-agenda-asks', 'false')
+          expect(line.element().querySelector('[data-agenda-note]')).not.toBeNull()
+        } finally {
+          await view.unmount()
+        }
       }
     } finally {
       // the width every other case here is written for
