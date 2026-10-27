@@ -194,11 +194,12 @@ describe('what gets no file', () => {
     })
     const link = await linkFor()
     const altered = link.slice(0, -2) + (link.endsWith('A') ? 'BB' : 'AA')
-    expect(await refusal(new Request(altered))).toMatchObject({
-      status: 403,
-      reason: 'invalid',
-      read: false,
-    })
+    const refused = await refusal(new Request(altered))
+    expect(refused).toMatchObject({ status: 403, reason: 'invalid', read: false })
+    // which check failed, named for whoever diagnoses it, and nothing of the token
+    expect(refused.response.headers.get('x-qualy-detail')).toBe(
+      'ERR_JWS_SIGNATURE_VERIFICATION_FAILED',
+    )
     expect(await refusal(new Request(`${FILES}/v1/garbage`))).toMatchObject({
       status: 400,
       reason: 'malformed',

@@ -215,7 +215,11 @@ export const createDelivery = (dependencies: DeliveryDependencies) => {
       now: dependencies.now(),
     })
     if (!verified.ok) {
-      return refuse(verified.refusal === 'malformed' ? 400 : 403, verified.refusal)
+      return refuse(
+        verified.refusal === 'malformed' ? 400 : 403,
+        verified.refusal,
+        verified.detail === undefined ? {} : { 'x-qualy-detail': verified.detail },
+      )
     }
     const grant: DownloadGrant = verified.grant
 

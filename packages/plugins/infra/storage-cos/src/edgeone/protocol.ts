@@ -143,7 +143,12 @@ export type Refusal =
 
 export type Verification =
   | { readonly ok: true; readonly grant: DownloadGrant }
-  | { readonly ok: false; readonly refusal: Refusal }
+  | {
+      readonly ok: false
+      readonly refusal: Refusal
+      /** which check failed, for whoever diagnoses it: a library code or a member, never a value */
+      readonly detail?: string
+    }
 
 const COMPACT = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/
 const HEADER_MEMBERS = ['alg', 'kid', 'typ']
@@ -188,14 +193,25 @@ export const verifyGrant = async (
       currentDate: new Date(expected.now * 1000),
     })
   } catch (error) {
-    // the library says which check failed; only "genuine and run out" is
-    // worth telling apart, and only once the signature has held
+    // the library's code says which check failed; only "genuine and run out"
+    // is a refusal of its own, and only once the signature has held. Without
+    // a code it is the runtime refusing an operation, kept in its own short
+    // words for the detail (never a key or a value)
     const code = (error as { code?: unknown }).code
-    return { ok: false, refusal: code === 'ERR_JWT_EXPIRED' ? 'expired' : 'invalid' }
+    const detail =
+      typeof code === 'string'
+        ? code
+        : error instanceof Error
+          ? `${error.name}: ${error.message}`.replace(/[^\x20-\x7e]/g, '?').slice(0, 160)
+          : 'unknown'
+    return { ok: false, refusal: code === 'ERR_JWT_EXPIRED' ? 'expired' : 'invalid', detail }
   }
   const { payload, protectedHeader } = verified
-  if (!sameMembers(protectedHeader, HEADER_MEMBERS) || !sameMembers(payload, PAYLOAD_MEMBERS)) {
-    return { ok: false, refusal: 'invalid' }
+  if (!sameMembers(protectedHeader, HEADER_MEMBERS)) {
+    return { ok: false, refusal: 'invalid', detail: 'header_members' }
+  }
+  if (!sameMembers(payload, PAYLOAD_MEMBERS)) {
+    return { ok: false, refusal: 'invalid', detail: 'payload_members' }
   }
   const { iat, exp, k, r, f, m } = payload as Record<string, unknown>
   if (
@@ -208,8 +224,10 @@ export const verifyGrant = async (
     typeof f !== 'string' ||
     typeof m !== 'string'
   ) {
-    return { ok: false, refusal: 'invalid' }
+    return { ok: false, refusal: 'invalid', detail: 'claim_types' }
   }
   const grant: DownloadGrant = { key: k, revision: r as string | null, filename: f, mime: m }
-  return grantAccepted(grant) ? { ok: true, grant } : { ok: false, refusal: 'invalid' }
+  return grantAccepted(grant)
+    ? { ok: true, grant }
+    : { ok: false, refusal: 'invalid', detail: 'grant' }
 }

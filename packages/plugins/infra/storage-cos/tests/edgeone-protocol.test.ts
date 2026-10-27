@@ -103,11 +103,11 @@ describe('a download credential', () => {
     const token = await issue()
     expect((await verify(token, NOW + 60)).ok).toBe(true)
     expect((await verify(token, NOW + 62)).ok).toBe(true)
-    expect(await verify(token, NOW + 64)).toEqual({ ok: false, refusal: 'expired' })
+    expect(await verify(token, NOW + 64)).toMatchObject({ ok: false, refusal: 'expired' })
   })
 
   it('is refused when it claims to be issued in the future', async () => {
-    expect(await verify(await issue({ issuedAt: NOW + 30 }))).toEqual({
+    expect(await verify(await issue({ issuedAt: NOW + 30 }))).toMatchObject({
       ok: false,
       refusal: 'invalid',
     })
@@ -126,7 +126,7 @@ describe('a download credential', () => {
 
 describe('what grants nothing', () => {
   const refused = async (token: string, refusal = 'invalid') =>
-    expect(await verify(token)).toEqual({ ok: false, refusal })
+    expect(await verify(token)).toMatchObject({ ok: false, refusal })
 
   it('a signature by any other key, even under the same kid', async () => {
     await refused(await issue({ signing: theirs.signing }))
