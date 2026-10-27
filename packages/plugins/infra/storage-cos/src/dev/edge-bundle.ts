@@ -3,13 +3,13 @@ import { fileURLToPath } from 'node:url'
 // The edge function as the platform takes it: one classic script, every
 // import inlined, nothing left for the runtime to resolve.
 //
-// Built from ./entry.ts, so the function that runs at the edge is the module
+// Built from ../edgeone/entry.ts, so the function that runs at the edge is the module
 // the tests exercise and the protocol the server signs with, not a copy of
-// them. esbuild is a CLI dependency and is loaded only by this build command,
-// never by the serving process.
+// them. esbuild is a development dependency, loaded only by this checkout
+// command. The serving image intentionally has no build toolchain.
 
-const ENTRY = fileURLToPath(new URL('./entry.ts', import.meta.url))
-const WEBCRYPTO = fileURLToPath(new URL('./webcrypto.ts', import.meta.url))
+const ENTRY = fileURLToPath(new URL('../edgeone/entry.ts', import.meta.url))
+const WEBCRYPTO = fileURLToPath(new URL('../edgeone/webcrypto.ts', import.meta.url))
 
 /** the bundled script's text */
 export const bundleEdgeFunction = async (): Promise<string> => {

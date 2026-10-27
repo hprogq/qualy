@@ -17,7 +17,7 @@
 - 载荷固定为 `iss`、`aud`、`iat`、`exp` 加上 `k`（对象 key）、`r`（版本，`null` 表示读取时不指定版本）、`f`（文件名）、`m`（交付 MIME），成员不能多也不能少。
 - 正常签发有效期与验签允许的最大寿命均为 60 秒，容许 3 秒时钟误差。
 - 签名私钥只在服务端（`QUALY_STORAGE_COS_EDGEONE_SIGNING_KEY`）；边缘函数只持有公钥（`VERIFY_KEYS`），不能签发凭证。
-- 签发和验证共用 `packages/plugins/infra/storage-cos/src/edgeone/protocol.ts`，底层用 jose 实现。边缘函数由 `pnpm qualy cos edge-build` 打包成一个单文件脚本。
+- 签发和验证共用 `packages/plugins/infra/storage-cos/src/edgeone/protocol.ts`，底层用 jose 实现。边缘函数由 `pnpm qualy cos edge-build` 在安装了开发依赖的源码工作区打包成一个单文件脚本；打包器位于 `src/dev/edge-bundle.ts`，正式服务镜像不包含 esbuild。
 
 ## EO 运行时的 WebCrypto
 

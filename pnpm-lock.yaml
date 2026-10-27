@@ -2547,9 +2547,6 @@ importers:
       effect:
         specifier: 'catalog:'
         version: 4.0.4
-      esbuild:
-        specifier: 'catalog:'
-        version: 0.28.2
       jose:
         specifier: 'catalog:'
         version: 6.2.13
@@ -2563,6 +2560,9 @@ importers:
       '@qualy/tsconfig':
         specifier: workspace:*
         version: link:../../../build/tsconfig
+      esbuild:
+        specifier: 'catalog:'
+        version: 0.28.2
 
   packages/plugins/infra/storage-local:
     dependencies:

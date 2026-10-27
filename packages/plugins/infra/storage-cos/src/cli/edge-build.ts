@@ -1,6 +1,6 @@
 import fs from 'node:fs'
 import { CliRefused, type CliContext } from '@qualy/plugin-kit/cli'
-import { bundleEdgeFunction } from '../edgeone/bundle.ts'
+import { bundleEdgeFunction } from '../dev/edge-bundle.ts'
 
 // `qualy cos edge-build [--out <file>]` - the EdgeOne delivery function as
 // the platform takes it: one script, written to a file or to standard
@@ -21,7 +21,14 @@ const valueOf = (args: readonly string[], name: string): string | undefined => {
 
 export async function run(context: CliContext): Promise<void> {
   const out = valueOf(context.args, 'out')
-  const script = await bundleEdgeFunction()
+  const script = await bundleEdgeFunction().catch((error: unknown) => {
+    if (error instanceof Error && 'code' in error && error.code === 'ERR_MODULE_NOT_FOUND') {
+      throw new CliRefused(
+        'edge-build requires a source checkout with development dependencies installed',
+      )
+    }
+    throw error
+  })
   if (out === undefined) {
     process.stdout.write(script)
     return

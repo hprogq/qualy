@@ -2,7 +2,7 @@ import nodeCrypto, { type webcrypto } from 'node:crypto'
 import vm from 'node:vm'
 import { describe, expect, it } from 'vitest'
 import { exportJWK, generateKeyPair } from 'jose'
-import { bundleEdgeFunction } from '../src/edgeone/bundle.ts'
+import { bundleEdgeFunction } from '../src/dev/edge-bundle.ts'
 import { signGrant } from '../src/edgeone/protocol.ts'
 import { derSignatureOf } from '../src/edgeone/webcrypto.ts'
 
