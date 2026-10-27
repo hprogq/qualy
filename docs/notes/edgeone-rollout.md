@@ -11,6 +11,15 @@
 - 当前旧版本仍设置 `QUALY_STORAGE_COS_DOWNLOAD_DOMAIN=https://files.qualy.hprogq.cn`。这项配置与 DNS 已迁至 EO 的现状不一致，不能作为可用的直连回退配置。
 - 宿主机和服务容器均将 COS 默认域名解析为 `169.254.0.49`，实际 HTTPS 连接远端 IP 相同。请求未带对象授权、返回 403；这证明内网连通，不证明新版附件读取已上线。
 - 本地待部署的私钥派生公钥与已部署 EO 的 `VERIFY_KEYS` 一致，`kid=download-20261027`。私钥尚未写入生产配置。
+- 用户另行授权部署前补充公安备案：生产 `.env` 的 `QUALY_MPS_RECORD` 已设为 `辽公网安备21010402000601号`，`QUALY_MPS_RECORD_URL` 已设为 `https://beian.mps.gov.cn/#/query/webSearch?code=21010402000601`。链接在文件中加引号，保留 `#` 后内容；原文件已做 0600 备份。此次只更新这两个配置项，现有容器尚未重建，页脚待新版本启动生效，回退时保留此备案设置。
+
+## 待批准的候选发布
+
+- 发布：[`v0.1.0-rc.36`](https://github.com/hprogq/qualy/releases/tag/v0.1.0-rc.36)，源码 `0267c6d965c00a8c155863ebbceeca870779895d`，目标 `linux/amd64`，Web release `r_EUFFloS2UR-IGb5GAnVf6A`。
+- 部署只使用该发布的 [release.json](https://github.com/hprogq/qualy/releases/download/v0.1.0-rc.36/release.json) 中三个镜像 digest，已核对清单 revision 与不可变 tag 一致。本次尚未拉取或启动生产候选容器。
+- [main CI](https://github.com/hprogq/qualy/actions/runs/40509399940) 全部通过：Node 3463 项、Chromium 1758 项、WebKit 50 项；格式、lint、类型检查、三个镜像检查和发布资格均通过。Node 普通 CI 跳过 27 项真桶测试及两项既有 vendor/CSP 条件检查；真桶测试在下面的正式发布门禁补跑。
+- [正式发布](https://github.com/hprogq/qualy/actions/runs/40511587514) COS 135 项全部通过、无跳过；三个镜像构建、检查、部署/回退/备份/恢复 smoke 与镜像推送成功。Sourcemap 登记最后一次核对仍在 GitHub 排队，未记为通过；已发布镜像和清单不变。
+- 本次与 `rc.35` 的 `db/migrations` 无差异。待更新的 EO 单文件脚本 SHA-256 为 `64ee189e0596573739403347a8ca3be712e0347a6b5dd94401d1dde5094e1853`，来自同一候选源码，包含 HEAD 空流修复。
 
 ## 两套互斥配置
 
@@ -58,6 +67,8 @@
 
 本地真实 Chromium 还覆盖两种模式下的跨域 302 和“全部下载”，文件服务使用本机 HTTPS、测试公私钥及受控字节；正常弹窗限制与 CSP 开启，核对两份文件及中文文件名。这不是正式域名的真实对象下载：正式域名映射到本机的实验遇到连接失败，改用明确的本机地址隔离后运行；实际 `.cn` / `.com` 的签名交付仍留在上线验收。
 
+补充媒体验收使用真实 PNG 与一页 PDF，通过实际 `AttachmentLink` 打开灯箱和预览。两种模式均确认图片解码为 32×32、完整 Chromium 的内置 PDF 查看器显示测试页、预览 Blob 与原 PDF 的 SHA-256 一致，单个下载保存中文文件名且哈希一致。默认 headless shell 不渲染内置 PDF 查看器，因此字节读取与画面检查分开，画面验证使用完整 Chromium。临时文件和测试服务器仅在本地，不写生产附件。
+
 HEAD 的隔离 EO 实测已找到可行修复：保留上游 HEAD 空流而不是替换成 null，长度为 945；HEAD → GET → HEAD 的 GET 哈希与源文件相同。候选代码已修复，正式函数在批准后更新，随后用真实签名附件重复此检查。
 
-正式发布前仍需 main CI、真实 CI COS 桶门禁、三个镜像构建和 release smoke。只有这些通过并取得部署批准，才能进入以上生产业务验收。
+main CI、真实 CI COS 桶门禁、三个正式镜像构建和 release smoke 已通过。生产应用、EO 交付配置和正式边缘函数尚未切换，以上真实业务验收仍须在取得部署批准后执行。

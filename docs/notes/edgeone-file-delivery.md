@@ -203,4 +203,4 @@ Effect 的作用域与中断行为依据当前 catalog 对应的 `repos/effect/p
 
 `mise exec -- pnpm typecheck`、本轮改动范围的 `oxlint --type-aware --report-unused-disable-directives-severity=error`、格式化与 `git diff --check` 通过。上述 Node、浏览器和控制台证据分别记录，不把本地通过等同于生产已部署。
 
-这部分尚未发布到 Qualy 生产应用，也未切换生产环境变量。生产服务器到 COS 的内网读取、真实业务页面跨 EO 下载与 COS 自定义域名清理仍需在上线阶段分别核验。`qualy cos edge-deploy` 尚未实现，当前只提供构建与生成签名密钥命令，边缘发布仍通过控制台操作。
+这部分尚未部署到 Qualy 生产应用，生产存储配置尚未切换。候选构建、两种模式的本地媒体验收、生产基线与回退方案见 [EO 切换与回退](edgeone-rollout.md)。生产服务器到 COS 的实际内网读流、真实业务页面跨 EO 下载与 COS 自定义域名清理仍需在上线阶段分别核验。`qualy cos edge-deploy` 尚未实现，当前只提供构建与生成签名密钥命令，边缘发布仍通过控制台操作。

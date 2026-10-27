@@ -22,7 +22,7 @@
 - API mutation 的平台失败由 runtime 处理；领域失败由调用处处理。多请求写工作流逐请求进入会话恢复边界，已成功的写入不会被整段重放。
 - 生产消息编译和 Web 构建只读取 active assembly；全仓消息完整性检查可以显式读取全部已安装包。
 - 文档已分为现行架构、领域、开发、证据、ADR 和历史材料；根 `AGENTS.md` 与本文件不再承担实施历史台账。
-- COS 的可选 EdgeOne 原件交付已实现，边缘函数的审计修复、热缓存下停用及恢复、临时对象清理已实测。服务端导入与备份改用独立的有作用域直读流，附件下载端点支持鉴权后 302，预览支持一次重新授权重试。Qualy 应用尚未发布此轮改动，生产交付模式尚未切换；验证边界与平台限制见 [EO 联调记录](docs/notes/edgeone-file-delivery.md)。
+- COS 的可选 EdgeOne 原件交付已实现，边缘函数的审计修复、热缓存下停用及恢复、临时对象清理已实测。服务端导入与备份改用独立的有作用域直读流，附件下载端点支持鉴权后 302，预览支持一次重新授权重试。候选发布 `v0.1.0-rc.36` 已完成正式镜像构建，生产应用和交付模式尚未切换；验证边界与平台限制见 [EO 联调记录](docs/notes/edgeone-file-delivery.md)。
 
 Formula RPC 心跳误断线和 WebSocket HTTP 计时的修复已随 `v0.1.0-rc.32` 上线
 （[实测笔记](docs/notes/formula-rpc-heartbeat.md)）。
@@ -42,21 +42,19 @@ Node 安全运行时、COS 间接 HTTP 重定向依赖补丁和 GitHub 登录阶
 
 ## 最近验证的代码状态
 
-rc.35 源码提交 `5e68131186724f032386f3c39dab85b0d069fbbe` 的最终 CI 全部成功：
+rc.36 候选源码提交 `0267c6d965c00a8c155863ebbceeca870779895d` 的最终 CI 全部成功：
 
 - static、Node CI、Chromium、WebKit、image、release-eligible 全部通过；
-- Node：433 个测试文件通过、3 个跳过；3371 个测试通过、29 个跳过；
-- Chromium：133 个测试文件、1749 个测试通过；
-- WebKit：5 个测试文件、50 个测试通过；
-- 正式 release 的 COS 58 个测试全部通过、无跳过；三个镜像构建与检查、smoke、推送和 sourcemap 任务通过，333 份 sourcemap 登记完成。
-- CodeQL 的 JavaScript/TypeScript 和 Actions 分析通过；镜像中两项 HTTP 重定向依赖告警已随补丁消除。
-- 2026-10-22 复核仍有两项编译器内嵌 Go 告警 Open，对应源码的 Linux 目标依赖图不包含受影响包，依据见[安全核对](docs/notes/security-dependency-review-2026-10.md)。另有两项 Vitest 开发依赖中危告警待跟踪，不进入生产镜像。
+- Node：443 个测试文件通过、3 个跳过；3463 个测试通过、29 个跳过；其中 27 项 COS 真桶用例在正式 release 门禁补跑，另两项为既有的 vendor/CSP 环境条件跳过；
+- Chromium：134 个测试文件、1758 个测试通过；WebKit：5 个测试文件、50 个测试通过；
+- 正式 release 的 COS 135 个测试全部通过，无跳过；三个镜像构建、检查、部署/回退/备份/恢复 smoke、镜像推送和 release.json 发布成功。Sourcemap 登记仍在 GitHub 排队，未记为通过。
+- 本地两种文件交付配置均已验证签发和互斥行为；真实 Chromium 的跨域单个/全部下载、图片灯箱、PDF 画面与原件哈希检查通过。正式域名和生产对象的业务验收需在部署后执行，见 [EO 切换与回退](docs/notes/edgeone-rollout.md)。
 
-CI：https://github.com/hprogq/qualy/actions/runs/39724436009
+2026-10-22 的安全核对记录了两项编译器内嵌 Go 告警（Linux 目标依赖图不包含受影响包）及两项不进入生产镜像的 Vitest 开发依赖中危告警，依据见[安全核对](docs/notes/security-dependency-review-2026-10.md)。本轮未重新核对这些平台告警的当前状态。
 
-Release：https://github.com/hprogq/qualy/actions/runs/39726170976
+CI：https://github.com/hprogq/qualy/actions/runs/40509399940
 
-Deploy：https://github.com/hprogq/qualy/actions/runs/39727074440
+Release：https://github.com/hprogq/qualy/actions/runs/40511587514
 
 后续提交若修改代码，应按[验证指南](docs/development/validation.md)重新选择检查；这里的结果不能替代新改动的验收。
 
@@ -98,6 +96,8 @@ Deploy：https://github.com/hprogq/qualy/actions/runs/39727074440
 - `docs/terms.md` 没有记录原章程的标题、发布单位、发布日期和许可。当前仅作为业务背景材料保留，补齐来源前不应当作可对外再发布的政策文本。
 
 ## 下一步
+
+取得部署批准后，将 `rc.36` 与 EO 配置切换到生产，验证附件预览、单个及全部下载、HEAD 与 COS 内网直读；公安备案配置已按用户授权提前写入，待新容器启动生效。切换及回退步骤见 [EO 切换与回退](docs/notes/edgeone-rollout.md)。
 
 1. 由真实用户完成三种外部登录和邮件收发复核；在 APM 核对语句级 span、导出内容与上报量（全量上报，先观察一周数据）。
 2. 新业务继续按现行 contract 开发；不要重新打开已经关账的基础设施迁移。
