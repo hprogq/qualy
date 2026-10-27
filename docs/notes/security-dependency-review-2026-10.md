@@ -90,3 +90,25 @@ x/text 仅包含 language、transform、unicode/norm 及其 internal 包。
 对非测试源码搜索受影响包和符号也未发现生产调用。
 因此这两项在当前编译器调用路径下不适用；这是对应源码依赖图的核对，没有重编译或替换 npm 分发的二进制。
 2026-10-22 查询 npm 稳定 TypeScript 仍为 7.0.2，继续跟踪上游重建，版本变化时重新评估。
+
+## 2026-10-28 依赖告警
+
+Dependabot 当日仍打开的告警全部来自 lock 中的实际解析版本，本次全部升级到上游修复版，没有添加忽略规则：
+
+| 包         | 告警                                                         | 来源                                       | 处理                          |
+| ---------- | ------------------------------------------------------------ | ------------------------------------------ | ----------------------------- |
+| DOMPurify  | GHSA-cg2g-xh64-v4q7（critical）、GHSA-mrv2-3pqr-j5jr（high） | Monaco 0.57.0 的 vendored 副本及其声明依赖 | 3.4.16 → 3.4.17               |
+| undici     | GHSA-xjj6-f33q-929c（high）                                  | catalog 与 `@effect/platform-node`         | 8.11.2 → 8.12.3，仍为同一实例 |
+| nodemailer | 三项 medium                                                  | catalog（mail-smtp）                       | 10.1.0 → 10.1.4               |
+| fast-uri   | 四项 medium/low                                              | `ajv` 的传递依赖（仅开发期 value-schema）  | 3.1.8 → 3.1.9                 |
+
+两项 DOMPurify 告警的前提分别是 `SAFE_FOR_TEMPLATES` 配合返回 DOM 的模式，以及 `IN_PLACE` 模式下 hook 摘除其他节点。Monaco 的 `domSanitize.js` 只使用 `RETURN_DOM_FRAGMENT` 和 hook，没有启用这两种模式，所以当前调用路径不满足告警前提；仍按惯例升级，避免日后调用方式变化时带着已知缺陷。
+
+DOMPurify 沿用上文的替换方式：
+
+- 使用 npm 官方 3.4.17 发布包。下载后先按 registry 的 `dist.integrity`（`sha512-B/pSlYVHQ58kqISD/yDjuJ1yfzI34m1gF4lAod2bwSRhiN4K5Cl3H8Af7hqB2PmTL911tdEudnnXn5FnhRoz0w==`）校验，`gitHead` 为发布提交 `a77a3e78b59f72fa4d1c83f22e121ad9cc7d3575`。
+- 用其 `dist/purify.es.mjs` 替换 Monaco 的 vendored 文件，只去掉末尾的 source-map 行，补丁由 `pnpm patch` / `patch-commit` 重新生成；`monaco-editor>dompurify` 约束同步改为 3.4.17。
+- 替换后文件的 SHA-256 为 `a23ba9b1063ff7f345fca86a1380cf144b2c26083c73b66e200d20b4a07d8ea0`，由[发布输入测试](../../tools/tests/release-inputs.test.ts)固定。
+- [浏览器回归](../../packages/plugins/assessment/formula/tests/monaco-sanitizer.browser.test.tsx)新增上游 GHSA-mrv2 用例的改写：五种 hook 分别摘除父节点、祖先、后续兄弟、未遍历子树或把节点移出根时，被摘除子树中的事件处理属性都必须被清除。
+
+undici 的 catalog 注释要求与 `@effect/platform-node` 使用同一版本；该包声明 `^8.11.2`，去重后解析为 8.12.3（2026-10-19 发布），catalog 随之对齐，lock 中只剩一个 undici。SMTP、CAS、OIDC 与出站 HTTP 策略测试在新版本下通过。

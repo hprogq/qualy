@@ -110,7 +110,7 @@ catalog:
   # lookup answers with the address the outbound policy already checked, so a
   # second resolution cannot move the request somewhere else. The same version
   # @effect/platform-node already installs.
-  undici: 8.11.2
+  undici: 8.12.3
   # the parser a CAS validation answer is split with, and nothing more: the
   # driver refuses any document type or entity declaration before it runs,
   # turns its entity processing off and decodes the five predefined entities
@@ -132,7 +132,7 @@ catalog:
   openid-client: 6.8.8
   # handing mail to an SMTP relay: the smtp mail backend's transport, with
   # its own TLS modes and timeouts. Ships its own types.
-  nodemailer: 10.1.0
+  nodemailer: 10.1.4
   clsx: 2.1.1
   # the animation library behind @qualy/ui's motion primitives, and behind
   # screens that animate something those primitives do not cover. Every
@@ -198,7 +198,7 @@ catalog:
 # the latest, still pins 4.5.0), so its advisories close only with a new sdk -
 # and that sdk runs only in the uploader's browser, only when storage-cos is
 # enabled, parsing the bucket's own answers. Monaco 0.57.0 also vendors
-# DOMPurify: its ESM copy is patched to the official 3.4.16 release below,
+# DOMPurify: its ESM copy is patched to the official 3.4.17 release below,
 # while the scoped override keeps its declared dependency on that same fix.
 # An override alone would leave the browser running the vulnerable copy.
 # nanoid arrives only through vite and never reaches the release
@@ -207,7 +207,7 @@ catalog:
 # two majors away.
 overrides:
   qs: ^6.16.0
-  monaco-editor>dompurify: 3.4.16
+  monaco-editor>dompurify: 3.4.17
 
 patchedDependencies:
   '@stylexjs/unplugin@0.19.1': patches/@stylexjs__unplugin@0.19.1.patch

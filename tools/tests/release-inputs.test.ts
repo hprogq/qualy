@@ -43,17 +43,17 @@ describe('what a release is built on', () => {
     const vendored = fromFormula.resolve('monaco-editor/base/browser/dompurify/dompurify')
     const declared = createRequire(vendored).resolve('dompurify')
     const source = fs.readFileSync(vendored, 'utf8')
-    // Upstream 3.4.16's npm ESM artifact, with only the unavailable source-map
+    // Upstream 3.4.17's npm ESM artifact, with only the unavailable source-map
     // trailer removed, exactly as Monaco's original vendoring does.
     expect(createHash('sha256').update(source).digest('hex')).toBe(
-      '9c52577e368cdc6f3fb2bc87de222c8139e30655eef54a2bebde6d4b0a85ccb8',
+      'a23ba9b1063ff7f345fca86a1380cf144b2c26083c73b66e200d20b4a07d8ea0',
     )
     expect(source).toBe(
       fs
         .readFileSync(path.join(path.dirname(declared), 'purify.es.mjs'), 'utf8')
         .replace(/\n\/\/# sourceMappingURL=purify\.es\.mjs\.map\s*$/, '\n'),
     )
-    expect(source).toContain('@license DOMPurify 3.4.16')
+    expect(source).toContain('@license DOMPurify 3.4.17')
     expect(source).not.toContain('sourceMappingURL')
   })
 
