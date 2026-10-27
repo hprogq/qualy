@@ -175,13 +175,30 @@ describe('a delivery the link grants', () => {
     expect(reads[2]!.headers.get('if-range')).toBeNull()
   })
 
-  it('answers HEAD with the object’s headers and no body', async () => {
-    const { body, watch } = watchedBody(new Uint8Array([1]))
-    const { deliver } = harness(() => new Response(body, { status: 200 }))
+  it('preserves the empty upstream HEAD stream and its representation length', async () => {
+    const { body, watch } = watchedBody(new Uint8Array())
+    const { deliver, reads } = harness(
+      () =>
+        new Response(body, {
+          status: 200,
+          headers: { 'content-length': '945', 'x-origin-private': 'not-for-the-reader' },
+        }),
+    )
     const answer = await deliver(new Request(await linkFor(), { method: 'HEAD' }))
     expect(answer.status).toBe(200)
+    expect(reads[0]!.init.method).toBe('HEAD')
+    expect(answer.body).toBe(body)
+    expect(answer.headers.get('content-length')).toBe('945')
+    expect(answer.headers.get('x-origin-private')).toBeNull()
+    expect(await answer.text()).toBe('')
+    expect(watch.cancelled).toBe(false)
+  })
+
+  it('also accepts a standard HEAD response with a null body', async () => {
+    const { deliver } = harness(() => new Response(null, { headers: { 'content-length': '945' } }))
+    const answer = await deliver(new Request(await linkFor(), { method: 'HEAD' }))
     expect(answer.body).toBeNull()
-    expect(watch.cancelled).toBe(true)
+    expect(answer.headers.get('content-length')).toBe('945')
   })
 
   it('lets the application read the delivery from script, and nobody else', async () => {

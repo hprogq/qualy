@@ -414,10 +414,14 @@ export const createDelivery = (dependencies: DeliveryDependencies) => {
     // whoever measures it; it says nothing about the object
     const cache = upstream.headers.get('eo-cache-status')
     if (cache !== null) answer.set('x-qualy-cache', cache)
-    if (method === 'HEAD' || status === 304) {
+    if (status === 304) {
       await discard(upstream)
       return new Response(null, { status, headers: answer })
     }
+    // EdgeOne's HEAD fetch has an empty body stream carrying the original
+    // length. Replacing it with null makes the platform emit length 0.
+    // Pass that stream through just like GET; the upstream request is still
+    // HEAD, so this does not download the object to answer a metadata request.
     return new Response(upstream.body, { status, headers: answer })
   }
 
