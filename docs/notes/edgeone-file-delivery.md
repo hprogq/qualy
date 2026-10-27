@@ -19,6 +19,22 @@
 - 签名私钥只在服务端（`QUALY_STORAGE_COS_EDGEONE_SIGNING_KEY`）；边缘函数只持有公钥（`VERIFY_KEYS`），不能签发凭证。
 - 签发和验证共用 `packages/plugins/infra/storage-cos/src/edgeone/protocol.ts`，底层用 jose 实现。边缘函数由 `pnpm qualy cos edge-build` 打包成一个单文件脚本。
 
+## EO 运行时的 WebCrypto
+
+第一次部署 JWT 版本时，所有合法凭证都被拒绝，`x-qualy-detail` 为 `Error: Param Invalid`；同一份 JWK Set 在本地验证通过。用临时探针函数逐项对照后，确认 EO 运行时的 WebCrypto 有三处与标准不同：
+
+- `importKey('jwk', …)` 对 EC 公钥一律失败，而且是**同步抛出**，不是返回被拒绝的 Promise，链在后面的 `.catch()` 接不住，函数直接返回 545。`spki` 和 `raw` 格式可以导入。
+- ECDSA 签名按 **DER** 编码读写：运行时自己签出的 P-256 签名长 70 字节、以 `30 44` 开头。标准和 JWS 用的是 64 字节的 r‖s，所以一个正确的 ES256 签名验出来是 `false`，不会报错。
+- 算法参数的 `hash` 只接受字符串；写成 `{ name: 'SHA-256' }` 会报 Param Invalid。
+
+处理方式是保持 jose 作为唯一的 JWT 实现，只在边缘打包里加一层适配（`src/edgeone/webcrypto.ts`）。esbuild 用 `inject` 把它替换为包内所有对全局 `crypto` 的引用，不修改任何全局对象。适配层做三件事：
+
+- EC 公钥 JWK 改为按 `raw`（0x04‖x‖y）导入，在标准运行时上也等价；
+- `hash` 统一传字符串；
+- 启动后第一次验签前签一次名，看签名长度判断运行时是否用 DER。是 DER 时，把 64 字节的 r‖s 转成 DER 再验；任何不是 64 字节的签名直接判为无效，所以把签名换成 DER 形式的凭证在边缘也会被拒（矩阵中有这一项）。
+
+`tests/edgeone-bundle.test.ts` 用模拟的 EO 运行时跑打包产物：JWK 导入同步抛错，签名和验签走 OpenSSL 的 DER。去掉 `inject` 后这项测试会以 `invalid` 失败，与线上现象一致。
+
 ## 内部读取
 
 函数读对象时向同一 Host 发出 `/attachments/<key>?versionId=` 子请求。**这个子请求同样会经过规则引擎**，会被“除 `/v1/` 外一律 403”的规则拦下。所以它要带上 `x-qualy-edge-key`，这条 403 规则只放过值与函数 Secret 变量 `QUALY_EDGE_KEY` 完全相等的请求。
@@ -36,17 +52,17 @@
 - 当前套餐不允许自定义 Cache Key。默认缓存键包含完整查询串，子请求只带 `versionId`，因此不同版本自然分开缓存。同一版本换签名、换文件名访问，`x-qualy-cache` 为 HIT，交付头仍按每次请求单独设置。
 - 函数不运行时（把触发路径临时改成不可能匹配的值），`/v1/...` 会回源到 COS 中并不存在的 `v1/<...>` 对象，返回 404 `NoSuchKey`，不会读到任何附件，但会带出 COS 的 XML 错误体。
 - 函数的平台默认域名（`*.eo-edgefunctions.com`）也能调用到函数。函数现在只在 `FILES_ORIGIN` 上应答，其他来源一律 404。
-- HEAD 响应的 `content-length` 为 0：运行时把空 body 的长度重置了。下载与预览不依赖 HEAD。
+- HEAD 响应的 `content-length` 为 0：函数复制了对象长度，但运行时把空 body 的长度重置了。下载与预览不依赖 HEAD。
+- 函数停用时的热缓存：规则 02 在缓存之前生效，与函数是否运行无关。JWT 矩阵里直接访问 `/attachments/...` 时该对象正处于 HIT 状态，仍然返回 403；`/v1/...` 的缓存键与内部路径不同，读不到内部缓存。
 - 生产桶已开启版本控制。生产库里的附件当时全部是 `local` 后端，COS 中没有任何附件。
 
 ## 控制台配置（站点 hprogq.cn）
 
-| 项                                              | 内容                                                                                                                             |
-| ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| 规则 Qualy files deny outside v1                | Host = files 且路径不匹配 `^/v1/` 且内部密钥头不等于密钥时，返回 403（`qualy-files-forbidden` 页）；放行范围待按上文收窄         |
-| 规则 Qualy files object cache                   | Host = files 且路径匹配 `^/attachments/` 时，节点缓存自定义 1 小时，忽略源站 Cache-Control                                       |
-| 规则 Qualy files token auth                     | D 型 Token 鉴权，JWT 函数验证通过后删除                                                                                          |
-| 边缘函数 `qualy-file-delivery`（`ef-3cdjmump`） | 触发条件 Host = files 且路径 `/v1/*`；环境变量 `FILES_ORIGIN`、`APP_ORIGIN`、`ISSUER`、`VERIFY_KEYS`、`QUALY_EDGE_KEY`（Secret） |
+| 项                                              | 内容                                                                                                                                                                           |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 规则 Qualy files deny outside v1                | Host = files 且路径不匹配 `^/v1/`，并且内部密钥头不等于密钥、路径不是 `^/attachments/<uuid>/<uuid>$`、方法不是 GET/HEAD 三者之一成立时，返回 403（`qualy-files-forbidden` 页） |
+| 规则 Qualy files object cache                   | Host = files 且路径匹配 `^/attachments/` 时，节点缓存自定义 1 小时，忽略源站 Cache-Control；回源前删除 `x-qualy-edge-key`                                                      |
+| 边缘函数 `qualy-file-delivery`（`ef-3cdjmump`） | 触发条件 Host = files 且路径 `/v1/*`；环境变量 `FILES_ORIGIN`、`APP_ORIGIN`、`ISSUER`、`VERIFY_KEYS`、`QUALY_EDGE_KEY`（Secret）                                               |
 
 files Host 的图片瘦身、格式转换、自动旋转、去 EXIF、指定参数处理全部关闭：原件必须保持原始字节。
 
@@ -68,4 +84,24 @@ files Host 的图片瘦身、格式转换、自动旋转、去 EXIF、指定参�
 | POST                                             | 405                                                        |
 | 同一版本，不同文件名与 MIME                      | 内容相同，`Content-Type` 与 `Content-Disposition` 各自正确 |
 
-改用 JWT 后，这张矩阵需要在部署后重跑，并加上两项：热缓存下停用函数、从平台默认域名访问。
+D 型 Token 鉴权规则已在改用 JWT 后删除。
+
+## JWT 实测矩阵
+
+适配层部署后，从生产服务器逐项请求，结果全部符合预期：
+
+| 情况                                                  | 结果                                                         |
+| ----------------------------------------------------- | ------------------------------------------------------------ |
+| 指定版本 v1、v2；不指定版本                           | 200，SHA-256 与写入时一致；不指定版本读到最新版本            |
+| 同一版本换一个新签发的凭证                            | 200，`x-qualy-cache: HIT`                                    |
+| 同一版本，不同文件名与 MIME                           | HIT，`Content-Type` 与 `Content-Disposition` 各自正确        |
+| `r` 为 `"null"`（对象写于开启版本控制之后）           | 404 `object_missing`                                         |
+| 篡改签名、换成 DER 形式的同一签名、别的密钥签名       | 403 `invalid`，不回源                                        |
+| 过期                                                  | 403 `expired`；带应用 Origin 时有 ACAO，并按语言返回中文正文 |
+| 额外查询参数 / 不是凭证                               | 400 `unexpected_query` / 400 `malformed`                     |
+| 直接访问 `/attachments/...`（含伪造密钥头）、其他路径 | 403（规则 02）                                               |
+| `Range: bytes=0-99`；之后完整 GET；多段 Range         | 206 且 `Content-Range` 正确；200 哈希正确；多段按完整 GET    |
+| 越界 Range / 不存在的对象                             | 416 `range` / 404 `object_missing`                           |
+| 应用 Origin / 其他 Origin                             | 有 ACAO / 没有                                               |
+| OPTIONS（应用 / 其他来源）/ POST                      | 204 / 403 / 405 带 `Allow`                                   |
+| 函数的平台默认域名                                    | 404 `wrong_host`                                             |

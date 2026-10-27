@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url'
 // run from a checkout, never by the serving process.
 
 const ENTRY = fileURLToPath(new URL('./entry.ts', import.meta.url))
+const WEBCRYPTO = fileURLToPath(new URL('./webcrypto.ts', import.meta.url))
 
 /** the bundled script's text */
 export const bundleEdgeFunction = async (): Promise<string> => {
@@ -22,6 +23,9 @@ export const bundleEdgeFunction = async (): Promise<string> => {
     target: 'es2022',
     // the web build of the token library: WebCrypto and nothing of node's
     conditions: ['browser'],
+    // every bundled reference to the global `crypto` reaches the runtime's
+    // WebCrypto through the module that makes it answer as the standard does
+    inject: [WEBCRYPTO],
     legalComments: 'inline',
     minify: false,
     charset: 'utf8',
