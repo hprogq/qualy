@@ -137,7 +137,6 @@ import { makeAttachmentMethods, type AttachmentMethods } from '../attachment/ser
 import { servedTypeOf } from '../attachment/served-type.ts'
 import { Storage } from '@qualy/plugin-storage/server'
 import {
-  AttachmentUnavailable,
   AccessInvalid,
   AdministrativeRecordFilesNotShareable,
   AdministrativeRecordNotFound,
@@ -6951,8 +6950,16 @@ const templateDto = (row: TemplateRow) => ({
  */
 const downloadOf = (opened: {
   readonly meta: { readonly filename: string; readonly declaredMime: string; readonly size: bigint }
-  readonly target: { readonly kind: 'stream'; readonly body: AsyncIterable<Uint8Array> }
+  readonly target:
+    | { readonly kind: 'redirect'; readonly url: string }
+    | { readonly kind: 'stream'; readonly body: AsyncIterable<Uint8Array> }
 }) => {
+  if (opened.target.kind === 'redirect') {
+    return HttpServerResponse.redirect(opened.target.url, {
+      status: 302,
+      headers: { 'cache-control': 'private, no-store' },
+    })
+  }
   const filename = opened.meta.filename
   const fallback = filename.replace(/[^\x20-\x7e]/g, '_').replaceAll('"', "'")
   // RFC 5987: percent-encode everything outside attr-char, including the
@@ -6969,6 +6976,7 @@ const downloadOf = (opened: {
       headers: {
         'content-disposition': `attachment; filename="${fallback}"; filename*=UTF-8''${starred}`,
         'x-content-type-options': 'nosniff',
+        'cache-control': 'private, no-store',
       },
     },
   )
@@ -7548,10 +7556,7 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
           params.importId,
           principal,
         )
-        // a store that signs its own urls has no bytes to hand this process;
-        // the descriptor already said where to go
-        if (opened.target.kind === 'redirect') return yield* new AttachmentUnavailable()
-        return downloadOf({ meta: opened.meta, target: opened.target })
+        return downloadOf(opened)
       }),
     )
     .handle(
@@ -8310,12 +8315,7 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
           params.attachmentId,
           principal,
         )
-        if (opened.target.kind === 'redirect') {
-          // a store that signs its own urls has no bytes to hand this
-          // process; the descriptor endpoint already said where to go
-          return yield* new AttachmentUnavailable()
-        }
-        return downloadOf({ meta: opened.meta, target: opened.target })
+        return downloadOf(opened)
       }),
     )
     .handle(

@@ -84,6 +84,8 @@ const registration: Layer.Layer<
       owner: '@qualy/plugin-storage-cos',
       'connect-src': readsFrom === writesTo ? [writesTo] : [writesTo, readsFrom],
       'img-src': [readsFrom],
+      // Batch downloads follow the authenticated redirect in isolated frames.
+      'frame-src': [readsFrom],
     })
     yield* Effect.logDebug(
       `cos storage writing to ${settings.bucket} in ${settings.region} (${mode === 'versioned' ? 'versions kept, reads pinned' : 'second writes refused'}), delivering ${settings.delivery?.kind === 'edgeone' ? `through ${settings.delivery.origin}` : 'directly'}`,

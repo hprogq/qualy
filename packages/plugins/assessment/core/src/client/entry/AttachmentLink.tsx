@@ -5,7 +5,8 @@ import { DownloadIcon, FileTextIcon, PaperclipIcon } from 'lucide-react'
 import { VisuallyHidden } from '@qualy/ui/visually-hidden'
 import { Button } from '@qualy/ui/button'
 import { FileTile } from '@qualy/ui/dropzone'
-import { PhotoProvider, PhotoView } from '@qualy/ui/photo-view'
+import { PhotoView } from '@qualy/ui/photo-view'
+import { AttachmentPhotos, RecoveringImage, usePhotoRecovery } from './AttachmentPhotos.tsx'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 
 import { DocumentLightbox } from './DocumentLightbox.tsx'
@@ -273,14 +274,18 @@ const styles = stylex.create({
  * cached image is already complete before the load handler is attached, so
  * the ref checks rather than waits.
  */
-function ArrivingImg({ className, onLoad, ...rest }: React.ComponentProps<'img'>) {
+function ArrivingImg({
+  className,
+  onLoad,
+  ...rest
+}: React.ComponentProps<'img'> & { src: string; renew: () => Promise<string | null> }) {
   const [ready, setReady] = useState(false)
   return (
     // The rest props are the lightbox's lifeline: PhotoView hands its child
     // the click that opens the viewer by cloning it, and a component that
     // keeps only the props it knows swallows that click - every photograph
     // on the product silently stopped opening.
-    <img
+    <RecoveringImage
       loading="lazy"
       decoding="async"
       {...rest}
@@ -299,8 +304,30 @@ function ArrivingImg({ className, onLoad, ...rest }: React.ComponentProps<'img'>
 }
 
 /** the lightbox only around a picture: everything else pays nothing for it */
-function Shown({ photo, children }: { photo: boolean; children: ReactNode }) {
-  return photo ? <PhotoProvider maskOpacity={0.85}>{children}</PhotoProvider> : <>{children}</>
+function PhotoRecovery({ href, renew }: { href: string; renew: () => Promise<string | null> }) {
+  usePhotoRecovery(href, renew)
+  return null
+}
+
+function Shown({
+  photo,
+  href,
+  renew,
+  children,
+}: {
+  photo: boolean
+  href: string
+  renew: () => Promise<string | null>
+  children: ReactNode
+}) {
+  return photo ? (
+    <AttachmentPhotos>
+      <PhotoRecovery href={href} renew={renew} />
+      {children}
+    </AttachmentPhotos>
+  ) : (
+    <>{children}</>
+  )
 }
 
 export function AttachmentLink({
@@ -333,12 +360,17 @@ export function AttachmentLink({
   const isImage = data !== undefined && LOOKS_LIKE_A_PHOTOGRAPH.has(data.declaredMime)
   const isDocument = data !== undefined && LOOKS_LIKE_A_DOCUMENT.has(data.declaredMime)
   const [reading, setReading] = useState(false)
+  const openDocument = () => {
+    descriptor.beginPreview()
+    setReading(true)
+  }
   // whether the pointer is on the card tile: the download button in its
   // corner reads that from here rather than from a selector on the figure
   const [rested, setRested] = useState(false)
   const lightbox = reading && data !== undefined && (
     <DocumentLightbox
       href={href}
+      renew={descriptor.renew}
       mime={data.declaredMime}
       name={name}
       onClose={() => setReading(false)}
@@ -347,7 +379,7 @@ export function AttachmentLink({
 
   if (variant === 'line') {
     return (
-      <Shown photo={isImage}>
+      <Shown photo={isImage} href={href} renew={descriptor.renew}>
         <span {...stylex.props(styles.lineRow)}>
           <PaperclipIcon aria-hidden className={stylex.props(styles.clipIcon).className} />
           {/* a picture or a document opens where it stands; anything else
@@ -356,6 +388,7 @@ export function AttachmentLink({
             <PhotoView src={href}>
               <button
                 type="button"
+                onClickCapture={descriptor.beginPreview}
                 className={stylex.props(styles.lineName, styles.zoomIn).className}
               >
                 {name}
@@ -364,14 +397,14 @@ export function AttachmentLink({
           ) : isDocument ? (
             <button
               type="button"
-              onClick={() => setReading(true)}
+              onClick={openDocument}
               {...stylex.props(styles.lineName, styles.pointer)}
             >
               {name}
             </button>
           ) : (
             <a
-              href={href}
+              href={attachmentContentUrl(attachmentId)}
               download={data?.filename}
               target="_blank"
               rel="noreferrer"
@@ -383,7 +416,7 @@ export function AttachmentLink({
           {lightbox}
           {(isImage || isDocument) && (
             <a
-              href={href}
+              href={attachmentContentUrl(attachmentId)}
               download={data?.filename}
               target="_blank"
               rel="noreferrer"
@@ -405,7 +438,7 @@ export function AttachmentLink({
   // read as something still on offer.
   if (variant === 'card') {
     return (
-      <Shown photo={isImage}>
+      <Shown photo={isImage} href={href} renew={descriptor.renew}>
         <figure
           data-file-slot={slot}
           {...stylex.props(styles.cardFigure)}
@@ -418,6 +451,8 @@ export function AttachmentLink({
               <PhotoView src={href}>
                 <ArrivingImg
                   src={href}
+                  renew={descriptor.renew}
+                  onClickCapture={descriptor.beginPreview}
                   alt={name}
                   className={stylex.props(styles.imgFill).className}
                 />
@@ -426,7 +461,7 @@ export function AttachmentLink({
               <button
                 type="button"
                 disabled={!isDocument}
-                onClick={() => setReading(true)}
+                onClick={openDocument}
                 {...stylex.props(styles.fillButton)}
               >
                 <FileTextIcon aria-hidden className={stylex.props(styles.docIconCard).className} />
@@ -445,7 +480,7 @@ export function AttachmentLink({
                 cannot hover. The caption belongs to the file: its name, and
                 what it weighs. */}
             <a
-              href={href}
+              href={attachmentContentUrl(attachmentId)}
               download={data?.filename}
               target="_blank"
               rel="noreferrer"
@@ -469,13 +504,15 @@ export function AttachmentLink({
 
   if (variant === 'preview') {
     return (
-      <Shown photo={isImage}>
+      <Shown photo={isImage} href={href} renew={descriptor.renew}>
         <figure {...stylex.props(styles.previewFigure)}>
           <div {...stylex.props(styles.previewBox)}>
             {isImage ? (
               <PhotoView src={href}>
                 <ArrivingImg
                   src={href}
+                  renew={descriptor.renew}
+                  onClickCapture={descriptor.beginPreview}
                   alt={name}
                   className={stylex.props(styles.imgFill).className}
                 />
@@ -484,7 +521,7 @@ export function AttachmentLink({
               <button
                 type="button"
                 disabled={!isDocument}
-                onClick={() => setReading(true)}
+                onClick={openDocument}
                 {...stylex.props(styles.fillButton, styles.fillColumn)}
               >
                 <FileTextIcon
@@ -500,7 +537,7 @@ export function AttachmentLink({
               {name}
             </span>
             <a
-              href={href}
+              href={attachmentContentUrl(attachmentId)}
               download={data?.filename}
               target="_blank"
               rel="noreferrer"
@@ -517,7 +554,7 @@ export function AttachmentLink({
   }
 
   return (
-    <Shown photo={isImage}>
+    <Shown photo={isImage} href={href} renew={descriptor.renew}>
       <FileTile
         className={stylex.props(styles.cardPanel).className}
         media={
@@ -525,16 +562,14 @@ export function AttachmentLink({
             <PhotoView src={href}>
               <ArrivingImg
                 src={href}
+                renew={descriptor.renew}
+                onClickCapture={descriptor.beginPreview}
                 alt={name}
                 className={stylex.props(styles.imgFill).className}
               />
             </PhotoView>
           ) : isDocument ? (
-            <button
-              type="button"
-              onClick={() => setReading(true)}
-              {...stylex.props(styles.tileMediaButton)}
-            >
+            <button type="button" onClick={openDocument} {...stylex.props(styles.tileMediaButton)}>
               <FileTextIcon aria-hidden className={stylex.props(styles.docIconTile).className} />
               <VisuallyHidden>{name}</VisuallyHidden>
             </button>
@@ -546,7 +581,12 @@ export function AttachmentLink({
         meta={data === undefined ? undefined : sizeLabel(Number(data.size))}
         actions={
           <Button variant="ghost" size="icon-sm" asChild>
-            <a href={href} download={data?.filename} target="_blank" rel="noreferrer">
+            <a
+              href={attachmentContentUrl(attachmentId)}
+              download={data?.filename}
+              target="_blank"
+              rel="noreferrer"
+            >
               <DownloadIcon aria-hidden />
               <VisuallyHidden>{name}</VisuallyHidden>
             </a>

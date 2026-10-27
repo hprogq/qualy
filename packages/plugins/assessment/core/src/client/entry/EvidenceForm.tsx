@@ -1,10 +1,9 @@
 import { formatPlatformFailure as formatError, useLocale } from '@qualy/web-i18n'
 
 import { useEffect, useRef, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { DownloadIcon, FileTextIcon, UploadIcon, XIcon } from 'lucide-react'
-import { useApiQuery, useHandlePlatformFailure } from '@qualy/web-runtime'
+import { useHandlePlatformFailure } from '@qualy/web-runtime'
 import { entryRefusalMessage } from './refusals.ts'
 import { parseDecimal } from '@qualy/value-schema'
 import { VisuallyHidden } from '@qualy/ui/visually-hidden'
@@ -15,10 +14,11 @@ import { Choice } from '../items/Choice.tsx'
 import { Field } from '@qualy/ui/admin'
 import { Dropzone, FileTile, type Accept, type FileRejection } from '@qualy/ui/dropzone'
 import { Input } from '@qualy/ui/input'
-import { PhotoProvider, PhotoView } from '@qualy/ui/photo-view'
+import { PhotoView } from '@qualy/ui/photo-view'
+import { AttachmentPhotos, RecoveringImage, usePhotoRecovery } from './AttachmentPhotos.tsx'
+import { useAttachmentDescriptor } from './use-attachment-descriptor.ts'
 import { Spinner } from '@qualy/ui/spinner'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { assessmentApi } from '../api.ts'
 
 import { uploadFile, type UploadDoors, type UploadedFile } from './upload.ts'
 import {
@@ -593,7 +593,7 @@ export function EvidenceForm({
             hint={hintOf(field, undefined, answerOf(advice, field.key))}
           >
             {() => (
-              <PhotoProvider maskOpacity={0.85}>
+              <AttachmentPhotos>
                 <div {...stylex.props(styles.files)}>
                   {cited.map((attachmentId) => (
                     <CitedFile
@@ -693,7 +693,7 @@ export function EvidenceForm({
                     <p {...stylex.props(styles.refusal)}>{uploadError}</p>
                   )}
                 </div>
-              </PhotoProvider>
+              </AttachmentPhotos>
             )}
           </Field>
         )
@@ -718,15 +718,11 @@ function CitedFile({
   fallbackName: string
   onRemove?: (() => void) | undefined
 }) {
-  const query = useApiQuery(assessmentApi)
-
-  const descriptor = useQuery({
-    ...query.assessment.describeAttachment.queryOptions({ params: { attachmentId } }),
-    staleTime: 30_000,
-  })
-  const data = descriptor.data
+  const descriptor = useAttachmentDescriptor(attachmentId)
+  const data = descriptor.data ?? undefined
   const href =
     data?.delivery.kind === 'redirect' ? data.delivery.url : attachmentContentUrl(attachmentId)
+  usePhotoRecovery(href, descriptor.renew)
   const name = data?.filename ?? fallbackName
   const isImage = data !== undefined && LOOKS_LIKE_A_PHOTOGRAPH.has(data.declaredMime)
 
@@ -735,8 +731,10 @@ function CitedFile({
       media={
         isImage ? (
           <PhotoView src={href}>
-            <img
+            <RecoveringImage
               src={href}
+              renew={descriptor.renew}
+              onClickCapture={descriptor.beginPreview}
               alt={name}
               loading="lazy"
               decoding="async"
@@ -754,7 +752,12 @@ function CitedFile({
           {/* a staged upload is already its owner's to read back: checking
               what actually went up should not have to wait for a submission */}
           <Button variant="ghost" size="icon-sm" asChild>
-            <a href={href} download={data?.filename} target="_blank" rel="noreferrer">
+            <a
+              href={attachmentContentUrl(attachmentId)}
+              download={data?.filename}
+              target="_blank"
+              rel="noreferrer"
+            >
               <DownloadIcon aria-hidden />
               <VisuallyHidden>{name}</VisuallyHidden>
             </a>

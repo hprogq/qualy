@@ -1,4 +1,5 @@
 {
+  "entry_previewFailed": "附件加载失败，请稍后重试",
   "entry_held": "{why, select, phase {当前阶段「{phase}」不能{acts}} archived {批次已归档，不能{acts}} unstarted {批次尚未开始，暂不能{acts}} idle {当前没有进行中的阶段，不能{acts}} item {当前阶段本项目的申报不能{acts}} people {当前阶段只对部分参评人员开放{acts}} other {当前阶段不能{acts}}}",
   "entry_heldAct": "{act, select, edit {修改} submit {提交} withdraw {撤回} abandon {放弃} appeal {申诉} other {操作}}",
   "person_batchColumn": "批次",

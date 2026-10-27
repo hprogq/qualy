@@ -126,6 +126,7 @@ describe('the shell policy contribution', () => {
         'connect-src': [bucket],
         // an image among the evidence is drawn, not fetched
         'img-src': [bucket],
+        'frame-src': [bucket],
       },
     ])
   })
@@ -150,6 +151,7 @@ describe('the shell policy contribution', () => {
         owner: '@qualy/plugin-storage-cos',
         'connect-src': [bucket, 'https://files.qualy.example.cn'],
         'img-src': ['https://files.qualy.example.cn'],
+        'frame-src': ['https://files.qualy.example.cn'],
       },
     ])
   })
@@ -171,6 +173,7 @@ describe('the shell policy contribution', () => {
         owner: '@qualy/plugin-storage-cos',
         'connect-src': [bucket, 'https://files.qualy.example'],
         'img-src': ['https://files.qualy.example'],
+        'frame-src': ['https://files.qualy.example'],
       },
     ])
   })

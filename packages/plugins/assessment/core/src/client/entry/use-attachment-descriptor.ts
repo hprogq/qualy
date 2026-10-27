@@ -1,7 +1,9 @@
 import { useQuery } from '@tanstack/react-query'
+import { useCallback, useRef } from 'react'
 import { useApi, useRunApi } from '@qualy/web-runtime'
 import type { ApiResult, ClientOf } from '@qualy/web-runtime/api'
 import { assessmentApi } from '../api.ts'
+import { attachmentContentUrl } from './model.ts'
 
 // One request for a screenful of files.
 //
@@ -92,21 +94,29 @@ const freshFor = (descriptor: Descriptor | null | undefined): number => {
 export function useAttachmentDescriptor(attachmentId: string) {
   const client = useApi(assessmentApi)
   const run = useRunApi()
-  return useQuery({
+  const query = useQuery({
     queryKey: ['assessment', 'attachment', attachmentId],
     queryFn: () => load(client, run, attachmentId),
-    /**
-     * As fresh as the answer says it is.
-     *
-     * A store that signs its own urls hands back one that expires - sixty
-     * seconds, for the object store this deployment can use - and the answer
-     * says when. Held for a fixed thirty seconds and then simply kept, a
-     * screen open longer than a minute offered a link that had already
-     * lapsed, so a download or a preview failed with nothing to explain it.
-     * Refreshed a little before the lapse rather than at it, because the
-     * press comes after the render.
-     */
+    // A stale descriptor is refreshed when needed. Downloads use the
+    // content endpoint, and failed previews reauthorize once below.
     staleTime: (query) => freshFor(query.state.data),
-    refetchInterval: (query) => freshFor(query.state.data),
+    retry: false,
   })
+  const attempted = useRef(false)
+  const { refetch } = query
+  const beginPreview = useCallback(() => {
+    attempted.current = false
+  }, [])
+  const renew = useCallback(async (): Promise<string | null> => {
+    if (attempted.current) return null
+    attempted.current = true
+    // Query's in-flight promise is shared by every view of this attachment.
+    // Do not cancel and restart another view's reauthorization.
+    const answer = await refetch({ cancelRefetch: false })
+    if (answer.isError || answer.data == null) return null
+    return answer.data.delivery.kind === 'redirect'
+      ? answer.data.delivery.url
+      : attachmentContentUrl(attachmentId)
+  }, [attachmentId, refetch])
+  return { ...query, renew, beginPreview }
 }

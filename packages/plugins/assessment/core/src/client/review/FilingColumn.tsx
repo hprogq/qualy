@@ -1,6 +1,6 @@
 import { useLocale } from '@qualy/web-i18n'
 import { RESERVED } from '../reserved.ts'
-import { memo } from 'react'
+import { memo, useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { ChevronRightIcon, DownloadIcon, SparklesIcon } from 'lucide-react'
 import { Badge } from '@qualy/ui/badge'
@@ -374,18 +374,39 @@ const styles = stylex.create({
  * filing is worked down item by item, and everything else on the screen is
  * there to be glanced at while doing it.
  */
-// Through an anchor, not window.open: the content door names the file in
-// its disposition, and a same-origin anchor with `download` saves under
-// that name where a window would open one preview tab per file.
-const saveAll = (attachmentIds: readonly string[]) => {
-  for (const attachmentId of attachmentIds) {
-    const anchor = document.createElement('a')
-    anchor.href = attachmentContentUrl(attachmentId)
-    anchor.download = ''
-    document.body.append(anchor)
-    anchor.click()
-    anchor.remove()
-  }
+// Cross-origin redirects turn simultaneous download anchors into competing
+// navigations. Give each file its own context; its final disposition starts
+// the browser download. No file bytes are buffered by the application.
+function DownloadAll({ attachmentIds }: { attachmentIds: readonly string[] }) {
+  const [requested, setRequested] = useState<{ attempt: number; ids: readonly string[] } | null>(
+    null,
+  )
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() =>
+          setRequested((previous) => ({
+            attempt: (previous?.attempt ?? 0) + 1,
+            ids: [...attachmentIds],
+          }))
+        }
+        {...stylex.props(styles.saveButton)}
+      >
+        <DownloadIcon aria-hidden className={stylex.props(styles.saveIcon).className} />
+        {m.review_downloadAll()}
+      </button>
+      {requested?.ids.map((id) => (
+        <iframe
+          key={`${String(requested.attempt)}:${id}`}
+          hidden
+          title={m.review_downloadAll()}
+          sandbox="allow-downloads"
+          src={attachmentContentUrl(id)}
+        />
+      ))}
+    </>
+  )
 }
 
 export const FilingColumn = memo(function FilingColumn({
@@ -626,17 +647,7 @@ export const FilingColumn = memo(function FilingColumn({
                       <span {...stylex.props(styles.spacer)} />
                       {/* this field's files in a run of saves: a zip would
                           be a server-side archive nobody asked for yet */}
-                      <button
-                        type="button"
-                        onClick={() => saveAll(cited)}
-                        {...stylex.props(styles.saveButton)}
-                      >
-                        <DownloadIcon
-                          aria-hidden
-                          className={stylex.props(styles.saveIcon).className}
-                        />
-                        {m.review_downloadAll()}
-                      </button>
+                      <DownloadAll attachmentIds={cited} />
                     </>
                   )}
                 </dt>

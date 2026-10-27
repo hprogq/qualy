@@ -2065,7 +2065,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
     }).middleware(Authenticated),
   )
   .add(
-    // the bytes themselves, for deployments whose store has no public door
+    // fresh authorization, then a stream or a short-lived redirect to the file
     HttpApiEndpoint.get('getAttachmentContent', '/assessment/attachments/:attachmentId/content', {
       params: Schema.Struct({ attachmentId: uuidInput }),
       success: HttpApiSchema.StreamUint8Array(),
@@ -3472,7 +3472,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
     ).middleware(Authenticated),
   )
   .add(
-    // the bytes of it, for deployments whose store has no public door
+    // fresh authorization, then a stream or a short-lived redirect to the source
     HttpApiEndpoint.get(
       'getAdministrativeImportSourceContent',
       '/assessment/administrative-imports/:importId/source/content',

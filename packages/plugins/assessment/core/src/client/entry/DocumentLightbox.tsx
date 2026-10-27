@@ -3,6 +3,7 @@ import * as stylex from '@stylexjs/stylex'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@qualy/ui/dialog'
 import { Spinner } from '@qualy/ui/spinner'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
+import * as m from '#messages'
 
 // A document read where it stands, in the browser's own sandboxed viewer.
 //
@@ -57,36 +58,65 @@ const styles = stylex.create({
 export function DocumentLightbox({
   href,
   mime,
+  renew,
   name,
   onClose,
 }: {
   href: string
   mime: string
+  renew: () => Promise<string | null>
   name: string
   onClose: () => void
 }) {
   const [url, setUrl] = useState<string | null>(null)
+  const [failed, setFailed] = useState(false)
+  // Renewal changes the descriptor in the parent. It must not reset this
+  // load's retry budget by starting another effect from the new URL.
+  const [initialHref] = useState(href)
 
   useEffect(() => {
-    let dead = false
+    const controller = new AbortController()
     let made: string | null = null
-    void fetch(href)
-      .then((response) => (response.ok ? response.arrayBuffer() : Promise.reject(response)))
-      .then((bytes) => {
-        if (dead) return
-        made = URL.createObjectURL(new Blob([bytes], { type: mime }))
-        setUrl(made)
-      })
-      .catch(() => {
-        // the viewer has nothing to show; the name is still a download
-        if (!dead) onClose()
-      })
+    const load = async () => {
+      let current = initialHref
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        try {
+          const response = await fetch(current, { signal: controller.signal })
+          if (!response.ok) {
+            await response.body?.cancel()
+            throw new Error('attachment read failed')
+          }
+          const bytes = await response.arrayBuffer()
+          if (controller.signal.aborted) return
+          made = URL.createObjectURL(new Blob([bytes], { type: mime }))
+          setUrl(made)
+          return
+        } catch {
+          if (controller.signal.aborted) return
+          if (attempt === 0) {
+            let fresh: string | null = null
+            try {
+              fresh = await renew()
+            } catch {
+              /* API failure is handled by the runtime */
+            }
+            if (controller.signal.aborted) return
+            if (fresh !== null) {
+              current = fresh
+              continue
+            }
+          }
+          setFailed(true)
+          return
+        }
+      }
+    }
+    void load()
     return () => {
-      dead = true
+      controller.abort()
       if (made !== null) URL.revokeObjectURL(made)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [href, mime])
+  }, [initialHref, mime, renew])
 
   return (
     <Dialog open onOpenChange={(next) => !next && onClose()}>
@@ -96,7 +126,11 @@ export function DocumentLightbox({
         </DialogHeader>
         {url === null ? (
           <div {...stylex.props(styles.waiting)}>
-            <Spinner className={stylex.props(styles.spinner).className} />
+            {failed ? (
+              <p role="status">{m.entry_previewFailed()}</p>
+            ) : (
+              <Spinner className={stylex.props(styles.spinner).className} />
+            )}
           </div>
         ) : (
           <iframe src={url} title={name} {...stylex.props(styles.frame)} />
