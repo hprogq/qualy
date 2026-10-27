@@ -268,8 +268,8 @@ const styles = stylex.create({
 /**
  * A photograph that arrives, not one that assembles.
  *
- * The tiles show originals - there is no derived size to ask for - and a
- * large original paints top to bottom as it streams, scanline by scanline
+ * Tiles use a signed thumbnail when available, otherwise the original. A
+ * large image paints top to bottom as it streams, scanline by scanline
  * over the placeholder. Held invisible until it has fully decoded and then
  * faded in, the tile goes from placeholder to picture in one movement. A
  * cached image is already complete before the load handler is attached, so
@@ -355,10 +355,7 @@ export function AttachmentLink({
 }) {
   const descriptor = useAttachmentDescriptor(attachmentId)
   const data = descriptor.metadata
-  const href =
-    descriptor.data?.delivery.kind === 'redirect'
-      ? descriptor.data.delivery.url
-      : attachmentContentUrl(attachmentId)
+  const href = descriptor.thumbnailUrl
   // A new preview can start long after the thumbnail loaded. This stable
   // endpoint authorizes each opening and redirects to a newly signed URL.
   // Already displayed thumbnails keep their bytes instead of reloading on a timer.
@@ -458,7 +455,7 @@ export function AttachmentLink({
               <PhotoView src={previewHref}>
                 <ArrivingImg
                   src={href}
-                  renew={descriptor.renew}
+                  renew={descriptor.renewThumbnail}
                   onClickCapture={descriptor.beginPreview}
                   alt={name}
                   className={stylex.props(styles.imgFill).className}
@@ -518,7 +515,7 @@ export function AttachmentLink({
               <PhotoView src={previewHref}>
                 <ArrivingImg
                   src={href}
-                  renew={descriptor.renew}
+                  renew={descriptor.renewThumbnail}
                   onClickCapture={descriptor.beginPreview}
                   alt={name}
                   className={stylex.props(styles.imgFill).className}
@@ -569,7 +566,7 @@ export function AttachmentLink({
             <PhotoView src={previewHref}>
               <ArrivingImg
                 src={href}
-                renew={descriptor.renew}
+                renew={descriptor.renewThumbnail}
                 onClickCapture={descriptor.beginPreview}
                 alt={name}
                 className={stylex.props(styles.imgFill).className}

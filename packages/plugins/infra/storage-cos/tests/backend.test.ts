@@ -298,6 +298,65 @@ describe('a bucket that keeps a version of every write', () => {
 // the file host, never a url to the bucket, and it grants exactly the object,
 // version, name and type the attachment has.
 describe('a deployment that delivers through EdgeOne', () => {
+  it('offers a separately signed thumbnail only when enabled for a supported raster type', async () => {
+    const { privateKey, publicKey } = await generateKeyPair('ES256', { extractable: true })
+    const keys = createLocalJWKSet({ keys: [{ ...(await exportJWK(publicKey)), kid: 'preview' }] })
+    answers('getObjectUrl', () => {
+      throw new Error('must not issue a direct URL')
+    })
+    const delivery = {
+      kind: 'edgeone' as const,
+      origin: 'https://files.qualy.example.cn',
+      issuer: 'https://qualy.example.cn',
+      signing: { key: privateKey, kid: 'preview' },
+    }
+    const key =
+      'attachments/0190a7a0-0000-7000-8000-000000000001/0190a7a0-0000-7000-8000-000000000002'
+    for (const [thumbnails, mime, hasThumbnail] of [
+      [true, 'image/png', true],
+      [true, 'image/jpeg', true],
+      [true, 'image/webp', true],
+      [false, 'image/png', false],
+      [true, 'application/pdf', false],
+      [true, 'image/gif', false],
+    ] as const) {
+      const target = await Effect.runPromise(
+        cosBackend({ ...settings, delivery: { ...delivery, thumbnails } }, 'versioned').open(
+          { key, revision: 'null' },
+          { filename: 'image.png', mime, size: 1000n },
+        ),
+      )
+      if (target.kind !== 'redirect') throw new Error('not a redirect')
+      const verify = (url: string) =>
+        verifyGrant(url.slice(`${delivery.origin}/v1/`.length), {
+          keys,
+          issuer: delivery.issuer,
+          audience: delivery.origin,
+          now: Math.floor(Date.now() / 1000),
+        })
+      const original = await verify(target.url)
+      expect(original).toEqual({
+        ok: true,
+        grant: { key, revision: 'null', filename: 'image.png', mime },
+      })
+      expect(target.thumbnail !== undefined).toBe(hasThumbnail)
+      if (target.thumbnail !== undefined) {
+        expect(target.thumbnail.expiresInSeconds).toBe(60)
+        expect(await verify(target.thumbnail.url)).toEqual({
+          ok: true,
+          grant: {
+            key,
+            revision: 'null',
+            filename: 'image.png',
+            mime,
+            preset: 'thumbnail-v1',
+            bytes: 1000,
+          },
+        })
+      }
+    }
+  })
+
   it('signs a credential for the file host and never a url to the bucket', async () => {
     const { privateKey, publicKey } = await generateKeyPair('ES256', { extractable: true })
     const published = { ...(await exportJWK(publicKey)), kid: 'download-test', alg: 'ES256' }

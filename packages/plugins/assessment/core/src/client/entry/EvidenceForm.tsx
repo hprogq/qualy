@@ -721,10 +721,7 @@ function CitedFile({
 }) {
   const descriptor = useAttachmentDescriptor(attachmentId)
   const data = descriptor.metadata
-  const href =
-    descriptor.data?.delivery.kind === 'redirect'
-      ? descriptor.data.delivery.url
-      : attachmentContentUrl(attachmentId)
+  const href = descriptor.thumbnailUrl
   const previewHref = attachmentContentUrl(attachmentId)
   usePhotoRecovery(previewHref, descriptor.renew)
   const name = data?.filename ?? fallbackName
@@ -737,7 +734,7 @@ function CitedFile({
           <PhotoView src={previewHref}>
             <RecoveringImage
               src={href}
-              renew={descriptor.renew}
+              renew={descriptor.renewThumbnail}
               onClickCapture={descriptor.beginPreview}
               alt={name}
               loading="lazy"

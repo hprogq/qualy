@@ -42,6 +42,7 @@ export const CosManifestConfig = Schema.Struct({
     Schema.Struct({
       origin: Schema.optional(Schema.String),
       issuer: Schema.optional(Schema.String),
+      thumbnails: Schema.optional(Schema.Boolean),
     }),
   ),
 })
@@ -202,5 +203,9 @@ const deliveryOf = (declared: CosManifestConfig, downloadDomain: string) =>
       issuer: bareOrigin('QUALY_STORAGE_COS_EDGEONE_ISSUER', issuer.value),
     }))
     const signing = yield* signingKeyOf(key.value)
-    return { kind: 'edgeone', ...checked, signing } satisfies CosDelivery
+    // Enable only after the edge function understands the signed preset.
+    const thumbnails = yield* Config.Boolean('QUALY_STORAGE_COS_EDGEONE_THUMBNAILS').pipe(
+      Config.withDefault(declared.edgeOne?.thumbnails ?? false),
+    )
+    return { kind: 'edgeone', ...checked, signing, thumbnails } satisfies CosDelivery
   })

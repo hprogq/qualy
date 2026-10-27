@@ -48,7 +48,12 @@ export interface AttachmentMetaView {
 
 export interface AttachmentDescriptor extends AttachmentMetaView {
   readonly delivery:
-    | { readonly kind: 'redirect'; readonly url: string; readonly expiresInSeconds: number }
+    | {
+        readonly kind: 'redirect'
+        readonly url: string
+        readonly expiresInSeconds: number
+        readonly thumbnail?: { readonly url: string; readonly expiresInSeconds: number }
+      }
     | { readonly kind: 'content' }
 }
 
@@ -256,6 +261,9 @@ export const makeAttachmentMethods = (deps: AttachmentDeps): AttachmentMethods =
                   kind: 'redirect' as const,
                   url: opened.target.url,
                   expiresInSeconds: opened.target.expiresInSeconds,
+                  ...(opened.target.thumbnail === undefined
+                    ? {}
+                    : { thumbnail: opened.target.thumbnail }),
                 },
               }
             : { ...metaView(opened.meta), delivery: { kind: 'content' as const } },

@@ -805,6 +805,12 @@ const attachmentDescriptor = Schema.Struct({
       kind: Schema.Literals(['redirect']),
       url: Schema.String,
       expiresInSeconds: Schema.Number,
+      thumbnail: Schema.optional(
+        Schema.Struct({
+          url: Schema.String,
+          expiresInSeconds: Schema.Number,
+        }),
+      ),
     }),
     Schema.Struct({ kind: Schema.Literals(['content']) }),
   ]),

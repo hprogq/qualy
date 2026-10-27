@@ -97,6 +97,25 @@ describe('the delivery a deployment chooses', () => {
     expect(exit.value.settings.delivery).toEqual({ kind: 'direct' })
   })
 
+  it('keeps thumbnails opt-in and lets the environment override their manifest setting', async () => {
+    for (const [env, manifest, expected] of [
+      [edgeone, {}, false],
+      [edgeone, { edgeOne: { thumbnails: true } }, true],
+      [
+        { ...edgeone, QUALY_STORAGE_COS_EDGEONE_THUMBNAILS: 'false' },
+        { edgeOne: { thumbnails: true } },
+        false,
+      ],
+      [{ ...edgeone, QUALY_STORAGE_COS_EDGEONE_THUMBNAILS: 'true' }, {}, true],
+    ] as const) {
+      const exit = await configured(env, manifest)
+      if (!Exit.isSuccess(exit) || !('settings' in exit.value)) throw new Error(said(exit))
+      const delivery = exit.value.settings.delivery
+      if (delivery?.kind !== 'edgeone') throw new Error('not edgeone')
+      expect(delivery.thumbnails).toBe(expected)
+    }
+  })
+
   it('is EdgeOne, signing with the key it was given, when all of it is there', async () => {
     const exit = await configured(edgeone)
     if (!Exit.isSuccess(exit) || !('settings' in exit.value)) throw new Error(said(exit))

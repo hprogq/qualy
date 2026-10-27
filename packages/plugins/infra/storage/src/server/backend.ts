@@ -96,7 +96,13 @@ export interface RevisionStore {
  * meaningful to a provider that happens to keep files.
  */
 export type BackendOpen =
-  | { readonly kind: 'redirect'; readonly url: string; readonly expiresInSeconds: number }
+  | {
+      readonly kind: 'redirect'
+      readonly url: string
+      readonly expiresInSeconds: number
+      /** Optional display rendition, authorized together with this original. */
+      readonly thumbnail?: { readonly url: string; readonly expiresInSeconds: number }
+    }
   | {
       readonly kind: 'stream'
       readonly body: AsyncIterable<Uint8Array>
@@ -142,7 +148,7 @@ export interface StorageBackend {
   /** the object as it was when it completed: the revision is honoured when there is one */
   readonly open: (
     ref: BlobRef,
-    options: { readonly filename: string; readonly mime: string },
+    options: { readonly filename: string; readonly mime: string; readonly size?: bigint },
   ) => Effect.Effect<BackendOpen, BackendUnavailable>
 
   /**

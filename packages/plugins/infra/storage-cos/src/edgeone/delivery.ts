@@ -1,6 +1,7 @@
 import { createLocalJWKSet, type JSONWebKeySet, type JWTVerifyGetKey } from 'jose'
 import { noticeText, refusalLocaleOf, type Notice } from './messages.ts'
 import { DELIVERY_PREFIX, verifyGrant, type DownloadGrant, type Refusal } from './protocol.ts'
+import { THUMBNAIL_IMAGE, THUMBNAIL_TYPES } from './thumbnail.ts'
 
 // The attachment door at the edge: what a signed download link opens.
 //
@@ -38,9 +39,13 @@ export interface DeliveryEnvironment {
   readonly QUALY_EDGE_KEY?: unknown
 }
 
+export type DeliveryRequestInit = RequestInit & {
+  readonly eo?: { readonly image: typeof THUMBNAIL_IMAGE }
+}
+
 export interface DeliveryDependencies {
   readonly env: () => DeliveryEnvironment
-  readonly fetch: (input: string, init: RequestInit) => Promise<Response>
+  readonly fetch: (input: string, init: DeliveryRequestInit) => Promise<Response>
   /** unix seconds */
   readonly now: () => number
 }
@@ -314,6 +319,7 @@ export const createDelivery = (dependencies: DeliveryDependencies) => {
       return refuse(verified.refusal)
     }
     const grant: DownloadGrant = verified.grant
+    const thumbnail = grant.preset !== undefined
 
     // everything that needs no network is settled before the read
     let disposition: string
@@ -326,6 +332,8 @@ export const createDelivery = (dependencies: DeliveryDependencies) => {
 
     // a range is a GET's alone; any other method reads the whole representation
     const range = method === 'GET' ? (request.headers.get('range')?.trim() ?? null) : null
+    // A transformation needs the whole image; never transform a byte range.
+    if (thumbnail && range !== null) return refuse('range')
     if (range !== null && /^bytes\s*=/i.test(range) && !SINGLE_RANGE.test(range)) {
       return refuse('range')
     }
@@ -334,32 +342,47 @@ export const createDelivery = (dependencies: DeliveryDependencies) => {
 
     const inner = new URL(`/${grant.key}`, files)
     if (grant.revision !== null) inner.searchParams.set('versionId', grant.revision)
-    const read = async (withRange: boolean): Promise<Response> => {
+    if (grant.preset !== undefined) inner.searchParams.set('qualy-preview', grant.preset)
+    const read = async (withRange: boolean, transform = thumbnail): Promise<Response> => {
       const headers = new Headers({
         [EDGE_KEY_HEADER]: edgeKey,
         // the stored bytes, as stored: an encoded answer would be a different
         // file under the same name
         'accept-encoding': 'identity',
       })
+      if (thumbnail) headers.set('host', url.host)
       if (withRange && ranged !== null) {
         headers.set('range', ranged)
         if (ifRange !== null) headers.set('if-range', ifRange)
       }
-      for (const name of CONDITIONAL) {
+      // Original validators cannot stand in for a transformed representation.
+      for (const name of thumbnail ? [] : CONDITIONAL) {
         const value = request.headers.get(name)
         if (value !== null) headers.set(name, value)
       }
-      return dependencies.fetch(inner.toString(), {
+      const target = new URL(inner)
+      if (!transform) target.searchParams.delete('qualy-preview')
+      return dependencies.fetch(target.toString(), {
         method,
         headers,
         // a redirect is not the object; it is neither followed nor passed on
         redirect: 'manual',
+        ...(transform ? { eo: { image: THUMBNAIL_IMAGE } } : {}),
       })
     }
 
     let upstream: Response
     try {
       upstream = await read(true)
+      if (thumbnail && upstream.status === 200) {
+        const length = upstream.headers.get('content-length')
+        // The native option was observed returning larger images. The
+        // signed original size makes this a bounded, streaming fallback.
+        if (length === null || !/^\d+$/.test(length) || Number(length) > grant.bytes!) {
+          await discard(upstream)
+          upstream = await read(false, false)
+        }
+      }
       // A part is only worth having of the representation the reader holds
       // the rest of. Whether or not the bucket honoured If-Range, a part of
       // another one is replaced by the whole.
@@ -398,18 +421,25 @@ export const createDelivery = (dependencies: DeliveryDependencies) => {
       return refuse('unexpected_type')
     }
 
+    const mediaType = type.split(';', 1)[0]!.trim()
+    if (thumbnail && (status !== 200 || !THUMBNAIL_TYPES.has(mediaType))) {
+      await discard(upstream)
+      return refuse('unexpected_type')
+    }
+
     const answer = new Headers({
-      'content-type': grant.mime,
-      'content-disposition': disposition,
+      'content-type': thumbnail ? mediaType : grant.mime,
+      'content-disposition': thumbnail ? 'inline' : disposition,
       'x-content-type-options': 'nosniff',
       'cache-control': 'private, no-store',
       vary: 'Origin',
       ...cors,
     })
-    for (const name of REPEATED) {
+    for (const name of thumbnail ? ['content-length'] : REPEATED) {
       const value = upstream.headers.get(name)
       if (value !== null) answer.set(name, value)
     }
+    if (thumbnail) answer.set('accept-ranges', 'none')
     // whether the object came from the platform's cache or the bucket, for
     // whoever measures it; it says nothing about the object
     const cache = upstream.headers.get('eo-cache-status')

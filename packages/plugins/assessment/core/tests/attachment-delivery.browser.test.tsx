@@ -55,6 +55,57 @@ const serve = (reply: (url: string) => Response) => {
 }
 
 describe('attachment delivery in the browser', () => {
+  it('uses the display rendition for a tile and independently renews the original lightbox', async () => {
+    let descriptions = 0
+    const describe = vi.fn(() =>
+      Effect.sync(() => {
+        const current = descriptor(`${image}#original`, 'image/png')
+        return {
+          attachments: [
+            {
+              ...current,
+              delivery: {
+                ...current.delivery,
+                thumbnail: {
+                  url: descriptions++ === 0 ? brokenImage : `${image}#thumbnail`,
+                  expiresInSeconds: 60,
+                },
+              },
+            },
+          ],
+        }
+      }),
+    )
+    await renderScreen({
+      client: fakeClient({
+        app: { getManifest: emptyManifest() },
+        assessment: { listAttachmentDescriptors: describe },
+      }),
+      children: <AttachmentLink attachmentId={ID} variant="preview" />,
+    })
+    const thumbnail = page.getByRole('img', { name: NAME })
+    await expect.element(thumbnail).toHaveAttribute('src', `${image}#thumbnail`)
+    await expect
+      .poll(() => (thumbnail.element() as HTMLImageElement).naturalWidth)
+      .toBeGreaterThan(0)
+    expect(describe).toHaveBeenCalledTimes(2)
+    await thumbnail.click()
+    // The authenticated content endpoint is absent on this test server;
+    // the lightbox reauthorizes separately and must never receive the thumbnail.
+    await expect
+      .poll(() =>
+        [...document.querySelectorAll<HTMLImageElement>('.PhotoView-Portal img')].some(
+          (element) => element.src === `${image}#original` && element.naturalWidth > 0,
+        ),
+      )
+      .toBe(true)
+    expect(describe).toHaveBeenCalledTimes(3)
+    expect(thumbnail.element().getAttribute('src')).toBe(`${image}#thumbnail`)
+    for (const link of document.querySelectorAll<HTMLAnchorElement>('a[download]')) {
+      expect(link.getAttribute('href')).toBe(attachmentContentUrl(ID))
+    }
+  })
+
   it('always downloads through the authenticated content endpoint', async () => {
     await mount(() => Effect.succeed({ attachments: [descriptor(oldPdf)] }))
     await expect.element(page.getByRole('button', { name: NAME })).toBeVisible()

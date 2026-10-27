@@ -75,6 +75,35 @@ const claims = {
 }
 const header = { typ: TOKEN_TYPE, kid: 'download-test' }
 
+describe('signed thumbnail grants', () => {
+  it('binds the fixed preset to the same object version and rejects unsigned changes', async () => {
+    const preview = { ...grant, mime: 'image/png', preset: 'thumbnail-v1' as const, bytes: 1000 }
+    const token = await issue({ grant: preview })
+    expect(await verify(token)).toEqual({ ok: true, grant: preview })
+    const [head, body, signature] = token.split('.')
+    const payload = JSON.parse(new TextDecoder().decode(base64url.decode(body!)))
+    delete payload.p
+    expect(
+      await verify(`${head}.${base64url.encode(JSON.stringify(payload))}.${signature}`),
+    ).toMatchObject({ ok: false, refusal: 'invalid' })
+  })
+
+  it('refuses unknown presets, arbitrary parameters and non-raster grants even when signed', async () => {
+    for (const extra of [
+      { p: null },
+      { p: 'thumbnail-v2' },
+      { p: { width: 1000 } },
+      { p: 'thumbnail-v1', width: 1000 },
+      { p: 'thumbnail-v1', m: 'application/pdf' },
+      { p: 'thumbnail-v1', m: 'image/gif' },
+    ]) {
+      expect(
+        await verify(await forged(header, { ...claims, m: 'image/png', b: 1000, ...extra })),
+      ).toMatchObject({ ok: false, refusal: 'invalid' })
+    }
+  })
+})
+
 describe('a download credential', () => {
   it('grants exactly what was signed, and nothing a reader adds', async () => {
     expect(await verify(await issue())).toEqual({ ok: true, grant })

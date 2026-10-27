@@ -12,8 +12,10 @@ import {
   deliverableFilename,
   DELIVERY_PREFIX,
   signGrant,
+  type DownloadGrant,
   type SigningKey,
 } from '../edgeone/protocol.ts'
+import { THUMBNAIL_PRESET, THUMBNAIL_TYPES } from '../edgeone/thumbnail.ts'
 import { credentialForObject } from './sts.ts'
 import { readObject } from './read.ts'
 
@@ -49,6 +51,7 @@ export type CosDelivery =
       /** who a credential says issued it */
       readonly issuer: string
       readonly signing: SigningKey
+      readonly thumbnails?: boolean
     }
 
 export interface CosSettings {
@@ -337,23 +340,41 @@ export const cosBackend = (
         // signing that fails is a failure, not a reason to send them direct.
         return Effect.tryPromise({
           try: async () => {
-            const token = await signGrant({
-              signing: delivery.signing,
-              issuer: delivery.issuer,
-              audience: delivery.origin,
-              issuedAt: Math.floor(Date.now() / 1000),
-              lifetime: DOWNLOAD_TTL_SECONDS,
-              grant: {
-                key,
-                revision: version,
-                filename: deliverableFilename(options.filename),
-                mime: options.mime,
-              },
-            })
+            const issuedAt = Math.floor(Date.now() / 1000)
+            const grant: DownloadGrant = {
+              key,
+              revision: version,
+              filename: deliverableFilename(options.filename),
+              mime: options.mime,
+            }
+            const signedUrl = async (grant: DownloadGrant) => {
+              const token = await signGrant({
+                signing: delivery.signing,
+                issuer: delivery.issuer,
+                audience: delivery.origin,
+                issuedAt,
+                lifetime: DOWNLOAD_TTL_SECONDS,
+                grant,
+              })
+              return `${delivery.origin}${DELIVERY_PREFIX}${token}`
+            }
+            const url = await signedUrl(grant)
+            const bytes = Number(options.size)
+            const thumbnail =
+              delivery.thumbnails &&
+              THUMBNAIL_TYPES.has(options.mime) &&
+              Number.isSafeInteger(bytes) &&
+              bytes > 0
+                ? {
+                    url: await signedUrl({ ...grant, preset: THUMBNAIL_PRESET, bytes }),
+                    expiresInSeconds: DOWNLOAD_TTL_SECONDS,
+                  }
+                : undefined
             return {
               kind: 'redirect' as const,
-              url: `${delivery.origin}${DELIVERY_PREFIX}${token}`,
+              url,
               expiresInSeconds: DOWNLOAD_TTL_SECONDS,
+              ...(thumbnail === undefined ? {} : { thumbnail }),
             }
           },
           catch: (cause) => backendFailure('open', cause),

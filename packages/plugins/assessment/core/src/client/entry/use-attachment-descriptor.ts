@@ -83,7 +83,11 @@ const flush = async (client: Client, run: Run, waiting: Map<string, Waiting[]>) 
 /** how long an answer is worth holding, with room to press after it draws */
 const freshFor = (descriptor: Descriptor | null | undefined): number => {
   if (descriptor?.delivery.kind !== 'redirect') return 30_000
-  const lives = descriptor.delivery.expiresInSeconds * 1000
+  const lives =
+    Math.min(
+      descriptor.delivery.expiresInSeconds,
+      descriptor.delivery.thumbnail?.expiresInSeconds ?? Infinity,
+    ) * 1000
   return Math.max(5_000, lives - 10_000)
 }
 
@@ -110,21 +114,31 @@ export function useAttachmentDescriptor(attachmentId: string) {
     known?.id === attachmentId
       ? { filename: known.filename, declaredMime: known.declaredMime, size: known.size }
       : undefined
-  const attempted = useRef(false)
+  const attempted = useRef({ original: false, thumbnail: false })
   const { refetch } = query
   const beginPreview = useCallback(() => {
-    attempted.current = false
+    attempted.current.original = false
   }, [])
-  const renew = useCallback(async (): Promise<string | null> => {
-    if (attempted.current) return null
-    attempted.current = true
-    // Query's in-flight promise is shared by every view of this attachment.
-    // Do not cancel and restart another view's reauthorization.
-    const answer = await refetch({ cancelRefetch: false })
-    if (answer.isError || answer.data == null) return null
-    return answer.data.delivery.kind === 'redirect'
-      ? answer.data.delivery.url
+  const renewFor = useCallback(
+    async (kind: 'original' | 'thumbnail'): Promise<string | null> => {
+      if (attempted.current[kind]) return null
+      attempted.current[kind] = true
+      // Query's in-flight promise is shared by every view of this attachment.
+      // Do not cancel and restart another view's reauthorization.
+      const answer = await refetch({ cancelRefetch: false })
+      if (answer.isError || answer.data == null) return null
+      const delivery = answer.data.delivery
+      if (delivery.kind !== 'redirect') return attachmentContentUrl(attachmentId)
+      return kind === 'thumbnail' ? (delivery.thumbnail?.url ?? delivery.url) : delivery.url
+    },
+    [attachmentId, refetch],
+  )
+  const renew = useCallback(() => renewFor('original'), [renewFor])
+  const renewThumbnail = useCallback(() => renewFor('thumbnail'), [renewFor])
+  const delivery = query.data?.delivery
+  const thumbnailUrl =
+    delivery?.kind === 'redirect'
+      ? (delivery.thumbnail?.url ?? delivery.url)
       : attachmentContentUrl(attachmentId)
-  }, [attachmentId, refetch])
-  return { ...query, metadata, renew, beginPreview }
+  return { ...query, metadata, renew, renewThumbnail, thumbnailUrl, beginPreview }
 }

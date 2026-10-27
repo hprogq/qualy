@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { exportJWK, generateKeyPair } from 'jose'
-import { createDelivery, EDGE_KEY_HEADER } from '../src/edgeone/delivery.ts'
+import {
+  createDelivery,
+  EDGE_KEY_HEADER,
+  type DeliveryRequestInit,
+} from '../src/edgeone/delivery.ts'
+import { THUMBNAIL_IMAGE } from '../src/edgeone/thumbnail.ts'
 import { signGrant, type DownloadGrant } from '../src/edgeone/protocol.ts'
 
 // The edge function with the platform replaced: the object read answers
@@ -61,7 +66,7 @@ const harness = (
   answer: (url: string, init: RequestInit) => Response | Promise<Response>,
   settings: Record<string, unknown> = env,
 ) => {
-  const reads: { url: string; init: RequestInit; headers: Headers }[] = []
+  const reads: { url: string; init: DeliveryRequestInit; headers: Headers }[] = []
   const deliver = createDelivery({
     env: () => settings,
     fetch: async (url, init) => {
@@ -78,6 +83,85 @@ const object = (status = 200, headers: Record<string, string> = {}) =>
     status,
     headers: { 'content-length': '3', 'content-type': 'application/octet-stream', ...headers },
   })
+
+describe('fixed thumbnail delivery', () => {
+  it('discards an enlarged rendition and streams the same version of the original', async () => {
+    const { body, watch } = watchedBody(new Uint8Array([1, 2, 3, 4]))
+    let calls = 0
+    const { deliver, reads } = harness(() =>
+      calls++ === 0
+        ? new Response(body, { headers: { 'content-type': 'image/webp', 'content-length': '4' } })
+        : object(200, { 'content-type': 'image/png' }),
+    )
+    const result = await deliver(
+      new Request(await linkFor({ mime: 'image/png', preset: 'thumbnail-v1', bytes: 3 })),
+    )
+    expect(watch.cancelled).toBe(true)
+    expect(new Uint8Array(await result.arrayBuffer())).toEqual(new Uint8Array([1, 2, 3]))
+    expect(result.headers.get('content-type')).toBe('image/png')
+    expect(reads).toHaveLength(2)
+    expect(reads[1]!.url).toBe(`${FILES}/${grant.key}?versionId=${grant.revision}`)
+    expect(reads[1]!.init.eo).toBeUndefined()
+    expect(reads[1]!.headers.get(EDGE_KEY_HEADER)).toBe(EDGE_KEY)
+  })
+
+  const preview = { mime: 'image/png', preset: 'thumbnail-v1' as const, bytes: 1000 }
+  it('selects processing only from the verified grant and isolates its versioned cache key', async () => {
+    const { deliver, reads } = harness(() =>
+      object(200, {
+        'content-type': 'image/webp',
+        etag: '"source"',
+        'accept-ranges': 'bytes',
+      }),
+    )
+    const result = await deliver(
+      new Request(await linkFor(preview), {
+        headers: { 'if-none-match': '"source"', 'if-modified-since': 'yesterday' },
+      }),
+    )
+    expect(result.status).toBe(200)
+    expect(result.headers.get('content-type')).toBe('image/webp')
+    expect(result.headers.get('content-disposition')).toBe('inline')
+    expect(result.headers.get('content-length')).toBe('3')
+    expect(result.headers.get('etag')).toBeNull()
+    expect(result.headers.get('accept-ranges')).toBe('none')
+    expect(result.headers.get('cache-control')).toBe('private, no-store')
+    expect(reads[0]!.init.eo).toEqual({ image: THUMBNAIL_IMAGE })
+    expect(reads[0]!.headers.has('if-none-match')).toBe(false)
+    expect(reads[0]!.headers.has('if-modified-since')).toBe(false)
+    expect(reads[0]!.url).toBe(
+      `${FILES}/${grant.key}?versionId=${grant.revision}&qualy-preview=thumbnail-v1`,
+    )
+    await deliver(new Request(await linkFor({ mime: 'image/png' })))
+    expect(reads[1]!.init.eo).toBeUndefined()
+    expect(reads[1]!.url).toBe(`${FILES}/${grant.key}?versionId=${grant.revision}`)
+  })
+
+  it('uses the actual safe image type when EO returns the smaller original', async () => {
+    const { deliver } = harness(() => object(200, { 'content-type': 'image/png' }))
+    const result = await deliver(new Request(await linkFor(preview)))
+    expect(result.headers.get('content-type')).toBe('image/png')
+    expect(await result.arrayBuffer()).toEqual(new Uint8Array([1, 2, 3]).buffer)
+  })
+
+  it('rejects ranges and added image parameters before reading anything', async () => {
+    const { deliver, reads } = harness(() => object())
+    const link = await linkFor(preview)
+    expect((await deliver(new Request(link, { headers: { range: 'bytes=0-1' } }))).status).toBe(416)
+    expect((await deliver(new Request(`${link}?eo-img.width=10000`))).status).toBe(400)
+    expect((await deliver(new Request(await linkFor(preview, NOW - 100)))).status).toBe(403)
+    expect(reads).toHaveLength(0)
+  })
+
+  it('never relabels a failed transformation as an image', async () => {
+    const { body, watch } = watchedBody(new Uint8Array([1]))
+    const { deliver } = harness(
+      () => new Response(body, { headers: { 'content-type': 'text/html' } }),
+    )
+    expect((await deliver(new Request(await linkFor(preview)))).status).toBe(502)
+    expect(watch.cancelled).toBe(true)
+  })
+})
 
 describe('a delivery the link grants', () => {
   it('makes exactly the read the link grants, and hands the bytes back as a download', async () => {

@@ -1,4 +1,5 @@
 import { jwtVerify, SignJWT, type CryptoKey, type JWTVerifyGetKey } from 'jose'
+import { THUMBNAIL_PRESET, THUMBNAIL_TYPES } from './thumbnail.ts'
 
 // The download credential an EdgeOne delivery carries, read the same way at
 // both ends.
@@ -68,6 +69,10 @@ export interface DownloadGrant {
   readonly revision: string | null
   readonly filename: string
   readonly mime: string
+  /** Absent grants the original. A preview is a distinct, signed instruction. */
+  readonly preset?: typeof THUMBNAIL_PRESET
+  /** Recorded original byte length; required only for a thumbnail grant. */
+  readonly bytes?: number
 }
 
 /** a file name a delivery may carry: well-formed text, nothing that ends a header, bounded */
@@ -99,7 +104,13 @@ export const grantAccepted = (grant: DownloadGrant): boolean =>
   OBJECT_KEY.test(grant.key) &&
   (grant.revision === null || REVISION.test(grant.revision)) &&
   filenameAccepted(grant.filename) &&
-  DELIVERABLE_TYPES.has(grant.mime)
+  DELIVERABLE_TYPES.has(grant.mime) &&
+  (grant.preset === undefined
+    ? grant.bytes === undefined
+    : grant.preset === THUMBNAIL_PRESET &&
+      THUMBNAIL_TYPES.has(grant.mime) &&
+      Number.isSafeInteger(grant.bytes) &&
+      grant.bytes! > 0)
 
 export interface SigningKey {
   /** the private half of the key pair, imported for ES256 */
@@ -127,7 +138,13 @@ export const signGrant = (input: {
   if (input.lifetime > MAX_LIFETIME_SECONDS) {
     return Promise.reject(new Error(`a credential holds at most ${MAX_LIFETIME_SECONDS} seconds`))
   }
-  return new SignJWT({ k: grant.key, r: grant.revision, f: grant.filename, m: grant.mime })
+  return new SignJWT({
+    k: grant.key,
+    r: grant.revision,
+    f: grant.filename,
+    m: grant.mime,
+    ...(grant.preset === undefined ? {} : { p: grant.preset, b: grant.bytes }),
+  })
     .setProtectedHeader({ alg: ALGORITHM, typ: TOKEN_TYPE, kid: input.signing.kid })
     .setIssuer(input.issuer)
     .setAudience(input.audience)
@@ -199,6 +216,7 @@ const refusalOf = (error: unknown): { readonly refusal: Refusal; readonly detail
 const COMPACT = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/
 const HEADER_MEMBERS = ['alg', 'kid', 'typ']
 const PAYLOAD_MEMBERS = ['aud', 'exp', 'f', 'iat', 'iss', 'k', 'm', 'r']
+const PREVIEW_MEMBERS = ['aud', 'b', 'exp', 'f', 'iat', 'iss', 'k', 'm', 'p', 'r']
 
 const sameMembers = (value: object, members: readonly string[]) => {
   const own = Object.keys(value).sort()
@@ -252,10 +270,10 @@ export const verifyGrant = async (
   ) {
     return { ok: false, refusal: 'invalid', detail: 'header_members' }
   }
-  if (!sameMembers(payload, PAYLOAD_MEMBERS)) {
+  if (!sameMembers(payload, 'p' in payload ? PREVIEW_MEMBERS : PAYLOAD_MEMBERS)) {
     return { ok: false, refusal: 'invalid', detail: 'payload_members' }
   }
-  const { aud, iat, exp, k, r, f, m } = payload as Record<string, unknown>
+  const { aud, iat, exp, k, r, f, m, p, b } = payload as Record<string, unknown>
   if (
     // one file service, named as a string: the library would take a list that includes it
     aud !== expected.audience ||
@@ -266,11 +284,18 @@ export const verifyGrant = async (
     typeof k !== 'string' ||
     (r !== null && typeof r !== 'string') ||
     typeof f !== 'string' ||
-    typeof m !== 'string'
+    typeof m !== 'string' ||
+    ('p' in payload && p !== THUMBNAIL_PRESET)
   ) {
     return { ok: false, refusal: 'invalid', detail: 'claim_types' }
   }
-  const grant: DownloadGrant = { key: k, revision: r, filename: f, mime: m }
+  const grant: DownloadGrant = {
+    key: k,
+    revision: r,
+    filename: f,
+    mime: m,
+    ...(p === THUMBNAIL_PRESET ? { preset: p, bytes: b as number } : {}),
+  }
   return grantAccepted(grant)
     ? { ok: true, grant }
     : { ok: false, refusal: 'invalid', detail: 'grant' }

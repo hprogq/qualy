@@ -109,4 +109,27 @@ describe.runIf(postgresAvailable)('attachment content HTTP delivery', () => {
     expect(response.headers.get('cache-control')).toBe('private, no-store')
     expect(new Uint8Array(await response.arrayBuffer())).toEqual(new Uint8Array(16))
   })
+
+  it('describes an authorized rendition without changing the content download target', async () => {
+    const delivery = {
+      kind: 'redirect' as const,
+      url: 'https://files.example.test/v1/original',
+      expiresInSeconds: 60,
+      thumbnail: { url: 'https://files.example.test/v1/thumbnail', expiresInSeconds: 60 },
+    }
+    const open = vi.spyOn(backend, 'open').mockImplementation(() => Effect.succeed(delivery))
+    const describe = (user: string) =>
+      web.handler(
+        new Request(`http://qualy.test${QUALY_API_PREFIX}/assessment/attachments/${fixture.id}`, {
+          headers: { 'x-test-user': user },
+        }),
+      )
+    expect((await describe(fixture.other)).status).toBe(404)
+    expect(open).not.toHaveBeenCalled()
+    const response = await describe(fixture.owner)
+    expect(response.status).toBe(200)
+    expect((await response.json()).delivery).toEqual(delivery)
+    expect(open.mock.calls[0]![1].size).toBe(16n)
+    expect((await ask(fixture.owner)).headers.get('location')).toBe(delivery.url)
+  })
 })

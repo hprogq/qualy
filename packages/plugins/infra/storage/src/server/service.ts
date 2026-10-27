@@ -437,6 +437,7 @@ const make = () =>
           { key: row.storageKey, revision: row.storageVersion },
           {
             filename: row.filename,
+            size: meta.size,
             // never the uploader's word for it: a backend that signs its own
             // url puts this straight on the response, where it is the one
             // thing `nosniff` holds the browser to
