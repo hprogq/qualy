@@ -38,7 +38,14 @@ afterEach(() => vi.restoreAllMocks())
 // recording requests, as a transport would, rather than counting aborted work.
 const serve = (reply: (url: string) => Response) => {
   const received: string[] = []
+  const fetch = globalThis.fetch
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    if (
+      String(input) !== attachmentContentUrl(ID) &&
+      !String(input).startsWith('https://files.example.test/v1/')
+    ) {
+      return fetch(input, init)
+    }
     await Promise.resolve()
     init?.signal?.throwIfAborted()
     received.push(String(input))
@@ -56,6 +63,36 @@ describe('attachment delivery in the browser', () => {
       .toHaveAttribute('href', attachmentContentUrl(ID))
   })
 
+  it('opens and reopens a PDF through fresh authorization after the descriptor expires', async () => {
+    const describe = vi.fn(() => Effect.succeed({ attachments: [descriptor(oldPdf)] }))
+    const received = serve((url) => {
+      if (url !== attachmentContentUrl(ID)) return new Response(null, { status: 403 })
+      return new Response('%PDF-1.7\n', { headers: { 'content-type': 'application/pdf' } })
+    })
+    await mount(describe)
+    await expect.element(page.getByRole('button', { name: NAME })).toBeVisible()
+    const now = Date.now()
+    vi.spyOn(Date, 'now').mockReturnValue(now + 61_000)
+    await page.getByRole('button', { name: NAME }).click()
+    await expect
+      .poll(() => document.querySelector('iframe[title="certificate.pdf"]'))
+      .not.toBeNull()
+    expect(received).toEqual([attachmentContentUrl(ID)])
+    await userEvent.keyboard('{Escape}')
+    await expect.element(page.getByRole('dialog')).not.toBeInTheDocument()
+    // The link displayed on the page does not become a signed, expiring URL either.
+    await expect
+      .element(page.getByRole('link', { name: NAME }))
+      .toHaveAttribute('href', attachmentContentUrl(ID))
+    vi.spyOn(Date, 'now').mockReturnValue(now + 122_000)
+    await page.getByRole('button', { name: NAME }).click()
+    await expect
+      .poll(() => document.querySelector('iframe[title="certificate.pdf"]'))
+      .not.toBeNull()
+    expect(received).toEqual([attachmentContentUrl(ID), attachmentContentUrl(ID)])
+    expect(describe).toHaveBeenCalledTimes(1)
+  })
+
   it('reauthorizes a failed PDF once, without closing the preview', async () => {
     let descriptions = 0
     const describe = vi.fn(() =>
@@ -64,7 +101,7 @@ describe('attachment delivery in the browser', () => {
       })),
     )
     const received = serve((url) => {
-      if (url === oldPdf) throw new TypeError('cross-origin read failed')
+      if (url === attachmentContentUrl(ID)) throw new TypeError('cross-origin read failed')
       return new Response('%PDF-1.7\n', { headers: { 'content-type': 'application/pdf' } })
     })
     await mount(describe)
@@ -72,7 +109,7 @@ describe('attachment delivery in the browser', () => {
     await expect
       .poll(() => document.querySelector('iframe[title="certificate.pdf"]'))
       .not.toBeNull()
-    expect(received).toEqual([oldPdf, freshPdf])
+    expect(received).toEqual([attachmentContentUrl(ID), freshPdf])
     expect(describe).toHaveBeenCalledTimes(2)
     await expect.element(page.getByRole('dialog')).toBeVisible()
   })
@@ -110,6 +147,54 @@ describe('attachment delivery in the browser', () => {
       )
       .toBe(true)
     expect(describe).toHaveBeenCalledTimes(2)
+  })
+
+  it('keeps a loaded thumbnail after expiry but reauthorizes a new image opening', async () => {
+    const describe = vi.fn(() => Effect.succeed({ attachments: [descriptor(image, 'image/png')] }))
+    await renderScreen({
+      client: fakeClient({
+        app: { getManifest: emptyManifest() },
+        assessment: { listAttachmentDescriptors: describe },
+      }),
+      children: <AttachmentLink attachmentId={ID} variant="preview" />,
+    })
+    const thumbnail = page.getByRole('img', { name: NAME })
+    await expect
+      .poll(() => (thumbnail.element() as HTMLImageElement).naturalWidth)
+      .toBeGreaterThan(0)
+    vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 61_000)
+    expect(thumbnail.element().getAttribute('src')).toBe(image)
+    expect(describe).toHaveBeenCalledTimes(1)
+    await thumbnail.click()
+    // The test server cannot serve the content endpoint; that new opening
+    // must reauthorize once rather than reuse the descriptor's expired URL.
+    await expect
+      .poll(() =>
+        [...document.querySelectorAll<HTMLImageElement>('.PhotoView-Portal img')].some(
+          (element) => element.complete && element.naturalWidth > 0,
+        ),
+      )
+      .toBe(true)
+    expect(describe).toHaveBeenCalledTimes(2)
+    expect(thumbnail.element().getAttribute('src')).toBe(image)
+  })
+
+  it('does not fall back to the old URL after access is revoked', async () => {
+    let descriptions = 0
+    const describe = vi.fn(() =>
+      Effect.sync(() => ({
+        attachments: descriptions++ === 0 ? [descriptor(oldPdf)] : [],
+      })),
+    )
+    const received = serve(() => new Response(null, { status: 403 }))
+    await mount(describe)
+    await expect.element(page.getByRole('button', { name: NAME })).toBeVisible()
+    vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 61_000)
+    await page.getByRole('button', { name: NAME }).click()
+    await expect.element(page.getByRole('dialog').getByRole('status')).toBeVisible()
+    expect(received).toEqual([attachmentContentUrl(ID)])
+    expect(describe).toHaveBeenCalledTimes(2)
+    expect(document.querySelector('iframe[title="certificate.pdf"]')).toBeNull()
   })
 
   it('merges concurrent thumbnail renewal and leaves a visible failure after retry', async () => {

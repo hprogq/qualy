@@ -720,10 +720,13 @@ function CitedFile({
   onRemove?: (() => void) | undefined
 }) {
   const descriptor = useAttachmentDescriptor(attachmentId)
-  const data = descriptor.data ?? undefined
+  const data = descriptor.metadata
   const href =
-    data?.delivery.kind === 'redirect' ? data.delivery.url : attachmentContentUrl(attachmentId)
-  usePhotoRecovery(href, descriptor.renew)
+    descriptor.data?.delivery.kind === 'redirect'
+      ? descriptor.data.delivery.url
+      : attachmentContentUrl(attachmentId)
+  const previewHref = attachmentContentUrl(attachmentId)
+  usePhotoRecovery(previewHref, descriptor.renew)
   const name = data?.filename ?? fallbackName
   const isImage = data !== undefined && LOOKS_LIKE_A_PHOTOGRAPH.has(data.declaredMime)
 
@@ -731,7 +734,7 @@ function CitedFile({
     <FileTile
       media={
         isImage ? (
-          <PhotoView src={href}>
+          <PhotoView src={previewHref}>
             <RecoveringImage
               src={href}
               renew={descriptor.renew}

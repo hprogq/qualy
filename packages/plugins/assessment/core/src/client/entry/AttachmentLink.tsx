@@ -354,9 +354,15 @@ export function AttachmentLink({
   mark?: 'added' | 'supplement' | undefined
 }) {
   const descriptor = useAttachmentDescriptor(attachmentId)
-  const data = descriptor.data ?? undefined
+  const data = descriptor.metadata
   const href =
-    data?.delivery.kind === 'redirect' ? data.delivery.url : attachmentContentUrl(attachmentId)
+    descriptor.data?.delivery.kind === 'redirect'
+      ? descriptor.data.delivery.url
+      : attachmentContentUrl(attachmentId)
+  // A new preview can start long after the thumbnail loaded. This stable
+  // endpoint authorizes each opening and redirects to a newly signed URL.
+  // Already displayed thumbnails keep their bytes instead of reloading on a timer.
+  const previewHref = attachmentContentUrl(attachmentId)
   const name = data?.filename ?? m.entry_fileUnnamed()
   const isImage = data !== undefined && LOOKS_LIKE_A_PHOTOGRAPH.has(data.declaredMime)
   const isDocument = data !== undefined && LOOKS_LIKE_A_DOCUMENT.has(data.declaredMime)
@@ -370,7 +376,7 @@ export function AttachmentLink({
   const [rested, setRested] = useState(false)
   const lightbox = reading && data !== undefined && (
     <DocumentLightbox
-      href={href}
+      href={previewHref}
       renew={descriptor.renew}
       mime={data.declaredMime}
       name={name}
@@ -380,13 +386,13 @@ export function AttachmentLink({
 
   if (variant === 'line') {
     return (
-      <Shown photo={isImage} href={href} renew={descriptor.renew}>
+      <Shown photo={isImage} href={previewHref} renew={descriptor.renew}>
         <span {...stylex.props(styles.lineRow)}>
           <PaperclipIcon aria-hidden className={stylex.props(styles.clipIcon).className} />
           {/* a picture or a document opens where it stands; anything else
               is a download */}
           {isImage ? (
-            <PhotoView src={href}>
+            <PhotoView src={previewHref}>
               <button
                 type="button"
                 onClickCapture={descriptor.beginPreview}
@@ -439,7 +445,7 @@ export function AttachmentLink({
   // read as something still on offer.
   if (variant === 'card') {
     return (
-      <Shown photo={isImage} href={href} renew={descriptor.renew}>
+      <Shown photo={isImage} href={previewHref} renew={descriptor.renew}>
         <figure
           data-file-slot={slot}
           {...stylex.props(styles.cardFigure)}
@@ -449,7 +455,7 @@ export function AttachmentLink({
         >
           <div {...stylex.props(styles.cardBox, mark !== undefined && styles.cardBoxMarked)}>
             {isImage ? (
-              <PhotoView src={href}>
+              <PhotoView src={previewHref}>
                 <ArrivingImg
                   src={href}
                   renew={descriptor.renew}
@@ -505,11 +511,11 @@ export function AttachmentLink({
 
   if (variant === 'preview') {
     return (
-      <Shown photo={isImage} href={href} renew={descriptor.renew}>
+      <Shown photo={isImage} href={previewHref} renew={descriptor.renew}>
         <figure {...stylex.props(styles.previewFigure)}>
           <div {...stylex.props(styles.previewBox)}>
             {isImage ? (
-              <PhotoView src={href}>
+              <PhotoView src={previewHref}>
                 <ArrivingImg
                   src={href}
                   renew={descriptor.renew}
@@ -555,12 +561,12 @@ export function AttachmentLink({
   }
 
   return (
-    <Shown photo={isImage} href={href} renew={descriptor.renew}>
+    <Shown photo={isImage} href={previewHref} renew={descriptor.renew}>
       <FileTile
         className={stylex.props(styles.cardPanel).className}
         media={
           isImage ? (
-            <PhotoView src={href}>
+            <PhotoView src={previewHref}>
               <ArrivingImg
                 src={href}
                 renew={descriptor.renew}

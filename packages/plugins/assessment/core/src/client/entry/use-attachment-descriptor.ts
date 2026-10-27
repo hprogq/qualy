@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { useCallback, useRef } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { useApi, useRunApi } from '@qualy/web-runtime'
 import type { ApiResult, ClientOf } from '@qualy/web-runtime/api'
 import { assessmentApi } from '../api.ts'
@@ -102,6 +102,14 @@ export function useAttachmentDescriptor(attachmentId: string) {
     staleTime: (query) => freshFor(query.state.data),
     retry: false,
   })
+  // A failed reauthorization must not unmount an open preview by erasing
+  // its name and MIME. Keep citation metadata, never use it to renew access.
+  const [known, setKnown] = useState(query.data)
+  if (query.data != null && query.data !== known) setKnown(query.data)
+  const metadata =
+    known?.id === attachmentId
+      ? { filename: known.filename, declaredMime: known.declaredMime, size: known.size }
+      : undefined
   const attempted = useRef(false)
   const { refetch } = query
   const beginPreview = useCallback(() => {
@@ -118,5 +126,5 @@ export function useAttachmentDescriptor(attachmentId: string) {
       ? answer.data.delivery.url
       : attachmentContentUrl(attachmentId)
   }, [attachmentId, refetch])
-  return { ...query, renew, beginPreview }
+  return { ...query, metadata, renew, beginPreview }
 }
