@@ -1,19 +1,9 @@
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useRef,
-  useState,
-  type ComponentProps,
-  type ReactNode,
-} from 'react'
+import { useEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react'
 import { PhotoProvider } from '@qualy/ui/photo-view'
 import { Spinner } from '@qualy/ui/spinner'
 import * as stylex from '@stylexjs/stylex'
 import * as m from '#messages'
-
-type Renew = () => Promise<string | null>
-const Recoveries = createContext<Map<string, Set<Renew>> | null>(null)
+import { Recoveries, type Renew } from './photo-recovery.ts'
 
 const styles = stylex.create({
   fallback: {
@@ -47,20 +37,6 @@ export function AttachmentPhotos({ children }: { children: ReactNode }) {
       </PhotoProvider>
     </Recoveries.Provider>
   )
-}
-
-export function usePhotoRecovery(src: string, renew: Renew) {
-  const recoveries = useContext(Recoveries)
-  useEffect(() => {
-    if (recoveries === null) return
-    const callbacks = recoveries.get(src) ?? new Set<Renew>()
-    callbacks.add(renew)
-    recoveries.set(src, callbacks)
-    return () => {
-      callbacks.delete(renew)
-      if (callbacks.size === 0) recoveries.delete(src)
-    }
-  }, [recoveries, src, renew])
 }
 
 /** One failed load may acquire a fresh link; another failure stays visible. */
