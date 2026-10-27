@@ -128,7 +128,7 @@ describe.runIf(postgresAvailable)('attachment content HTTP delivery', () => {
     expect(open).not.toHaveBeenCalled()
     const response = await describe(fixture.owner)
     expect(response.status).toBe(200)
-    expect((await response.json()).delivery).toEqual(delivery)
+    expect(await response.json()).toEqual(expect.objectContaining({ delivery }))
     expect(open.mock.calls[0]![1].size).toBe(16n)
     expect((await ask(fixture.owner)).headers.get('location')).toBe(delivery.url)
   })
