@@ -107,22 +107,39 @@ export const supplementCitingEntries = (tenantId: string, attachmentId: string) 
       ),
     )
 
-/** the rounds that judged a revision citing this file, shaped for the reviewer predicate */
+/**
+ * The open rounds of a claim that cited this file in any version up to the
+ * one last handed in, shaped for the reviewer predicate: the history a
+ * round's reader is shown (getEntryHistory) carries its files with it, a file
+ * removed in a later version included. A version still on the owner's desk is
+ * not history yet, and its files stay theirs.
+ */
 export const citingInstances = (tenantId: string, attachmentId: string) =>
   db
     .query((k) =>
       k
         .selectFrom('ReviewInstance as ri')
-        .innerJoin('EntryRevisionAttachment as era', (join) =>
-          join
-            .onRef('era.tenantId', '=', 'ri.tenantId')
-            .onRef('era.revisionId', '=', 'ri.revisionId'),
-        )
         .innerJoin('EntryRevision as er', (join) =>
           join.onRef('er.tenantId', '=', 'ri.tenantId').onRef('er.id', '=', 'ri.revisionId'),
         )
         .innerJoin('Entry as e', (join) =>
           join.onRef('e.tenantId', '=', 'ri.tenantId').onRef('e.id', '=', 'ri.entryId'),
+        )
+        .innerJoin('EntryRevision as handed', (join) =>
+          join
+            .onRef('handed.tenantId', '=', 'e.tenantId')
+            .onRef('handed.id', '=', 'e.lastSubmittedRevisionId'),
+        )
+        .innerJoin('EntryRevision as cited', (join) =>
+          join
+            .onRef('cited.tenantId', '=', 'e.tenantId')
+            .onRef('cited.entryId', '=', 'e.id')
+            .onRef('cited.revisionNo', '<=', 'handed.revisionNo'),
+        )
+        .innerJoin('EntryRevisionAttachment as era', (join) =>
+          join
+            .onRef('era.tenantId', '=', 'cited.tenantId')
+            .onRef('era.revisionId', '=', 'cited.id'),
         )
         .innerJoin('BatchParticipant as bp', (join) =>
           join.onRef('bp.tenantId', '=', 'e.tenantId').onRef('bp.id', '=', 'e.participantId'),
