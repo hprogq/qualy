@@ -24,9 +24,8 @@
 - 文档已分为现行架构、领域、开发、证据、ADR 和历史材料；根 `AGENTS.md` 与本文件不再承担实施历史台账。
 - COS 的可选 EdgeOne 原件交付已实现，边缘函数的审计修复、热缓存下停用及恢复、临时对象清理已实测。服务端导入与备份改用独立的有作用域直读流，附件下载端点支持鉴权后 302，预览支持一次重新授权重试。`v0.1.0-rc.36` 已部署，生产应用已启用 EO，正式函数 HEAD 长度修复及 COS 实际内网读流已验证；验证边界与平台限制见 [EO 联调记录](docs/notes/edgeone-file-delivery.md)。
 - 生产 EO 站点已转为个人版，主站和文件域名分别配置五分钟流量封顶；迁移后的附件、缓存与安全策略检查及验证边界见 [EO 切换记录](docs/notes/edgeone-rollout.md#个人版迁移后的检查2026-10-28)。
-- 待发布补丁：审核页批量下载 iframe 已退出布局；长时间停留后的大图和 PDF 改为打开时取得新授权，续签失败保留可读状态；批次顶部运行卡片独立于底部筛选、分页与搜索，Skeleton 与实卡共用响应式样式和预留高度。相关 210 项 Chromium、2 项附件 HTTP 及两种文件模式的本地跨域验证通过，尚未部署。
-
-- EO 固定缩略图已接入并默认关闭：五项图片开关全关时完成真实图片、版本/缓存隔离、EXIF 方向、HEAD 与体积回退验证；卡片使用独立签名预设，大图和下载保持原件。正式函数和生产应用尚未启用该功能，详见 [缩略图实测](docs/notes/edgeone-thumbnails.md)。
+- `v0.1.0-rc.37` 已部署：审核页批量下载 iframe 退出布局；长时间停留后的大图和 PDF 打开时重新授权；批次顶部运行卡片独立于底部筛选；审核人可读取同一申报截至最后提交版本中已移除的历史附件（未提交版本、他人材料、失去审核资格后仍拒绝）；附件不存在与业务授权拒绝不再计入存储故障指标，后端、数据库与 defect 仍计数。EO 固定缩略图已启用：正式函数先更新并复验原件不变，再在应用侧开启。上线复验与告警归因见 [EO 切换记录](docs/notes/edgeone-rollout.md#rc37-上线2026-10-28)，真实材料可读性验收见 [缩略图实测](docs/notes/edgeone-thumbnails.md#真实材料验收2026-10-28)。
+- 依赖：Monaco 内置 DOMPurify 更新为官方 3.4.17，undici、nodemailer、fast-uri 取修复版；Effect 升级到 4.0.6 并随之适配客户端类型与 pre-response handler，其余次版本更新一并完成，处置依据见[安全核对](docs/notes/security-dependency-review-2026-10.md#2026-10-28-依赖告警)。
 
 Formula RPC 心跳误断线和 WebSocket HTTP 计时的修复已随 `v0.1.0-rc.32` 上线
 （[实测笔记](docs/notes/formula-rpc-heartbeat.md)）。
@@ -46,7 +45,7 @@ Node 安全运行时、COS 间接 HTTP 重定向依赖补丁和 GitHub 登录阶
 
 ## 最近验证的代码状态
 
-rc.36 源码提交 `0267c6d965c00a8c155863ebbceeca870779895d` 的最终 CI 全部成功：
+rc.37 源码提交 `ebbc917fc25b9366fc051380090428cc7cfb0f13` 的 CI 全部成功（static、Node CI、Chromium、WebKit、image、release-eligible）；正式 release 的 COS 真桶套件、三个镜像构建与 smoke、镜像推送和 Sourcemap 登记全部成功。以下为 rc.36 时的详细计数，作为对比保留：
 
 - static、Node CI、Chromium、WebKit、image、release-eligible 全部通过；
 - Node：443 个测试文件通过、3 个跳过；3463 个测试通过、29 个跳过；其中 27 项 COS 真桶用例在正式 release 门禁补跑，另两项为既有的 vendor/CSP 环境条件跳过；
@@ -56,14 +55,15 @@ rc.36 源码提交 `0267c6d965c00a8c155863ebbceeca870779895d` 的最终 CI 全�
 
 2026-10-22 的安全核对记录了两项编译器内嵌 Go 告警（Linux 目标依赖图不包含受影响包）及两项不进入生产镜像的 Vitest 开发依赖中危告警，依据见[安全核对](docs/notes/security-dependency-review-2026-10.md)。本轮未重新核对这些平台告警的当前状态。
 
-CI：https://github.com/hprogq/qualy/actions/runs/40509399940
+CI：https://github.com/hprogq/qualy/actions/runs/40566683534
 
-Release：https://github.com/hprogq/qualy/actions/runs/40511587514
+Release：https://github.com/hprogq/qualy/actions/runs/40569520758
 
 后续提交若修改代码，应按[验证指南](docs/development/validation.md)重新选择检查；这里的结果不能替代新改动的验收。
 
 ## 生产状态
 
+- 2026-10-28 部署 `v0.1.0-rc.37`（revision `ebbc917fc25b9366fc051380090428cc7cfb0f13`），服务颜色为 green，Web release 为 `r_p2JGky0hjeLd5jNNv9xKtA`。升级前整站备份 `20261027T192916Z` 与部署入口备份 `20261027T194016Z` 均完成异地复制；`qualy-deploy doctor` 全部通过，旧 `rc.36` 保留用于回退。两个发布之间没有新增迁移。
 - 2026-10-27 经用户批准部署 `v0.1.0-rc.36`（revision `0267c6d965c00a8c155863ebbceeca870779895d`），服务颜色为 blue，Web release 为 `r_EUFFloS2UR-IGb5GAnVf6A`。升级前整站及异地备份、部署入口、doctor、三个运行容器 revision 和公开 release 均已核验；旧 `rc.35` 保留用于回退。EO 模式启用，公安备案号及完整查询链接已在实际页脚生效。
 - EO 主站回源应答空闲超时已从默认 15 秒调整为 60 秒，解决 SSE 在 25 秒心跳前反复断开的问题；规则只匹配主站 HOST，不绑定业务 URL。真实浏览器已观察到跨过 60 秒的多轮心跳，见 [切换记录](docs/notes/edgeone-rollout.md#主站-sse-空闲超时修复)。上线后整站备份已实际导出 3 个 COS 附件并完成异地复制。
 - 新入口作为唯一应用主站；旧入口的普通导航由边缘永久跳转，旧 API、写请求及 WebSocket 不跨域续接。新入口使用独立的普通 ACME 签发策略。
