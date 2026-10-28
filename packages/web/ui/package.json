@@ -49,6 +49,7 @@
     "./tree-select": "./src/components/tree-select.tsx",
     "./person": "./src/components/person.tsx",
     "./unit-path": "./src/components/unit-path.tsx",
+    "./eased-height": "./src/components/eased-height.tsx",
     "./reveal": "./src/components/reveal.tsx",
     "./checkbox": "./src/components/checkbox.tsx",
     "./chip": "./src/components/chip.tsx",
