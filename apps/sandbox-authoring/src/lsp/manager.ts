@@ -82,7 +82,8 @@ interface Session {
   text: string
   /** the client's own document version, echoed on policy pushes (LSP 3.15) */
   documentVersion: number
-  closing: boolean
+  /** one completion shared by explicit close, reaping and shutdown */
+  closing: Promise<void> | undefined
   /** whether a formatting answer is still owed; one at a time per session */
   formatting: boolean
 }
@@ -141,6 +142,7 @@ export interface LspManager {
     sessionId: string,
   ) => Effect.Effect<Queue.Dequeue<OutboundEvent, Cause.Done>, LspSessionNotFound, Scope.Scope>
   readonly close: (sessionId: string) => Effect.Effect<void>
+  /** owned sessions, including those whose cleanup is still in progress */
   readonly activeSessions: () => number
   readonly closeAll: () => Promise<void>
   /** test-facing: the workspace root of a live session, if any */
@@ -298,10 +300,19 @@ export const makeLspManager = (): LspManager => {
     pushEvent(session, serialized)
   }
 
-  const closeSession = async (session: Session): Promise<void> => {
-    if (session.closing) return
-    session.closing = true
-    sessions.delete(session.id)
+  const closeSession = (session: Session): Promise<void> => {
+    // Keep the session discoverable until cleanup finishes. A concurrent
+    // Close, event-scope finalizer or manager shutdown must join this work,
+    // while send/events refuse it as soon as closing starts.
+    // The entry goes when the work does, however it ends: a cleanup that
+    // threw must not leave a session nobody can close again.
+    session.closing ??= Promise.resolve()
+      .then(() => finishClose(session))
+      .finally(() => sessions.delete(session.id))
+    return session.closing
+  }
+
+  const finishClose = async (session: Session): Promise<void> => {
     const { child } = session
     try {
       // protocol goodbye is a courtesy, never the mechanism (measured: TS7
@@ -400,7 +411,7 @@ export const makeLspManager = (): LspManager => {
         outSequence: 0,
         text: initialSource,
         documentVersion: 0,
-        closing: false,
+        closing: undefined,
         formatting: false,
       }
       sessions.set(id, session)
@@ -427,7 +438,8 @@ export const makeLspManager = (): LspManager => {
   const send: LspManager['send'] = (request) =>
     Effect.suspend((): Effect.Effect<void, LspSendError> => {
       const session = sessions.get(request.sessionId)
-      if (session === undefined) return Effect.fail(new LspSessionNotFound())
+      if (session === undefined || session.closing !== undefined)
+        return Effect.fail(new LspSessionNotFound())
       const bytes = Buffer.byteLength(request.jsonRpc, 'utf8')
       if (bytes > LSP_FRAME_LIMIT)
         return Effect.fail(new LspFrameTooLarge({ bytes, limit: LSP_FRAME_LIMIT }))
@@ -543,7 +555,8 @@ export const makeLspManager = (): LspManager => {
   const events: LspManager['events'] = (sessionId) =>
     Effect.gen(function* () {
       const session = sessions.get(sessionId)
-      if (session === undefined) return yield* new LspSessionNotFound()
+      if (session === undefined || session.closing !== undefined)
+        return yield* new LspSessionNotFound()
       session.lastActivity = Date.now()
       // the events stream IS the client's liveness: when its scope ends -
       // disconnect, interrupt, shutdown - the session ends with it

@@ -385,6 +385,8 @@ describe('the formula language service', { concurrent: false }, () => {
       while ((await sessionsOf()) > 0 && Date.now() < reaped)
         await new Promise((resolve) => setTimeout(resolve, 250))
       expect(await sessionsOf()).toBe(0)
+      // The manager owns closing sessions until cleanup completes: zero is
+      // a completion condition, not just refusal of subsequent requests.
       expect(lspWorkspaceCount(ownTmp)).toBe(workspacesBefore)
       void opened
     } finally {
