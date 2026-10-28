@@ -25,7 +25,7 @@
 - COS 的可选 EdgeOne 原件交付已实现，边缘函数的审计修复、热缓存下停用及恢复、临时对象清理已实测。服务端导入与备份改用独立的有作用域直读流，附件下载端点支持鉴权后 302，预览支持一次重新授权重试。`v0.1.0-rc.36` 已部署，生产应用已启用 EO，正式函数 HEAD 长度修复及 COS 实际内网读流已验证；验证边界与平台限制见 [EO 联调记录](docs/notes/edgeone-file-delivery.md)。
 - 生产 EO 站点已转为个人版，主站和文件域名分别配置五分钟流量封顶；迁移后的附件、缓存与安全策略检查及验证边界见 [EO 切换记录](docs/notes/edgeone-rollout.md#个人版迁移后的检查2026-10-28)。
 - `v0.1.0-rc.37` 已部署：审核页批量下载 iframe 退出布局；长时间停留后的大图和 PDF 打开时重新授权；批次顶部运行卡片独立于底部筛选；审核人可读取同一申报截至最后提交版本中已移除的历史附件（未提交版本、他人材料、失去审核资格后仍拒绝）；附件不存在与业务授权拒绝不再计入存储故障指标，后端、数据库与 defect 仍计数。EO 固定缩略图已启用：正式函数先更新并复验原件不变，再在应用侧开启。上线复验与告警归因见 [EO 切换记录](docs/notes/edgeone-rollout.md#rc37-上线2026-10-28)，真实材料可读性验收见 [缩略图实测](docs/notes/edgeone-thumbnails.md#真实材料验收2026-10-28)。
-- 批次实时事件已从 SSE 迁为同源 WebSocket（未部署）：同一标签页内同一身份、同一批次共享一条连接并带宽限复用；拒绝改用关闭码区分未登录、无权、不兼容与席位已满，席位已满时界面显示“正在恢复实时更新”并抖动退避，页面继续轮询；会话与批次可见性在连接期间定期复核。SSE 端点与 `useApiStream` 已删除。生产 EO 验收项尚未执行，见[批次实时通道](docs/notes/live-websocket.md#未验证的生产验收项)。
+- 批次实时事件已从 SSE 迁为同源 WebSocket（随 `v0.1.0-rc.39` 上线）：同一标签页内同一身份、同一批次共享一条连接并带宽限复用；拒绝改用关闭码区分未登录、无权、不兼容与席位已满，席位已满时界面显示“正在恢复实时更新”并抖动退避，页面继续轮询；会话与批次可见性在连接期间定期复核。SSE 端点与 `useApiStream` 已删除。经 EO 的升级、心跳、超过 300 秒的连接、约 10 分钟续期与第 7 席 4429 已在生产验证，蓝绿切换重连等未验证项见[批次实时通道](docs/notes/live-websocket.md#生产验收2026-10-28rc39)。
 - 依赖：Monaco 内置 DOMPurify 更新为官方 3.4.17，undici、nodemailer、fast-uri 取修复版；Effect 升级到 4.0.6 并随之适配客户端类型与 pre-response handler，其余次版本更新一并完成，处置依据见[安全核对](docs/notes/security-dependency-review-2026-10.md#2026-10-28-依赖告警)。
 
 Formula RPC 心跳误断线和 WebSocket HTTP 计时的修复已随 `v0.1.0-rc.32` 上线
@@ -64,6 +64,7 @@ Release：https://github.com/hprogq/qualy/actions/runs/40569520758
 
 ## 生产状态
 
+- 2026-10-28 部署 `v0.1.0-rc.39`（revision `ee7112ff9`，签名 tag），服务颜色为 green，Web release 为 `r_pKGGtxQINePSHVyFJEMs0A`；批次实时事件改为 WebSocket，无新增迁移。部署前整站备份 `20261028T073117Z` 与部署入口备份 `20261028T075928Z` 已异地复制，`doctor` 全部通过，旧 `rc.38` 保留用于回退。
 - 2026-10-28 部署 `v0.1.0-rc.38`（revision `dad290558`，签名 tag），服务颜色为 blue，Web release 为 `r_qFwHSb3L3wPjjYGmMWuhNw`；应用代码与 rc.37 相同，新增演示实例的换域与保留登录方式复原。部署入口备份 `20261028T015501Z` 已异地复制，保存了复原前的全部生产数据。
 - 演示邮箱域改为 `demo.hprogq.cn`：服务器基线经 `deploy/demo/rehome.sh` 在隔离库改写并重新导出，8 个账号换域，旧 dump 保留为 `qualy-demo.dump.qualy.hprogq.cn.20261028T015612Z`；发件地址仍为 `noreply@qualy.hprogq.cn`。随后以 `deploy/demo/restore.sh --keep-sign-in` 复原：四个登录入口、5 条受众与 2 个入口密钥复原前后逐行指纹一致，2 条外部身份绑定、会话与基线后的业务数据回到基线；`doctor` 全部通过，启动无不可解密的密钥。用户已用新域账号登录并完成邮箱验证收发。
 - 2026-10-28 部署 `v0.1.0-rc.37`（revision `ebbc917fc25b9366fc051380090428cc7cfb0f13`），服务颜色为 green，Web release 为 `r_p2JGky0hjeLd5jNNv9xKtA`。升级前整站备份 `20261027T192916Z` 与部署入口备份 `20261027T194016Z` 均完成异地复制；`qualy-deploy doctor` 全部通过，旧 `rc.36` 保留用于回退。两个发布之间没有新增迁移。
