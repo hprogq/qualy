@@ -178,6 +178,20 @@ export default defineConfig(({ mode }) => ({
             // combination of pages became a chunk of a few hundred bytes. A
             // message imports nothing that imports it back, so pooling them
             // can close no ring.
+            //
+            // The messages the boot says pool apart first. Merging picks a
+            // neighbour by size, not by who reads it, and the boot's pool
+            // was one: the first screen every visitor loads,
+            // the sign-in page included, carried the account, people picker
+            // and user administration messages with it.
+            {
+              name: 'boot-messages',
+              test: /[\\/]\.qualy[\\/](?:i18n(?:-profiles)?[\\/]|messages\.js$)/,
+              tags: ['$initial'],
+              priority: 2,
+              minShareCount: 2,
+              includeDependenciesRecursively: false,
+            },
             {
               name: 'messages',
               test: /[\\/]\.qualy[\\/](?:i18n(?:-profiles)?[\\/]|messages\.js$)/,
