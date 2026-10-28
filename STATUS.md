@@ -66,6 +66,7 @@ Release：https://github.com/hprogq/qualy/actions/runs/40569520758
 
 ## 生产状态
 
+- 2026-10-29 经 deploy GitHub Actions（run 40756990278，用户批准）部署 `v0.1.0-rc.41`（revision `f16e005b6`，签名 tag），服务颜色为 green，Web release 为 `r_1dh0tgnuQkEpmcs-EOmXTg`；进行中批次卡片在各宽度按内容撑开、不再在入口上方留白，骨架屏按卡片文字行高绘制，常见形状逐像素一致，其他形状由 `EasedHeight` 平滑过渡；无新增迁移。部署入口备份 `20261028T194537Z`，公开 release 与首页从外部核对一致；旧 `rc.40` 保留用于回退。
 - 2026-10-29 经 deploy GitHub Actions（run 40746721461，production 环境由用户批准）部署 `v0.1.0-rc.40`（revision `2e239c200`，签名 tag），服务颜色为 blue，Web release 为 `r_WudiURs2kFWegqitKce6jA`；首屏分片减量、布局槽位随布局预取、空闲预取等页面数据、`resume=1` 登录无人等待时立即进入，无新增迁移。部署入口备份 `20261028T183845Z`；公开 release 与首页从外部核对一致，匿名登录页实测 55 个 JS。工作流不运行 `doctor`，本次未在宿主机手动检查；已登录页面的生产请求数未实测。旧 `rc.39` 保留用于回退。
 - 2026-10-28 部署 `v0.1.0-rc.39`（revision `ee7112ff9`，签名 tag），服务颜色为 green，Web release 为 `r_pKGGtxQINePSHVyFJEMs0A`；批次实时事件改为 WebSocket，无新增迁移。部署前整站备份 `20261028T073117Z` 与部署入口备份 `20261028T075928Z` 已异地复制，`doctor` 全部通过，旧 `rc.38` 保留用于回退。
 - 2026-10-28 部署 `v0.1.0-rc.38`（revision `dad290558`，签名 tag），服务颜色为 blue，Web release 为 `r_qFwHSb3L3wPjjYGmMWuhNw`；应用代码与 rc.37 相同，新增演示实例的换域与保留登录方式复原。部署入口备份 `20261028T015501Z` 已异地复制，保存了复原前的全部生产数据。
