@@ -1,7 +1,7 @@
 #!/bin/sh
 # Puts a demonstration deployment back to its baseline.
 #
-#   deploy/demo/restore.sh [baseline-dir]
+#   deploy/demo/restore.sh [--keep-sign-in] [baseline-dir]
 #
 # Runs from anywhere: it drives deploy/compose.yaml beside this script's
 # directory, with that directory's .env. The baseline directory (default
@@ -26,12 +26,29 @@
 #
 # A failure before step 2 leaves the site as it was. A failure after it
 # stops with the step named; running the script again finishes the job.
+#
+# --keep-sign-in keeps the ways in this deployment was given after the
+# baseline: its entrances (order, names, icons, audience, service settings),
+# their sealed secrets and the stored images their icons name. Before step 2
+# the scratch database is migrated to the running release and those rows are
+# copied onto it (keep-sign-in.sql), so a configuration that does not fit
+# stops the reset while the site still serves. Nothing done through those
+# entrances carries over: identity bindings, sessions, sign-in records,
+# users added since and email verification are the baseline's.
 set -eu
 
 here=$(cd "$(dirname "$0")/.." && pwd)
 . "$here/lib.sh"
 . "$here/demo/domain.sh"
-baseline=${1:-/opt/qualy/demo-baseline}
+baseline=/opt/qualy/demo-baseline
+keep_sign_in=false
+for argument in "$@"; do
+  case "$argument" in
+    --keep-sign-in) keep_sign_in=true ;;
+    -*) refuse "unknown option $argument" ;;
+    *) baseline=$argument ;;
+  esac
+done
 
 # The database commands run inside the postgres container, which already
 # knows the deployment's user and database: .env is compose's to read, and a
@@ -136,6 +153,65 @@ SQL
 [ "$baseline_account_count" = 5 ] ||
   refuse "baseline accounts do not match QUALY_DEMO_EMAIL_DOMAIN and QUALY_DEFAULT_TENANT; the serving color has not been stopped"
 
+keep_local_keys=
+if [ "$keep_sign_in" = true ]; then
+  step="migrating the scratch database to $release"
+  echo "$step"
+  # the deploy job, pointed at the scratch database: the copy below needs
+  # the live schema on both sides, and a migration that fails here fails
+  # while the site still serves
+  QUALY_RELEASE=$release compose run --rm --no-deps -T --entrypoint sh migrate -c '
+    DATABASE_URL=$(node -e "
+      const url = new URL(process.env.DATABASE_URL)
+      url.pathname = \"/\" + process.env.POSTGRES_DB + \"_restore\"
+      process.stdout.write(url.href)
+    ")
+    export DATABASE_URL
+    exec node apps/cli/src/main.ts deploy'
+
+  step="carrying this deployment's sign-in configuration over"
+  echo "$step"
+  in_postgres '
+    set -eu
+    on() { psql -U "$POSTGRES_USER" -d "$1" -XAtq -v ON_ERROR_STOP=1 -c "$2"; }
+    live=$POSTGRES_DB
+    restored=${POSTGRES_DB}_restore
+    for table in auth_providers auth_provider_user_types secrets storage_attachments; do
+      on "$restored" "create table qualy_keep_$table (like $table)"
+    done
+    # copied whole or not at all: this shell has no pipefail, so a copy out
+    # that failed would read on the other side as an empty table
+    carry() {
+      on "$live" "copy ($2) to stdout" | on "$restored" "copy qualy_keep_$1 from stdin"
+      [ "$(on "$live" "select count(*) from ($2) as carried")" = \
+        "$(on "$restored" "select count(*) from qualy_keep_$1")" ] || {
+        echo "$1 did not carry over whole" >&2
+        exit 1
+      }
+    }
+    carry auth_providers "select * from auth_providers"
+    carry auth_provider_user_types "select * from auth_provider_user_types"
+    carry secrets "select * from secrets where owner_kind = '\''auth-provider'\''"
+    carry storage_attachments "select * from storage_attachments where id::text in (
+      select jsonb_path_query(icon, '\''lax \$.*.attachmentId'\'') #>> '\''{}'\''
+        from auth_providers)"'
+  compose exec -T postgres sh -c \
+    'psql -U "$POSTGRES_USER" -d "${POSTGRES_DB}_restore" -Xq -v ON_ERROR_STOP=1' \
+    < "$here/demo/keep-sign-in.sql"
+  # an image kept on the local backend lives in the storage volume, which
+  # the baseline's is about to replace: its file goes along
+  keep_local_keys=$(in_postgres 'psql -U "$POSTGRES_USER" -d "${POSTGRES_DB}_restore" -XAtq \
+    -v ON_ERROR_STOP=1 -c "select a.storage_key from storage_attachments a
+      where a.backend = '\''local'\'' and a.id::text in (
+        select jsonb_path_query(icon, '\''lax \$.*.attachmentId'\'') #>> '\''{}'\''
+          from auth_providers where deleted_at is null)"')
+  for key in $keep_local_keys; do
+    printf '%s' "$key" |
+      grep -Eqx 'attachments/[0-9a-f-]{36}/[0-9a-f-]{36}' ||
+      refuse "a kept icon is stored under an unexpected key; the serving color has not been stopped"
+  done
+fi
+
 step="stopping the serving color"
 echo "$step"
 if [ -n "$active" ]; then compose stop -t 40 $(color_services "$active"); fi
@@ -159,12 +235,16 @@ echo "$step"
 # The server image, as root, on the storage volume: the volume is found by
 # its role in compose.yaml rather than by a project-prefixed name.
 compose run --rm --no-deps -T --user 0:0 --entrypoint sh \
-  -v "$baseline:/in:ro" tools -c '
+  -e QUALY_KEEP_KEYS="$keep_local_keys" -v "$baseline:/in:ro" tools -c '
     set -eu
     root=/var/lib/qualy/storage
     rm -rf "$root/.incoming"
     mkdir "$root/.incoming"
     tar -xzf /in/storage.tar.gz -C "$root/.incoming"
+    for key in $QUALY_KEEP_KEYS; do
+      mkdir -p "$root/.incoming/${key%/*}"
+      cp -p "$root/$key" "$root/.incoming/$key"
+    done
     find "$root" -mindepth 1 -maxdepth 1 ! -name .incoming -exec rm -rf {} +
     find "$root/.incoming" -mindepth 1 -maxdepth 1 -exec mv {} "$root/" \;
     rmdir "$root/.incoming"

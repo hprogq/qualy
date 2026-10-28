@@ -28,6 +28,10 @@ if [ "$1" = compose ]; then
       printf '%s\\n' "\${FAKE_BASELINE_ACCOUNT_COUNT:-5}"
       exit 0
       ;;
+    *'select a.storage_key from storage_attachments a'*)
+      printf '%s' "\${FAKE_KEEP_KEYS:-}"
+      exit 0
+      ;;
     *'select name from mikro_orm_migrations order by name'*)
       if [ "\${FAKE_FAIL_LEDGER:-}" = 1 ]; then echo 'ledger query failed' >&2; exit 2; fi
       [ ! -f "$FAKE/ledger" ] || cat "$FAKE/ledger"
@@ -134,7 +138,11 @@ afterEach(() => {
 })
 
 describe('the demonstration baseline account domain', () => {
-  const restore = (domain: string | undefined, extra: Record<string, string> = {}) => {
+  const restore = (
+    domain: string | undefined,
+    extra: Record<string, string> = {},
+    options: readonly string[] = [],
+  ) => {
     const baseline = path.join(fake, 'baseline')
     fs.mkdirSync(baseline)
     fs.writeFileSync(path.join(baseline, 'qualy-demo.dump'), '')
@@ -145,7 +153,7 @@ describe('the demonstration baseline account domain', () => {
     for (const account of ['ADMIN', 'STUDENT', 'CLASS_LEAD', 'COUNSELLOR', 'LEAD']) {
       fs.appendFileSync(envFile, `QUALY_BASELINE_PASSWORD_${account}=fixture-password-only\n`)
     }
-    return spawnSync('sh', [path.join(ROOT, 'deploy/demo/restore.sh'), baseline], {
+    return spawnSync('sh', [path.join(ROOT, 'deploy/demo/restore.sh'), ...options, baseline], {
       env: {
         ...process.env,
         PATH: `${path.join(fake, 'bin')}:${process.env.PATH ?? ''}`,
@@ -258,6 +266,62 @@ describe('the demonstration baseline account domain', () => {
     expect(asked).toContain('pg_restore')
     expect(asked).not.toContain('stop -t')
     expect(asked).not.toContain('auth set-password')
+  })
+
+  it('with --keep-sign-in, migrates the scratch copy and carries the entrances over before stopping', () => {
+    const ran = restore('mail.example.test', {}, ['--keep-sign-in'])
+    expect(ran.status, ran.stderr).toBe(0)
+    const asked = fs.readFileSync(path.join(fake, 'docker.log'), 'utf8')
+    const stop = asked.indexOf('stop -t 40')
+    for (const step of [
+      'pg_restore',
+      '_restore\\"',
+      'carry auth_providers "select * from auth_providers"',
+      'carry secrets',
+      '-d "${POSTGRES_DB}_restore" -Xq',
+      'select a.storage_key from storage_attachments a',
+    ]) {
+      const at = asked.indexOf(step)
+      expect(at, step).toBeGreaterThan(-1)
+      expect(at, step).toBeLessThan(stop)
+    }
+    // the deploy job pointed at the scratch database, not the live one
+    expect(asked).toMatch(/run --rm --no-deps -T --entrypoint sh migrate -c/)
+  })
+
+  it('carries an image kept on the local backend into the restored volume', () => {
+    const key =
+      'attachments/0190a7a0-0000-7000-8000-000000000001/0190a7a0-0000-7000-8000-000000000002'
+    const ran = restore('mail.example.test', { FAKE_KEEP_KEYS: key }, ['--keep-sign-in'])
+    expect(ran.status, ran.stderr).toBe(0)
+    expect(fs.readFileSync(path.join(fake, 'docker.log'), 'utf8')).toContain(
+      `QUALY_KEEP_KEYS=${key}`,
+    )
+  })
+
+  it('refuses a kept image under an unexpected key while the site still serves', () => {
+    const ran = restore('mail.example.test', { FAKE_KEEP_KEYS: '../../etc/passwd' }, [
+      '--keep-sign-in',
+    ])
+    expect(ran.status).toBe(1)
+    expect(ran.stderr).toContain('unexpected key')
+    expect(fs.readFileSync(path.join(fake, 'docker.log'), 'utf8')).not.toContain('stop -t')
+  })
+
+  it('without --keep-sign-in, carries nothing over and leaves the scratch copy unmigrated', () => {
+    const ran = restore('mail.example.test')
+    expect(ran.status, ran.stderr).toBe(0)
+    const asked = fs.readFileSync(path.join(fake, 'docker.log'), 'utf8')
+    expect(asked).not.toContain('qualy_keep_')
+    expect(asked).not.toContain('--entrypoint sh migrate')
+    expect(asked).toContain('QUALY_KEEP_KEYS= ')
+  })
+
+  it('refuses an option it does not know before contacting the deployment', () => {
+    const ran = restore('mail.example.test', {}, ['--keep-everything'])
+    expect(ran.status).toBe(1)
+    expect(ran.stderr).toContain('unknown option --keep-everything')
+    expect(fs.existsSync(path.join(fake, 'docker.log'))).toBe(false)
   })
 
   it('keeps the serving color up when the account check cannot run', () => {
