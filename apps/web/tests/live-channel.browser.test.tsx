@@ -82,10 +82,14 @@ describe('the live channels of a tab', () => {
     // a grace far longer than the test: what closes it is the change of person
     await renderScreen({ client, live, liveTiming: { grace: 60_000 }, children: <Page /> })
     await expect.element(page.getByTestId('first')).toHaveAttribute('data-live', 'true')
+    const theirs = live.sockets.length
     who.current = null
     await page.getByRole('button', { name: 'sign out' }).click()
     await expect.poll(() => live.sockets[0]!.closedWith, { timeout: 2_000 }).toBe(1000)
-    expect(live.open()).toHaveLength(0)
+    // every connection the last person held is gone; the screens are still
+    // mounted here, so a visitor's connection may open after them, which is
+    // the visitor's own and not the one that had to go
+    expect(live.open().filter((socket) => live.sockets.indexOf(socket) < theirs)).toHaveLength(0)
   })
 
   it('takes a connection closed for want of a session as a session lost, and asks who is signed in', async () => {
