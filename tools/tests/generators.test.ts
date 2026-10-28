@@ -59,6 +59,11 @@ describe('the browser aggregate', () => {
       expect(line('account-shell/v1')).toContain('default: module.AccountShell')
       // and a default export is imported as it always was
       expect(line('blank-shell/v1')).toMatch(/: \(\) => import\("[^"]*BlankShell\.tsx"\),$/)
+      // beside the loaders, the slots each shell renders, for the runtime to fetch with it
+      const slots = aggregate.slice(aggregate.indexOf('export const layoutSlots'))
+      expect(slots.slice(0, slots.indexOf('}'))).toContain(
+        '"workspace-shell/v1": ["app-shell/header-actions","app-shell/user-menu"',
+      )
     } finally {
       workspace.dispose()
     }
