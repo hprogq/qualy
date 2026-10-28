@@ -877,6 +877,9 @@ importers:
       '@qualy/plugin-kit':
         specifier: workspace:*
         version: link:../plugin-kit
+      '@qualy/release-contract':
+        specifier: workspace:*
+        version: link:../../contracts/release
       '@qualy/text':
         specifier: workspace:*
         version: link:../text

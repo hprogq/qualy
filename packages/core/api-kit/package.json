@@ -22,12 +22,15 @@
     "./schema-refusal": "./src/schema-refusal.ts",
     "./storable-text": "./src/storable-text.ts",
     "./unavailable": "./src/unavailable.ts",
-    "./locale": "./src/locale.ts"
+    "./locale": "./src/locale.ts",
+    "./live-socket": "./src/live-socket.ts",
+    "./live-socket-server": "./src/live-socket-server.ts"
   },
   "dependencies": {
     "@effect/platform-node": "catalog:",
     "@qualy/i18n-contract": "workspace:*",
     "@qualy/plugin-kit": "workspace:*",
+    "@qualy/release-contract": "workspace:*",
     "@qualy/text": "workspace:*",
     "effect": "catalog:"
   }

@@ -1,4 +1,10 @@
 import { Context, Effect, Layer, Scope } from 'effect'
+import {
+  isReleaseId,
+  SERVER_MAX_CLIENT_PROTOCOL,
+  SERVER_MIN_CLIENT_PROTOCOL,
+  type ClientUnsupportedReason,
+} from '@qualy/release-contract'
 
 // Whether the release a page claims to be may still talk to this process.
 //
@@ -68,3 +74,45 @@ export const clientAssemblyLayer: Layer.Layer<ClientAssembly> = Layer.sync(Clien
     standingOf: (releaseId) => judge?.(releaseId) ?? 'compatible',
   })
 })
+
+/** the generations of the api a server still speaks */
+export interface ProtocolWindow {
+  readonly min: number
+  readonly max: number
+}
+
+export const SERVER_PROTOCOL_WINDOW: ProtocolWindow = {
+  min: SERVER_MIN_CLIENT_PROTOCOL,
+  max: SERVER_MAX_CLIENT_PROTOCOL,
+}
+
+/** the declared generation as a number, or nothing where it is not one */
+const generationOf = (declared: string): number | undefined =>
+  /^\d{1,7}$/.test(declared) ? Number(declared) : undefined
+
+/**
+ * Why this server will not talk to a page, or nothing when it will.
+ *
+ * One judgement for every way a page can say who it is: the HTTP transport
+ * names both in headers, a live channel in its query, and the two must not
+ * come to different answers. Something that names neither is not a web page
+ * - the cli, an integration, a test client - and goes through.
+ */
+export const clientRefusal = (
+  declared: { readonly protocol: string | undefined; readonly release: string | undefined },
+  standingOf: (releaseId: string) => ReleaseStanding,
+  window: ProtocolWindow = SERVER_PROTOCOL_WINDOW,
+): ClientUnsupportedReason | undefined => {
+  if (declared.protocol !== undefined) {
+    const generation = generationOf(declared.protocol)
+    if (generation === undefined || generation < window.min || generation > window.max) {
+      return 'protocol'
+    }
+  }
+  if (declared.release === undefined) return undefined
+  const standing: ReleaseStanding = isReleaseId(declared.release)
+    ? standingOf(declared.release)
+    : 'unknown'
+  if (standing === 'compatible') return undefined
+  return standing === 'unknown' ? 'release' : 'assembly'
+}

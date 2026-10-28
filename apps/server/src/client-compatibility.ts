@@ -1,6 +1,11 @@
 import { Context, Effect } from 'effect'
 import { HttpServerRequest, HttpServerResponse } from 'effect/http'
-import { ClientAssembly, type ReleaseStanding } from '@qualy/api-kit/client-assembly'
+import {
+  ClientAssembly,
+  clientRefusal,
+  SERVER_PROTOCOL_WINDOW,
+  type ProtocolWindow,
+} from '@qualy/api-kit/client-assembly'
 import { insideApi } from '@qualy/api-kit/route-fallback'
 import {
   ClientAssemblyUnsupported,
@@ -8,12 +13,9 @@ import {
   ClientReleaseUnsupported,
 } from '@qualy/api-kit/schema'
 import {
-  isReleaseId,
   QUALY_CLIENT_PROTOCOL_HEADER,
   QUALY_CLIENT_RELEASE_HEADER,
   QUALY_CLIENT_UNSUPPORTED_HEADER,
-  SERVER_MAX_CLIENT_PROTOCOL,
-  SERVER_MIN_CLIENT_PROTOCOL,
   type ClientUnsupportedReason,
 } from '@qualy/release-contract'
 
@@ -48,19 +50,7 @@ export const CLIENT_PROTOCOL_UNSUPPORTED = 'QUALY_CLIENT_PROTOCOL_UNSUPPORTED'
 export const CLIENT_ASSEMBLY_UNSUPPORTED = 'QUALY_CLIENT_ASSEMBLY_UNSUPPORTED'
 export const CLIENT_RELEASE_UNSUPPORTED = 'QUALY_CLIENT_RELEASE_UNSUPPORTED'
 
-export interface ProtocolWindow {
-  readonly min: number
-  readonly max: number
-}
-
-export const SERVER_PROTOCOL_WINDOW: ProtocolWindow = {
-  min: SERVER_MIN_CLIENT_PROTOCOL,
-  max: SERVER_MAX_CLIENT_PROTOCOL,
-}
-
-/** the header's value as a generation, or nothing where it is not one */
-const generationOf = (declared: string): number | undefined =>
-  /^\d{1,7}$/.test(declared) ? Number(declared) : undefined
+export { SERVER_PROTOCOL_WINDOW, type ProtocolWindow }
 
 /** every refusal: 409, the reason in the header the transport reads, the tag in the body */
 const answer = {
@@ -112,32 +102,24 @@ export const clientCompatibility = (window: ProtocolWindow = SERVER_PROTOCOL_WIN
       const path = request.url.split('?')[0]!
 
       const declared = request.headers[QUALY_CLIENT_PROTOCOL_HEADER]
-      if (declared !== undefined) {
-        const generation = generationOf(declared)
-        if (generation === undefined || generation < window.min || generation > window.max) {
-          return Effect.logWarning('request refused: web client protocol outside the window').pipe(
-            Effect.annotateLogs({ path, received: declared, min: window.min, max: window.max }),
-            Effect.andThen(refusal('protocol')),
-          )
-        }
-      }
-
       const release = request.headers[QUALY_CLIENT_RELEASE_HEADER]
-      // No release named: not a web page. The cli, an integration and every
-      // test client are in this branch, and none of them was built from an
-      // assembly at all.
-      if (release === undefined) return httpApp
       // Whatever registered the judgement, or nothing - see ClientAssembly.
       // Read per request, like readiness, so this file names no plugin.
       const assembly = Context.getOrUndefined(fiber.context, ClientAssembly)
-      const standing: ReleaseStanding = !isReleaseId(release)
-        ? 'unknown'
-        : (assembly?.standingOf(release) ?? 'compatible')
-      if (standing === 'compatible') return httpApp
-      const reason: ClientUnsupportedReason = standing === 'unknown' ? 'release' : 'assembly'
-      return Effect.logWarning(`request refused: web release ${standing}`).pipe(
-        Effect.annotateLogs({ path, release }),
-        Effect.andThen(refusal(reason)),
+      const reason = clientRefusal(
+        { protocol: declared, release },
+        (id) => assembly?.standingOf(id) ?? 'compatible',
+        window,
       )
+      if (reason === undefined) return httpApp
+      if (reason === 'protocol') {
+        return Effect.logWarning('request refused: web client protocol outside the window').pipe(
+          Effect.annotateLogs({ path, received: declared, min: window.min, max: window.max }),
+          Effect.andThen(refusal('protocol')),
+        )
+      }
+      return Effect.logWarning(
+        `request refused: web release ${reason === 'release' ? 'unknown' : 'other-assembly'}`,
+      ).pipe(Effect.annotateLogs({ path, release }), Effect.andThen(refusal(reason)))
     })
 }
