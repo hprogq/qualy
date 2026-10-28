@@ -13,7 +13,12 @@ import {
   qualyShellStyle,
 } from '@qualy/web-build/vite'
 import { qualyMessages } from '@qualy/message-build/vite'
-import { entryBrotliBudget, messagePoolBytes, screenBudgets } from './performance-budget.ts'
+import {
+  bootBrotliBudget,
+  entryBrotliBudget,
+  messagePoolBytes,
+  screenBudgets,
+} from './performance-budget.ts'
 
 const stylexUnplugin =
   stylexUnpluginModule.default as unknown as (typeof stylexUnpluginModule)['default']['default']
@@ -84,6 +89,7 @@ export default defineConfig(({ mode }) => ({
       root: repoRoot,
       bootBudget: 2 * 1024 * 1024,
       entryBrotliBudget,
+      bootBrotliBudget,
       screens: screenBudgets,
     }),
   ],

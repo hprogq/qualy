@@ -167,3 +167,44 @@ it('rejects extra requests even when bytes remain inside the budget', () => {
     }),
   ).toMatch(/screen example: 2\/1 JS requests/)
 })
+
+it('rejects a boot whose compressed bytes grew, wherever in the boot they landed', () => {
+  const bundle = {
+    e: chunk('e.js', ['shared.js'], ['/repo/main.ts'], 10, true),
+    shared: chunk('shared.js', [], ['/repo/shared.ts'], 1000),
+  }
+  expect(run(bundle, 5000, { entryBrotliBudget: 100, bootBrotliBudget: 1 })).toMatch(
+    /boot has \d+ Brotli bytes, over 1/,
+  )
+  expect(run(bundle, 5000, { entryBrotliBudget: 100, bootBrotliBudget: 1000 })).toBeUndefined()
+})
+
+it('counts the slots a shell renders after its layouts and page', () => {
+  const bundle = {
+    e: chunk('e.js', [], ['/repo/main.ts'], 10, true),
+    page: chunk('page.js', ['ui.js'], ['/repo/page.ts'], 10),
+    ui: chunk('ui.js', [], ['/repo/ui.ts'], 10),
+    slot: chunk('slot.js', ['ui.js', 'menu.js'], ['/repo/slot.ts'], 10),
+    menu: chunk('menu.js', [], ['/repo/menu.ts'], 10),
+    '.qualy-browser-surfaces.json': {
+      type: 'asset',
+      source: JSON.stringify({
+        'page:example': { chunk: 'page.js' },
+        'slot:shell/menu:example': { chunk: 'slot.js' },
+      }),
+    },
+  }
+  const screen = {
+    name: 'example',
+    surfaces: ['page:example'],
+    slots: ['slot:shell/menu:example'],
+    brotli: 1000,
+    small1: 9,
+    small2: 9,
+  }
+  // the entry, the page and what it shares with the slot, then the slot and its own
+  expect(run(bundle, 2000, { screens: [{ ...screen, requests: 5 }] })).toBeUndefined()
+  expect(run(bundle, 2000, { screens: [{ ...screen, requests: 4 }] })).toMatch(
+    /screen example: 5\/4 JS requests/,
+  )
+})

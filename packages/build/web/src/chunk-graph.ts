@@ -3,7 +3,10 @@ import { brotliCompressSync } from 'node:zlib'
 
 export interface ScreenBudget {
   readonly name: string
+  /** what the runtime waits for once the manifest is in: every layout it names, and the page */
   readonly surfaces: readonly string[]
+  /** what the drawn shell asks for after that: the slots it renders for this viewer */
+  readonly slots?: readonly string[]
   readonly requests: number
   readonly brotli: number
   readonly small1: number
@@ -103,6 +106,8 @@ export const qualyChunkGraph = (options: {
   root: string
   bootBudget: number
   entryBrotliBudget?: number
+  /** Brotli bytes of everything the entry imports statically, the entry included */
+  bootBrotliBudget?: number
   screens?: readonly ScreenBudget[]
 }): Plugin => ({
   name: 'qualy-chunk-graph',
@@ -138,7 +143,11 @@ export const qualyChunkGraph = (options: {
       return named.join(', ') + (more > 0 ? `, and ${String(more)} more` : '')
     }
     const refusals: string[] = []
-    if (options.entryBrotliBudget !== undefined || options.screens !== undefined) {
+    if (
+      options.entryBrotliBudget !== undefined ||
+      options.bootBrotliBudget !== undefined ||
+      options.screens !== undefined
+    ) {
       const compressed = new Map<string, number>()
       for (const output of Object.values(bundle)) {
         if (output.type !== 'chunk') continue
@@ -161,23 +170,45 @@ export const qualyChunkGraph = (options: {
             `entry ${output.fileName} has ${size} Brotli bytes, over ${options.entryBrotliBudget}; largest contributors:\n    ${contributors}`,
           )
       }
+      const brotliOf = (files: Iterable<string>) => {
+        let sum = 0
+        for (const file of files) sum += compressed.get(file)!
+        return sum
+      }
+      const booted = staticClosure(imports, entries)
+      console.info(`boot: ${booted.size} JS requests, ${brotliOf(booted)} Brotli bytes`)
+      if (options.bootBrotliBudget !== undefined && brotliOf(booted) > options.bootBrotliBudget)
+        refusals.push(`boot has ${brotliOf(booted)} Brotli bytes, over ${options.bootBrotliBudget}`)
       if (options.screens?.length) {
         const asset = bundle['.qualy-browser-surfaces.json']
         if (!asset || asset.type !== 'asset')
           this.error('screen budgets require the private browser surface map')
         const surfaces = JSON.parse(String(asset.source)) as Record<string, { chunk?: string }>
+        const chunkOf = (screen: ScreenBudget, surface: string) => {
+          const chunk = surfaces[surface]?.chunk
+          if (!chunk) this.error(`budget ${screen.name}: missing surface ${surface}`)
+          return chunk
+        }
         for (const screen of options.screens) {
-          const roots = screen.surfaces.map((surface) => {
-            const chunk = surfaces[surface]?.chunk
-            if (!chunk) this.error(`budget ${screen.name}: missing surface ${surface}`)
-            return chunk
-          })
-          const closure = [...staticClosure(imports, [...entries, ...roots])]
-          const br = closure.reduce((sum, file) => sum + compressed.get(file)!, 0)
+          // in the order the runtime asks for them: the boot, then what it
+          // waits for once the manifest is in, then what the drawn shell adds
+          const drawn = staticClosure(imports, [
+            ...entries,
+            ...screen.surfaces.map((surface) => chunkOf(screen, surface)),
+          ])
+          const closure = [
+            ...staticClosure(imports, [
+              ...drawn,
+              ...(screen.slots ?? []).map((surface) => chunkOf(screen, surface)),
+            ]),
+          ]
+          const br = brotliOf(closure)
           const small1 = closure.filter((file) => bytes.get(file)! < 1024).length
           const small2 = closure.filter((file) => bytes.get(file)! < 2048).length
           console.info(
-            `screen ${screen.name}: ${closure.length} JS requests, ${br} Brotli bytes, <1/<2 KiB ${small1}/${small2}`,
+            `screen ${screen.name}: ${closure.length} JS requests ` +
+              `(boot ${booted.size}, then ${drawn.size - booted.size}, then ${closure.length - drawn.size}), ` +
+              `${br} Brotli bytes, <1/<2 KiB ${small1}/${small2}`,
           )
           if (closure.length > screen.requests || br > screen.brotli)
             refusals.push(

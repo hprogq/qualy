@@ -35,8 +35,9 @@ for (const pool of pools) {
       if (!asset || asset.type !== 'asset') throw new Error('surface map missing')
       const surfaces = JSON.parse(String(asset.source)) as Record<string, { chunk: string }>
       const pages = Object.fromEntries(
-        screenBudgets.map((screen) => [screen.name, screen.surfaces]),
+        screenBudgets.map((screen) => [screen.name, [...screen.surfaces, ...(screen.slots ?? [])]]),
       )
+      const boot = [...staticClosure(imports, entry)]
       const metrics = Object.fromEntries(
         Object.entries(pages).map(([page, roots]) => {
           const files = [
@@ -64,6 +65,7 @@ for (const pool of pools) {
       report = {
         pool,
         chunks: chunks.length,
+        boot: { requests: boot.length, brotli: boot.reduce((sum, file) => sum + br.get(file)!, 0) },
         pages: metrics,
         entries: entry.map((file) => ({
           file,
