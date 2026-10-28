@@ -11,7 +11,8 @@ import {
 
 // A layout plugin ships one thing: implementations behind layout contracts.
 // It depends on no business plugin, no business plugin depends on it, and
-// the description is the whole entry.
+// the description is the whole entry. The four application shells come
+// from one module (see client/shells.ts), so they load as one.
 
 const plugin = Plugin.define(
   '@qualy/plugin-layout-default',
@@ -19,19 +20,19 @@ const plugin = Plugin.define(
   Ui.documentContext(siteRegistrationContext),
   Ui.layout({
     contract: APP_SHELL,
-    component: Ui.react('./client/AppShell'),
+    component: Ui.react('./client/shells', 'AppShell'),
   }),
   Ui.layout({
     contract: WORKSPACE_SHELL,
-    component: Ui.react('./client/WorkspaceShell'),
+    component: Ui.react('./client/shells', 'WorkspaceShell'),
   }),
   Ui.layout({
     contract: USER_DETAIL_SHELL,
-    component: Ui.react('./client/UserDetailShell'),
+    component: Ui.react('./client/shells', 'UserDetailShell'),
   }),
   Ui.layout({
     contract: ACCOUNT_SHELL,
-    component: Ui.react('./client/AccountShell'),
+    component: Ui.react('./client/shells', 'AccountShell'),
   }),
   Ui.layout({
     contract: BLANK_SHELL,

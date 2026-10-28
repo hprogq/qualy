@@ -73,6 +73,9 @@ browser:  pageComponents["assessment/batches"]      → import(...) → 组件
 四个地址空间各一张表(page id / layout contract / slot key + item id / login driver type),
 由 collector 从描述器直接生成并逐个查重(build 拒绝重复认领,不依赖 server 先启动)。
 `ClientComponentRef`(`./client/X.tsx`)仍在,但**只活在构建期**。
+它由包导出子路径和导出名组成,导出名默认为 `default`;几个 surface 可以指向同一模块的不同导出
+(`Ui.react('./client/shells', 'AppShell')`),collector 为它们生成同一个动态 import,打包器只看到一个入口。
+默认布局插件用这种方式让四个应用布局共用一个模块,它们本来就总在启动时一起加载。
 
 以前 manifest 发的是 `componentKey(pluginId, ref)` 派生的 `<插件>/<源文件名>`——
 `assessment/ReviewPage`、`auth-local/LoginMethod`——那是把包布局和源码文件名变成了公开协议,

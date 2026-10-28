@@ -46,6 +46,24 @@ describe('the browser aggregate', () => {
     }
   })
 
+  it('loads surfaces that share a module through one import, each by its own export', async () => {
+    const workspace = createWorkspace(['@qualy/plugin-ui-registry', '@qualy/plugin-layout-default'])
+    try {
+      const aggregate = await buildPluginModuleSource({ ymlPath: workspace.manifestPath })
+      const line = (contract: string) =>
+        aggregate.split('\n').find((candidate) => candidate.includes(`"${contract}"`))
+      // the four application shells: one module, four exports, read as lazy reads them
+      expect(line('app-shell/v1')).toMatch(
+        /import\("[^"]*\/client\/shells\.ts"\)\.then\(\(module\) => \(\{ default: module\.AppShell \}\)\)/,
+      )
+      expect(line('account-shell/v1')).toContain('default: module.AccountShell')
+      // and a default export is imported as it always was
+      expect(line('blank-shell/v1')).toMatch(/: \(\) => import\("[^"]*BlankShell\.tsx"\),$/)
+    } finally {
+      workspace.dispose()
+    }
+  })
+
   it('refuses an export the generated loader could not read', () => {
     expect(reactComponent('./client/shells', 'AppShell').export).toBe('AppShell')
     expect(reactComponent('./client/Page').export).toBe('default')
