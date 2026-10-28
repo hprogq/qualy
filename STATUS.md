@@ -63,6 +63,8 @@ Release：https://github.com/hprogq/qualy/actions/runs/40569520758
 
 ## 生产状态
 
+- 2026-10-28 部署 `v0.1.0-rc.38`（revision `dad290558`，签名 tag），服务颜色为 blue，Web release 为 `r_qFwHSb3L3wPjjYGmMWuhNw`；应用代码与 rc.37 相同，新增演示实例的换域与保留登录方式复原。部署入口备份 `20261028T015501Z` 已异地复制，保存了复原前的全部生产数据。
+- 演示邮箱域改为 `demo.hprogq.cn`：服务器基线经 `deploy/demo/rehome.sh` 在隔离库改写并重新导出，8 个账号换域，旧 dump 保留为 `qualy-demo.dump.qualy.hprogq.cn.20261028T015612Z`；发件地址仍为 `noreply@qualy.hprogq.cn`。随后以 `deploy/demo/restore.sh --keep-sign-in` 复原：四个登录入口、5 条受众与 2 个入口密钥复原前后逐行指纹一致，2 条外部身份绑定、会话与基线后的业务数据回到基线；`doctor` 全部通过，启动无不可解密的密钥。用户已用新域账号登录并完成邮箱验证收发。
 - 2026-10-28 部署 `v0.1.0-rc.37`（revision `ebbc917fc25b9366fc051380090428cc7cfb0f13`），服务颜色为 green，Web release 为 `r_p2JGky0hjeLd5jNNv9xKtA`。升级前整站备份 `20261027T192916Z` 与部署入口备份 `20261027T194016Z` 均完成异地复制；`qualy-deploy doctor` 全部通过，旧 `rc.36` 保留用于回退。两个发布之间没有新增迁移。
 - 2026-10-27 经用户批准部署 `v0.1.0-rc.36`（revision `0267c6d965c00a8c155863ebbceeca870779895d`），服务颜色为 blue，Web release 为 `r_EUFFloS2UR-IGb5GAnVf6A`。升级前整站及异地备份、部署入口、doctor、三个运行容器 revision 和公开 release 均已核验；旧 `rc.35` 保留用于回退。EO 模式启用，公安备案号及完整查询链接已在实际页脚生效。
 - EO 主站回源应答空闲超时已从默认 15 秒调整为 60 秒，解决 SSE 在 25 秒心跳前反复断开的问题；规则只匹配主站 HOST，不绑定业务 URL。真实浏览器已观察到跨过 60 秒的多轮心跳，见 [切换记录](docs/notes/edgeone-rollout.md#主站-sse-空闲超时修复)。上线后整站备份已实际导出 3 个 COS 附件并完成异地复制。
