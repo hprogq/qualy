@@ -14,6 +14,8 @@ declare module 'virtual:qualy/plugins' {
   export const pageComponents: Record<string, Loader>
   /** by layout contract */
   export const layoutComponents: Record<string, Loader>
+  /** by layout contract, the keys of the slots that layout renders */
+  export const layoutSlots: Record<string, readonly string[]>
   /** by slot key, then by the id of the item filed under it */
   export const slotComponents: Record<string, Record<string, Loader>>
   /** by login driver type */

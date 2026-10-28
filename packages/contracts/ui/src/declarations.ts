@@ -66,6 +66,13 @@ export interface PageDeclaration {
 export interface LayoutDeclaration {
   readonly contract: LayoutContractId
   readonly component: ClientComponentRef
+  /**
+   * The slots it renders, by key. The runtime starts fetching what the
+   * viewer's manifest files under them while it fetches the layout, rather
+   * than once the layout has drawn and asked. A slot left out still renders,
+   * a moment later.
+   */
+  readonly slots?: readonly NamespacedId[]
 }
 
 /**

@@ -414,6 +414,18 @@ function RuntimeLoader({
       const here = next.pages.find((page) =>
         matchPath({ path: page.path, end: true }, window.location.pathname),
       )
+      // The slots the page's layout renders, started now rather than once
+      // it has drawn and asked: in production that was a third wave of some
+      // thirty files after the layout and page had arrived. Not waited for:
+      // a slot is a part of the shell, and the page under it, whose own
+      // requests start only once it is drawn, should not stand behind one.
+      if (here !== undefined) {
+        for (const key of registry.layoutSlots?.[here.layout] ?? []) {
+          for (const item of next.slots[key] ?? []) {
+            void registry.slots[key]?.[item.id]?.preload?.().catch(() => undefined)
+          }
+        }
+      }
       await Promise.all([
         // a layout or page whose code does not arrive says so where it
         // stands, through its own boundary, rather than holding the loading

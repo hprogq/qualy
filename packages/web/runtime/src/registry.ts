@@ -27,6 +27,8 @@ export type RegisteredComponent = LazyExoticComponent<ComponentType<any>> & {
 export interface ComponentRegistry {
   readonly pages: Readonly<Record<string, RegisteredComponent>>
   readonly layouts: Readonly<Record<string, RegisteredComponent>>
+  /** by layout contract, the keys of the slots it renders, fetched beside it */
+  readonly layoutSlots?: Readonly<Record<string, readonly string[]>>
   readonly slots: Readonly<Record<string, Readonly<Record<string, RegisteredComponent>>>>
   readonly login: Readonly<Record<string, RegisteredComponent>>
 }

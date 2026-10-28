@@ -76,6 +76,8 @@ browser:  pageComponents["assessment/batches"]      → import(...) → 组件
 它由包导出子路径和导出名组成,导出名默认为 `default`;几个 surface 可以指向同一模块的不同导出
 (`Ui.react('./client/shells', 'AppShell')`),collector 为它们生成同一个动态 import,打包器只看到一个入口。
 默认布局插件用这种方式让四个应用布局共用一个模块,它们本来就总在启动时一起加载。
+布局声明还可以列出它渲染的槽位(`Ui.layout({ ..., slots: [token, ...] })`),collector 生成 `layoutSlots` 表,
+`RuntimeLoader` 在 manifest 到达时对当前页面所用布局的这些槽位、取 manifest 里该用户可见的条目开始预取,不等待它们。
 
 以前 manifest 发的是 `componentKey(pluginId, ref)` 派生的 `<插件>/<源文件名>`——
 `assessment/ReviewPage`、`auth-local/LoginMethod`——那是把包布局和源码文件名变成了公开协议,

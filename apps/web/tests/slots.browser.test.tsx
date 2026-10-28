@@ -1,7 +1,8 @@
 import { lazy, useState } from 'react'
-import { describe, expect, it } from 'vitest'
+import { Outlet } from 'react-router'
+import { describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
-import { UiSlot } from '@qualy/web-runtime'
+import { preloadable, UiSlot } from '@qualy/web-runtime'
 import { emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
 
 // Slots are the extension seam: a plugin drops a component into somebody
@@ -54,6 +55,58 @@ describe('a slot contribution', () => {
     // the props change, the component type does not
     await page.getByRole('button', { name: 'change the context' }).click()
     await expect.element(page.getByRole('button', { name: 'second clicked 1' })).toBeVisible()
+  })
+})
+
+describe('the slots a layout renders', () => {
+  // A shell asks for its slots once it has drawn, which on a cold start was
+  // a third wave of files after the layout and the page. Declared with the
+  // layout, the ones the viewer's manifest files are fetched beside it.
+  it('are fetched while the layout itself is still on its way, and only those', async () => {
+    let arrive = () => {}
+    const arrived = new Promise<void>((resolve) => (arrive = resolve))
+    const preloads = {
+      drawn: vi.fn(() => Promise.resolve()),
+      other: vi.fn(() => Promise.resolve()),
+    }
+    const registered = (preload: () => Promise<void>) =>
+      Object.assign(
+        lazy(() => Promise.resolve({ default: () => null })),
+        { preload },
+      )
+    await renderScreen({
+      client: fakeClient({
+        app: {
+          getManifest: {
+            ...emptyManifest(),
+            layouts: [{ contract: 'shell/v1' }],
+            pages: [{ id: 'test/home', path: '/', layout: 'shell/v1' }],
+            slots: {
+              'shell/menu': [{ id: 'test/menu', order: 0 }],
+              'test/picker': [{ id: 'test/picker', order: 0 }],
+            },
+          },
+        },
+      }),
+      registry: {
+        layouts: {
+          'shell/v1': preloadable(() => arrived.then(() => ({ default: () => <Outlet /> }))),
+        },
+        layoutSlots: { 'shell/v1': ['shell/menu'] },
+        slots: {
+          'shell/menu': { 'test/menu': registered(preloads.drawn) },
+          // filed for the viewer, but no layout renders it: a picker a page opens
+          'test/picker': { 'test/picker': registered(preloads.other) },
+        },
+      },
+      routes: [{ path: '/', element: <main data-testid="home" /> }],
+      route: '/',
+    })
+    await vi.waitFor(() => expect(preloads.drawn).toHaveBeenCalled())
+    expect(page.getByTestId('home').elements()).toHaveLength(0)
+    expect(preloads.other).not.toHaveBeenCalled()
+    arrive()
+    await expect.element(page.getByTestId('home')).toBeInTheDocument()
   })
 })
 

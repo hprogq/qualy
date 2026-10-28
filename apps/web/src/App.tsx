@@ -17,6 +17,7 @@ import { bootstrapMessages } from '@qualy/web-i18n/bootstrap'
 import { ColdStart } from '@qualy/ui/spinner'
 import {
   layoutComponents,
+  layoutSlots,
   loginComponents,
   pageComponents,
   slotComponents,
@@ -39,6 +40,7 @@ const lazily = (loaders: Loaders) =>
 const registry: ComponentRegistry = {
   pages: lazily(pageComponents),
   layouts: lazily(layoutComponents),
+  layoutSlots,
   slots: Object.fromEntries(
     Object.entries(slotComponents).map(([slot, items]) => [slot, lazily(items)]),
   ),

@@ -14,6 +14,7 @@ import {
   type UiVisibility,
   type CollectionDeclaration,
   type UiCollectionToken,
+  type UiSlotToken,
 } from '@qualy/ui-contract'
 import {
   ExtensionPoint,
@@ -56,14 +57,26 @@ export const UiSurfaceDeclarations = ExtensionPoint.make<UiSurfaces>(
  */
 export const uiSurfacesOf = (
   descriptor: PluginDescriptor,
-): { surface: BrowserSurface; component: ClientComponentRef }[] => {
-  const found: { surface: BrowserSurface; component: ClientComponentRef }[] = []
+): {
+  surface: BrowserSurface
+  component: ClientComponentRef
+  slots?: readonly NamespacedId[]
+}[] => {
+  const found: {
+    surface: BrowserSurface
+    component: ClientComponentRef
+    slots?: readonly NamespacedId[]
+  }[] = []
   for (const surfaces of Plugin.contributionsOf(descriptor, UiSurfaceDeclarations)) {
     for (const page of surfaces.pages ?? []) {
       found.push({ surface: { kind: 'page', id: page.page.id }, component: page.component })
     }
     for (const layout of surfaces.layouts ?? []) {
-      found.push({ surface: { kind: 'layout', id: layout.contract }, component: layout.component })
+      found.push({
+        surface: { kind: 'layout', id: layout.contract },
+        component: layout.component,
+        ...(layout.slots === undefined ? {} : { slots: layout.slots }),
+      })
     }
     for (const slot of surfaces.slots ?? []) {
       found.push({
@@ -120,9 +133,23 @@ export const Ui = {
     return { ...feature, page }
   },
 
-  /** an implementation of a layout contract, which only a layout plugin ships */
-  layout: (declaration: LayoutDeclaration): PluginFeature =>
-    Plugin.contribute(UiSurfaceDeclarations, { layouts: [declaration] }),
+  /**
+   * An implementation of a layout contract, which only a layout plugin
+   * ships, with the slots it renders: their items are fetched beside it.
+   */
+  layout: ({
+    slots,
+    ...declaration
+  }: Omit<LayoutDeclaration, 'slots'> & {
+    readonly slots?: readonly UiSlotToken[]
+  }): PluginFeature =>
+    Plugin.contribute(UiSurfaceDeclarations, {
+      layouts: [
+        slots === undefined
+          ? declaration
+          : { ...declaration, slots: slots.map((slot) => slot.key) },
+      ],
+    }),
 
   /** a renderer for a named slot */
   slot: (declaration: SlotDeclaration): PluginFeature =>

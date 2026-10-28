@@ -45,6 +45,8 @@ export interface SurfaceBinding {
   readonly export: string
   /** the module on disk, absolute */
   readonly file: string
+  /** for a layout, the slots it renders, by key */
+  readonly slots?: readonly string[]
 }
 
 export interface WebPluginEntry {
@@ -60,11 +62,14 @@ export interface WebPluginEntry {
 // same contract at boot reads the same two walks rather than a second copy
 const declaredSurfaces = (
   descriptor: PluginDescriptor,
-): { surface: BrowserSurface; ref: ClientComponentRef }[] =>
-  [...uiSurfacesOf(descriptor), ...loginSurfacesOf(descriptor)].map((entry) => ({
+): { surface: BrowserSurface; ref: ClientComponentRef; slots?: readonly string[] }[] => [
+  ...uiSurfacesOf(descriptor).map((entry) => ({
     surface: entry.surface,
     ref: entry.component,
-  }))
+    ...(entry.slots === undefined ? {} : { slots: entry.slots }),
+  })),
+  ...loginSurfacesOf(descriptor).map((entry) => ({ surface: entry.surface, ref: entry.component })),
+]
 
 export async function collectWebPlugins(
   options: { all?: boolean; ymlPath?: string } = {},
@@ -97,10 +102,16 @@ export async function collectWebPlugins(
     const moduleOf = (subpath: string) => resolvePluginExport(entry.name, subpath, manifest)
 
     const surfaces: SurfaceBinding[] = []
-    for (const { surface, ref } of declaredSurfaces(descriptor)) {
+    for (const { surface, ref, slots } of declaredSurfaces(descriptor)) {
       const file = moduleOf(ref.module)
       claim(claimedSurfaces, surfaceLabel(surface), entry.name, 'surface')
-      surfaces.push({ surface, module: ref.module, export: ref.export, file })
+      surfaces.push({
+        surface,
+        module: ref.module,
+        export: ref.export,
+        file,
+        ...(slots === undefined ? {} : { slots }),
+      })
     }
 
     const browserModules: string[] = []
@@ -150,7 +161,8 @@ const loader = (
 }
 
 /**
- * The virtual module's source: four tables of loaders, keyed by surface.
+ * The virtual module's source: four tables of loaders, keyed by surface,
+ * and the slots each layout renders.
  *
  * Four rather than one, because the four address spaces are different - a
  * page id, a layout contract, a slot and the item under it, a login driver
@@ -164,6 +176,7 @@ export async function buildPluginModuleSource(
   const imports: string[] = []
   const pageEntries: string[] = []
   const layoutEntries: string[] = []
+  const layoutSlotEntries: string[] = []
   const slotEntries = new Map<string, string[]>()
   const loginEntries: string[] = []
   const browserEntries: string[] = []
@@ -181,6 +194,10 @@ export async function buildPluginModuleSource(
       if (surface.kind === 'page') pageEntries.push(loader(surface.id, binding, options.fromDir))
       else if (surface.kind === 'layout') {
         layoutEntries.push(loader(surface.id, binding, options.fromDir))
+        if (binding.slots?.length)
+          layoutSlotEntries.push(
+            `  ${JSON.stringify(surface.id)}: ${JSON.stringify(binding.slots)},`,
+          )
       } else if (surface.kind === 'login') {
         loginEntries.push(loader(surface.id, binding, options.fromDir))
       } else {
@@ -204,6 +221,12 @@ export async function buildPluginModuleSource(
     '',
     'export const layoutComponents = {',
     ...layoutEntries,
+    '}',
+    '',
+    // data, not loaders: which slots each layout renders, so the runtime can
+    // start their items while it fetches the layout
+    'export const layoutSlots = {',
+    ...layoutSlotEntries,
     '}',
     '',
     'export const slotComponents = {',
