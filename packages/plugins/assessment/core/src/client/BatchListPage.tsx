@@ -1,4 +1,5 @@
 import { pageNumber } from '@qualy/api-kit/schema'
+import { EasedHeight } from '@qualy/ui/eased-height'
 import { Pager } from '@qualy/ui/pager'
 import { useLocale } from '@qualy/web-i18n'
 import { useEffect, useState, type MouseEvent } from 'react'
@@ -829,66 +830,70 @@ export default function BatchListPage() {
             its own questions, and a card that came and went with the list
             would move the list twice. */}
         <div {...stylex.props(styles.results)}>
-          <AsyncSection
-            pending={heroPending}
-            error={
-              agendas.isError && !(batches.isError && batches.data === undefined)
-                ? failure.of(agendas.error)
-                : null
-            }
-            framed
-            retrying={agendas.isFetching}
-            loadingLabel={commonMessages.state_loading()}
-            retryLabel={commonMessages.action_retry()}
-            onRetry={() => void agendas.refetch()}
-            skeleton={<HeroSkeleton />}
-          >
-            {narrow
-              ? // On a phone every running round is a card in a row that
-                // snaps, rather than one card with a way to step between
-                // them: a thumb already knows how to do this, and arrows
-                // would be two more targets on the busiest part of the page.
-                running.length > 0 && (
-                  <div {...stylex.props(styles.list)}>
-                    <div {...stylex.props(styles.deck)}>
-                      {running.map((one) => (
-                        <div key={one.id} {...stylex.props(styles.deckCard)}>
-                          <BatchCard
-                            row={one}
-                            agenda={agendaOf(agendas.data?.items ?? [], one.id)}
-                            frame={{ kind: 'single' }}
-                          />
-                        </div>
-                      ))}
-                    </div>
-                    {/* one card is not a choice, so it gets no marks */}
-                    {running.length > 1 && (
-                      <div aria-hidden {...stylex.props(styles.deckDots)}>
-                        {running.map((one, index) => (
-                          <span
-                            key={one.id}
-                            {...stylex.props(
-                              styles.deckDot,
-                              index === heroIndex && styles.deckDotHere,
-                            )}
-                          />
+          {/* the loading card and the card are each as tall as they come to;
+              the list under them slides by the difference */}
+          <EasedHeight testId="batch-hero-region">
+            <AsyncSection
+              pending={heroPending}
+              error={
+                agendas.isError && !(batches.isError && batches.data === undefined)
+                  ? failure.of(agendas.error)
+                  : null
+              }
+              framed
+              retrying={agendas.isFetching}
+              loadingLabel={commonMessages.state_loading()}
+              retryLabel={commonMessages.action_retry()}
+              onRetry={() => void agendas.refetch()}
+              skeleton={<HeroSkeleton />}
+            >
+              {narrow
+                ? // On a phone every running round is a card in a row that
+                  // snaps, rather than one card with a way to step between
+                  // them: a thumb already knows how to do this, and arrows
+                  // would be two more targets on the busiest part of the page.
+                  running.length > 0 && (
+                    <div {...stylex.props(styles.list)}>
+                      <div {...stylex.props(styles.deck)}>
+                        {running.map((one) => (
+                          <div key={one.id} {...stylex.props(styles.deckCard)}>
+                            <BatchCard
+                              row={one}
+                              agenda={agendaOf(agendas.data?.items ?? [], one.id)}
+                              frame={{ kind: 'single' }}
+                            />
+                          </div>
                         ))}
                       </div>
-                    )}
-                  </div>
-                )
-              : shown !== undefined && (
-                  // keyed by the batch, so a change of batch is a new card
-                  // arriving rather than the old one's words swapped in place
-                  <BatchCard
-                    key={shown.id}
-                    row={shown}
-                    agenda={agenda}
-                    frame={frame}
-                    entered={hero.entered}
-                  />
-                )}
-          </AsyncSection>
+                      {/* one card is not a choice, so it gets no marks */}
+                      {running.length > 1 && (
+                        <div aria-hidden {...stylex.props(styles.deckDots)}>
+                          {running.map((one, index) => (
+                            <span
+                              key={one.id}
+                              {...stylex.props(
+                                styles.deckDot,
+                                index === heroIndex && styles.deckDotHere,
+                              )}
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )
+                : shown !== undefined && (
+                    // keyed by the batch, so a change of batch is a new card
+                    // arriving rather than the old one's words swapped in place
+                    <BatchCard
+                      key={shown.id}
+                      row={shown}
+                      agenda={agenda}
+                      frame={frame}
+                      entered={hero.entered}
+                    />
+                  )}
+            </AsyncSection>
+          </EasedHeight>
 
           {agendas.data?.running.hasMore === true && (
             <div data-testid="running-overflow" {...stylex.props(styles.runningOverflow)}>

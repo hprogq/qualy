@@ -10,7 +10,7 @@ import { ScheduleDialog } from '../src/client/phase/PhaseDialogs.tsx'
 import { BatchZone } from '../src/client/batch/BatchZone.tsx'
 import { Link, Route, Routes } from 'react-router'
 import { describe, expect, it, vi } from 'vitest'
-import { page, userEvent } from 'vitest/browser'
+import { commands, page, userEvent } from 'vitest/browser'
 import { Effect } from 'effect'
 import type { ApiResult, ClientOf } from '@qualy/web-runtime/api'
 import { WorkspaceCapabilityScope, useWorkspaceCapabilities } from '@qualy/web-runtime'
@@ -648,71 +648,95 @@ describe('the batch list', () => {
     }
   })
 
+  /** the hero's running card, held back until `finish` is called */
+  const heldHero = async (duties: number, longName = false) => {
+    const row = listRow(
+      {
+        ...(longName ? { name: '2026 学年度软件学院学生综合素质测评批次' } : {}),
+        status: 'active',
+        currentPhaseId: ENTRY_PHASE_ID,
+        currentPhaseName: '正式填报',
+      },
+      [
+        {
+          phaseId: ENTRY_PHASE_ID,
+          displayName: '正式填报',
+          description: '',
+          entryNote: '',
+          status: 'current',
+          entry: { kind: 'entered', at: '2026-01-01T00:00:00Z' },
+        },
+        {
+          phaseId: REVIEW_PHASE_ID,
+          displayName: '审核',
+          description: '',
+          entryNote: '',
+          status: 'future',
+          entry: { kind: 'planned', at: '2030-01-01T00:00:00Z' },
+        },
+      ],
+    )
+    let finish!: () => void
+    const waiting = new Promise<void>((resolve) => {
+      finish = resolve
+    })
+    const view = await screen(
+      {
+        listMyStanding: () =>
+          Effect.promise(async () => {
+            await waiting
+            return {
+              running: { items: [row], hasMore: false },
+              items: [
+                {
+                  batchId: BATCH_ID,
+                  reviewsWaiting: duties > 0 ? 2 : null,
+                  myEntries:
+                    duties > 1
+                      ? {
+                          toAnswer: 0,
+                          toFix: 0,
+                          draft: 1,
+                          rejected: 0,
+                          submitted: 0,
+                          approved: 0,
+                          filing: 'open',
+                          continuable: { draft: true, toFix: true },
+                        }
+                      : null,
+                },
+              ],
+            }
+          }),
+      },
+      '/assessment/batches',
+    )
+    return { finish, view }
+  }
+
+  // Stacked, a card is as tall as what it holds: a floor for the tallest
+  // shape left a strip of nothing between the work and the way in on every
+  // card that was not the tallest.
+  const packed = (card: Element) => {
+    const gap = Number.parseFloat(getComputedStyle(card).rowGap) || 0
+    const parts = [...card.children].map((part) => part.getBoundingClientRect())
+    return parts.every((part, at) => at === 0 || part.top - parts[at - 1]!.bottom <= gap + 1)
+  }
+
+  // The skeleton is drawn in the shape most cards take - one line of name,
+  // both lines of work - and to the pixel: there the card takes its place
+  // without anything under it moving at all. Every other shape eases.
+  const shapes = [
+    { duties: 0, longName: false, common: false },
+    { duties: 1, longName: false, common: false },
+    { duties: 2, longName: false, common: true },
+    { duties: 2, longName: true, common: false },
+  ]
   for (const width of [390, 900, 1280]) {
-    for (const duties of [0, 1, 2]) {
-      it(`keeps the hero skeleton height at ${width}px with ${duties} agenda rows`, async () => {
+    for (const { duties, longName, common } of shapes) {
+      it(`settles the hero from its skeleton at ${width}px with ${duties} agenda rows${longName ? ' and a long name' : ''}`, async () => {
         await page.viewport(width, 900)
-        const row = listRow(
-          {
-            ...(duties === 2 ? { name: '2026 学年度软件学院学生综合素质测评批次' } : {}),
-            status: 'active',
-            currentPhaseId: ENTRY_PHASE_ID,
-            currentPhaseName: '正式填报',
-          },
-          [
-            {
-              phaseId: ENTRY_PHASE_ID,
-              displayName: '正式填报',
-              description: '',
-              entryNote: '',
-              status: 'current',
-              entry: { kind: 'entered', at: '2026-01-01T00:00:00Z' },
-            },
-            {
-              phaseId: REVIEW_PHASE_ID,
-              displayName: '审核',
-              description: '',
-              entryNote: '',
-              status: 'future',
-              entry: { kind: 'planned', at: '2030-01-01T00:00:00Z' },
-            },
-          ],
-        )
-        let finish!: () => void
-        const waiting = new Promise<void>((resolve) => {
-          finish = resolve
-        })
-        const view = await screen(
-          {
-            listMyStanding: () =>
-              Effect.promise(async () => {
-                await waiting
-                return {
-                  running: { items: [row], hasMore: false },
-                  items: [
-                    {
-                      batchId: BATCH_ID,
-                      reviewsWaiting: duties > 0 ? 2 : null,
-                      myEntries:
-                        duties > 1
-                          ? {
-                              toAnswer: 0,
-                              toFix: 0,
-                              draft: 1,
-                              rejected: 0,
-                              submitted: 0,
-                              approved: 0,
-                              filing: 'open',
-                              continuable: { draft: true, toFix: true },
-                            }
-                          : null,
-                    },
-                  ],
-                }
-              }),
-          },
-          '/assessment/batches',
-        )
+        const { finish, view } = await heldHero(duties, longName)
         try {
           const skeleton = page.getByTestId('batch-hero-skeleton')
           await expect.element(skeleton).toBeVisible()
@@ -721,9 +745,26 @@ describe('the batch list', () => {
           const card = page.getByTestId('batch-hero')
           await expect.element(card).toBeVisible()
           const after = card.element().getBoundingClientRect()
-          expect(Math.abs(after.height - before.height)).toBeLessThan(1)
           expect(Math.abs(after.width - before.width)).toBeLessThan(1)
           expect(card.element().scrollHeight).toBeLessThanOrEqual(Math.ceil(after.height))
+          if (width >= 1280 || common) {
+            // wide, the card and its skeleton share a floor; stacked, the
+            // common shape is the skeleton's own
+            expect(Math.abs(after.height - before.height)).toBeLessThan(1)
+          }
+          if (width < 1280) {
+            expect(packed(card.element())).toBe(true)
+            // and the region around them comes to what it holds
+            const region = page.getByTestId('batch-hero-region').element()
+            await expect
+              .poll(() =>
+                Math.abs(
+                  region.getBoundingClientRect().height -
+                    region.firstElementChild!.getBoundingClientRect().height,
+                ),
+              )
+              .toBeLessThan(1)
+          }
         } finally {
           finish()
           await view.unmount()
@@ -731,6 +772,42 @@ describe('the batch list', () => {
         }
       })
     }
+  }
+
+  // The two heights differ by a line or a row, and the list under the hero
+  // slides by the difference instead of being knocked down it.
+  for (const [duties, longName] of [
+    [0, false],
+    [2, true],
+  ] as const) {
+    it(`eases the hero region to the card's height with ${duties} agenda rows${longName ? ' and a long name' : ''}`, async () => {
+      await commands.emulateMedia({ reducedMotion: 'no-preference' })
+      await page.viewport(390, 900)
+      const { finish, view } = await heldHero(duties, longName)
+      try {
+        await expect.element(page.getByTestId('batch-hero-skeleton')).toBeVisible()
+        const region = page.getByTestId('batch-hero-region').element()
+        const from = region.getBoundingClientRect().height
+        finish()
+        const seen: number[] = []
+        for (const until = performance.now() + 600; performance.now() < until;) {
+          await new Promise((resolve) => requestAnimationFrame(resolve))
+          seen.push(region.getBoundingClientRect().height)
+        }
+        const to = region.firstElementChild!.getBoundingClientRect().height
+        expect(Math.abs(seen.at(-1)! - to)).toBeLessThan(1)
+        expect(Math.abs(to - from)).toBeGreaterThan(4)
+        // some frame drew it between the two, however few a busy machine drew
+        const low = Math.min(from, to)
+        const high = Math.max(from, to)
+        expect(seen.some((height) => height > low + 1 && height < high - 1)).toBe(true)
+      } finally {
+        finish()
+        await view.unmount()
+        await commands.emulateMedia({ reducedMotion: 'reduce' })
+        await page.viewport(1280, 800)
+      }
+    })
   }
 
   it('retries the running projection after it fails', async () => {

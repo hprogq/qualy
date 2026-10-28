@@ -41,8 +41,12 @@ export const styles = stylex.create({
   // the seat exists to be measured; the card inside it draws
   seat: { containerType: 'inline-size' },
   card: {
-    // Reserve the same room while the running projection is loading.
-    minHeight: { default: 280, [NARROW]: 368 },
+    // Wide, the plan beside the work sets a floor the loading card shares.
+    // Stacked, the card is as tall as what it holds: a floor for the tallest
+    // shape left a strip of nothing on every card that was not it, and the
+    // page eases from the loading card's height to the card's instead
+    // (EasedHeight around the hero).
+    minHeight: { default: 280, [NARROW]: null },
     display: 'grid',
     gridTemplateColumns: {
       default: 'minmax(0, 1.7fr) minmax(0, 1fr)',
@@ -361,8 +365,8 @@ export const styles = stylex.create({
 // target puts a third one two pixels outside them (§2d).
 export const phone = stylex.create({
   card: {
-    // Two title lines and both agenda rows fit before the footer.
-    minHeight: 376,
+    // As tall as what it holds, with no floor: the loading card is drawn in
+    // the shape most cards take, and the page eases between the two heights.
     display: 'flex',
     boxSizing: 'border-box',
     // The cards in a deck are as tall as the tallest of them: side by side
@@ -468,7 +472,12 @@ export const phone = stylex.create({
   laneFuture: { backgroundColor: tokens.surfaceMuted },
   meta: {
     display: 'flex',
-    alignItems: 'baseline',
+    // Centred, not on the baseline: the clock leads with its ring, which
+    // has no text to give it a baseline, so the line took the ring's
+    // bottom edge for one and stood 2.3px taller than its own line height -
+    // and so did the skeleton drawn to match it. One size of text runs
+    // through the line, so centring sets the words where the baseline did.
+    alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
     fontSize: 12,

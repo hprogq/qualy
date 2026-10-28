@@ -18,12 +18,12 @@ import { styles as card, phone as phoneCard } from './card.stylex.ts'
 // answered separately.
 
 const styles = stylex.create({
-  boneLine: (height: number) => ({
-    display: 'flex',
-    alignItems: 'center',
-    height,
-  }),
   axisBones: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
+  // A line of the card's text, as tall as that text's own line: the bone is
+  // given the text's style and one line height of it, so a size or line
+  // height the card's words change is the skeleton's at once. Rounded
+  // numbers here were what put the skeleton 3.6px short of the card.
+  textBone: { display: 'flex', alignItems: 'center', height: '1lh' },
   list: {
     display: 'flex',
     flexDirection: 'column',
@@ -132,15 +132,20 @@ const phone = stylex.create({
   },
 })
 
-/** The pending card uses the same container, spacing and reserved height. */
+/**
+ * The pending card, in the container and spacing of the card and the shape
+ * most cards take: one line of name and two lines of work. Stacked, neither
+ * holds room for a taller shape; the hero eases from one height to the other.
+ */
 export function HeroSkeleton() {
   const narrow = useIsMobile()
   if (narrow) {
     return (
       <div data-testid="batch-hero-skeleton" aria-hidden {...stylex.props(phoneCard.card)}>
         <div {...stylex.props(phoneCard.head)}>
-          <Skeleton height={22} width={64} radius="xl" />
-          <span {...stylex.props(styles.boneLine(24.3))}>
+          {/* the standing badge is 20 tall */}
+          <Skeleton height={20} width={64} radius="xl" />
+          <span {...stylex.props(phoneCard.title, styles.textBone)}>
             <Skeleton height={20} width="70%" radius="sm" />
           </span>
         </div>
@@ -148,10 +153,10 @@ export function HeroSkeleton() {
           {[0, 1].map((row) => (
             <div key={row} {...stylex.props(phoneCard.agendaRow)}>
               <div {...stylex.props(phoneCard.agendaWords)}>
-                <span {...stylex.props(styles.boneLine(18))}>
+                <span {...stylex.props(phoneCard.agendaLabel, styles.textBone)}>
                   <Skeleton height={12} width={72} radius="sm" />
                 </span>
-                <span {...stylex.props(styles.boneLine(22.5))}>
+                <span {...stylex.props(phoneCard.agendaValue, styles.textBone)}>
                   <Skeleton height={15} width={120} radius="sm" />
                 </span>
               </div>
@@ -162,7 +167,7 @@ export function HeroSkeleton() {
         <div {...stylex.props(phoneCard.foot)}>
           <div {...stylex.props(phoneCard.plan)}>
             <Skeleton height={6} radius="xl" />
-            <span {...stylex.props(styles.boneLine(18), styles.axisBones)}>
+            <span {...stylex.props(phoneCard.meta, styles.textBone, styles.axisBones)}>
               <Skeleton height={11} width={96} radius="sm" />
               <Skeleton height={11} width={56} radius="sm" />
             </span>
@@ -178,12 +183,12 @@ export function HeroSkeleton() {
         <div {...stylex.props(card.main)}>
           <div {...stylex.props(card.head)}>
             <div {...stylex.props(card.headRow)}>
-              <Skeleton height={22} width={64} radius="xl" />
+              <Skeleton height={20} width={64} radius="xl" />
             </div>
-            <span {...stylex.props(styles.boneLine(27))}>
+            <span {...stylex.props(card.title, styles.textBone)}>
               <Skeleton height={24} width="58%" radius="sm" />
             </span>
-            <span {...stylex.props(styles.boneLine(18))}>
+            <span {...stylex.props(card.facts, styles.textBone)}>
               <Skeleton height={12} width="40%" radius="sm" />
             </span>
           </div>
@@ -191,7 +196,7 @@ export function HeroSkeleton() {
             <div {...stylex.props(card.lanes)}>
               {[0, 1, 2, 3, 4].map((lane) => (
                 <div key={lane} {...stylex.props(card.lane)}>
-                  <span {...stylex.props(styles.boneLine(16.5))}>
+                  <span {...stylex.props(card.laneName, styles.textBone)}>
                     <Skeleton height={11} width="60%" radius="sm" />
                   </span>
                   <Skeleton height={lane === 1 ? 8 : 6} radius="xl" />
@@ -209,23 +214,23 @@ export function HeroSkeleton() {
         </div>
         <div {...stylex.props(card.side)}>
           <div {...stylex.props(card.stage, card.cell, card.cellFirst)}>
-            <span {...stylex.props(styles.boneLine(18))}>
+            <span {...stylex.props(card.stageLabel, styles.textBone)}>
               <Skeleton height={12} width={56} radius="sm" />
             </span>
-            <span {...stylex.props(styles.boneLine(27))}>
+            <span {...stylex.props(card.stageName, styles.textBone)}>
               <Skeleton height={18} width="70%" radius="sm" />
             </span>
-            <span {...stylex.props(styles.boneLine(19.5))}>
+            <span {...stylex.props(card.stageClock, styles.textBone)}>
               <Skeleton height={13} width="84%" radius="sm" />
             </span>
           </div>
           {[0, 1].map((row) => (
             <div key={row} {...stylex.props(card.agendaRow, card.cell)}>
               <div {...stylex.props(card.agendaWords)}>
-                <span {...stylex.props(styles.boneLine(18))}>
+                <span {...stylex.props(card.agendaLabel, styles.textBone)}>
                   <Skeleton height={12} width={72} radius="sm" />
                 </span>
-                <span {...stylex.props(styles.boneLine(21))}>
+                <span {...stylex.props(card.agendaValue, styles.textBone)}>
                   <Skeleton height={14} width={88} radius="sm" />
                 </span>
               </div>
