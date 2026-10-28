@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createWorkspace, resolveWorkspace } from '@qualy/assembly/testkit'
 import { buildPluginModuleSource, buildPluginScanSource } from '@qualy/web-build/collect'
+import { reactComponent } from '@qualy/ui-contract'
 
 // There is no generator left: the browser aggregate is a virtual module the
 // Vite plugin computes from the verified resolution, and the typed clients
@@ -43,6 +44,12 @@ describe('the browser aggregate', () => {
     } finally {
       workspace.dispose()
     }
+  })
+
+  it('refuses an export the generated loader could not read', () => {
+    expect(reactComponent('./client/shells', 'AppShell').export).toBe('AppShell')
+    expect(reactComponent('./client/Page').export).toBe('default')
+    expect(() => reactComponent('./client/shells', 'App-Shell')).toThrow(/not an export name/)
   })
 
   // Which plugins the permission catalog counts is a security property. A

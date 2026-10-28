@@ -95,7 +95,7 @@ export interface PageOptions {
 export type PageFeature = PluginFeature & { readonly page: PageRef }
 
 export const Ui = {
-  /** a React component module; the default export implements it */
+  /** a React component module; its default export implements it, or the export named */
   react: reactComponent,
 
   /**

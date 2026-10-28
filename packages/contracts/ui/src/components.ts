@@ -25,13 +25,25 @@ export interface ClientComponentRef {
    * tool stops knowing about `src`, `dist`, `.tsx` and `.js`.
    */
   readonly module: string
+  /**
+   * The module's export that implements the surface: `default` unless the
+   * plugin says otherwise. A plugin names another one to serve several
+   * surfaces from one module, which the build then fetches as one.
+   */
   readonly export: string
 }
 
 /** `./client/ReviewPage`: a subpath, no extension, nothing climbing out */
 const MODULE = /^\.\/[A-Za-z0-9._-]+(\/[A-Za-z0-9._-]+)*$/
 
-export const clientComponent = (renderer: string, module: string): ClientComponentRef => {
+/** an export name the generated loader can read as written */
+const EXPORT = /^[A-Za-z_$][A-Za-z0-9_$]*$/
+
+export const clientComponent = (
+  renderer: string,
+  module: string,
+  exportName = 'default',
+): ClientComponentRef => {
   // validated at declaration, so a broken reference fails when the plugin
   // loads instead of when a user opens the page
   if (!MODULE.test(module) || module.includes('..')) {
@@ -47,12 +59,15 @@ export const clientComponent = (renderer: string, module: string): ClientCompone
       `client component module "${module}" names a file extension; it is an export subpath, and the package decides what stands behind it`,
     )
   }
-  return Object.freeze({ renderer, module, export: 'default' })
+  if (!EXPORT.test(exportName)) {
+    throw new Error(`client component export "${exportName}" of "${module}" is not an export name`)
+  }
+  return Object.freeze({ renderer, module, export: exportName })
 }
 
-/** a React component module; the default export implements it */
-export const reactComponent = (module: string): ClientComponentRef =>
-  clientComponent('react', module)
+/** a React component module; its default export implements it, or the export named */
+export const reactComponent = (module: string, exportName?: string): ClientComponentRef =>
+  clientComponent('react', module, exportName)
 
 export const isClientComponentRef = (value: unknown): value is ClientComponentRef =>
   typeof value === 'object' &&

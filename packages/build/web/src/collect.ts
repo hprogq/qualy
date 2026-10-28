@@ -129,9 +129,25 @@ const specifier = (file: string, fromDir: string | undefined): string => {
   return relative.startsWith('.') ? relative : `./${relative}`
 }
 
-/** a loader entry: one surface's address, and the import edge behind it */
-const loader = (key: string, file: string, fromDir: string | undefined, indent = '  ') =>
-  `${indent}${JSON.stringify(key)}: () => import(${JSON.stringify(specifier(file, fromDir))}),`
+/**
+ * A loader entry: one surface's address, and the import edge behind it.
+ *
+ * The registry hands a loader to `React.lazy`, which reads `default`. A
+ * surface served by another export of its module gets that export under the
+ * name lazy reads; several surfaces naming one module share its import, so
+ * the bundler sees one dynamic entry where it saw one per surface.
+ */
+const loader = (
+  key: string,
+  binding: { readonly file: string; readonly export: string },
+  fromDir: string | undefined,
+  indent = '  ',
+) => {
+  const load = `import(${JSON.stringify(specifier(binding.file, fromDir))})`
+  return binding.export === 'default'
+    ? `${indent}${JSON.stringify(key)}: () => ${load},`
+    : `${indent}${JSON.stringify(key)}: () => ${load}.then((module) => ({ default: module.${binding.export} })),`
+}
 
 /**
  * The virtual module's source: four tables of loaders, keyed by surface.
@@ -160,16 +176,16 @@ export async function buildPluginModuleSource(
       browserEntries.push(`  ${name},`)
     }
     for (const binding of entry.surfaces) {
-      // a real dynamic import per surface: the edge Vite splits chunks on
-      const { surface, file } = binding
-      if (surface.kind === 'page') pageEntries.push(loader(surface.id, file, options.fromDir))
+      // a real dynamic import per module: the edge Vite splits chunks on
+      const { surface } = binding
+      if (surface.kind === 'page') pageEntries.push(loader(surface.id, binding, options.fromDir))
       else if (surface.kind === 'layout') {
-        layoutEntries.push(loader(surface.id, file, options.fromDir))
+        layoutEntries.push(loader(surface.id, binding, options.fromDir))
       } else if (surface.kind === 'login') {
-        loginEntries.push(loader(surface.id, file, options.fromDir))
+        loginEntries.push(loader(surface.id, binding, options.fromDir))
       } else {
         const items = slotEntries.get(surface.slot) ?? []
-        items.push(loader(surface.id, file, options.fromDir, '    '))
+        items.push(loader(surface.id, binding, options.fromDir, '    '))
         slotEntries.set(surface.slot, items)
       }
     }

@@ -27,7 +27,8 @@ import { manifestPath } from '../lib/manifest.ts'
 // Pages assert `ComponentType<{}>`: the shell mounts them with no props, so
 // a page component with required props is a page nobody can render. Layouts,
 // slots and login methods receive props from their contracts and assert only
-// that the default export is a component at all.
+// that the export is a component at all. The export is the default one unless
+// the reference names another.
 
 /** transient, and named so a stray copy is obviously not source */
 const ASSERTION_FILE = '__qualy-component-check__.tsx'
@@ -40,19 +41,20 @@ interface Reference {
   pluginId: string
   kind: 'page' | 'component'
   module: string
+  export: string
 }
 
 const collectReferences = (pluginId: string, descriptor: PluginDescriptor): Reference[] => {
   const refs: Reference[] = []
   for (const surfaces of Plugin.contributionsOf(descriptor, UiSurfaceDeclarations)) {
     for (const page of surfaces.pages ?? []) {
-      refs.push({ pluginId, kind: 'page', module: page.component.module })
+      refs.push({ pluginId, kind: 'page', ...page.component })
     }
     for (const layout of surfaces.layouts ?? []) {
-      refs.push({ pluginId, kind: 'component', module: layout.component.module })
+      refs.push({ pluginId, kind: 'component', ...layout.component })
     }
     for (const slot of surfaces.slots ?? []) {
-      refs.push({ pluginId, kind: 'component', module: slot.component.module })
+      refs.push({ pluginId, kind: 'component', ...slot.component })
     }
   }
   return refs
@@ -67,7 +69,7 @@ const collectDriverReferences = async (
   )) as typeof import('../../packages/contracts/auth/src/plugin.ts')
   return Plugin.contributionsOf(descriptor, LoginDriverDeclarations).flatMap((driver) =>
     driver.presentation.mode === 'component'
-      ? [{ pluginId, kind: 'component' as const, module: driver.presentation.component.module }]
+      ? [{ pluginId, kind: 'component' as const, ...driver.presentation.component }]
       : [],
   )
 }
@@ -106,7 +108,11 @@ function checkPlugin(packageDir: string, references: readonly Reference[]): stri
   const lines = ["import type { ComponentType } from 'react'"]
   checkable.forEach((reference, index) => {
     const specifier = `./${path.relative(clientDir, reference.file).split(path.sep).join('/')}`
-    lines.push(`import component${index} from '${specifier}'`)
+    lines.push(
+      reference.export === 'default'
+        ? `import component${index} from '${specifier}'`
+        : `import { ${reference.export} as component${index} } from '${specifier}'`,
+    )
     lines.push(
       reference.kind === 'page'
         ? `const check${index}: ComponentType<{}> = component${index} // a page mounts with no props`
