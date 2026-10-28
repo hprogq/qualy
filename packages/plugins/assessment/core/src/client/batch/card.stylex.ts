@@ -29,13 +29,14 @@ const NARROW = '@container (max-width: 959.98px)'
  * Narrower still: where the stage's cell has no room for both halves of its
  * clock on one line.
  *
- * Measured rather than guessed. In the row-of-cells layout the cell is a
- * third of the card, and the moment plus the countdown come to about 247px:
- * at a container of 732 the cell has 244 and they wrap, at 742 it has 247
- * and they do not. The threshold sits just above that with a few pixels to
- * spare for a longer count.
+ * Measured, and measured again. In the row-of-cells layout the cell is a
+ * third of the card; the threshold was first set from a container of 742
+ * holding the moment and the countdown, and a card of 752 with two lines of
+ * work still wrapped them - the words differ from one stage to the next.
+ * So it sits well clear of that, and the line itself no longer wraps (see
+ * stageClock): what this decides is only whether the moment is said at all.
  */
-const TIGHT = '@container (max-width: 747.98px)'
+const TIGHT = '@container (max-width: 799.98px)'
 
 export const styles = stylex.create({
   // the seat exists to be measured; the card inside it draws
@@ -46,7 +47,6 @@ export const styles = stylex.create({
     // shape left a strip of nothing on every card that was not it, and the
     // page eases from the loading card's height to the card's instead
     // (EasedHeight around the hero).
-    minHeight: { default: 280, [NARROW]: null },
     display: 'grid',
     gridTemplateColumns: {
       default: 'minmax(0, 1.7fr) minmax(0, 1fr)',
@@ -231,11 +231,14 @@ export const styles = stylex.create({
     fontWeight: 500,
     color: tokens.foreground,
   }),
+  // Straight under the plan. Pushed to the foot of the column, it took
+  // whatever the work beside it had over the plan's height - a line, with
+  // two lines of work - as a gap above itself; at the foot of the column
+  // that height reads as the card's own margin.
   actions: {
     display: 'flex',
     alignItems: 'center',
     gap: 10,
-    marginTop: 'auto',
   },
   // Beside the plan while there is room for it, under the plan as a row of
   // cells once there is not - the same three things either way, and the
@@ -284,7 +287,11 @@ export const styles = stylex.create({
   },
   stageClock: {
     display: 'flex',
-    flexWrap: 'wrap',
+    // One line, whatever the words: wrapped, the moment and the countdown
+    // stood the cell a line taller than the cells beside it, and the card
+    // that much taller than the skeleton drawn for it. A moment the line
+    // cannot hold is cut short; the countdown never is.
+    minWidth: 0,
     alignItems: 'center',
     columnGap: 6,
     fontSize: 13,
@@ -295,7 +302,14 @@ export const styles = stylex.create({
   // narrow to hold both on one line. Wrapped, they stood the stage's cell
   // a line taller than the two beside it, for a date the table below
   // repeats in its own time column.
-  stageWhen: { display: { default: 'inline', [TIGHT]: 'none' } },
+  stageWhen: {
+    display: { default: 'block', [TIGHT]: 'none' },
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  stageCountdown: { flexShrink: 0 },
   agendaRow: {
     display: 'flex',
     alignItems: 'center',

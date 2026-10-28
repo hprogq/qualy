@@ -714,9 +714,9 @@ describe('the batch list', () => {
     return { finish, view }
   }
 
-  // Stacked, a card is as tall as what it holds: a floor for the tallest
-  // shape left a strip of nothing between the work and the way in on every
-  // card that was not the tallest.
+  // A card is as tall as what it holds: a floor for the tallest shape left
+  // a strip of nothing above the way in on every card that was not the
+  // tallest, on a phone and on a wide screen alike.
   const packed = (card: Element) => {
     const gap = Number.parseFloat(getComputedStyle(card).rowGap) || 0
     const parts = [...card.children].map((part) => part.getBoundingClientRect())
@@ -732,7 +732,7 @@ describe('the batch list', () => {
     { duties: 2, longName: false, common: true },
     { duties: 2, longName: true, common: false },
   ]
-  for (const width of [390, 900, 1280]) {
+  for (const width of [390, 800, 900, 1280]) {
     for (const { duties, longName, common } of shapes) {
       it(`settles the hero from its skeleton at ${width}px with ${duties} agenda rows${longName ? ' and a long name' : ''}`, async () => {
         await page.viewport(width, 900)
@@ -747,24 +747,21 @@ describe('the batch list', () => {
           const after = card.element().getBoundingClientRect()
           expect(Math.abs(after.width - before.width)).toBeLessThan(1)
           expect(card.element().scrollHeight).toBeLessThanOrEqual(Math.ceil(after.height))
-          if (width >= 1280 || common) {
-            // wide, the card and its skeleton share a floor; stacked, the
-            // common shape is the skeleton's own
-            expect(Math.abs(after.height - before.height)).toBeLessThan(1)
-          }
-          if (width < 1280) {
-            expect(packed(card.element())).toBe(true)
-            // and the region around them comes to what it holds
-            const region = page.getByTestId('batch-hero-region').element()
-            await expect
-              .poll(() =>
-                Math.abs(
-                  region.getBoundingClientRect().height -
-                    region.firstElementChild!.getBoundingClientRect().height,
-                ),
-              )
-              .toBeLessThan(1)
-          }
+          // the common shape is the skeleton's own, at every width
+          if (common) expect(Math.abs(after.height - before.height)).toBeLessThan(1)
+          expect(packed(card.element())).toBe(true)
+          // nor inside it: the way in follows the plan, whatever the work beside it
+          for (const part of card.element().children) expect(packed(part)).toBe(true)
+          // and the region around them comes to what it holds
+          const region = page.getByTestId('batch-hero-region').element()
+          await expect
+            .poll(() =>
+              Math.abs(
+                region.getBoundingClientRect().height -
+                  region.firstElementChild!.getBoundingClientRect().height,
+              ),
+            )
+            .toBeLessThan(1)
         } finally {
           finish()
           await view.unmount()

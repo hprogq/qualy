@@ -605,7 +605,7 @@ function CardBody({
                   {m.batch_stageDeadline({ when: marked(closes, mark) })}
                 </span>
               )}
-              <BatchProgress timeline={row.timeline} single />
+              <BatchProgress timeline={row.timeline} single xstyle={styles.stageCountdown} />
             </span>
           </div>
           {agenda.rows.map((line) => (
