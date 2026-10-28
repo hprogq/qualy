@@ -49,7 +49,7 @@ mise exec -- node --env-file-if-exists=.env --env-file=data/demo-private.env too
 - `QUALY_BASELINE_PASSWORD_ADMIN`、`_STUDENT`、`_CLASS_LEAD`、`_COUNSELLOR`、`_LEAD`：五个账号在这台服务器上的密码，
   每个至少 15 位、不含本人的名字或邮箱。缺任何一个，导入在停服之前就拒绝。
 - `QUALY_PUBLIC_URL`：站点的 https 地址。找回密码、验证邮箱与第三方登录都用它拼回跳地址。
-- `QUALY_DEMO_EMAIL_DOMAIN`：基线中已有的账号邮箱域，必须与生成基线时一致。它与网站地址及 `QUALY_MAIL_FROM` 分别配置；恢复不会修改账号邮箱。脚本在临时库导入完成后、停服前核对五个账号，配置与基线不匹配时拒绝继续。
+- `QUALY_DEMO_EMAIL_DOMAIN`：基线中已有的账号邮箱域，必须与基线一致（生成时的域，或用 `rehome.sh` 换过之后的域）。它与网站地址及 `QUALY_MAIL_FROM` 分别配置；恢复不会修改账号邮箱。脚本在临时库导入完成后、停服前核对五个账号，配置与基线不匹配时拒绝继续。
 - 不设 `QUALY_DEMO_ACCOUNTS`。它会把演示账号连同密码列在登录页上并冻结其凭据；本展示实例需要正常私有登录及可操作的账号流程。
 - GitHub、OIDC、CAS 的提供方、密钥、回调与身份绑定由部署后配置，seed 不创建。CAS 分别通过两项私有学号匹配学生和班级负责人。新增入口必须设置用户类型受众，不接纳普通背景学生。
 - 演示收件域由 `QUALY_DEMO_EMAIL_DOMAIN` 指定，邮件提供方、发件身份、回跳地址和实际收件仍需独立验证。完整恢复会丢失基线生成后新增的外部提供方、密钥、身份绑定和邮箱验证状态。恢复后必须重新配置外部入口并设置受众，重新绑定身份、完成实际邮箱验证，再逐项验证登录与收件；不要伪造验证成功或自动发送演示邮件。
@@ -92,6 +92,19 @@ deploy/demo/restore.sh /opt/qualy/demo-baseline
 ```cron
 0 4 * * 1 /opt/qualy/deploy/demo/restore.sh /opt/qualy/demo-baseline >> $HOME/qualy-demo-restore.log 2>&1
 ```
+
+### 换邮箱域
+
+基线里的账号按生成时的邮箱域命名，重新生成需要数小时。换域时改写基线本身，不重跑生成：
+
+```sh
+deploy/demo/rehome.sh qualy.hprogq.cn demo.hprogq.cn /opt/qualy/demo-baseline
+```
+
+脚本把 dump 还原进临时库（不碰服务中的库），把旧域下的地址整体换到新域，用户 id、密码散列与绑定不变，换过的地址
+不再算已验证；再按 `demo:snapshot` 的方式重新导出并校验可读，旧 dump 以 `qualy-demo.dump.<旧域>.<时间>` 留在旁边。
+五个演示账号不全在新域时整体放弃，基线保持原样。附件包不含邮箱，不需要改。完成后把 `QUALY_DEMO_EMAIL_DOMAIN`
+改成新域，再运行一次复原。发件地址 `QUALY_MAIL_FROM` 独立配置，不随之改变。
 
 ## 5. 演示身份
 

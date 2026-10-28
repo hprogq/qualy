@@ -30,6 +30,7 @@ set -eu
 
 here=$(cd "$(dirname "$0")/.." && pwd)
 . "$here/lib.sh"
+. "$here/demo/domain.sh"
 baseline=${1:-/opt/qualy/demo-baseline}
 
 # The database commands run inside the postgres container, which already
@@ -71,20 +72,7 @@ release=$(env_get QUALY_RELEASE)
 # renames them and is independent of QUALY_PUBLIC_URL and QUALY_MAIL_FROM.
 demo_email_domain=$(baseline_scalar QUALY_DEMO_EMAIL_DOMAIN) ||
   refuse "QUALY_DEMO_EMAIL_DOMAIN must be a single-line dotenv scalar"
-demo_email_domain=$(printf '%s' "$demo_email_domain" | env LC_ALL=C awk '
-  {
-    sub(/^[ \t\r]+/, ""); sub(/[ \t\r]+$/, "")
-    domain = tolower($0)
-    if (length(domain) == 0 || length(domain) > 238 || domain ~ /[^a-z0-9.-]/) exit 1
-    count = split(domain, labels, ".")
-    if (count < 2 || labels[count] !~ /[a-z]/) exit 1
-    for (i = 1; i <= count; i++) {
-      if (length(labels[i]) == 0 || length(labels[i]) > 63 ||
-          labels[i] !~ /^[a-z0-9]/ || labels[i] !~ /[a-z0-9]$/) exit 1
-    }
-    print domain
-  }
-') || refuse "QUALY_DEMO_EMAIL_DOMAIN must be a valid ASCII email domain (at most 238 characters)"
+demo_email_domain=$(printf '%s' "$demo_email_domain" | email_domain) || refuse "QUALY_DEMO_EMAIL_DOMAIN must be a valid ASCII email domain (at most 238 characters)"
 [ -n "$demo_email_domain" ] || refuse "set QUALY_DEMO_EMAIL_DOMAIN in $env_file to the baseline's email domain"
 default_tenant=$(baseline_scalar QUALY_DEFAULT_TENANT default) ||
   refuse "QUALY_DEFAULT_TENANT must be a single-line dotenv scalar"
