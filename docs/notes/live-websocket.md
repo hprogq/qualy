@@ -18,7 +18,7 @@ EO 主站默认 15 秒回源应答超时曾在首个 25 秒心跳前切断已返
 | 会话是否仍有效（只读，不续期）                   | `SessionPresence`：契约 `@qualy/auth-contract/session`，实现 `packages/plugins/base/auth/src/server/session.ts` |
 | 标签页内共享连接、状态机、退避                   | `packages/web/runtime/src/live-channel.ts`                                                                      |
 | React 接入 `useLiveChannel`                      | `packages/web/runtime/src/live-channel-context.tsx`                                                             |
-| 测试用假服务器                                   | `@qualy/web-runtime/testkit`                                                                                    |
+| 测试用假服务器                                   | `@qualy/testkit/browser`（`packages/testkit/browser/src/live.ts`）                                              |
 
 服务端 socket 使用 Effect 自带的 `HttpServerRequest.upgrade` 与 `effect/socket` 的 reader/writer（`repos/effect/packages/effect/src/socket/Socket.ts`、`repos/effect/packages/platform/node/src/NodeHttpServer.ts`）；浏览器端用 `Socket.makeWebSocket` 加 `WebSocketConstructor`，测试注入假构造器。握手、跟踪 span 与连接作用域沿用 formula LSP 已有的 `webSocketSession`。
 

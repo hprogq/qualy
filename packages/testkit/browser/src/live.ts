@@ -1,4 +1,4 @@
-import type { LiveChannelsOptions } from '../live-channel.ts'
+import type { LiveChannelsOptions } from '@qualy/web-runtime'
 
 // A live server for a screen under test: the sockets the runtime opens, each
 // handed to a script that plays the server's half. No network is involved -

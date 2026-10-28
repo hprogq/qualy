@@ -14,14 +14,14 @@ import {
 import { UiProvider } from '@qualy/ui/provider'
 import { Effect } from 'effect'
 import { toast } from '@qualy/ui/toast'
-import { refusingLiveServer, type FakeLiveServer } from '@qualy/web-runtime/testkit'
+import { refusingLiveServer, type FakeLiveServer } from './live.ts'
 
 export {
   fakeLiveServer,
   refusingLiveServer,
   type FakeLiveServer,
   type FakeLiveSocket,
-} from '@qualy/web-runtime/testkit'
+} from './live.ts'
 
 declare module 'vitest/browser' {
   interface LocatorSelectors {
