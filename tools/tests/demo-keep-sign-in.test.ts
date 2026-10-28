@@ -1,9 +1,12 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
-import pg from 'pg'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { createTestContext, postgresAvailable } from '@qualy/plugin-database/testkit'
+import {
+  createTestContext,
+  postgresAvailable,
+  type TestContext,
+} from '@qualy/plugin-database/testkit'
 
 // What `restore.sh --keep-sign-in` leaves behind, run against two databases
 // at the current schema: one plays the deployment as it serves, the other the
@@ -13,6 +16,17 @@ import { createTestContext, postgresAvailable } from '@qualy/plugin-database/tes
 
 const ROOT = path.resolve(import.meta.dirname, '../..')
 const KEEP = fs.readFileSync(path.join(ROOT, 'deploy/demo/keep-sign-in.sql'), 'utf8')
+// psql sends the file statement by statement, so it opens its own
+// transaction; sent here as one simple query, the statements are already one
+// implicit transaction, and a failure leaves no transaction open on a pooled
+// connection
+const KEEP_AS_ONE = (() => {
+  const body = KEEP.replace(/^begin;$/m, '').replace(/^commit;\s*$/m, '')
+  if (body === KEEP || /^(begin|commit);$/m.test(body)) {
+    throw new Error('keep-sign-in.sql no longer opens and closes one transaction')
+  }
+  return body
+})()
 const CARRIED = {
   auth_providers: 'select * from auth_providers',
   auth_provider_user_types: 'select * from auth_provider_user_types',
@@ -42,14 +56,8 @@ const sealed = (owner: string, key: string) => ({
   tag: `\\x${'02'.repeat(16)}`,
 })
 
-const connect = async (url: string) => {
-  const client = new pg.Client({ connectionString: url })
-  await client.connect()
-  return client
-}
-
 /** what both databases share before they part ways: the tenant and its user types */
-const common = async (db: pg.Client) => {
+const common = async (db: TestContext) => {
   await db.query(`insert into tenants (id, slug, name) values ($1, 'demo', 'Demo')`, [ids.tenant])
   await db.query(
     `insert into user_types (id, tenant_id, code, name, placement_mode)
@@ -59,7 +67,7 @@ const common = async (db: pg.Client) => {
 }
 
 const provider = (
-  db: pg.Client,
+  db: TestContext,
   row: { id: string; code: string; type: string; name: string; system?: boolean } & Record<
     string,
     unknown
@@ -83,7 +91,7 @@ const provider = (
     ],
   )
 
-const secret = (db: pg.Client, kind: string, value: ReturnType<typeof sealed>) =>
+const secret = (db: TestContext, kind: string, value: ReturnType<typeof sealed>) =>
   db.query(
     `insert into secrets (tenant_id, owner_kind, owner_id, key, ciphertext, nonce, auth_tag)
      values ($1, $2, $3, $4, $5, $6, $7)`,
@@ -91,7 +99,7 @@ const secret = (db: pg.Client, kind: string, value: ReturnType<typeof sealed>) =
   )
 
 /** someone who has left, so needs no organization, still bound to a way in */
-const person = async (db: pg.Client, user: string, providerId: string) => {
+const person = async (db: TestContext, user: string, providerId: string) => {
   await db.query(
     `insert into users (id, tenant_id, display_name, enabled, deleted_at) values ($1, $2, 'Someone', false, now())`,
     [user, ids.tenant],
@@ -103,7 +111,7 @@ const person = async (db: pg.Client, user: string, providerId: string) => {
 }
 
 /** the baseline as generated: one password entrance, recommended, and one later retired */
-const seedBaseline = async (db: pg.Client) => {
+const seedBaseline = async (db: TestContext) => {
   await common(db)
   await provider(db, {
     id: ids.password,
@@ -119,7 +127,7 @@ const seedBaseline = async (db: pg.Client) => {
 }
 
 /** the deployment as configured since: renamed and reordered, three doors, one image */
-const seedLive = async (db: pg.Client) => {
+const seedLive = async (db: TestContext) => {
   await common(db)
   // the newly recommended door first: copied in this order, the baseline's
   // recommendation would still stand when it arrives
@@ -174,48 +182,47 @@ const seedLive = async (db: pg.Client) => {
 }
 
 /** what restore.sh does with COPY: the live rows, into qualy_keep_* tables on the restored side */
-const stage = async (live: pg.Client, restored: pg.Client) => {
+const stage = async (live: TestContext, restored: TestContext) => {
   for (const [table, query] of Object.entries(CARRIED)) {
     await restored.query(`create table qualy_keep_${table} (like ${table})`)
-    const { rows } = await live.query(
+    const { rows } = await live.row<{ rows: unknown }>(
       `select coalesce(json_agg(t), '[]') as rows from (${query}) t`,
     )
     await restored.query(
       `insert into qualy_keep_${table} select * from json_populate_recordset(null::qualy_keep_${table}, $1)`,
-      [JSON.stringify(rows[0].rows)],
+      [JSON.stringify(rows)],
     )
   }
 }
 
-const rowsOf = async (db: pg.Client, query: string) =>
-  (await db.query(`select coalesce(json_agg(t order by t.id), '[]') as rows from (${query}) t`))
-    .rows[0].rows as Record<string, unknown>[]
+const rowsOf = async (db: TestContext, query: string) =>
+  (
+    await db.row<{ rows: Record<string, unknown>[] }>(
+      `select coalesce(json_agg(t order by t.id), '[]') as rows from (${query}) t`,
+    )
+  ).rows
 
 describe.runIf(postgresAvailable)(
   'keeping the sign-in configuration over a restored baseline',
   () => {
     let liveContext: Awaited<ReturnType<typeof createTestContext>>
     let restoredContext: Awaited<ReturnType<typeof createTestContext>>
-    let live: pg.Client
-    let restored: pg.Client
 
     beforeAll(async () => {
       liveContext = await createTestContext('demo-keep-live', { migrations: 'apply' })
       restoredContext = await createTestContext('demo-keep-restored', { migrations: 'apply' })
-      live = await connect(liveContext.url)
-      restored = await connect(restoredContext.url)
-      await seedLive(live)
-      await seedBaseline(restored)
+      await seedLive(liveContext)
+      await seedBaseline(restoredContext)
     }, 120_000)
 
     afterAll(async () => {
-      await live?.end()
-      await restored?.end()
       await liveContext?.dispose()
       await restoredContext?.dispose()
     })
 
     it('refuses a configuration that does not fit, and leaves the baseline as it was', async () => {
+      const live = liveContext
+      const restored = restoredContext
       const outsider = randomUUID()
       await live.query(
         `insert into user_types (id, tenant_id, code, name, placement_mode) values ($1, $2, 'visitor', 'Visitor', 'unrestricted')`,
@@ -227,8 +234,7 @@ describe.runIf(postgresAvailable)(
       )
       const before = await rowsOf(restored, 'select * from auth_providers')
       await stage(live, restored)
-      await expect(restored.query(KEEP)).rejects.toThrow(/user_type/)
-      await restored.query('rollback')
+      await expect(restored.query(KEEP_AS_ONE)).rejects.toThrow(/user_type/)
       expect(await rowsOf(restored, 'select * from auth_providers')).toEqual(before)
       for (const table of Object.keys(CARRIED)) {
         await restored.query(`drop table qualy_keep_${table}`)
@@ -238,8 +244,10 @@ describe.runIf(postgresAvailable)(
     })
 
     it('carries every entrance, its audience, secrets and stored image, and nothing done through them', async () => {
+      const live = liveContext
+      const restored = restoredContext
       await stage(live, restored)
-      await restored.query(KEEP)
+      await restored.query(KEEP_AS_ONE)
 
       const kept = (table: keyof typeof CARRIED) => rowsOf(restored, CARRIED[table])
       const served = (table: keyof typeof CARRIED) => rowsOf(live, CARRIED[table])
@@ -260,11 +268,10 @@ describe.runIf(postgresAvailable)(
           (r) => r.id,
         ),
       ).toEqual([ids.cas])
-      const retired = (
-        await restored.query('select enabled, deleted_at from auth_providers where id = $1', [
-          ids.retired,
-        ])
-      ).rows[0]
+      const retired = await restored.row<{ enabled: boolean; deleted_at: unknown }>(
+        'select enabled, deleted_at from auth_providers where id = $1',
+        [ids.retired],
+      )
       expect(retired.enabled).toBe(false)
       expect(retired.deleted_at).not.toBeNull()
 
@@ -278,8 +285,11 @@ describe.runIf(postgresAvailable)(
       // a secret that opens no door is the baseline's own
       expect(
         Number(
-          (await restored.query("select count(*) from secrets where owner_kind = 'mail-relay'"))
-            .rows[0].count,
+          (
+            await restored.row<{ count: unknown }>(
+              "select count(*) from secrets where owner_kind = 'mail-relay'",
+            )
+          ).count,
         ),
       ).toBe(1)
 
