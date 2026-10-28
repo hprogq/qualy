@@ -6,7 +6,7 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from 'react'
 import { useLocation, useNavigate } from 'react-router'
-import { useIsFetching } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
 import type { NamespacedId } from '@qualy/ui-contract'
 import { useRuntime } from './runtime-context.tsx'
 
@@ -116,20 +116,40 @@ export function usePagePrefetch(): (page: NamespacedId) => void {
  */
 export function useIdlePagePrefetch(pages: readonly NamespacedId[]): void {
   const prefetch = usePagePrefetch()
-  const reading = useIsFetching() > 0
+  const queryClient = useQueryClient()
   // the list is rebuilt every render; what matters is which pages it names
   const key = pages.join('\n')
   useEffect(() => {
     const ids = key === '' ? [] : (key.split('\n') as NamespacedId[])
-    if (ids.length === 0 || reading) return
+    if (ids.length === 0) return
     const run = () => {
       for (const id of ids) prefetch(id)
     }
-    if (typeof requestIdleCallback === 'function') {
-      const handle = requestIdleCallback(run, { timeout: 2000 })
-      return () => cancelIdleCallback(handle)
+    let cancel = () => {}
+    const schedule = () => {
+      if (typeof requestIdleCallback === 'function') {
+        const handle = requestIdleCallback(run, { timeout: 2000 })
+        cancel = () => cancelIdleCallback(handle)
+      } else {
+        const timer = setTimeout(run, 200)
+        cancel = () => clearTimeout(timer)
+      }
     }
-    const timer = setTimeout(run, 200)
-    return () => clearTimeout(timer)
-  }, [key, prefetch, reading])
+    if (queryClient.isFetching() === 0) {
+      schedule()
+      return () => cancel()
+    }
+    // Watched from the cache rather than through a hook: the shell that asks
+    // is the whole rail, and drawing it again at every read the page starts
+    // and ends is a cost the prefetch has no business adding.
+    const unsubscribe = queryClient.getQueryCache().subscribe(() => {
+      if (queryClient.isFetching() > 0) return
+      unsubscribe()
+      schedule()
+    })
+    return () => {
+      unsubscribe()
+      cancel()
+    }
+  }, [key, prefetch, queryClient])
 }
