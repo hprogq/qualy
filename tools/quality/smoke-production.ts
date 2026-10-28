@@ -1,8 +1,11 @@
+import { randomBytes } from 'node:crypto'
 import fs from 'node:fs'
+import http from 'node:http'
 import path from 'node:path'
 import { repoRoot } from '../lib/manifest.ts'
 import { startQualyServer } from '../lib/qualy-server.ts'
 import { HEALTH_LIVE_PATH, HEALTH_READY_PATH } from '@qualy/api-kit'
+import { LIVE_SUBPROTOCOL } from '@qualy/api-kit/live-socket'
 import { readCurrentWebRelease, storeAt } from '../../packages/build/web/src/release-store.ts'
 
 // The production boot, actually booted - through the same runner `pnpm
@@ -127,16 +130,54 @@ await check('/x.', async (response) => {
   }
   console.log('smoke: / revalidated whole, with its policy')
 }
-// the live channel, answered like any authenticated endpoint: no session,
-// no stream - and the route resolving at all means the listener layer
-// assembled with the rest of the production graph
-await check('/api/assessment/batches/00000000-0000-4000-8000-000000000000/events', (response) =>
-  Promise.resolve(
-    response.status === 401
-      ? undefined
-      : `expected 401 for the live channel, got ${response.status}`,
-  ),
-)
+// The live channel, dialled as a browser dials it - same origin, the
+// channel's subprotocol, no session - and refused the way a browser can read:
+// an upgrade that completes and closes at once with 4401. That it completes
+// at all means the channel's whole graph - the viewer, the session check, the
+// listener - assembled with the rest of production.
+const LIVE_ROUTE = '/api/assessment/batches/00000000-0000-4000-8000-000000000000/events'
+const liveRefusal = await new Promise<string | undefined>((resolve) => {
+  const request = http.request(`${base}${LIVE_ROUTE}`, {
+    headers: {
+      connection: 'Upgrade',
+      upgrade: 'websocket',
+      origin: base,
+      'sec-websocket-version': '13',
+      'sec-websocket-key': randomBytes(16).toString('base64'),
+      'sec-websocket-protocol': LIVE_SUBPROTOCOL,
+    },
+  })
+  const timer = setTimeout(() => {
+    request.destroy()
+    resolve('no answer within ten seconds')
+  }, 10_000)
+  const done = (complaint: string | undefined) => {
+    clearTimeout(timer)
+    resolve(complaint)
+  }
+  request.on('response', (response) => done(`handshake refused with ${response.statusCode}`))
+  request.on('error', (error) => done(error.message))
+  request.on('upgrade', (_response, socket, head) => {
+    let frames = head
+    const read = () => {
+      // a close frame from the server: opcode 8, unmasked, a short payload
+      // whose first two bytes are the code
+      if (frames.length < 4) return
+      socket.destroy()
+      const opcode = frames[0]! & 0x0f
+      const code = frames.readUInt16BE(2)
+      done(opcode === 8 && code === 4401 ? undefined : `closed with opcode ${opcode}, code ${code}`)
+    }
+    socket.on('data', (chunk: Buffer) => {
+      frames = Buffer.concat([frames, chunk])
+      read()
+    })
+    read()
+  })
+  request.end()
+})
+if (liveRefusal) fail(`${LIVE_ROUTE}: ${liveRefusal}`)
+console.log(`smoke: ${LIVE_ROUTE} refused without a session, as a close code`)
 
 // a request inside the api mount that names no route: the api's tagged
 // 404, never the shell, and the request it answered named in a header
