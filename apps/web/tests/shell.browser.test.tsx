@@ -1061,6 +1061,60 @@ describe('a press on the rail', () => {
     await page.getByRole('link', { name: '组织与权限' }).hover()
     await vi.waitFor(() => expect(preloads.users).toHaveBeenCalled())
   })
+
+  it('waits for the open page’s own reads before it fetches the rail pages', async () => {
+    await page.viewport(1280, 800)
+    const phases = vi.fn(() => Promise.resolve())
+    const registered = (preload: () => Promise<void>) =>
+      Object.assign(
+        lazy(() => Promise.resolve({ default: () => null })),
+        { preload },
+      )
+    let answer = () => {}
+    const answered = new Promise<string>((resolve) => (answer = () => resolve('read')))
+    // the open page, still waiting for what it asked for
+    const Reading = () => {
+      const read = useQuery({ queryKey: ['probe', 'open page'], queryFn: () => answered })
+      return <output data-testid="page-read">{read.data ?? ''}</output>
+    }
+    await renderScreen({
+      client: fakeClient({
+        app: {
+          getManifest: () =>
+            Effect.succeed({
+              ...manifest(),
+              pages: [
+                {
+                  id: 'assessment/batch-phases',
+                  path: '/assessment/batches/:batchId/phases',
+                  layout: 'workspace-shell/v1',
+                },
+              ],
+            }),
+        },
+      }),
+      registry: { pages: { 'assessment/batch-phases': registered(phases) } },
+      routes: [
+        {
+          path: '/assessment/batches/:batchId/phases',
+          element: (
+            <>
+              <WorkspaceShell />
+              <Reading />
+            </>
+          ),
+        },
+      ],
+      route: `/assessment/batches/${BATCH_ID}/phases`,
+    })
+    await expect.element(page.getByRole('link', { name: '参评名单' })).toBeVisible()
+    // painted and idle, but the page's read is still out: its neighbours wait
+    await new Promise((settle) => setTimeout(settle, 2_500))
+    expect(phases).not.toHaveBeenCalled()
+    answer()
+    await expect.element(page.getByTestId('page-read')).toHaveTextContent('read')
+    await vi.waitFor(() => expect(phases).toHaveBeenCalled())
+  })
 })
 
 describe('the rail’s column, lent to the open screen', () => {

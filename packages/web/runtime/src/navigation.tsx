@@ -6,6 +6,7 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from 'react'
 import { useLocation, useNavigate } from 'react-router'
+import { useIsFetching } from '@tanstack/react-query'
 import type { NamespacedId } from '@qualy/ui-contract'
 import { useRuntime } from './runtime-context.tsx'
 
@@ -105,16 +106,22 @@ export function usePagePrefetch(): (page: NamespacedId) => void {
  *
  * For the pages a shell lists beside the one that is open: after the shell
  * has painted, their chunks arrive in the background, so the next press
- * finds its code already here. Idle time when the browser offers it, a
- * short delay where it does not.
+ * finds its code already here. Not before the open page has what it asked
+ * for: an idle main thread is not an idle network, and on a slow link the
+ * neighbours' code - a few hundred kilobytes - went out beside the page's
+ * own reads and held one of them up by most of a second, measured on a
+ * throttled batch overview. So the wait starts once no query is in flight,
+ * and is then idle time when the browser offers it, a short delay where it
+ * does not.
  */
 export function useIdlePagePrefetch(pages: readonly NamespacedId[]): void {
   const prefetch = usePagePrefetch()
+  const reading = useIsFetching() > 0
   // the list is rebuilt every render; what matters is which pages it names
   const key = pages.join('\n')
   useEffect(() => {
     const ids = key === '' ? [] : (key.split('\n') as NamespacedId[])
-    if (ids.length === 0) return
+    if (ids.length === 0 || reading) return
     const run = () => {
       for (const id of ids) prefetch(id)
     }
@@ -124,5 +131,5 @@ export function useIdlePagePrefetch(pages: readonly NamespacedId[]): void {
     }
     const timer = setTimeout(run, 200)
     return () => clearTimeout(timer)
-  }, [key, prefetch])
+  }, [key, prefetch, reading])
 }
