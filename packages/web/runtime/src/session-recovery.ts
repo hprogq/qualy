@@ -120,6 +120,8 @@ type SessionMessage =
   | { readonly type: 'resumed' }
   | { readonly type: 'switched' }
   | { readonly type: 'changed' }
+  | { readonly type: 'waiting?' }
+  | { readonly type: 'waiting' }
 
 const isMessage = (data: unknown, type: SessionMessage['type']): boolean =>
   typeof data === 'object' && data !== null && (data as { type?: unknown }).type === type
@@ -153,6 +155,74 @@ export const announceSignedIn = (waitMs: number): Promise<SignInOutcome> => {
     }
     channel.postMessage({ type: 'signed-in' } satisfies SessionMessage)
   })
+}
+
+/** whether a page waits for its reader to sign in again, as the sign-in tab knows it */
+export type WaitingPage = 'present' | 'absent' | 'unknown'
+
+/**
+ * How long a sign-in tab listens for a waiting page before it takes there to
+ * be none. A page that waits answers the moment it hears the question, and
+ * says so unasked when it starts waiting, so this only bounds a sign-in that
+ * is over before the tab has been open this long.
+ */
+const PRESENCE_MS = 200
+
+/**
+ * Asks the other tabs, as the sign-in tab opens, whether a page is waiting
+ * for its reader, and keeps listening while it is open. `known` answers once
+ * a page has said so, or once `PRESENCE_MS` has passed since the question
+ * without one: so a sign-in for no waiting page ends as an ordinary one, at
+ * once, rather than announcing itself and waiting out an answer nobody gives.
+ */
+export const listenForWaitingPage = (): {
+  readonly known: () => Promise<WaitingPage>
+  readonly close: () => void
+} => {
+  if (typeof BroadcastChannel === 'undefined') {
+    return { known: () => Promise.resolve('unknown'), close: () => {} }
+  }
+  const channel = new BroadcastChannel(SESSION_CHANNEL)
+  let present = false
+  let heard = () => {}
+  const answered = new Promise<void>((resolve) => (heard = resolve))
+  channel.onmessage = (event: MessageEvent) => {
+    if (!isMessage(event.data, 'waiting')) return
+    present = true
+    heard()
+  }
+  channel.postMessage({ type: 'waiting?' } satisfies SessionMessage)
+  const asked = Date.now()
+  return {
+    known: async () => {
+      const left = PRESENCE_MS - (Date.now() - asked)
+      if (!present && left > 0) {
+        let timer: ReturnType<typeof setTimeout> | undefined
+        await Promise.race([
+          answered,
+          new Promise((resolve) => (timer = setTimeout(resolve, left))),
+        ])
+        clearTimeout(timer)
+      }
+      return present ? 'present' : 'absent'
+    },
+    close: () => channel.close(),
+  }
+}
+
+/**
+ * Says this page waits for its reader: once now, for a sign-in tab already
+ * open, and to every sign-in tab that asks from then on. Returns the way to
+ * stop, which is when the page no longer waits.
+ */
+export const answerAsWaiting = (): (() => void) => {
+  if (typeof BroadcastChannel === 'undefined') return () => {}
+  const channel = new BroadcastChannel(SESSION_CHANNEL)
+  channel.onmessage = (event: MessageEvent) => {
+    if (isMessage(event.data, 'waiting?')) channel.postMessage({ type: 'waiting' })
+  }
+  channel.postMessage({ type: 'waiting' } satisfies SessionMessage)
+  return () => channel.close()
 }
 
 /** tells the tab that signed in whether this page carried on, or belongs to somebody else */

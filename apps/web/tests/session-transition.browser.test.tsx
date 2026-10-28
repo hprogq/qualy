@@ -4,7 +4,13 @@ import { useEffect, useState } from 'react'
 import { Navigate, Outlet } from 'react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Effect } from 'effect'
-import { preloadable, useManifest, useRunApi, useSessionTransition } from '@qualy/web-runtime'
+import {
+  listenForWaitingPage,
+  preloadable,
+  useManifest,
+  useRunApi,
+  useSessionTransition,
+} from '@qualy/web-runtime'
 import { onSignOut } from '@qualy/web-runtime/identity'
 import { apiError, emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
 
@@ -496,6 +502,30 @@ describe('a session lost from under a signed-in reader', () => {
     await expect
       .element(page.getByRole('textbox', { name: 'draft' }))
       .toHaveValue('half a sentence')
+  })
+
+  // A sign-in tab tells a waiting page apart from none at all as it opens,
+  // so a sign-in with nobody waiting goes on at once instead of waiting out
+  // an answer.
+  it('says it waits to a sign-in tab that asks, and stops once the reader is back', async () => {
+    let back = false
+    await screen(() => (back ? 'reader' : undefined))
+    await expect.element(page.getByRole('dialog')).toBeVisible()
+    const asking = listenForWaitingPage()
+    try {
+      expect(await asking.known()).toBe('present')
+    } finally {
+      asking.close()
+    }
+    back = true
+    window.dispatchEvent(new Event('focus'))
+    await expect.element(page.getByRole('dialog')).not.toBeInTheDocument()
+    const again = listenForWaitingPage()
+    try {
+      expect(await again.known()).toBe('absent')
+    } finally {
+      again.close()
+    }
   })
 
   it('never makes the call as somebody else, and offers only a reload', async () => {

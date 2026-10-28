@@ -108,7 +108,7 @@ export {
 } from './route-builder.tsx'
 export { cursorPages } from './api-query.ts'
 // a sign-in opened by a session's recovery, and how it says it is done
-export { announceSignedIn, SESSION_RESUME_PARAM } from './session-recovery.ts'
+export { announceSignedIn, listenForWaitingPage, SESSION_RESUME_PARAM } from './session-recovery.ts'
 export {
   LIVE_GRACE_MS,
   LiveChannels,

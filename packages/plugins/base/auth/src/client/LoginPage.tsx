@@ -27,6 +27,7 @@ import {
 } from 'lucide-react'
 import {
   announceSignedIn,
+  listenForWaitingPage,
   PluginSurface,
   SESSION_RESUME_PARAM,
   sessionDestinationHref,
@@ -512,6 +513,20 @@ export default function LoginPage() {
   const resume = params.get(SESSION_RESUME_PARAM) === '1'
   // the page that waited said it carried on
   const [resumed, setResumed] = useState(false)
+  // Whether a page is waiting at all, asked as this tab opens. A sign-in
+  // address can be opened, shared or bookmarked with nobody waiting; asked
+  // only on signing in, the answer was three seconds of silence before the
+  // sign-in went on as any other.
+  const waitingPage = useRef<ReturnType<typeof listenForWaitingPage>>(undefined)
+  useEffect(() => {
+    if (!resume) return
+    const listening = listenForWaitingPage()
+    waitingPage.current = listening
+    return () => {
+      listening.close()
+      if (waitingPage.current === listening) waitingPage.current = undefined
+    }
+  }, [resume])
   // the ending is decided once; the manifest changing under it is not a second sign-in
   const ended = useRef(false)
   // Signed in here, and on the way in. The form that did it stays as it is
@@ -526,14 +541,21 @@ export default function LoginPage() {
       next === undefined ? { kind: 'home' } : { kind: 'return-path', path: next }
     if (resume) {
       ended.current = true
-      void announceSignedIn(RESUME_ANSWER_MS).then((answer) => {
+      const listening = waitingPage.current
+      void (async () => {
+        // nobody waiting: the visit ends as any sign-in does, at once
+        if (listening !== undefined && (await listening.known()) === 'absent') {
+          void startSession({ destination: to })
+          return
+        }
+        const answer = await announceSignedIn(RESUME_ANSWER_MS)
         if (answer === 'unanswered' || answer === 'switched') {
           void startSession({ destination: to })
           return
         }
         setResumed(true)
         window.close()
-      })
+      })()
       return
     }
     // Signed in, under a manifest that may still be a visitor's: signed in
@@ -610,8 +632,12 @@ export default function LoginPage() {
 
   const onAuthenticated = () => {
     if (chosen !== undefined) markUsed(chosen.code)
-    // signing in for a waiting page: asked again, and the ending above follows
+    // Signing in for a waiting page: asked again, and the ending above
+    // follows. The form stays as it is meanwhile, as it does for any sign-in:
+    // a page that waits answers within a request, and the answer is what
+    // takes its place.
     if (resume) {
+      setEntering(true)
       void present.refetch()
       return
     }

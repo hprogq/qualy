@@ -8,6 +8,7 @@ import { buildPageHref } from './pages.ts'
 import type { Manifest } from './runtime-context.tsx'
 import {
   announceOutcome,
+  answerAsWaiting,
   identityChanging,
   installSessionRecovery,
   onSessionChangedElsewhere,
@@ -210,8 +211,11 @@ export function SessionRecoveryGate({
     document.addEventListener('visibilitychange', returned)
     window.addEventListener('focus', returned)
     const unhear = onSignedInElsewhere(() => void ask())
+    // a sign-in tab learns there is a page to tell, rather than waiting out an answer
+    const unanswer = answerAsWaiting()
     return () => {
       stopped = true
+      unanswer()
       clearInterval(timer)
       document.removeEventListener('visibilitychange', returned)
       window.removeEventListener('focus', returned)
