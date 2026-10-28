@@ -12,6 +12,7 @@ import {
   CurrentUser,
   CurrentViewer,
   SessionExpired,
+  SessionPresence,
   Viewer,
 } from '@qualy/auth-contract/session'
 import { clearSessionCookie } from './session-cookie.ts'
@@ -50,7 +51,10 @@ import { hashSessionToken } from '../session.ts'
  * the start for a session never used since; the database's clock decides it,
  * as it decides the absolute expiry beside it.
  */
-const sessionByToken = (tokenHash: string, idleSeconds: number | undefined) =>
+const sessionWhere = (
+  where: { readonly tokenHash: string } | { readonly id: string },
+  idleSeconds: number | undefined,
+) =>
   db.query((k) =>
     k
       .selectFrom('Session as s')
@@ -61,7 +65,11 @@ const sessionByToken = (tokenHash: string, idleSeconds: number | undefined) =>
         join.onRef('t.tenantId', '=', 'u.tenantId').onRef('t.id', '=', 'u.userTypeId'),
       )
       .innerJoin('Tenant as n', 'n.id', 's.tenantId')
-      .where('s.tokenHash', '=', tokenHash)
+      .$call((query) =>
+        'id' in where
+          ? query.where('s.id', '=', where.id)
+          : query.where('s.tokenHash', '=', where.tokenHash),
+      )
       .select((eb) => [
         's.id',
         's.tenantId',
@@ -86,6 +94,9 @@ const sessionByToken = (tokenHash: string, idleSeconds: number | undefined) =>
       ])
       .executeTakeFirst(),
   )
+
+const sessionByToken = (tokenHash: string, idleSeconds: number | undefined) =>
+  sessionWhere({ tokenHash }, idleSeconds)
 
 const deleteSession = (id: string) =>
   db.query((k) => k.deleteFrom('Session').where('id', '=', id).execute())
@@ -268,5 +279,28 @@ export const layer = Layer.effect(
         }),
       ),
     )
+  }),
+)
+
+/**
+ * Whether a session resolved earlier is still one, by the same rule the
+ * middlewares apply. It only reads: a session found ended is left for the
+ * next request that presents it to delete, and nothing here is use.
+ */
+export const presenceLayer = Layer.effect(
+  SessionPresence,
+  Effect.gen(function* () {
+    const config = yield* AuthConfig
+    const withDb = yield* withDatabase
+    return SessionPresence.of({
+      isLive: (sessionId) =>
+        withDb(
+          Effect.map(
+            sessionWhere({ id: sessionId }, config.sessionIdleSeconds),
+            (session) =>
+              session !== undefined && !session.expired && !session.idle && session.usable,
+          ),
+        ).pipe(Effect.orDie),
+    })
   }),
 )

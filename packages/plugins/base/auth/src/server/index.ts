@@ -31,13 +31,14 @@ import {
   Authenticated,
   CurrentUser,
   CurrentViewer,
+  SessionPresence,
   Viewer,
 } from '@qualy/auth-contract/session'
 import { make as makeUserTypes, type UserTypeRow } from './user-types.ts'
 import { make as makeUsers, type UserProjection } from './users.ts'
 import { make as makeSelf } from './self.ts'
 import { make as makeSelfSecurity } from './self-security.ts'
-import { layer as sessionLayer, viewerLayer } from './session.ts'
+import { layer as sessionLayer, presenceLayer, viewerLayer } from './session.ts'
 import { recoveryBootCheck } from './recovery.ts'
 import { publicOriginBootCheck, PublicOriginResolver, singleOriginLayer } from './public-origin.ts'
 import { secretHealthBootCheck } from './secret-health.ts'
@@ -166,6 +167,7 @@ export const serviceLayer: Layer.Layer<
   | Iam
   | Authenticated
   | Viewer
+  | SessionPresence
   | SignIn
   | LoginSessions
   | AnonymousTenantResolver
@@ -178,7 +180,7 @@ export const serviceLayer: Layer.Layer<
   // one day tells tenants apart by their name replaces these two layers and
   // nothing else here changes. The outbound port rides with them: every
   // driver reaches its upstream through the policy this deployment set.
-> = Layer.mergeAll(tags, sessionLayer, viewerLayer, signInLayer).pipe(
+> = Layer.mergeAll(tags, sessionLayer, viewerLayer, presenceLayer, signInLayer).pipe(
   Layer.provideMerge(Layer.mergeAll(singleTenantLayer, singleOriginLayer, outboundLayer)),
 )
 

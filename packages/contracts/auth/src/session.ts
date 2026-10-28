@@ -1,4 +1,4 @@
-import { Context, Schema } from 'effect'
+import { Context, Schema, type Effect } from 'effect'
 import { HttpApiMiddleware, HttpApiSchema } from 'effect/http-api'
 import type { Principal } from '@qualy/rbac-contract'
 
@@ -141,3 +141,17 @@ export class Viewer extends HttpApiMiddleware.Service<
     provides: CurrentViewer
   }
 >()('@qualy/plugin-auth/Viewer') {}
+
+/**
+ * Whether a session already resolved is still one.
+ *
+ * A request is judged once, at its start; a connection that stays open for
+ * minutes outlives that judgement. Whoever holds one asks this from time to
+ * time, by the session's id, and lets go when the answer is no. The answer
+ * is the middlewares' own - ended, idle past its limit, a disabled account
+ * or tenant are all "no" - and asking it is never use: it touches nothing.
+ */
+export class SessionPresence extends Context.Service<
+  SessionPresence,
+  { readonly isLive: (sessionId: string) => Effect.Effect<boolean> }
+>()('@qualy/plugin-auth/SessionPresence') {}
