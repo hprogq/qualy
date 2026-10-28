@@ -146,6 +146,24 @@ export default defineConfig(({ mode }) => ({
               priority: 4,
               includeDependenciesRecursively: false,
             },
+            // The shell's small parts in one pool: the base pieces nearly
+            // every screen draws and the runtime's page furniture, each a few
+            // hundred bytes, each a chunk of its own when pooled by which
+            // entries draw it. Named one by one rather than by package,
+            // because a package-wide pool is not this: all of @qualy/ui
+            // brings the date pickers and the photo viewer, whose
+            // stylesheets then land in the shell, and every small module of
+            // the platform at once closed a ring and put 20 KB on the sign-in
+            // page. A part qualifies when it is small, imports no stylesheet,
+            // and reaches only the widgets, StyleX, React and the runtime's
+            // core, none of which imports it back; and when the boot does not
+            // draw it, so the pool stays out of the first wave.
+            {
+              name: 'parts',
+              test: /[\\/]packages[\\/]web[\\/](?:ui[\\/]src[\\/](?:components[\\/](?:avatar|badge|field-fill|page-container|pager|popover|skeleton|ticker|toggle-group)\.tsx?|lib[\\/](?:overlay-motion|panel)\.ts)|runtime[\\/]src[\\/](?:links|page-title|screen-aside|screen-fill|screen-foot|subject|workspace-capabilities)\.tsx)$/,
+              priority: 4,
+              includeDependenciesRecursively: false,
+            },
             // The widget library in one pool. Its modules import one another in
             // rings - a context made in one file and read in the next - which
             // an ESM graph tolerates module by module but not chunk by chunk:

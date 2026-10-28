@@ -89,6 +89,31 @@ collector 生成 `import(module).then((module) => ({ default: module.X }))`，�
 默认布局插件的声明：app 布局是顶栏的 header-actions 与 user-menu；三个 RailShell 布局再加抽屉的三个槽位（抽屉内容
 预先挂载）和各自的上下文条、导航徽标。这一项不改变请求数与字节，构建预算不变；收益是段数，需要冷缓存时间轴确认。
 
+### 壳的小部件
+
+前几步之后批次概览还有约 60 个小于 2 KiB 的分片。按包或按大小整体合池的几种尝试都失败了：
+
+| 尝试                                              | 结果                                     |
+| ------------------------------------------------- | ---------------------------------------- |
+| boot 静态依赖链上的全部一方模块一池（`$initial`） | 与入口分片成环                           |
+| 平台包（ui、runtime、i18n、contracts）小模块一池  | 成环，登录页 Brotli +20 KB 以上          |
+| 同上，entriesAware 合并阈值 16 KiB                | 成环，登录页 +18 KB                      |
+| 全部一方 ≤2 KiB 模块，entriesAware 16 KiB         | 登录页 +127 KB，三个已登录页面超字节预算 |
+
+整个 `@qualy/ui` 一池还会把日期选择器、图片查看器的样式表带进壳。最后按名单收：九个基础组件与两个 helper
+（avatar、badge、field-fill、page-container、pager、popover、skeleton、ticker、toggle-group、overlay-motion、
+panel）和 runtime 的七个页面部件（links、page-title、screen-aside、screen-fill、screen-foot、subject、
+workspace-capabilities）。条件是体积小、不导入样式表、只依赖 widgets、StyleX、React 与 runtime 核心且它们不反向导入、
+boot 不画它们。三种分法（只 UI、UI 与 runtime 分两池、合一池）里一池最好：
+
+| 方案       | boot Brotli | login       | batches | batch-overview | my-entries | org-tree |
+| ---------- | ----------: | ----------- | ------: | -------------: | ---------: | -------: |
+| 槽位预取后 |      262222 | 59 / 347257 |     105 |            104 |        132 |       92 |
+| 部件一池   |      262337 | 56 / 350800 |      89 |             87 |        116 |       78 |
+
+已登录页面少 14 至 17 个请求，Brotli 少 2 至 3 KB；登录页少 3 个请求、多 3.5 KB（它画其中几个部件，池子整个跟来），
+登录预算按同一规则重测为 61 个请求、380 KiB。无环，boot 不变。
+
 ## 可选页脚与微型分包（2026-10-16）
 
 新增可配置站点备案页脚后，通用 `shared` 分组把只有 41 B 的上下文键单独拆成脚本，
