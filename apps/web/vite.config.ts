@@ -123,6 +123,29 @@ export default defineConfig(({ mode }) => ({
         // them.
         codeSplitting: {
           groups: [
+            // The icons in two pools. Each is a few hundred bytes, and pooled
+            // by which entries draw it every icon was a chunk of its own: 51
+            // of the 53 that held one were under 2 KB, and they were a fifth
+            // of what the batch overview asked for. One pool of them all went
+            // into the boot, since the boot draws a few, and cost every first
+            // load, sign-in included, 7 KB Brotli more. So the icons the boot
+            // draws (`$initial`) pool by themselves and the rest pool apart:
+            // the boot is what it was, and a page pays one request where it
+            // paid twenty. An icon imports only the library's own factory and
+            // React, so neither pool closes a ring.
+            {
+              name: 'boot-icons',
+              test: /[\\/]node_modules[\\/]lucide-react[\\/]/,
+              tags: ['$initial'],
+              priority: 5,
+              includeDependenciesRecursively: false,
+            },
+            {
+              name: 'icons',
+              test: /[\\/]node_modules[\\/]lucide-react[\\/]/,
+              priority: 4,
+              includeDependenciesRecursively: false,
+            },
             // The widget library in one pool. Its modules import one another in
             // rings - a context made in one file and read in the next - which
             // an ESM graph tolerates module by module but not chunk by chunk:
