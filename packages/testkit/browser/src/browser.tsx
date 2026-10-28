@@ -9,10 +9,19 @@ import {
   emptyComponentRegistry,
   useTheme,
   type ComponentRegistry,
+  type LiveChannelsOptions,
 } from '@qualy/web-runtime'
 import { UiProvider } from '@qualy/ui/provider'
 import { Effect } from 'effect'
 import { toast } from '@qualy/ui/toast'
+import { refusingLiveServer, type FakeLiveServer } from '@qualy/web-runtime/testkit'
+
+export {
+  fakeLiveServer,
+  refusingLiveServer,
+  type FakeLiveServer,
+  type FakeLiveSocket,
+} from '@qualy/web-runtime/testkit'
 
 declare module 'vitest/browser' {
   interface LocatorSelectors {
@@ -148,6 +157,8 @@ export function renderScreen({
   // says so through the same stored preference a user's toggle writes
   locale = 'zh-CN',
   storage = {},
+  live,
+  liveTiming,
 }: {
   client: FakeClient
   /**
@@ -183,6 +194,13 @@ export function renderScreen({
   locale?: 'zh-CN' | 'en-US'
   /** what this browser already keeps, as a visitor who has been here before */
   storage?: Record<string, string>
+  /**
+   * The server's half of every live channel the screen opens. Without one,
+   * every channel is refused, and the screen keeps to its polling cadence.
+   */
+  live?: FakeLiveServer
+  /** the live channels' waits, for a case that cannot wait them out */
+  liveTiming?: LiveChannelsOptions['timing']
 }) {
   // every screen starts from a fresh browser: view modes and toggles the
   // product persists must not leak from one test into the next (styled
@@ -208,6 +226,8 @@ export function renderScreen({
         <WidgetBridge>
           <RuntimeProvider
             clientFor={() => client}
+            webSocket={(live ?? refusingLiveServer()).webSocket}
+            {...(liveTiming === undefined ? {} : { liveTiming })}
             registry={{ ...emptyComponentRegistry(), ...registry }}
           >
             {/* the app's own router over a history in memory: a page that

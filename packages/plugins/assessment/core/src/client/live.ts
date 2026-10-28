@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef } from 'react'
+import { Schema } from 'effect'
 import { hashKey, useQuery, useQueryClient, type QueryKey } from '@tanstack/react-query'
-import { useApi, useApiQuery, useApiStream, type ApiStreamState } from '@qualy/web-runtime'
-import { assessmentApi } from './api.ts'
-import type { BatchLiveEvent } from '../api.ts'
+import { useApi, useApiQuery, useLiveChannel, type LiveChannelState } from '@qualy/web-runtime'
+import { assessmentApi, assessmentUrls } from './api.ts'
+import { batchLiveEvent, type BatchLiveEvent } from '../api.ts'
 import { settler } from './roster/live-settle.ts'
 
 // One batch's live wake-ups, for whichever screen holds it open. The screen
@@ -26,6 +27,10 @@ import { settler } from './roster/live-settle.ts'
 // to mark reads stale that reads each of them once whatever asked for it.
 // Without that, every screen read its whole queue once per kind per
 // decision, across every reviewer with the batch open.
+//
+// The channel itself is the runtime's (useLiveChannel): every screen of one
+// batch in this tab shares one connection, and a kind this page does not
+// know - a newer server's - is passed over rather than taken for a fault.
 //
 // `live` is the degrade signal - false means the screen should fall back to
 // its own polling cadence. For a screen that tells its reader how the line
@@ -54,7 +59,9 @@ export interface BatchWake {
   readonly stale: (key: QueryKey) => void
 }
 
-export function useBatchLive(batchId: string, onWake: (wake: BatchWake) => void): ApiStreamState {
+const isBatchLiveEvent = Schema.is(batchLiveEvent)
+
+export function useBatchLive(batchId: string, onWake: (wake: BatchWake) => void): LiveChannelState {
   const api = useApi(assessmentApi)
   const query = useApiQuery(assessmentApi)
   const queryClient = useQueryClient()
@@ -97,9 +104,8 @@ export function useBatchLive(batchId: string, onWake: (wake: BatchWake) => void)
   )
   useEffect(() => () => burst.cancel(), [burst])
 
-  // absent under a stubbed harness that does not fake these endpoints; the
-  // hook then stays idle and the screen simply polls
-  const streams = typeof api.assessment.watchBatch === 'function'
+  // absent under a stubbed harness that does not fake the timetable; the
+  // alarm then stays idle
   const told = typeof api.assessment.getTimeline === 'function'
 
   const timeline = useQuery(
@@ -153,12 +159,19 @@ export function useBatchLive(batchId: string, onWake: (wake: BatchWake) => void)
     // stable for the page's lifetime, so naming them re-arms nothing
   }, [nextPlannedAt, batchId, queryClient, query.assessment.getTimeline, burst])
 
-  return useApiStream(
-    streams ? () => api.assessment.watchBatch({ params: { batchId } }) : undefined,
-    (event) => {
-      // a heartbeat only keeps the line open; it moves nothing on screen
-      if (event.kind !== 'heartbeat') burst.wake(event.kind)
-    },
-    { key: batchId },
-  )
+  // an address that names no batch has no channel to hold: the builder
+  // encodes through the endpoint's own schema, and refuses what it cannot name
+  const path = useMemo(() => {
+    try {
+      return assessmentUrls.assessment.watchBatch({ params: { batchId } })
+    } catch {
+      return undefined
+    }
+  }, [batchId])
+  return useLiveChannel(path, (kind) => {
+    const event = { kind }
+    // a heartbeat never reaches here - the channel answers it - and a kind
+    // this page does not know moves nothing it shows
+    if (isBatchLiveEvent(event) && event.kind !== 'heartbeat') burst.wake(event.kind)
+  })
 }

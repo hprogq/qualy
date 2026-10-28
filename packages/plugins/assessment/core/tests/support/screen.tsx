@@ -1,5 +1,10 @@
-import { Effect } from 'effect'
-import { renderScreen as render, withDocumentContext } from '@qualy/testkit/browser'
+import { Effect, Exit, Fiber, Stream } from 'effect'
+import {
+  fakeLiveServer,
+  renderScreen as render,
+  withDocumentContext,
+  type FakeLiveServer,
+} from '@qualy/testkit/browser'
 // the host's stylesheet, because a screen asserted unstyled is a screen
 // nobody sees; it is the product's one stylesheet wherever a screen renders
 import '../../../../../../apps/web/src/app.css'
@@ -50,9 +55,45 @@ const termsIn = (locale: 'zh-CN' | 'en-US') => ({
   },
 })
 
+/**
+ * A batch's live channel, played from a `watchBatch` stub.
+ *
+ * The cases here script the server's half the way they always have: a stub
+ * answering with a stream of wake-ups. Each socket the page opens is one
+ * call of the stub, every element one frame, and a stream that ends or
+ * fails is a connection dropped without a close (1006). A case about the
+ * socket itself - a close code, a refusal - brings its own server instead.
+ */
+const playedLive = (watch: unknown): FakeLiveServer | undefined => {
+  if (typeof watch !== 'function') return undefined
+  return fakeLiveServer((socket) => {
+    const batchId = /\/batches\/([^/]+)\/events$/.exec(socket.url.pathname)?.[1] ?? ''
+    socket.accept()
+    const fiber = Effect.runFork(
+      Effect.flatMap(
+        (watch as (input: unknown) => Effect.Effect<Stream.Stream<{ kind: string }>>)({
+          params: { batchId },
+        }),
+        (stream) =>
+          Stream.runForEach(stream, (event) => Effect.sync(() => socket.send(event.kind))),
+      ),
+    )
+    socket.onClosed(() => void Effect.runFork(Fiber.interrupt(fiber)))
+    fiber.addObserver((exit) => {
+      if (!Exit.hasInterrupts(exit)) socket.close(1006)
+    })
+  })
+}
+
 export const renderScreen = (options: Parameters<typeof render>[0]) =>
   render({
     ...options,
+    ...(options.live === undefined
+      ? (() => {
+          const live = playedLive(options.client['assessment']?.['watchBatch'])
+          return live === undefined ? {} : { live }
+        })()
+      : {}),
     // the shell's own read of who is signed in, which a few screens share
     client: withDocumentContext(
       {

@@ -14,15 +14,17 @@ import {
   trimmedName,
   uuidInput,
 } from '@qualy/api-kit/schema'
-import { Authenticated } from '@qualy/auth-contract/session'
+import { Authenticated, Viewer } from '@qualy/auth-contract/session'
 import { BATCH_STAFF_CODES, PHASE_GATED_CODES } from './permission-codes.ts'
 
 /**
- * One wake-up on a batch's live stream.
+ * One wake-up on a batch's live channel, one text frame each.
  *
- * `sync` opens every (re)connection: whatever happened while nobody was
- * listening, the answer is the same - read again. `heartbeat` keeps
- * middleboxes from reaping a quiet connection and means nothing.
+ * `sync` opens every (re)connection, once the server has judged the
+ * listener and subscribed it: whatever happened while nobody was listening,
+ * the answer is the same - read again. `heartbeat` keeps middleboxes from
+ * reaping a quiet connection, and the page answers each one so the server
+ * knows it is still there; it means nothing else.
  */
 export const batchLiveEvent = Schema.Struct({
   kind: Schema.Literals([
@@ -2902,13 +2904,17 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
     // something it may be caching has changed, and nothing else. No ids, no
     // payloads - an event names a region of the screen to re-read, and the
     // re-read goes through the same authorized endpoints as everything else.
-    // Nothing rides this stream that its holder was not already entitled to
-    // ask for.
+    // Nothing rides this channel that its holder was not already entitled
+    // to ask for.
+    //
+    // A WebSocket (@qualy/api-kit/live-socket), declared here for its
+    // address alone: the frames are `batchLiveEvent`, and every refusal -
+    // no session, no access, no seat, a page this server cannot talk to - is
+    // a close code, since a browser cannot read a refused handshake. So the
+    // session is resolved without refusing, and judged after the upgrade.
     HttpApiEndpoint.get('watchBatch', '/assessment/batches/:batchId/events', {
       params: Schema.Struct({ batchId: uuidInput }),
-      success: HttpApiSchema.StreamSse({ data: batchLiveEvent }),
-      error: [AccessDenied],
-    }).middleware(Authenticated),
+    }).middleware(Viewer),
     // a batch the reader cannot see answers as one that is not there (§32.96)
     HttpApiEndpoint.get('getBatch', '/assessment/batches/:batchId', {
       params: Schema.Struct({ batchId: uuidInput }),

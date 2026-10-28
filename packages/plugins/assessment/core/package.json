@@ -91,7 +91,9 @@
     "@qualy/plugin-layout-default": "workspace:*",
     "@qualy/testkit": "workspace:*",
     "@qualy/tsconfig": "workspace:*",
-    "@types/react": "catalog:"
+    "@types/react": "catalog:",
+    "@types/ws": "^8.18.2",
+    "ws": "8.22.0"
   },
   "peerDependencies": {
     "react": "catalog:"

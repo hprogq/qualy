@@ -931,6 +931,7 @@ export function ResultLedger({
   shut = NONE_SHUT,
   fold = 'account',
   stream = null,
+  polling = false,
   addable = NONE_ADDABLE,
   onItemAdd,
 }: {
@@ -961,6 +962,8 @@ export function ResultLedger({
   fold?: 'account' | 'claims'
   /** whether the page is keeping the account current as the round moves */
   stream?: LiveState | null
+  /** whether the page reads the account again on its own while the line is down */
+  polling?: boolean
   /** the questions the reader may file another claim on right now */
   addable?: ReadonlySet<string>
   /** where another claim is filed on a question; the button says where that is */
@@ -1081,6 +1084,7 @@ export function ResultLedger({
           reader={reader}
           closed={closed}
           stream={closed === null ? stream : null}
+          polling={polling}
         />
       </div>
       {/* a direct child of the whole ledger, so it holds for all of it */}
@@ -1179,12 +1183,14 @@ function Head({
   reader,
   closed,
   stream,
+  polling,
 }: {
   model: LedgerModel
   heading: ReactNode | undefined
   reader: 'owner' | 'staff'
   closed: 'archived' | 'excluded' | null
   stream: LiveState | null
+  polling: boolean
 }) {
   return (
     <header {...stylex.props(styles.head)}>
@@ -1198,7 +1204,13 @@ function Head({
           {/* the account follows the round as it moves; a closed one no
               longer moves, which the note under the total says */}
           {stream !== null && (
-            <LiveMark state={stream} data-testid="result-live">
+            <LiveMark
+              state={stream}
+              data-testid="result-live"
+              {...(stream === 'waiting'
+                ? { hint: m.result_liveWaiting({ polling: polling ? 'yes' : 'no' }) }
+                : {})}
+            >
               {m.result_live({ state: stream })}
             </LiveMark>
           )}

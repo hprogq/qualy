@@ -318,6 +318,8 @@ export interface WorkspaceProps {
    * roster - and no mark is drawn.
    */
   live?: LiveLine | null
+  /** whether the page reads again on its own while the live line is down */
+  polling?: boolean
   rows: readonly StructureRow[]
   entriesByItem: ReadonlyMap<string, readonly EntryDto[]>
   /** every claim this reader may see, for the counts at the head */
@@ -378,6 +380,7 @@ function Workspace({
   heading,
   totalLabel,
   live = null,
+  polling = false,
   rows,
   entriesByItem,
   entries,
@@ -621,6 +624,7 @@ function Workspace({
       headingLevel={viewer === 'owner' ? 1 : 2}
       totalLabel={totalLabel}
       stream={stream}
+      polling={polling}
       outline={outline}
       total={totalsOf(outline, standing)}
       scored={scored}

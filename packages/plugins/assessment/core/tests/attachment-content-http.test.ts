@@ -6,7 +6,14 @@ import { createTestContext, postgresAvailable } from '@qualy/plugin-database/tes
 import { Api } from '@qualy/api-kit/local'
 import { assembledLayer } from '@qualy/api-kit/assembled'
 import { QUALY_API_PREFIX } from '@qualy/api-kit'
-import { Authenticated, AuthRequired, CurrentUser } from '@qualy/auth-contract/session'
+import {
+  Authenticated,
+  AuthRequired,
+  CurrentUser,
+  CurrentViewer,
+  SessionPresence,
+  Viewer,
+} from '@qualy/auth-contract/session'
 import { assessmentApiGroup } from '../src/api.ts'
 import { assessmentApiHandlers } from '../src/server/index.ts'
 import { AssessmentLive } from '../src/live/service.ts'
@@ -45,6 +52,15 @@ describe.runIf(postgresAvailable)('attachment content HTTP delivery', () => {
         }),
       ),
     )
+    // the batch's live channel resolves its listener without refusing; no
+    // case here opens one
+    const viewer = Layer.succeed(
+      Viewer,
+      Viewer.of((httpEffect) =>
+        Effect.provideService(httpEffect, CurrentViewer, { principal: undefined }),
+      ),
+    )
+    const presence = Layer.succeed(SessionPresence, { isLive: () => Effect.succeed(false) })
     web = HttpRouter.toWebHandler(
       HttpApiBuilder.layer(Api.local(assessmentApiGroup)).pipe(
         Layer.provide(assessmentApiHandlers),
@@ -52,6 +68,8 @@ describe.runIf(postgresAvailable)('attachment content HTTP delivery', () => {
           Layer.mergeAll(
             AssessmentLive.layer.pipe(Layer.provide(assembledLayer)),
             session,
+            viewer,
+            presence,
             catalogLayers,
             HttpServer.layerServices,
           ),

@@ -4,6 +4,8 @@ import type { ComponentProps, ReactNode } from 'react'
 import * as stylex from '@stylexjs/stylex'
 
 import { tokens } from '../theme/tokens.stylex.ts'
+import { Tooltip, TooltipContent, TooltipTrigger } from './tooltip.tsx'
+import { VisuallyHidden } from '../lib/visually-hidden.tsx'
 
 // The mark that says a screen is keeping time with something that moves
 // while it is read - a round being reviewed, an account being scored - and
@@ -16,11 +18,11 @@ import { tokens } from '../theme/tokens.stylex.ts'
 // Text-free like the rest of this package: the caller says the words for
 // each state.
 
-export type LiveState = 'live' | 'reconnecting'
+export type LiveState = 'live' | 'reconnecting' | 'waiting'
 
 /**
- * What a screen that follows a stream knows of its line, in the shape the
- * web runtime's `useApiStream` answers with.
+ * What a screen that follows a channel knows of its line, in the shape the
+ * web runtime's `useLiveChannel` answers with.
  */
 export interface LiveLine {
   /** a word has arrived on the connection open now */
@@ -32,21 +34,27 @@ export interface LiveLine {
   readonly lost: boolean
   /** the line has carried a word since the screen opened it */
   readonly heard: boolean
+  /** every seat on the server is taken, and the line is waiting for one */
+  readonly waiting: boolean
 }
 
 /**
  * The state to show for a screen's line.
  *
- * Every rule is the stream's, since only it knows when it dialled, how long
+ * Every rule is the channel's, since only it knows when it dialled, how long
  * a connection lived and whether anything ever arrived: a connection that
  * failed or ended before it proved steady, or a dial left unanswered past
- * its allowance, is lost; the planned re-dial after one that lasted is not;
+ * its allowance, is lost; the planned renewal after one that lasted is not;
  * and a line that has never carried a word is not reconnecting, it was
- * never live. `null` in, nothing out: the screen does not follow, or its
- * subject no longer moves.
+ * never live. A line waiting for a seat says so whether or not it was ever
+ * live: the reader may be holding the others open in tabs of their own.
+ * `null` in, nothing out: the screen does not follow, or its subject no
+ * longer moves.
  */
 export function liveStateOf(line: LiveLine | null): LiveState | null {
-  if (line === null || !line.heard) return null
+  if (line === null) return null
+  if (line.waiting) return 'waiting'
+  if (!line.heard) return null
   return line.live || !line.lost ? 'live' : 'reconnecting'
 }
 
@@ -102,23 +110,39 @@ const styles = stylex.create({
 
 export function LiveMark({
   state,
+  hint,
   children,
   ...props
 }: Omit<ComponentProps<'span'>, 'className' | 'style' | 'children'> & {
   state: LiveState
   /** what the state is called */
   children: ReactNode
+  /**
+   * A line more about the state, for whoever looks closer: shown on hover
+   * and focus, and read with the state. Never a step the reader must take.
+   */
+  hint?: ReactNode
 }) {
-  return (
+  const down = state !== 'live'
+  const mark = (
     // a status, so a reader who cannot see it hears the line come and go
     <span
       role="status"
       data-state={state}
+      {...(hint === undefined ? {} : { tabIndex: 0 })}
       {...props}
-      {...stylex.props(styles.mark, state === 'reconnecting' && styles.lost)}
+      {...stylex.props(styles.mark, down && styles.lost)}
     >
-      <span aria-hidden {...stylex.props(styles.dot, state === 'reconnecting' && styles.dotLost)} />
+      <span aria-hidden {...stylex.props(styles.dot, down && styles.dotLost)} />
       {children}
+      {hint !== undefined && <VisuallyHidden>{hint}</VisuallyHidden>}
     </span>
+  )
+  if (hint === undefined) return mark
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{mark}</TooltipTrigger>
+      <TooltipContent>{hint}</TooltipContent>
+    </Tooltip>
   )
 }

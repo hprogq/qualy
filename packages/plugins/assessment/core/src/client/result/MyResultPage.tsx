@@ -482,6 +482,8 @@ function Standing({
             closed={closed}
             shut={shut}
             stream={stream}
+            // the account is read again on its own cadence while the line is down
+            polling
             emptyAction={goEntries}
             // every claim of a question is read where it stands, and its
             // drawer opens over the account rather than on another page

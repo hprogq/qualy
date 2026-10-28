@@ -11,7 +11,11 @@ import { Api } from '@qualy/api-kit/local'
 import { assembledLayer } from '@qualy/api-kit/assembled'
 import { schemaRefusals } from '@qualy/api-kit/schema-refusal'
 import { sessionCookieName } from '@qualy/auth-contract/session'
-import { layer as sessionLayer } from '@qualy/plugin-auth/server/session'
+import {
+  layer as sessionLayer,
+  presenceLayer,
+  viewerLayer,
+} from '@qualy/plugin-auth/server/session'
 import { AuthConfig } from '@qualy/plugin-auth/server/sign-in'
 import { hashSessionToken } from '../../../base/auth/src/session.ts'
 import { assessmentApiGroup } from '../src/api.ts'
@@ -57,7 +61,11 @@ beforeAll(async () => {
         Layer.provide(
           assessmentApiHandlers.pipe(
             Layer.provide(services),
-            Layer.provide(sessionLayer.pipe(Layer.provide(Layer.mergeAll(services, authConfig)))),
+            Layer.provide(
+              Layer.mergeAll(sessionLayer, viewerLayer, presenceLayer).pipe(
+                Layer.provide(Layer.mergeAll(services, authConfig)),
+              ),
+            ),
           ),
         ),
       ),
@@ -69,6 +77,8 @@ beforeAll(async () => {
     Layer.provide(NodeHttpServer.layer(createServer, { port })),
     Layer.provide(services),
     Layer.provide(live),
+    // what the batch's live channel asks per connection
+    Layer.provide(presenceLayer.pipe(Layer.provide(Layer.mergeAll(services, authConfig)))),
   )
   scope = await Effect.runPromise(Scope.make())
   await Effect.runPromise(Layer.buildWithScope(serving, scope))

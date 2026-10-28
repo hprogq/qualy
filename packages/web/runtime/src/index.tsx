@@ -47,6 +47,8 @@ import {
   presentedManifest,
 } from './session-recovery.ts'
 import { SessionRecoveryGate } from './session-recovery-gate.tsx'
+import { LiveChannels, type LiveChannelsOptions } from './live-channel.ts'
+import { LiveChannelsContext, liveIdentityOf } from './live-channel-context.tsx'
 import { type ComponentRegistry } from './registry.ts'
 import {
   browserRuntime,
@@ -107,7 +109,16 @@ export {
 export { cursorPages } from './api-query.ts'
 // a sign-in opened by a session's recovery, and how it says it is done
 export { announceSignedIn, SESSION_RESUME_PARAM } from './session-recovery.ts'
-export { useApiStream, type ApiStreamState } from './api-stream.ts'
+export {
+  LIVE_GRACE_MS,
+  LiveChannels,
+  liveBackoffMs,
+  type LiveChannelsOptions,
+  type LiveChannelState,
+  type LiveHolder,
+  type LiveTiming,
+} from './live-channel.ts'
+export { useLiveChannel } from './live-channel-context.tsx'
 export { PageLink } from './links.tsx'
 export {
   PENDING_INDICATOR_AFTER,
@@ -193,6 +204,10 @@ export interface RuntimeProviderProps {
   onClientUnsupported?: (reason: ClientUnsupportedReason) => void
   /** the sign-in page, opened in a tab of its own when a session is lost under a reader */
   signInPage?: NamespacedId
+  /** makes the live channels' sockets; a harness brings its own, the page uses its WebSocket */
+  webSocket?: LiveChannelsOptions['webSocket']
+  /** the live channels' waits, shortened by a harness that cannot wait them out */
+  liveTiming?: LiveChannelsOptions['timing']
   registry: ComponentRegistry
   children: ReactNode
 }
@@ -230,6 +245,9 @@ export interface RuntimeProviderProps {
  * manifest this handler asked for then arrived as a session lost from under
  * the reader.
  */
+/** what a live channel closed for want of a session says, in the shape a request would */
+const SESSION_LOST = Object.assign(new Error('AUTH_REQUIRED'), { _tag: 'AUTH_REQUIRED' })
+
 function identityLostHandler(client: () => QueryClient, manifestKey: () => QueryKey) {
   let settling = false
   return (error: unknown) => {
@@ -270,15 +288,19 @@ export function RuntimeProvider({
   clientIdentity,
   onClientUnsupported,
   signInPage,
+  webSocket,
+  liveTiming,
   registry,
   children,
 }: RuntimeProviderProps) {
   const [manifestKey] = useState(() => ({ current: undefined as QueryKey | undefined }))
-  const [queryClient] = useState(() => {
-    const lost = identityLostHandler(
-      () => made,
+  const [lost] = useState(() =>
+    identityLostHandler(
+      () => queryClient,
       () => manifestKey.current ?? [],
-    )
+    ),
+  )
+  const [queryClient] = useState(() => {
     const made: QueryClient = new QueryClient({
       queryCache: new QueryCache({ onError: lost }),
       mutationCache: new MutationCache({ onError: lost }),
@@ -294,6 +316,24 @@ export function RuntimeProvider({
     })
     return made
   })
+  // One tab's live channels. A channel the server closes for want of a
+  // session is a session lost like any request that finds out, and goes to
+  // the same handler; a page the server will not talk to goes to whoever
+  // blocks the page.
+  const [channels] = useState(
+    () =>
+      new LiveChannels({
+        ...(webSocket === undefined ? {} : { webSocket }),
+        ...(liveTiming === undefined ? {} : { timing: liveTiming }),
+        ...(clientIdentity === undefined ? {} : { clientIdentity }),
+        ...(onClientUnsupported === undefined ? {} : { onClientUnsupported }),
+        onSessionLost: () => lost(SESSION_LOST),
+      }),
+  )
+  // Not disposed with the provider: a strict-mode remount runs the cleanup of
+  // a provider that stays, and would cut every channel its screens hold. A
+  // provider that really goes takes its screens with it, and each channel
+  // they let go of goes at the end of its grace.
   const [runtime] = useState(() => {
     const provider =
       provided ??
@@ -323,9 +363,16 @@ export function RuntimeProvider({
   })
   return (
     <QueryClientProvider client={queryClient}>
-      <RuntimeLoader clientFor={runtime.clientFor} utilsFor={runtime.utilsFor} registry={registry}>
-        {children}
-      </RuntimeLoader>
+      <LiveChannelsContext.Provider value={channels}>
+        <RuntimeLoader
+          clientFor={runtime.clientFor}
+          utilsFor={runtime.utilsFor}
+          registry={registry}
+          channels={channels}
+        >
+          {children}
+        </RuntimeLoader>
+      </LiveChannelsContext.Provider>
       {/* mounted once, above every screen: a plugin that wants to say
           something did not have to arrange for somewhere to say it */}
       <Toaster />
@@ -342,8 +389,9 @@ function RuntimeLoader({
   clientFor,
   utilsFor,
   registry,
+  channels,
   children,
-}: Omit<Runtime, 'manifest'> & { children: ReactNode }) {
+}: Omit<Runtime, 'manifest'> & { channels: LiveChannels; children: ReactNode }) {
   const describe = useLoadFailure()
   const query = utilsFor(appApi) as QueryUtils<ClientOf<typeof appApi>>
   const queryClient = useQueryClient()
@@ -424,6 +472,12 @@ function RuntimeLoader({
   // standing: it still describes this identity, and the page's own requests
   // say for themselves that they cannot reach the server.
   const known = manifest.data
+  // a manifest for someone else - signed out, signed in as another - lets go
+  // of every channel the last identity held, without waiting out a grace
+  const liveIdentity = known === undefined ? undefined : liveIdentityOf(known)
+  useEffect(() => {
+    if (liveIdentity !== undefined) channels.retain(liveIdentity)
+  }, [channels, liveIdentity])
   if (known === undefined) {
     if (manifest.isError) {
       // Nothing under it can say what went wrong, so this does: the

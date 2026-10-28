@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { Effect } from 'effect'
 import { FetchHttpClient, HttpClient } from 'effect/http'
 import { retryQuery } from '../src/api-query.ts'
-import { nextRedialMs } from '../src/api-stream.ts'
+import { liveBackoffMs } from '../src/live-channel.ts'
 
 // Both policies here answer the same question - how long to wait before
 // knocking again - and both used to answer it from something that does not
@@ -47,20 +47,25 @@ describe('retrying a failed read', () => {
   })
 })
 
-describe('re-dialling a stream', () => {
-  it('keeps backing away while every connection dies on arrival', () => {
-    // the accept-and-drop server: each dial is answered, delivers the
-    // catch-up event and ends within milliseconds
-    const waits: number[] = []
-    let wait = 3_000
-    for (let dial = 0; dial < 5; dial += 1) {
-      wait = nextRedialMs(wait, 40)
-      waits.push(wait)
-    }
-    expect(waits).toEqual([6_000, 12_000, 24_000, 48_000, 60_000])
+describe('waiting before a live channel dials again', () => {
+  const bounds = { floor: 1_000, cap: 30_000 }
+
+  it('doubles from the floor up to the cap, drawn from the upper half', () => {
+    expect([0, 1, 2, 3, 4, 5, 6].map((attempt) => liveBackoffMs(attempt, bounds, () => 1))).toEqual(
+      [1_000, 2_000, 4_000, 8_000, 16_000, 30_000, 30_000],
+    )
+    expect([0, 1, 2, 5].map((attempt) => liveBackoffMs(attempt, bounds, () => 0))).toEqual([
+      500, 1_000, 2_000, 15_000,
+    ])
   })
 
-  it('returns to the floor once a connection has lasted', () => {
-    expect(nextRedialMs(48_000, 20_000)).toBe(3_000)
+  it('spreads a hundred pages refused at once over the whole of the window', () => {
+    const waits = Array.from({ length: 100 }, () => liveBackoffMs(3, bounds))
+    for (const wait of waits) {
+      expect(wait).toBeGreaterThanOrEqual(4_000)
+      expect(wait).toBeLessThanOrEqual(8_000)
+    }
+    // not one knock: the earliest and the latest are seconds apart
+    expect(Math.max(...waits) - Math.min(...waits)).toBeGreaterThan(2_000)
   })
 })

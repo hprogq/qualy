@@ -1,4 +1,14 @@
-import { Context, Effect, Layer, PubSub, Result, Schedule, Schema, Stream } from 'effect'
+import {
+  Context,
+  Effect,
+  Layer,
+  PubSub,
+  Result,
+  Schedule,
+  Schema,
+  Stream,
+  type Scope,
+} from 'effect'
 import { DatabaseNotifications } from '@qualy/plugin-database/server'
 import { Assembled } from '@qualy/api-kit/assembled'
 import { ASSESSMENT_LIVE_CHANNEL, liveEventSchema, type AssessmentLiveEvent } from './events.ts'
@@ -9,7 +19,7 @@ import {
 } from './connections.ts'
 
 // The receiving half of the live bus: one dedicated LISTEN session per
-// process, fanned out in-process to however many SSE connections are open.
+// process, fanned out in-process to however many live connections are open.
 // One connection to the database, not one per browser.
 //
 // The pubsub is sliding on purpose. These are wake-ups, not records: a
@@ -25,7 +35,13 @@ export class AssessmentLive extends Context.Service<
   {
     /** every announcement in this tenant's database, as this process hears them */
     readonly events: Stream.Stream<AssessmentLiveEvent>
-    /** how many streams this process keeps open, and for how long */
+    /**
+     * The same announcements, subscribed now rather than when the stream is
+     * first pulled: a connection subscribes, then says `sync`, and nothing
+     * announced in between falls through the gap.
+     */
+    readonly subscribe: Effect.Effect<Stream.Stream<AssessmentLiveEvent>, never, Scope.Scope>
+    /** how many connections this process keeps open, and for how long */
     readonly connections: ConnectionLedger
   }
 >()('@qualy/plugin-assessment/AssessmentLive') {
@@ -83,6 +99,7 @@ export class AssessmentLive extends Context.Service<
 
         return AssessmentLive.of({
           events: Stream.fromPubSub(pubsub),
+          subscribe: Effect.map(PubSub.subscribe(pubsub), Stream.fromSubscription),
           connections: connectionLedger(DEFAULT_CONNECTION_LIMITS),
         })
       }),

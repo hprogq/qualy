@@ -462,6 +462,7 @@ export function StructureRail({
   headingLevel = 1,
   totalLabel,
   stream = null,
+  polling = false,
   outline,
   total,
   scored,
@@ -488,6 +489,8 @@ export function StructureRail({
   totalLabel: string
   /** whether the page keeps the account current as the round moves; null where it does not say */
   stream?: LiveState | null
+  /** whether the page reads again on its own while the line is down */
+  polling?: boolean
   outline: Outline
   total: { readonly got: string | null; readonly cap: number | null }
   /** false while the score could not be read: every figure is unknown, not zero */
@@ -774,7 +777,13 @@ export function StructureRail({
           {/* the page keeping time with the round, beside the way to ask
               again by hand; nothing where the round no longer moves */}
           {stream !== null && (
-            <LiveMark state={stream} data-testid="entries-live">
+            <LiveMark
+              state={stream}
+              data-testid="entries-live"
+              {...(stream === 'waiting'
+                ? { hint: m.result_liveWaiting({ polling: polling ? 'yes' : 'no' }) }
+                : {})}
+            >
               {m.result_live({ state: stream })}
             </LiveMark>
           )}

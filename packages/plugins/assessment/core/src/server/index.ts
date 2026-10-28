@@ -12,8 +12,8 @@ import { BadRequest, cursorUnusable, pageNumber, pageSize, pageWindow } from '@q
 import { CurrentUser } from '@qualy/auth-contract/session'
 import { transaction, withDatabase, type Orm } from '@qualy/plugin-database/server'
 import { BATCH_MANAGE, rosterReachOf } from './configuration-access.ts'
-import { AssessmentLive } from '../live/service.ts'
-import { announce, type AssessmentLiveEvent } from '../live/events.ts'
+import { announce } from '../live/events.ts'
+import { watchBatch } from '../live/watch.ts'
 import { translateConstraints } from '@qualy/plugin-database/server/constraints'
 import { AccessDenied, Rbac } from '@qualy/rbac-contract/effect'
 import { Audit } from '@qualy/audit-contract/effect'
@@ -7039,85 +7039,25 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
         return { batch: { ...toBatchDto(detail), capabilities } }
       }),
     )
-    .handle(
+    .handleRaw(
       'watchBatch',
-      Effect.fn('assessment.watchBatch.handler')(function* ({ params }) {
+      Effect.fnUntraced(function* ({ params }) {
         const assessment = yield* Assessment
-        const live = yield* AssessmentLive
-        const principal = yield* CurrentUser
-        yield* assessment.assertVisible(principal.tenantId, params.batchId, principal)
-        // Standing is read once, at connect. `capabilitiesFor` is coarse on
-        // purpose - "a reviewer here" does not flicker with the phases - so
-        // a connection is not re-judged per event; someone stripped of a
-        // role mid-connection keeps hearing bare wake-ups until the stream's
-        // lifetime ends it and the page dials again, and every read those
-        // wake-ups trigger is authorized on its own. Whether the reader
-        // administers the roster is asked here too: the results roster's
-        // live totals are theirs to watch.
-        const standing = yield* assessment.capabilitiesFor(
-          principal.tenantId,
-          params.batchId,
-          undefined,
-          principal,
-        )
-        // who reads everybody's totals on the results roster: its
-        // administrators, whoever re-determines (ruling #33) and whoever
-        // views all claims (ruling of 2026-09-29)
-        const readsAccounts = standing.manage || standing.redetermine || standing.readAll
-        const wanted = (event: AssessmentLiveEvent): boolean => {
-          if (event.tenantId !== principal.tenantId || event.batchId !== params.batchId) {
-            return false
-          }
-          switch (event.kind) {
-            case 'review-inbox-changed':
-              return standing.review
-            case 'review-instance-changed':
-              // a round moving is a claim waiting on something else, and on
-              // the results roster a total that may have moved
-              return standing.review || readsAccounts
-            case 'entries-changed':
-            case 'result-changed':
-              // A participant hears about their own. The people who work the
-              // round hear about all of it: a recorder's list, a reviewer's
-              // queue and the results roster's totals are drawn from exactly
-              // the facts these announce, and gated on membership alone the
-              // staff screens never woke at all. Nothing is disclosed by
-              // hearing - what goes down the wire is the kind and nothing
-              // else.
-              return (
-                standing.review ||
-                standing.record ||
-                readsAccounts ||
-                (standing.personal &&
-                  (event.subjectUserId === null || event.subjectUserId === principal.userId))
-              )
-            case 'item-changed':
-              return true
-            // which phase the batch is in - and what the timetable says -
-            // is not a secret from anybody who may watch the batch at all
-            case 'phase-changed':
-            case 'plan-changed':
-              return true
-          }
-        }
-        const changes = live.events.pipe(
-          Stream.filter(wanted),
-          Stream.map((event) => ({ kind: event.kind })),
-        )
-        const heartbeat = Stream.tick('25 seconds').pipe(
-          Stream.map(() => ({ kind: 'heartbeat' as const })),
-        )
-        // sync first, always: whatever this connection missed - including
-        // everything, on a fresh page - the instruction is to read again
-        const sync = Stream.succeed({ kind: 'sync' as const })
-        // Counted against the session and the process, and ended once its
-        // lifetime is up so the next dial is authenticated afresh. Refused,
-        // the page is told to read once and goes on polling.
-        return live.connections.admit(
-          principal.sessionId,
-          Stream.concat(sync, Stream.merge(changes, heartbeat)),
-          sync,
-        )
+        return yield* watchBatch({
+          batchId: params.batchId,
+          standing: (principal) =>
+            assessment.assertVisible(principal.tenantId, params.batchId, principal).pipe(
+              Effect.andThen(
+                assessment.capabilitiesFor(
+                  principal.tenantId,
+                  params.batchId,
+                  undefined,
+                  principal,
+                ),
+              ),
+              Effect.catchTag('ACCESS_DENIED', () => Effect.succeed(undefined)),
+            ),
+        })
       }),
     )
     .handle(

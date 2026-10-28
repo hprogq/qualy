@@ -9,7 +9,8 @@
     ".": "./src/index.tsx",
     "./api": "./src/api.ts",
     "./identity": "./src/identity.ts",
-    "./release": "./src/release.ts"
+    "./release": "./src/release.ts",
+    "./testkit": "./src/testkit/live.ts"
   },
   "peerDependencies": {
     "react": "catalog:"

@@ -1,25 +1,31 @@
 import { createHash } from 'node:crypto'
-import { Effect, Layer, Stream } from 'effect'
-import { HttpRouter, HttpServer } from 'effect/http'
+import { createServer } from 'node:http'
+import { Effect, Exit, Layer, Scope, Stream } from 'effect'
+import { HttpRouter } from 'effect/http'
 import { HttpApiBuilder } from 'effect/http-api'
+import { NodeHttpServer } from '@effect/platform-node'
 import { sql } from 'kysely'
+import WebSocket from 'ws'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createTestContext, postgresAvailable, runSql } from '@qualy/plugin-database/testkit'
 import { Api } from '@qualy/api-kit/local'
-import { QUALY_API_PREFIX } from '@qualy/api-kit'
-import { layer as sessionLayer } from '@qualy/plugin-auth/server/session'
+import { LIVE_SUBPROTOCOL } from '@qualy/api-kit/live-socket'
+import {
+  layer as sessionLayer,
+  presenceLayer,
+  viewerLayer,
+} from '@qualy/plugin-auth/server/session'
 import { AuthConfig } from '@qualy/plugin-auth/server/sign-in'
 import { assessmentApiGroup } from '../src/api.ts'
 import { assessmentApiHandlers } from '../src/server/index.ts'
 import { AssessmentLive } from '../src/live/service.ts'
 import { connectionLedger, DEFAULT_CONNECTION_LIMITS } from '../src/live/connections.ts'
 import type { AssessmentLiveEvent } from '../src/live/events.ts'
-import { catalogLayers } from './support/catalogs.ts'
 import { appointStaff } from './support/correction.ts'
 import { ok, one, run, runningBatch, seed, stack } from './support/round.ts'
 
-// Who hears what on a batch's event stream, served as the browser reaches
-// it: a cookie, the route, the SSE body.
+// Who hears what on a batch's live channel, served as the browser reaches
+// it: a cookie, the page's origin, the socket.
 //
 // The results roster shows everybody's current total, and a total moves
 // when a claim, a round or a result does. So whoever reads that roster -
@@ -28,44 +34,41 @@ import { ok, one, run, runningBatch, seed, stack } from './support/round.ts'
 // and a recorder already did. A participant still hears only their own.
 
 const COOKIE = 'qualy_session'
+const port = 3290
 
 let db: Awaited<ReturnType<typeof createTestContext>>
-let web: { handler: (request: Request) => Promise<Response>; dispose: () => Promise<void> }
+let scope: Scope.Closeable | undefined
 let batchId: string
 
 /** the kinds this session hears, until a wake-up everybody hears comes through */
-const heard = async (token: string): Promise<readonly string[]> => {
-  const abort = new AbortController()
-  const response = await web.handler(
-    new Request(`http://qualy.test${QUALY_API_PREFIX}/assessment/batches/${batchId}/events`, {
-      headers: { cookie: `${COOKIE}=${token}` },
-      signal: abort.signal,
-    }),
-  )
-  expect(response.status).toBe(200)
-  const reader = response.body!.getReader()
-  const decoder = new TextDecoder()
-  let text = ''
-  const deadline = Date.now() + 10_000
-  try {
-    // the paper changing is heard by everybody who may watch the batch, and
-    // it is announced last: once it is through, so is everything before it
-    while (!text.includes('"kind":"item-changed"') && Date.now() < deadline) {
-      const next = await Promise.race([
-        reader.read(),
-        new Promise<{ done: true; value: undefined }>((resolve) =>
-          setTimeout(() => resolve({ done: true, value: undefined }), deadline - Date.now()),
-        ),
-      ])
-      if (next.done) break
-      text += decoder.decode(next.value, { stream: true })
-    }
-  } finally {
-    abort.abort()
-    await reader.cancel().catch(() => undefined)
-  }
-  return [...text.matchAll(/"kind":"([a-z-]+)"/g)].map((match) => match[1]!)
-}
+const heard = (token: string): Promise<readonly string[]> =>
+  new Promise((resolve, reject) => {
+    const socket = new WebSocket(
+      `ws://127.0.0.1:${port}/api/assessment/batches/${batchId}/events`,
+      [LIVE_SUBPROTOCOL],
+      { headers: { cookie: `${COOKIE}=${token}`, origin: `http://127.0.0.1:${port}` } },
+    )
+    const kinds: string[] = []
+    const timer = setTimeout(() => {
+      socket.terminate()
+      resolve(kinds)
+    }, 10_000)
+    socket.on('message', (data) => {
+      const kind = (JSON.parse(String(data)) as { kind: string }).kind
+      kinds.push(kind)
+      // the paper changing is heard by everybody who may watch the batch,
+      // and it is announced last: once it is through, so is everything before
+      if (kind === 'item-changed') {
+        clearTimeout(timer)
+        socket.close(1000)
+        resolve(kinds)
+      }
+    })
+    socket.on('unexpected-response', (_request, response) =>
+      reject(new Error(`handshake refused: ${response.statusCode}`)),
+    )
+    socket.on('error', () => undefined)
+  })
 
 describe.runIf(postgresAvailable)('who hears what moves a total', () => {
   let tokens: { inspector: string; manager: string; neighbour: string }
@@ -127,6 +130,7 @@ describe.runIf(postgresAvailable)('who hears what moves a total', () => {
       AssessmentLive,
       AssessmentLive.of({
         events: Stream.fromIterable(announced),
+        subscribe: Effect.succeed(Stream.fromIterable(announced)),
         connections: connectionLedger(DEFAULT_CONNECTION_LIMITS),
       }),
     )
@@ -139,25 +143,26 @@ describe.runIf(postgresAvailable)('who hears what moves a total', () => {
         sessionCookieName: COOKIE,
       }),
     )
-    web = HttpRouter.toWebHandler(
-      HttpApiBuilder.layer(Api.local(assessmentApiGroup)).pipe(
-        Layer.provide(assessmentApiHandlers),
-        Layer.provideMerge(
-          Layer.mergeAll(
-            live,
-            sessionLayer.pipe(Layer.provide(authConfig)),
-            catalogLayers,
-            HttpServer.layerServices,
-          ),
-        ),
-        Layer.provideMerge(stack(db.url)),
-      ),
-      { disableLogger: true },
+    const services = stack(db.url)
+    const sessions = Layer.mergeAll(sessionLayer, viewerLayer, presenceLayer).pipe(
+      Layer.provide(Layer.mergeAll(services, authConfig)),
     )
+    const serving = HttpRouter.serve(
+      HttpApiBuilder.layer(Api.local(assessmentApiGroup)).pipe(
+        Layer.provide(assessmentApiHandlers.pipe(Layer.provide(services), Layer.provide(sessions))),
+      ),
+    ).pipe(
+      Layer.provide(NodeHttpServer.layer(createServer, { port })),
+      Layer.provide(services),
+      Layer.provide(live),
+      Layer.provide(sessions),
+    )
+    scope = await Effect.runPromise(Scope.make())
+    await Effect.runPromise(Layer.buildWithScope(serving, scope))
   }, 120_000)
 
   afterAll(async () => {
-    await web?.dispose()
+    if (scope !== undefined) await Effect.runPromise(Scope.close(scope, Exit.void))
     await db?.dispose()
   })
 

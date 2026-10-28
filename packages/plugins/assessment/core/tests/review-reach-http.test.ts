@@ -8,7 +8,11 @@ import { createTestContext, postgresAvailable, runSql } from '@qualy/plugin-data
 import { Api } from '@qualy/api-kit/local'
 import { assembledLayer } from '@qualy/api-kit/assembled'
 import { QUALY_API_PREFIX } from '@qualy/api-kit'
-import { layer as sessionLayer } from '@qualy/plugin-auth/server/session'
+import {
+  layer as sessionLayer,
+  presenceLayer,
+  viewerLayer,
+} from '@qualy/plugin-auth/server/session'
 import { AuthConfig } from '@qualy/plugin-auth/server/sign-in'
 import { assessmentApiGroup } from '../src/api.ts'
 import { assessmentApiHandlers } from '../src/server/index.ts'
@@ -66,7 +70,9 @@ describe.runIf(postgresAvailable)('routes with nowhere to stand, as served', () 
         Layer.provideMerge(
           Layer.mergeAll(
             AssessmentLive.layer.pipe(Layer.provide(assembledLayer)),
-            sessionLayer.pipe(Layer.provide(authConfig)),
+            Layer.mergeAll(sessionLayer, viewerLayer, presenceLayer).pipe(
+              Layer.provide(authConfig),
+            ),
             catalogLayers,
             HttpServer.layerServices,
           ),

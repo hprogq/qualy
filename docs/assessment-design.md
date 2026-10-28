@@ -1389,6 +1389,8 @@ M2 当前的简化随之显式化:**effective facts = approved EntryRevision.pay
 
 五、**连接期粗粒度授权**:开流时 `assertVisible` + `capabilitiesFor`(粗站位,刻意不随阶段抖动),按 review/personal/subjectUserId 过滤 kind;中途失权者在重连前只会继续听到裸唤醒,而每次唤醒触发的读取各自完整鉴权。巡检(patrol)v1 不发事件,由收件箱轮询兜底。
 
+**传输改为 WebSocket**(2026-10-28,用户要求)。只替换 ③ 的传输:同一路径改为同源原生 WebSocket,事件 kind、过滤、`sync` 重读与轮询降级不变,数据读写仍走 HTTP。拒绝改用关闭码表达(未登录、无权、不兼容、席位已满各自不同),会话与批次可见性在连接期间定期复核,五中「重连前只会继续听到裸唤醒」的窗口由此缩短为一次复核间隔。`useApiStream` 由运行时的通道注册表取代,同一标签页内同一批次共享一条连接。设计与验收见 [批次实时通道](notes/live-websocket.md)。
+
 **32.69 撤回止于审核开始,放弃贯穿申报一生:两个动作、两条关闭时刻线**(2026-08-21,用户裁决)。
 
 一、**「撤回审核」重定义**。withdraw = 把正在审核的申报拿回来继续修改(in_review → draft,取消当前轮)。它的窗口在**审核真正开始**的那一刻关闭——正式审核行为 = 本轮及其 `supersedes_instance_id` 承接谱系上的任一 `approved / rejected / escalated / opinion-rejected / supplement-requested` 事件,或任何 panel 投票(合议未出结论时票还没有事件,必须查票表);reroute 承接轮**不清零**该标志。以下不算开始:submitted、暂无审核人、系统跳过环节、单纯打开审核页。「提交即生成 ReviewInstance」不构成禁止条件——那等于提交后永不可撤。判定单源:`withdrawStandingsOf`(递归 CTE 沿承接谱系),capability 与写入路径同一条 SQL。**申诉轮一律不可 withdraw**:generic withdraw 会把已 approved/rejected 的条目经申诉轮洗成 draft(P0 域漏洞,已堵);「撤回申诉」应恢复被诉结论,是另一个未建的动作,建前申诉轮不提供撤回(capability hidden,写入 `appeal-not-withdrawable`)。

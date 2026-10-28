@@ -1,61 +1,64 @@
-import { Effect, Fiber, Stream } from 'effect'
+import { Effect, Exit, Scope } from 'effect'
 import { describe, expect, it } from 'vitest'
 import { connectionLedger } from '../src/live/connections.ts'
 
-// A batch's event stream is the one request meant to stay open, and nothing
-// bounded how many one session could hold or how long one outlived the
-// session that opened it. A stream past either bound is refused with the one
-// event that tells a page to read again; the page then polls.
+// A batch's live channel is the one connection meant to stay open, and
+// nothing would bound how many one session could hold. A connection past
+// either bound is refused, holding nothing; the page then polls.
 
-const REFUSED = 'refused'
-const opened = (ledger: ReturnType<typeof connectionLedger>, sessionId: string) =>
-  Effect.forkChild(
-    Stream.runCollect(ledger.admit(sessionId, Stream.never, Stream.succeed(REFUSED))),
-  )
+const limits = { perSession: 2, total: 3, lifetime: '1 hour', recheck: '1 hour' } as const
 
-describe('the live stream ledger', () => {
+describe('the live connection ledger', () => {
   it('holds each session to its share and the process to its total', async () => {
     const answer = await Effect.runPromise(
       Effect.gen(function* () {
-        const ledger = connectionLedger({ perSession: 2, total: 3, lifetime: '1 hour' })
-        const first = yield* opened(ledger, 'a')
-        yield* opened(ledger, 'a')
-        yield* Effect.yieldNow
+        const ledger = connectionLedger(limits)
+        const first = yield* Scope.make()
+        const a1 = yield* Scope.provide(ledger.admit('a'), first)
+        const a2 = yield* Scope.provide(ledger.admit('a'), yield* Scope.make())
         // a third for the same session is refused at once
-        const third = yield* Stream.runCollect(
-          ledger.admit('a', Stream.never, Stream.succeed(REFUSED)),
-        )
+        const a3 = yield* Effect.scoped(ledger.admit('a'))
         // another session still has room, until the process has none
-        yield* opened(ledger, 'b')
-        yield* Effect.yieldNow
-        const past = yield* Stream.runCollect(
-          ledger.admit('c', Stream.never, Stream.succeed(REFUSED)),
-        )
+        const b1 = yield* Scope.provide(ledger.admit('b'), yield* Scope.make())
+        const c1 = yield* Effect.scoped(ledger.admit('c'))
         const heldBefore = ledger.open()
-        // a closed stream gives its place back
-        yield* Fiber.interrupt(first)
-        const heldAfter = ledger.open('a')
-        return { third, past, heldBefore, heldAfter, total: ledger.open() }
+        // a closed connection gives its seat back
+        yield* Scope.close(first, Exit.void)
+        return { a1, a2, a3, b1, c1, heldBefore, heldA: ledger.open('a'), total: ledger.open() }
       }),
     )
-    expect(answer.third).toEqual([REFUSED])
-    expect(answer.past).toEqual([REFUSED])
+    expect(answer.a1).toEqual({ admitted: true })
+    expect(answer.a2).toEqual({ admitted: true })
+    expect(answer.a3).toEqual({ admitted: false, reason: 'session' })
+    expect(answer.b1).toEqual({ admitted: true })
+    expect(answer.c1).toEqual({ admitted: false, reason: 'capacity' })
     expect(answer.heldBefore).toBe(3)
-    expect(answer.heldAfter).toBe(1)
+    expect(answer.heldA).toBe(1)
     expect(answer.total).toBe(2)
   })
 
-  it('ends a stream once its lifetime is up, and gives its place back', async () => {
+  it('counts nothing for a refusal, and releases an admitted seat once', async () => {
     const answer = await Effect.runPromise(
       Effect.gen(function* () {
-        const ledger = connectionLedger({ perSession: 1, total: 10, lifetime: '50 millis' })
-        const ended = yield* Stream.runCollect(
-          ledger.admit('a', Stream.never, Stream.succeed(REFUSED)),
-        )
-        return { ended, open: ledger.open('a') }
+        const ledger = connectionLedger({ ...limits, perSession: 1 })
+        const held = yield* Scope.make()
+        yield* Scope.provide(ledger.admit('a'), held)
+        // refused, and its scope closing gives back nothing it never took
+        const refused = yield* Effect.scoped(ledger.admit('a'))
+        const whileHeld = ledger.open('a')
+        // a scope closed twice runs its finalizer once
+        yield* Scope.close(held, Exit.void)
+        yield* Scope.close(held, Exit.void)
+        // an interrupted connection gives its seat back as well
+        const interrupted = yield* Scope.make()
+        yield* Scope.provide(ledger.admit('b'), interrupted)
+        yield* Scope.close(interrupted, Exit.interrupt(0))
+        return { refused, whileHeld, after: ledger.open(), a: ledger.open('a') }
       }),
     )
-    expect(answer.ended).toEqual([])
-    expect(answer.open).toBe(0)
+    expect(answer.refused).toEqual({ admitted: false, reason: 'session' })
+    expect(answer.whileHeld).toBe(1)
+    expect(answer.after).toBe(0)
+    expect(answer.a).toBe(0)
   })
 })
