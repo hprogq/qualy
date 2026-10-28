@@ -38,7 +38,7 @@ import { BatchScreen } from './batch/BatchScreen.tsx'
 import { BatchFlow } from './batch/BatchFlow.tsx'
 import { calendarDaysBetween, inZone, useBatchZone, yearOf } from './batch/zone.ts'
 
-import { UnreadDot } from './entry/workspace/marks.tsx'
+import { UnreadDot } from './entry/workspace/unread-dot.tsx'
 import {
   owesAdministration,
   useAdminAlerts,

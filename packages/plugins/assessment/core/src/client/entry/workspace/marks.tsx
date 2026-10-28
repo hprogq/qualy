@@ -7,6 +7,8 @@ import { trimAmount } from '../model.ts'
 import { two } from './model.ts'
 import * as m from '#messages'
 
+export { UnreadDot } from './unread-dot.tsx'
+
 // The small marks the workspace sets beside a row's name.
 //
 // The dot at the head of a question's row says where it stands, and nothing
@@ -50,14 +52,6 @@ const styles = stylex.create({
     fontVariantNumeric: 'tabular-nums',
     color: 'white',
   },
-  dot: {
-    display: 'inline-block',
-    width: 6,
-    height: 6,
-    flexShrink: 0,
-    borderRadius: 9999,
-    backgroundColor: tokens.danger,
-  },
   // a section's figure in a list: the pie, what it has got, and its limit
   // after a stroke - no unit, which the head's own total says once
   figure: {
@@ -89,15 +83,6 @@ export function UnreadCount({ count }: { count: number }) {
       <VisuallyHidden>{m.entry_rowUnreadCount({ count })}</VisuallyHidden>
     </span>
   )
-}
-
-/**
- * One claim with news its owner has not read. Drawn where the caller puts
- * it, and hidden from assistive technology: the caller says "unread" in
- * words where it reads the claim out.
- */
-export function UnreadDot({ xstyle }: { xstyle?: stylex.StyleXStyles }) {
-  return <span aria-hidden data-testid="unread-dot" {...stylex.props(styles.dot, xstyle)} />
 }
 
 /**
