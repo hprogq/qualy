@@ -166,8 +166,8 @@ catalogs:
       specifier: 0.32.0
       version: 0.32.0
     re2js:
-      specifier: 2.8.6
-      version: 2.8.6
+      specifier: 2.8.7
+      version: 2.8.7
     react:
       specifier: 19.3.1
       version: 19.3.1
@@ -988,7 +988,7 @@ importers:
     dependencies:
       re2js:
         specifier: 'catalog:'
-        version: 2.8.6
+        version: 2.8.7
     devDependencies:
       ajv:
         specifier: 'catalog:'
@@ -5448,9 +5448,9 @@ packages:
   quickjs-emscripten-core@0.32.0:
     resolution: {integrity: sha512-QFnPfjFey8EqknSrSxe1hZrf1/8z7/6s1QzGOmKo6++02r7QRRX7ZoyNaZh7JuVjWsVW87KnQrbZqnHkOAzUyg==}
 
-  re2js@2.8.6:
-    resolution: {integrity: sha512-xLgQil4kIUCrAzVk9fRSkxkFNwmygLFjVxXrLc65aE1F0+Zsb8rxumFBy4XKyvgMCTL6kilDq3EZ0piE2dP/Dg==}
-    engines: {node: '>=18.0.0'}
+  re2js@2.8.7:
+    resolution: {integrity: sha512-bRSL/vn3KAmlGfGNoVpcsBXLaVvl6AbuvMMWbz0m3vBj60nj+p2/biozfBUOSBP+5XTduF6mr6IO/ZVjmqqkVQ==}
+    engines: {node: '>=20.0.0'}
 
   react-dom@19.3.1:
     resolution: {integrity: sha512-Y0bARz53lhEC1NMCASs0/j+faB/zqt3R8hpvg1e8+61ZVJ4UL0UdC4cBbXfZMcIuhrfgeILTLe+ZeBCavQPtKQ==}
@@ -8209,7 +8209,7 @@ snapshots:
     dependencies:
       '@jitl/quickjs-ffi-types': 0.32.0
 
-  re2js@2.8.6: {}
+  re2js@2.8.7: {}
 
   react-dom@19.3.1(react@19.3.1):
     dependencies:
