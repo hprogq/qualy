@@ -281,8 +281,9 @@ export const sessionApiHandlers = HttpApiBuilder.group(local, 'auth', (handlers)
       Effect.fn('auth.endSession.handler')(function* () {
         const signIn = yield* SignIn
         // the caller may or may not have had one; either way they end up
-        // without one, which is what they asked for
-        yield* signIn.endSession()
+        // without one, which is what they asked for - unless the session is
+        // somebody else's than the page's (docs/adr/0013-document-identity.md)
+        yield* signIn.endPageSession()
         return { ok: true as const }
       }),
     )

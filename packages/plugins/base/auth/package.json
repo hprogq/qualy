@@ -72,6 +72,7 @@
     "@qualy/plugin-storage": "workspace:*",
     "@qualy/plugin-ui-registry": "workspace:*",
     "@qualy/rbac-contract": "workspace:*",
+    "@qualy/release-contract": "workspace:*",
     "@qualy/settings-contract": "workspace:*",
     "@qualy/telemetry": "workspace:*",
     "@qualy/text": "workspace:*",

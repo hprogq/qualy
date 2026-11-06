@@ -1,7 +1,14 @@
-import { Effect, Layer } from 'effect'
+import { Context, Effect, Layer } from 'effect'
 import { HttpServerRequest } from 'effect/http'
-import { QUALY_ACTIVITY_HEADER } from '@qualy/api-kit'
+import { QUALY_ACTIVITY_HEADER, QUALY_IDENTITY_HEADER } from '@qualy/api-kit'
+import { QUALY_CLIENT_PROTOCOL_HEADER } from '@qualy/release-contract'
+import {
+  judgeDocumentIdentity,
+  type IdentityVerdict,
+  type PresentedSession,
+} from '@qualy/auth-contract/identity-key'
 import { bindSessionId } from '@qualy/api-kit/request'
+import { liveClientOf } from '@qualy/api-kit/live-socket-server'
 import { withDatabase } from '@qualy/plugin-database/server'
 import { db } from './db.ts'
 import { sql } from 'kysely'
@@ -11,6 +18,9 @@ import {
   Authenticated,
   CurrentUser,
   CurrentViewer,
+  IdentityChanged,
+  IdentityProbe,
+  IdentityUnasserted,
   SessionExpired,
   SessionPresence,
   Viewer,
@@ -198,7 +208,81 @@ const resolve = Effect.fn('Auth.resolveSession')(function* (
 })
 
 /**
- * Says who is asking, and never refuses.
+ * What a request says about the page it came from
+ * (docs/adr/0013-document-identity.md): whose the page is, and whether it is
+ * a page of ours at all - only the application's own page names the client
+ * protocol it speaks.
+ */
+const pageDeclaration = Effect.map(HttpServerRequest.HttpServerRequest, (request) => {
+  const upgrading = (request.headers['upgrade'] ?? '').toLowerCase() === 'websocket'
+  // A browser cannot set a header on a WebSocket, so a socket says whose
+  // its page is in the query, as it says its protocol; a socket that says
+  // nothing is from a page that predates this, and is judged as before.
+  if (upgrading) {
+    const declared = liveClientOf(request).identity
+    return { declared, fromPage: declared !== undefined, upgrading }
+  }
+  return {
+    declared: request.headers[QUALY_IDENTITY_HEADER],
+    fromPage: request.headers[QUALY_CLIENT_PROTOCOL_HEADER] !== undefined,
+    upgrading,
+  }
+})
+
+/** an endpoint that asks who is signed in, whose answer is never refused for naming somebody */
+const probing = (endpoint: { readonly annotations: Context.Context<never> }) =>
+  Context.getOrUndefined(endpoint.annotations as Context.Context<IdentityProbe>, IdentityProbe) ===
+  true
+
+/** the refusal a verdict calls for, or nothing for a request that may go on */
+const refusalFor = (verdict: IdentityVerdict) => {
+  switch (verdict) {
+    case 'pass':
+      return Effect.void
+    case 'changed':
+      return Effect.fail(new IdentityChanged())
+    case 'unasserted':
+      return Effect.fail(new IdentityUnasserted())
+    case 'absent':
+      return Effect.fail(new AuthRequired())
+    case 'expired':
+      return Effect.fail(new SessionExpired())
+  }
+}
+
+/**
+ * May the page a sign-out came from end the session it presents
+ * (docs/adr/0013-document-identity.md)?
+ *
+ * Signing out of nothing is fine - the reader ends up without a session,
+ * which is what they asked for. Signing out somebody else is not: a page left
+ * open for one person must not end the session of whoever signed in after it
+ * in another tab. Only reads: nothing is deleted or cleared here.
+ */
+export const pageMaySignOut = Effect.fn('Auth.pageMaySignOut')(function* (
+  cookieName: string,
+  idleSeconds: number | undefined,
+) {
+  const page = yield* pageDeclaration
+  const token = yield* presentedToken(cookieName)
+  let session: PresentedSession = { state: 'absent' }
+  if (token !== '') {
+    const found = yield* sessionByToken(hashSessionToken(token), idleSeconds).pipe(Effect.orDie)
+    if (found && !found.expired && !found.idle && found.usable) {
+      session = { state: 'valid', principal: found }
+    }
+  }
+  const verdict = judgeDocumentIdentity({
+    declared: page.declared,
+    fromPage: page.fromPage,
+    session,
+  })
+  if (verdict === 'changed') return yield* new IdentityChanged()
+  if (verdict === 'unasserted') return yield* new IdentityUnasserted()
+})
+
+/**
+ * Says who is asking, and refuses only a page that is not the session's.
  *
  * Its own layer rather than a flag on the one above, because the two answer
  * different questions and only one of them has a failure to declare.
@@ -214,14 +298,27 @@ export const viewerLayer = Layer.effect(
     // not-usable branch the row is not deleted either, so a user disabled
     // and re-enabled would resume on it
     const clear = () => clearSessionCookie(config.sessionCookieName, config.secureCookies)
-    return Viewer.of((httpEffect) =>
+    return Viewer.of((httpEffect, { endpoint }) =>
       withDb(
         Effect.gen(function* () {
           const token = yield* presentedToken(config.sessionCookieName)
-          const found =
+          const found: PresentedSession =
             token === ''
               ? { state: 'absent' as const }
               : yield* resolve(clear, token, config.sessionIdleSeconds)
+          const page = yield* pageDeclaration
+          // a live channel behind this middleware is judged by its handler
+          // once the socket is open: a browser cannot read a refused
+          // handshake, only a close code
+          if (!page.upgrading && !probing(endpoint)) {
+            yield* refusalFor(
+              judgeDocumentIdentity({
+                declared: page.declared,
+                fromPage: page.fromPage,
+                session: found,
+              }),
+            )
+          }
           return yield* Effect.provideService(httpEffect, CurrentViewer, {
             principal: found.state === 'valid' ? found.principal : undefined,
           })
@@ -241,9 +338,16 @@ export const layer = Layer.effect(
     // the handler wraps the rest of the request rather than returning a
     // value: it decides whether to continue at all, and provides the
     // principal into whatever runs next
-    return Authenticated.of((httpEffect) =>
+    return Authenticated.of((httpEffect, { endpoint }) =>
       withDb(
         Effect.gen(function* () {
+          const page = yield* pageDeclaration
+          const judged = !probing(endpoint)
+          // a page of ours that does not say whose it is goes no further,
+          // whoever holds the session (docs/adr/0013-document-identity.md)
+          if (judged && page.fromPage && (page.declared === undefined || page.declared === '')) {
+            return yield* new IdentityUnasserted()
+          }
           const token = yield* presentedToken(config.sessionCookieName)
           // no token is the commonest way to be unauthenticated, and the one
           // that costs nothing to answer: it never reaches the database
@@ -264,6 +368,18 @@ export const layer = Layer.effect(
           if (!session.usable) {
             yield* clear()
             return yield* new AuthRequired()
+          }
+
+          // the page and the session must be the same person's before
+          // anything is done for it - not even counted as use
+          if (judged) {
+            yield* refusalFor(
+              judgeDocumentIdentity({
+                declared: page.declared,
+                fromPage: page.fromPage,
+                session: { state: 'valid', principal: session },
+              }),
+            )
           }
 
           if (staleness(session.lastUsedAt) > TOUCH_INTERVAL_MS && (yield* readersRequest)) {

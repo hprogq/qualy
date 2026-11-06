@@ -65,12 +65,15 @@ export const CLIENT_UNSUPPORTED_REASONS = ['protocol', 'assembly', 'release'] as
 export const isClientUnsupportedReason = (value: unknown): value is ClientUnsupportedReason =>
   typeof value === 'string' && (CLIENT_UNSUPPORTED_REASONS as readonly string[]).includes(value)
 
+// Generation 5: every request a page makes says whose the page is, and the
+// server refuses it before anything is done when the session is somebody
+// else's (docs/adr/0013-document-identity.md). A tab from before says nothing
+// and must reload, so the window holds no older generation.
 // Generation 4: assessment lists, review queues and formula histories return
 // numbered pages. Formula detail returns versionCount instead of all versions.
-// Older tabs must reload before reading the new shapes.
-export const CURRENT_CLIENT_PROTOCOL = 4
-export const SERVER_MIN_CLIENT_PROTOCOL = 4
-export const SERVER_MAX_CLIENT_PROTOCOL = 4
+export const CURRENT_CLIENT_PROTOCOL = 5
+export const SERVER_MIN_CLIENT_PROTOCOL = 5
+export const SERVER_MAX_CLIENT_PROTOCOL = 5
 
 export type ReleaseMode = 'development' | 'production'
 
