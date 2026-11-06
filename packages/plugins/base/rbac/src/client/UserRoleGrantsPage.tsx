@@ -1,3 +1,4 @@
+'use client'
 import { assertNever } from '@qualy/web-i18n'
 import {
   useApiMutation,

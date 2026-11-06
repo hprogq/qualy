@@ -1,3 +1,4 @@
+'use client'
 import { pageNumber } from '@qualy/api-kit/schema'
 import { FormulaPager } from './FormulaPager.tsx'
 import { assertNever, useLocale } from '@qualy/web-i18n'

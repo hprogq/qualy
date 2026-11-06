@@ -1,3 +1,4 @@
+'use client'
 import { BatchScreen } from './batch/BatchScreen.tsx'
 import { BatchSettingsForm } from './batch/BatchSettingsForm.tsx'
 import * as m from '#messages'

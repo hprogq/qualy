@@ -1,3 +1,4 @@
+'use client'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'

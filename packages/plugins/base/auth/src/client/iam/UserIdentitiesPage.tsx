@@ -1,3 +1,4 @@
+'use client'
 import { assertNever, useLocale } from '@qualy/web-i18n'
 
 import {

@@ -1,3 +1,4 @@
+'use client'
 import { assertNever, formatPlatformFailure } from '@qualy/web-i18n'
 import { useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react'
 import { useLocation } from 'react-router'

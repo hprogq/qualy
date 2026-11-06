@@ -1,3 +1,4 @@
+'use client'
 import { useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
 import { assessmentApi } from '../api.ts'
 import { BatchMemberships } from './batch-memberships.tsx'

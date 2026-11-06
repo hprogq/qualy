@@ -1,3 +1,4 @@
+'use client'
 import { useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { DownloadIcon, PlusIcon, SearchIcon, ShieldOffIcon } from 'lucide-react'

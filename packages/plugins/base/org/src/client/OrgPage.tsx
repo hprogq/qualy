@@ -1,3 +1,4 @@
+'use client'
 import { assertNever, isUseCaseApiFailure } from '@qualy/web-i18n'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'

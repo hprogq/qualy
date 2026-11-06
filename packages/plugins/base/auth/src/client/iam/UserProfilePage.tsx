@@ -1,3 +1,4 @@
+'use client'
 import { assertNever, localeNames, useLocale } from '@qualy/web-i18n'
 import { Effect } from 'effect'
 import {

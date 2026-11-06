@@ -1,3 +1,4 @@
+'use client'
 import { useQuery } from '@tanstack/react-query'
 import { pageNumber } from '@qualy/api-kit/schema'
 import * as stylex from '@stylexjs/stylex'

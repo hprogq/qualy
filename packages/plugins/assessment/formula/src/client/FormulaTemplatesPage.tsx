@@ -1,3 +1,4 @@
+'use client'
 import { Input } from '@qualy/ui/input'
 import { pageNumber } from '@qualy/api-kit/schema'
 import { FormulaPager } from './FormulaPager.tsx'

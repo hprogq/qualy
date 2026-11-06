@@ -1,3 +1,4 @@
+'use client'
 import { pageNumber } from '@qualy/api-kit/schema'
 import { EasedHeight } from '@qualy/ui/eased-height'
 import { Pager } from '@qualy/ui/pager'

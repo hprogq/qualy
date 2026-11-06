@@ -1,3 +1,4 @@
+'use client'
 import { useState } from 'react'
 import { HistoryIcon, UploadIcon } from 'lucide-react'
 import { BandAction } from '@qualy/ui/screen'

@@ -1,3 +1,4 @@
+'use client'
 import { BatchScreen } from './batch/BatchScreen.tsx'
 import { AccessPanel } from './access/AccessPanel.tsx'
 import * as m from '#messages'

@@ -1,3 +1,4 @@
+'use client'
 import { assertNever, formatPlatformFailure as formatError, isApiErrorCode } from '@qualy/web-i18n'
 
 import {

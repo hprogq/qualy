@@ -1,3 +1,4 @@
+'use client'
 import { scoringIncompatibleValues } from './scoring-refusals.ts'
 import { assertNever, formatPlatformFailure as formatError } from '@qualy/web-i18n'
 import { Effect } from 'effect'

@@ -1,3 +1,4 @@
+'use client'
 import { useLocale, useList } from '@qualy/web-i18n'
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'

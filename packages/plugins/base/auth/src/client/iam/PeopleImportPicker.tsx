@@ -1,3 +1,4 @@
+'use client'
 import type { PeopleImportContext } from '@qualy/ui-contract'
 import * as stylex from '@stylexjs/stylex'
 import { useQuery } from '@tanstack/react-query'

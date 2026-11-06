@@ -1,3 +1,4 @@
+'use client'
 import { formatPlatformFailure as formatError, isAuthenticationError } from '@qualy/web-i18n'
 import { useChooseLocale } from './locale-choice.tsx'
 import { useState, type ReactNode } from 'react'

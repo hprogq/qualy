@@ -1,3 +1,4 @@
+'use client'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { usersPageActions, type UsersPageActionsContext } from '@qualy/ui-contract'
 import { useEffect, useMemo, useState } from 'react'

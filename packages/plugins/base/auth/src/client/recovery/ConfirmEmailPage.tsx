@@ -1,3 +1,4 @@
+'use client'
 import { formatPlatformFailure as formatError, getApiErrorCode } from '@qualy/web-i18n'
 import { type ReactNode } from 'react'
 import { useLocation } from 'react-router'

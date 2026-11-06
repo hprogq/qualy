@@ -1,3 +1,4 @@
+'use client'
 import { useMemo } from 'react'
 import type { OrgNodePickerViewContext } from '@qualy/ui-contract'
 import { OrgNodeChooser } from './OrgNodePicker.tsx'

@@ -1,3 +1,4 @@
+'use client'
 import { formatPlatformFailure as formatError, isApiErrorCode } from '@qualy/web-i18n'
 import { useState } from 'react'
 import * as stylex from '@stylexjs/stylex'

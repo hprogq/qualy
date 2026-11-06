@@ -1,3 +1,4 @@
+'use client'
 import { formatPlatformFailure as formatError, isApiErrorCode } from '@qualy/web-i18n'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'

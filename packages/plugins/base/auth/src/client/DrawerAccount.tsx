@@ -1,3 +1,4 @@
+'use client'
 import { localeNames, useLocale } from '@qualy/web-i18n'
 import { useChooseLocale } from './locale-choice.tsx'
 import { supportedLocales, type SupportedLocale } from '@qualy/i18n-contract'

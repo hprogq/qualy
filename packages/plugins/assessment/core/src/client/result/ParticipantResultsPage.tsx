@@ -1,3 +1,4 @@
+'use client'
 import { useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { usePageQueryState, usePageQueryUpdate, useScreenAsideOffered } from '@qualy/web-runtime'

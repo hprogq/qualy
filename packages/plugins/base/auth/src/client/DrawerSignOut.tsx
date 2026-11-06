@@ -1,3 +1,4 @@
+'use client'
 import { formatPlatformFailure as formatError } from '@qualy/web-i18n'
 import { LogOutIcon } from 'lucide-react'
 import { useApi, useRunApi, useSessionTransition } from '@qualy/web-runtime'

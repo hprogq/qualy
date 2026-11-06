@@ -1,3 +1,4 @@
+'use client'
 import { useLocale, useList } from '@qualy/web-i18n'
 import * as stylex from '@stylexjs/stylex'
 import { useMemo, useState } from 'react'

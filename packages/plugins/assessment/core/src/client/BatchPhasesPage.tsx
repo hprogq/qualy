@@ -1,3 +1,4 @@
+'use client'
 import { BatchScreen } from './batch/BatchScreen.tsx'
 import { PhaseTimelineEditor } from './PhaseTimelineEditor.tsx'
 import * as m from '#messages'

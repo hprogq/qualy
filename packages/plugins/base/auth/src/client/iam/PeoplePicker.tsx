@@ -1,3 +1,4 @@
+'use client'
 import { useState } from 'react'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import type { PeoplePickerContext } from '@qualy/ui-contract'

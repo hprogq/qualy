@@ -1,3 +1,4 @@
+'use client'
 import { Effect } from 'effect'
 import {
   useApiMutation,

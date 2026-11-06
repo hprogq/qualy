@@ -1,3 +1,4 @@
+'use client'
 import { assertNever, getApiErrorCode } from '@qualy/web-i18n'
 
 import {

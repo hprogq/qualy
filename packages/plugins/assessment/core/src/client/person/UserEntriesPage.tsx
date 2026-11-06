@@ -1,3 +1,4 @@
+'use client'
 import { pageNumber } from '@qualy/api-kit/schema'
 import { RecordPager } from '../record/RecordPager.tsx'
 import { useQuery } from '@tanstack/react-query'

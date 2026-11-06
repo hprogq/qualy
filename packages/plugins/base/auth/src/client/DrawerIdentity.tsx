@@ -1,3 +1,4 @@
+'use client'
 import { formatPlatformFailure as formatError, isAuthenticationError } from '@qualy/web-i18n'
 import { useState } from 'react'
 import { ChevronDownIcon } from 'lucide-react'

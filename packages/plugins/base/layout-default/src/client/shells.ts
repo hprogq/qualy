@@ -1,3 +1,4 @@
+'use client'
 // The four application shells, served from one module.
 //
 // The runtime fetches every layout a manifest names before it draws. A

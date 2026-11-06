@@ -1,3 +1,4 @@
+'use client'
 import { useEffect, useMemo, useState, type MouseEvent } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'

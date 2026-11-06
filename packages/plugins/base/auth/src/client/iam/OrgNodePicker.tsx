@@ -1,3 +1,4 @@
+'use client'
 import { useMemo, useState } from 'react'
 import { XIcon } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'

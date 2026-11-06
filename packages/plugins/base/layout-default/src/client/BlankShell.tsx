@@ -1,3 +1,4 @@
+'use client'
 import * as stylex from '@stylexjs/stylex'
 import { Outlet } from 'react-router'
 import { ColophonScope } from '@qualy/ui/screen'

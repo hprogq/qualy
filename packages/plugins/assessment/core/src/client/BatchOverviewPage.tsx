@@ -1,3 +1,4 @@
+'use client'
 import { pageNumber } from '@qualy/api-kit/schema'
 import { Pager } from '@qualy/ui/pager'
 import { useIsMobile } from '@qualy/ui/use-mobile'

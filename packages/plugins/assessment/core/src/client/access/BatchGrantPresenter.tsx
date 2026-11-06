@@ -1,3 +1,4 @@
+'use client'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { useQuery } from '@tanstack/react-query'
 import type { ResourceGrantContext } from '@qualy/ui-contract'
