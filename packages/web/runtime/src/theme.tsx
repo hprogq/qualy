@@ -5,6 +5,7 @@ import {
   useLayoutEffect,
   useMemo,
   useState,
+  useSyncExternalStore,
   type ReactNode,
 } from 'react'
 import { sharedContext } from './shared-context.ts'
@@ -67,7 +68,24 @@ const applyMode = (mode: 'light' | 'dark') => {
   root.style.colorScheme = mode
 }
 
+// A document a server drew does not know the reader's scheme: the choice is
+// in this browser's storage and the preference in its system. So the server
+// draws the page as nobody chose and the system prefers light, the page's
+// first frame says the same while it hydrates, and the scheme the reader
+// actually has follows straight after (docs/adr/0012-rsc-data-mode.md). The
+// colours are right from the first frame regardless: they follow the root,
+// which the boot script marked before anything was drawn. What waits is only
+// what a component draws differently by scheme, such as an icon.
+const nothingToWatch = () => () => {}
+const useHydrating = () =>
+  useSyncExternalStore(
+    nothingToWatch,
+    () => false,
+    () => true,
+  )
+
 export function ThemeProvider({ children }: { children: ReactNode }) {
+  const hydrating = useHydrating()
   const [choice, setChoiceState] = useState<ThemeChoice>(storedChoice)
   const [systemDark, setSystemDark] = useState(() => {
     // the boot script already answered the system's preference for this
@@ -87,8 +105,11 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const resolved = choice === 'system' ? (systemDark ? 'dark' : 'light') : choice
 
   // before the browser paints, and all three at once: a root that says
-  // dark one way and light another paints a light page under a dark chrome
+  // dark one way and light another paints a light page under a dark chrome.
+  // Not while hydrating: the boot script already marked the root with the
+  // scheme the reader has, and the server's guess must not overwrite it.
   useLayoutEffect(() => {
+    if (hydrating) return
     const root = document.documentElement
     applyMode(resolved)
     // the browser's own chrome - Safari's tab bar, iOS's status bar - takes
@@ -100,7 +121,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         meta.setAttribute('content', ground)
       }
     }
-  }, [resolved])
+  }, [resolved, hydrating])
 
   // A change of theme as one crossfade of the whole page rather than every
   // colour snapping at once: the browser pictures the page before, the new
@@ -132,8 +153,11 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   )
 
   const value = useMemo<ThemeState>(
-    () => ({ choice, resolved, setChoice }),
-    [choice, resolved, setChoice],
+    () =>
+      hydrating
+        ? { choice: 'system', resolved: 'light', setChoice }
+        : { choice, resolved, setChoice },
+    [hydrating, choice, resolved, setChoice],
   )
   return <ThemeContext value={value}>{children}</ThemeContext>
 }
