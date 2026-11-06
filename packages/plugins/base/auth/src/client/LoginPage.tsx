@@ -220,7 +220,13 @@ const styles = stylex.create({
     marginTop: 18,
   },
   // a size under the main ways in: the same kind of thing, a step quieter
+  // Hovered, it lifts a pixel. Its reach stays where it stood: a pointer
+  // resting on the bottom edge was left behind by the lift, the tile came
+  // down under it, and lifted again - a shudder for as long as the pointer
+  // stayed. The reach runs a little below the tile and moves with it, so
+  // the edge it rose from is still the tile's.
   tile: {
+    position: 'relative',
     display: 'inline-flex',
     width: 44,
     height: 44,
@@ -239,6 +245,11 @@ const styles = stylex.create({
     transitionProperty: 'background-color, box-shadow, transform',
     transitionDuration: '150ms',
     transform: { default: null, ':hover': 'translateY(-1px)', ':active': 'translateY(0)' },
+    '::after': {
+      content: "''",
+      position: 'absolute',
+      inset: '0 0 -3px 0',
+    },
   },
   moreTile: {
     backgroundColor: { default: tokens.surfaceMuted, ':hover': tokens.surfaceInset },
