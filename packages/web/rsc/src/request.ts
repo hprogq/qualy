@@ -1,8 +1,8 @@
 /// <reference types="node" />
 import { AsyncLocalStorage } from 'node:async_hooks'
 import type { ComponentType } from 'react'
-import { Effect } from 'effect'
-import { FetchHttpClient, HttpClient, HttpClientRequest } from 'effect/http'
+import { Effect, type Exit, type Schema } from 'effect'
+import { FetchHttpClient, HttpClient, HttpClientRequest, type HttpClientError } from 'effect/http'
 import { HttpApiClient, type HttpApi, type HttpApiGroup } from 'effect/http-api'
 import { QUALY_IDENTITY_HEADER, QUALY_LOCALE_HEADER } from '@qualy/api-kit'
 import type { SupportedLocale } from '@qualy/i18n-contract'
@@ -48,6 +48,12 @@ export interface RenderRequest {
    * manifest itself - which asks who is signed in - is being read.
    */
   readonly identity?: string
+  /**
+   * Told the `Set-Cookie` lines of each read's response, one by one as the
+   * api wrote them. Set only around the reads the host answers for before
+   * the document goes out; any other read's cookies are nobody's to pass on.
+   */
+  readonly onSetCookie?: (lines: readonly string[]) => void
   /** ends when the reader goes away: every read below is cancelled with it */
   readonly signal: AbortSignal
   readonly surfaces: SurfaceTables
@@ -83,6 +89,32 @@ const asTheViewer = (request: RenderRequest) =>
     }),
   )
 
+/** the network, telling the request's listener what cookies each response set */
+const listened = (request: RenderRequest): typeof globalThis.fetch => {
+  const heard = request.onSetCookie
+  if (heard === undefined) return globalThis.fetch
+  return async (input, init) => {
+    const response = await globalThis.fetch(input, init)
+    const lines = response.headers.getSetCookie()
+    if (lines.length > 0) heard(lines)
+    return response
+  }
+}
+
+const reading = <ApiId extends string, Groups extends HttpApiGroup.Constraint, A, E>(
+  api: HttpApi.HttpApi<ApiId, Groups>,
+  read: (client: HttpApiClient.Client<Groups>) => Effect.Effect<A, E>,
+  request: RenderRequest,
+) =>
+  HttpApiClient.make(api, {
+    baseUrl: request.apiOrigin,
+    transformClient: asTheViewer(request),
+  }).pipe(
+    Effect.flatMap(read),
+    Effect.provide(FetchHttpClient.layer),
+    Effect.provideService(FetchHttpClient.Fetch, listened(request)),
+  ) as Effect.Effect<A, E>
+
 /**
  * Reads through an api contract as the viewer of the document being
  * rendered. Rejects with the read's own failure, as its tagged value.
@@ -92,13 +124,23 @@ export const readApi = <ApiId extends string, Groups extends HttpApiGroup.Constr
   read: (client: HttpApiClient.Client<Groups>) => Effect.Effect<A, E>,
 ): Promise<A> => {
   const request = renderRequest()
-  return Effect.runPromise(
-    HttpApiClient.make(api, {
-      baseUrl: request.apiOrigin,
-      transformClient: asTheViewer(request),
-    }).pipe(Effect.flatMap(read), Effect.provide(FetchHttpClient.layer)) as Effect.Effect<A, E>,
-    { signal: request.signal },
-  )
+  return Effect.runPromise(reading(api, read, request), { signal: request.signal })
+}
+
+/**
+ * The same read, ended as what it was: its answer; a failure the contract
+ * names or the network gave; a defect; or cancelled with the reader. For a
+ * render that answers each differently, rather than take whatever the
+ * squashed rejection of `readApi` happens to hold for one of them.
+ */
+export const readApiExit = <ApiId extends string, Groups extends HttpApiGroup.Constraint, A, E>(
+  api: HttpApi.HttpApi<ApiId, Groups>,
+  read: (client: HttpApiClient.Client<Groups>) => Effect.Effect<A, E>,
+): Promise<Exit.Exit<A, E | HttpClientError.HttpClientError | Schema.SchemaError>> => {
+  const request = renderRequest()
+  return Effect.runPromiseExit(reading(api, read, request), { signal: request.signal }) as Promise<
+    Exit.Exit<A, E | HttpClientError.HttpClientError | Schema.SchemaError>
+  >
 }
 
 /**

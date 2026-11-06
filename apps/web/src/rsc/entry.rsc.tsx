@@ -20,6 +20,7 @@ import {
 import { identityOfManifest } from '@qualy/web-runtime/document-identity'
 import type { Manifest } from '@qualy/web-runtime'
 import { Document } from './Document.tsx'
+import { sessionClearings, withCookies } from './session-clearing.ts'
 import { Empty, Missing, NotFound, Surface } from './frames.tsx'
 
 // The server component half of a document request
@@ -144,16 +145,26 @@ export default async function handler(request: Request): Promise<Response> {
     if (declared.release !== webRelease.releaseId) return refused('release')
   }
   const asked = renderRequestOf(request)
+  // the cookies the manifest's answer set, the one read finished before
+  // anything goes out: a session it found lapsed is cleared there
+  const heard: string[] = []
+  let clearings: readonly string[] = []
   let served: Response
   try {
     // who is signed in, asked first and asked as nobody in particular: the
     // manifest is the one read that answers that question
-    const manifest = await withRenderRequest(asked, () =>
-      readApi(appApi, (client) => client.app.getManifest()),
+    const manifest = await withRenderRequest(
+      { ...asked, onSetCookie: (lines) => heard.push(...lines) },
+      () => readApi(appApi, (client) => client.app.getManifest()),
     )
+    const passed = sessionClearings(heard, asked.cookie)
+    clearings = passed.forwarded
+    if (passed.dropped.length > 0) {
+      console.warn('[qualy] render dropped cookies the api set', passed.dropped)
+    }
     if (fromPage) {
       const refusal = identityRefusal(declared.identity, manifest)
-      if (refusal !== undefined) return refused(refusal)
+      if (refusal !== undefined) return withCookies(refused(refusal), clearings)
     }
     // every other read says whose the document is
     const scope: RenderRequest = {
@@ -173,5 +184,8 @@ export default async function handler(request: Request): Promise<Response> {
     throw error
   }
   const ssr = await import.meta.viteRsc.loadModule<typeof import('./entry.ssr.tsx')>('ssr', 'index')
-  return ssr.renderDocument(request, served, asked.locale)
+  return withCookies(
+    await ssr.renderDocument(request, served, asked.locale),
+    clearings,
+  )
 }
