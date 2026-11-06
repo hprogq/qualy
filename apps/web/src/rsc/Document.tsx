@@ -12,7 +12,9 @@ import {
   type Manifest,
 } from '@qualy/web-runtime'
 import { SIGN_IN_PAGE } from '@qualy/auth-contract/sign-in-failure'
+import { bootstrapMessages } from '@qualy/web-i18n/bootstrap'
 import { releases, webRelease } from '../release.ts'
+import { ReleaseRecoveryGate } from '../release-ui.tsx'
 import '../app.css'
 
 // The document a server rendered, as the page holds it
@@ -81,21 +83,25 @@ export function Document({
       </head>
       <body>
         <div id="root">
-          <DocumentLocaleContext value={locale}>
-            <ThemeProvider>
-              <WidgetBridge>
-                <RuntimeProvider
-                  registry={registry}
-                  manifest={manifest}
-                  clientIdentity={webRelease}
-                  onClientUnsupported={(reason) => releases.notifyClientUnsupported(reason)}
-                  signInPage={SIGN_IN_PAGE}
-                >
-                  {children}
-                </RuntimeProvider>
-              </WidgetBridge>
-            </ThemeProvider>
-          </DocumentLocaleContext>
+          {/* the release protocol's screen, over the page rather than in its
+              place, so a page that has to reload keeps what the reader typed */}
+          <ReleaseRecoveryGate coordinator={releases} copy={bootstrapMessages}>
+            <DocumentLocaleContext value={locale}>
+              <ThemeProvider>
+                <WidgetBridge>
+                  <RuntimeProvider
+                    registry={registry}
+                    manifest={manifest}
+                    clientIdentity={webRelease}
+                    onClientUnsupported={(reason) => releases.notifyClientUnsupported(reason)}
+                    signInPage={SIGN_IN_PAGE}
+                  >
+                    {children}
+                  </RuntimeProvider>
+                </WidgetBridge>
+              </ThemeProvider>
+            </DocumentLocaleContext>
+          </ReleaseRecoveryGate>
         </div>
       </body>
     </html>

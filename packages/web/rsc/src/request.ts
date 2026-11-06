@@ -4,7 +4,7 @@ import type { ComponentType } from 'react'
 import { Effect } from 'effect'
 import { FetchHttpClient, HttpClient, HttpClientRequest } from 'effect/http'
 import { HttpApiClient, type HttpApi, type HttpApiGroup } from 'effect/http-api'
-import { QUALY_LOCALE_HEADER } from '@qualy/api-kit'
+import { QUALY_IDENTITY_HEADER, QUALY_LOCALE_HEADER } from '@qualy/api-kit'
 import type { SupportedLocale } from '@qualy/i18n-contract'
 import { QUALY_CLIENT_PROTOCOL_HEADER, QUALY_CLIENT_RELEASE_HEADER } from '@qualy/release-contract'
 import type { BrowserSurface } from '@qualy/ui-contract'
@@ -41,6 +41,13 @@ export interface RenderRequest {
   readonly apiOrigin: string
   /** the viewer's own credentials, exactly as they arrived */
   readonly cookie: string | undefined
+  /**
+   * whose the document is, said to the api on every read
+   * (docs/adr/0013-document-identity.md): the identity an open page declared,
+   * or, for a new document, the one its manifest named. Unset only while the
+   * manifest itself - which asks who is signed in - is being read.
+   */
+  readonly identity?: string
   /** ends when the reader goes away: every read below is cancelled with it */
   readonly signal: AbortSignal
   readonly surfaces: SurfaceTables
@@ -69,6 +76,7 @@ const asTheViewer = (request: RenderRequest) =>
   HttpClient.mapRequest(
     HttpClientRequest.setHeaders({
       ...(request.cookie === undefined ? {} : { cookie: request.cookie }),
+      ...(request.identity === undefined ? {} : { [QUALY_IDENTITY_HEADER]: request.identity }),
       [QUALY_LOCALE_HEADER]: request.locale,
       [QUALY_CLIENT_RELEASE_HEADER]: request.release.releaseId,
       [QUALY_CLIENT_PROTOCOL_HEADER]: String(request.release.clientProtocol),

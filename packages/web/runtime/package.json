@@ -12,7 +12,8 @@
     "./identity": "./src/identity.ts",
     "./release": "./src/release.ts",
     "./surface-scope": "./src/surface-scope.tsx",
-    "./revalidation": "./src/revalidation.ts"
+    "./revalidation": "./src/revalidation.ts",
+    "./rendered-fetch": "./src/rendered-fetch.ts"
   },
   "peerDependencies": {
     "react": "catalog:"

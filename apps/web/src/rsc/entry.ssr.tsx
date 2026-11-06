@@ -12,7 +12,19 @@ import { withDocumentLocale } from '@qualy/web-rsc/document-locale'
 // to see before any script runs. Entered in the document's language on its
 // own, since this is a module graph of its own.
 
-export const renderDocument = (
+export const renderDocument = async (
+  request: Request,
+  serverResponse: Response,
+  locale: SupportedLocale,
+): Promise<Response> => {
+  const drawn = await draw(request, serverResponse, locale)
+  // a personalised document is the reader's alone: never kept, by anybody
+  const headers = new Headers(drawn.headers)
+  headers.set('cache-control', 'private, no-store')
+  return new Response(drawn.body, { status: drawn.status, statusText: drawn.statusText, headers })
+}
+
+const draw = (
   request: Request,
   serverResponse: Response,
   locale: SupportedLocale,

@@ -60,6 +60,25 @@ export const QUALY_CLIENT_UNSUPPORTED_HEADER = 'x-qualy-client-unsupported'
  */
 export type ClientUnsupportedReason = 'protocol' | 'assembly' | 'release'
 
+/**
+ * Why a server-rendered navigation of an open page was refused before
+ * anything was rendered for it (docs/adr/0012-rsc-data-mode.md): the page's
+ * build is not the one rendering, it speaks another protocol, the session is
+ * somebody else's or gone, or the page did not say whose it is. Read by the
+ * page's own fetch, before the router ever sees the response.
+ */
+export const QUALY_RENDER_REFUSED_HEADER = 'x-qualy-render-refused'
+export const RENDER_REFUSALS = [
+  'release',
+  'protocol',
+  'identity-changed',
+  'unasserted',
+  'session',
+] as const
+export type RenderRefusal = (typeof RENDER_REFUSALS)[number]
+export const isRenderRefusal = (value: unknown): value is RenderRefusal =>
+  typeof value === 'string' && (RENDER_REFUSALS as readonly string[]).includes(value)
+
 export const CLIENT_UNSUPPORTED_REASONS = ['protocol', 'assembly', 'release'] as const
 
 export const isClientUnsupportedReason = (value: unknown): value is ClientUnsupportedReason =>
