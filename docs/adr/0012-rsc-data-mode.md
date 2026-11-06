@@ -39,4 +39,34 @@
 
 ## 阶段 1 结论
 
-（待填写）
+**结论：带限制通过（2026-11-06，分支 `spike/rsc-data-mode`）。** 真实产品组合的贡献已经在 RSC 环境完成授权装配。全程只使用公开接口：plugin-rsc 的三个入口和按环境配置，React Router 的 `matchRSCServerRequest`、`routeRSCServerRequest` 和 `shouldRevalidate`，Vite 的 `applyToEnvironment`。没有修改框架内部协议，没有自行解析 Flight，也没有维护私有补丁。原 SPA 的聚合模块逐字节不变，SPA 构建通过分包和预算门禁。
+
+### 已证实
+
+- **登录页。** 服务端在同一个请求里，以访客身份读取登录方式和会话状态，并且只交付这些方式用到的登录 renderer。首屏 HTML 里有租户名、主登录方式、其他方式和共享设备选项，不再是等待骨架。水合后复选框和切换登录方式都正常，邮箱表单可以输入；切换后客户端状态保留。
+- **AppShell 和 AccountShell 页面。** 布局、顶栏、侧边导航、跨插件 slot（auth 插件的 `account-header`、用户菜单）和页面标题都在服务端 HTML 里。水合后，客户端 Query 正常加载列表。
+- **消息。** HTML 渲染阶段按请求 locale 输出中文或英文。生产 handler 按 `Accept-Language` 选择了 en-US。
+- **生产构建。** 三个环境都能构建，输出在 `apps/web/dist-rsc/`。生产 handler 可以用 Node 的 `Request` 直接调用：`/login` 返回 200，正文完整；`.rsc` 返回 Flight；POST 返回 405。
+- **最小披露。** 匿名文档只交付 7 个 surface 引用：布局、登录页、本地登录 renderer，以及 manifest 对匿名访客开放的抽屉和用户菜单 slot。HTML 里没有插件源码路径。
+- **错误分类。** 客户端组件只在 SSR 时抛错，会由 HTML 渲染器记录，浏览器改为客户端渲染，页面可以继续使用。把函数当作 props 跨边界传递，服务端返回 500。平台组件在渲染阶段读取 `window`，整页失败。三种情况的结果都符合分类。
+- **取消。** 读者中断请求后，渲染发出的读取请求随 Effect fiber 一起中断，不记为失败，服务端随后正常响应。
+- **开发体验。** 编辑客户端组件后热更新正常，输入保留，没有整页刷新。RSC 开发服务是独立进程，后端重启不影响它。
+
+### 限制与阶段 2 的输入
+
+1. **服务端模块的热更新没有接通。** plugin-rsc 会发出 `rsc:update`，接到 `useRevalidator` 之后也会发出重新验证请求并返回 200，服务端单独请求新文档时也已经是修改后的内容，但已经水合的页面没有显示新内容。在时间盒内没有查明原因，相关代码没有保留。
+2. **只改 search 的导航不在服务端重新渲染页面**（`pageRevalidation`）。原本由服务端重新渲染时，登录页的分步视图停在了旧视图上，原因同样没有查明。现在的规则和离开确认一致，都只以 pathname 为准。
+3. **StyleX 不进入 rsc 环境。** 客户端模块在 rsc 环境里被替换成引用之前，StyleX 已经读过它，于是汇总 CSS 时找不到它引用的常量。因此目前服务端组件不能使用 StyleX 样式。
+4. **引用集合目前是"授权的全部 slot 条目"。** 管理员的每份文档要交付 22 个引用，其中包括 `/account/roles` 用不到的公式计算器编辑器。页面不声明自己使用的 slot。建议仿照 `Ui.layout({ slots })` 讨论页面级的 slot 声明。
+5. **`GrantOrigin` 没有被开发数据触发。** 两种宿主下结果一致：没有带范围来源的任职记录。grant presenter 的引用已经交付；"客户端在服务端交付的引用里局部选择 renderer"这一机制，已由登录 renderer 验证。
+6. **在 SSR 里出现 React 告警** "multiple renderers concurrently rendering the same context provider"，原因待查。
+7. **还没做的事项：**
+   - CSP nonce 和响应头；
+   - 会话清理时的 `Set-Cookie` 透传（`readApi` 目前丢弃所有响应头）；
+   - 时区；
+   - 暗色和 system 主题的水合；
+   - `onManifestMismatch` 和 `useBlocker` 的探针；
+   - Effect 宿主挂载：独立 handler 已经通过，嵌入 Effect 宿主留待阶段 2；
+   - 生产构建的不透明文件名、分包和预算；
+   - 服务端渲染错误按 surface 和请求关联。
+8. **web-rsc 的类型。** 服务端模块需要 Node 类型，目前用 `/// <reference types="node" />` 进入插件的浏览器 tsconfig 程序。插件服务端页面的类型检查边界还需要决定。
