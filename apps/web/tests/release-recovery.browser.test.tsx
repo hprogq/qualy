@@ -105,7 +105,10 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
       expect(screen.element().getAttribute('data-release-recovery')).toBe('release-skew')
       await expect.element(page.getByRole('heading', { name: copy.releaseSkewTitle })).toBeVisible()
       await expect.element(page.getByText(copy.releaseSkewHint)).toBeVisible()
-      expect(page.getByRole('main').elements()).toHaveLength(0)
+      // out of reach, but still there: what the reader typed waits for them
+      const kept = document.querySelector('main')
+      expect(kept?.textContent).toBe('the page')
+      expect(kept?.closest('[inert]')).not.toBeNull()
       expect(reload).not.toHaveBeenCalled()
       await page.getByRole('button', { name: copy.reloadPage }).click()
       expect(reload).toHaveBeenCalledTimes(1)

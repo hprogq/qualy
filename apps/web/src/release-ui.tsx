@@ -168,6 +168,29 @@ const words = (
   }
 }
 
+/** what stands over a page that has to reload before it can go on */
+function ReloadScreen({
+  reason,
+  words: { title, hint },
+  reloadLabel,
+  onReload,
+}: {
+  reason: string
+  words: { title: string; hint: string }
+  reloadLabel: string
+  onReload: () => void
+}) {
+  return (
+    <div role="alert" data-release-recovery={reason} {...stylex.props(styles.screen)}>
+      <h1 {...stylex.props(styles.title)}>{title}</h1>
+      <p {...stylex.props(styles.hint)}>{hint}</p>
+      <button type="button" {...stylex.props(styles.button, styles.action)} onClick={onReload}>
+        {reloadLabel}
+      </button>
+    </div>
+  )
+}
+
 export function ReleaseRecoveryGate({
   coordinator,
   copy: table,
@@ -182,27 +205,25 @@ export function ReleaseRecoveryGate({
     coordinator.getSnapshot,
     coordinator.getSnapshot,
   )
-  if (state.kind === 'reload-required') {
-    const copy = copyFor(table)
-    const { title, hint } = words(state, copy)
-    return (
-      <div role="alert" data-release-recovery={state.reason} {...stylex.props(styles.screen)}>
-        <h1 {...stylex.props(styles.title)}>{title}</h1>
-        <p {...stylex.props(styles.hint)}>{hint}</p>
-        <button
-          type="button"
-          {...stylex.props(styles.button, styles.action)}
-          onClick={() => coordinator.reload()}
-        >
-          {copy.reloadPage}
-        </button>
-      </div>
-    )
-  }
+  // The page under a reload stays where it is, out of reach: taken down, an
+  // editor took whatever the reader had typed with it, and what they typed
+  // is theirs until they choose to reload. `inert` takes it out of the
+  // keyboard, the pointer and the accessibility tree alike; the screen over
+  // it is all there is to answer.
+  const blocked = state.kind === 'reload-required'
   return (
     <>
-      {children}
-      {state.kind === 'update-available' ? (
+      <div inert={blocked} style={{ display: 'contents' }}>
+        {children}
+      </div>
+      {state.kind === 'reload-required' ? (
+        <ReloadScreen
+          reason={state.reason}
+          words={words(state, copyFor(table))}
+          reloadLabel={copyFor(table).reloadPage}
+          onReload={() => coordinator.reload()}
+        />
+      ) : state.kind === 'update-available' ? (
         <UpdateNotice
           coordinator={coordinator}
           copy={copyFor(table)}
