@@ -2,6 +2,7 @@
 import { useMemo, type ComponentType, type ReactNode } from 'react'
 import type { SupportedLocale } from '@qualy/i18n-contract'
 import { UiProvider } from '@qualy/ui/provider'
+import { primaryFontLatin } from '@qualy/ui/primary-font'
 import { DocumentLocaleContext } from '@qualy/web-i18n'
 import {
   RuntimeProvider,
@@ -66,6 +67,16 @@ export function Document({
         <title>Qualy</title>
         <link rel="icon" type="image/png" sizes="32x32" href="/favicon.png" />
         <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+        {/* the interface's face, asked for with the html rather than once the
+            stylesheet is read: set in the fallback until it arrived, a line
+            of digits moved sideways in the first frames */}
+        <link
+          rel="preload"
+          as="font"
+          type="font/woff2"
+          href={primaryFontLatin}
+          crossOrigin="anonymous"
+        />
         <style>
           {
             '@layer theme, base, mantine, components, priority1, priority2, priority3, priority4, priority5;'
