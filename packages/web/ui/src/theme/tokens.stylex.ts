@@ -37,4 +37,7 @@ export const tokens = stylex.defineVars({
   elevation2: 'var(--q-elevation-2)',
   elevation3: 'var(--q-elevation-3)',
   scrim: 'var(--q-scrim)',
+  /** a `display` for what only one scheme shows; `none` in the other */
+  lightOnly: 'var(--q-light-only)',
+  darkOnly: 'var(--q-dark-only)',
 })

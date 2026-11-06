@@ -75,6 +75,11 @@
      its contrast; it also gives the browser's chrome a colour to read
      off the page's edge, which a blur alone does not */
   --q-scrim: oklch(0 0 0 / 0.18);
+  /* what is drawn in one scheme only, such as the icon that says which
+     scheme the page is in: chosen here, with the colours, so a page a server
+     drew shows the right one before any script has run */
+  --q-light-only: inline;
+  --q-dark-only: none;
   /* three radii and a pill: a small badge, a control, a card or a table */
   --q-radius-sm: 4px;
   --q-radius-md: 8px;
@@ -117,4 +122,6 @@
   --q-elevation-2: 0 0 0 1px oklch(1 0 0 / 0.1);
   --q-elevation-3: 0 0 0 1px oklch(1 0 0 / 0.12);
   --q-scrim: oklch(0 0 0 / 0.28);
+  --q-light-only: none;
+  --q-dark-only: inline;
 }
