@@ -12,7 +12,10 @@
     "./client/DrawerAccount": "./src/client/DrawerAccount.tsx",
     "./client/DrawerIdentity": "./src/client/DrawerIdentity.tsx",
     "./client/DrawerSignOut": "./src/client/DrawerSignOut.tsx",
-    "./client/LoginPage": "./src/client/LoginPage.tsx",
+    "./client/LoginPage": {
+      "react-server": "./src/client/LoginPage.server.tsx",
+      "default": "./src/client/LoginPage.tsx"
+    },
     "./client/UserMenu": "./src/client/UserMenu.tsx",
     "./client/account/AccountActivityPage": "./src/client/account/AccountActivityPage.tsx",
     "./client/account/AccountHeader": "./src/client/account/AccountHeader.tsx",
@@ -78,6 +81,7 @@
     "@qualy/ui": "workspace:*",
     "@qualy/ui-contract": "workspace:*",
     "@qualy/web-i18n": "workspace:*",
+    "@qualy/web-rsc": "workspace:*",
     "@qualy/web-runtime": "workspace:*",
     "@stylexjs/stylex": "catalog:",
     "@tanstack/react-query": "catalog:",

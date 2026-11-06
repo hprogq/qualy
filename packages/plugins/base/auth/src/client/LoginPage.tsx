@@ -1,3 +1,4 @@
+'use client'
 import { formatPlatformFailure as formatError, useLocale } from '@qualy/web-i18n'
 
 import {
@@ -43,6 +44,8 @@ import { Skeleton } from '@qualy/ui/skeleton'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { type LoginMethod } from '@qualy/auth-contract/login'
 
+import type { Effect } from 'effect'
+import type { ClientOf } from '@qualy/web-runtime/api'
 import { authApi } from './api.ts'
 import { AuthShell, Ring } from './sign-in/AuthShell.tsx'
 import { gapped } from './sign-in/gapped.ts'
@@ -471,7 +474,17 @@ const failureFrom = (params: URLSearchParams) => {
  */
 const RESUME_ANSWER_MS = 3_000
 
-export default function LoginPage() {
+/**
+ * What a server rendering this page already asked, in the request that asked
+ * for it (LoginPage.server.tsx): the workspace's ways in, and whether
+ * somebody is signed in - both this request's own answers.
+ */
+export interface RenderedSignIn {
+  readonly context: Effect.Success<ReturnType<ClientOf<typeof authApi>['auth']['listLoginMethods']>>
+  readonly signedIn: boolean
+}
+
+export default function LoginPage({ rendered }: { rendered?: RenderedSignIn } = {}) {
   const api = useApi(authApi)
   const query = useApiQuery(authApi)
   // whether anybody is signed in is this page's question, and a refusal is
@@ -483,7 +496,10 @@ export default function LoginPage() {
   const startSession = useSessionTransition()
   const [params, setParams] = useSearchParams()
   const still = useReducedMotion() === true
-  const context = useQuery(query.auth.listLoginMethods.queryOptions())
+  const context = useQuery({
+    ...query.auth.listLoginMethods.queryOptions(),
+    ...(rendered === undefined ? {} : { initialData: rendered.context }),
+  })
   // somebody already signed in has nothing to do here: one browser holds one
   // session, and signing in again would replace it without a word. Asked
   // afresh rather than from the cached identity, which can outlive a session
@@ -494,9 +510,11 @@ export default function LoginPage() {
     retry: false,
     refetchOnMount: 'always',
   })
-  // decided by the read this visit made, never by a cached answer alone
-  const decided = present.isFetchedAfterMount
-  const signedIn = decided && present.isSuccess
+  // decided by the read this visit made, never by a cached answer alone:
+  // the page's own once it has asked, until then the one the server asked
+  // in the same request that drew it
+  const decided = present.isFetchedAfterMount || rendered !== undefined
+  const signedIn = present.isFetchedAfterMount ? present.isSuccess : rendered?.signedIn === true
   // where the visitor was when they were sent here to sign in: an address
   // inside this application and not this page itself, or nowhere
   const here = useLocation().pathname
