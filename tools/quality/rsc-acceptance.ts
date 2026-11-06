@@ -373,7 +373,9 @@ const cookies = async (scratch: { query: (text: string) => Promise<unknown> }) =
   const response = await fetch(`${site}/login`, { headers: { cookie } })
   await response.text()
   const lines = response.headers.getSetCookie()
-  const cleared = lines.filter((line) => line.startsWith('qualy_session=;') && /max-age=0/i.test(line))
+  const cleared = lines.filter(
+    (line) => line.startsWith('qualy_session=;') && /max-age=0/i.test(line),
+  )
   check(
     'clears a refused session cookie in the document, once',
     cleared.length === 1 && lines.length === 1,
@@ -570,7 +572,19 @@ try {
     mode: 'development',
     envFile: false,
     // its own mode, whatever this process runs react as
-    env: { DATABASE_URL: scratch.url, QUALY_MAIL_DEFAULT_BACKEND: 'smtp', NODE_ENV: undefined },
+    env: {
+      DATABASE_URL: scratch.url,
+      QUALY_MAIL_DEFAULT_BACKEND: 'smtp',
+      NODE_ENV: undefined,
+      // the filing records the sign-in page sets in its foot, when a run
+      // wants the page as a deployment that has them draws it
+      ...Object.fromEntries(
+        ['QUALY_ICP_RECORD', 'QUALY_MPS_RECORD', 'QUALY_MPS_RECORD_URL'].map((name) => [
+          name,
+          process.env[name],
+        ]),
+      ),
+    },
   })
   await server.waitUntilReady()
   host = await mountHandler()
