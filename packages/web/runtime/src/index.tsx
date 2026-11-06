@@ -130,6 +130,7 @@ export {
   type PendingNavigation,
 } from './navigation.tsx'
 export { ThemeProvider, useTheme, type ThemeChoice } from './theme.tsx'
+export { useHydrating } from './hydrating.ts'
 
 /**
  * A lazy component whose module can be fetched ahead of time, and which

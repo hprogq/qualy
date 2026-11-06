@@ -5,9 +5,9 @@ import {
   useLayoutEffect,
   useMemo,
   useState,
-  useSyncExternalStore,
   type ReactNode,
 } from 'react'
+import { useHydrating } from './hydrating.ts'
 import { sharedContext } from './shared-context.ts'
 
 // Light, dark, or whatever the machine prefers - the third is the default,
@@ -76,13 +76,6 @@ const applyMode = (mode: 'light' | 'dark') => {
 // colours are right from the first frame regardless: they follow the root,
 // which the boot script marked before anything was drawn. What waits is only
 // what a component draws differently by scheme, such as an icon.
-const nothingToWatch = () => () => {}
-const useHydrating = () =>
-  useSyncExternalStore(
-    nothingToWatch,
-    () => false,
-    () => true,
-  )
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const hydrating = useHydrating()
