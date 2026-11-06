@@ -16,8 +16,10 @@ export const renderDocument = async (
   request: Request,
   serverResponse: Response,
   locale: SupportedLocale,
+  /** the document's script nonce, for every inline script the html carries */
+  nonce: string | undefined,
 ): Promise<Response> => {
-  const drawn = await draw(request, serverResponse, locale)
+  const drawn = await draw(request, serverResponse, locale, nonce)
   // a personalised document is the reader's alone: never kept, by anybody
   const headers = new Headers(drawn.headers)
   headers.set('cache-control', 'private, no-store')
@@ -28,17 +30,22 @@ const draw = (
   request: Request,
   serverResponse: Response,
   locale: SupportedLocale,
+  nonce: string | undefined,
 ): Promise<Response> =>
   withDocumentLocale(locale, () =>
     routeRSCServerRequest({
       request,
       serverResponse,
       createFromReadableStream,
+      // the payload's own inline scripts, written into the html as it streams
+      ...(nonce === undefined ? {} : { nonce }),
       async renderHTML(getPayload, options) {
         const bootstrapScriptContent = await import.meta.viteRsc.loadBootstrapScriptContent('index')
         return withDocumentLocale(locale, () =>
-          renderToReadableStream(<RSCStaticRouter getPayload={getPayload} />, {
+          renderToReadableStream(<RSCStaticRouter getPayload={getPayload} nonce={nonce} />, {
             ...options,
+            // the bootstrap script, and whatever react writes inline to stream the html
+            ...(nonce === undefined ? {} : { nonce }),
             bootstrapScriptContent,
             signal: request.signal,
             onError(error: unknown) {

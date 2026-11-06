@@ -42,12 +42,15 @@ export function Document({
   slots,
   locale,
   releaseId,
+  nonce,
   children,
 }: {
   manifest: Manifest
   slots: Readonly<Record<string, Readonly<Record<string, ComponentType<any>>>>>
   locale: SupportedLocale
   releaseId: string
+  /** the inline scripts' nonce; a browser hides its value once read, hence no hydration check */
+  nonce?: string | undefined
   children: ReactNode
 }) {
   const registry = useMemo<ComponentRegistry>(
@@ -68,7 +71,11 @@ export function Document({
             '@layer theme, base, mantine, components, priority1, priority2, priority3, priority4, priority5;'
           }
         </style>
-        <script dangerouslySetInnerHTML={{ __html: EARLY_THEME }} />
+        <script
+          nonce={nonce}
+          suppressHydrationWarning
+          dangerouslySetInnerHTML={{ __html: EARLY_THEME }}
+        />
         {/* The development server's StyleX rules and the script that keeps
             them current: what the StyleX plugin writes into index.html, which
             a document React draws does not have. A build puts the rules in
@@ -77,7 +84,12 @@ export function Document({
         {import.meta.env.DEV && (
           <>
             <link rel="stylesheet" href="/virtual:stylex.css" suppressHydrationWarning />
-            <script type="module" src="/@id/virtual:stylex:runtime" />
+            <script
+              type="module"
+              src="/@id/virtual:stylex:runtime"
+              nonce={nonce}
+              suppressHydrationWarning
+            />
           </>
         )}
       </head>

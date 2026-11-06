@@ -30,6 +30,8 @@ export interface RouteFrames {
     readonly slots: Readonly<Record<string, Readonly<Record<string, ComponentType<any>>>>>
     readonly locale: SupportedLocale
     readonly releaseId: string
+    /** the document's script nonce, when its host sends a policy that asks for one */
+    readonly nonce?: string | undefined
     readonly children: ReactNode
   }>
   /** one surface, behind its own boundary and suspense */
@@ -159,6 +161,7 @@ export const serverRoutes = ({
             slots={await authorizedSlots(manifest)}
             locale={renderRequest().locale}
             releaseId={renderRequest().release.releaseId}
+            nonce={renderRequest().nonce}
           >
             <Outlet />
           </frames.Document>

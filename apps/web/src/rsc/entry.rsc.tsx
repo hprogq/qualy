@@ -131,7 +131,19 @@ const renderServer = async (request: Request, manifest: Manifest) => {
   })
 }
 
-export default async function handler(request: Request): Promise<Response> {
+/**
+ * What the host serving this handler hands each request beside it: the
+ * nonce its content security policy for this response names, when it sends
+ * one (packages/plugins/infra/web/src/server/shell-policy.ts).
+ */
+export interface RenderContext {
+  readonly nonce?: string | undefined
+}
+
+export default async function handler(
+  request: Request,
+  context: RenderContext = {},
+): Promise<Response> {
   if (request.method !== 'GET' && request.method !== 'HEAD') {
     return new Response(null, { status: 405, headers: { allow: 'GET, HEAD' } })
   }
@@ -169,6 +181,7 @@ export default async function handler(request: Request): Promise<Response> {
     // every other read says whose the document is
     const scope: RenderRequest = {
       ...asked,
+      nonce: context.nonce,
       identity:
         fromPage && declared.identity !== undefined
           ? declared.identity
@@ -185,7 +198,7 @@ export default async function handler(request: Request): Promise<Response> {
   }
   const ssr = await import.meta.viteRsc.loadModule<typeof import('./entry.ssr.tsx')>('ssr', 'index')
   return withCookies(
-    await ssr.renderDocument(request, served, asked.locale),
+    await ssr.renderDocument(request, served, asked.locale, context.nonce),
     clearings,
   )
 }

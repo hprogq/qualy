@@ -113,7 +113,23 @@ export class ShellPolicyRefused extends Error {
  * missing it would let a browser block that plugin's traffic in
  * production. Sources are deduplicated in first-seen order.
  */
-export const composeShellPolicy = (entries: readonly ShellPolicyEntry[]): string => {
+export const composeShellPolicy = (
+  entries: readonly ShellPolicyEntry[],
+  options: {
+    /**
+     * A document a server rendered streams inline scripts of its own - its
+     * payload, the scripts that place late html - whose bytes no constant
+     * can hash. Such a document runs its inline scripts by a nonce made for
+     * it alone, and this policy names that nonce in place of the boot
+     * script's hash, which such a document does not carry.
+     */
+    readonly scriptNonce?: string
+  } = {},
+): string => {
+  const nonce = options.scriptNonce
+  if (nonce !== undefined && !/^[A-Za-z0-9+/_-]{16,}={0,2}$/.test(nonce)) {
+    throw new ShellPolicyRefused('a script nonce is base64 of at least 16 characters')
+  }
   const added = new Map<ShellPolicyDirective, string[]>()
   for (const entry of entries) {
     for (const [directive, sources] of Object.entries(entry)) {
@@ -144,7 +160,13 @@ export const composeShellPolicy = (entries: readonly ShellPolicyEntry[]): string
       }
     }
   }
-  const lines = FIXED.map(([directive, sources]) => {
+  const lines = FIXED.map(([directive, fixed]) => {
+    const sources =
+      nonce !== undefined && directive === 'script-src'
+        ? fixed.map((source) =>
+            source === `'${INLINE_BOOT_SCRIPT_HASH}'` ? `'nonce-${nonce}'` : source,
+          )
+        : fixed
     const extra = (added.get(directive as ShellPolicyDirective) ?? []).filter(
       (source) => !sources.includes(source),
     )

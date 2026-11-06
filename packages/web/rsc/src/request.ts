@@ -54,6 +54,11 @@ export interface RenderRequest {
    * the document goes out; any other read's cookies are nobody's to pass on.
    */
   readonly onSetCookie?: (lines: readonly string[]) => void
+  /**
+   * The nonce the host's content security policy lets this document's inline
+   * scripts run by, made fresh for each document; none where no policy asks.
+   */
+  readonly nonce?: string | undefined
   /** ends when the reader goes away: every read below is cancelled with it */
   readonly signal: AbortSignal
   readonly surfaces: SurfaceTables

@@ -156,6 +156,27 @@ describe('composing the shell policy', () => {
     expect(script).not.toMatch(/unsafe-|strict-dynamic|nonce-|data:|blob:/)
   })
 
+  it('runs a server-rendered document by its own nonce in place of the boot hash', () => {
+    const nonce = 'q0Fq3l9Yw2c4V8xT1bZ7mA'
+    const composed = composeShellPolicy([{ owner: 'x', 'script-src': ['https://a.example'] }], {
+      scriptNonce: nonce,
+    })
+    expect(/script-src ([^;]+)/.exec(composed)?.[1]).toBe(
+      `'self' 'nonce-${nonce}' https://a.example`,
+    )
+    // every other line is the shell's as ever
+    expect(composed.replace(`'nonce-${nonce}'`, `'${INLINE_BOOT_SCRIPT_HASH}'`)).toBe(
+      composeShellPolicy([{ owner: 'x', 'script-src': ['https://a.example'] }]),
+    )
+  })
+
+  it('refuses a nonce that could carry anything but itself into the policy', () => {
+    expect(() => composeShellPolicy([], { scriptNonce: "abc' 'unsafe-inline" })).toThrow(
+      ShellPolicyRefused,
+    )
+    expect(() => composeShellPolicy([], { scriptNonce: 'short' })).toThrow(ShellPolicyRefused)
+  })
+
   it('names the plugin that made a bad contribution', () => {
     expect(() =>
       composeShellPolicy([{ owner: '@qualy/plugin-x', 'worker-src': ['ftp://x'] }]),
