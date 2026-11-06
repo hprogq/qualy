@@ -9,7 +9,9 @@
     ".": "./src/index.tsx",
     "./api": "./src/api.ts",
     "./identity": "./src/identity.ts",
-    "./release": "./src/release.ts"
+    "./release": "./src/release.ts",
+    "./surface-scope": "./src/surface-scope.tsx",
+    "./revalidation": "./src/revalidation.ts"
   },
   "peerDependencies": {
     "react": "catalog:"

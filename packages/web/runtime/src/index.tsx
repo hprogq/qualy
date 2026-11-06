@@ -209,6 +209,13 @@ export interface RuntimeProviderProps {
   /** the live channels' waits, shortened by a harness that cannot wait them out */
   liveTiming?: LiveChannelsOptions['timing']
   registry: ComponentRegistry
+  /**
+   * The manifest a server rendered this document for. Given, it is the
+   * page's manifest as it stands - the server already chose the layouts,
+   * pages and slots it names - so nothing is fetched or warmed before the
+   * routes render (docs/adr/0012-rsc-data-mode.md).
+   */
+  manifest?: Manifest
   children: ReactNode
 }
 
@@ -291,6 +298,7 @@ export function RuntimeProvider({
   webSocket,
   liveTiming,
   registry,
+  manifest: rendered,
   children,
 }: RuntimeProviderProps) {
   const [manifestKey] = useState(() => ({ current: undefined as QueryKey | undefined }))
@@ -352,6 +360,11 @@ export function RuntimeProvider({
     manifestKey.current = (
       utilsFor(appApi) as QueryUtils<ClientOf<typeof appApi>>
     ).app.getManifest.queryOptions().queryKey
+    // A rendered document's manifest, where whatever reads the manifest
+    // from the cache - the session's recovery - finds it. Placed, not
+    // asked: nothing observes it, so nothing refetches it out from under
+    // the surfaces the server handed over with it.
+    if (rendered !== undefined) queryClient.setQueryData(manifestKey.current, rendered)
     return {
       clientFor: provider,
       utilsFor,
@@ -364,14 +377,26 @@ export function RuntimeProvider({
   return (
     <QueryClientProvider client={queryClient}>
       <LiveChannelsContext.Provider value={channels}>
-        <RuntimeLoader
-          clientFor={runtime.clientFor}
-          utilsFor={runtime.utilsFor}
-          registry={registry}
-          channels={channels}
-        >
-          {children}
-        </RuntimeLoader>
+        {rendered === undefined ? (
+          <RuntimeLoader
+            clientFor={runtime.clientFor}
+            utilsFor={runtime.utilsFor}
+            registry={registry}
+            channels={channels}
+          >
+            {children}
+          </RuntimeLoader>
+        ) : (
+          <RenderedRuntime
+            clientFor={runtime.clientFor}
+            utilsFor={runtime.utilsFor}
+            registry={registry}
+            channels={channels}
+            manifest={rendered}
+          >
+            {children}
+          </RenderedRuntime>
+        )}
       </LiveChannelsContext.Provider>
       {/* mounted once, above every screen: a plugin that wants to say
           something did not have to arrange for somewhere to say it */}
@@ -382,6 +407,39 @@ export function RuntimeProvider({
         signInPage={signInPage}
       />
     </QueryClientProvider>
+  )
+}
+
+/**
+ * The runtime of a document a server rendered: its manifest arrives with the
+ * render, and a navigation that renders again brings the next one with it.
+ * The manifest and the surfaces the server handed over are one answer, so
+ * nothing here asks for the manifest on its own and replaces half of it.
+ */
+function RenderedRuntime({
+  clientFor,
+  utilsFor,
+  registry,
+  channels,
+  manifest,
+  children,
+}: Runtime & { channels: LiveChannels; children: ReactNode }) {
+  const queryClient = useQueryClient()
+  // the next render's manifest, replacing the last one where the cache holds it
+  useEffect(() => {
+    const key = (
+      utilsFor(appApi) as QueryUtils<ClientOf<typeof appApi>>
+    ).app.getManifest.queryOptions().queryKey
+    queryClient.setQueryData(key, manifest)
+  }, [queryClient, utilsFor, manifest])
+  const liveIdentity = liveIdentityOf(manifest)
+  useEffect(() => {
+    channels.retain(liveIdentity)
+  }, [channels, liveIdentity])
+  return (
+    <RuntimeContext.Provider value={{ clientFor, utilsFor, registry, manifest }}>
+      {children}
+    </RuntimeContext.Provider>
   )
 }
 

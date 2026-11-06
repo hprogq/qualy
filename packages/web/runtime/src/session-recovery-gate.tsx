@@ -228,8 +228,11 @@ export function SessionRecoveryGate({
     const pages = queryClient.getQueryData<Manifest>(manifestKey)?.pages ?? []
     const entry =
       signInPage === undefined ? undefined : pages.find((page) => page.id === signInPage)
+    // where this page is, when the sign-in page is not one it may name; a
+    // server drawing the page has no address of its own to give, and the
+    // dialog it is for is never open then
     return entry === undefined
-      ? window.location.href
+      ? (globalThis.location?.href ?? '')
       : buildPageHref(entry, { search: { [SESSION_RESUME_PARAM]: '1' } })
   })()
 

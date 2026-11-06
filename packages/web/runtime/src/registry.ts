@@ -15,8 +15,12 @@ import type { BrowserSurface } from '@qualy/ui-contract'
 // one import the other put a stylesheet-compiling module in the way of a
 // route test that draws nothing.
 
-/** a lazy component that can be fetched ahead of its first render */
-export type RegisteredComponent = LazyExoticComponent<ComponentType<any>> & {
+/**
+ * A surface's component: lazy, and fetchable ahead of its first render, where
+ * the page resolves its own surfaces; a reference the server handed over,
+ * already loaded, where the server did (docs/adr/0012-rsc-data-mode.md).
+ */
+export type RegisteredComponent = (LazyExoticComponent<ComponentType<any>> | ComponentType<any>) & {
   preload?: () => Promise<void>
 }
 
@@ -61,5 +65,29 @@ export const resolveSurface = (
       return registry.slots[surface.slot]?.[surface.id]
     case 'login':
       return registry.login[surface.id]
+  }
+}
+
+/** the surfaces a server handed this part of the page, by address space */
+export interface HandedSurfaces {
+  readonly slots?: Readonly<Record<string, Readonly<Record<string, RegisteredComponent>>>>
+  readonly login?: Readonly<Record<string, RegisteredComponent>>
+}
+
+/** `registry` with `handed` added; a surface already carried keeps its own */
+export const withSurfaces = (
+  registry: ComponentRegistry,
+  handed: HandedSurfaces,
+): ComponentRegistry => {
+  const slots: Record<string, Readonly<Record<string, RegisteredComponent>>> = {
+    ...registry.slots,
+  }
+  for (const [key, items] of Object.entries(handed.slots ?? {})) {
+    slots[key] = { ...items, ...registry.slots[key] }
+  }
+  return {
+    ...registry,
+    slots,
+    login: { ...handed.login, ...registry.login },
   }
 }
