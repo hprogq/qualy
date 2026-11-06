@@ -7,9 +7,10 @@ import type { ShouldRevalidateFunction } from 'react-router'
  *
  * A change of query alone is the page's own state - a tab, a filter, a step
  * of a form - which the page reads and keeps itself. Drawn again by the
- * server it came back as a new page, and everything the reader had in it
- * went with the old one. The same line the leave guard draws: only the path
- * is leaving.
+ * server for it, every step was a round trip for nothing, and the sign-in
+ * page's steps stayed on the view they were leaving. The same line the leave
+ * guard draws: only the path is leaving. Asked to draw the same address
+ * again, with nothing about it changed, it is drawn again as any route is.
  *
  * Decided in the page, which is where React Router asks it; a module of its
  * own so the server can name it without running it.
@@ -18,4 +19,7 @@ export const pageRevalidation: ShouldRevalidateFunction = ({
   currentUrl,
   nextUrl,
   defaultShouldRevalidate,
-}) => (currentUrl.pathname === nextUrl.pathname ? false : defaultShouldRevalidate)
+}) =>
+  currentUrl.pathname === nextUrl.pathname && currentUrl.search !== nextUrl.search
+    ? false
+    : defaultShouldRevalidate
