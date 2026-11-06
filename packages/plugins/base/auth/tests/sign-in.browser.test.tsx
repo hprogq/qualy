@@ -966,8 +966,14 @@ describe('the appearance corner', () => {
       })
       const corner = page.getByTestId('sign-in-theme')
       await expect.element(corner).toBeVisible()
+      // both marks are drawn and the scheme on the root shows one, so a page
+      // a server drew shows the right one before any script has run
+      const shown = () =>
+        [...corner.element().querySelectorAll('svg')]
+          .filter((icon) => getComputedStyle(icon).display !== 'none')
+          .map((icon) => (icon.classList.contains('lucide-moon') ? 'moon' : 'sun'))
       // a moon for a dark page, never a third mark for "system"
-      expect(corner.element().querySelector('svg.lucide-moon')).not.toBeNull()
+      expect(shown()).toEqual(['moon'])
       // pressing it asks rather than switches
       await corner.click()
       const system = page.getByRole('menuitem').nth(2)
@@ -975,7 +981,7 @@ describe('the appearance corner', () => {
       expect(system.element().querySelector('svg.lucide-monitor')).not.toBeNull()
       expect(root.dataset['mode']).toBe('dark')
       await page.getByRole('menuitem').nth(0).click()
-      await expect.poll(() => corner.element().querySelector('svg.lucide-sun')).not.toBeNull()
+      await expect.poll(shown).toEqual(['sun'])
     } finally {
       localStorage.removeItem('qualy.theme')
       if (before === undefined) delete root.dataset['mode']

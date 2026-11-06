@@ -142,6 +142,12 @@ const styles = stylex.create({
   productColophon: { position: 'relative', alignSelf: 'flex-start', marginTop: 'auto' },
   itemCheck: { width: 14, height: 14, marginInlineStart: 'auto' },
   itemIcon: { width: 15, height: 15 },
+  lightOnly: {
+    display: tokens.lightOnly,
+  },
+  darkOnly: {
+    display: tokens.darkOnly,
+  },
   theme: {
     display: 'inline-flex',
     width: 34,
@@ -211,7 +217,7 @@ export function Ring() {
 
 /** the appearance, chosen from the corner beside the language */
 function ThemeMenu() {
-  const { choice, resolved, setChoice } = useTheme()
+  const { choice, setChoice } = useTheme()
 
   const options: { value: ThemeChoice; label: string; icon: typeof SunIcon }[] = [
     { value: 'light', label: m.preference_themeLight(), icon: SunIcon },
@@ -220,7 +226,9 @@ function ThemeMenu() {
   ]
   // The corner says how the page looks, not which rule made it look so: a
   // lone monitor there read as a display setting. Which rule is in the menu.
-  const Current = resolved === 'dark' ? MoonIcon : SunIcon
+  // Both are drawn and the scheme on the root shows one: a page a server drew
+  // cannot know the reader's scheme, and the root already does before any
+  // script runs, so the corner is right from the first frame.
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -230,7 +238,8 @@ function ThemeMenu() {
           data-testid="sign-in-theme"
           {...stylex.props(styles.theme)}
         >
-          <Current size={16} strokeWidth={1.8} aria-hidden />
+          <SunIcon size={16} strokeWidth={1.8} aria-hidden {...stylex.props(styles.lightOnly)} />
+          <MoonIcon size={16} strokeWidth={1.8} aria-hidden {...stylex.props(styles.darkOnly)} />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
