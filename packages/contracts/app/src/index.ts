@@ -1,6 +1,6 @@
 import { Schema } from 'effect'
 import { HttpApiEndpoint, HttpApiGroup } from 'effect/http-api'
-import { Viewer } from '@qualy/auth-contract/session'
+import { IdentityProbe, Viewer } from '@qualy/auth-contract/session'
 
 // The authorized projection of the application shell for one viewer.
 //
@@ -70,5 +70,9 @@ export const appApiGroup = HttpApiGroup.make('app').add(
       // words for its terms
       context: Schema.Record(Schema.String, Schema.Unknown),
     }),
-  }).middleware(Viewer),
+  })
+    .middleware(Viewer)
+    // asks who is signed in: never refused for naming somebody else, and
+    // never taken by a page as its own identity (docs/adr/0013-document-identity.md)
+    .annotate(IdentityProbe, true),
 )

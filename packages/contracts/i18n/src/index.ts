@@ -24,6 +24,10 @@ export const defaultLocale: SupportedLocale = 'zh-CN'
 export const commonErrorCodes = [
   'AUTH_REQUIRED',
   'SESSION_EXPIRED',
+  // the page is somebody else's than the session's, or did not say whose
+  // (docs/adr/0013-document-identity.md)
+  'IDENTITY_CHANGED',
+  'IDENTITY_UNASSERTED',
   'ACCESS_DENIED',
   'BAD_REQUEST',
   'TOO_MANY_ATTEMPTS',

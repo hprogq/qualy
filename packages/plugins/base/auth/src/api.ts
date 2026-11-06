@@ -22,6 +22,9 @@ import { EMAIL_MAX_LENGTH, normalizeEmail } from '@qualy/auth-contract/email'
 import {
   Authenticated,
   AuthRequired,
+  IdentityChanged,
+  IdentityProbe,
+  IdentityUnasserted,
   TooManyAttemptsResponse,
   Viewer,
 } from '@qualy/auth-contract/session'
@@ -1091,13 +1094,19 @@ export const sessionApiGroup = HttpApiGroup.make('auth')
       // it is what tells them apart: a session that was presented and has
       // since lapsed is not the same as never having had one
       error: [AuthRequired],
-    }).middleware(Authenticated),
+    })
+      .middleware(Authenticated)
+      // asks who is signed in: the page decides its recovery by the answer
+      .annotate(IdentityProbe, true),
   )
   .add(
     // no middleware: refusing an already-signed-out caller would make the
     // client handle a failure that means the thing it asked for is already true
     HttpApiEndpoint.delete('endSession', '/auth/session', {
       success: Schema.Struct({ ok: Schema.Literal(true) }),
+      // never refused for having no session; refused for ending somebody
+      // else's (docs/adr/0013-document-identity.md)
+      error: [IdentityChanged, IdentityUnasserted],
     }),
   )
   .add(

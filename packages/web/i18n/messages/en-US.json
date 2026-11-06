@@ -69,6 +69,7 @@
   "session_resumed": "Signed in again",
   "error_authRequired": "Please sign in to continue.",
   "error_sessionExpired": "Your session has expired. Please sign in again.",
+  "error_identityChanged": "This page belongs to the account signed in before. Reload to continue.",
   "error_tooManyAttempts": "Too many attempts. Try again in {minutes, plural, one {# minute} other {# minutes}}.",
   "error_accessDenied": "You are not allowed to perform this action.",
   "error_badRequest": "Some input is invalid.",

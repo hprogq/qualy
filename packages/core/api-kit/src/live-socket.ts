@@ -29,6 +29,12 @@ export const LIVE_SUBPROTOCOL = 'qualy.live.1'
 /** where the api generation and the release travel, in place of their headers */
 export const LIVE_PROTOCOL_PARAM = 'protocol'
 export const LIVE_RELEASE_PARAM = 'release'
+/**
+ * whose the page is (docs/adr/0013-document-identity.md): the identity key its
+ * manifest named, or `anonymous`. Never a credential, and like every query
+ * left out of the access log and the traces.
+ */
+export const LIVE_IDENTITY_PARAM = 'identity'
 
 /** what the browser sends: the answer to a heartbeat, and nothing else */
 export const LIVE_PONG = 'pong'
@@ -68,6 +74,8 @@ export const LIVE_CLOSE = {
   unresponsive: 4408,
   /** this page cannot talk to this server; the reason says which of three */
   unsupported: 4409,
+  /** somebody other than the page's person holds the session; the page stops */
+  identityChanged: 4410,
   /** every seat is taken; the reason says whose */
   quota: 4429,
 } as const
@@ -96,6 +104,7 @@ export type LiveCloseVerdict =
   | 'unauthenticated'
   | 'forbidden'
   | 'unsupported'
+  | 'identity-changed'
 
 export const liveCloseVerdict = (code: number): LiveCloseVerdict => {
   switch (code) {
@@ -109,6 +118,8 @@ export const liveCloseVerdict = (code: number): LiveCloseVerdict => {
       return 'forbidden'
     case LIVE_CLOSE.unsupported:
       return 'unsupported'
+    case LIVE_CLOSE.identityChanged:
+      return 'identity-changed'
     default:
       // a server going away, a dropped network (1006), a heartbeat nobody
       // answered and a frame the server would not take are all the same

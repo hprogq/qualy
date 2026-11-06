@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto'
 import type { SupportedLocale } from '@qualy/i18n-contract'
 import { render, renderTexts } from '@qualy/text'
 import { Context, Effect, Layer } from 'effect'
@@ -15,6 +14,7 @@ import {
   type ViewerAccess,
 } from '@qualy/ui-contract'
 import type { Principal } from '@qualy/rbac-contract'
+import { identityKeyOf } from '@qualy/auth-contract/identity-key'
 import { UiAuthorizer } from './authorizer.ts'
 import { Ui } from './registry.ts'
 
@@ -55,16 +55,6 @@ export interface Manifest {
   readonly collections: Readonly<Record<string, readonly unknown[]>>
   readonly slots: Readonly<Record<string, readonly { id: string; order: number }[]>>
 }
-
-/**
- * Who a principal is, as the page may compare it: a digest of the tenant and
- * the user, so it names the person without handing out either id.
- */
-const identityOf = (principal: Principal) =>
-  createHash('sha256')
-    .update(`${principal.tenantId}\u0000${principal.userId}`)
-    .digest('base64url')
-    .slice(0, 22)
 
 const sorted = <T extends { order?: number; id: string }>(items: readonly T[]) =>
   [...items].sort((a, b) => (a.order ?? 99) - (b.order ?? 99) || a.id.localeCompare(b.id))
@@ -234,7 +224,7 @@ export const make = Effect.fn('Ui.manifest.make')(function* () {
       const used = new Set(shown.map((page) => page.declaration.layout))
       return {
         viewer: viewer.authenticated ? ('authenticated' as const) : ('anonymous' as const),
-        ...(principal === undefined ? {} : { identity: identityOf(principal) }),
+        ...(principal === undefined ? {} : { identity: identityKeyOf(principal) }),
         layouts: layouts
           .filter((layout) => used.has(layout.declaration.contract))
           .sort((a, b) => a.declaration.contract.localeCompare(b.declaration.contract))

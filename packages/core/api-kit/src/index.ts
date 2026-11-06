@@ -92,6 +92,18 @@ export const QUALY_LOCALE_HEADER = 'x-qualy-locale'
  */
 export const QUALY_LOCALE_COOKIE = 'qualy.locale'
 
+/**
+ * Who the page a request came from belongs to (docs/adr/0013-document-identity.md):
+ * the identity key its manifest named, or `anonymous`. Sent by the
+ * application's own page on every api request, and compared with the session
+ * before anything is done for it - a page loaded for one person never acts
+ * as whoever signed in after it.
+ */
+export const QUALY_IDENTITY_HEADER = 'x-qualy-identity'
+
+/** the identity a page belongs to when nobody was signed in as it loaded */
+export const ANONYMOUS_IDENTITY = 'anonymous'
+
 // --- pagination ---
 
 // Keyset pagination, in the kit because the alternative is what every list

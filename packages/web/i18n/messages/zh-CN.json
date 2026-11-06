@@ -69,6 +69,7 @@
   "session_resumed": "已重新登录",
   "error_authRequired": "请先登录。",
   "error_sessionExpired": "登录状态已过期，请重新登录。",
+  "error_identityChanged": "本页属于之前登录的账号，刷新后才能继续使用。",
   "error_tooManyAttempts": "尝试次数过多，请 {minutes} 分钟后再试。",
   "error_accessDenied": "你没有执行该操作的权限。",
   "error_badRequest": "输入内容有误。",
