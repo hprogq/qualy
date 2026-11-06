@@ -37,6 +37,40 @@ export class SessionExpired extends Schema.TaggedError<SessionExpired>()(
 ) {}
 
 /**
+ * The page a request came from belongs to somebody other than whoever holds
+ * the session now (docs/adr/0013-document-identity.md).
+ *
+ * Another tab signed in as somebody else, and this page - loaded and filled
+ * in for the person before - must not act as them. Refused before anything
+ * is done; the page stops and offers only a reload.
+ */
+export class IdentityChanged extends Schema.TaggedError<IdentityChanged>()(
+  'IDENTITY_CHANGED',
+  {},
+  { httpApiStatus: 409, identifier: 'IdentityChanged' },
+) {}
+
+/**
+ * A page of ours that did not say whose it is. A broken client rather than a
+ * different person: the page stops asking and is asked to reload, as for any
+ * page the server cannot talk to.
+ */
+export class IdentityUnasserted extends Schema.TaggedError<IdentityUnasserted>()(
+  'IDENTITY_UNASSERTED',
+  {},
+  { httpApiStatus: 409, identifier: 'IdentityUnasserted' },
+) {}
+
+/**
+ * Marks an endpoint that asks who is signed in: the manifest, the session.
+ * Its answer is what a page decides its recovery by, so it is never refused
+ * for naming somebody else - and never taken as the page's identity either.
+ */
+export class IdentityProbe extends Context.Service<IdentityProbe, true>()(
+  '@qualy/plugin-auth/IdentityProbe',
+) {}
+
+/**
  * Too many attempts from one place, or at one address, in a short while.
  *
  * Temporary, and said the same way whoever asks: a limit that answered
@@ -107,7 +141,7 @@ export class Authenticated extends HttpApiMiddleware.Service<
   // an array rather than a union: each member keeps its own status
   // annotation, and a union collapses them into one schema whose per-member
   // statuses are never read, which is a silent 500 for every declared failure
-  error: [AuthRequired, SessionExpired],
+  error: [AuthRequired, SessionExpired, IdentityChanged, IdentityUnasserted],
 }) {}
 
 /**
@@ -129,18 +163,26 @@ export class CurrentViewer extends Context.Service<
 >()('@qualy/plugin-auth/CurrentViewer') {}
 
 /**
- * Resolves a session if one is presented, and never refuses.
+ * Resolves a session if one is presented, and refuses only a page's request
+ * that the session does not belong to.
  *
  * No cookie, an unknown token and an expired one are the same answer here -
  * an anonymous viewer - because this middleware's job is to say who is asking,
- * not whether they may. What they may see is the projection's decision.
+ * not whether they may. What they may see is the projection's decision. The
+ * one exception is a page that says whose it is (docs/adr/0013-document-identity.md):
+ * a page loaded for a person whose session has gone is told so rather than
+ * answered as nobody, and a page that is somebody else's is refused.
  */
 export class Viewer extends HttpApiMiddleware.Service<
   Viewer,
   {
     provides: CurrentViewer
   }
->()('@qualy/plugin-auth/Viewer') {}
+>()('@qualy/plugin-auth/Viewer', {
+  // a page's person whose session is gone is told so, and a page that is
+  // somebody else's is refused (docs/adr/0013-document-identity.md)
+  error: [AuthRequired, SessionExpired, IdentityChanged, IdentityUnasserted],
+}) {}
 
 /**
  * Whether a session already resolved is still one.

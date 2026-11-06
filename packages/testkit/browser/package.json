@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@qualy/i18n-contract": "workspace:*",
+    "@qualy/release-contract": "workspace:*",
     "@qualy/ui": "workspace:*",
     "@qualy/web-i18n": "workspace:*",
     "@qualy/web-runtime": "workspace:*",

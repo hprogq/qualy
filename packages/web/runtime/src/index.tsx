@@ -40,11 +40,13 @@ import { handlePlatformFailure, type RateLimit } from './mutation-failure.ts'
 import { LoadingScreen } from '@qualy/ui/spinner'
 import { clientFor, type ClientIdentity, type ClientOf, type TransportOptions } from './api.ts'
 import { signingOut } from './identity.ts'
+import { adoptDocumentIdentity, identityOfManifest, onUnasserted } from './document-identity.ts'
 import {
   announceSessionChanged,
   changingIdentity,
   identityChanging,
   presentedManifest,
+  identityRefused,
 } from './session-recovery.ts'
 import { SessionRecoveryGate } from './session-recovery-gate.tsx'
 import { LiveChannels, type LiveChannelsOptions } from './live-channel.ts'
@@ -308,6 +310,17 @@ export function RuntimeProvider({
       () => manifestKey.current ?? [],
     ),
   )
+  // A page that did not say whose it is cannot go on talking
+  // (docs/adr/0013-document-identity.md): told as a page the server will not
+  // talk to is, and reported, since only a broken page gets here.
+  useEffect(
+    () =>
+      onUnasserted(() => {
+        captureDiagnostic('identity-unasserted')
+        onClientUnsupported?.('protocol')
+      }),
+    [onClientUnsupported],
+  )
   const [queryClient] = useState(() => {
     const made: QueryClient = new QueryClient({
       queryCache: new QueryCache({ onError: lost }),
@@ -336,6 +349,7 @@ export function RuntimeProvider({
         ...(clientIdentity === undefined ? {} : { clientIdentity }),
         ...(onClientUnsupported === undefined ? {} : { onClientUnsupported }),
         onSessionLost: () => lost(SESSION_LOST),
+        onIdentityChanged: identityRefused,
       }),
   )
   // Not disposed with the provider: a strict-mode remount runs the cleanup of
@@ -570,6 +584,10 @@ function RuntimeLoader({
     return <LoadingScreen />
   }
   if (!warm) return <LoadingScreen />
+  // the page is the manifest's person's from here on: every request it makes
+  // says so (document-identity.ts). Taken from the manifest the page holds,
+  // which a recovery keeps while it waits for the same person to come back.
+  adoptDocumentIdentity(identityOfManifest(known))
   return (
     <RuntimeContext.Provider value={{ clientFor, utilsFor, registry, manifest: known }}>
       {children}

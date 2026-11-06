@@ -781,6 +781,9 @@ importers:
 
   packages/contracts/auth:
     dependencies:
+      '@qualy/api-kit':
+        specifier: workspace:*
+        version: link:../../core/api-kit
       '@qualy/i18n-contract':
         specifier: workspace:*
         version: link:../i18n
@@ -1428,6 +1431,9 @@ importers:
       '@qualy/rbac-contract':
         specifier: workspace:*
         version: link:../../../contracts/rbac
+      '@qualy/release-contract':
+        specifier: workspace:*
+        version: link:../../../contracts/release
       '@qualy/settings-contract':
         specifier: workspace:*
         version: link:../../../contracts/settings
@@ -2695,6 +2701,9 @@ importers:
       '@qualy/i18n-contract':
         specifier: workspace:*
         version: link:../../contracts/i18n
+      '@qualy/release-contract':
+        specifier: workspace:*
+        version: link:../../contracts/release
       '@qualy/ui':
         specifier: workspace:*
         version: link:../../web/ui

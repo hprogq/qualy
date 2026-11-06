@@ -10,6 +10,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { createTestContext, postgresAvailable, runSql } from '@qualy/plugin-database/testkit'
 import { Api } from '@qualy/api-kit/local'
 import { LIVE_CLOSE, LIVE_PONG, LIVE_SUBPROTOCOL } from '@qualy/api-kit/live-socket'
+import { identityKeyOf } from '@qualy/auth-contract/identity-key'
 import {
   layer as sessionLayer,
   presenceLayer,
@@ -39,6 +40,7 @@ let scope: Scope.Closeable | undefined
 let batchId: string
 let tenantId: string
 let goneSession: string
+let adminId: string
 const ledger = connectionLedger({ ...DEFAULT_CONNECTION_LIMITS, recheck: '150 millis' })
 const bus = Effect.runSync(PubSub.unbounded<AssessmentLiveEvent>())
 
@@ -120,13 +122,14 @@ describe.runIf(postgresAvailable)('the batch live channel, as served', () => {
           yield* signIn(f.t, here, f.admin, tokens.admin)
           yield* signIn(other.t, there, other.admin, tokens.other)
           const gone = one<{ id: string }>(yield* signIn(f.t, here, f.admin, tokens.gone)).id
-          return { batchId: g.batch.id, tenantId: f.t, gone }
+          return { batchId: g.batch.id, tenantId: f.t, gone, admin: f.admin }
         }),
       ),
     )
     batchId = seeded.batchId
     tenantId = seeded.tenantId
     goneSession = seeded.gone
+    adminId = seeded.admin
 
     const authConfig = Layer.succeed(
       AuthConfig,
@@ -226,7 +229,7 @@ describe.runIf(postgresAvailable)('the batch live channel, as served', () => {
       code: LIVE_CLOSE.unsupported,
       reason: 'protocol',
     })
-    expect(await dial({ query: '?protocol=4&release=..%2Fetc' }).closed).toEqual({
+    expect(await dial({ query: '?protocol=5&release=..%2Fetc' }).closed).toEqual({
       code: LIVE_CLOSE.unsupported,
       reason: 'release',
     })
@@ -236,12 +239,37 @@ describe.runIf(postgresAvailable)('the batch live channel, as served', () => {
       reason: 'protocol',
     })
     // a query said twice is not a query said once
-    expect(await dial({ query: '?protocol=4&protocol=4' }).closed).toMatchObject({
+    expect(await dial({ query: '?protocol=5&protocol=5' }).closed).toMatchObject({
       code: LIVE_CLOSE.unsupported,
     })
+    // a page of this generation that does not say whose it is
+    expect(await dial({ query: '?protocol=5&release=web-r1' }).closed).toEqual({
+      code: LIVE_CLOSE.unsupported,
+      reason: 'protocol',
+    })
     expect(ledger.open()).toBe(0)
-    const accepted = held(dial({ query: '?protocol=4&release=web-r1' }))
+    const accepted = held(
+      dial({
+        query: `?protocol=5&release=web-r1&identity=${identityKeyOf({ tenantId, userId: adminId })}`,
+      }),
+    )
     await until(() => accepted.kinds.includes('sync'))
+  })
+
+  it("closes with 4410 for a page that is somebody else's, before anything is heard", async () => {
+    // A's page dials again after another tab signed in as somebody else: the
+    // cookie is theirs, the page still says it is A's
+    const line = held(
+      dial({
+        token: tokens.other,
+        query: `?protocol=5&release=web-r1&identity=${identityKeyOf({ tenantId, userId: adminId })}`,
+      }),
+    )
+    expect(await line.closed).toEqual({ code: LIVE_CLOSE.identityChanged, reason: 'identity' })
+    // no seat was taken, and nothing about the batch was ever said
+    expect(ledger.open()).toBe(0)
+    announce('phase-changed')
+    expect(line.kinds).toEqual([])
   })
 
   it('holds a session to six seats, tells the seventh to wait, and seats it once one is free', async () => {

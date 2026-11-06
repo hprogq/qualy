@@ -8,6 +8,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./email": "./src/email.ts",
+    "./identity-key": "./src/identity-key.ts",
     "./device": "./src/device.ts",
     "./login": "./src/login.ts",
     "./login-icons": "./src/login-icons.ts",
@@ -22,6 +23,7 @@
     "effect": "catalog:"
   },
   "dependencies": {
+    "@qualy/api-kit": "workspace:*",
     "@qualy/i18n-contract": "workspace:*",
     "@qualy/plugin-kit": "workspace:*",
     "@qualy/rbac-contract": "workspace:*",

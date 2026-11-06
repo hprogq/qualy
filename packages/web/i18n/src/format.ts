@@ -115,6 +115,8 @@ function isNetworkError(error: unknown): boolean {
 export const commonErrorMessages: Record<CommonErrorCode, (error: unknown) => string> = {
   AUTH_REQUIRED: () => m.error_authRequired(),
   SESSION_EXPIRED: () => m.error_sessionExpired(),
+  IDENTITY_CHANGED: () => m.error_identityChanged(),
+  IDENTITY_UNASSERTED: () => m.error_clientUnsupported(),
   ACCESS_DENIED: () => m.error_accessDenied(),
   BAD_REQUEST: () => m.error_badRequest(),
   TOO_MANY_ATTEMPTS: (error) => {

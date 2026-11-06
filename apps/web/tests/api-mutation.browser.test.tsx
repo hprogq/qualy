@@ -67,6 +67,7 @@ it('recovers only the refused request after an earlier workflow write succeeded'
   const uninstall = installSessionRecovery({
     wait: recovery,
     frozen: () => false,
+    changed: () => {},
     lost: () => false,
   })
   function Workflow() {

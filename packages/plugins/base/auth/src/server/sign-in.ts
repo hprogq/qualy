@@ -25,6 +25,7 @@ import {
   type SignedInUser,
 } from '@qualy/auth-contract/login'
 import { createSessionToken, hashSessionToken } from '../session.ts'
+import { pageMaySignOut } from './session.ts'
 import { createHash, timingSafeEqual } from 'node:crypto'
 import { Secrets } from '@qualy/plugin-secrets/plugin'
 import { AuthConfig, SHARED_DEVICE_TTL_SECONDS } from './auth-config.ts'
@@ -1471,6 +1472,19 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
           )
         }
         yield* setLocaleCookie(locale, config.secureCookies)
+      }),
+    ),
+
+    /** the sign-out a page asks for: refused where the session is not the page's */
+    endPageSession: bound(
+      Effect.fn('Auth.signIn.endPageSession')(function* () {
+        yield* pageMaySignOut(config.sessionCookieName, config.sessionIdleSeconds)
+        const request = yield* HttpServerRequest.HttpServerRequest
+        const token = request.cookies[config.sessionCookieName]
+        if (token) {
+          yield* revokeSessionByToken(hashSessionToken(token)).pipe(Effect.orDie)
+        }
+        yield* clearSessionCookie(config.sessionCookieName, config.secureCookies)
       }),
     ),
 

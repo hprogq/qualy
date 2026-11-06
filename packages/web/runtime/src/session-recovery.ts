@@ -1,4 +1,5 @@
 import { isAuthenticationError } from '@qualy/web-i18n'
+import { unassertedHeard } from './document-identity.ts'
 
 // What a call does when it finds the session gone.
 //
@@ -50,6 +51,12 @@ export interface SessionRecovery {
   readonly lost: (identity: string, someoneElse: boolean) => boolean
   /** the page belongs to somebody no longer signed in: nothing it asks is sent */
   readonly frozen: () => boolean
+  /**
+   * The server refused a request because the session is somebody else's
+   * than the page's (docs/adr/0013-document-identity.md): the page is locked
+   * as it is for any other person signing in, whoever the page was.
+   */
+  readonly changed: () => void
 }
 
 let installed: SessionRecovery | undefined
@@ -69,6 +76,19 @@ export const installSessionRecovery = (recovery: SessionRecovery): (() => void) 
  * recovery installed (a harness, a visitor who was never signed in) fail as
  * they would have.
  */
+/** the refusal a request gets when the session is not the page's person's */
+export const isIdentityChanged = (error: unknown): boolean =>
+  (error as { _tag?: unknown } | null)?._tag === 'IDENTITY_CHANGED'
+
+/** the refusal a request gets when the page did not say whose it is: a broken page */
+export const isIdentityUnasserted = (error: unknown): boolean =>
+  (error as { _tag?: unknown } | null)?._tag === 'IDENTITY_UNASSERTED'
+
+/** told whichever way it arrived: the page is somebody else's now, and stops */
+export const identityRefused = (): void => {
+  installed?.changed()
+}
+
 export const recovering = async <A>(call: () => Promise<A>, signal?: AbortSignal): Promise<A> => {
   // left unanswered: a reload is the only way on from here
   if (installed?.frozen() === true) return new Promise<never>(() => {})
@@ -78,6 +98,16 @@ export const recovering = async <A>(call: () => Promise<A>, signal?: AbortSignal
     // read afresh each time: the call may be cancelled while it waits
     const cancelled = () => signal?.aborted === true
     const recovery = installed
+    // never made again: the page is not the session's person's, or did not
+    // say whose it is (docs/adr/0013-document-identity.md)
+    if (isIdentityChanged(error)) {
+      identityRefused()
+      throw error
+    }
+    if (isIdentityUnasserted(error)) {
+      unassertedHeard()
+      throw error
+    }
     if (recovery === undefined || !isAuthenticationError(error) || cancelled()) throw error
     if (!(await recovery.wait(signal)) || cancelled()) throw error
     return call()

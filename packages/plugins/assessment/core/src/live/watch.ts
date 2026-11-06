@@ -2,6 +2,7 @@ import { Effect, Metric, Option, Stream } from 'effect'
 import { HttpServerRequest, HttpServerResponse } from 'effect/http'
 import type { Principal } from '@qualy/rbac-contract'
 import { CurrentViewer, SessionPresence } from '@qualy/auth-contract/session'
+import { judgeDocumentIdentity } from '@qualy/auth-contract/identity-key'
 import { ClientAssembly, clientRefusal } from '@qualy/api-kit/client-assembly'
 import { originMatches, publicOriginOf, trustedProxies } from '@qualy/api-kit/origin'
 import { currentRequestContext, webSocketSession } from '@qualy/api-kit/request'
@@ -97,6 +98,7 @@ const admissions = boundedCounter('qualy.assessment.live.admission', {
     'unauthenticated',
     'forbidden',
     'unsupported',
+    'identity-changed',
   ],
 })
 const endings = boundedCounter('qualy.assessment.live.close', {
@@ -191,6 +193,29 @@ export const watchBatch = (input: {
           : 'protocol'
         if (unsupported !== undefined) {
           return yield* refuse('unsupported', { code: LIVE_CLOSE.unsupported, reason: unsupported })
+        }
+        // the page and the session must be the same person's before the
+        // channel is open to anything (docs/adr/0013-document-identity.md):
+        // no subscription, no wake-up, nothing for somebody else
+        const declared = liveClientOf(request)
+        const page = judgeDocumentIdentity({
+          declared: declared.identity,
+          // a page of ours names the protocol it speaks; whatever else dials
+          // keeps the policy it always had
+          fromPage: declared.protocol !== undefined,
+          session:
+            viewer.principal === undefined
+              ? { state: 'absent' }
+              : { state: 'valid', principal: viewer.principal },
+        })
+        if (page === 'unasserted') {
+          return yield* refuse('unsupported', { code: LIVE_CLOSE.unsupported, reason: 'protocol' })
+        }
+        if (page === 'changed') {
+          return yield* refuse('identity-changed', {
+            code: LIVE_CLOSE.identityChanged,
+            reason: 'identity',
+          })
         }
         const principal = viewer.principal
         if (principal === undefined) {

@@ -6,6 +6,7 @@ import {
   LIVE_HEARTBEAT_MS,
   LIVE_INBOUND_FRAME_LIMIT,
   LIVE_PONG,
+  LIVE_IDENTITY_PARAM,
   LIVE_PROTOCOL_PARAM,
   LIVE_RELEASE_PARAM,
   LIVE_SILENCE_MS,
@@ -68,16 +69,24 @@ export interface LiveSocketOptions<A> {
 
 const encode = (message: unknown): string => JSON.stringify(message)
 
-/** the page's declared generation and release, as the query carries them */
+/** the page's declared generation, release and identity, as the query carries them */
 export const liveClientOf = (
   request: HttpServerRequest.HttpServerRequest,
-): { readonly protocol: string | undefined; readonly release: string | undefined } => {
+): {
+  readonly protocol: string | undefined
+  readonly release: string | undefined
+  readonly identity: string | undefined
+} => {
   const url = new URL(request.url, 'http://live.invalid')
   const one = (name: string) => {
     const all = url.searchParams.getAll(name)
     return all.length === 1 ? all[0] : all.length === 0 ? undefined : ''
   }
-  return { protocol: one(LIVE_PROTOCOL_PARAM), release: one(LIVE_RELEASE_PARAM) }
+  return {
+    protocol: one(LIVE_PROTOCOL_PARAM),
+    release: one(LIVE_RELEASE_PARAM),
+    identity: one(LIVE_IDENTITY_PARAM),
+  }
 }
 
 /** whether the handshake offered this channel's subprotocol */
