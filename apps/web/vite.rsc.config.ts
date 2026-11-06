@@ -52,6 +52,11 @@ export default defineConfig(({ mode }) => ({
         dev: mode !== 'production',
         runtimeInjection: false,
         unstable_moduleResolution: { type: 'commonJS', rootDir: repoRoot },
+        // Into the stylesheet every document links, as the page build does
+        // for its shell: left to the plugin, the rules went to whichever
+        // stylesheet came first, one page's lazy one, and every other page
+        // drew unstyled.
+        cssInjectionTarget: (file) => /(^|[\\/])entry-[^\\/]*\.css$/.test(file),
         lightningcssOptions: { minify: mode === 'production' },
       }),
     ),
