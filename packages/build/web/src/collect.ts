@@ -150,19 +150,19 @@ const specifier = (file: string, fromDir: string | undefined): string => {
  */
 const loader = (
   key: string,
-  binding: { readonly file: string; readonly export: string },
-  fromDir: string | undefined,
+  binding: { readonly export: string },
+  target: string,
   indent = '  ',
 ) => {
-  const load = `import(${JSON.stringify(specifier(binding.file, fromDir))})`
+  const load = `import(${JSON.stringify(target)})`
   return binding.export === 'default'
     ? `${indent}${JSON.stringify(key)}: () => ${load},`
     : `${indent}${JSON.stringify(key)}: () => ${load}.then((module) => ({ default: module.${binding.export} })),`
 }
 
 /**
- * The virtual module's source: four tables of loaders, keyed by surface,
- * and the slots each layout renders.
+ * The surface tables: four tables of loaders, keyed by surface, and the
+ * slots each layout renders.
  *
  * Four rather than one, because the four address spaces are different - a
  * page id, a layout contract, a slot and the item under it, a login driver
@@ -170,39 +170,32 @@ const loader = (
  * apart. The values are the only place a module path appears in what the
  * browser runs, and they are erased by the bundler into chunk urls.
  */
-export async function buildPluginModuleSource(
-  options: { ymlPath?: string; fromDir?: string } = {},
-): Promise<string> {
-  const imports: string[] = []
+const surfaceTables = (
+  entries: readonly WebPluginEntry[],
+  targetOf: (entry: WebPluginEntry, binding: SurfaceBinding) => string,
+) => {
   const pageEntries: string[] = []
   const layoutEntries: string[] = []
   const layoutSlotEntries: string[] = []
   const slotEntries = new Map<string, string[]>()
   const loginEntries: string[] = []
-  const browserEntries: string[] = []
-  for (const entry of await collectWebPlugins(options)) {
-    for (const module of entry.browserModules) {
-      // a value with a lifecycle, not an import for its side effect: the
-      // host decides when it sets up, when it starts and when it stops
-      const name = `browser${String(browserEntries.length)}`
-      imports.push(`import ${name} from ${JSON.stringify(specifier(module, options.fromDir))}`)
-      browserEntries.push(`  ${name},`)
-    }
+  for (const entry of entries) {
     for (const binding of entry.surfaces) {
       // a real dynamic import per module: the edge Vite splits chunks on
       const { surface } = binding
-      if (surface.kind === 'page') pageEntries.push(loader(surface.id, binding, options.fromDir))
+      const target = targetOf(entry, binding)
+      if (surface.kind === 'page') pageEntries.push(loader(surface.id, binding, target))
       else if (surface.kind === 'layout') {
-        layoutEntries.push(loader(surface.id, binding, options.fromDir))
+        layoutEntries.push(loader(surface.id, binding, target))
         if (binding.slots?.length)
           layoutSlotEntries.push(
             `  ${JSON.stringify(surface.id)}: ${JSON.stringify(binding.slots)},`,
           )
       } else if (surface.kind === 'login') {
-        loginEntries.push(loader(surface.id, binding, options.fromDir))
+        loginEntries.push(loader(surface.id, binding, target))
       } else {
         const items = slotEntries.get(surface.slot) ?? []
-        items.push(loader(surface.id, binding, options.fromDir, '    '))
+        items.push(loader(surface.id, binding, target, '    '))
         slotEntries.set(surface.slot, items)
       }
     }
@@ -213,8 +206,6 @@ export async function buildPluginModuleSource(
     '  },',
   ])
   return [
-    ...imports,
-    '',
     'export const pageComponents = {',
     ...pageEntries,
     '}',
@@ -237,11 +228,66 @@ export async function buildPluginModuleSource(
     ...loginEntries,
     '}',
     '',
-    'export const browserPlugins = [',
-    ...browserEntries,
-    ']',
+  ]
+}
+
+/** every plugin's browser half, imported as a value with a lifecycle */
+const browserPluginList = (entries: readonly WebPluginEntry[], fromDir: string | undefined) => {
+  const imports: string[] = []
+  const list: string[] = []
+  for (const entry of entries) {
+    for (const module of entry.browserModules) {
+      // a value with a lifecycle, not an import for its side effect: the
+      // host decides when it sets up, when it starts and when it stops
+      const name = `browser${String(list.length)}`
+      imports.push(`import ${name} from ${JSON.stringify(specifier(module, fromDir))}`)
+      list.push(`  ${name},`)
+    }
+  }
+  return { imports, body: ['export const browserPlugins = [', ...list, ']', ''] }
+}
+
+/**
+ * The browser's aggregate: the surface tables and the browser halves, for a
+ * page that resolves its own surfaces.
+ */
+export async function buildPluginModuleSource(
+  options: { ymlPath?: string; fromDir?: string } = {},
+): Promise<string> {
+  const entries = await collectWebPlugins(options)
+  const browser = browserPluginList(entries, options.fromDir)
+  return [
+    ...browser.imports,
     '',
+    ...surfaceTables(entries, (_entry, binding) => specifier(binding.file, options.fromDir)),
+    ...browser.body,
   ].join('\n')
+}
+
+/**
+ * The same collection, split by where it runs (docs/adr/0012-rsc-data-mode.md).
+ *
+ * The surface tables go to the server component environment only, which
+ * resolves a request's surfaces and hands the browser references to the few
+ * it needs; the browser halves go to the browser only. One collection, so
+ * the two can never disagree about which plugins are in the product.
+ */
+export async function buildEnvironmentModuleSources(
+  options: { ymlPath?: string; fromDir?: string } = {},
+): Promise<{ readonly surfaces: string; readonly browserPlugins: string }> {
+  const entries = await collectWebPlugins(options)
+  const browser = browserPluginList(entries, options.fromDir)
+  return {
+    // By the plugin's own export subpath, resolved where the table is
+    // built: a plugin may answer a subpath with one module for the server and
+    // another for the page, as packages do with export conditions, and only
+    // the environment importing it knows which one it is asking for.
+    surfaces: surfaceTables(
+      entries,
+      (entry, binding) => `${entry.name}${binding.module.replace(/^\./, '')}`,
+    ).join('\n'),
+    browserPlugins: [...browser.imports, '', ...browser.body].join('\n'),
+  }
 }
 
 /**

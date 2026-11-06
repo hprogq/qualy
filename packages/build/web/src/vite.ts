@@ -2,10 +2,15 @@ import fs from 'node:fs'
 import path from 'node:path'
 import type { Plugin } from 'vite'
 import { BOOT_COPY_ID, BOOT_PLACEHOLDER, SHELL_STYLE_ATTRIBUTE, bootFrame } from '@qualy/brand/boot'
-import { repoRoot } from './manifest.ts'
+import { manifestPath, repoRoot } from './manifest.ts'
 import { BROWSER_SURFACE_MAP } from './release-vite.ts'
 import { workerDependencyScan } from './dependency-scan.ts'
-import { buildPluginModuleSource, buildPluginScanSource, buildSurfaceMapSource } from './collect.ts'
+import {
+  buildEnvironmentModuleSources,
+  buildPluginModuleSource,
+  buildPluginScanSource,
+  buildSurfaceMapSource,
+} from './collect.ts'
 
 export { qualyChunkGraph } from './chunk-graph.ts'
 export {
@@ -101,6 +106,67 @@ export const qualyPlugins = (): Plugin => {
 }
 
 /** what the shell's watchdog says in one locale, when no script of the application ever ran */
+// The same collection for a build with a server component environment
+// (docs/adr/0012-rsc-data-mode.md), split by where each half runs.
+//
+// `virtual:qualy/surfaces` - every surface's loader - answers only in a
+// server environment: the server resolves a request's surfaces and hands
+// the browser references to the few that request needs, so the full table
+// of implementations never becomes something a browser can load.
+// `virtual:qualy/browser-plugins` answers only in the browser, where the
+// plugins' browser halves have a page to run in.
+//
+// Written into a directory of their own, so this build and the page build
+// above never rewrite each other's modules.
+export const qualyEnvironmentModules = (): Plugin => {
+  const surfacesId = 'virtual:qualy/surfaces'
+  const browserPluginsId = 'virtual:qualy/browser-plugins'
+  const directory = path.join(repoRoot, 'apps/web/.qualy/rsc')
+  const surfacesFile = path.join(directory, 'surfaces.ts')
+  const browserPluginsFile = path.join(directory, 'browser-plugins.ts')
+  return {
+    name: 'qualy-environment-modules',
+    async config() {
+      const sources = await buildEnvironmentModuleSources({ fromDir: directory })
+      for (const [file, source] of [
+        [surfacesFile, sources.surfaces],
+        [browserPluginsFile, sources.browserPlugins],
+      ] as const) {
+        const current = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : undefined
+        if (current === source) continue
+        fs.mkdirSync(directory, { recursive: true })
+        fs.writeFileSync(file, source)
+      }
+    },
+    async resolveId(id, importer) {
+      // a surface's module, named by its plugin's export subpath and found
+      // the way the product root finds its plugins, under this environment's
+      // own conditions
+      if (importer === surfacesFile && !id.startsWith('.') && !id.startsWith('\0')) {
+        return this.resolve(id, path.join(path.dirname(manifestPath()), 'package.json'), {
+          skipSelf: true,
+        })
+      }
+      const consumer = this.environment.config.consumer
+      if (id === surfacesId) {
+        if (consumer !== 'server') {
+          this.error(
+            `${surfacesId} is the server's table of implementations; a browser never loads it`,
+          )
+        }
+        return surfacesFile
+      }
+      if (id === browserPluginsId) {
+        if (consumer !== 'client') {
+          this.error(`${browserPluginsId} runs in a page; a server environment has none`)
+        }
+        return browserPluginsFile
+      }
+      return undefined
+    },
+  }
+}
+
 export interface BootCopy {
   readonly reloadLead: string
   readonly reload: string
