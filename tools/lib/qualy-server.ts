@@ -64,6 +64,13 @@ export interface QualyServerOptions {
   readonly nodeArgs?: readonly string[]
   /** each complete line as it arrives, for a caller that parses the log */
   readonly onLine?: (line: string) => void
+  /**
+   * Whether the server reads this checkout's .env, as `pnpm start` does.
+   * Off for a tool that must run on exactly what it passes: a developer's
+   * .env names their own database and providers, and a check on a scratch
+   * database must not pick up any of it.
+   */
+  readonly envFile?: boolean
 }
 
 /** readiness includes migrations and the database probe, so it is given real time */
@@ -110,7 +117,7 @@ export const startQualyServer = (options: QualyServerOptions): QualyServer => {
     process.execPath,
     [
       ...(options.nodeArgs ?? []),
-      '--env-file-if-exists=.env',
+      ...(options.envFile === false ? [] : ['--env-file-if-exists=.env']),
       path.join(repoRoot, 'apps/server/src/run.ts'),
       options.mode ?? 'production',
     ],

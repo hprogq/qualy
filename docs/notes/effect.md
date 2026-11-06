@@ -77,3 +77,19 @@ schema 体)不做对象结构解析,不受影响——恰好实现「envelope �
 - 适配仅放在 `packages/core/api-kit/src/error-codes.ts` 的装配边界,不把内部 API 暴露给插件。
   `tools/tests/error-codes.test.ts` 真正走 response encoding,断言同一类跨 endpoint 可复用、不同类同码必拒绝,
   同时检查实际 selected assembly。升级 Effect 时必须随这些测试核对内部导出。
+
+## `HttpServerResponse.fromWeb` 对同名 Set-Cookie 只保留最后一条(2026-11-07,4.0.6)
+
+`HttpServerResponse.fromWeb(response)` 把 Web `Response` 的 `Set-Cookie` 用 `headers.getSetCookie()`
+逐条取出后交给 `Cookies.fromSetCookie`(repos/effect/packages/effect/src/http/HttpServerResponse.ts:1519),
+后者经 `fromIterable` 按 cookie **名字**建记录(repos/effect/packages/effect/src/http/Cookies.ts:206、:191)。
+不同名字的多条 `Set-Cookie` 会逐条保留;同一个名字的多条(例如同名、不同 `Path`)只剩最后一条,
+其余静默丢失。
+
+实测:`tools/quality/rsc-acceptance.ts` 在 Effect http server 里返回
+`probe_a=1; Path=/`、`probe_b=2; Path=/; HttpOnly`、`probe_a=3; Path=/elsewhere` 三条,
+浏览器侧只收到 `probe_a=3; Path=/elsewhere` 和 `probe_b=2; Path=/; HttpOnly`。
+
+后果:宿主用 `fromWeb` 挂载服务端渲染 handler 时,handler 不能依赖同名多条 `Set-Cookie`。现在 RSC handler
+只转发会话 cookie 的清除指令(`apps/web/src/rsc/session-clearing.ts`),一个请求只出示一个会话 cookie 名,
+所以不受影响。如果以后确实需要同名多作用域,宿主要绕过 `fromWeb`,直接写原始头。
