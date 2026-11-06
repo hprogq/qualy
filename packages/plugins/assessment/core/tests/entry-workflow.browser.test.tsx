@@ -745,7 +745,12 @@ describe('filing a claim', () => {
     )
     await expect.element(page.getByRole('heading', { name: '退役复学' })).toBeVisible()
     const wait = vi.fn(async () => true)
-    const uninstall = installSessionRecovery({ wait, frozen: () => false, lost: () => false })
+    const uninstall = installSessionRecovery({
+      wait,
+      frozen: () => false,
+      lost: () => false,
+      changed: () => {},
+    })
     try {
       await clickVisible('file-claim')
       await page.getByLabelText('事项说明', { exact: false }).fill('2024 年入伍，2026 年退役复学')

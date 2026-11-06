@@ -12,7 +12,7 @@ import {
   type HttpApiGroup,
   type HttpApiSchema,
 } from 'effect/http-api'
-import { QUALY_ACTIVITY_HEADER, QUALY_LOCALE_HEADER } from '@qualy/api-kit'
+import { QUALY_ACTIVITY_HEADER, QUALY_IDENTITY_HEADER, QUALY_LOCALE_HEADER } from '@qualy/api-kit'
 import { apiRouteTemplates } from '@qualy/api-kit/local'
 import { registerApiRoutes } from '@qualy/browser-observability/api-routes'
 import {
@@ -23,6 +23,7 @@ import {
   type ClientUnsupportedReason,
 } from '@qualy/release-contract'
 import { inBackground } from './activity.ts'
+import { documentIdentity, ExpectedIdentity } from './document-identity.ts'
 
 // A client is derived from an api DEFINITION, and every plugin holds its own:
 // the global aggregate this module used to wrap was the last generated
@@ -136,9 +137,28 @@ const withIdentity = (options: TransportOptions) => {
         )
   return <E, R>(client: HttpClient.HttpClient.With<E, R>): HttpClient.HttpClient.With<E, R> =>
     judged(
-      named(markedLocale(markedActivity(withoutTracePropagation(throughCurrentFetch(client))))),
+      named(
+        markedIdentity(
+          markedLocale(markedActivity(withoutTracePropagation(throughCurrentFetch(client)))),
+        ),
+      ),
     )
 }
+
+/**
+ * Whose the page is, on every request (docs/adr/0013-document-identity.md):
+ * the identity the call was started as, or the page's own as it goes out.
+ * Nothing before the page has taken its first manifest - the only question it
+ * asks then is who is signed in, which is never refused for the answer.
+ */
+const markedIdentity = HttpClient.mapRequestEffect((request) =>
+  Effect.gen(function* () {
+    const identity = (yield* ExpectedIdentity) ?? documentIdentity()
+    return identity === undefined
+      ? request
+      : HttpClientRequest.setHeader(request, QUALY_IDENTITY_HEADER, identity)
+  }),
+)
 
 /**
  * The language the page is written in, on every request: what the server

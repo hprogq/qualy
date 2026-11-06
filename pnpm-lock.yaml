@@ -2680,6 +2680,9 @@ importers:
       '@qualy/i18n-contract':
         specifier: workspace:*
         version: link:../../contracts/i18n
+      '@qualy/release-contract':
+        specifier: workspace:*
+        version: link:../../contracts/release
       '@qualy/ui':
         specifier: workspace:*
         version: link:../../web/ui

@@ -8,6 +8,7 @@
   "exports": {
     ".": "./src/index.tsx",
     "./api": "./src/api.ts",
+    "./document-identity": "./src/document-identity.ts",
     "./identity": "./src/identity.ts",
     "./release": "./src/release.ts"
   },

@@ -165,7 +165,7 @@ describe('a tab holding a batch open', () => {
 
   it('dials the socket address with who the page is, and the channel’s subprotocol', async () => {
     const { server, channels } = channelsOn(welcoming, {
-      clientIdentity: { releaseId: 'web-r1', clientProtocol: 4 },
+      clientIdentity: { releaseId: 'web-r1', clientProtocol: 5 },
     })
     const release = channels.hold('user:a', PATH, listener().holder)
     await until(() => server.sockets.length === 1)
@@ -173,9 +173,11 @@ describe('a tab holding a batch open', () => {
     expect(socket.url.protocol).toBe('wss:')
     expect(socket.url.host).toBe('qualy.test')
     expect(socket.url.pathname).toBe(PATH)
+    // whose the page is rides beside its protocol (docs/adr/0013-document-identity.md)
     expect(Object.fromEntries(socket.url.searchParams)).toEqual({
-      protocol: '4',
+      protocol: '5',
       release: 'web-r1',
+      identity: 'a',
     })
     expect(socket.protocols).toEqual([LIVE_SUBPROTOCOL])
     release()
@@ -394,6 +396,23 @@ describe('how a tab answers the end of a connection', () => {
     await until(() => reasons.length === 1)
     await sleep(200)
     expect(reasons).toEqual(['assembly'])
+    expect(server.sockets).toHaveLength(1)
+    release()
+  })
+
+  it("stops for good when the session is somebody else's, and says so", async () => {
+    let told = 0
+    const { server, channels } = channelsOn(
+      (socket) => {
+        socket.accept()
+        setTimeout(() => socket.close(4410, 'identity'), 0)
+      },
+      { onIdentityChanged: () => (told += 1) },
+    )
+    const release = channels.hold('user:a', PATH, listener().holder)
+    await until(() => told === 1)
+    await sleep(200)
+    // never dialled again: the page is not the session's person's
     expect(server.sockets).toHaveLength(1)
     release()
   })

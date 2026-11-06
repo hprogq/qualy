@@ -37,6 +37,7 @@ describe('a call that finds the session gone', () => {
     uninstall = installSessionRecovery({
       lost: () => false,
       frozen: () => false,
+      changed: () => {},
       wait: () => {
         waited += 1
         return Promise.resolve(true)
@@ -52,6 +53,7 @@ describe('a call that finds the session gone', () => {
       wait: () => Promise.resolve(false),
       lost: () => false,
       frozen: () => false,
+      changed: () => {},
     })
     const probe = refusedOnce()
     await expect(recovering(probe.call)).rejects.toBe(refused)
@@ -69,6 +71,7 @@ describe('a call that finds the session gone', () => {
     uninstall = installSessionRecovery({
       lost: () => false,
       frozen: () => false,
+      changed: () => {},
       wait: () => {
         waited += 1
         return Promise.resolve(true)
@@ -83,6 +86,7 @@ describe('a call that finds the session gone', () => {
     uninstall = installSessionRecovery({
       lost: () => false,
       frozen: () => false,
+      changed: () => {},
       wait: () => {
         controller.abort()
         return Promise.resolve(true)
@@ -98,6 +102,7 @@ describe('a call that finds the session gone', () => {
       wait: () => Promise.resolve(true),
       lost: () => true,
       frozen: () => true,
+      changed: () => {},
     })
     let calls = 0
     const answer = recovering(() => {
@@ -132,6 +137,7 @@ describe('a manifest asked again for a signed-in page', () => {
     uninstall = installSessionRecovery({
       wait: () => Promise.resolve(false),
       frozen: () => false,
+      changed: () => {},
       lost: (identity, someoneElse) => {
         told.push([identity, someoneElse])
         return true
@@ -150,6 +156,7 @@ describe('a manifest asked again for a signed-in page', () => {
       wait: () => Promise.resolve(false),
       lost: () => false,
       frozen: () => false,
+      changed: () => {},
     })
     expect(presentedManifest(reader, nobody)).toBe(nobody)
     expect(presentedManifest(nobody, reader)).toBe(reader)
@@ -161,6 +168,7 @@ describe('a manifest asked again for a signed-in page', () => {
     uninstall = installSessionRecovery({
       wait: () => Promise.resolve(false),
       frozen: () => false,
+      changed: () => {},
       lost: () => {
         asked += 1
         return true

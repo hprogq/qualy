@@ -1,6 +1,7 @@
 import { queryOptions, type QueryKey } from '@tanstack/react-query'
 import { Effect } from 'effect'
 import { isBackendUnavailable, isTransportError } from '@qualy/web-i18n'
+import { asTheDocument } from './document-identity.ts'
 import { recovering } from './session-recovery.ts'
 
 // `Effect<A, E>` has an error type; `Promise<A>` does not, so the moment a
@@ -21,9 +22,17 @@ export interface ApiRuntime {
 // A call that finds the session gone waits for the reader to sign in again
 // and is then made once more (session-recovery.ts); every other outcome is
 // the effect's own.
+//
+// The page's identity is fixed as the call starts (document-identity.ts): made
+// again after a recovery, it still goes out as the page it was made for.
 export const browserRuntime: ApiRuntime = {
-  runPromise: (effect, options) =>
-    recovering(() => Effect.runPromise(effect, { signal: options?.signal }), options?.signal),
+  runPromise: (effect, options) => {
+    const asStarted = asTheDocument(effect)
+    return recovering(
+      () => Effect.runPromise(asStarted, { signal: options?.signal }),
+      options?.signal,
+    )
+  },
 }
 
 /**
@@ -33,7 +42,8 @@ export const browserRuntime: ApiRuntime = {
  * the very sign-in it is there to offer.
  */
 export const unrecoveredRuntime: ApiRuntime = {
-  runPromise: (effect, options) => Effect.runPromise(effect, { signal: options?.signal }),
+  runPromise: (effect, options) =>
+    Effect.runPromise(asTheDocument(effect), { signal: options?.signal }),
 }
 
 // How long a failed read waits before it says so.

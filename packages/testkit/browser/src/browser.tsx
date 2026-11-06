@@ -13,6 +13,7 @@ import {
 } from '@qualy/web-runtime'
 import { UiProvider } from '@qualy/ui/provider'
 import { Effect } from 'effect'
+import type { ClientUnsupportedReason } from '@qualy/release-contract'
 import { toast } from '@qualy/ui/toast'
 import { refusingLiveServer, type FakeLiveServer } from './live.ts'
 
@@ -159,6 +160,7 @@ export function renderScreen({
   storage = {},
   live,
   liveTiming,
+  onClientUnsupported,
 }: {
   client: FakeClient
   /**
@@ -201,6 +203,8 @@ export function renderScreen({
   live?: FakeLiveServer
   /** the live channels' waits, for a case that cannot wait them out */
   liveTiming?: LiveChannelsOptions['timing']
+  /** told when the page can no longer talk to the server, as the release coordinator is */
+  onClientUnsupported?: (reason: ClientUnsupportedReason) => void
 }) {
   // every screen starts from a fresh browser: view modes and toggles the
   // product persists must not leak from one test into the next (styled
@@ -228,6 +232,7 @@ export function renderScreen({
             clientFor={() => client}
             webSocket={(live ?? refusingLiveServer()).webSocket}
             {...(liveTiming === undefined ? {} : { liveTiming })}
+            {...(onClientUnsupported === undefined ? {} : { onClientUnsupported })}
             registry={{ ...emptyComponentRegistry(), ...registry }}
           >
             {/* the app's own router over a history in memory: a page that

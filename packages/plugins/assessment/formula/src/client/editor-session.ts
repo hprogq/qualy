@@ -19,6 +19,8 @@
  * current buffer, so nothing unsaved is lost to it.
  */
 
+import { LIVE_IDENTITY_PARAM } from '@qualy/api-kit/live-socket'
+import { documentIdentity } from '@qualy/web-runtime/document-identity'
 import { HttpApiClient } from 'effect/http-api'
 import { formulaApi } from './api.ts'
 import { monaco } from './monaco-setup.ts'
@@ -80,7 +82,12 @@ const buildUrl = HttpApiClient.urlBuilder(formulaApi)
 const languageUrl = (functionId: string): string => {
   const path = buildUrl.assessmentFormula.formulaLsp({ params: { functionId } })
   const scheme = location.protocol === 'https:' ? 'wss' : 'ws'
-  return `${scheme}://${location.host}${path}`
+  const url = new URL(`${scheme}://${location.host}${path}`)
+  // whose the page is, as every request of it says; a socket carries no
+  // headers, so it rides in the query (docs/adr/0013-document-identity.md)
+  const identity = documentIdentity()
+  if (identity !== undefined) url.searchParams.set(LIVE_IDENTITY_PARAM, identity)
+  return url.href
 }
 
 const sessions = new Map<string, EditorSession>()

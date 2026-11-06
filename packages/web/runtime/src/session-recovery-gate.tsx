@@ -149,6 +149,10 @@ export function SessionRecoveryGate({
         return true
       },
       frozen: () => frozen.current,
+      changed: () => {
+        if (frozen.current) return
+        switched()
+      },
     })
     return () => {
       uninstall()

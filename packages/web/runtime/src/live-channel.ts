@@ -1,9 +1,11 @@
 import { Effect, Fiber } from 'effect'
 import { Socket } from 'effect/socket'
 import type { ClientUnsupportedReason } from '@qualy/release-contract'
+import { ANONYMOUS_IDENTITY } from '@qualy/api-kit'
 import {
   LIVE_CLOSE,
   LIVE_PONG,
+  LIVE_IDENTITY_PARAM,
   LIVE_PROTOCOL_PARAM,
   LIVE_RELEASE_PARAM,
   LIVE_SILENCE_MS,
@@ -127,6 +129,8 @@ export interface LiveChannelsOptions {
   readonly onSessionLost?: () => void
   /** this page cannot talk to this server: the release coordinator's */
   readonly onClientUnsupported?: (reason: ClientUnsupportedReason) => void
+  /** somebody else holds the session now: the page is locked (docs/adr/0013-document-identity.md) */
+  readonly onIdentityChanged?: () => void
   /** the address the page is at; the location's, unless a harness says */
   readonly base?: () => string
   readonly now?: () => number
@@ -358,6 +362,11 @@ class Channel {
         this.stop()
         this.options.onClientUnsupported(unsupportedReasonOf(outcome.reason))
         return
+      case 'identity-changed':
+        // never dialled again: the page is not the session's person's
+        this.stop()
+        this.options.onIdentityChanged()
+        return
     }
   }
 
@@ -437,6 +446,7 @@ export class LiveChannels {
       webSocket: options.webSocket ?? globalWebSocket,
       onSessionLost: options.onSessionLost ?? (() => undefined),
       onClientUnsupported: options.onClientUnsupported ?? (() => undefined),
+      onIdentityChanged: options.onIdentityChanged ?? (() => undefined),
       now: options.now ?? Date.now,
       random: options.random ?? Math.random,
       timing: { ...TIMING, ...options.timing },
@@ -446,13 +456,19 @@ export class LiveChannels {
   }
 
   /** the socket address of an api path, with who the page is in its query */
-  private urlOf(path: string): string {
+  private urlOf(path: string, identity: string): string {
     const url = new URL(path, this.base())
     url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
     url.hash = ''
     if (this.clientIdentity !== undefined) {
       url.searchParams.set(LIVE_PROTOCOL_PARAM, String(this.clientIdentity.clientProtocol))
       url.searchParams.set(LIVE_RELEASE_PARAM, this.clientIdentity.releaseId)
+      // whose the page is, as every request of it says
+      // (docs/adr/0013-document-identity.md)
+      url.searchParams.set(
+        LIVE_IDENTITY_PARAM,
+        identity.startsWith('user:') ? identity.slice('user:'.length) : ANONYMOUS_IDENTITY,
+      )
     }
     return url.href
   }
@@ -466,7 +482,7 @@ export class LiveChannels {
     const key = `${identity}\u0000${path}`
     let channel = this.channels.get(key)
     if (channel === undefined || channel.disposed) {
-      channel = new Channel(this.urlOf(path), this.options, (ended, admitted) =>
+      channel = new Channel(this.urlOf(path, identity), this.options, (ended, admitted) =>
         this.freed(ended, admitted),
       )
       this.channels.set(key, channel)

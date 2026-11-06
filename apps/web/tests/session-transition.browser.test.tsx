@@ -818,3 +818,71 @@ describe('the manifest, asked again in the background', () => {
     expect(page.getByRole('alert').elements()).toHaveLength(0)
   })
 })
+
+describe("a page the server says is somebody else's", () => {
+  // docs/adr/0013-document-identity.md: the session is another person's now,
+  // and the request was refused before anything was done for it
+  const screen = async (refusal: 'IDENTITY_CHANGED' | 'IDENTITY_UNASSERTED') => {
+    let attempts = 0
+    const unsupported: string[] = []
+    const Draft = () => {
+      const run = useRunApi()
+      const [saved, setSaved] = useState('')
+      return (
+        <main>
+          <input aria-label="draft" data-testid="draft" defaultValue="" />
+          <button
+            type="button"
+            onClick={() =>
+              void run(
+                Effect.suspend(() => {
+                  attempts += 1
+                  return Effect.fail(apiError(refusal))
+                }),
+              ).then(setSaved, () => setSaved('failed'))
+            }
+          >
+            save
+          </button>
+          <output data-testid="saved">{saved}</output>
+        </main>
+      )
+    }
+    await renderScreen({
+      client: fakeClient({
+        app: {
+          getManifest: () =>
+            Effect.succeed({ ...emptyManifest(), viewer: 'authenticated', identity: 'reader' }),
+        },
+      }),
+      routes: [{ path: '/draft', element: <Draft /> }],
+      route: '/draft',
+      onClientUnsupported: (reason) => unsupported.push(reason),
+    })
+    await page.getByRole('textbox', { name: 'draft' }).fill('half a sentence')
+    await page.getByRole('button', { name: 'save' }).click()
+    return { attempts: () => attempts, unsupported }
+  }
+
+  it('locks the page at once and never makes the call again', async () => {
+    const { attempts } = await screen('IDENTITY_CHANGED')
+    await expect
+      .element(page.getByTestId('session-recovery'))
+      .toHaveAttribute('data-state', 'switched')
+    await expect.element(page.getByTestId('session-reload')).toBeVisible()
+    await new Promise((settle) => setTimeout(settle, 300))
+    expect(attempts()).toBe(1)
+    // what the reader had is still on the page, behind the lock (which hides
+    // it from the accessibility tree, so it is found by its test id)
+    expect((page.getByTestId('draft').element() as HTMLInputElement).value).toBe('half a sentence')
+  })
+
+  it('asks for a reload, as for any page the server cannot talk to, when the page said nobody', async () => {
+    const { attempts, unsupported } = await screen('IDENTITY_UNASSERTED')
+    await expect.poll(() => unsupported).toEqual(['protocol'])
+    await new Promise((settle) => setTimeout(settle, 300))
+    expect(attempts()).toBe(1)
+    // not taken as somebody else signing in
+    expect(page.getByTestId('session-recovery').elements()).toHaveLength(0)
+  })
+})
