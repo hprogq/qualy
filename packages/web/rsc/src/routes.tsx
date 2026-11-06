@@ -139,6 +139,7 @@ export const serverRoutes = ({
   const layouts: RSCRouteConfigEntry[] = manifest.layouts.map((layout) => ({
     id: surfaceLabel({ kind: 'layout', id: layout.contract }),
     Component: surfaceRoute({ kind: 'layout', id: layout.contract }, frames),
+    shouldRevalidate: pageRevalidation,
     children: [
       ...(byLayout.get(layout.contract) ?? []).map((page): RSCRouteConfigEntry => ({
         id: surfaceLabel({ kind: 'page', id: page.id }),
@@ -154,6 +155,7 @@ export const serverRoutes = ({
     {
       id: 'qualy:document',
       path: '',
+      shouldRevalidate: pageRevalidation,
       Component: async function DocumentRoute() {
         return (
           <frames.Document
