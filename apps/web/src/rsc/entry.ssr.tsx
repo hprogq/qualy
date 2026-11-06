@@ -30,6 +30,8 @@ export const renderDocument = (
             bootstrapScriptContent,
             signal: request.signal,
             onError(error: unknown) {
+              // a reader who went away is the render ending, not failing
+              if (request.signal.aborted) return
               console.error('[qualy] html render failed', error)
             },
           }),

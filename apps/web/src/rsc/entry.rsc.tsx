@@ -66,6 +66,7 @@ const renderServer = async (request: Request) => {
       signInPage: SIGN_IN_PAGE,
     }),
     onError: (error) => {
+      if (request.signal.aborted) return
       console.error('[qualy] server component render failed', error)
     },
     generateResponse(match, options) {
@@ -82,9 +83,17 @@ export default async function handler(request: Request): Promise<Response> {
     return new Response(null, { status: 405, headers: { allow: 'GET, HEAD' } })
   }
   const scope = renderRequestOf(request)
-  const served = await withDocumentLocale(scope.locale, () =>
-    withRenderRequest(scope, () => renderServer(request)),
-  )
+  let served: Response
+  try {
+    served = await withDocumentLocale(scope.locale, () =>
+      withRenderRequest(scope, () => renderServer(request)),
+    )
+  } catch (error) {
+    // the reader went away while the render was asking: its reads were
+    // cancelled with it, which is the render ending, not failing
+    if (request.signal.aborted) return new Response(null, { status: 499 })
+    throw error
+  }
   const ssr = await import.meta.viteRsc.loadModule<typeof import('./entry.ssr.tsx')>('ssr', 'index')
   return ssr.renderDocument(request, served, scope.locale)
 }
