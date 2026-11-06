@@ -477,11 +477,14 @@ const RESUME_ANSWER_MS = 3_000
 /**
  * What a server rendering this page already asked, in the request that asked
  * for it (LoginPage.server.tsx): the workspace's ways in, and whether
- * somebody is signed in - both this request's own answers.
+ * somebody is signed in - both this request's own answers, and each left
+ * out when the server could not get one, for the page to ask itself.
  */
 export interface RenderedSignIn {
-  readonly context: Effect.Success<ReturnType<ClientOf<typeof authApi>['auth']['listLoginMethods']>>
-  readonly signedIn: boolean
+  readonly context:
+    | Effect.Success<ReturnType<ClientOf<typeof authApi>['auth']['listLoginMethods']>>
+    | undefined
+  readonly signedIn: boolean | undefined
 }
 
 export default function LoginPage({ rendered }: { rendered?: RenderedSignIn } = {}) {
@@ -498,7 +501,7 @@ export default function LoginPage({ rendered }: { rendered?: RenderedSignIn } = 
   const still = useReducedMotion() === true
   const context = useQuery({
     ...query.auth.listLoginMethods.queryOptions(),
-    ...(rendered === undefined ? {} : { initialData: rendered.context }),
+    ...(rendered?.context === undefined ? {} : { initialData: rendered.context }),
   })
   // somebody already signed in has nothing to do here: one browser holds one
   // session, and signing in again would replace it without a word. Asked
@@ -513,7 +516,7 @@ export default function LoginPage({ rendered }: { rendered?: RenderedSignIn } = 
   // decided by the read this visit made, never by a cached answer alone:
   // the page's own once it has asked, until then the one the server asked
   // in the same request that drew it
-  const decided = present.isFetchedAfterMount || rendered !== undefined
+  const decided = present.isFetchedAfterMount || rendered?.signedIn !== undefined
   const signedIn = present.isFetchedAfterMount ? present.isSuccess : rendered?.signedIn === true
   // where the visitor was when they were sent here to sign in: an address
   // inside this application and not this page itself, or nowhere
