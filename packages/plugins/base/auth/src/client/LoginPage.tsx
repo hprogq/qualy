@@ -485,6 +485,8 @@ export interface RenderedSignIn {
     | Effect.Success<ReturnType<ClientOf<typeof authApi>['auth']['listLoginMethods']>>
     | undefined
   readonly signedIn: boolean | undefined
+  /** whether this browser said it is a computer others use, as its cookie says */
+  readonly sharedDevice?: boolean
 }
 
 export default function LoginPage({ rendered }: { rendered?: RenderedSignIn } = {}) {
@@ -821,7 +823,7 @@ export default function LoginPage({ rendered }: { rendered?: RenderedSignIn } = 
 
   return (
     <AuthShell
-      footer={choosing ? <SharedDeviceChoice /> : undefined}
+      footer={choosing ? <SharedDeviceChoice rendered={rendered?.sharedDevice} /> : undefined}
       overlay={
         <AnimatePresence>
           {leaving !== null && (

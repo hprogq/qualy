@@ -1,6 +1,7 @@
 import type { ComponentType } from 'react'
 import { loadSurface, readApiExit, renderRequest } from '@qualy/web-rsc/request'
 import { SurfaceScope } from '@qualy/web-runtime/surface-scope'
+import { deviceOfCookieHeader } from '@qualy/auth-contract/device'
 import { authApi } from './api.ts'
 import { methodsOf, presenceOf } from './sign-in/answered.ts'
 import LoginPage from './LoginPage.tsx'
@@ -44,7 +45,13 @@ export default async function SignInPage() {
   )
   return (
     <SurfaceScope surfaces={{ login }}>
-      <LoginPage rendered={{ context, signedIn }} />
+      <LoginPage
+        rendered={{
+          context,
+          signedIn,
+          sharedDevice: deviceOfCookieHeader(renderRequest().cookie) === 'shared',
+        }}
+      />
     </SurfaceScope>
   )
 }

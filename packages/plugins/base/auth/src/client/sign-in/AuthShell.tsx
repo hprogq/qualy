@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import { motion, useReducedMotion } from 'motion/react'
 import * as stylex from '@stylexjs/stylex'
 import { CheckIcon, ChevronDownIcon, GlobeIcon, MonitorIcon, MoonIcon, SunIcon } from 'lucide-react'
-import { useTheme, type ThemeChoice } from '@qualy/web-runtime'
+import { useHydrating, useTheme, type ThemeChoice } from '@qualy/web-runtime'
 import { Mark } from '@qualy/brand/mark'
 import { Wordmark } from '@qualy/brand/wordmark'
 import { localeNames, useLocale } from '@qualy/web-i18n'
@@ -16,7 +16,6 @@ import {
 } from '@qualy/ui/dropdown-menu'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { useColophon } from '@qualy/ui/screen'
-import { useIsBelow } from '@qualy/ui/use-mobile'
 import { VisuallyHidden } from '@qualy/ui/visually-hidden'
 import * as m from '#messages'
 
@@ -26,6 +25,12 @@ import * as m from '#messages'
 // tenant - because the tenant is which workspace this is, and the page says
 // that once, above its own title. Narrow, the left half folds away and the
 // wordmark moves into the top bar.
+//
+// Which of those it is, and where the page's foot goes with it, is the
+// stylesheet's to say, never a measurement's: a server drawing the page
+// cannot measure the window, and a layout decided in script was drawn wide
+// on every narrow screen until the page took over - the foot at the bottom
+// edge, the shell's last line in a half that is not there.
 
 const WIDE = '@media (min-width: 1024px)'
 const PHONE = '@media (max-width: 767.98px)'
@@ -103,37 +108,52 @@ const styles = stylex.create({
     color: { default: tokens.mutedForeground, ':hover': tokens.foreground },
     cursor: 'pointer',
   },
+  // The column's page, and under it what the page asks of the whole visit
+  // rather than of one way in. The page sits at the column's optical centre,
+  // a bar's height above the true one - the room under it is the foot's
+  // own top padding - and on a phone at the top.
   body: {
     display: 'flex',
     flex: 1,
     minHeight: 0,
-    alignItems: { default: 'center', [PHONE]: 'flex-start' },
-    justifyContent: 'center',
+    flexDirection: 'column',
+    alignItems: 'center',
     paddingInline: { default: 48, [PHONE]: 24 },
-    paddingBlock: { default: '0 72px', [PHONE]: '16px 40px' },
+    paddingTop: { default: 0, [PHONE]: 16 },
   },
-  content: { position: 'relative', width: '100%', maxWidth: 400 },
-  // what the page asks of the whole visit rather than of one way in, at the
-  // foot of the column and apart from the ways in above
+  content: {
+    position: 'relative',
+    width: '100%',
+    maxWidth: 400,
+    marginTop: { default: 'auto', [PHONE]: 0 },
+    marginBottom: 'auto',
+  },
+  // the foot of the column, apart from the ways in above
   foot: {
-    display: 'flex',
-    flexShrink: 0,
-    justifyContent: 'center',
-    paddingInline: { default: 48, [PHONE]: 24 },
+    width: '100%',
+    maxWidth: 400,
+    paddingTop: { default: 72, [PHONE]: 40 },
     paddingBottom: { default: FOOT_INSET, [PHONE]: 24 },
   },
-  footContent: { width: '100%', maxWidth: 400 },
-  // Narrow, with the shell's last line taking the foot, the choice follows
-  // the ways in instead: two small blocks stacked at the bottom edge read as
-  // one heap, and the choice is about signing in, not about the site.
-  footInline: { marginTop: 40 },
-  // The column's optical centre sits a bar's height above the true one;
-  // the shell's last line takes part of that room rather than adding to it.
-  bodyNoted: { paddingBlock: { default: '0 32px', [PHONE]: '16px 32px' } },
+  // Narrow, with the shell's last line taking the bottom edge, the foot
+  // follows the ways in instead and the two are centred as one: two small
+  // blocks stacked at the bottom edge read as one heap, and the choice is
+  // about signing in, not about the site. The shell's last line takes part
+  // of the room under the centre rather than adding to it.
+  contentNoted: { marginBottom: { default: 0, [WIDE]: 'auto' } },
+  // a page with no foot keeps the same room under its centre
+  bodyBare: { paddingBottom: { default: 72, [PHONE]: 40 } },
+  bodyBareNoted: { paddingBottom: { default: 32, [WIDE]: 72 } },
+  footNoted: {
+    marginBottom: { default: 'auto', [WIDE]: 0 },
+    paddingTop: { default: 40, [WIDE]: 72 },
+    paddingBottom: { default: 32, [WIDE]: FOOT_INSET },
+  },
   // Whatever the shell hangs at the foot of the page. Wide, it closes the
   // product half, under the product's name and away from the choices the
   // column ends with; narrow, it is the column's last line, a step apart.
   colophon: {
+    display: { default: 'block', [WIDE]: 'none' },
     flexShrink: 0,
     paddingInline: { default: 48, [PHONE]: 24 },
     paddingTop: 12,
@@ -266,18 +286,19 @@ export function AuthShell({
   overlay?: ReactNode
   footer?: ReactNode
 }) {
-  const still = useReducedMotion() === true
+  // what a server drew is on screen already: it is not brought in again
+  const reduced = useReducedMotion() === true
+  const hydrating = useHydrating()
+  const still = reduced || hydrating
   const Colophon = useColophon()
-  // the same width the product half appears at
-  const wide = !useIsBelow(1024)
-  const inColumn = !wide && Colophon !== null
+  const noted = Colophon !== null
   return (
     <div data-testid="auth-shell" {...stylex.props(styles.frame)}>
       <aside {...stylex.props(styles.product)}>
         <span aria-hidden {...stylex.props(styles.lines)} />
         <Mark size={640} xstyle={styles.ghost} />
         <Wordmark height={20} xstyle={styles.productWordmark} />
-        {wide && Colophon !== null && (
+        {Colophon !== null && (
           <footer {...stylex.props(styles.productColophon)}>
             <Colophon align="start" />
           </footer>
@@ -292,28 +313,28 @@ export function AuthShell({
           <ThemeMenu />
           <LanguageMenu />
         </div>
-        <div {...stylex.props(styles.body, inColumn && styles.bodyNoted)}>
+        <div
+          {...stylex.props(
+            styles.body,
+            footer === undefined && (noted ? styles.bodyBareNoted : styles.bodyBare),
+          )}
+        >
           {/* The column arrives rather than appears: a page reached from
               another one in this frame keeps the frame still and brings in
               only what changed. */}
           <motion.div
-            {...stylex.props(styles.content)}
+            {...stylex.props(styles.content, noted && styles.contentNoted)}
             initial={still ? false : { opacity: 0, y: 6 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3, ease: [0.2, 0.8, 0.2, 1] }}
           >
             {children}
-            {footer !== undefined && inColumn && (
-              <div {...stylex.props(styles.footInline)}>{footer}</div>
-            )}
           </motion.div>
+          {footer !== undefined && (
+            <div {...stylex.props(styles.foot, noted && styles.footNoted)}>{footer}</div>
+          )}
         </div>
-        {footer !== undefined && !inColumn && (
-          <div {...stylex.props(styles.foot)}>
-            <div {...stylex.props(styles.footContent)}>{footer}</div>
-          </div>
-        )}
-        {!wide && Colophon !== null && (
+        {Colophon !== null && (
           <footer {...stylex.props(styles.colophon)}>
             <Colophon align="center" />
           </footer>

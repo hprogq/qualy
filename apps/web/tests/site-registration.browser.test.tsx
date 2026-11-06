@@ -43,6 +43,20 @@ const login = (
     routes: [{ path: '/login', element: <BlankShell />, children: [{ element: <LoginPage /> }] }],
   })
 
+/**
+ * The records where the sign-in frame shows them at this width. The frame
+ * draws them in both halves and its stylesheet shows one, so a server that
+ * cannot measure the window draws the right one; exactly one is on screen.
+ */
+const shownRecords = (): Element => {
+  const shown = page
+    .getByTestId('site-registration')
+    .elements()
+    .filter((records) => records.getClientRects().length > 0)
+  expect(shown).toHaveLength(1)
+  return shown[0]!
+}
+
 describe('deployment registration in the page shells', () => {
   it('adds no registration footer when nothing is configured', async () => {
     await login('zh-CN', {})
@@ -78,30 +92,29 @@ describe('deployment registration in the page shells', () => {
     await page.viewport(width, 800)
     await login('zh-CN', { 'site/registration': registration })
     await expect.element(page.getByTestId('sign-in-tenant')).toBeVisible()
-    const footer = page.getByTestId('site-registration')
-    await expect.element(footer).toBeVisible()
+    const footer = shownRecords()
     // drawn inside the sign-in frame rather than under it: the frame keeps
     // the whole viewport and nothing is pushed up to make room
     const shell = page.getByTestId('auth-shell').element()
-    expect(shell.contains(footer.element())).toBe(true)
+    expect(shell.contains(footer)).toBe(true)
     expect(shell.getBoundingClientRect().height).toBe(800)
-    const bounds = footer.element().getBoundingClientRect()
+    const bounds = footer.getBoundingClientRect()
     expect(bounds.left).toBeGreaterThanOrEqual(0)
     expect(bounds.right).toBeLessThanOrEqual(width)
     expect(bounds.bottom).toBeLessThanOrEqual(800)
     expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(width)
-    const [icp, security] = footer.element().querySelectorAll('a')
+    const [icp, security] = footer.querySelectorAll('a')
     const [first, second] = [icp!.getBoundingClientRect(), security!.getBoundingClientRect()]
     if (width === 320) {
       // one record to a line on a phone
       expect(second.top).toBeGreaterThanOrEqual(first.bottom)
-      expect(footer.element().closest('main')).not.toBeNull()
+      expect(footer.closest('main')).not.toBeNull()
     } else {
       // one to a line, flush with the product's name above them, closing the
       // product half rather than piling up under the form column's choices
-      const aside = footer.element().closest('aside')
+      const aside = footer.closest('aside')
       expect(aside).not.toBeNull()
-      expect(footer.element().closest('main')).toBeNull()
+      expect(footer.closest('main')).toBeNull()
       expect(second.top).toBeGreaterThanOrEqual(first.bottom)
       expect(first.left).toBe(second.left)
       expect(first.left).toBe(
@@ -128,7 +141,7 @@ describe('deployment registration in the page shells', () => {
       ])
       const seat = page.getByTestId('sign-in-shared-device-seat')
       await expect.element(seat).toBeVisible()
-      const records = page.getByTestId('site-registration').element()
+      const records = shownRecords()
       if (width === 320) {
         // the choice follows the ways in; the records alone close the column
         const gap =

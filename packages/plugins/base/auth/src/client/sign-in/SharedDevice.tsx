@@ -1,5 +1,6 @@
 import { useId, useState } from 'react'
 import { Checkbox } from '@qualy/ui/checkbox'
+import { useHydrating } from '@qualy/web-runtime'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import {
@@ -62,9 +63,21 @@ const styles = stylex.create({
   },
 })
 
-export function SharedDeviceChoice() {
+/**
+ * The choice as this browser last made it. `rendered` is what the server
+ * read from the same cookie in the request that drew the page, which is
+ * what the page shows until it has taken over: a server cannot read
+ * document.cookie, and a box that ticked itself as the page woke was the
+ * first frame disagreeing with the html. Mounted again later - the page
+ * coming back from a way in - it is the browser's own cookie again, which
+ * the reader may have changed since.
+ */
+export function SharedDeviceChoice({ rendered }: { rendered?: boolean | undefined } = {}) {
   const id = useId()
-  const [shared, setShared] = useState(remembered)
+  const hydrating = useHydrating()
+  const [shared, setShared] = useState(() =>
+    hydrating && rendered !== undefined ? rendered : remembered(),
+  )
   return (
     <div data-testid="sign-in-shared-device-seat" {...stylex.props(styles.seat)}>
       <div {...stylex.props(styles.choice)}>
