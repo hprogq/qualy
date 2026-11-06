@@ -9,6 +9,8 @@ import {
   facadeFor,
   messageSourceAt,
   messageSources,
+  messagesOutDir,
+  serverRuntimeSource,
   type MessageSource,
 } from './compile.ts'
 
@@ -32,7 +34,16 @@ export interface QualyMessagesOptions {
   readonly extraPackages?: readonly string[]
   /** Node/browser repository suites check installed source packages too. */
   readonly all?: boolean
+  /**
+   * For a build that renders documents on a server: the module whose
+   * `documentLocale()` names the language of the document being rendered.
+   * In every server environment the compiled messages read their locale
+   * there instead of from a page's root (docs/adr/0012-rsc-data-mode.md).
+   */
+  readonly documentLocaleModule?: string
 }
+
+const SERVER_RUNTIME_ID = '\0qualy-messages/server-runtime.js'
 
 export const qualyMessages = (options: QualyMessagesOptions = {}): Plugin => {
   const manifest = options.manifestPath ?? defaultManifestPath()
@@ -92,15 +103,38 @@ export const qualyMessages = (options: QualyMessagesOptions = {}): Plugin => {
     },
     resolveId: {
       // Filter before Rolldown crosses into JavaScript for every import in
-      // the graph. Only package-private message imports belong to this hook.
-      filter: { id: /^#messages$/ },
+      // the graph. Only package-private message imports, and the compiled
+      // messages' own runtime, belong to this hook.
+      filter: { id: /^#messages$|runtime\.js$/ },
       handler(source, importer) {
-        if (source !== '#messages' || importer === undefined) return undefined
+        if (importer === undefined) return undefined
+        if (source !== '#messages') {
+          // the compiled messages' runtime, swapped for the server's own
+          // where documents are rendered rather than shown
+          const compiled = path.join(
+            messagesOutDir(productRootFor(manifest), outputProfile),
+            'paraglide',
+          )
+          if (
+            options.documentLocaleModule === undefined ||
+            this.environment.config.consumer !== 'server' ||
+            !realOf(importer.split('?')[0]!).startsWith(`${realOf(compiled)}${path.sep}`)
+          )
+            return undefined
+          return SERVER_RUNTIME_ID
+        }
         const owner = ownerOf(importer)
         if (owner === undefined) {
           this.error(`${importer} imports #messages, but no package that ships messages holds it`)
         }
         return facadeFor(productRootFor(manifest), owner.namespace, outputProfile)
+      },
+    },
+    load: {
+      filter: { id: /^\0qualy-messages\/server-runtime\.js$/ },
+      handler(id) {
+        if (id !== SERVER_RUNTIME_ID || options.documentLocaleModule === undefined) return undefined
+        return serverRuntimeSource(options.documentLocaleModule)
       },
     },
     configureServer(server: ViteDevServer) {

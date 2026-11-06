@@ -1,3 +1,4 @@
+import { createContext, useContext } from 'react'
 import { defaultLocale, supportedLocales, type SupportedLocale } from '@qualy/i18n-contract'
 
 export {
@@ -27,9 +28,20 @@ export { onLocaleChosenElsewhere, reopenInLocale } from './locale-channel.ts'
 // Shared infrastructure failures are formatted here. Domain failures stay
 // with their calling use case; server presentation DTOs arrive rendered.
 
+/**
+ * The document's language, said by whoever rendered it.
+ *
+ * A document rendered on a server is rendered before any root is marked, and
+ * that server renders many documents at once; it says which language this one
+ * is in here, and the page that hydrates says the same, so both draw the same
+ * words. Absent, the root's mark decides, as it always has in a page that
+ * renders itself.
+ */
+export const DocumentLocaleContext = createContext<SupportedLocale | undefined>(undefined)
+
 /** The fixed language of this document. */
 export function useLocale(): SupportedLocale {
-  return resolveInitialLocale()
+  return useContext(DocumentLocaleContext) ?? resolveInitialLocale()
 }
 
 /**
