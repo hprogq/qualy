@@ -23,3 +23,23 @@ declare module 'virtual:qualy/plugins' {
   /** every active plugin's browser half, in the assembly's own order */
   export const browserPlugins: readonly BrowserPlugin[]
 }
+
+// The same collection split by where it runs (docs/adr/0012-rsc-data-mode.md):
+// the surface tables for the server component environment only, the browser
+// halves for the page only. Answered by `qualyEnvironmentModules`.
+declare module 'virtual:qualy/surfaces' {
+  import type { ComponentType } from 'react'
+
+  type Loader = () => Promise<{ readonly default: ComponentType<any> }>
+  export const pageComponents: Record<string, Loader>
+  export const layoutComponents: Record<string, Loader>
+  export const layoutSlots: Record<string, readonly string[]>
+  export const slotComponents: Record<string, Record<string, Loader>>
+  export const loginComponents: Record<string, Loader>
+}
+
+declare module 'virtual:qualy/browser-plugins' {
+  import type { BrowserPlugin } from '@qualy/plugin-kit/browser'
+
+  export const browserPlugins: readonly BrowserPlugin[]
+}

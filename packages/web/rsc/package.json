@@ -1,0 +1,30 @@
+{
+  "name": "@qualy/web-rsc",
+  "version": "0.0.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    "./document-locale": "./src/document-locale.ts",
+    "./request": "./src/request.ts",
+    "./routes": "./src/routes.tsx"
+  },
+  "peerDependencies": {
+    "react": "catalog:"
+  },
+  "dependencies": {
+    "@qualy/api-kit": "workspace:*",
+    "@qualy/app-contract": "workspace:*",
+    "@qualy/i18n-contract": "workspace:*",
+    "@qualy/release-contract": "workspace:*",
+    "@qualy/ui-contract": "workspace:*",
+    "@qualy/web-runtime": "workspace:*",
+    "effect": "catalog:",
+    "react-router": "catalog:"
+  },
+  "devDependencies": {
+    "@qualy/tsconfig": "workspace:*",
+    "@types/react": "catalog:"
+  }
+}

@@ -1,4 +1,5 @@
 {
   "extends": "@qualy/tsconfig/vite-browser.json",
-  "include": ["src", "scripts", "tests", "vite.config.ts"]
+  "include": ["src", "scripts", "tests", "vite.config.ts", "vite.rsc.config.ts"],
+  "exclude": ["src/rsc"]
 }

@@ -6,17 +6,23 @@
   "type": "module",
   "scripts": {
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "dev:rsc": "node --env-file-if-exists=../../.env ./node_modules/vite/bin/vite.js --config vite.rsc.config.ts",
+    "build:rsc": "vite build --config vite.rsc.config.ts"
   },
   "dependencies": {
+    "@qualy/api-kit": "workspace:*",
+    "@qualy/app-contract": "workspace:*",
     "@qualy/auth-contract": "workspace:*",
     "@qualy/brand": "workspace:*",
     "@qualy/browser-observability": "workspace:*",
+    "@qualy/i18n-contract": "workspace:*",
     "@qualy/plugin-kit": "workspace:*",
     "@qualy/release-contract": "workspace:*",
     "@qualy/ui": "workspace:*",
     "@qualy/ui-contract": "workspace:*",
     "@qualy/web-i18n": "workspace:*",
+    "@qualy/web-rsc": "workspace:*",
     "@qualy/web-runtime": "workspace:*",
     "@qualy/web-value-form": "workspace:*",
     "lucide-react": "catalog:",
@@ -38,6 +44,7 @@
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "@vitejs/plugin-react": "catalog:",
+    "@vitejs/plugin-rsc": "catalog:",
     "vite": "catalog:"
   }
 }

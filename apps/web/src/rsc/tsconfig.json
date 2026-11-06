@@ -1,0 +1,9 @@
+{
+  "extends": "@qualy/tsconfig/base.json",
+  "compilerOptions": {
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "types": ["node", "vite/client", "@vitejs/plugin-rsc/types"]
+  },
+  "include": [".", "../virtual-qualy-plugins.d.ts", "../virtual-qualy-release.d.ts"]
+}

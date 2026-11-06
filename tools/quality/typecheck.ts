@@ -72,6 +72,8 @@ const projects = [
   ...findPackageProjects('packages/web'),
   ...findPackageProjects('packages/testkit'),
   'apps/web',
+  // the server-rendered entries: node, with the DOM for what they render
+  'apps/web/src/rsc',
   ...findClientProjects('packages'),
   ...findBrowserTestProjects('packages'),
   ...findBrowserTestProjects('tools/fixtures'),

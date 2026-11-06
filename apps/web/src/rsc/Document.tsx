@@ -1,0 +1,97 @@
+'use client'
+import { useMemo, type ComponentType, type ReactNode } from 'react'
+import type { SupportedLocale } from '@qualy/i18n-contract'
+import { UiProvider } from '@qualy/ui/provider'
+import { DocumentLocaleContext } from '@qualy/web-i18n'
+import {
+  RuntimeProvider,
+  ThemeProvider,
+  emptyComponentRegistry,
+  useTheme,
+  type ComponentRegistry,
+  type Manifest,
+} from '@qualy/web-runtime'
+import { SIGN_IN_PAGE } from '@qualy/auth-contract/sign-in-failure'
+import { releases, webRelease } from '../release.ts'
+import '../app.css'
+
+// The document a server rendered, as the page holds it
+// (docs/adr/0012-rsc-data-mode.md).
+//
+// Everything a page-rendered tab builds before its first route - the theme,
+// the widget library, the runtime with its clients and live channels - with
+// the one difference that matters: the manifest and the surfaces it names
+// arrived with the render, so there is nothing to fetch, warm or wait for
+// before the routes under it draw.
+
+/** the scheme the page starts in, decided before any script of ours ran */
+const EARLY_THEME = `(function () {
+  var choice = null
+  try { choice = localStorage.getItem('qualy.theme') } catch (error) {}
+  var dark = choice === 'dark' || (choice !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches)
+  var root = document.documentElement
+  root.setAttribute('data-mode', dark ? 'dark' : 'light')
+  if (dark) root.classList.add('dark')
+  root.style.colorScheme = dark ? 'dark' : 'light'
+})()`
+
+export function Document({
+  manifest,
+  slots,
+  locale,
+  releaseId,
+  children,
+}: {
+  manifest: Manifest
+  slots: Readonly<Record<string, Readonly<Record<string, ComponentType<any>>>>>
+  locale: SupportedLocale
+  releaseId: string
+  children: ReactNode
+}) {
+  const registry = useMemo<ComponentRegistry>(
+    () => ({ ...emptyComponentRegistry(), slots }),
+    [slots],
+  )
+  return (
+    <html lang={locale} data-locale={locale} data-release={releaseId} suppressHydrationWarning>
+      <head>
+        <meta charSet="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+        <meta name="color-scheme" content="light dark" />
+        <title>Qualy</title>
+        <link rel="icon" type="image/png" sizes="32x32" href="/favicon.png" />
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+        <style>
+          {
+            '@layer theme, base, mantine, components, priority1, priority2, priority3, priority4, priority5;'
+          }
+        </style>
+        <script dangerouslySetInnerHTML={{ __html: EARLY_THEME }} />
+      </head>
+      <body>
+        <div id="root">
+          <DocumentLocaleContext value={locale}>
+            <ThemeProvider>
+              <WidgetBridge>
+                <RuntimeProvider
+                  registry={registry}
+                  manifest={manifest}
+                  clientIdentity={webRelease}
+                  onClientUnsupported={(reason) => releases.notifyClientUnsupported(reason)}
+                  signInPage={SIGN_IN_PAGE}
+                >
+                  {children}
+                </RuntimeProvider>
+              </WidgetBridge>
+            </ThemeProvider>
+          </DocumentLocaleContext>
+        </div>
+      </body>
+    </html>
+  )
+}
+
+function WidgetBridge({ children }: { children: ReactNode }) {
+  const { resolved } = useTheme()
+  return <UiProvider scheme={resolved}>{children}</UiProvider>
+}

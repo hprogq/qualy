@@ -3,6 +3,8 @@ node_modules/
 
 # build outputs (anchored: packages/build/ is source, not output)
 dist/
+# the server-rendered build beside the page build (docs/adr/0012-rsc-data-mode.md)
+dist-rsc/
 # except a third-party fixture's, where the compiled output IS the fixture:
 # these packages ship no sources on purpose, so an ignored dist leaves them
 # empty on a fresh clone and the gates that use them prove nothing
