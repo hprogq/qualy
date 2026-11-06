@@ -1,9 +1,9 @@
 import { Duration, Effect } from 'effect'
 import { HttpEffect, HttpServerResponse, type HttpServerRequest } from 'effect/http'
-import { sessionCookieName } from '@qualy/auth-contract/session'
+import { sessionCookieNameFor, sessionCookieNames } from '@qualy/auth-contract/session'
 
-// The session cookie's name and attributes, decided in one place on the
-// server side.
+// The session cookie's attributes, decided in one place on the server side;
+// its name is the contract's (@qualy/auth-contract/session).
 //
 // A secure deployment names it with the `__Host-` prefix, which a browser
 // only accepts with Secure, Path=/ and no Domain - and which no other host,
@@ -13,21 +13,10 @@ import { sessionCookieName } from '@qualy/auth-contract/session'
 // browser drops a prefixed cookie outright, so it keeps the bare name. A
 // process reads exactly one of the two: the one its configuration names.
 
+export { sessionCookieNameFor, sessionCookieNames }
+
+/** the prefix that keeps a cookie this host's alone */
 const HOST_PREFIX = '__Host-'
-
-/** the name a deployment reads and writes, from whether its cookies are secure */
-export const sessionCookieNameFor = (secure: boolean): string =>
-  secure ? `${HOST_PREFIX}${sessionCookieName}` : sessionCookieName
-
-/**
- * Both names, for a tool that drives a server without knowing which entry
- * it was started as: it takes the session cookie under whichever name the
- * response set and sends that name back.
- */
-export const sessionCookieNames: readonly [string, string] = [
-  sessionCookieNameFor(true),
-  sessionCookieNameFor(false),
-]
 
 /** appends the session cookie to the response this request will send */
 export const setSessionCookie = (

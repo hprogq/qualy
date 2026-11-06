@@ -122,6 +122,27 @@ export const TooManyAttemptsResponse = TooManyAttempts.pipe(
 export const sessionCookieName = 'qualy_session'
 
 /**
+ * The prefix a secure deployment's session cookie carries: a browser only
+ * accepts it with Secure, Path=/ and no Domain, and no other host, sibling
+ * subdomains included, can create one for this host.
+ */
+const HOST_PREFIX = '__Host-'
+
+/** the name a deployment reads and writes, from whether its cookies are secure */
+export const sessionCookieNameFor = (secure: boolean): string =>
+  secure ? `${HOST_PREFIX}${sessionCookieName}` : sessionCookieName
+
+/**
+ * Both names, for a process that does not read the configuration deciding
+ * between them - a tool driving a server, or a server render passing on the
+ * clearing of a session the api refused - and goes by the name it was given.
+ */
+export const sessionCookieNames: readonly [string, string] = [
+  sessionCookieNameFor(true),
+  sessionCookieNameFor(false),
+]
+
+/**
  * Declared without a `security` scheme on purpose.
  *
  * The builder runs a security middleware per declared scheme, in order,
