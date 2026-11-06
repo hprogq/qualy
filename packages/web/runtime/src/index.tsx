@@ -450,6 +450,9 @@ function RenderedRuntime({
   useEffect(() => {
     channels.retain(liveIdentity)
   }, [channels, liveIdentity])
+  // the document is the person's the server rendered it for, and says so on
+  // every request it makes (document-identity.ts)
+  adoptDocumentIdentity(identityOfManifest(manifest))
   return (
     <RuntimeContext.Provider value={{ clientFor, utilsFor, registry, manifest }}>
       {children}
