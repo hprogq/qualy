@@ -1,7 +1,7 @@
 'use client'
 import * as stylex from '@stylexjs/stylex'
-import { useLocation, useNavigation } from 'react-router'
-import { useMemo, type ComponentProps, type ComponentType, type ReactNode } from 'react'
+import { useLocation, useNavigation, useRevalidator } from 'react-router'
+import { useEffect, useMemo, type ComponentProps, type ComponentType, type ReactNode } from 'react'
 import { QueryHydration } from '@qualy/web-runtime/query-hydration'
 import type { SupportedLocale } from '@qualy/i18n-contract'
 import { UiProvider } from '@qualy/ui/provider'
@@ -90,6 +90,18 @@ function NavigationProgress() {
       <div {...stylex.props(navigationStyles.bar)} />
     </div>
   )
+}
+
+function DevelopmentRenderRefresh() {
+  const { revalidate } = useRevalidator()
+  useEffect(() => {
+    const hot = import.meta.hot
+    if (hot === undefined) return
+    const refresh = () => void revalidate()
+    hot.on('rsc:update', refresh)
+    return () => hot.off('rsc:update', refresh)
+  }, [revalidate])
+  return null
 }
 
 export function Document({
@@ -192,6 +204,7 @@ export function Document({
                       signInPage={SIGN_IN_PAGE}
                     >
                       <DataRouterLeaveGuard>
+                        {import.meta.env.DEV && <DevelopmentRenderRefresh />}
                         <NavigationProgress />
                         {hydration === undefined ? (
                           children
