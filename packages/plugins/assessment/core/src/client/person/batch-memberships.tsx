@@ -1,8 +1,14 @@
-import { pageNumber } from '@qualy/api-kit/schema'
 import { RecordPager } from '../record/RecordPager.tsx'
 import { useLocale } from '@qualy/web-i18n'
 import { useQuery } from '@tanstack/react-query'
-import { usePageQueryState, useLoadFailure, usePageHref, usePageNavigate } from '@qualy/web-runtime'
+import {
+  useHydrating,
+  usePageQueryState,
+  useLoadFailure,
+  usePageHref,
+  usePageNavigate,
+} from '@qualy/web-runtime'
+import { MEMBERSHIPS_PAGE, membershipPageKey, membershipPageOf } from './membership-reads.ts'
 
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
@@ -154,18 +160,20 @@ export function BatchMemberships({
   // a row is a way into the round only for a reader who may open rounds
   const batchReachable = usePageHref('assessment/batch', { params: { batchId: '0' } }) !== undefined
 
-  const [page, setPage] = usePageQueryState('batchesPage')
+  const [page, setPage] = usePageQueryState(MEMBERSHIPS_PAGE)
   const identity = JSON.stringify(queryKey)
   const rows = useQuery({
-    queryKey: [...queryKey, { page: pageNumber(page) }],
-    queryFn: () => fetchPage(pageNumber(page)),
+    queryKey: membershipPageKey(queryKey, membershipPageOf(page)),
+    queryFn: () => fetchPage(membershipPageOf(page)),
     meta: { personalPage: identity },
     placeholderData: (previous, previousQuery) =>
       previousQuery?.meta?.['personalPage'] === identity ? previous : undefined,
   })
   const items = rows.data?.items ?? []
+  // the device is the browser's to say, never the server's that drew the page
+  const hydrating = useHydrating()
   const marks = items.map(({ batch, membership }) =>
-    zoneMarkOf(batch.timezone, locale, membership.includedAt),
+    hydrating ? null : zoneMarkOf(batch.timezone, locale, membership.includedAt),
   )
   const momentColumn = MOMENT_COLUMN[marks.some((mark) => mark !== null) ? 'marked' : 'bare']
 

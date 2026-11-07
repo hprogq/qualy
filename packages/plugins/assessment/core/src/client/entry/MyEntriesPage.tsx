@@ -420,7 +420,9 @@ function Body({
       xstyle={styles.fill}
     >
       {rows.length === 0 ? (
-        <p {...stylex.props(styles.empty)}>{m.entry_empty()}</p>
+        <p data-testid="entries-empty" {...stylex.props(styles.empty)}>
+          {m.entry_empty()}
+        </p>
       ) : (
         <EntriesWorkspace
           viewer="owner"

@@ -1,5 +1,11 @@
 import { Effect } from 'effect'
-import { useApiMutation, useApi, useApiQuery, useLoadFailure } from '@qualy/web-runtime'
+import {
+  useApiMutation,
+  useApi,
+  useApiQuery,
+  useHydrating,
+  useLoadFailure,
+} from '@qualy/web-runtime'
 import {
   assertNever,
   formatPlatformFailure as formatError,
@@ -430,8 +436,14 @@ export function ParticipantResultList({
   const stacked = useIsMobile()
   const [unitsOpen, setUnitsOpen] = useState(false)
   // Beside the list the tree can be folded away, for a reader who works
-  // down the whole roster and wants the room; the fold is remembered.
-  const [treeOpen, setTreeOpen] = useState(readTreeOpen)
+  // down the whole roster and wants the room; the fold is remembered. The
+  // fold is this browser's: a server drawing the page draws the tree open,
+  // the page takes that over as it is, and folds it then if it was kept so.
+  const hydrating = useHydrating()
+  const [treeOpen, setTreeOpen] = useState(() => (hydrating ? true : readTreeOpen()))
+  useEffect(() => {
+    if (!readTreeOpen()) setTreeOpen(false)
+  }, [])
   const foldTree = (open: boolean) => {
     setTreeOpen(open)
     keepTreeOpen(open)

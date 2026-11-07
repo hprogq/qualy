@@ -30,6 +30,7 @@ import { useBatchLive } from '../live.ts'
 import { BatchScreen } from '../batch/BatchScreen.tsx'
 import { AwaitingSection } from './AwaitingSection.tsx'
 import { useAwaitingQuery, useQueueRefresh, useReviewQueueQuery } from './queue.ts'
+import { queueRequestOf, viewOf, type View } from './inbox-reads.ts'
 import { useDraftSweep } from './use-draft.ts'
 import { rememberQueuePlace } from './queue-place.ts'
 import { ItemQueue, PersonQueue, QueueSkeleton, TimeQueue } from './QueueViews.tsx'
@@ -215,15 +216,8 @@ const styles = stylex.create({
   },
 })
 
-type View = 'item' | 'time' | 'person' | 'asked'
-
 /** the batch went while its queue was being read */
 const BATCH_NOT_FOUND = 'ASSESSMENT_BATCH_NOT_FOUND'
-
-const VIEWS: readonly View[] = ['item', 'time', 'person', 'asked']
-
-const viewOf = (raw: string): View =>
-  (VIEWS as readonly string[]).includes(raw) ? (raw as View) : 'item'
 
 /**
  * Everything waiting for this reader's decision in the round, and what their
@@ -232,7 +226,6 @@ const viewOf = (raw: string): View =>
  */
 function useQueue(batchId: string, reviewing: boolean) {
   const [viewRaw] = usePageQueryState('view', 'item')
-  const view = viewOf(viewRaw)
   const [item] = usePageQueryState('item')
   const [person] = usePageQueryState('person')
   const [unit] = usePageQueryState('unit')
@@ -255,16 +248,11 @@ function useQueue(batchId: string, reviewing: boolean) {
     stale(query.assessment.listAwaitingSupplements.key({ query: { batchId } }))
   })
   const inbox = useQuery({
-    ...useReviewQueueQuery(batchId, {
-      view: view === 'asked' ? 'time' : view,
-      page: page || '1',
-      limit: view === 'time' ? '20' : '10',
-      groupPage: groupPage || '1',
-      ...(item !== '' && view !== 'person' ? { itemId: item } : {}),
-      ...(person !== '' && view === 'person' ? { person } : {}),
-      ...(unit !== '' ? { unitId: unit } : {}),
-      ...(search.trim() !== '' ? { search: search.trim() } : {}),
-    }),
+    // the place in the address, read as the server reads it (inbox-reads.ts)
+    ...useReviewQueueQuery(
+      batchId,
+      queueRequestOf({ view: viewRaw, item, person, unit, search, page, groupPage }),
+    ),
     placeholderData: keepPreviousData,
     enabled: reviewing,
     refetchInterval: live ? 60_000 : 30_000,

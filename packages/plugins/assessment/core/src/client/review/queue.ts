@@ -2,6 +2,7 @@ import { type QueryKey } from '@tanstack/react-query'
 import { useApiQuery } from '@qualy/web-runtime'
 import type { ApiResult } from '@qualy/web-runtime/api'
 import { assessmentApi } from '../api.ts'
+import { awaitingReadOf, queueReadOf } from './inbox-reads.ts'
 
 export type QueuePage = ApiResult<typeof assessmentApi, 'assessment', 'listReviewInbox'>
 export type QueueRequest = {
@@ -28,13 +29,13 @@ export function useQueueRefresh(batchId: string): (stale: (key: QueryKey) => voi
 }
 
 export function useReviewQueueQuery(batchId: string, request: QueueRequest = {}) {
-  return useApiQuery(assessmentApi).assessment.listReviewInbox.queryOptions({
-    query: { batchId, ...request },
-  })
+  return useApiQuery(assessmentApi).assessment.listReviewInbox.queryOptions(
+    queueReadOf(batchId, request),
+  )
 }
 
 export function useAwaitingQuery(batchId: string, page = 1, limit = 10) {
-  return useApiQuery(assessmentApi).assessment.listAwaitingSupplements.queryOptions({
-    query: { batchId, page: String(page), limit: String(limit) },
-  })
+  return useApiQuery(assessmentApi).assessment.listAwaitingSupplements.queryOptions(
+    awaitingReadOf(batchId, page, limit),
+  )
 }
