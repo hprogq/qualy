@@ -31,21 +31,36 @@
       "default": "./src/client/batch/BatchContextBar.tsx"
     },
     "./client/browser": "./src/client/browser.ts",
-    "./client/entry/MyEntriesPage": "./src/client/entry/MyEntriesPage.tsx",
+    "./client/entry/MyEntriesPage": {
+      "react-server": "./src/client/entry/MyEntriesPage.server.tsx",
+      "default": "./src/client/entry/MyEntriesPage.tsx"
+    },
     "./client/items/FixedCalculatorEditor": "./src/client/items/FixedCalculatorEditor.tsx",
     "./client/items/ItemSettingsPage": "./src/client/items/ItemSettingsPage.tsx",
-    "./client/person/MyBatchesPage": "./src/client/person/MyBatchesPage.tsx",
+    "./client/person/MyBatchesPage": {
+      "react-server": "./src/client/person/MyBatchesPage.server.tsx",
+      "default": "./src/client/person/MyBatchesPage.tsx"
+    },
     "./client/person/SectionBadge": "./src/client/person/SectionBadge.tsx",
     "./client/person/UserBatchesPage": "./src/client/person/UserBatchesPage.tsx",
     "./client/person/UserEntriesPage": "./src/client/person/UserEntriesPage.tsx",
     "./client/record/AdministrativeRecordsPage": "./src/client/record/AdministrativeRecordsPage.tsx",
-    "./client/result/MyResultPage": "./src/client/result/MyResultPage.tsx",
-    "./client/result/ParticipantResultsPage": "./src/client/result/ParticipantResultsPage.tsx",
+    "./client/result/MyResultPage": {
+      "react-server": "./src/client/result/MyResultPage.server.tsx",
+      "default": "./src/client/result/MyResultPage.tsx"
+    },
+    "./client/result/ParticipantResultsPage": {
+      "react-server": "./src/client/result/ParticipantResultsPage.server.tsx",
+      "default": "./src/client/result/ParticipantResultsPage.tsx"
+    },
     "./client/review/QueueBadge": {
       "react-server": "./src/client/review/QueueBadge.server.tsx",
       "default": "./src/client/review/QueueBadge.tsx"
     },
-    "./client/review/ReviewInboxPage": "./src/client/review/ReviewInboxPage.tsx",
+    "./client/review/ReviewInboxPage": {
+      "react-server": "./src/client/review/ReviewInboxPage.server.tsx",
+      "default": "./src/client/review/ReviewInboxPage.tsx"
+    },
     "./client/review/ReviewInstancePage": "./src/client/review/ReviewInstancePage.tsx",
     "./db": "./src/db/entities.ts",
     "./errors": "./src/errors.ts",

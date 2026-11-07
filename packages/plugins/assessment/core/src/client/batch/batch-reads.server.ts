@@ -1,4 +1,6 @@
+import type { Effect } from 'effect'
 import { Schema } from 'effect'
+import type { HttpApi, HttpApiClient } from 'effect/http-api'
 import { uuidInput } from '@qualy/api-kit/schema'
 import { queryKeyOf } from '@qualy/web-runtime/query-key'
 import { readApiExit } from '@qualy/web-rsc/request'
@@ -28,4 +30,22 @@ export const readBatch = (batchId: string) => {
     key,
     exit: readApiExit(assessmentApi, (client) => client.assessment.getBatch(input), { key }),
   }
+}
+
+/** the assessment api's typed client, as a read is handed it */
+type AssessmentClient = HttpApiClient.Client<
+  typeof assessmentApi extends HttpApi.HttpApi<string, infer Groups> ? Groups : never
+>
+
+/**
+ * One read of the assessment api under the key the page reads it with
+ * (`queryKeyOf('assessment', endpoint, input)`), made once for the request.
+ */
+export const keyed = <A, E>(
+  endpoint: string,
+  input: unknown,
+  read: (client: AssessmentClient) => Effect.Effect<A, E>,
+) => {
+  const key = queryKeyOf('assessment', endpoint, input)
+  return { key, exit: readApiExit(assessmentApi, read, { key }) }
 }
