@@ -1,7 +1,9 @@
 import { spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import fs from 'node:fs'
-import { createServer } from 'node:http'
+import { createServer, type IncomingMessage } from 'node:http'
+import { connect } from 'node:net'
+import type { Duplex } from 'node:stream'
 import path from 'node:path'
 import { NodeHttpServer } from '@effect/platform-node'
 import { Effect, Fiber, Layer } from 'effect'
@@ -98,11 +100,44 @@ const seedInto = (url: string) =>
 /** every render the host started, and whether its request's signal ended */
 const renders: { readonly path: string; aborted: boolean; streamed: boolean }[] = []
 
+/**
+ * The api's live channels, passed through to the backend as they are: the
+ * upgrade, then the socket both ways. Effect's server answers every other
+ * upgrade, as it registers to.
+ */
+const withLiveChannels = (server: ReturnType<typeof createServer>) => {
+  const register = server.on.bind(server)
+  const relay = (request: IncomingMessage, socket: Duplex, head: Buffer) => {
+    const upstream = connect(apiPort, '127.0.0.1', () => {
+      const lines = [`${request.method} ${request.url} HTTP/1.1`]
+      for (let at = 0; at < request.rawHeaders.length; at += 2) {
+        lines.push(`${request.rawHeaders[at]}: ${request.rawHeaders[at + 1]}`)
+      }
+      upstream.write(`${lines.join('\r\n')}\r\n\r\n`)
+      upstream.write(head)
+      socket.pipe(upstream).pipe(socket)
+    })
+    upstream.on('error', () => socket.destroy())
+    socket.on('error', () => upstream.destroy())
+  }
+  server.on = ((event: string, listener: (...args: any[]) => void) =>
+    event === 'upgrade'
+      ? register('upgrade', (request: IncomingMessage, socket: Duplex, head: Buffer) =>
+          request.url?.startsWith('/api')
+            ? relay(request, socket, head)
+            : listener(request, socket, head),
+        )
+      : register(event, listener)) as typeof server.on
+  return server
+}
+
 const mountHandler = async () => {
   // read by the handler as its module loads: where the api answers, and
   // which react it runs - a production host's, as run.ts sets it; under any
   // other the server writes development rows a production page cannot read
-  process.env['QUALY_RENDER_API_ORIGIN'] = `http://127.0.0.1:${apiPort}`
+  // the render reads through this host, as the browser does, so a fault the
+  // host injects is met by both
+  process.env['QUALY_RENDER_API_ORIGIN'] = site
   process.env['NODE_ENV'] = 'production'
   const { default: handler } = (await import(path.join(dist, 'rsc/index.js'))) as {
     default: (request: Request, context: { nonce?: string }) => Promise<Response>
@@ -143,6 +178,17 @@ const mountHandler = async () => {
       ) {
         return HttpServerResponse.uint8Array(fs.readFileSync(file), {
           contentType: types[path.extname(file)] ?? 'application/octet-stream',
+        })
+      }
+      // A session that goes after the document started: the reader's desk
+      // answered as a lapsed session, for whoever carries the fault's cookie
+      if (
+        url.pathname.endsWith('/me/overview') &&
+        /(?:^|;\s*)acceptance_fault=session(?:;|$)/.test(String(request.headers['cookie'] ?? ''))
+      ) {
+        return HttpServerResponse.text(JSON.stringify({ _tag: 'SESSION_EXPIRED' }), {
+          status: 401,
+          contentType: 'application/json',
         })
       }
       if (url.pathname.startsWith('/api') || url.pathname.startsWith('/health')) {
@@ -212,7 +258,9 @@ const mountHandler = async () => {
   const launched = Effect.runFork(
     Layer.launch(
       HttpRouter.serve(app, { disableLogger: true }).pipe(
-        Layer.provide(NodeHttpServer.layer(createServer, { port: hostPort })),
+        Layer.provide(
+          NodeHttpServer.layer(() => withLiveChannels(createServer()), { port: hostPort }),
+        ),
       ),
     ),
   )
@@ -263,6 +311,35 @@ const signIn = async (who: keyof typeof accounts): Promise<string> => {
   const line = response.headers.getSetCookie().find((cookie) => cookie.includes('qualy_session='))
   if (line === undefined) throw new Error(`${who} signed in without a session cookie`)
   return line.split(';', 1)[0]!
+}
+
+/**
+ * A batch the student takes part in, made as an administrator makes one:
+ * through the business api, importing the student's class and type.
+ */
+const batchFor = async (scratch: {
+  row: <Row>(text: string, params?: readonly unknown[]) => Promise<Row>
+}): Promise<string> => {
+  const admin = await signIn('admin')
+  const { org, type } = await scratch.row<{ org: string; type: string }>(
+    `select primary_org_node_id as org, user_type_id as type from users where email = $1`,
+    [accounts.student.email],
+  )
+  const response = await fetch(`${site}/api/assessment/batches`, {
+    method: 'POST',
+    headers: { cookie: admin, 'content-type': 'application/json' },
+    body: JSON.stringify({
+      name: 'RSC acceptance',
+      descriptionMd: 'Bring the certificates you are claiming for.',
+      materialRange: { start: '2026-09-01', end: '2027-07-31' },
+      timezone: 'Asia/Shanghai',
+      import: { orgNodeIds: [org], userTypeIds: [type] },
+    }),
+  })
+  if (response.status !== 200) {
+    throw new Error(`the batch was not made: ${response.status} ${await response.text()}`)
+  }
+  return ((await response.json()) as { batch: { id: string } }).batch.id
 }
 
 const manifestOf = async (cookie: string) =>
@@ -547,6 +624,168 @@ const sessionWent = async (browser: Browser) => {
 
 // ---------------------------------------------------------------------------
 
+/** a browser signed in as `who`, with the document's own scripts on or off */
+const signedInContext = async (
+  browser: Browser,
+  who: keyof typeof accounts,
+  options: {
+    readonly javaScriptEnabled?: boolean
+    readonly width?: number
+    readonly timezoneId?: string
+  } = {},
+) => {
+  const context = await browser.newContext({
+    javaScriptEnabled: options.javaScriptEnabled ?? true,
+    viewport: { width: options.width ?? 1400, height: 900 },
+    ...(options.timezoneId === undefined ? {} : { timezoneId: options.timezoneId }),
+  })
+  await context.request.post(`${site}/api/auth/local/local/login`, { data: accounts[who] })
+  return context
+}
+
+/**
+ * What the page asked the api for once it was the reader's, until the
+ * batch's live channel said `sync`: the reads a page makes on its own,
+ * apart from the ones the channel sets off. Ends when the channel speaks or
+ * after a few seconds.
+ */
+const ownReads = async (page: Page, address: string): Promise<readonly string[]> => {
+  const asked: string[] = []
+  let synced!: () => void
+  const sync = new Promise<void>((resolve) => (synced = resolve))
+  let spoken = false
+  page.on('request', (request) => {
+    const url = request.url()
+    if (!spoken && url.includes('/api/')) asked.push(url.slice(url.indexOf('/api/') + 4))
+  })
+  page.on('websocket', (socket) =>
+    socket.on('framereceived', (frame) => {
+      if (String(frame.payload).includes('"sync"')) {
+        spoken = true
+        synced()
+      }
+    }),
+  )
+  await page.goto(`${site}${address}`)
+  await hydrated(page)
+  await Promise.race([sync, new Promise((resolve) => setTimeout(resolve, 5_000))])
+  return [...asked]
+}
+
+/** the batch overview's first screen, as the server draws it and the page takes it over */
+const overviewFirstScreen = async (browser: Browser, batch: string) => {
+  const address = `/assessment/batches/${batch}`
+  const filtered = `${address}?activityLane=participant&activityPage=2`
+  const missing = '/assessment/batches/01a1b345-0000-7000-8000-000000000000'
+  const firstReads = [`/assessment/batches/${batch}`, '/timeline', '/me/overview', '/me/activity']
+
+  // the screen is in the html's own elements, scripts or none
+  const still = await signedInContext(browser, 'admin', { javaScriptEnabled: false })
+  const html = await still.newPage()
+  for (const [at, which] of [
+    [address, 'default'],
+    [filtered, 'filtered and paged'],
+  ] as const) {
+    await html.goto(`${site}${at}`)
+    const shown = await Promise.all(
+      ['batch-note', 'overview-clear', 'overview-activity-empty'].map((id) =>
+        html.getByTestId(id).isVisible(),
+      ),
+    )
+    check(`draws the overview's first screen in the html (${which})`, shown.every(Boolean), shown)
+  }
+  await html.goto(`${site}${missing}`)
+  check(
+    'draws a batch that is not there as not there in the html',
+    await html.locator('[data-slot=resource-state][data-state=missing]').isVisible(),
+  )
+  await still.close()
+
+  // the page does not ask again for what the html was drawn from; what the
+  // live channel sets off is the channel's, after it has spoken
+  for (const [at, which, width, timezoneId] of [
+    [address, '1400px', 1400, undefined],
+    [filtered, '390px, America/New_York, filtered', 390, 'America/New_York'],
+    [missing, 'a batch not there', 1400, undefined],
+  ] as const) {
+    const context = await signedInContext(browser, 'admin', {
+      width,
+      ...(timezoneId === undefined ? {} : { timezoneId }),
+    })
+    const page = await context.newPage()
+    const mismatches: string[] = []
+    page.on('console', (message) => {
+      if (/hydrat/i.test(message.text())) mismatches.push(message.text().slice(0, 300))
+    })
+    page.on('pageerror', (error) => mismatches.push(error.message.slice(0, 300)))
+    const asked = await ownReads(page, at)
+    const subject = at === missing ? [missing] : firstReads
+    const again = asked.filter((url) => subject.some((read) => url.split('?')[0]!.endsWith(read)))
+    check(
+      `takes the overview over without asking again (${which})`,
+      again.length === 0 && mismatches.length === 0,
+      { again, mismatches },
+    )
+    await context.close()
+  }
+
+  // the batch's live channel goes on as before: a plan written elsewhere
+  // reaches the open page without a reload
+  {
+    const context = await signedInContext(browser, 'admin')
+    const page = await context.newPage()
+    await ownReads(page, address)
+    await inPage(page, 'window.__same = true')
+    const admin = await signIn('admin')
+    const written = await fetch(`${site}/api/assessment/batches/${batch}/phases`, {
+      method: 'PUT',
+      headers: { cookie: admin, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        phases: [{ phaseKey: 'acceptance-submission', displayName: 'Acceptance submission' }],
+      }),
+    })
+    const arrived = await page
+      .getByText('Acceptance submission')
+      .first()
+      .waitFor({ timeout: 10_000 })
+      .then(
+        () => true,
+        () => false,
+      )
+    const same = await inPage<boolean>(page, 'window.__same === true')
+    check(
+      'brings a plan written elsewhere into the open overview',
+      written.status === 200 && arrived && same,
+      { written: written.status, arrived, same },
+    )
+    await context.close()
+  }
+
+  // a session that goes after the document started: the render still draws
+  // the page, without the desk it could not read, and the page's own read of
+  // the desk meets the lapse and hands it to the session's recovery
+  {
+    const context = await signedInContext(browser, 'admin')
+    await context.addCookies([{ name: 'acceptance_fault', value: 'session', url: site }])
+    const page = await context.newPage()
+    const errors: string[] = []
+    page.on('pageerror', (error) => errors.push(error.message.slice(0, 200)))
+    const response = await page.goto(`${site}${address}`)
+    await hydrated(page)
+    const state = await page
+      .getByTestId('session-recovery')
+      .getAttribute('data-state', { timeout: 10_000 })
+      .catch(() => null)
+    const note = await page.getByTestId('batch-note').isVisible()
+    check(
+      'hands a session lost after the document started to the recovery',
+      response?.status() === 200 && state !== null && note && errors.length === 0,
+      { status: response?.status(), state, note, errors },
+    )
+    await context.close()
+  }
+}
+
 const checks = async () => {
   await refusals()
   await cookies(scratch)
@@ -555,6 +794,7 @@ const checks = async () => {
   await underPolicy(browser)
   await changedHands(browser)
   await sessionWent(browser)
+  await overviewFirstScreen(browser, await batchFor(scratch))
 }
 
 let server: QualyServer | undefined
@@ -590,10 +830,11 @@ try {
   host = await mountHandler()
   if (process.env['RSC_ACCEPTANCE_HOLD'] === '1') {
     // the stack kept up for looking at by hand, until interrupted
+    const batch = await batchFor(scratch)
     console.log(`rsc-acceptance: holding ${site}`)
     fs.writeFileSync(
       path.join(repoRoot, 'node_modules/.cache/rsc-acceptance.json'),
-      JSON.stringify({ site, accounts }),
+      JSON.stringify({ site, accounts, batch }),
     )
     await new Promise<void>((resolve) => process.once('SIGINT', () => resolve()))
   } else {
