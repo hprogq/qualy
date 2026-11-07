@@ -152,11 +152,11 @@ export function StatusBadge({
   return (
     <Badge
       className={
+        // one compact form or the other, never both in one composition
         stylex.props(
           styles.badge,
           tone.badge,
-          compact === true && styles.compact,
-          compact === 'phone' && styles.compactPhone,
+          compact === 'phone' ? styles.compactPhone : compact && styles.compact,
           xstyle,
         ).className
       }
