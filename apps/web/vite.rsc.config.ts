@@ -18,15 +18,41 @@ import { qualyMessages } from '@qualy/message-build/vite'
 const stylexUnplugin =
   stylexUnpluginModule.default as unknown as (typeof stylexUnpluginModule)['default']['default']
 
-/** a plugin, or plugins, kept out of the server component environment */
-const withoutServerComponents = (plugin: PluginOption): Plugin[] =>
+/** whether a module opens with the client directive, past its comments */
+const CLIENT_DIRECTIVE = /^(?:\s|\/\/[^\n]*\n|\/\*[\s\S]*?\*\/)*(['"])use client\1/
+
+/**
+ * A transform that, in the server component environment, leaves client
+ * modules alone.
+ *
+ * There a client module is replaced by a reference to itself; the html
+ * renderer and the page compile it where it actually runs. Compiled here as
+ * well, its rules named constants nothing in this environment defines. A
+ * server component's own module - one that never reaches a browser - is
+ * compiled here and nowhere else, so its rules join the stylesheet every
+ * document links.
+ */
+const serverModulesInServerComponents = (plugin: PluginOption): Plugin[] =>
   [plugin]
     .flat(Infinity as 1)
     .filter((one): one is Plugin => one !== null && typeof one === 'object' && 'name' in one)
-    .map((one) => ({
-      ...one,
-      applyToEnvironment: (environment) => environment.name !== 'rsc',
-    }))
+    .map((one) => {
+      const hook = one.transform
+      if (hook === undefined) return one
+      const handler = typeof hook === 'function' ? hook : hook.handler
+      const transform = function (
+        this: { environment?: { name: string } },
+        code: string,
+        ...rest: unknown[]
+      ) {
+        if (this.environment?.name === 'rsc' && CLIENT_DIRECTIVE.test(code)) return null
+        return (handler as (...args: unknown[]) => unknown).call(this, code, ...rest)
+      }
+      return {
+        ...one,
+        transform: typeof hook === 'function' ? transform : { ...hook, handler: transform },
+      } as Plugin
+    })
 
 const repoRoot = fileURLToPath(new URL('../..', import.meta.url))
 
@@ -41,12 +67,9 @@ export default defineConfig(({ mode }) => ({
     qualyRelease(),
     qualyEnvironmentModules(),
     qualyMessages({ documentLocaleModule: '@qualy/web-rsc/document-locale' }),
-    // StyleX where client components are drawn: the html renderer and the
-    // page. In the server component environment a client module is replaced
-    // by a reference after StyleX has already read it, so its rules would
-    // name constants nothing there defines; no server component styles
-    // anything yet, and how one would is a question this slice records.
-    ...withoutServerComponents(
+    // StyleX wherever components are drawn: a client component in the html
+    // renderer and the page, a server component in its own environment
+    ...serverModulesInServerComponents(
       stylexUnplugin({
         useCSSLayers: true,
         dev: mode !== 'production',
