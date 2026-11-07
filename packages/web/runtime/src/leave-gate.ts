@@ -82,13 +82,15 @@ export interface LeaveGate {
   readonly held: () => HeldLeave | null
   readonly subscribe: (listener: () => void) => () => void
   /** the reader stays: the held move is dropped */
-  readonly stay: () => void
+  readonly stay: (move?: HeldLeave) => void
   /**
    * The reader goes: the held move is made. Named, for an answer that took
    * a while - a save - by which time the question may have been put away.
    */
   readonly leave: (move?: HeldLeave) => void
 }
+
+export type LeaveControls = Omit<LeaveGate, 'history'>
 
 /**
  * How long a step through history the page took itself is waited for, where
@@ -102,8 +104,8 @@ const WAVE_MS = 1000
 /** one held move, however many questions it has been asked under */
 interface Move {
   readonly replay: () => void
+  readonly cancel?: () => void
   readonly guards: Set<LeaveGuard>
-  answered: boolean
 }
 
 /** a pop nobody is asked about, on its way */
@@ -111,24 +113,16 @@ type Waved =
   | { readonly delta: number; readonly entry: string }
   | { readonly delta: number; readonly until: number }
 
-export function createLeaveGate(base: History, steps?: HistorySteps): LeaveGate {
+/** Guard registration and the question shared by both router modes. */
+export function createLeaveDecision() {
   const guards = new Set<LeaveGuard>()
   const watchers = new Set<() => void>()
   // the move behind each question put, so an answer given to an earlier
   // form of the question still makes it
   const moves = new WeakMap<HeldLeave, Move>()
   let held: HeldLeave | null = null
-  // where the router is, which after a held pop is not where the base is
-  let shown: Path = base.location
-  // moves the page made itself, while they are being made
+  let active: Move | undefined
   let passing = 0
-  // the pop that undoes a held one, on its way back, and the moves the page
-  // made meanwhile: made once it lands, from the entry the page is really on
-  let undoing: { readonly landed: () => void; readonly after: (() => void)[] } | null = null
-  // a pop nobody is asked about, on its way: a held one taken again, or one
-  // the page made itself past the guards - by how far, and where it lands
-  // or, where that cannot be known, until when it is waited for
-  let waved: Waved | null = null
 
   const notify = () => {
     for (const watcher of watchers) watcher()
@@ -156,14 +150,30 @@ export function createLeaveGate(base: History, steps?: HistorySteps): LeaveGate 
     notify()
   }
   const drop = () => {
+    if (held === null) return
     held = null
     notify()
   }
-  const hold = (blocking: readonly LeaveGuard[], to: Path, replay: () => void) =>
-    ask({ replay, guards: new Set(blocking), answered: false }, to)
-  const blockers = (to: Path): LeaveGuard[] => {
+  const clear = () => {
+    active = undefined
+    drop()
+  }
+  const hold = (
+    blocking: readonly LeaveGuard[],
+    to: Path,
+    replay: () => void,
+    cancel?: () => void,
+  ) => {
+    active = {
+      replay,
+      ...(cancel === undefined ? {} : { cancel }),
+      guards: new Set(blocking),
+    }
+    ask(active, to)
+  }
+  const blockers = (from: Path, to: Path): LeaveGuard[] => {
     if (passing > 0) return []
-    return [...guards].filter((guard) => guard.blocks(shown, to))
+    return [...guards].filter((guard) => guard.blocks(from, to))
   }
   const bypass = (move: () => void) => {
     passing += 1
@@ -173,6 +183,50 @@ export function createLeaveGate(base: History, steps?: HistorySteps): LeaveGate 
       passing -= 1
     }
   }
+  const controls: LeaveControls = {
+    guard(guard) {
+      guards.add(guard)
+      return () => {
+        guards.delete(guard)
+        const question = held
+        const move = question === null ? undefined : moves.get(question)
+        if (question === null || move === undefined || !move.guards.delete(guard)) return
+        // A save may remove the last guard before its answer calls leave.
+        if (move.guards.size === 0) drop()
+        else ask(move, question.to)
+      }
+    },
+    bypass,
+    held: () => held,
+    subscribe(watcher) {
+      watchers.add(watcher)
+      return () => watchers.delete(watcher)
+    },
+    stay(question) {
+      if (question !== undefined && moves.get(question) !== active) return
+      const cancel = active?.cancel
+      clear()
+      cancel?.()
+    },
+    leave(question) {
+      const going = question ?? held
+      const move = going === null ? undefined : moves.get(going)
+      if (move === undefined || move !== active) return
+      clear()
+      move.replay()
+    },
+  }
+  return { controls, hold, clear, blockers, bypassing: () => passing > 0 }
+}
+
+export function createLeaveGate(base: History, steps?: HistorySteps): LeaveGate {
+  const { controls, hold, blockers, bypassing } = createLeaveDecision()
+  // where the router is, which after a held pop is not where the base is
+  let shown: Path = base.location
+  // the pop that undoes a held one, on its way back, and the moves the page
+  // made meanwhile: made once it lands, from the entry the page is really on
+  let undoing: { readonly landed: () => void; readonly after: (() => void)[] } | null = null
+  let waved: Waved | null = null
   const wave = (delta: number) => {
     const entry = steps?.target(delta)
     // a step that lands on none of this document's entries brings no pop to
@@ -204,14 +258,14 @@ export function createLeaveGate(base: History, steps?: HistorySteps): LeaveGate 
       // The browser is still stepping back to the page's own entry: written
       // now, the move would land on the entry being undone.
       if (undoing !== null) {
-        const bypassed = passing > 0
+        const bypassed = bypassing()
         undoing.after.push(() =>
-          bypassed ? bypass(() => guarded(move)(to, state)) : guarded(move)(to, state),
+          bypassed ? controls.bypass(() => guarded(move)(to, state)) : guarded(move)(to, state),
         )
         return
       }
       const target = pathOf(to)
-      const blocking = blockers(target)
+      const blocking = blockers(shown, target)
       if (blocking.length === 0) {
         base[move](to, state)
         return
@@ -236,13 +290,15 @@ export function createLeaveGate(base: History, steps?: HistorySteps): LeaveGate 
       // asked for now would be measured from the entry being undone, or
       // dropped by a browser still busy with the first.
       if (undoing !== null) {
-        const bypassed = passing > 0
-        undoing.after.push(() => (bypassed ? bypass(() => history.go(delta)) : history.go(delta)))
+        const bypassed = bypassing()
+        undoing.after.push(() =>
+          bypassed ? controls.bypass(() => history.go(delta)) : history.go(delta),
+        )
         return
       }
       // a step through history the page itself takes lands later, as a
       // pop; it is waved through when it does
-      if (passing > 0) wave(delta)
+      if (bypassing()) wave(delta)
       base.go(delta)
     },
     listen(listener: Listener) {
@@ -265,7 +321,7 @@ export function createLeaveGate(base: History, steps?: HistorySteps): LeaveGate 
           // undone by stepping back; it goes through, as the router's own
           // blocker lets it.
           if (!through && update.delta !== null) {
-            const blocking = blockers(update.location)
+            const blocking = blockers(shown, update.location)
             if (blocking.length > 0) {
               const delta = update.delta
               const back = new Promise<void>((resolve) => {
@@ -288,42 +344,7 @@ export function createLeaveGate(base: History, steps?: HistorySteps): LeaveGate 
     },
   }
 
-  return {
-    history,
-    guard(guard) {
-      guards.add(guard)
-      return () => {
-        guards.delete(guard)
-        const question = held
-        const move = question === null ? undefined : moves.get(question)
-        if (question === null || move === undefined || !move.guards.delete(guard)) return
-        // nothing is left to protect: the question is no longer asked; the
-        // rest of what the move would lose is still asked about
-        if (move.guards.size === 0) drop()
-        else ask(move, question.to)
-      }
-    },
-    bypass,
-    held: () => held,
-    subscribe(watcher) {
-      watchers.add(watcher)
-      return () => watchers.delete(watcher)
-    },
-    stay() {
-      const move = held === null ? undefined : moves.get(held)
-      if (move !== undefined) move.answered = true
-      drop()
-    },
-    leave(question) {
-      const going = question ?? held
-      const move = going === null ? undefined : moves.get(going)
-      // made once: a second answer to the same question moves nothing
-      if (move === undefined || move.answered) return
-      move.answered = true
-      if (held !== null && moves.get(held) === move) drop()
-      move.replay()
-    },
-  }
+  return { ...controls, history }
 }
 
 /**

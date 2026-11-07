@@ -10,6 +10,7 @@ import { DocumentLocaleContext } from '@qualy/web-i18n'
 import { state_loading } from '@qualy/web-i18n/messages'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import {
+  DataRouterLeaveGuard,
   DocumentNow,
   RuntimeProvider,
   ThemeProvider,
@@ -190,12 +191,14 @@ export function Document({
                       onClientUnsupported={(reason) => releases.notifyClientUnsupported(reason)}
                       signInPage={SIGN_IN_PAGE}
                     >
-                      <NavigationProgress />
-                      {hydration === undefined ? (
-                        children
-                      ) : (
-                        <QueryHydration state={hydration}>{children}</QueryHydration>
-                      )}
+                      <DataRouterLeaveGuard>
+                        <NavigationProgress />
+                        {hydration === undefined ? (
+                          children
+                        ) : (
+                          <QueryHydration state={hydration}>{children}</QueryHydration>
+                        )}
+                      </DataRouterLeaveGuard>
                     </RuntimeProvider>
                   </WidgetBridge>
                 </ThemeProvider>

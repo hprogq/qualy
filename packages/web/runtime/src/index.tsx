@@ -363,6 +363,7 @@ export function RuntimeProvider({
         onIdentityChanged: identityRefused,
       }),
   )
+  const freezeChannels = useCallback(() => channels.freeze(), [channels])
   // Not disposed with the provider: a strict-mode remount runs the cleanup of
   // a provider that stays, and would cut every channel its screens hold. A
   // provider that really goes takes its screens with it, and each channel
@@ -432,6 +433,8 @@ export function RuntimeProvider({
         manifestKey={manifestKey.current ?? []}
         askManifest={runtime.askManifest}
         signInPage={signInPage}
+        onFreeze={freezeChannels}
+        renderedDocument={rendered !== undefined}
       />
     </QueryClientProvider>
   )
@@ -1110,6 +1113,7 @@ export {
 export { ScreenFillScope, useScreenFillClaimed, useClaimScreenFill } from './screen-fill.tsx'
 export { SubjectAbsence, SubjectScope, useSubjectAbsenceSeat } from './subject.tsx'
 export {
+  DataRouterLeaveGuard,
   GuardedBrowserRouter,
   GuardedMemoryRouter,
   useLeaveGuard,

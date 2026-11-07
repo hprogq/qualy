@@ -1,5 +1,6 @@
 import {
   useContext,
+  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -12,12 +13,21 @@ import {
   UNSAFE_createBrowserHistory as createBrowserHistory,
   UNSAFE_createMemoryHistory as createMemoryHistory,
   unstable_HistoryRouter as HistoryRouter,
+  useBlocker,
+  type BlockerFunction,
   type InitialEntry,
   type Path,
 } from 'react-router'
 import { ConfirmDialog } from '@qualy/ui/admin'
 
-import { createLeaveGate, leavesThePage, navigationSteps, type LeaveGate } from './leave-gate.ts'
+import {
+  createLeaveDecision,
+  createLeaveGate,
+  leavesThePage,
+  navigationSteps,
+  type LeaveControls,
+  type LeaveGuard,
+} from './leave-gate.ts'
 import { sharedContext } from './shared-context.ts'
 import * as commonMessages from '@qualy/web-i18n/messages'
 
@@ -32,7 +42,31 @@ import * as commonMessages from '@qualy/web-i18n/messages'
 // Their names say they may move between versions, so an upgrade of
 // react-router re-runs the leave-guard suites before anything else.
 
-const Gate = sharedContext<LeaveGate | null>('leave-gate', null)
+const Gate = sharedContext<LeaveControls | null>('leave-gate', null)
+
+/** React Router owns navigation and history for the server-rendered document. */
+export function DataRouterLeaveGuard({ children }: { children: ReactNode }) {
+  const [decision] = useState(createLeaveDecision)
+  const blocking = useRef<readonly LeaveGuard[]>([])
+  const shouldBlock = useCallback<BlockerFunction>(
+    ({ currentLocation, nextLocation }) => {
+      const guards = decision.blockers(currentLocation, nextLocation)
+      if (guards.length === 0) return false
+      blocking.current = guards
+      return true
+    },
+    [decision],
+  )
+  const blocker = useBlocker(shouldBlock)
+  useLayoutEffect(() => {
+    if (blocker.state === 'blocked') {
+      decision.hold(blocking.current, blocker.location, blocker.proceed, blocker.reset)
+    } else {
+      decision.clear()
+    }
+  }, [blocker, decision])
+  return <LeaveQuestion gate={decision.controls}>{children}</LeaveQuestion>
+}
 
 /**
  * The application's router, over the browser's own history and what the
@@ -75,7 +109,7 @@ export function GuardedMemoryRouter({
   )
 }
 
-function LeaveQuestion({ gate, children }: { gate: LeaveGate; children: ReactNode }) {
+function LeaveQuestion({ gate, children }: { gate: LeaveControls; children: ReactNode }) {
   const held = useSyncExternalStore(gate.subscribe, gate.held, gate.held)
   // Saving holds the question open until the save answers. The dialog closes
   // itself on any answer pressed, which would put the question away - and
@@ -118,7 +152,7 @@ function LeaveQuestion({ gate, children }: { gate: LeaveGate; children: ReactNod
                     // a save that did not go through says why on the page
                     // itself; the reader is left there to read it
                     if (saved) gate.leave(going)
-                    else gate.stay()
+                    else gate.stay(going)
                   })
               },
             })}

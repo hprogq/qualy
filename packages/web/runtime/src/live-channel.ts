@@ -440,6 +440,7 @@ export class LiveChannels {
   private readonly clientIdentity: ClientIdentity | undefined
   private identity: string | undefined
   private detach: (() => void) | undefined
+  private frozen = false
 
   constructor(options: LiveChannelsOptions = {}) {
     this.options = {
@@ -478,6 +479,7 @@ export class LiveChannels {
    * once, however many times it is called.
    */
   hold(identity: string, path: string, holder: LiveHolder): () => void {
+    if (this.frozen) return () => {}
     this.retain(identity)
     const key = `${identity}\u0000${path}`
     let channel = this.channels.get(key)
@@ -524,6 +526,12 @@ export class LiveChannels {
   /** every channel this tab keeps, for whoever tests it */
   size(): number {
     return this.channels.size
+  }
+
+  /** This document is locked to its previous viewer until it is reloaded. */
+  freeze() {
+    this.frozen = true
+    this.dispose()
   }
 
   /** let go of everything: the runtime is going away */

@@ -148,6 +148,22 @@ describe('a tab holding a batch open', () => {
     releaseTwo()
   })
 
+  it('closes every channel when its document freezes and refuses new holds', async () => {
+    const { server, channels } = channelsOn(welcoming)
+    const first = listener()
+    const second = listener()
+    channels.hold('user:a', PATH, first.holder)
+    channels.hold('user:a', OTHER, second.holder)
+    await until(() => first.now()?.live === true && second.now()?.live === true)
+
+    channels.freeze()
+    channels.hold('user:a', PATH, listener().holder)
+    channels.hold('user:b', OTHER, listener().holder)
+
+    expect(channels.size()).toBe(0)
+    expect(server.sockets.map((socket) => socket.closedWith)).toEqual([1000, 1000])
+  })
+
   it('never lends one identity’s connection to the next, and lets the last one’s go at once', async () => {
     const { server, channels } = channelsOn(welcoming, { timing: { ...timing, grace: 5_000 } })
     const before = listener()

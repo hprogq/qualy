@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { notifyManager, useQueryClient, type QueryKey } from '@tanstack/react-query'
 import type { NamespacedId } from '@qualy/ui-contract'
 import { toast } from '@qualy/ui/toast'
@@ -80,12 +80,16 @@ export function SessionRecoveryGate({
   manifestKey,
   askManifest,
   signInPage,
+  onFreeze,
+  renderedDocument,
 }: {
   manifestKey: QueryKey
   /** the manifest, asked directly: the question is who is signed in, never refused */
   askManifest: () => Promise<Manifest>
   /** where signing in happens; without it the page itself is opened, and sends there */
   signInPage?: NamespacedId | undefined
+  onFreeze: () => void
+  renderedDocument: boolean
 }) {
   const queryClient = useQueryClient()
 
@@ -95,12 +99,13 @@ export function SessionRecoveryGate({
   const leaving = useRef(false)
   // somebody else is signed in: the page sends nothing more
   const frozen = useRef(false)
+  const freeze = useCallback(() => {
+    frozen.current = true
+    onFreeze()
+    setStanding('switched')
+  }, [onFreeze])
 
   useEffect(() => {
-    const switched = () => {
-      frozen.current = true
-      setStanding('switched')
-    }
     const release = (again: boolean) => {
       const current = held.current
       held.current = undefined
@@ -140,18 +145,18 @@ export function SessionRecoveryGate({
         const current = held.current
         if (current !== undefined) {
           if (current.identity !== identity) return false
-          if (someoneElse) switched()
+          if (someoneElse) freeze()
           return true
         }
         held.current = holding(identity)
-        if (someoneElse) switched()
+        if (someoneElse) freeze()
         else setStanding('expired')
         return true
       },
       frozen: () => frozen.current,
       changed: () => {
         if (frozen.current) return
-        switched()
+        freeze()
       },
     })
     return () => {
@@ -160,19 +165,37 @@ export function SessionRecoveryGate({
       held.current = undefined
       frozen.current = false
     }
-  }, [queryClient, manifestKey])
+  }, [queryClient, manifestKey, freeze])
 
   // Another tab signed in or out: who is signed in here is asked at once,
   // rather than when the reader next comes back to this tab. The answer goes
   // through the manifest like any other, and to the recovery from there.
-  useEffect(
-    () =>
-      onSessionChangedElsewhere(() => {
-        if (frozen.current || leaving.current || identityChanging()) return
+  useEffect(() => {
+    let current = 0
+    const unchanged = () => !frozen.current && !leaving.current && !identityChanging()
+    const unhear = onSessionChangedElsewhere(() => {
+      if (!unchanged()) return
+      if (!renderedDocument) {
         void queryClient.refetchQueries({ queryKey: manifestKey, exact: true })
-      }),
-    [queryClient, manifestKey],
-  )
+        return
+      }
+      const before = queryClient.getQueryData<Manifest>(manifestKey)
+      if (before?.viewer !== 'authenticated') return
+      const request = ++current
+      void askManifest().then(
+        (after) => {
+          if (request !== current || !unchanged()) return
+          if (queryClient.getQueryData<Manifest>(manifestKey)?.identity !== before.identity) return
+          if (after.viewer === 'authenticated' && after.identity !== before.identity) freeze()
+        },
+        () => {},
+      )
+    })
+    return () => {
+      current++
+      unhear()
+    }
+  }, [askManifest, freeze, manifestKey, queryClient, renderedDocument])
 
   // every state but the last is still waiting for the same reader
   const waiting = standing !== undefined && standing !== 'switched'
@@ -191,8 +214,7 @@ export function SessionRecoveryGate({
       }
       if (stopped || held.current !== current || manifest.viewer !== 'authenticated') return
       if (manifest.identity !== current.identity) {
-        frozen.current = true
-        setStanding('switched')
+        freeze()
         // the tab that signed in is theirs, and need not wait to hear it
         announceOutcome('switched')
         return
@@ -225,7 +247,7 @@ export function SessionRecoveryGate({
       window.removeEventListener('focus', returned)
       unhear()
     }
-  }, [waiting, askManifest, queryClient, manifestKey])
+  }, [waiting, askManifest, queryClient, manifestKey, freeze])
 
   /** the sign-in page, told it is there for a recovery */
   const signInHref = (() => {
