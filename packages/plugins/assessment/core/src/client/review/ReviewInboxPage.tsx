@@ -33,7 +33,7 @@ import { useAwaitingQuery, useQueueRefresh, useReviewQueueQuery } from './queue.
 import { queueRequestOf, viewOf, type View } from './inbox-reads.ts'
 import { useDraftSweep } from './use-draft.ts'
 import { rememberQueuePlace } from './queue-place.ts'
-import { ItemQueue, PersonQueue, QueueSkeleton, TimeQueue } from './QueueViews.tsx'
+import { ItemQueue, PersonQueue, QueueBands, QueueSkeleton, TimeQueue } from './QueueViews.tsx'
 import { pageNumberOf, type InboxItemDto } from './model.ts'
 import * as commonMessages from '@qualy/web-i18n/messages'
 import * as m from '#messages'
@@ -463,7 +463,11 @@ function QueueBody({
       loadingLabel={commonMessages.state_loading()}
       retryLabel={commonMessages.action_retry()}
       onRetry={() => void queue.inbox.refetch()}
-      skeleton={<QueueSkeleton />}
+      skeleton={
+        <QueueBands>
+          <QueueSkeleton />
+        </QueueBands>
+      }
       xstyle={styles.fill}
     >
       <div {...stylex.props(styles.queue)}>
@@ -595,40 +599,46 @@ function QueueBody({
             {m.review_matchesNone()}
           </p>
         ) : view === 'item' ? (
-          <ItemQueue
-            rows={rows}
-            serverPage={data}
-            fetching={queue.inbox.isFetching}
-            onGroupPage={onGroupPage}
-            chosen={itemKey}
-            page={page}
-            onChoose={(itemId, drills) => choose('item', itemId, drills)}
-            onBack={() => back('item')}
-            onPage={onPage}
-            onOpen={onOpen}
-          />
+          <QueueBands>
+            <ItemQueue
+              rows={rows}
+              serverPage={data}
+              fetching={queue.inbox.isFetching}
+              onGroupPage={onGroupPage}
+              chosen={itemKey}
+              page={page}
+              onChoose={(itemId, drills) => choose('item', itemId, drills)}
+              onBack={() => back('item')}
+              onPage={onPage}
+              onOpen={onOpen}
+            />
+          </QueueBands>
         ) : view === 'time' ? (
-          <TimeQueue
-            rows={rows}
-            serverPage={data}
-            fetching={queue.inbox.isFetching}
-            page={page}
-            onPage={onPage}
-            onOpen={onOpen}
-          />
+          <QueueBands>
+            <TimeQueue
+              rows={rows}
+              serverPage={data}
+              fetching={queue.inbox.isFetching}
+              page={page}
+              onPage={onPage}
+              onOpen={onOpen}
+            />
+          </QueueBands>
         ) : (
-          <PersonQueue
-            rows={rows}
-            serverPage={data}
-            fetching={queue.inbox.isFetching}
-            onGroupPage={onGroupPage}
-            chosen={personKey}
-            page={page}
-            onChoose={(key, drills) => choose('person', key, drills)}
-            onBack={() => back('person')}
-            onPage={onPage}
-            onOpen={onOpen}
-          />
+          <QueueBands>
+            <PersonQueue
+              rows={rows}
+              serverPage={data}
+              fetching={queue.inbox.isFetching}
+              onGroupPage={onGroupPage}
+              chosen={personKey}
+              page={page}
+              onChoose={(key, drills) => choose('person', key, drills)}
+              onBack={() => back('person')}
+              onPage={onPage}
+              onOpen={onOpen}
+            />
+          </QueueBands>
         )}
       </div>
     </AsyncSection>

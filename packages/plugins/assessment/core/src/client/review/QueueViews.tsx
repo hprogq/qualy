@@ -1,4 +1,13 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react'
+import { useHydrating } from '@qualy/ui/use-hydrating'
 import * as stylex from '@stylexjs/stylex'
 import { ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@qualy/ui/avatar'
@@ -1165,7 +1174,11 @@ function AnswerRun({ row, files }: { row: InboxItemDto; files: boolean }) {
 }
 
 /** a phone, where a table's row stacks its facts under its name */
-const usePhone = () => useMediaQuery('(max-width: 767.98px)')
+const usePhone = () => {
+  const band = useContext(BandPhone)
+  const phone = useMediaQuery('(max-width: 767.98px)')
+  return band ?? phone
+}
 
 /** the key the address names, where the list still has it */
 const pickedOf = <Group,>(
@@ -1179,11 +1192,72 @@ const pickedOf = <Group,>(
  * list as a strip over them, or one after the other.
  */
 function useQueueRoom() {
-  const [seat, width] = useWidthOf<HTMLDivElement>()
+  const [measure, measured] = useWidthOf<HTMLDivElement>()
+  // in html a server drew, the room of the band this copy is drawn for
+  const band = useContext(BandRoom)
+  const width = band ?? measured
+  const seat = band === null ? measure : noSeat
   const room = width ?? 0
   const beside = width !== null && width >= BESIDE_MIN
   const stacked = width !== null && !beside && width >= STACK_MIN
   return { seat, width, room, beside, stacked }
+}
+
+const noSeat = () => {}
+
+// The queue before it has been measured.
+//
+// Everything the queue lays out follows from the room it has: whether the
+// list stands beside the filings, over them as a strip or one screen before
+// them, and how the answers share a row. A running page measures the room
+// before its first paint; html a server drew has none to measure, and a
+// queue that waited for one drew nothing at all. So the server draws it once
+// for each of the three bands its layout changes at, each copy laid out for
+// a room in its band, and a container query on the queue's own width shows
+// the copy for the band it is in. Once the page runs, the queue measures
+// itself as it always has and draws one copy, for its own room.
+
+/** a room inside each band, which a copy for that band is laid out for */
+const BANDS = [
+  { band: 'drill', room: 360 },
+  { band: 'stack', room: 760 },
+  { band: 'split', room: 1100 },
+] as const
+
+const BandRoom = createContext<number | null>(null)
+/** what a copy laid out for a band takes a phone to be */
+const BandPhone = createContext<boolean | null>(null)
+
+const bands = stylex.create({
+  seat: { containerType: 'inline-size', containerName: 'queue-room' },
+  drill: {
+    display: { default: 'none', '@container queue-room (max-width: 639.98px)': 'contents' },
+  },
+  stack: {
+    display: {
+      default: 'none',
+      '@container queue-room (min-width: 640px) and (max-width: 879.98px)': 'contents',
+    },
+  },
+  split: { display: { default: 'none', '@container queue-room (min-width: 880px)': 'contents' } },
+})
+
+/** the queue, in each band's shape while a server's html is taken over, else as it is */
+export function QueueBands({ children }: { children: ReactNode }) {
+  const hydrating = useHydrating()
+  return (
+    <div {...stylex.props(bands.seat)}>
+      {hydrating
+        ? BANDS.map(({ band, room }) => (
+            <div key={band} {...stylex.props(bands[band])}>
+              <BandRoom value={room}>
+                <BandPhone value={band === 'drill'}>{children}</BandPhone>
+              </BandRoom>
+            </div>
+          ))
+        : children}
+    </div>
+  )
 }
 
 /** how the queue is laid out, from how much of it there is and the room it has */
