@@ -6,6 +6,7 @@ import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { Badge } from '@qualy/ui/badge'
 import { Ticker } from '@qualy/ui/ticker'
 import { useIsMobile } from '@qualy/ui/use-mobile'
+import { useDocumentNow } from '@qualy/web-runtime'
 
 import { inZone, marked, useBatchZone, useZoneMark } from './zone.ts'
 import {
@@ -225,7 +226,9 @@ export function BatchProgress({
   // form at every width - the bar's own name for it would say it twice.
   const tight = useIsMobile()
   const form = dense ? 'bare' : single ? 'single' : tight ? 'bare' : 'full'
-  const [now, setNow] = useState(() => Date.now())
+  // read once, as a server-drawn page says it while the page takes it over
+  const documentNow = useDocumentNow()
+  const [now, setNow] = useState(documentNow)
   const progress = progressOf(timeline, now)
   const tick = tickOf(progress)
   // the clock is read on the interval; the component is only told about it

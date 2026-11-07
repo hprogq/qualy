@@ -1,5 +1,4 @@
 'use client'
-import { pageNumber } from '@qualy/api-kit/schema'
 import { Pager } from '@qualy/ui/pager'
 import { useIsMobile } from '@qualy/ui/use-mobile'
 import { useLocale, useList } from '@qualy/web-i18n'
@@ -18,6 +17,7 @@ import * as stylex from '@stylexjs/stylex'
 import { CheckIcon, ChevronRightIcon, HistoryIcon, RotateCwIcon } from 'lucide-react'
 import {
   useApiQuery,
+  useDocumentNow,
   useLoadFailure,
   usePageNavigate,
   usePageRouteParams,
@@ -34,6 +34,14 @@ import { Tabs, TabsList, TabsTrigger } from '@qualy/ui/tabs'
 import { VisuallyHidden } from '@qualy/ui/visually-hidden'
 import { assessmentApi } from './api.ts'
 import { useBatchLive } from './live.ts'
+import {
+  ACTIVITY_LANE,
+  ACTIVITY_PAGE,
+  OVERVIEW_FRESH_MS,
+  laneOf,
+  overviewReads,
+  type Lane,
+} from './overview-reads.ts'
 import { type ApiResult } from '@qualy/web-runtime/api'
 import { BatchScreen } from './batch/BatchScreen.tsx'
 import { BatchFlow } from './batch/BatchFlow.tsx'
@@ -646,12 +654,17 @@ export default function BatchOverviewPage() {
   const { batchId } = usePageRouteParams('batchId')
   const query = useApiQuery(assessmentApi)
 
+  // the reads and their freshness are the server's too (overview-reads.ts)
+  const reads = overviewReads(batchId, { lane: 'all', page: undefined })
   const plan = useQuery({
-    ...query.assessment.getTimeline.queryOptions({ params: { batchId } }),
-    staleTime: 30_000,
+    ...query.assessment.getTimeline.queryOptions(reads.timeline),
+    staleTime: OVERVIEW_FRESH_MS,
   })
   const timeline = plan.data?.timeline ?? []
-  const overview = useQuery(query.assessment.getMyOverview.queryOptions({ params: { batchId } }))
+  const overview = useQuery({
+    ...query.assessment.getMyOverview.queryOptions(reads.overview),
+    staleTime: OVERVIEW_FRESH_MS,
+  })
 
   useBatchLive(batchId, ({ kinds, stale }) => {
     const moves = [
@@ -830,8 +843,6 @@ const SAID: Record<'participant' | 'reviewer', Partial<Record<ActivityItem['kind
   },
 }
 
-type Lane = 'all' | 'participant' | 'reviewer'
-
 /** the standings a row on the desk speaks to, in the order the desk lists them */
 const DESK_LANES = ['participant', 'reviewer', 'manage'] as const
 type DeskLane = (typeof DESK_LANES)[number]
@@ -945,26 +956,22 @@ function Desk({
   const locale = useLocale()
   const failure = useLoadFailure()
   const zone = useBatchZone()
-  const [laneParam] = usePageQueryState('activityLane')
-  const lane: Lane = laneParam === 'participant' || laneParam === 'reviewer' ? laneParam : 'all'
-  const [pageParam, setPageParam] = usePageQueryState('activityPage')
+  const [laneParam] = usePageQueryState(ACTIVITY_LANE)
+  const lane = laneOf(laneParam)
+  const [pageParam, setPageParam] = usePageQueryState(ACTIVITY_PAGE)
   const write = usePageQueryUpdate()
   const setLane = (value: Lane) =>
-    write({ activityLane: value === 'all' ? '' : value, activityPage: '' })
+    write({ [ACTIVITY_LANE]: value === 'all' ? '' : value, [ACTIVITY_PAGE]: '' })
   const activityRef = useRef<HTMLElement>(null)
   const compact = useIsMobile()
   // the desk's list fragments join in the reader's own punctuation
   const listJoin = useList()
 
-  const perspective = lane === 'all' ? undefined : lane
   const activity = useQuery({
-    ...query.assessment.listMyActivity.queryOptions({
-      params: { batchId },
-      query: {
-        page: String(pageNumber(pageParam)),
-        ...(perspective === undefined ? {} : { perspective }),
-      },
-    }),
+    ...query.assessment.listMyActivity.queryOptions(
+      overviewReads(batchId, { lane, page: pageParam }).activity,
+    ),
+    staleTime: OVERVIEW_FRESH_MS,
     meta: { lane, batchId },
     placeholderData: (previous, previousQuery) =>
       previousQuery?.meta?.['lane'] === lane && previousQuery.meta['batchId'] === batchId
@@ -972,7 +979,9 @@ function Desk({
         : undefined,
   })
   const rows = useMemo(() => activity.data?.items ?? [], [activity.data])
-  const groups = useMemo(() => groupByDay(rows, locale, zone), [rows, locale, zone])
+  // "today" as the html said it while the page takes the html over
+  const now = useDocumentNow()
+  const groups = useMemo(() => groupByDay(rows, locale, zone, now), [rows, locale, zone, now])
   // the unread claims, marked once each: the newest row of that claim in the
   // feed carries the dot, read state stays the version pair's
   const freshRowIds = useMemo(() => {
@@ -1594,8 +1603,8 @@ function groupByDay(
   rows: readonly ActivityItem[],
   locale: string,
   zone: string | undefined,
+  now: number,
 ): readonly { key: string; label: string; aside: string | null; items: ActivityItem[] }[] {
-  const now = Date.now()
   /**
    * Which day a row belongs to, said the way a person says it.
    *

@@ -1,6 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { OVERVIEW_FRESH_MS } from '../overview-reads.ts'
 import * as stylex from '@stylexjs/stylex'
 import { useApiQuery, usePageRouteParams } from '@qualy/web-runtime'
 import type { NavigationBadgeContext } from '@qualy/ui-contract'
@@ -62,6 +63,9 @@ function Count() {
   const query = useApiQuery(assessmentApi)
   const desk = useQuery({
     ...query.assessment.getMyOverview.queryOptions({ params: { batchId } }),
+    // as fresh as the overview takes it: the desk a server read for the
+    // page is not asked for again the moment the rail mounts beside it
+    staleTime: OVERVIEW_FRESH_MS,
     refetchInterval: 30_000,
   })
   const [waited] = useState(() => desk.data === undefined)

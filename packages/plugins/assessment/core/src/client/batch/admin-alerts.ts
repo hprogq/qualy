@@ -2,6 +2,9 @@ import { useQuery } from '@tanstack/react-query'
 import { useApiQuery } from '@qualy/web-runtime'
 import { assessmentApi } from '../api.ts'
 import type { ReviewGap } from '../items/ReviewGapNotice.tsx'
+import { ADMIN_ALERTS_FRESH_MS, adminAlertReads } from './admin-alert-reads.ts'
+
+export { owesAdministration } from './admin-alert-reads.ts'
 
 // What a batch's administrators owe it, gathered for the places that only
 // point at it: the overview's desk and the dots beside the rail entries.
@@ -13,7 +16,7 @@ import type { ReviewGap } from '../items/ReviewGapNotice.tsx'
 // from the roster, the routes and the organization as they are now (§32.97).
 
 /** how long a count stands before another look, on every screen of the batch */
-const FRESH_FOR = 60_000
+const FRESH_FOR = ADMIN_ALERTS_FRESH_MS
 
 /** one question a route misses somebody on, named */
 export interface AlertedQuestion {
@@ -60,22 +63,6 @@ export const ALERTED_ENTRIES = {
 } as const
 
 /**
- * Whether this batch owes its administrators anything the desk and the
- * rail would list, by the batch's own word on the reader and on itself.
- *
- * Only for whoever manages it: the reads are refused to anybody else, and
- * a desk that asked anyway would only collect refusals. And not once it is
- * archived: an archived batch takes no appointment, no roster change and no
- * change to its questions (§9, §32.90①), so nothing listed there could be
- * mended - the staff page counts no pending organization change there for
- * the same reason.
- */
-export const owesAdministration = (batch: {
-  readonly status: 'draft' | 'active' | 'archived'
-  readonly capabilities: { readonly manage: boolean }
-}): boolean => batch.capabilities.manage && batch.status !== 'archived'
-
-/**
  * What the batch's administrators owe it, for a reader who is one.
  *
  * `enabled` is `owesAdministration` of the batch. The staff rail may also
@@ -87,25 +74,20 @@ export function useAdminAlerts(
   includeAccessInformation = false,
 ): AdminAlerts {
   const query = useApiQuery(assessmentApi)
+  const inputs = adminAlertReads(batchId)
   const alerts = useQuery({
-    ...query.assessment.reviewAlerts.queryOptions({ params: { batchId } }),
+    ...query.assessment.reviewAlerts.queryOptions(inputs.alerts),
     staleTime: FRESH_FOR,
     enabled,
   })
   // the totals ride on the first page, so one row is all either has to fetch
   const placements = useQuery({
-    ...query.assessment.listParticipantPlacements.queryOptions({
-      params: { batchId },
-      query: { limit: '1' },
-    }),
+    ...query.assessment.listParticipantPlacements.queryOptions(inputs.placements),
     staleTime: FRESH_FOR,
     enabled,
   })
   const access = useQuery({
-    ...query.assessment.previewAccessSync.queryOptions({
-      params: { batchId },
-      query: { limit: '1' },
-    }),
+    ...query.assessment.previewAccessSync.queryOptions(inputs.access),
     staleTime: FRESH_FOR,
     enabled: enabled || includeAccessInformation,
   })

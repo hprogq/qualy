@@ -11,7 +11,10 @@
     "./api": "./src/api.ts",
     "./client/BatchAccessPage": "./src/client/BatchAccessPage.tsx",
     "./client/BatchListPage": "./src/client/BatchListPage.tsx",
-    "./client/BatchOverviewPage": "./src/client/BatchOverviewPage.tsx",
+    "./client/BatchOverviewPage": {
+      "react-server": "./src/client/BatchOverviewPage.server.tsx",
+      "default": "./src/client/BatchOverviewPage.tsx"
+    },
     "./client/BatchPhasesPage": "./src/client/BatchPhasesPage.tsx",
     "./client/BatchSettingsPage": "./src/client/BatchSettingsPage.tsx",
     "./client/access/BatchGrantPresenter": "./src/client/access/BatchGrantPresenter.tsx",
@@ -73,6 +76,7 @@
     "@qualy/ui-contract": "workspace:*",
     "@qualy/value-schema": "workspace:*",
     "@qualy/web-i18n": "workspace:*",
+    "@qualy/web-rsc": "workspace:*",
     "@qualy/web-runtime": "workspace:*",
     "@qualy/web-value-form": "workspace:*",
     "@stylexjs/stylex": "catalog:",

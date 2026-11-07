@@ -11,6 +11,7 @@ import {
   useBatchZone,
   zoneNameOf,
 } from './zone.ts'
+import { useHydrating } from '@qualy/web-runtime'
 import * as m from '#messages'
 
 // The batch's clock, handed down and said out loud.
@@ -90,6 +91,8 @@ export function ZoneNote({
   const zone = useBatchZone()
   const moment = momentOf(at)
   const said = useZoneLabel(zone, moment)
+  // the device is the browser's to say, never the server's that drew the page
+  const hydrating = useHydrating()
   if (zone === undefined || said === null) return null
   return (
     <span
@@ -97,7 +100,7 @@ export function ZoneNote({
       data-testid="batch-zone"
       data-zone={zone}
       data-offset={said.offset}
-      data-device={deviceDiffers(zone, moment) ? 'different' : 'same'}
+      data-device={!hydrating && deviceDiffers(zone, moment) ? 'different' : 'same'}
       {...stylex.props(styles.note, xstyle)}
     >
       {(purpose === 'enter' ? m.zone_enter : m.zone_note)({ zone: said.label })}
@@ -113,7 +116,10 @@ export function ZoneNote({
 export function ZoneAwayNotice({ xstyle }: { xstyle?: stylex.StyleXStyles }) {
   const zone = useBatchZone()
   const said = useZoneLabel(zone)
-  if (!deviceEverDiffers(zone) || said === null) return null
+  // said by the browser, which knows where its device is; a server drawing
+  // the page does not, and the notice arrives as the page is taken over
+  const hydrating = useHydrating()
+  if (hydrating || !deviceEverDiffers(zone) || said === null) return null
   return (
     <p data-testid="batch-zone-away" data-zone={zone} {...stylex.props(styles.away, xstyle)}>
       {m.zone_away({ zone: said.label })}

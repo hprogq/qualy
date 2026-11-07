@@ -1,5 +1,6 @@
 import { createContext, useContext } from 'react'
 import { offsetMinutesAt, wallClockOf } from '@qualy/ui/instant'
+import { useHydrating } from '@qualy/web-runtime/hydrating'
 
 // Whose clock a batch's times are read on.
 //
@@ -143,10 +144,16 @@ export const zoneMarkOf = (
   return zonePart(locale, clock, moment, 'shortOffset') ?? clock
 }
 
-/** `zoneMarkOf` for the batch this screen belongs to, said in `locale`, for any moment on it */
+/**
+ * `zoneMarkOf` for the batch this screen belongs to, said in `locale`, for
+ * any moment on it. Never while a server-drawn page is taken over: the
+ * server's clock is not the reader's device, and the mark follows in the
+ * next frame for a reader whose device reads the batch differently.
+ */
 export const useZoneMark = (locale: string): ((at: number | string) => string | null) => {
   const zone = useBatchZone()
-  return (at) => zoneMarkOf(zone, locale, at)
+  const hydrating = useHydrating()
+  return (at) => (hydrating ? null : zoneMarkOf(zone, locale, at))
 }
 
 /** a time with the batch's offset after it, when the reader needs one */
