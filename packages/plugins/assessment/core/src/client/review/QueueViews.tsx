@@ -5,6 +5,7 @@ import { Avatar, AvatarFallback } from '@qualy/ui/avatar'
 import { Button } from '@qualy/ui/button'
 import { Pager } from '@qualy/ui/pager'
 import { Drill, type DrillMove } from '@qualy/ui/reveal'
+import { useMediaQuery } from '@qualy/ui/use-mobile'
 import { Skeleton } from '@qualy/ui/skeleton'
 import {
   Card,
@@ -19,7 +20,7 @@ import {
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 
-import { scrollMotion, useBeside, useMedia, useWidthOf } from './pointer.ts'
+import { scrollMotion, useBeside, useWidthOf } from './pointer.ts'
 import {
   BESIDE_MIN,
   SPREAD_MOST,
@@ -1164,7 +1165,7 @@ function AnswerRun({ row, files }: { row: InboxItemDto; files: boolean }) {
 }
 
 /** a phone, where a table's row stacks its facts under its name */
-const usePhone = () => useMedia('(max-width: 767.98px)', false)
+const usePhone = () => useMediaQuery('(max-width: 767.98px)')
 
 /** the key the address names, where the list still has it */
 const pickedOf = <Group,>(

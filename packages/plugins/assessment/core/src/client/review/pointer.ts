@@ -1,23 +1,9 @@
-import { useEffect, useLayoutEffect, useState } from 'react'
+import { useLayoutEffect, useState } from 'react'
+import { useMediaQuery } from '@qualy/ui/use-mobile'
 
 // Which kind of pointer is reading this screen, and how much room a part of
 // it was given. The workbench, the queue and the decision sheets all branch
 // on them, so the answers live in one place.
-
-/** a media query, read before the first paint and watched after it */
-export function useMedia(query: string, initial: boolean): boolean {
-  const [matches, setMatches] = useState(() =>
-    typeof window === 'undefined' ? initial : window.matchMedia(query).matches,
-  )
-  useEffect(() => {
-    const media = window.matchMedia(query)
-    const read = () => setMatches(media.matches)
-    read()
-    media.addEventListener('change', read)
-    return () => media.removeEventListener('change', read)
-  }, [query])
-  return matches
-}
 
 /**
  * Whether this is a pointer that can hover and click precisely.
@@ -29,12 +15,12 @@ export function useMedia(query: string, initial: boolean): boolean {
  * with a keyboard attached still reports fine, which is the answer we want.
  */
 export function useFinePointer(): boolean {
-  return useMedia('(pointer: fine)', true)
+  return useMediaQuery('(pointer: fine)', true)
 }
 
 /** whether the workbench columns stand beside each other: the same line css draws at */
 export function useBeside(): boolean {
-  return useMedia('(min-width: 64rem)', true)
+  return useMediaQuery('(min-width: 64rem)', true)
 }
 
 /**

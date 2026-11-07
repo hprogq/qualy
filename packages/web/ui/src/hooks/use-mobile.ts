@@ -25,8 +25,11 @@ const MOBILE_BREAKPOINT = 768
  * A layout that must be right in the html is the stylesheet's to draw; this
  * is for a tree that has to change.
  */
-export function useIsBelow(breakpoint: number): boolean {
-  const query = `(max-width: ${String(breakpoint - 1)}px)`
+export const useIsBelow = (breakpoint: number): boolean =>
+  useMediaQuery(`(max-width: ${String(breakpoint - 1)}px)`)
+
+/** A deterministic first frame, followed by the browser's live media state. */
+export function useMediaQuery(query: string, serverMatches = false): boolean {
   const subscribe = useCallback(
     (changed: () => void) => {
       const media = window.matchMedia(query)
@@ -38,7 +41,7 @@ export function useIsBelow(breakpoint: number): boolean {
   return useSyncExternalStore(
     subscribe,
     () => window.matchMedia(query).matches,
-    () => false,
+    () => serverMatches,
   )
 }
 
