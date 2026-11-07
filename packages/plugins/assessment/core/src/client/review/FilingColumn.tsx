@@ -2,6 +2,8 @@ import { useLocale } from '@qualy/web-i18n'
 import { RESERVED } from '../reserved.ts'
 import { memo, useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
+import { FineHint } from './hint.tsx'
+import { AtWidth } from '@qualy/ui/at-width'
 import { ChevronRightIcon, DownloadIcon, SparklesIcon } from 'lucide-react'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
@@ -22,7 +24,7 @@ import {
   type ReviewDto,
 } from './model.ts'
 import { useBatchZone } from '../batch/zone.ts'
-import { useBeside, useFinePointer } from './pointer.ts'
+import { useFinePointer } from './pointer.ts'
 import { PART_LABEL, Pane, type WorkbenchPart } from './Pane.tsx'
 import { EscalationNotice } from './EscalationNotice.tsx'
 import * as m from '#messages'
@@ -432,7 +434,6 @@ export const FilingColumn = memo(function FilingColumn({
   const locale = useLocale()
   const zone = useBatchZone()
   const fine = useFinePointer()
-  const beside = useBeside()
   // every field the question asks, files included and in their own places:
   // a field that asks for a certificate is not "materials", it is the
   // certificate, and folding it away left the reading order with a hole
@@ -539,11 +540,12 @@ export const FilingColumn = memo(function FilingColumn({
         )
       }
     >
-      {!beside && (
+      {/* under the columns' line only: the flow column carries it beside */}
+      <AtWidth below={1024}>
         <div {...stylex.props(styles.phoneEscalation)}>
           <EscalationNotice review={review} />
         </div>
-      )}
+      </AtWidth>
       {/* only below lg: on a desk the flow column is in the same glance */}
       <button
         type="button"
@@ -588,7 +590,11 @@ export const FilingColumn = memo(function FilingColumn({
                   onClick={() => onCompare(comparing === null ? 'previous' : null)}
                 >
                   {(comparing === null ? m.review_compareOn : m.review_compareOff)()}
-                  {fine && <Kbd>D</Kbd>}
+                  {fine && (
+                    <FineHint>
+                      <Kbd>D</Kbd>
+                    </FineHint>
+                  )}
                 </Button>
                 <Button
                   variant="outline"
@@ -597,7 +603,11 @@ export const FilingColumn = memo(function FilingColumn({
                   onClick={onVersions}
                 >
                   {m.review_pickVersion()}
-                  {fine && <Kbd>⇧D</Kbd>}
+                  {fine && (
+                    <FineHint>
+                      <Kbd>⇧D</Kbd>
+                    </FineHint>
+                  )}
                 </Button>
               </>
             )}

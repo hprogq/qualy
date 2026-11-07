@@ -50,6 +50,12 @@ const styles = stylex.create({
       [belowLg]: 'start',
     },
   },
+  // The pager opens on the filing, the judged material: said in the
+  // stylesheet, so a page a server drew opens there too. Where a browser
+  // does not take it yet the pager is put there as the page runs.
+  opensHere: {
+    scrollInitialTarget: { default: null, [belowLg]: 'nearest' },
+  },
   scroller: {
     minHeight: 0,
     flexGrow: 1,
@@ -96,7 +102,11 @@ export function Pane({
   children: ReactNode
 }) {
   return (
-    <As data-workbench-part={part} aria-label={label} {...stylex.props(styles.pane, xstyle)}>
+    <As
+      data-workbench-part={part}
+      aria-label={label}
+      {...stylex.props(styles.pane, part === 'filing' && styles.opensHere, xstyle)}
+    >
       <ScrollArea className={stylex.props(styles.scroller).className}>
         <div {...stylex.props(styles.column, innerXstyle)}>{children}</div>
       </ScrollArea>

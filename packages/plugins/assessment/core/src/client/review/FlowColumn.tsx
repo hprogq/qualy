@@ -1,6 +1,7 @@
 import { useLocale } from '@qualy/web-i18n'
 import { memo } from 'react'
 import * as stylex from '@stylexjs/stylex'
+import { FineHint } from './hint.tsx'
 import { ChevronRightIcon } from 'lucide-react'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
@@ -362,7 +363,11 @@ export const FlowColumn = memo(function FlowColumn({
             onClick={onTrail}
           >
             {m.review_trailFullOpen()}
-            {fine && <Kbd>H</Kbd>}
+            {fine && (
+              <FineHint>
+                <Kbd>H</Kbd>
+              </FineHint>
+            )}
           </Button>
         </div>
         {/* the notice the reviewer must not scroll past, in the column

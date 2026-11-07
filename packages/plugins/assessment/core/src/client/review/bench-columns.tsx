@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
+import { useHydrating } from '@qualy/ui/use-hydrating'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 
@@ -27,13 +28,18 @@ const ABOUT_FLOOR = `min(${String(ABOUT[0])}px, 30%)`
 const lg = '@media (min-width: 1024px)'
 
 const styles = stylex.create({
+  // A cell of the bench's own grid, at the start of the column it sizes:
+  // standing on the track's edge, it is where the boundary is at any width,
+  // in html a server drew as much as after a drag, with nothing measured.
   handle: {
-    position: 'absolute',
-    insetBlock: 0,
+    position: 'relative',
     zIndex: 2,
     display: { default: 'none', [lg]: 'block' },
+    gridRow: 1,
+    alignSelf: 'stretch',
+    justifySelf: 'start',
     width: 9,
-    marginInline: -4,
+    marginInlineStart: -4,
     padding: 0,
     borderWidth: 0,
     backgroundColor: 'transparent',
@@ -53,6 +59,10 @@ const styles = stylex.create({
     transitionDuration: '120ms',
   },
   lineLit: { width: 2, left: 3.5, backgroundColor: tokens.foreground },
+  // the reasoning column's edge is where the filing's starts; the terms'
+  // edge is where the terms start
+  atFiling: { gridColumn: 2 },
+  atTerms: { gridColumn: 3 },
 })
 
 interface Widths {
@@ -80,13 +90,21 @@ const remembered = (): Widths | null => {
  *
  * `vars` goes on the grid (it reads `--bench-flow` and `--bench-about`, and
  * keeps its own proportions while neither is set); `handles` go inside it,
- * which has to be `position: relative`.
+ * as cells of its grid.
+ *
+ * The widths are this browser's: a server drawing the bench draws it at its
+ * own proportions, the page takes that over as it is, and the remembered
+ * widths are put back then.
  */
 export function useBenchColumns(
   bench: HTMLElement | null,
   labels: { flow: string; about: string },
 ) {
-  const [widths, setWidths] = useState<Widths | null>(remembered)
+  const hydrating = useHydrating()
+  const [widths, setWidths] = useState<Widths | null>(() => (hydrating ? null : remembered()))
+  useEffect(() => {
+    setWidths((now) => now ?? remembered())
+  }, [])
   const [held, setHeld] = useState<keyof Widths | null>(null)
   const [over, setOver] = useState<keyof Widths | null>(null)
   const latest = useRef(widths)
@@ -179,12 +197,7 @@ export function useBenchColumns(
         aria-valuenow={Math.round(widths?.[which] ?? 0)}
         data-bench-handle={which}
         data-testid={`bench-handle-${which}`}
-        {...stylex.props(styles.handle)}
-        style={
-          which === 'flow'
-            ? { left: 'var(--bench-flow-at, 0px)' }
-            : { right: 'var(--bench-about-at, 0px)' }
-        }
+        {...stylex.props(styles.handle, which === 'flow' ? styles.atFiling : styles.atTerms)}
         onPointerDown={(event) => {
           event.preventDefault()
           if (latest.current === null) {
@@ -219,33 +232,6 @@ export function useBenchColumns(
     )
   }
 
-  // Where the handles stand: on the rules the columns draw, read off the
-  // panes themselves - a dragged column on a bench too narrow for it is
-  // narrower than it was dragged to, and the handle stands where it is.
-  const [resting, setResting] = useState<Widths | null>(null)
-  useEffect(() => {
-    if (bench === null) return
-    const panes = [...bench.children].filter(
-      (child): child is HTMLElement =>
-        child instanceof HTMLElement && child.dataset['benchHandle'] === undefined,
-    )
-    const first = panes[0]
-    const last = panes[panes.length - 1]
-    if (first === undefined || last === undefined) return
-    const read = () =>
-      setResting({
-        flow: first.getBoundingClientRect().width,
-        about: last.getBoundingClientRect().width,
-      })
-    read()
-    const watch = new ResizeObserver(read)
-    watch.observe(bench)
-    watch.observe(first)
-    watch.observe(last)
-    return () => watch.disconnect()
-  }, [bench])
-
-  const at = resting ?? widths
   // as wide as it was dragged where the bench has the room, and giving way
   // to its floor where it has not
   const vars = {
@@ -255,9 +241,6 @@ export function useBenchColumns(
           '--bench-flow': `minmax(${FLOW_FLOOR}, ${widths.flow}px)`,
           '--bench-about': `minmax(${ABOUT_FLOOR}, ${widths.about}px)`,
         }),
-    ...(at === null
-      ? {}
-      : { '--bench-flow-at': `${at.flow}px`, '--bench-about-at': `${at.about}px` }),
   } as CSSProperties
 
   return { vars, handles: [handle('flow'), handle('about')], custom: widths !== null }

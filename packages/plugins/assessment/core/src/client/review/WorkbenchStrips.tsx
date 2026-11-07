@@ -10,6 +10,7 @@ import {
   FileTextIcon,
 } from 'lucide-react'
 import * as stylex from '@stylexjs/stylex'
+import { FineHint } from './hint.tsx'
 
 import { VisuallyHidden } from '@qualy/ui/visually-hidden'
 import { Avatar, AvatarFallback } from '@qualy/ui/avatar'
@@ -311,22 +312,19 @@ const styles = stylex.create({
   },
   actionSecondary: { display: { default: 'contents', [breakpoints.phone]: 'none' } },
   // ---- the part strip over a stacked workbench ----
+  // Up where the columns are one face at a time, folded where they stand
+  // beside each other: the same line the columns change at, drawn by the
+  // stylesheet, so a page a server drew has it at any width.
   partStrip: {
     flexShrink: 0,
     overflow: 'hidden',
-    borderBottomWidth: 1,
+    height: { default: 36, [lg]: 0 },
+    borderBottomWidth: { default: 1, [lg]: 0 },
     borderBottomStyle: 'solid',
     borderBottomColor: tokens.border,
     transitionProperty: 'height',
     transitionDuration: '200ms',
     transitionTimingFunction: 'linear',
-  },
-  partStripFolded: {
-    height: 0,
-    borderBottomWidth: 0,
-  },
-  partStripUp: {
-    height: 36,
   },
   partRow: {
     position: 'relative',
@@ -548,7 +546,11 @@ export function PersonStrip({
           >
             <ListIcon aria-hidden className={stylex.props(styles.queueKeyIcon).className} />
             {m.review_queueKey()}
-            {fine && <Kbd>Q</Kbd>}
+            {fine && (
+              <FineHint>
+                <Kbd>Q</Kbd>
+              </FineHint>
+            )}
             {run !== null && (
               <span
                 data-testid="queue-position"
@@ -582,16 +584,18 @@ export function PersonStrip({
           not mounted and the panel would document controls that do not
           exist here */}
           {fine && (
-            <Button
-              variant="ghost"
-              size="sm"
-              data-testid="keys-open"
-              className={stylex.props(styles.keysHint).className}
-              onClick={onKeys}
-            >
-              {m.review_keysTitle()}
-              <Kbd>?</Kbd>
-            </Button>
+            <FineHint>
+              <Button
+                variant="ghost"
+                size="sm"
+                data-testid="keys-open"
+                className={stylex.props(styles.keysHint).className}
+                onClick={onKeys}
+              >
+                {m.review_keysTitle()}
+                <Kbd>?</Kbd>
+              </Button>
+            </FineHint>
           )}
           <span {...stylex.props(styles.edgeKeys)}>
             <EdgeButton
@@ -757,7 +761,7 @@ export function PartStrip({
   return (
     <div
       // folded rather than removed, the way the shell folds its own bars
-      {...stylex.props(styles.partStrip, beside ? styles.partStripFolded : styles.partStripUp)}
+      {...stylex.props(styles.partStrip)}
       {...(beside ? { inert: true, 'aria-hidden': true } : {})}
     >
       <div ref={row} {...stylex.props(styles.partRow)}>

@@ -10,7 +10,7 @@ import {
   useLoadFailure,
   usePageNavigate,
   ScreenFill,
-  useClaimScreenFoot,
+  ScreenFoot,
   usePageQueryState,
   usePageRouteParams,
 } from '@qualy/web-runtime'
@@ -62,6 +62,7 @@ import { useLingering } from '@qualy/ui/use-lingering'
 import { Appear, CountdownRing, DoneMark, Drill, Stagger } from '@qualy/ui/reveal'
 
 import * as stylex from '@stylexjs/stylex'
+import { FineHint } from './hint.tsx'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import * as commonMessages from '@qualy/web-i18n/messages'
@@ -79,6 +80,9 @@ import * as m from '#messages'
 // The decision surface's own styles; the reading workbench around it keeps
 // its utility classes until its own migration pass.
 const lg = '@media (min-width: 1024px)'
+
+/** a pointer that is not fine (hint.tsx) */
+const COARSE = '@media not all and (pointer: fine)'
 
 const styles = stylex.create({
   capWide: { width: '100%', justifyContent: 'center' },
@@ -412,11 +416,13 @@ const styles = stylex.create({
    * follows the pointer, never the window: a width rule here meant a desktop
    * window dragged narrower watched the keys grow mid-drag.
    */
+  // a key under a thumb, wherever the pointer is not fine: said in the
+  // stylesheet, so a page a server drew sizes it for the hand that has it
   touchKey: {
-    height: 44,
-    borderRadius: `calc(${tokens.radiusLg} + 4px)`,
-    paddingInline: 12,
-    fontSize: 13,
+    height: { default: null, [COARSE]: 44 },
+    borderRadius: { default: null, [COARSE]: `calc(${tokens.radiusLg} + 4px)` },
+    paddingInline: { default: null, [COARSE]: 12 },
+    fontSize: { default: null, [COARSE]: 13 },
   },
   blockedKey: {
     pointerEvents: 'auto',
@@ -1214,7 +1220,9 @@ function Workbench({ batch }: { batch: BatchDto }) {
   // Hold the shell's mobile foot while the review is still resolving. An
   // actionable review replaces it with the decision bar; waiting for the
   // response before claiming made the shell control flash for one frame.
-  useClaimScreenFoot(bar || (addressable && review === undefined && detail.isPending))
+  // Said in the html, so the shell's own bar is stood down from the first
+  // frame of a page a server drew.
+  const footClaimed = bar || (addressable && review === undefined && detail.isPending)
 
   // The round the address names is not there, not this reader's, or could
   // not be read before anything was shown: said in the room the workbench
@@ -1254,18 +1262,20 @@ function Workbench({ batch }: { batch: BatchDto }) {
   }
 
   return (
-    <AsyncSection
-      pending={inbox.isPending && detail.isPending}
-      loadingLabel={commonMessages.state_loading()}
-      retryLabel={commonMessages.action_retry()}
-      onRetry={() => {
-        void inbox.refetch()
-        void detail.refetch()
-      }}
-      skeleton={<BenchSkeleton />}
-      xstyle={styles.fill}
-    >
-      {/* Given its height by the shell rather than measuring the window for
+    <>
+      <ScreenFoot holding={footClaimed} />
+      <AsyncSection
+        pending={inbox.isPending && detail.isPending}
+        loadingLabel={commonMessages.state_loading()}
+        retryLabel={commonMessages.action_retry()}
+        onRetry={() => {
+          void inbox.refetch()
+          void detail.refetch()
+        }}
+        skeleton={<BenchSkeleton />}
+        xstyle={styles.fill}
+      >
+        {/* Given its height by the shell rather than measuring the window for
           one. Measuring was wrong in both directions: taken while the pane
           was scrolled it read too tall, and the workbench grew the scrollbar
           it is built not to need; taken before the bands above it settled it
@@ -1279,336 +1289,344 @@ function Workbench({ batch }: { batch: BatchDto }) {
           growing and the decision going off the bottom of it. On a phone
           that is the whole point - what is being decided scrolls, and what
           decides it stays under the thumb. */}
-      <div {...stylex.props(styles.bench)}>
-        {/* Flex, not a two-track grid: with the rail display:none below its
+        <div {...stylex.props(styles.bench)}>
+          {/* Flex, not a two-track grid: with the rail display:none below its
             width, the content fell into the grid's `auto` track and the 1fr
             track sat empty beside it - the whole workbench at half width,
             found as a left-leaning done screen. The rail owns and animates
             its width as a shrink-0 flex child just as well. */}
-        <div {...stylex.props(styles.benchRow)}>
-          <QueueRail
-            batchId={batch.id}
-            request={scopedRequest}
-            rows={remaining}
-            currentId={instanceId}
-            remainingCount={remainingCount}
-            open={queueOpen}
-            onToggle={() => setQueueOpen(false)}
-            onOpen={goTo}
-            onBack={backToQueue}
-          />
-          <div
-            data-review-route={review?.chain.route ?? 'normal'}
-            {...stylex.props(styles.benchColumn)}
-          >
-            {done ? (
-              <DoneScreen
-                batchId={batch.id}
-                onBack={backToQueue}
-                log={handled}
-                startedAt={startedAt.current}
-                exclude={scopedRequest.exclude}
-              />
-            ) : review === undefined ? (
-              <BenchSkeleton />
-            ) : (
-              <>
-                <PersonStrip
-                  review={review}
-                  // which of the whole sitting this is, the ones already
-                  // dealt with counted in; a round opened from outside the
-                  // run is no place in it
-                  run={
-                    currentIndex === -1
-                      ? null
-                      : {
-                          at:
-                            handled.length +
-                            ((inbox.data?.page ?? 1) - 1) * (inbox.data?.pageSize ?? 20) +
-                            currentIndex +
-                            1,
-                          total,
-                          done: handled.length,
-                        }
-                  }
-                  canPrev={inbox.data?.previousId != null}
-                  canNext={inbox.data?.nextId != null}
-                  onMove={move}
+          <div {...stylex.props(styles.benchRow)}>
+            <QueueRail
+              batchId={batch.id}
+              request={scopedRequest}
+              rows={remaining}
+              currentId={instanceId}
+              remainingCount={remainingCount}
+              open={queueOpen}
+              onToggle={() => setQueueOpen(false)}
+              onOpen={goTo}
+              onBack={backToQueue}
+            />
+            <div
+              data-review-route={review?.chain.route ?? 'normal'}
+              {...stylex.props(styles.benchColumn)}
+            >
+              {done ? (
+                <DoneScreen
+                  batchId={batch.id}
                   onBack={backToQueue}
-                  onQueue={() => setQueueOpen(true)}
-                  onKeys={() => setKeysOpen((open) => !open)}
+                  log={handled}
+                  startedAt={startedAt.current}
+                  exclude={scopedRequest.exclude}
                 />
-                {/* A reader with no acts here - an administrator looking
+              ) : review === undefined ? (
+                <BenchSkeleton />
+              ) : (
+                <>
+                  <PersonStrip
+                    review={review}
+                    // which of the whole sitting this is, the ones already
+                    // dealt with counted in; a round opened from outside the
+                    // run is no place in it
+                    run={
+                      currentIndex === -1
+                        ? null
+                        : {
+                            at:
+                              handled.length +
+                              ((inbox.data?.page ?? 1) - 1) * (inbox.data?.pageSize ?? 20) +
+                              currentIndex +
+                              1,
+                            total,
+                            done: handled.length,
+                          }
+                    }
+                    canPrev={inbox.data?.previousId != null}
+                    canNext={inbox.data?.nextId != null}
+                    onMove={move}
+                    onBack={backToQueue}
+                    onQueue={() => setQueueOpen(true)}
+                    onKeys={() => setKeysOpen((open) => !open)}
+                  />
+                  {/* A reader with no acts here - an administrator looking
                     in, a reviewer whose phase is closed - gets told the
                     mode instead of a button-less mystery. The requester of
                     an open ask is not read-only: cancelling it is theirs. */}
-                {review !== undefined &&
-                  !lostTurn &&
-                  review.state !== 'completed' &&
-                  !review.capabilities.canDecide &&
-                  !review.capabilities.canCancelSupplement &&
-                  !review.capabilities.canAnswerSupplement && (
-                    <p data-testid="review-readonly" {...stylex.props(styles.readonlyBar)}>
-                      {m.review_readOnly()}
-                    </p>
-                  )}
-                {/* The turn was lost mid-thought - settled elsewhere,
+                  {review !== undefined &&
+                    !lostTurn &&
+                    review.state !== 'completed' &&
+                    !review.capabilities.canDecide &&
+                    !review.capabilities.canCancelSupplement &&
+                    !review.capabilities.canAnswerSupplement && (
+                      <p data-testid="review-readonly" {...stylex.props(styles.readonlyBar)}>
+                        {m.review_readOnly()}
+                      </p>
+                    )}
+                  {/* The turn was lost mid-thought - settled elsewhere,
                     withdrawn, re-routed. The workbench stays up with
                     everything typed; only the ways to act are shut, and the
                     one way on is the reader's press, never an automatic
                     jump over words they may still want. */}
-                {lostTurn && (
-                  <div
-                    data-testid="review-gone"
-                    data-lost={detail.data?.review.outcome ?? 'unreadable'}
-                    {...stylex.props(styles.goneBanner)}
-                  >
-                    <div {...stylex.props(styles.goneWords)}>
-                      <p {...stylex.props(styles.goneTitle)}>{m.review_goneTitle()}</p>
-                      <p {...stylex.props(styles.goneBody)}>
-                        {lostBecause()}
-                        {` ${m.review_goneKept()}`}
-                      </p>
+                  {lostTurn && (
+                    <div
+                      data-testid="review-gone"
+                      data-lost={detail.data?.review.outcome ?? 'unreadable'}
+                      {...stylex.props(styles.goneBanner)}
+                    >
+                      <div {...stylex.props(styles.goneWords)}>
+                        <p {...stylex.props(styles.goneTitle)}>{m.review_goneTitle()}</p>
+                        <p {...stylex.props(styles.goneBody)}>
+                          {lostBecause()}
+                          {` ${m.review_goneKept()}`}
+                        </p>
+                      </div>
+                      <span {...stylex.props(styles.spacer)} />
+                      {advanceId != null ? (
+                        <Button
+                          size="sm"
+                          onClick={() => {
+                            if (advanceId != null) goTo(advanceId)
+                          }}
+                        >
+                          {m.review_goneNext()}
+                        </Button>
+                      ) : (
+                        <Button size="sm" onClick={backToQueue}>
+                          {m.review_goneFinish()}
+                        </Button>
+                      )}
                     </div>
-                    <span {...stylex.props(styles.spacer)} />
-                    {advanceId != null ? (
-                      <Button
-                        size="sm"
-                        onClick={() => {
-                          if (advanceId != null) goTo(advanceId)
-                        }}
-                      >
-                        {m.review_goneNext()}
-                      </Button>
-                    ) : (
-                      <Button size="sm" onClick={backToQueue}>
-                        {m.review_goneFinish()}
-                      </Button>
-                    )}
-                  </div>
-                )}
-                {/* Three columns on a wide screen: what has been said, what
+                  )}
+                  {/* Three columns on a wide screen: what has been said, what
                     was filed, and the terms it is judged under. The filing is
                     the widest and the only one that scrolls far; the other
                     two are meant to be taken in at a glance while working
                     down it. Stacked below that, in the same reading order. */}
-                <PartStrip
-                  pager={stack}
-                  round={review.roundNo}
-                  revision={review.revision.revisionNo}
-                  drillKey={instanceId}
-                  attention={attention}
-                  onReading={(part) =>
-                    setVisited((seen) => {
-                      if (seen.has(part)) return seen
-                      const next = new Set(seen)
-                      next.add(part)
-                      return next
-                    })
-                  }
-                  bind={(go) => {
-                    partGo.current = go
-                  }}
-                />
-                <Drill
-                  move="next"
-                  drillKey={instanceId}
-                  className={stylex.props(styles.drillSeat).className}
-                >
-                  {/* The same three faces at every width. Beside each other
+                  <PartStrip
+                    pager={stack}
+                    round={review.roundNo}
+                    revision={review.revision.revisionNo}
+                    drillKey={instanceId}
+                    attention={attention}
+                    onReading={(part) =>
+                      setVisited((seen) => {
+                        if (seen.has(part)) return seen
+                        const next = new Set(seen)
+                        next.add(part)
+                        return next
+                      })
+                    }
+                    bind={(go) => {
+                      partGo.current = go
+                    }}
+                  />
+                  <Drill
+                    move="next"
+                    drillKey={instanceId}
+                    className={stylex.props(styles.drillSeat).className}
+                  >
+                    {/* The same three faces at every width. Beside each other
                       on a desk; below lg a snap pager - one whole face per
                       screen, the filing in the middle and first - because
                       three long blocks in one vertical scroller had no
                       focal point at all. Each face keeps its own vertical
                       scroll either way, so leaving and returning finds a
                       reading where it was left. */}
-                  <div ref={setStack} {...stylex.props(styles.pager)} style={columns.vars}>
-                    <FlowColumn review={review} onTrail={openTrail} lifted={!beside} />
-                    <FilingColumn
-                      review={review}
-                      comparing={comparing}
-                      onCompare={setComparing}
-                      onVersions={openVersions}
-                      onPart={(part) => partGo.current?.(part)}
-                    />
-                    <ContextRail review={review} onOpenSibling={setOpenSibling} />
-                    {columns.handles}
-                  </div>
-                </Drill>
-                {bar && <DecisionBar review={review} onDialog={setDialog} />}
-                {review.state === 'awaiting_supplement' && (
-                  <footer {...stylex.props(styles.awaitingFoot)}>
-                    <InfoIcon aria-hidden className={stylex.props(styles.awaitingIcon).className} />
-                    <div {...stylex.props(styles.awaitingWords)}>
-                      <p {...stylex.props(styles.awaitingTitle)}>{m.supplement_waitingTitle()}</p>
-                      <p {...stylex.props(styles.awaitingBody)}>
-                        {m.supplement_waitingBody({ who: review.participantName })}
-                      </p>
+                    <div ref={setStack} {...stylex.props(styles.pager)} style={columns.vars}>
+                      <FlowColumn review={review} onTrail={openTrail} lifted={!beside} />
+                      <FilingColumn
+                        review={review}
+                        comparing={comparing}
+                        onCompare={setComparing}
+                        onVersions={openVersions}
+                        onPart={(part) => partGo.current?.(part)}
+                      />
+                      <ContextRail review={review} onOpenSibling={setOpenSibling} />
+                      {columns.handles}
                     </div>
-                    <span {...stylex.props(styles.spacer)} />
-                    {review.capabilities.canCancelSupplement &&
-                      (() => {
-                        const open = review.supplements.find((one) => one.status === 'open')
-                        return open === undefined ? null : (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            disabled={withdrawSupplement.isPending}
-                            onClick={() => setWithdrawing(open.id)}
-                          >
-                            {m.supplement_withdraw()}
-                          </Button>
-                        )
-                      })()}
-                  </footer>
-                )}
-                {review.state === 'completed' && review.outcome !== null && (
-                  <div {...stylex.props(styles.outcomeRow)}>
-                    <Badge variant="outline">{reviewOutcomeMessage(review.outcome)()}</Badge>
-                  </div>
-                )}
-              </>
-            )}
+                  </Drill>
+                  {bar && <DecisionBar review={review} onDialog={setDialog} />}
+                  {review.state === 'awaiting_supplement' && (
+                    <footer {...stylex.props(styles.awaitingFoot)}>
+                      <InfoIcon
+                        aria-hidden
+                        className={stylex.props(styles.awaitingIcon).className}
+                      />
+                      <div {...stylex.props(styles.awaitingWords)}>
+                        <p {...stylex.props(styles.awaitingTitle)}>{m.supplement_waitingTitle()}</p>
+                        <p {...stylex.props(styles.awaitingBody)}>
+                          {m.supplement_waitingBody({ who: review.participantName })}
+                        </p>
+                      </div>
+                      <span {...stylex.props(styles.spacer)} />
+                      {review.capabilities.canCancelSupplement &&
+                        (() => {
+                          const open = review.supplements.find((one) => one.status === 'open')
+                          return open === undefined ? null : (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={withdrawSupplement.isPending}
+                              onClick={() => setWithdrawing(open.id)}
+                            >
+                              {m.supplement_withdraw()}
+                            </Button>
+                          )
+                        })()}
+                    </footer>
+                  )}
+                  {review.state === 'completed' && review.outcome !== null && (
+                    <div {...stylex.props(styles.outcomeRow)}>
+                      <Badge variant="outline">{reviewOutcomeMessage(review.outcome)()}</Badge>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
           </div>
-        </div>
 
-        {/* Centred across the workbench, by a row that spans it rather than
+          {/* Centred across the workbench, by a row that spans it rather than
             by a transform: the pill's own entrance animates one, and an
             inline transform beats a class every time. It used to be pushed
             off the queue rail by a hard-coded 16rem, which put it wherever
             that rail happened to be - and off the screen when it was not
             there at all. The row ignores the pointer so the filing under it
             stays readable. */}
-        <div {...stylex.props(styles.undoRow)}>
-          <Appear
-            show={deferred.pending !== null}
-            className={stylex.props(styles.undoSeat).className}
-          >
-            {lingeringStaged !== null && (
-              <UndoPill staged={lingeringStaged} deadline={deferred.deadline} onUndo={undoStaged} />
-            )}
-          </Appear>
-        </div>
-        {keysOpen && <KeysPanel onClose={() => setKeysOpen(false)} />}
-        {review !== undefined && (
-          <SiblingSheet
-            open={openSibling !== null}
-            instanceId={instanceId}
-            itemTitle={review.itemTitle}
-            entryId={
-              (review.context?.siblings ?? []).some((one) => one.entryId === lingeringSibling)
-                ? lingeringSibling
-                : null
-            }
-            onClose={() => setOpenSibling(null)}
-          />
-        )}
-        {review !== undefined && (
-          <>
-            {/* the same account the person who filed reads, told the same
+          <div {...stylex.props(styles.undoRow)}>
+            <Appear
+              show={deferred.pending !== null}
+              className={stylex.props(styles.undoSeat).className}
+            >
+              {lingeringStaged !== null && (
+                <UndoPill
+                  staged={lingeringStaged}
+                  deadline={deferred.deadline}
+                  onUndo={undoStaged}
+                />
+              )}
+            </Appear>
+          </div>
+          {keysOpen && <KeysPanel onClose={() => setKeysOpen(false)} />}
+          {review !== undefined && (
+            <SiblingSheet
+              open={openSibling !== null}
+              instanceId={instanceId}
+              itemTitle={review.itemTitle}
+              entryId={
+                (review.context?.siblings ?? []).some((one) => one.entryId === lingeringSibling)
+                  ? lingeringSibling
+                  : null
+              }
+              onClose={() => setOpenSibling(null)}
+            />
+          )}
+          {review !== undefined && (
+            <>
+              {/* the same account the person who filed reads, told the same
                 way: one claim has one story, and a reviewer reading a
                 different rendering of it is reading a different thing */}
-            <EntryHistory
-              open={trailOpen}
-              entryId={review.entryId}
-              itemTitle={review.itemTitle}
-              subject={review.participantName}
-              onClose={() => setTrailOpen(false)}
-            />
-            <VersionPicker
-              open={versionsOpen}
-              entryId={review.entryId}
-              judgedRevisionNo={review.revision.revisionNo}
-              comparingId={comparing}
-              participantName={review.participantName}
-              itemTitle={review.itemTitle}
-              onPick={(revisionId) => {
-                setComparing(revisionId)
-                setVersionsOpen(false)
-              }}
-              onClose={() => setVersionsOpen(false)}
-            />
-          </>
-        )}
+              <EntryHistory
+                open={trailOpen}
+                entryId={review.entryId}
+                itemTitle={review.itemTitle}
+                subject={review.participantName}
+                onClose={() => setTrailOpen(false)}
+              />
+              <VersionPicker
+                open={versionsOpen}
+                entryId={review.entryId}
+                judgedRevisionNo={review.revision.revisionNo}
+                comparingId={comparing}
+                participantName={review.participantName}
+                itemTitle={review.itemTitle}
+                onPick={(revisionId) => {
+                  setComparing(revisionId)
+                  setVersionsOpen(false)
+                }}
+                onClose={() => setVersionsOpen(false)}
+              />
+            </>
+          )}
 
-        {lingeringDialog === 'approve' && review !== undefined && (
-          <ApproveDialog
-            // remade whenever the claim or the sitting's frozen text moves:
-            // drafts belong to one determination, never to the next
-            key={`${review.id}:${review.recognitionForm?.locked?.hash ?? 'open'}:${heldFor('approve') === undefined ? 'fresh' : 'held'}`}
-            open={dialog === 'approve'}
-            review={review}
-            caution={caution(unseen())}
-            {...withHeld('approve')}
-            onClose={() => setDialog(null)}
-            onConfirm={(worded) => {
-              letGo(instanceId)
-              stageDecision('approve', worded)
+          {lingeringDialog === 'approve' && review !== undefined && (
+            <ApproveDialog
+              // remade whenever the claim or the sitting's frozen text moves:
+              // drafts belong to one determination, never to the next
+              key={`${review.id}:${review.recognitionForm?.locked?.hash ?? 'open'}:${heldFor('approve') === undefined ? 'fresh' : 'held'}`}
+              open={dialog === 'approve'}
+              review={review}
+              caution={caution(unseen())}
+              {...withHeld('approve')}
+              onClose={() => setDialog(null)}
+              onConfirm={(worded) => {
+                letGo(instanceId)
+                stageDecision('approve', worded)
+              }}
+            />
+          )}
+          {lingeringDialog === 'reject' && review !== undefined && (
+            <RejectDialog
+              // one round's words, never the next one's: the panel stays
+              // mounted after it closes, and without this the send-back
+              // written for one filing opened again on the one after it
+              key={`${review.id}:${heldFor('reject') === undefined ? 'fresh' : 'held'}`}
+              open={dialog === 'reject'}
+              review={review}
+              reasons={batch.reviewReasons.reject}
+              caution={caution(unseen())}
+              {...withHeld('reject')}
+              onClose={() => setDialog(null)}
+              onConfirm={(worded) => {
+                letGo(instanceId)
+                stageDecision('reject', worded)
+              }}
+            />
+          )}
+          {lingeringDialog === 'escalate' && review !== undefined && (
+            <EscalateDialog
+              key={`${review.id}:${heldFor('escalate') === undefined ? 'fresh' : 'held'}`}
+              open={dialog === 'escalate'}
+              review={review}
+              reasons={batch.reviewReasons.escalate}
+              {...withHeld('escalate')}
+              onClose={() => setDialog(null)}
+              onConfirm={(worded) => {
+                letGo(instanceId)
+                stageDecision('escalate', worded)
+              }}
+            />
+          )}
+          <ConfirmDialog
+            open={withdrawing !== null}
+            tone="destructive"
+            title={m.supplement_withdrawConfirm()}
+            description={m.supplement_withdrawConfirmHint()}
+            confirmLabel={m.supplement_withdraw()}
+            cancelLabel={commonMessages.action_cancel()}
+            pending={withdrawSupplement.isPending}
+            onCancel={() => setWithdrawing(null)}
+            onConfirm={() => {
+              const id = withdrawing
+              setWithdrawing(null)
+              if (id !== null) withdrawSupplement.mutate(id)
             }}
           />
-        )}
-        {lingeringDialog === 'reject' && review !== undefined && (
-          <RejectDialog
-            // one round's words, never the next one's: the panel stays
-            // mounted after it closes, and without this the send-back
-            // written for one filing opened again on the one after it
-            key={`${review.id}:${heldFor('reject') === undefined ? 'fresh' : 'held'}`}
-            open={dialog === 'reject'}
-            review={review}
-            reasons={batch.reviewReasons.reject}
-            caution={caution(unseen())}
-            {...withHeld('reject')}
-            onClose={() => setDialog(null)}
-            onConfirm={(worded) => {
-              letGo(instanceId)
-              stageDecision('reject', worded)
-            }}
-          />
-        )}
-        {lingeringDialog === 'escalate' && review !== undefined && (
-          <EscalateDialog
-            key={`${review.id}:${heldFor('escalate') === undefined ? 'fresh' : 'held'}`}
-            open={dialog === 'escalate'}
-            review={review}
-            reasons={batch.reviewReasons.escalate}
-            {...withHeld('escalate')}
-            onClose={() => setDialog(null)}
-            onConfirm={(worded) => {
-              letGo(instanceId)
-              stageDecision('escalate', worded)
-            }}
-          />
-        )}
-        <ConfirmDialog
-          open={withdrawing !== null}
-          tone="destructive"
-          title={m.supplement_withdrawConfirm()}
-          description={m.supplement_withdrawConfirmHint()}
-          confirmLabel={m.supplement_withdraw()}
-          cancelLabel={commonMessages.action_cancel()}
-          pending={withdrawSupplement.isPending}
-          onCancel={() => setWithdrawing(null)}
-          onConfirm={() => {
-            const id = withdrawing
-            setWithdrawing(null)
-            if (id !== null) withdrawSupplement.mutate(id)
-          }}
-        />
-        {lingeringDialog === 'supplement' && review !== undefined && (
-          <SupplementDialog
-            key={`${instanceId}:${heldHere?.act === 'supplement' ? 'held' : 'fresh'}`}
-            open={dialog === 'supplement'}
-            instanceId={instanceId}
-            {...(heldHere?.act === 'supplement' ? { initial: heldHere.worded } : {})}
-            onClose={() => setDialog(null)}
-            onConfirm={(worded) => {
-              letGo(instanceId)
-              stageSupplement(worded)
-            }}
-          />
-        )}
-      </div>
-    </AsyncSection>
+          {lingeringDialog === 'supplement' && review !== undefined && (
+            <SupplementDialog
+              key={`${instanceId}:${heldHere?.act === 'supplement' ? 'held' : 'fresh'}`}
+              open={dialog === 'supplement'}
+              instanceId={instanceId}
+              {...(heldHere?.act === 'supplement' ? { initial: heldHere.worded } : {})}
+              onClose={() => setDialog(null)}
+              onConfirm={(worded) => {
+                letGo(instanceId)
+                stageSupplement(worded)
+              }}
+            />
+          )}
+        </div>
+      </AsyncSection>
+    </>
   )
 }
 
@@ -1767,9 +1785,7 @@ function ActionKey({
       data-blocked-reason={blocked ? offer.reason : undefined}
       data-concludes={concludes === undefined ? undefined : String(concludes)}
       aria-disabled={blocked || undefined}
-      className={
-        stylex.props(!fine && styles.touchKey, xstyle, blocked && styles.blockedKey).className
-      }
+      className={stylex.props(styles.touchKey, xstyle, blocked && styles.blockedKey).className}
       onClick={() => {
         if (!blocked) {
           onPress()
@@ -1781,7 +1797,11 @@ function ActionKey({
     >
       {icon}
       {label}
-      {fine && <Kbd className={kbdClassName}>{kbd}</Kbd>}
+      {fine && (
+        <FineHint>
+          <Kbd className={kbdClassName}>{kbd}</Kbd>
+        </FineHint>
+      )}
     </Button>
   )
   if (!fine) return key

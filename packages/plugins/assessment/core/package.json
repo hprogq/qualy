@@ -61,7 +61,10 @@
       "react-server": "./src/client/review/ReviewInboxPage.server.tsx",
       "default": "./src/client/review/ReviewInboxPage.tsx"
     },
-    "./client/review/ReviewInstancePage": "./src/client/review/ReviewInstancePage.tsx",
+    "./client/review/ReviewInstancePage": {
+      "react-server": "./src/client/review/ReviewInstancePage.server.tsx",
+      "default": "./src/client/review/ReviewInstancePage.tsx"
+    },
     "./db": "./src/db/entities.ts",
     "./errors": "./src/errors.ts",
     "./package.json": "./package.json",

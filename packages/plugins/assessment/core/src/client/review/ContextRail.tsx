@@ -2,6 +2,7 @@ import { useLocale } from '@qualy/web-i18n'
 import { RESERVED } from '../reserved.ts'
 import { memo, useMemo } from 'react'
 import * as stylex from '@stylexjs/stylex'
+import { FineHint } from './hint.tsx'
 import { Kbd } from '@qualy/ui/kbd'
 
 import { entryStatusMessage, trimAmount, type EntryDto } from '../entry/model.ts'
@@ -403,11 +404,13 @@ function AboutParts({
             {/* the keys, once, over the list they open - rather than the
                 count, which the list itself already shows */}
             {fine && (
-              <span {...stylex.props(styles.aside)}>
-                {m.review_siblingsKeys({
-                  count: Math.min(context.siblings.length, 9),
-                })}
-              </span>
+              <FineHint>
+                <span {...stylex.props(styles.aside)}>
+                  {m.review_siblingsKeys({
+                    count: Math.min(context.siblings.length, 9),
+                  })}
+                </span>
+              </FineHint>
             )}
           </div>
           <ul {...stylex.props(styles.siblingList)}>
@@ -448,7 +451,9 @@ function AboutParts({
                     {(entryStatusMessage[sibling.status as EntryDto['status']] ?? m.event_other)()}
                   </span>
                   {fine && index < 9 && (
-                    <Kbd className={stylex.props(styles.fixed).className}>{`⌥${index + 1}`}</Kbd>
+                    <FineHint>
+                      <Kbd className={stylex.props(styles.fixed).className}>{`⌥${index + 1}`}</Kbd>
+                    </FineHint>
                   )}
                 </button>
               </li>
