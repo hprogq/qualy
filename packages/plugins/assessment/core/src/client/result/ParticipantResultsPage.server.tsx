@@ -1,17 +1,25 @@
 import { QueryHydration } from '@qualy/web-runtime/query-hydration'
 import { renderRequest } from '@qualy/web-rsc/request'
 import { answersOf, settle } from '@qualy/web-rsc/queries'
-import { batchIdOf, keyed, readBatch } from '../batch/batch-reads.server.ts'
+import { batchIdOf, keyed, namesRecord, readBatch } from '../batch/batch-reads.server.ts'
 import { holdsStanding } from '../batch/capabilities.ts'
-import { rosterQueryOf, rosterViewOf } from '../roster/roster-place.ts'
+import { queueReadOf } from '../review/inbox-reads.ts'
+import { rosterQueryOf, rosterViewOf, type RosterView } from '../roster/roster-place.ts'
+import { readParticipantEntries } from './participant-entries.server.ts'
 import ParticipantResultsPage from './ParticipantResultsPage.tsx'
 
-// The roster as a server draws it (docs/adr/0012-rsc-data-mode.md): the page
-// of people the address names, the units they came from, and the page's
-// totals once its rows are known - read for a reader the batch says may see
-// the results, as the page reads them, and handed to the list, which goes on
-// paging, filtering and keeping them current itself. An account opened over
-// the list reads for itself.
+// The roster, or one person on it, as a server draws it
+// (docs/adr/0012-rsc-data-mode.md), read for a reader the batch says may see
+// the results, as the page reads them, and handed to the page, which goes on
+// paging, filtering and keeping them current itself.
+//
+// The list: the page of people the address names, the units they came from,
+// and the page's totals once its rows are known. One person: who they are
+// and their account, the questions and groups the account is read against,
+// their claims where this reader opens them, the units and kinds that say
+// where they stand, the page of the list they stand on in the column beside
+// them, and - for a reader who reviews in this round - the queue that marks
+// which of their claims wait on that reader.
 
 export default async function ParticipantResults({
   params = {},
@@ -19,16 +27,34 @@ export default async function ParticipantResults({
   params?: Readonly<Record<string, string | undefined>>
 }) {
   const batchId = batchIdOf(params)
+  if (batchId === undefined) return <ParticipantResultsPage />
   const search = renderRequest().url.searchParams
-  if (batchId === undefined || (search.get('participant') ?? '') !== '') {
-    return <ParticipantResultsPage />
-  }
   const subject = settle(await readBatch(batchId).exit)
   if (subject.kind !== 'answer' || !holdsStanding(subject.value.batch.capabilities, 'results')) {
     return <ParticipantResultsPage />
   }
   const view = rosterViewOf((key) => search.get(key) ?? '')
+  const participantId = search.get('participant') ?? ''
+  const state =
+    participantId === ''
+      ? await rosterReads(batchId, view)
+      : await accountReads(batchId, participantId, view, subject.value.batch.capabilities.review)
+  return (
+    <QueryHydration state={state}>
+      <ParticipantResultsPage />
+    </QueryHydration>
+  )
+}
+
+/** the page of the roster the address names, as the list reads it */
+const pageOfRoster = (batchId: string, view: RosterView) => {
   const page = { params: { batchId }, query: rosterQueryOf(view) }
+  return keyed('listParticipantAccounts', page, (client) =>
+    client.assessment.listParticipantAccounts(page),
+  )
+}
+
+async function rosterReads(batchId: string, view: RosterView) {
   const tree = {
     params: { batchId },
     query: {
@@ -36,15 +62,13 @@ export default async function ParticipantResults({
       status: view.status === '' ? ('all' as const) : view.status,
     },
   }
-  const accounts = keyed('listParticipantAccounts', page, (client) =>
-    client.assessment.listParticipantAccounts(page),
-  )
+  const accounts = pageOfRoster(batchId, view)
   const units = keyed('listRosterUnits', tree, (client) => client.assessment.listRosterUnits(tree))
   // the page's totals, asked once its rows are known, as the page asks them
   const rows = settle(await accounts.exit)
   const ids = rows.kind === 'answer' ? rows.value.items.map((row) => row.id) : []
   const totals = { params: { batchId }, query: { participantIds: ids } }
-  const state = await answersOf([
+  return answersOf([
     accounts,
     units,
     ...(ids.length === 0
@@ -55,9 +79,46 @@ export default async function ParticipantResults({
           ),
         ]),
   ])
-  return (
-    <QueryHydration state={state}>
-      <ParticipantResultsPage />
-    </QueryHydration>
+}
+
+async function accountReads(
+  batchId: string,
+  participantId: string,
+  view: RosterView,
+  reviews: boolean,
+) {
+  const batch = { params: { batchId } }
+  // the units over everybody the round admitted, as the account reads them
+  const tree = {
+    params: { batchId },
+    query: { reading: 'accounts' as const, status: 'all' as const },
+  }
+  const around = [
+    keyed('listItems', batch, (client) => client.assessment.listItems(batch)),
+    keyed('listScoreGroups', batch, (client) => client.assessment.listScoreGroups(batch)),
+    keyed('listRosterUnits', tree, (client) => client.assessment.listRosterUnits(tree)),
+    keyed('listUserTypeOptions', {}, (client) => client.assessment.listUserTypeOptions({})),
+    pageOfRoster(batchId, view),
+    ...(reviews
+      ? [
+          keyed('listReviewInbox', queueReadOf(batchId, {}), (client) =>
+            client.assessment.listReviewInbox(queueReadOf(batchId, {})),
+          ),
+        ]
+      : []),
+  ]
+  // an address that cannot name anybody names nobody, and is not asked about
+  if (!namesRecord(participantId)) return answersOf(around)
+  const person = { params: { batchId, participantId } }
+  const who = keyed('getParticipant', person, (client) => client.assessment.getParticipant(person))
+  const account = keyed('getParticipantResult', person, (client) =>
+    client.assessment.getParticipantResult(person),
   )
+  // the claims only where this reader opens them, which the person says
+  const read = settle(await who.exit)
+  const claims =
+    read.kind === 'answer' && read.value.claims
+      ? [readParticipantEntries(batchId, participantId)]
+      : []
+  return answersOf([who, account, ...around, ...claims])
 }

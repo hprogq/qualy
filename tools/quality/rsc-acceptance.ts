@@ -1878,6 +1878,25 @@ const checks = async () => {
     content: 'roster',
     reads: [/\/participant-accounts\?/, /\/roster-units\?/, /\/participant-scores\?/],
   })
+  const { id: person } = await scratch.row<{ id: string }>(
+    `select p.id from batch_participants p join users u on u.id = p.user_id
+      where p.batch_id = $1 and u.email = $2`,
+    [started, accounts.student.email],
+  )
+  await pageFirstScreen(browser, {
+    name: 'one person on the roster',
+    who: 'admin',
+    address: `/assessment/batches/${started}/results?participant=${person}`,
+    // the account's total, which only the person's read account says
+    content: 'participant-total',
+    reads: [
+      /\/participants\/[0-9a-f-]+(?:\?|$)/,
+      /\/participants\/[0-9a-f-]+\/result(?:\?|$)/,
+      /\/participants\/[0-9a-f-]+\/entries(?:\?|$)/,
+      /\/participant-accounts\?/,
+      /\/roster-units\?/,
+    ],
+  })
   await reviewerIn(scratch, started)
   await pageFirstScreen(browser, {
     name: 'the review queue',

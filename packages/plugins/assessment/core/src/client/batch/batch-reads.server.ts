@@ -16,6 +16,9 @@ import { assessmentApi } from '../api.ts'
 
 const recordId = Schema.is(uuidInput)
 
+/** whether an address names a record at all, as the pages ask (isRecordId) */
+export const namesRecord = (id: string): boolean => recordId(id)
+
 /** the batch the address names, or nothing for an address that cannot name one */
 export const batchIdOf = (params: Readonly<Record<string, string | undefined>>) => {
   const batchId = params['batchId']
