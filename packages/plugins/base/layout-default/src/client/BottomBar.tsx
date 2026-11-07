@@ -5,7 +5,7 @@ import { MenuIcon } from 'lucide-react'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import type { ResolvedNavigationItem } from '@qualy/ui-contract'
-import { shell } from './shell.stylex.ts'
+import { shell, shellRoot } from './shell.stylex.ts'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { Loader } from '@qualy/brand/loader'
 import { usePendingNavigation } from '@qualy/web-runtime'
@@ -74,7 +74,23 @@ const styles = stylex.create({
   // the applications: drawn where the top bar has stopped drawing them
   barPhone: { display: { default: 'none', [breakpoints.phone]: 'block' } },
   // a workspace's sections: drawn wherever the rail beside the page is gone
-  barNarrow: { display: { default: 'none', '@media (max-width: 1023.98px)': 'block' } },
+  // - and stood down where the open screen has taken the foot for a bar of
+  // its own, which it says in its html (ScreenFoot)
+  barNarrow: {
+    display: {
+      default: 'none',
+      '@media (max-width: 1023.98px)': 'block',
+      [stylex.when.ancestor(':has([data-screen-foot="always"])', shellRoot)]: {
+        default: 'none',
+        '@media (max-width: 1023.98px)': 'none',
+      },
+      [stylex.when.ancestor(':has([data-screen-foot="phone"])', shellRoot)]: {
+        default: 'none',
+        '@media (max-width: 1023.98px)': 'block',
+        '@media (max-width: 767.98px)': 'none',
+      },
+    },
+  },
   row: {
     display: 'grid',
     height: shell.bottomBarHeight,

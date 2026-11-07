@@ -444,10 +444,21 @@ const styles = stylex.create({
   },
   // exactly the bar's own height, so the last row of a page ends above it
   // rather than behind it
+  // - none where the open screen has taken the foot for a bar of its own,
+  // which it says in its html (ScreenFoot)
   mainFoot: {
     paddingBottom: {
       default: `calc(${shell.bottomBarHeight} + env(safe-area-inset-bottom))`,
       [breakpoints.desktop]: 0,
+      [stylex.when.ancestor(':has([data-screen-foot="always"])', shellRoot)]: {
+        default: 0,
+        [breakpoints.desktop]: 0,
+      },
+      [stylex.when.ancestor(':has([data-screen-foot="phone"])', shellRoot)]: {
+        default: `calc(${shell.bottomBarHeight} + env(safe-area-inset-bottom))`,
+        [breakpoints.phone]: 0,
+        [breakpoints.desktop]: 0,
+      },
     },
   },
   // Around one person the rail is part of the page rather than of the
@@ -1073,7 +1084,6 @@ function CapableRailShell({
   const narrow = useIsBelow(SHELL_BREAKPOINT)
   const drawer = useNavDrawer()
   // a screen whose own bar ends at the bottom edge has asked for that corner
-  const footTaken = useScreenFootClaimed()
   // a screen that has something to stand beside its work has asked for the
   // rail's column, and draws there instead of the rail
   // The record the shell is drawn around, gone: its owner said so from the
@@ -1131,8 +1141,10 @@ function CapableRailShell({
   // A workspace keeps its own sections at the foot; a record keeps the
   // modules there, because reading somebody's file is not somewhere the
   // product disappears from. A screen that has claimed the foot for its own
-  // decision bar gets it: two bars stacked there is one too many, and that
-  // screen is a task with a way back of its own.
+  // decision bar gets it - the stylesheet stands this bar down for it - two
+  // bars stacked there being one too many, and that screen a task with a
+  // way back of its own.
+  const footTaken = useScreenFootClaimed()
   const sectionsAtFoot = !banner && !footTaken && !absent
   const exactly = (to: string) => hasEntriesBelow(to, paths)
 

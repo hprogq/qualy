@@ -39,6 +39,22 @@ export function useScreenFootClaimed(): boolean {
   return useContext(Scope)?.claimed ?? false
 }
 
+/** the attribute a screen's mark on the foot carries, and the widths it names */
+export const SCREEN_FOOT = 'data-screen-foot'
+export type ScreenFootAt = 'always' | 'phone'
+
+/**
+ * Takes the foot of the window while `holding` - wherever the shell draws
+ * a bar there, or (`at="phone"`) on a phone only - and gives it back on the
+ * way out. Said in the screen's html, so the shell's stylesheet stands its
+ * own bar down from the first frame (`:has([data-screen-foot])`), and
+ * counted for whatever has to know it in javascript.
+ */
+export function ScreenFoot({ holding, at = 'always' }: { holding: boolean; at?: ScreenFootAt }) {
+  useClaimScreenFoot(holding)
+  return holding ? <span hidden {...{ [SCREEN_FOOT]: at }} /> : null
+}
+
 /**
  * Claims the foot of the window while `holding`, and gives it back on the
  * way out. Called by a screen that draws its own bar at the bottom edge,

@@ -10,7 +10,7 @@ import {
   LoadFailure,
   ScreenFill,
   SubjectAbsence,
-  useClaimScreenFoot,
+  ScreenFoot,
   useLoadFailure,
   usePageRouteParams,
   usePageTitle,
@@ -1345,13 +1345,17 @@ describe('a screen that fills the room', () => {
     // of its own must never be drawn, even once, under the shell's.
     const frames: boolean[] = []
     function Footed() {
-      useClaimScreenFoot(true)
       useLayoutEffect(() => {
-        queueMicrotask(() =>
-          frames.push(document.querySelector('[data-testid="bottom-bar"]') !== null),
-        )
+        queueMicrotask(() => {
+          const bar = document.querySelector('[data-testid="bottom-bar"]')
+          frames.push(bar !== null && getComputedStyle(bar).display !== 'none')
+        })
       }, [])
-      return <div data-testid="footed" />
+      return (
+        <div data-testid="footed">
+          <ScreenFoot holding />
+        </div>
+      )
     }
     await page.viewport(390, 844)
     try {

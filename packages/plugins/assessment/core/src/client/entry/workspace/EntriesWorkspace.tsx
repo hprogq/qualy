@@ -9,7 +9,7 @@ import {
   ChevronUpIcon,
   XIcon,
 } from 'lucide-react'
-import { useClaimScreenFoot } from '@qualy/web-runtime'
+import { ScreenFoot } from '@qualy/web-runtime'
 
 import { Button } from '@qualy/ui/button'
 import { liveStateOf, type LiveLine } from '@qualy/ui/live-mark'
@@ -608,7 +608,6 @@ function Workspace({
   // say "not now" is not put in the reader's thumb
   const footed =
     phone && picked !== null && item !== null && filing !== null && filing.mayAdd && !filing.shut
-  useClaimScreenFoot(footed)
 
   // Moving within a layer stands in place of where the reader was: stepping
   // to a neighbour, a crumb. Ten questions looked at are not ten presses of
@@ -767,6 +766,8 @@ function Workspace({
         data-screen={onPane ? 'item' : 'structure'}
         {...stylex.props(styles.root, styles.flow, onPane && styles.phoneScreen)}
       >
+        {/* a phone's own bar at the foot, said in the html */}
+        <ScreenFoot holding={footed} at="phone" />
         {notice}
         {/* the structure stays mounted under a question, folds and all, and
             slides back in from the side the question left towards */}

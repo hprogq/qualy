@@ -1103,7 +1103,14 @@ export {
   usePublishWorkspaceCapabilities,
   type WorkspaceCapabilities,
 } from './workspace-capabilities.tsx'
-export { ScreenFootScope, useScreenFootClaimed, useClaimScreenFoot } from './screen-foot.tsx'
+export {
+  SCREEN_FOOT,
+  ScreenFoot,
+  ScreenFootScope,
+  useScreenFootClaimed,
+  useClaimScreenFoot,
+  type ScreenFootAt,
+} from './screen-foot.tsx'
 export { SCREEN_ASIDE, ScreenAsideScope, useScreenAsideOffered } from './screen-aside.tsx'
 export {
   SCREEN_FILL,
