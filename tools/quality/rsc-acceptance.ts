@@ -13,7 +13,9 @@ import {
   CSP_HEADER,
   composeShellPolicy,
 } from '../../packages/plugins/infra/web/src/server/shell-policy.ts'
-import { QUALY_IDENTITY_HEADER } from '@qualy/api-kit'
+import { QUALY_IDENTITY_HEADER, QUALY_LOCALE_COOKIE, QUALY_LOCALE_HEADER } from '@qualy/api-kit'
+import { LIVE_CLOSE, LIVE_SUBPROTOCOL } from '@qualy/api-kit/live-socket'
+import { SLOT_REFERENCE_PATH, slotReferenceHref } from '@qualy/ui-contract'
 import {
   QUALY_CLIENT_PROTOCOL_HEADER,
   QUALY_CLIENT_RELEASE_HEADER,
@@ -624,6 +626,10 @@ const sessionWent = async (browser: Browser) => {
 
 // ---------------------------------------------------------------------------
 
+// Contexts that only exercise a signed-in page can share a session. The
+// sign-in and sign-out checks create their own sessions through the form.
+const browserSessions = new Map<keyof typeof accounts, string>()
+
 /** a browser signed in as `who`, with the document's own scripts on or off */
 const signedInContext = async (
   browser: Browser,
@@ -639,7 +645,14 @@ const signedInContext = async (
     viewport: { width: options.width ?? 1400, height: 900 },
     ...(options.timezoneId === undefined ? {} : { timezoneId: options.timezoneId }),
   })
-  await context.request.post(`${site}/api/auth/local/local/login`, { data: accounts[who] })
+  let cookie = browserSessions.get(who)
+  if (cookie === undefined) {
+    cookie = await signIn(who)
+    browserSessions.set(who, cookie)
+  }
+  await context.addCookies([
+    { name: 'qualy_session', value: cookie.slice('qualy_session='.length), url: site },
+  ])
   return context
 }
 
@@ -796,6 +809,10 @@ const batchListFirstScreen = async (browser: Browser, batch: string) => {
     { firstControls, finalControls },
   )
   await inPage(page, 'window.__same = true')
+  const locale = await inPage<string>(page, 'document.documentElement.lang')
+  const otherLocale = locale === 'zh-CN' ? 'en-US' : 'zh-CN'
+  await context.addCookies([{ name: QUALY_LOCALE_COOKIE, value: otherLocale, url: site }])
+  let requestedLocale: string | undefined
   let resume!: () => void
   const pending = new Promise<void>((resolve) => {
     resume = resolve
@@ -803,6 +820,9 @@ const batchListFirstScreen = async (browser: Browser, batch: string) => {
   await page.route(
     (url) => url.pathname.startsWith(overview),
     async (route) => {
+      if (new URL(route.request().url()).pathname.endsWith('.rsc')) {
+        requestedLocale = route.request().headers()[QUALY_LOCALE_HEADER]
+      }
       await pending
       await route.continue()
     },
@@ -835,6 +855,11 @@ const batchListFirstScreen = async (browser: Browser, batch: string) => {
     'shows the overview in the same document after navigation',
     (await painted(page.getByTestId('batch-note'))) &&
       (await inPage<boolean>(page, 'window.__same === true')),
+  )
+  check(
+    'an open RSC document keeps its own language after the locale cookie changes',
+    requestedLocale === locale &&
+      (await inPage<string>(page, 'document.documentElement.lang')) === locale,
   )
   await context.close()
 }
@@ -1037,6 +1062,350 @@ const hydrationPositions = async (browser: Browser, batch: string) => {
   }
 }
 
+const grantSurfaces = async (browser: Browser, batch: string) => {
+  const { id: userId, primary_org_node_id: orgNodeId } = await scratch.row<{
+    id: string
+    primary_org_node_id: string
+  }>('select id, primary_org_node_id from users where email = $1', [accounts.student.email])
+  const cookie = await signIn('admin')
+  const write = async <A>(method: string, path: string, input: object): Promise<A> => {
+    const response = await fetch(`${site}/api${path}`, {
+      method,
+      headers: { cookie, 'content-type': 'application/json' },
+      body: JSON.stringify(input),
+    })
+    if (!response.ok)
+      throw new Error(`${method} ${path}: ${response.status} ${await response.text()}`)
+    return (await response.json()) as A
+  }
+  const { id: roleId, version: draft } = await write<{ id: string; version: number }>(
+    'POST',
+    '/iam/roles',
+    { name: 'RSC review grant', kind: 'org' },
+  )
+  const role = `/iam/roles/${roleId}`
+  const { version: eligible } = await write<{ version: number }>('PUT', `${role}/eligibility`, {
+    version: draft,
+    holderPolicy: { mode: 'unrestricted' },
+    anchorPolicy: { mode: 'unrestricted' },
+  })
+  const { version: configured } = await write<{ version: number }>('PUT', `${role}/permissions`, {
+    version: eligible,
+    codes: ['assessment.review.process'],
+  })
+  await write('PUT', `${role}/status`, { version: configured, status: 'active' })
+  await write('POST', `/assessment/batches/${batch}/access`, {
+    roleId,
+    userIds: [userId],
+    orgNodeIds: [orgNodeId],
+  })
+
+  const address = `/organization/users/${userId}/role-grants`
+  const plain = await fetch(site + address, { headers: { cookie } })
+  const html = await plain.text()
+  check(
+    'the batch grant presenter renders its own element in the first HTML',
+    html.includes(`data-testid="grant-origin-batch" data-batch-id="${batch}"`),
+  )
+  const release = await pageOf()
+  const headers = {
+    cookie,
+    [RELEASE_HEADER]: release.release,
+    [PROTOCOL_HEADER]: release.protocol,
+    [IDENTITY_HEADER]: (await manifestOf(cookie)).identity!,
+  }
+  const pickerHref = slotReferenceHref({
+    kind: 'slot',
+    slot: 'iam/org-node-picker',
+    id: 'auth/org-node-picker',
+  })
+  const picker = await fetch(site + pickerHref, { headers })
+  const pickerFlight = await picker.text()
+  check(
+    'an authorized slot endpoint returns a private component reference',
+    picker.ok &&
+      picker.headers.get('cache-control') === 'private, no-store' &&
+      picker.headers.get('content-type')?.startsWith('text/x-component') === true,
+  )
+  // Compare import rows observed on the dedicated endpoints. The row index
+  // belongs to each response, so only the reference metadata is compared.
+  const reference = (body: string) => /^[\da-f]+:(I.+)$/m.exec(body)?.[1]
+  const moduleMarker = reference(pickerFlight)
+  const flight = await fetch(`${site}${address}.rsc?_routes=qualy%3Adocument`, {
+    headers: { ...headers, accept: 'text/x-component' },
+  })
+  const flightText = await flight.text()
+  const batchHref = slotReferenceHref({
+    kind: 'slot',
+    slot: 'iam/resource-grant-renderer',
+    id: 'assessment/batch-grant',
+  })
+  const batchFlight = await (await fetch(site + batchHref, { headers })).text()
+  const batchMarker = reference(batchFlight)
+  check(
+    'the grants Flight carries the selected renderer and omits the unopened picker',
+    flight.ok &&
+      batchMarker !== undefined &&
+      flightText.includes(batchMarker) &&
+      moduleMarker !== undefined &&
+      !flightText.includes(moduleMarker),
+    {
+      status: flight.status,
+      selectedReference: batchMarker !== undefined,
+      pickerReference: moduleMarker !== undefined,
+      selectedOnPage: batchMarker !== undefined && flightText.includes(batchMarker),
+      pickerOnPage: moduleMarker !== undefined && flightText.includes(moduleMarker),
+    },
+  )
+
+  const student = await signIn('student')
+  const denied = await fetch(site + pickerHref, {
+    headers: {
+      ...headers,
+      cookie: student,
+      [IDENTITY_HEADER]: (await manifestOf(student)).identity!,
+    },
+  })
+  check(
+    'the slot endpoint checks the current viewer’s authorization',
+    denied.status === 404 && denied.headers.get('cache-control') === 'private, no-store',
+  )
+
+  const context = await signedInContext(browser, 'admin', { timezoneId: 'America/Los_Angeles' })
+  try {
+    const page = await context.newPage()
+    const loaded: string[] = []
+    const errors: string[] = []
+    page.on('pageerror', (error) => errors.push(error.message))
+    page.on('request', (request) => {
+      const url = new URL(request.url())
+      if (url.pathname === SLOT_REFERENCE_PATH) loaded.push(url.search)
+    })
+    await page.goto(site + address)
+    await hydrated(page)
+    const presenter = page.getByTestId('grant-origin-batch')
+    const linked = await presenter
+      .getByRole('link', { name: 'RSC acceptance' })
+      .waitFor({ timeout: 10_000 })
+      .then(
+        () => true,
+        () => false,
+      )
+    check(
+      'GrantOrigin hydrates the batch link from its seeded renderer',
+      linked && loaded.length === 0 && errors.length === 0,
+      { loaded, errors },
+    )
+    const open = page.getByRole('button', { name: /Grant a role|授予角色/ })
+    await open.click()
+    const anchor = page.getByTestId('grant-anchor')
+    const interactive = await anchor
+      .getByRole('button')
+      .first()
+      .waitFor({ timeout: 10_000 })
+      .then(
+        () => true,
+        () => false,
+      )
+    check(
+      'opening the role dialog fetches and mounts only the needed picker',
+      interactive && loaded.length === 1 && loaded[0] === new URL(pickerHref, site).search,
+      { loaded, errors },
+    )
+  } finally {
+    await context.close()
+  }
+}
+
+const guardedNavigation = async (browser: Browser, batch: string) => {
+  const context = await signedInContext(browser, 'admin')
+  const address = `/assessment/batches/${batch}`
+  const settings = `${address}/settings`
+  try {
+    const page = await context.newPage()
+    const navigate = (target: string | number) =>
+      inPage(page, `void window.__reactRouterDataRouter.navigate(${JSON.stringify(target)})`)
+    const overviewLanded = async () => {
+      await page.waitForURL(site + address)
+      await page.getByTestId('batch-note').waitFor()
+    }
+    // React registers the guard after the edit commits. Wait for that same
+    // registration before asking the browser to traverse history.
+    const dirty = () =>
+      page.waitForFunction(
+        () =>
+          !(globalThis as unknown as { dispatchEvent(event: Event): boolean }).dispatchEvent(
+            new Event('beforeunload', { cancelable: true }),
+          ),
+        undefined,
+        { timeout: 5_000 },
+      )
+    await page.goto(site + address)
+    await hydrated(page)
+    await page.locator(`[data-testid="workspace-rail"] a[href="${settings}"]`).click()
+    await page.waitForURL(site + settings)
+    const name = page.getByRole('textbox', { name: /^(名称|Name)$/ })
+    await name.waitFor()
+    await navigate(address)
+    await overviewLanded()
+    await navigate(-1)
+    await page.waitForURL(site + settings)
+    const draft = 'RSC acceptance edit'
+    await name.fill(draft)
+    await dirty()
+    const question = page
+      .getByRole('alertdialog')
+      .or(page.getByRole('dialog'))
+      .filter({
+        hasText: /离开此页|Leave this page/,
+      })
+    const stay = question.getByRole('button', { name: /继续编辑|Keep editing/ })
+    for (const step of [-1, 1]) {
+      await navigate(step)
+      await question.waitFor({ timeout: 10_000 })
+      await stay.click()
+      await question.waitFor({ state: 'hidden' })
+      check(
+        `a dirty editor blocks history ${step < 0 ? 'back' : 'forward'}`,
+        page.url() === site + settings && (await name.inputValue()) === draft,
+      )
+    }
+    await navigate(settings + '?guard-probe=1')
+    await page.waitForURL(site + settings + '?guard-probe=1')
+    const preventsUnload = await inPage<boolean>(
+      page,
+      "(() => { const event = new Event('beforeunload', { cancelable: true }); window.dispatchEvent(event); return event.defaultPrevented })()",
+    )
+    check(
+      'a query-only navigation keeps the draft and a reload still warns',
+      (await name.inputValue()) === draft && preventsUnload && !(await question.isVisible()),
+    )
+
+    const refuse = async (route: import('playwright').Route) => {
+      if (route.request().method() !== 'PATCH') return route.continue()
+      await route.fulfill({ status: 503, contentType: 'application/json', body: '{}' })
+    }
+    const api = site + '/api' + address
+    await page.route(api, refuse)
+    await navigate(address)
+    const save = question.getByRole('button', { name: /保存后离开|Save and leave/ })
+    await save.click()
+    await question.waitFor({ state: 'hidden' })
+    check(
+      'a refused save leaves the editor and draft in place',
+      page.url().includes(settings) && (await name.inputValue()) === draft,
+    )
+    await page.unroute(api, refuse)
+    await navigate(address)
+    await save.click()
+    await overviewLanded()
+    await navigate(settings)
+    await page.waitForURL(site + settings)
+    check(
+      'saving continues the held navigation and persists the edit',
+      (await name.inputValue()) === draft,
+    )
+    await name.fill('RSC acceptance discarded edit')
+    await dirty()
+    await navigate(address)
+    await question.getByRole('button', { name: /放弃修改|Discard/ }).click()
+    await overviewLanded()
+    await navigate(settings)
+    await page.waitForURL(site + settings)
+    check(
+      'discard continues the held navigation without writing',
+      (await name.inputValue()) === draft,
+    )
+
+    await name.fill('RSC acceptance preserved draft')
+    await dirty()
+    const original = await name.elementHandle()
+    await page.route(
+      (url) => url.pathname === address + '.rsc',
+      (route) =>
+        route.continue({ headers: { ...route.request().headers(), [RELEASE_HEADER]: 'r-older' } }),
+    )
+    await navigate(address)
+    await question.getByRole('button', { name: /放弃修改|Discard/ }).click()
+    await page.locator('[data-release-recovery]').waitFor({ timeout: 10_000 })
+    const preserved = await original!.evaluate((element) => {
+      const input = element as unknown as {
+        isConnected: boolean
+        closest(selector: string): object | null
+        value: string
+      }
+      return (
+        input.isConnected &&
+        input.closest('[inert]') !== null &&
+        input.value === 'RSC acceptance preserved draft'
+      )
+    })
+    check(
+      'an obsolete release keeps the same dirty editor under the recovery screen',
+      preserved && page.url() === site + settings,
+    )
+  } finally {
+    await context.close()
+  }
+}
+
+const frozenLiveChannels = async (browser: Browser, batch: string) => {
+  const context = await signedInContext(browser, 'admin')
+  try {
+    const page = await context.newPage()
+    const channel = page.waitForEvent('websocket', {
+      predicate: (socket) => new URL(socket.url()).pathname.includes(batch),
+      timeout: 10_000,
+    })
+    await page.goto(`${site}/assessment/batches/${batch}`)
+    const socket = await channel
+    const closed = socket.waitForEvent('close', { timeout: 10_000 }).then(
+      () => true,
+      () => false,
+    )
+    await context.request.post(`${site}/api/auth/local/local/login`, { data: accounts.student })
+    const dial = await inPage<{ code: number; frames: number }>(
+      page,
+      `new Promise((resolve) => {
+      const socket = new WebSocket(${JSON.stringify(socket.url())}, ${JSON.stringify(LIVE_SUBPROTOCOL)})
+      let frames = 0
+      const timeout = setTimeout(() => { socket.close(); resolve({ code: 0, frames }) }, 5000)
+      socket.addEventListener('message', () => frames++)
+      socket.addEventListener('close', (event) => {
+        clearTimeout(timeout)
+        resolve({ code: event.code, frames })
+      })
+    })`,
+    )
+    check(
+      'an old RSC tab cannot rejoin a batch stream as the new viewer',
+      dial.code === LIVE_CLOSE.identityChanged && dial.frames === 0,
+      dial,
+    )
+    const peer = await context.newPage()
+    await peer.goto(`${site}/assessment/batches`)
+    await inPage(
+      peer,
+      `(() => {
+      const channel = new BroadcastChannel('qualy:session')
+      channel.postMessage({ type: 'changed' })
+      channel.close()
+    })()`,
+    )
+    const state = await page
+      .getByTestId('session-recovery')
+      .getAttribute('data-state', { timeout: 10_000 })
+    const disconnected = await closed
+    check(
+      'freezing an RSC tab disconnects its already-open live channel',
+      state === 'switched' && disconnected,
+      { state, disconnected },
+    )
+  } finally {
+    await context.close()
+  }
+}
+
 const checks = async () => {
   await refusals()
   await cookies(scratch)
@@ -1053,6 +1422,9 @@ const checks = async () => {
   await batchListFirstScreen(browser, batch)
   await overviewFirstScreen(browser, batch)
   await hydrationPositions(browser, batch)
+  await grantSurfaces(browser, batch)
+  await guardedNavigation(browser, batch)
+  await frozenLiveChannels(browser, batch)
 }
 
 let server: QualyServer | undefined
