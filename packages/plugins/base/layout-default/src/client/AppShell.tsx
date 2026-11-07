@@ -116,24 +116,21 @@ const styles = stylex.create({
     display: 'flex',
     minWidth: 0,
     flexGrow: 1,
-    flexShrink: 0,
-  },
-  // exactly the room the bars leave, around a screen that fills it
-  frameFilled: {
+    // around a screen that fills the room, exactly the room the bars leave
     minHeight: {
-      default: null,
+      default: 'auto',
       [stylex.when.ancestor(':has([data-screen-fill="always"])')]: 0,
       [stylex.when.ancestor(':has([data-screen-fill="tablet"])')]: {
         default: 0,
-        [breakpoints.phone]: null,
+        [breakpoints.phone]: 'auto',
       },
     },
     flexShrink: {
-      default: null,
+      default: 0,
       [stylex.when.ancestor(':has([data-screen-fill="always"])')]: 1,
       [stylex.when.ancestor(':has([data-screen-fill="tablet"])')]: {
         default: 1,
-        [breakpoints.phone]: null,
+        [breakpoints.phone]: 0,
       },
     },
   },
@@ -182,7 +179,23 @@ const styles = stylex.create({
     display: 'flex',
     flexDirection: 'column',
     flexGrow: 1,
-    flexShrink: 0,
+    // around a screen that fills the room, exactly the room the bars leave
+    minHeight: {
+      default: 'auto',
+      [stylex.when.ancestor(':has([data-screen-fill="always"])')]: 0,
+      [stylex.when.ancestor(':has([data-screen-fill="tablet"])')]: {
+        default: 0,
+        [breakpoints.phone]: 'auto',
+      },
+    },
+    flexShrink: {
+      default: 0,
+      [stylex.when.ancestor(':has([data-screen-fill="always"])')]: 1,
+      [stylex.when.ancestor(':has([data-screen-fill="tablet"])')]: {
+        default: 1,
+        [breakpoints.phone]: 0,
+      },
+    },
   },
   // A page with no band of its own still needs its sections: they stand
   // above its content, in the flow, rather than in a bar of chrome.
@@ -198,25 +211,6 @@ const styles = stylex.create({
     // the same inset the page's own container keeps, which the row bleeds out of
     paddingInline: { default: 24, [breakpoints.phone]: layout.pageGutter },
     paddingTop: 16,
-  },
-  // exactly the height the bars leave, and no more however much it holds
-  pageFilled: {
-    minHeight: {
-      default: null,
-      [stylex.when.ancestor(':has([data-screen-fill="always"])')]: 0,
-      [stylex.when.ancestor(':has([data-screen-fill="tablet"])')]: {
-        default: 0,
-        [breakpoints.phone]: null,
-      },
-    },
-    flexShrink: {
-      default: null,
-      [stylex.when.ancestor(':has([data-screen-fill="always"])')]: 1,
-      [stylex.when.ancestor(':has([data-screen-fill="tablet"])')]: {
-        default: 1,
-        [breakpoints.phone]: null,
-      },
-    },
   },
   // a workbench that fills the room has no foot under it
   foot: {
@@ -354,14 +348,14 @@ function Shell() {
       >
         <div aria-hidden {...stylex.props(styles.headRoom)} />
         <div ref={sentinel} aria-hidden {...stylex.props(styles.sentinel)} />
-        <div {...stylex.props(styles.frame, styles.frameFilled)}>
+        <div {...stylex.props(styles.frame)}>
           {beside && (
             <aside {...stylex.props(styles.side)}>
               <SideNav groups={sectionGroups} label={m.shell_sideNav()} />
             </aside>
           )}
           <div {...stylex.props(styles.column)}>
-            <div {...stylex.props(styles.page, styles.pageFilled, stylex.defaultMarker())}>
+            <div {...stylex.props(styles.page, stylex.defaultMarker())}>
               {/* The sections hang under the page's own words rather than
                   standing in a bar above them: a second band of chrome is
                   one more thing to look past on a screen that has little
