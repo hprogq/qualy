@@ -230,7 +230,7 @@ describe('the application shell', () => {
     await expect.element(side.getByRole('link', { name: '角色管理' })).toBeVisible()
     // one or the other carries the sections, never both
     await page.viewport(800, 900)
-    await vi.waitFor(() => expect(document.querySelector('[data-testid="side-nav"]')).toBeNull())
+    await expect.element(page.getByTestId('side-nav')).not.toBeVisible()
     await expect.element(page.getByRole('link', { name: '角色管理' })).toBeVisible()
     await page.viewport(1280, 800)
   })
@@ -328,15 +328,17 @@ describe('the application shell', () => {
     await expect.element(page.getByRole('link', { name: 'Qualy' })).toBeVisible()
     // on its way: nobody knows yet where the sections go, so nobody draws them
     await expect.element(page.getByRole('status')).toBeInTheDocument()
-    expect(document.querySelectorAll('[data-testid="section-chips"]')).toHaveLength(0)
+    const visibleChips = () =>
+      [...document.querySelectorAll('[data-testid="section-chips"]')].filter((row) =>
+        row.checkVisibility(),
+      )
+    expect(visibleChips()).toHaveLength(0)
     release()
     await expect.element(page.getByTestId('banded-page')).toBeInTheDocument()
     // arrived: one row, under the band's own words
-    await vi.waitFor(() =>
-      expect(document.querySelectorAll('[data-testid="section-chips"]')).toHaveLength(1),
-    )
+    await vi.waitFor(() => expect(visibleChips()).toHaveLength(1))
     const heading = page.getByRole('heading', { name: '用户管理' }).element()
-    const chips = document.querySelector('[data-testid="section-chips"]')!
+    const chips = visibleChips()[0]!
     expect(chips.getBoundingClientRect().top).toBeGreaterThan(
       heading.getBoundingClientRect().bottom,
     )

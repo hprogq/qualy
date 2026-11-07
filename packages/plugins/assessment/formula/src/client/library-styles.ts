@@ -38,7 +38,7 @@ export const libraryStyles = stylex.create({
   },
   // the sections of the open application, under this page's own words
   under: {
-    display: 'flex',
+    display: { default: 'flex', [breakpoints.desktop]: 'none' },
     minWidth: 0,
     alignItems: 'center',
     marginTop: 10,

@@ -87,6 +87,9 @@ const styles = stylex.create({
   barStacked: {
     borderBottomColor: tokens.divider,
   },
+  barRuled: {
+    boxShadow: { default: null, [breakpoints.desktop]: `inset 0 -1px 0 ${tokens.border}` },
+  },
   barScrolled: {
     backgroundColor: `color-mix(in oklch, ${tokens.background} 62%, transparent)`,
     backdropFilter: 'blur(18px)',
@@ -400,6 +403,7 @@ export function TopBar({
   activeApp,
   scrolled = false,
   stacked = false,
+  ruled = false,
   title = null,
   titleShown = false,
 }: {
@@ -416,6 +420,8 @@ export function TopBar({
    * shell where the page is what lies underneath.
    */
   stacked?: boolean
+  /** a desktop side column meets this bar's border */
+  ruled?: boolean
   /**
    * The open page's name, shown once the page's own heading has scrolled
    * away. Only where the applications are not drawn beside it, which is
@@ -427,7 +433,12 @@ export function TopBar({
   return (
     // glass last: once the page is under the bar, that state owns the line
     <div
-      {...stylex.props(styles.bar, stacked && styles.barStacked, scrolled && styles.barScrolled)}
+      {...stylex.props(
+        styles.bar,
+        stacked && styles.barStacked,
+        scrolled && styles.barScrolled,
+        ruled && styles.barRuled,
+      )}
     >
       {/* the mark leads to the first application this viewer has, rather
           than to a literal origin: where "home" is depends on who is

@@ -13,7 +13,6 @@ import {
 import { SectionChips, TopBar } from './TopBar.tsx'
 import { AppsBar } from './BottomBar.tsx'
 import { AppFooter } from './AppFooter.tsx'
-import { useIsBelow } from '@qualy/ui/use-mobile'
 import { SideNav } from './SideNav.tsx'
 import { BandFootScope } from '@qualy/ui/screen'
 
@@ -39,9 +38,6 @@ import * as m from '#messages'
 
 /** how far the page must have moved before the bars turn to glass */
 const SCROLLED_AFTER = 12
-
-/** below this the sections fold back into a row under the top bar */
-const SIDE_BREAKPOINT = 1024
 
 /** above every sticky element a page keeps (10, 40), below every dialog and sheet (200) */
 const HEAD_LAYER = 50
@@ -74,6 +70,7 @@ const styles = stylex.create({
     // furniture about. `none` would take the bounce with it. The axis is
     // named because nothing here wants a say in a sideways edge swipe.
     overscrollBehaviorY: 'contain',
+    scrollPaddingTop: { default: shell.topBarHeight, [breakpoints.phone]: shell.phoneTopBarHeight },
   },
   // a screen that fills the room scrolls inside itself; the shell does not
   // scroll around it, and holds no strip down the right for a scrollbar
@@ -92,18 +89,8 @@ const styles = stylex.create({
     pointerEvents: 'none',
   },
   headContent: { pointerEvents: 'auto' },
-  // beside a column the bar is ruled from the start: the column's own line
-  // has to meet something, and a bar that earns its rule only once the page
-  // moves leaves that line ending in mid air
-  headRuled: {
-    borderBottomWidth: 1,
-    borderBottomStyle: 'solid',
-    borderBottomColor: tokens.border,
-  },
   // The room the bars float over, inside the scroller so the page scrolls
-  // up through it. Its height is the bars' own, declared in CSS so the
-  // first frame is already right; the measurement below only corrects it
-  // where a rotation or a text setting has made them taller.
+  // up through it. The bar, scroller and sidebar share the same CSS height.
   headRoom: {
     flexShrink: 0,
     height: { default: shell.topBarHeight, [breakpoints.phone]: shell.phoneTopBarHeight },
@@ -127,7 +114,10 @@ const styles = stylex.create({
   // past it and a long list of sections scrolls inside it. It has no ground
   // of its own: the page's ground runs under it, ruled off by one line.
   side: {
+    display: { default: 'none', [breakpoints.desktop]: 'block' },
     position: 'sticky',
+    top: shell.topBarHeight,
+    height: `calc(100dvh - ${shell.topBarHeight})`,
     alignSelf: 'flex-start',
     width: 220,
     flexShrink: 0,
@@ -156,7 +146,11 @@ const styles = stylex.create({
   // A page with no band of its own still needs its sections: they stand
   // above its content, in the flow, rather than in a bar of chrome.
   looseSections: {
-    display: 'flex',
+    display: {
+      default: 'flex',
+      [breakpoints.desktop]: 'none',
+      [stylex.when.ancestor(':has([data-band-foot])')]: 'none',
+    },
     flexShrink: 0,
     alignItems: 'center',
     gap: 6,
@@ -194,7 +188,6 @@ const styles = stylex.create({
 function Shell() {
   const { apps, activeApp, sections, sectionGroups } = useAppNavigation()
 
-  const narrow = useIsBelow(SIDE_BREAKPOINT)
   // a workbench fills the room under the bars and has no foot under it
   const filled = useScreenFillClaimed()
   const main = useRef<HTMLElement>(null)
@@ -211,15 +204,11 @@ function Shell() {
   // rather than assumed: a height read once was right until the first
   // rotation, and then quietly wrong by eight pixels.
   const [barHeight, setBarHeight] = useState(0)
-  // whether the page's own band has taken the sections; a page with no band
-  // leaves them here, above its content
-  const [sectionsTaken, setSectionsTaken] = useState(false)
   const sectioned = sections.length >= 2
   // one or the other carries the sections, never both - and a workbench that
   // fills the room takes the column's room too: the way out of it is the top
   // bar, and a list of sibling pages beside an editor is width it needs
-  const beside = sectioned && !narrow && !filled
-  const withSections = sectioned && narrow
+  const beside = sectioned && !filled
   useEffect(() => {
     const bars = head.current
     if (bars === null) return
@@ -277,11 +266,12 @@ function Shell() {
         data-scrolled={scrolled ? '' : undefined}
         {...stylex.props(styles.head, !filled && styles.gutter)}
       >
-        <div {...stylex.props(styles.headContent, beside && styles.headRuled)}>
+        <div {...stylex.props(styles.headContent)}>
           <TopBar
             apps={apps}
             activeApp={activeApp}
             scrolled={scrolled}
+            ruled={beside}
             title={title}
             titleShown={titleShown}
           />
@@ -297,39 +287,30 @@ function Shell() {
           the bars. */}
       <main
         ref={main}
-        style={barHeight === 0 ? undefined : { scrollPaddingTop: barHeight }}
         {...stylex.props(
           styles.main,
           bottomBar ? styles.footRoom : styles.safeRoom,
           filled ? styles.mainFilled : styles.gutter,
         )}
       >
-        <div
-          aria-hidden
-          style={barHeight === 0 ? undefined : { height: barHeight }}
-          {...stylex.props(styles.headRoom)}
-        />
+        <div aria-hidden {...stylex.props(styles.headRoom)} />
         <div ref={sentinel} aria-hidden {...stylex.props(styles.sentinel)} />
         <div {...stylex.props(styles.frame, filled && styles.frameFilled)}>
           {beside && (
-            <aside
-              style={{ top: barHeight, height: `calc(100dvh - ${String(barHeight)}px)` }}
-              {...stylex.props(styles.side)}
-            >
+            <aside {...stylex.props(styles.side)}>
               <SideNav groups={sectionGroups} label={m.shell_sideNav()} />
             </aside>
           )}
           <div {...stylex.props(styles.column)}>
-            <div {...stylex.props(styles.page, filled && styles.pageFilled)}>
+            <div
+              {...stylex.props(styles.page, filled && styles.pageFilled, stylex.defaultMarker())}
+            >
               {/* The sections hang under the page's own words rather than
                   standing in a bar above them: a second band of chrome is
                   one more thing to look past on a screen that has little
                   enough room for what the reader came for. */}
-              <BandFootScope
-                value={withSections ? <SectionChips items={sections} /> : null}
-                onClaim={setSectionsTaken}
-              >
-                {withSections && !sectionsTaken && (
+              <BandFootScope value={sectioned ? <SectionChips items={sections} /> : null}>
+                {sectioned && (
                   <div {...stylex.props(styles.looseSections)}>
                     <SectionChips items={sections} />
                   </div>

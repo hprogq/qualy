@@ -117,7 +117,7 @@ export function LibraryMasthead({
   // pages draw their own masthead, so they draw them too
   const under = useBandFoot()
   return (
-    <div {...stylex.props(libraryStyles.masthead)}>
+    <div data-band-foot={under === null ? undefined : ''} {...stylex.props(libraryStyles.masthead)}>
       <div {...stylex.props(libraryStyles.mastheadRow)}>
         <div {...stylex.props(libraryStyles.heading)}>
           <div {...stylex.props(libraryStyles.titleRow)}>

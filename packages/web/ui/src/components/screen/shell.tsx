@@ -65,7 +65,8 @@ const styles = stylex.create({
     paddingBottom: 22,
   },
   /** where a row follows it, the words give up some of their own foot */
-  bandInsetAbove: { paddingBottom: 10 },
+  bandInsetAbove: { paddingBottom: { default: 10, [breakpoints.desktop]: 22 } },
+  bandInsetBackAbove: { paddingBottom: { default: 10, [breakpoints.desktop]: 18 } },
   // a page reached from a list opens on the way back to it, so the band
   // starts a little higher and ends a little sooner
   bandInsetBack: {
@@ -82,7 +83,7 @@ const styles = stylex.create({
   // actions share: put in there it was a full-width item in a run that does
   // not wrap, and every page's title and actions were crushed to nothing.
   underBand: {
-    display: 'flex',
+    display: { default: 'flex', [breakpoints.desktop]: 'none' },
     minWidth: 0,
     alignItems: 'center',
     // The shorthand first, then the one end that differs. Given only the two
@@ -258,7 +259,7 @@ export function Screen({
           xstyle={[
             styles.bandInset,
             sub && styles.bandInsetBack,
-            under !== null && styles.bandInsetAbove,
+            under !== null && (sub ? styles.bandInsetBackAbove : styles.bandInsetAbove),
           ]}
         >
           <div {...stylex.props(styles.words, sub && styles.wordsBack)}>
@@ -278,7 +279,7 @@ export function Screen({
           {actions !== undefined && <div {...stylex.props(styles.actions)}>{actions}</div>}
         </PageContainer>
         {under !== null && (
-          <PageContainer size={size} xstyle={styles.underBand}>
+          <PageContainer size={size} xstyle={styles.underBand} data-band-foot="">
             {/* named, so crossing to another page moves this band from where
                 it was rather than drawing it where it now is */}
             <Settling name="band-foot" className={stylex.props(styles.underRow).className}>

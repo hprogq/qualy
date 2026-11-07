@@ -17,7 +17,6 @@ import { Wordmark } from '@qualy/brand/wordmark'
 import { VisuallyHidden } from '../lib/visually-hidden.tsx'
 import { seatOf } from '../lib/xstyle.ts'
 import { tokens } from '../theme/tokens.stylex.ts'
-import { useBandFootHold } from './screen/band-foot.tsx'
 
 // Work in progress, wherever a screen has to wait.
 //
@@ -100,9 +99,6 @@ function Spinner({ className, style, xstyle, ...rest }: SpinnerProps) {
 
 /** fills the content area of a page without claiming the whole viewport */
 function PageLoading() {
-  // the page decides where the application's sections go; until it is here,
-  // nobody draws them
-  useBandFootHold()
   // Under the cold start, the page on its way is part of the wait: the
   // wordmark stays until the page itself has arrived. Released before it,
   // the wordmark flew while the page's code was still being compiled and
@@ -120,7 +116,7 @@ function PageLoading() {
     }
   }, [underColdStart])
   return (
-    <div {...stylex.props(styles.page)} role="status">
+    <div {...stylex.props(styles.page)} role="status" data-band-foot="">
       <Loader size={24} xstyle={styles.lateArrival} />
       <VisuallyHidden>Loading</VisuallyHidden>
     </div>

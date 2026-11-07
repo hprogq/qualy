@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useSyncExternalStore } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 
 // What the rail shells share below the components: how an entry is ordered,
@@ -81,6 +81,11 @@ const CELL = 76
 const cellsAcross = (width: number, most: number) =>
   Math.max(3, Math.min(most, Math.floor(width / CELL)))
 
+const watchWidth = (changed: () => void) => {
+  window.addEventListener('resize', changed)
+  return () => window.removeEventListener('resize', changed)
+}
+
 /**
  * How many cells this window has room for, watched rather than read once: a
  * rotation turns four into six and back.
@@ -90,12 +95,9 @@ const cellsAcross = (width: number, most: number) =>
  * anyway.
  */
 export function useCellsAcross(most: number): number {
-  const [width, setWidth] = useState(() => (typeof window === 'undefined' ? 0 : window.innerWidth))
-  useEffect(() => {
-    const measure = () => setWidth(window.innerWidth)
-    measure()
-    window.addEventListener('resize', measure)
-    return () => window.removeEventListener('resize', measure)
-  }, [])
-  return width === 0 ? most : cellsAcross(width, most)
+  return useSyncExternalStore(
+    watchWidth,
+    () => cellsAcross(window.innerWidth, most),
+    () => most,
+  )
 }
