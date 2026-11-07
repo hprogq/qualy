@@ -25,6 +25,7 @@ import {
   useRunApi,
 } from '@qualy/web-runtime'
 import * as stylex from '@stylexjs/stylex'
+import { AtWidth } from '@qualy/ui/at-width'
 
 import { Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 
@@ -1999,7 +2000,19 @@ function FormulaEditor() {
       />
     )
   }
-  if (fn === undefined) return <WorkbenchSkeleton narrow={narrow} />
+  // the outline of both shapes in html a server drew, the stylesheet showing
+  // the one the window has room for
+  if (fn === undefined)
+    return (
+      <>
+        <AtWidth below={768}>
+          <WorkbenchSkeleton narrow />
+        </AtWidth>
+        <AtWidth from={768}>
+          <WorkbenchSkeleton narrow={false} />
+        </AtWidth>
+      </>
+    )
 
   const archived = fn.status === 'archived'
   const busy = save.isPending || publish.isPending || restore.isPending
