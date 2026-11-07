@@ -346,8 +346,8 @@ export interface WorkspaceProps {
   /** where the round stands, for saying which stage shut filing and what it opens */
   round?: FilingRound
   busy: boolean
-  refreshing: boolean
-  onRefresh: () => void
+  /** asks every read again; the key turns until what it returns settles */
+  onRefresh: () => Promise<unknown> | void
   /** the claim open in the drawer, highlighted in its list */
   openEntryId: string
   onEntry: (entry: EntryDto) => void
@@ -392,7 +392,6 @@ function Workspace({
   gates,
   round,
   busy,
-  refreshing,
   onRefresh,
   openEntryId,
   onEntry,
@@ -648,7 +647,6 @@ function Workspace({
       isTodo={isTodo}
       todoLabel={viewer === 'owner' ? m.paper_viewTodo : m.entries_viewMoving}
       todoEmpty={viewer === 'owner' ? m.entry_filterNone : m.entries_noneMoving}
-      refreshing={refreshing}
       onRefresh={onRefresh}
       layout={layout}
       unfileable={unfileable}

@@ -222,17 +222,16 @@ function Body({
 
   // the refresh key's one press: every read this screen stands on, again -
   // the batch's own standing included, which carries the current phase
-  const refetchAll = () => {
-    void items.refetch()
-    void groups.refetch()
-    void mine.refetch()
-    void standing.refetch()
-    void queryClient.invalidateQueries({
-      queryKey: query.assessment.getBatch.key({ params: { batchId } }),
-    })
-  }
-  const anyFetching =
-    items.isFetching || groups.isFetching || mine.isFetching || standing.isFetching
+  const refetchAll = () =>
+    Promise.all([
+      items.refetch(),
+      groups.refetch(),
+      mine.refetch(),
+      standing.refetch(),
+      queryClient.invalidateQueries({
+        queryKey: query.assessment.getBatch.key({ params: { batchId } }),
+      }),
+    ])
   const refresh = () => {
     void queryClient.invalidateQueries({ queryKey: query.assessment.key() })
   }
@@ -453,7 +452,6 @@ function Body({
           gates={gates}
           round={filingRound}
           busy={acts.isPending || declare.isPending}
-          refreshing={anyFetching}
           onRefresh={refetchAll}
           openEntryId={detail}
           onEntry={(entry) => setDetail(entry.id)}

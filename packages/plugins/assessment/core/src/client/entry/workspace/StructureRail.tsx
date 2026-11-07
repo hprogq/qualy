@@ -1,9 +1,9 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
-import { ChevronDownIcon, ChevronRightIcon, ChevronUpIcon, RefreshCwIcon } from 'lucide-react'
+import { ChevronDownIcon, ChevronRightIcon, ChevronUpIcon } from 'lucide-react'
 import type { Message } from '@qualy/i18n-contract'
-import { Button } from '@qualy/ui/button'
 import { LiveMark, type LiveState } from '@qualy/ui/live-mark'
+import { RefreshButton } from '@qualy/ui/refresh-button'
 import { Appear, Portion } from '@qualy/ui/reveal'
 import { Ticker } from '@qualy/ui/ticker'
 import { VisuallyHidden } from '@qualy/ui/visually-hidden'
@@ -33,8 +33,6 @@ import * as m from '#messages'
 // The same column is the whole first screen on a phone and the left column
 // everywhere else. Sections fold; a section at the top stays pinned while its
 // questions scroll under it, so a long paper never loses its place.
-
-const spin = stylex.keyframes({ '100%': { transform: 'rotate(360deg)' } })
 
 /** the head's column gap, which the counts fold away with them */
 const HEAD_GAP = 12
@@ -74,12 +72,6 @@ const styles = stylex.create({
     fontSize: 18,
     fontWeight: 600,
     letterSpacing: '-0.015em',
-  },
-  spinning: {
-    animationName: spin,
-    animationDuration: '1s',
-    animationTimingFunction: 'linear',
-    animationIterationCount: 'infinite',
   },
   totals: { display: 'flex', flexDirection: 'column', gap: 9 },
   totalLine: {
@@ -476,7 +468,6 @@ export function StructureRail({
   isTodo,
   todoLabel,
   todoEmpty,
-  refreshing,
   onRefresh,
   layout,
   unfileable,
@@ -508,8 +499,8 @@ export function StructureRail({
   todoLabel: Message
   /** what the narrower view says when nothing is left in it */
   todoEmpty: Message
-  refreshing: boolean
-  onRefresh: () => void
+  /** asks every read again; the key turns until what it returns settles */
+  onRefresh: () => Promise<unknown> | void
   /** a column that scrolls itself, or the whole of a phone's first screen */
   layout: 'column' | 'screen'
   /** the questions no claim of this reader's can be handed on under, however the round stands */
@@ -789,10 +780,7 @@ export function StructureRail({
           )}
           {/* the escape hatch, not the mechanism: state flows in on its own,
               and this is for the reader who wants to ask again anyway */}
-          <Button variant="ghost" size="icon-sm" disabled={refreshing} onClick={onRefresh}>
-            <RefreshCwIcon aria-hidden {...stylex.props(refreshing && styles.spinning)} />
-            <VisuallyHidden>{m.entry_refresh()}</VisuallyHidden>
-          </Button>
+          <RefreshButton label={m.entry_refresh()} onRefresh={onRefresh} />
         </div>
         <div {...stylex.props(styles.totals)}>
           <div {...stylex.props(styles.totalLine)}>

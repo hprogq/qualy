@@ -335,13 +335,9 @@ export function ParticipantEntries({
             onOpen={(id, how) => address({ open: id }, { history: how })}
             live={closed ? null : line}
             busy={intervene.isPending || reopen.isPending || redetermine.isPending}
-            refreshing={entries.isFetching || result.isFetching}
-            onRefresh={() => {
-              void entries.refetch()
-              void result.refetch()
-              void items.refetch()
-              void groups.refetch()
-            }}
+            onRefresh={() =>
+              Promise.all([entries.refetch(), result.refetch(), items.refetch(), groups.refetch()])
+            }
             openEntryId={entryId}
             onEntry={(entry) => onEntry(entry.id)}
             itemAction={(item) =>
