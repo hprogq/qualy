@@ -1045,7 +1045,10 @@ describe('an account inside the workspace shell', () => {
     // settled: the rail has its rows before the heights are read
     await expect
       .poll(() =>
-        [...document.querySelectorAll('nav')].some((nav) => nav.scrollHeight > nav.clientHeight),
+        // the rail's tree scrolls in a scroll area of its own
+        [...document.querySelectorAll('[data-slot="scroll-area-viewport"]')].some(
+          (room) => room.querySelector('nav') !== null && room.scrollHeight > room.clientHeight,
+        ),
       )
       .toBe(true)
     expect(main().scrollHeight).toBe(main().clientHeight)

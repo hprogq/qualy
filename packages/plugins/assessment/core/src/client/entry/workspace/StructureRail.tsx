@@ -4,6 +4,7 @@ import { ChevronDownIcon, ChevronRightIcon, ChevronUpIcon } from 'lucide-react'
 import type { Message } from '@qualy/i18n-contract'
 import { LiveMark, type LiveState } from '@qualy/ui/live-mark'
 import { RefreshButton } from '@qualy/ui/refresh-button'
+import { ScrollArea } from '@qualy/ui/scroll-area'
 import { Appear, Portion } from '@qualy/ui/reveal'
 import { Ticker } from '@qualy/ui/ticker'
 import { VisuallyHidden } from '@qualy/ui/visually-hidden'
@@ -192,16 +193,16 @@ const styles = stylex.create({
   },
   tabCount: { fontVariantNumeric: 'tabular-nums', color: tokens.mutedForeground },
   tabCountWaits: { fontWeight: 600, color: tokens.warningForeground },
-  // the tree scrolls inside the column; on a phone it is the page
+  // the tree scrolls inside the column, under a bar of its own drawing
+  // rather than the system's, which is too heavy for a strip this narrow; on
+  // a phone the tree is the page
   treeScroll: {
     minHeight: 0,
     flexGrow: 1,
     flexShrink: 1,
     flexBasis: '0%',
-    overflowY: 'auto',
-    overscrollBehavior: 'contain',
-    paddingBottom: 28,
   },
+  treeInScroll: { paddingBottom: 28 },
   treeFlow: { paddingBottom: 24 },
   list: { margin: 0, padding: 0, listStyle: 'none' },
   empty: {
@@ -911,13 +912,22 @@ export function StructureRail({
           </button>
         </div>
       </div>
-      <nav
-        ref={scroller}
-        aria-label={m.paper_structure()}
-        {...stylex.props(layout === 'column' ? styles.treeScroll : styles.treeFlow)}
-      >
-        {tree}
-      </nav>
+      {layout === 'column' ? (
+        <ScrollArea
+          viewportRef={scroller}
+          scrollbars="y"
+          overscrollBehavior="contain"
+          xstyle={styles.treeScroll}
+        >
+          <nav aria-label={m.paper_structure()} {...stylex.props(styles.treeInScroll)}>
+            {tree}
+          </nav>
+        </ScrollArea>
+      ) : (
+        <nav aria-label={m.paper_structure()} {...stylex.props(styles.treeFlow)}>
+          {tree}
+        </nav>
+      )}
     </div>
   )
 }

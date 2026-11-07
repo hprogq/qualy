@@ -15,6 +15,7 @@ import { Button } from '@qualy/ui/button'
 import { liveStateOf, type LiveLine } from '@qualy/ui/live-mark'
 import { AtWidth } from '@qualy/ui/at-width'
 import { Drill } from '@qualy/ui/reveal'
+import { ScrollArea } from '@qualy/ui/scroll-area'
 import { Sheet, SheetContent, SheetTitle } from '@qualy/ui/sheet'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 
@@ -88,6 +89,8 @@ const styles = stylex.create({
   // filters pin to, and they would stop pinning.
   phoneBody: { display: 'flex', flexGrow: 1, flexDirection: 'column', overflow: 'clip' },
   arrival: { display: 'flex', minHeight: '100%', flexDirection: 'column', overflow: 'clip' },
+  // in a scroll area the room's height reaches the pane through flex
+  arrivalInRoom: { flexGrow: 1 },
   // the pane as it arrives: as tall as the room it arrives in, like the pane
   arrived: { display: 'flex', minHeight: '100%', flexGrow: 1, flexDirection: 'column' },
   columns: {
@@ -127,14 +130,13 @@ const styles = stylex.create({
     minHeight: 0,
     flexDirection: 'column',
   },
+  // the question and the requirements scroll under bars of their own
+  // drawing, not the system's
   mainScroll: {
-    position: 'relative',
     minHeight: 0,
     flexGrow: 1,
     flexShrink: 1,
     flexBasis: '0%',
-    overflowX: 'hidden',
-    overflowY: 'auto',
   },
   stepper: {
     display: 'flex',
@@ -204,6 +206,13 @@ const styles = stylex.create({
     overflowY: 'auto',
     paddingBottom: 20,
   },
+  asideRoom: {
+    minHeight: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+  },
+  asideInRoom: { paddingBottom: 20 },
   sheetPanel: {
     display: 'flex',
     flexDirection: 'column',
@@ -860,8 +869,8 @@ function Workspace({
       >
         <div {...stylex.props(styles.rail)}>{rail('column')}</div>
         <div {...stylex.props(styles.main)}>
-          <div ref={scroller} {...stylex.props(styles.mainScroll)}>
-            <div {...stylex.props(styles.arrival)}>
+          <ScrollArea viewportRef={scroller} scrollbars="y" fill xstyle={styles.mainScroll}>
+            <div {...stylex.props(styles.arrival, styles.arrivalInRoom)}>
               <Drill
                 move={arrival}
                 drillKey={selected?.id ?? ''}
@@ -870,7 +879,7 @@ function Workspace({
                 {pane}
               </Drill>
             </div>
-          </div>
+          </ScrollArea>
           {item !== null && (previous !== null || next !== null) && (
             <nav aria-label={m.entries_stepLabel()} {...stylex.props(styles.stepper)}>
               <button
@@ -911,7 +920,9 @@ function Workspace({
             <div {...stylex.props(styles.asideHead)}>
               <h2 {...stylex.props(styles.asideTitle)}>{m.entries_requirements()}</h2>
             </div>
-            <div {...stylex.props(styles.asideScroll)}>{requirements}</div>
+            <ScrollArea scrollbars="y" xstyle={styles.asideRoom}>
+              <div {...stylex.props(styles.asideInRoom)}>{requirements}</div>
+            </ScrollArea>
           </aside>
         )}
       </div>

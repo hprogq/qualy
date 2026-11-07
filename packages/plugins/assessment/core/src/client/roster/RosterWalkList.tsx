@@ -18,6 +18,7 @@ import { authTerms } from '@qualy/auth-contract/terms'
 import { Button } from '@qualy/ui/button'
 import { Count } from '@qualy/ui/count'
 import { Input } from '@qualy/ui/input'
+import { ScrollArea } from '@qualy/ui/scroll-area'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { Spinner } from '@qualy/ui/spinner'
 import { VisuallyHidden } from '@qualy/ui/visually-hidden'
@@ -79,26 +80,21 @@ const styles = stylex.create({
     fontSize: 12,
     color: tokens.mutedForeground,
   },
+  // the list scrolls under a bar of its own drawing, which a strip this
+  // narrow carries better than the system's
   scroller: {
-    position: 'relative',
     minHeight: 0,
     flexGrow: 1,
     flexShrink: 1,
     flexBasis: '0%',
-    overflowY: 'auto',
-    // pages arriving above are held in place here, not by the browser: two
-    // hands on one scroll position fight
-    overflowAnchor: 'none',
-    overscrollBehavior: 'contain',
     // room for a row's focus ring inside the edges it scrolls between
     marginInline: -4,
-    paddingInline: 4,
-    paddingBlock: 2,
     // a row cut by either edge fades there, rather than stopping against
     // the search box in a hard line
     maskImage:
       'linear-gradient(to bottom, transparent 0, #000 8px, #000 calc(100% - 8px), transparent 100%)',
   },
+  scrolled: { paddingInline: 4, paddingBlock: 2 },
   list: {
     display: 'flex',
     flexDirection: 'column',
@@ -533,78 +529,92 @@ export function RosterWalkList({
           <span {...stylex.props(styles.offNote)}>{m.roster_walkOff()}</span>
         </div>
       )}
-      <nav
-        ref={seatList}
-        data-testid="roster-walk-scroller"
-        aria-busy={walk.state === 'loading' || walk.stale}
-        {...(seat === 'column' ? { 'aria-labelledby': headingId } : { 'aria-label': heading })}
-        onScroll={remember}
-        onWheel={letGo}
-        onTouchStart={letGo}
-        onPointerDown={letGo}
-        onKeyDown={onRowKey}
-        {...stylex.props(styles.scroller)}
+      <ScrollArea
+        viewportRef={seatList}
+        scrollbars="y"
+        overscrollBehavior="contain"
+        xstyle={styles.scroller}
+        viewportProps={{
+          role: 'navigation',
+          'data-testid': 'roster-walk-scroller',
+          'aria-busy': walk.state === 'loading' || walk.stale,
+          ...(seat === 'column' ? { 'aria-labelledby': headingId } : { 'aria-label': heading }),
+          onScroll: remember,
+          onWheel: letGo,
+          onTouchStart: letGo,
+          onPointerDown: letGo,
+          onKeyDown: onRowKey,
+          style: {
+            // rows measure their place from the list itself
+            position: 'relative',
+            // pages arriving above are held in place here, not by the
+            // browser: two hands on one scroll position fight
+            overflowAnchor: 'none',
+          },
+        }}
       >
-        {walk.state === 'loading' ? (
-          <div aria-hidden>
-            {BONES.map((width, index) => (
-              <div key={index} {...stylex.props(styles.bone)}>
-                <Skeleton className={stylex.props(styles.boneName).className} width={width} />
-                <Skeleton className={stylex.props(styles.boneNumber).className} />
-              </div>
-            ))}
-          </div>
-        ) : walk.state === 'failed' ? (
-          <div role="alert" {...stylex.props(styles.blank)}>
-            <p {...stylex.props(styles.blankWords)}>{formatError(walk.error)}</p>
-            <Button variant="outline" size="xs" onClick={walk.retry}>
-              {commonMessages.action_retry()}
-            </Button>
-          </div>
-        ) : empty ? (
-          <div data-testid="roster-walk-empty" {...stylex.props(styles.blank)}>
-            <p {...stylex.props(styles.blankWords)}>
-              {(walk.narrowed ? m.roster_noMatch : m.roster_empty)()}
-            </p>
-            {walk.narrowed && (
-              <span {...stylex.props(styles.blankKeys)}>
-                {view.q.trim() !== '' && (
-                  <Button variant="outline" size="xs" onClick={() => search.flush('')}>
-                    {m.roster_walkClearSearch()}
-                  </Button>
-                )}
-                {filtered && (
-                  <Button variant="outline" size="xs" onClick={() => onView(ROSTER_UNFILTERED)}>
-                    {m.roster_walkClearFilters()}
-                  </Button>
-                )}
-              </span>
-            )}
-          </div>
-        ) : (
-          <ul {...stylex.props(styles.list, walk.stale && styles.dim)}>
-            {walk.earlier && firstRow !== undefined && (
-              <Edge key={`from-${String(firstRow.page)}`} root={box} onSeen={walk.loadEarlier} />
-            )}
-            {walk.rows.map((row) => (
-              <li key={row.id}>
-                <WalkEntry
-                  row={row}
-                  current={row.id === participantId}
-                  stop={row.id === stop}
-                  onFocus={() => setFocused(row.id)}
-                  onOpen={() => {
-                    if (row.id !== participantId) onOpen(row.id, row.page)
-                  }}
-                />
-              </li>
-            ))}
-            {walk.later && lastRow !== undefined && (
-              <Edge key={`to-${String(lastRow.page)}`} root={box} onSeen={walk.loadLater} />
-            )}
-          </ul>
-        )}
-      </nav>
+        <div {...stylex.props(styles.scrolled)}>
+          {walk.state === 'loading' ? (
+            <div aria-hidden>
+              {BONES.map((width, index) => (
+                <div key={index} {...stylex.props(styles.bone)}>
+                  <Skeleton className={stylex.props(styles.boneName).className} width={width} />
+                  <Skeleton className={stylex.props(styles.boneNumber).className} />
+                </div>
+              ))}
+            </div>
+          ) : walk.state === 'failed' ? (
+            <div role="alert" {...stylex.props(styles.blank)}>
+              <p {...stylex.props(styles.blankWords)}>{formatError(walk.error)}</p>
+              <Button variant="outline" size="xs" onClick={walk.retry}>
+                {commonMessages.action_retry()}
+              </Button>
+            </div>
+          ) : empty ? (
+            <div data-testid="roster-walk-empty" {...stylex.props(styles.blank)}>
+              <p {...stylex.props(styles.blankWords)}>
+                {(walk.narrowed ? m.roster_noMatch : m.roster_empty)()}
+              </p>
+              {walk.narrowed && (
+                <span {...stylex.props(styles.blankKeys)}>
+                  {view.q.trim() !== '' && (
+                    <Button variant="outline" size="xs" onClick={() => search.flush('')}>
+                      {m.roster_walkClearSearch()}
+                    </Button>
+                  )}
+                  {filtered && (
+                    <Button variant="outline" size="xs" onClick={() => onView(ROSTER_UNFILTERED)}>
+                      {m.roster_walkClearFilters()}
+                    </Button>
+                  )}
+                </span>
+              )}
+            </div>
+          ) : (
+            <ul {...stylex.props(styles.list, walk.stale && styles.dim)}>
+              {walk.earlier && firstRow !== undefined && (
+                <Edge key={`from-${String(firstRow.page)}`} root={box} onSeen={walk.loadEarlier} />
+              )}
+              {walk.rows.map((row) => (
+                <li key={row.id}>
+                  <WalkEntry
+                    row={row}
+                    current={row.id === participantId}
+                    stop={row.id === stop}
+                    onFocus={() => setFocused(row.id)}
+                    onOpen={() => {
+                      if (row.id !== participantId) onOpen(row.id, row.page)
+                    }}
+                  />
+                </li>
+              ))}
+              {walk.later && lastRow !== undefined && (
+                <Edge key={`to-${String(lastRow.page)}`} root={box} onSeen={walk.loadLater} />
+              )}
+            </ul>
+          )}
+        </div>
+      </ScrollArea>
     </div>
   )
 }

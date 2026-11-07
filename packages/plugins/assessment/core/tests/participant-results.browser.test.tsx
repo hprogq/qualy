@@ -1271,7 +1271,9 @@ describe('one account beside its person', () => {
     // the column standing still: its last group must remain reachable.
     const work = page.getByTestId('participant-work').element() as HTMLElement
     expect(work.scrollHeight).toBeGreaterThan(work.clientHeight + 500)
-    expect(getComputedStyle(work).overflowY).toBe('auto')
+    // the room scrolls under a bar of its own drawing
+    expect(getComputedStyle(work).overflowY).toBe('scroll')
+    expect(work.dataset['slot']).toBe('scroll-area-viewport')
     const column = page.getByTestId('participant-column').element().getBoundingClientRect()
     work.scrollTop = work.scrollHeight
     await expect
@@ -1599,7 +1601,11 @@ describe('the list beside an open account', () => {
       expect(scroller.getBoundingClientRect().top).toBeGreaterThanOrEqual(halves.bottom)
       const list = page.getByTestId('roster-walk').element().getBoundingClientRect()
       expect(list.height).toBeGreaterThanOrEqual(239)
-      const seat = page.getByTestId('participant-column').element()
+      // what scrolls is the column's own scroll area
+      const seat = page
+        .getByTestId('participant-column')
+        .element()
+        .querySelector('[data-slot="scroll-area-viewport"]')!
       expect(seat.scrollHeight).toBeGreaterThan(seat.clientHeight)
     } finally {
       await page.viewport(1280, 800)

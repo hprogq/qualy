@@ -29,6 +29,7 @@ import { AsyncSection, ConfirmDialog } from '@qualy/ui/admin'
 import { toast } from '@qualy/ui/toast'
 import { Button } from '@qualy/ui/button'
 import { Count } from '@qualy/ui/count'
+import { ScrollArea } from '@qualy/ui/scroll-area'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { Drill, Swap, type DrillMove } from '@qualy/ui/reveal'
 import { liveStateOf } from '@qualy/ui/live-mark'
@@ -97,11 +98,11 @@ const styles = stylex.create({
     width: 280,
     flexShrink: 0,
     flexDirection: 'column',
-    overflowY: 'auto',
     borderRightWidth: 1,
     borderRightStyle: 'solid',
     borderRightColor: tokens.border,
   },
+  columnRoom: { minHeight: 0, flexGrow: 1, flexShrink: 1, flexBasis: '0%' },
   // Beside the column the work scrolls inside its own room; over a head it
   // is part of a page the shell scrolls.
   work: {
@@ -112,10 +113,7 @@ const styles = stylex.create({
     flexBasis: '0%',
     flexDirection: 'column',
   },
-  workBeside: {
-    minHeight: { default: null, [breakpoints.desktop]: 0 },
-    overflowY: { default: null, [breakpoints.desktop]: 'auto' },
-  },
+  workBeside: { minHeight: 0 },
   // ---- beside the work, in the column ----
   // As tall as the column at least, the list under the facts taking what
   // they leave; a column too short for both scrolls whole.
@@ -447,6 +445,28 @@ type ParticipantDto = ApiResult<typeof assessmentApi, 'assessment', 'getParticip
 
 /** the code that says the person this page is about is not there */
 const PARTICIPANT_MISSING = 'ASSESSMENT_PARTICIPANT_NOT_FOUND'
+
+/**
+ * The room the work stands in. Beside the person's column, from a desk's
+ * width, it scrolls by itself under a bar of its own drawing; anywhere else
+ * it is part of the page the shell scrolls.
+ */
+function WorkRoom({ beside, children }: { beside: boolean; children: ReactNode }) {
+  return beside ? (
+    <ScrollArea
+      scrollsFrom="desktop"
+      scrollbars="y"
+      xstyle={[styles.work, styles.workBeside]}
+      viewportProps={{ 'data-testid': 'participant-work' }}
+    >
+      {children}
+    </ScrollArea>
+  ) : (
+    <div data-testid="participant-work" {...stylex.props(styles.work)}>
+      {children}
+    </div>
+  )
+}
 
 export function ParticipantResultDetail({
   batchId,
@@ -1050,14 +1070,13 @@ export function ParticipantResultDetail({
             aria-label={participant?.displayName}
             {...stylex.props(styles.column)}
           >
-            {panel}
+            <ScrollArea scrollbars="y" fill xstyle={styles.columnRoom}>
+              {panel}
+            </ScrollArea>
           </aside>
         </AtWidth>
       )}
-      <div
-        data-testid="participant-work"
-        {...stylex.props(styles.work, column && styles.workBeside)}
-      >
+      <WorkRoom beside={column}>
         {column ? <AtWidth below={1024}>{head}</AtWidth> : head}
         {/* Beside the column the name stands in the column, which is a
             landmark of its own; the work still says whose it is, for a reader
@@ -1237,7 +1256,7 @@ export function ParticipantResultDetail({
             </Swap>
           )}
         </Drill>
-      </div>
+      </WorkRoom>
       <ConfirmDialog
         open={excluding !== null && excluding === participantId}
         title={m.roster_excludeTitle({ name: participant?.displayName ?? '' })}

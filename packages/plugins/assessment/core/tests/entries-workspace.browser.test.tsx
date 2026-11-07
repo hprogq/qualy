@@ -2606,7 +2606,9 @@ describe('going up to a section and back', () => {
   /** whatever scrolls the opened question at a desk */
   const paneScroller = () => {
     let at: HTMLElement | null = document.querySelector('[data-testid="item-pane"]')
-    while (at !== null && getComputedStyle(at).overflowY !== 'auto') at = at.parentElement
+    while (at !== null && !/^(auto|scroll)$/.test(getComputedStyle(at).overflowY)) {
+      at = at.parentElement
+    }
     return at
   }
 
