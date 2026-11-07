@@ -17,10 +17,22 @@ import { useLocation } from 'react-router'
 // the page takes the html over: a query that failed and has nothing to show
 // is otherwise drawn as loading by every reader that mounts it, which would
 // make the html a loading screen and the first thing the browser does a
-// second asking. Held for as long as the reader stays at the address the
+// second asking.
+//
+// An answer is likewise taken as fresh for a while: the server read it a
+// moment ago, and a reader that would otherwise take any answer as stale the
+// moment it mounts asked for it again as the page woke - the one read the
+// server made for it, made twice. What changes it while the page is open is
+// still told the way it always was; the batch's live channel marks it stale.
+// A reader that says itself how long an answer stands keeps its own word.
+//
+// Both are held for as long as the reader stays at the address the
 // document was drawn for - a reader behind a lazily loaded part of the page
 // is taken over well after the rest - and let go when they go elsewhere:
 // mounting such a reader again then asks again, as it always did.
+
+/** how long an answer a server handed over stands before a reader asks again */
+const HANDED_FRESH_MS = 30_000
 
 export function QueryHydration({
   state,
@@ -32,13 +44,16 @@ export function QueryHydration({
   const client = useQueryClient()
   // set while rendering, before anything under this reads: the html and the
   // browser's first frame are drawn from it
-  const [held] = useState(() => {
-    const refused = state.queries
-      .filter((query) => query.state.status === 'error')
-      .map((query) => query.queryKey)
-    for (const key of refused) client.setQueryDefaults(key, { retryOnMount: false })
-    return refused
-  })
+  const [held] = useState(() =>
+    state.queries.flatMap((query) => {
+      if (query.state.status === 'error') {
+        client.setQueryDefaults(query.queryKey, { retryOnMount: false })
+      } else if (query.state.status === 'success') {
+        client.setQueryDefaults(query.queryKey, { staleTime: HANDED_FRESH_MS })
+      } else return []
+      return [query.queryKey]
+    }),
+  )
   const here = useLocation().key
   const [drawnAt] = useState(here)
   useEffect(() => {

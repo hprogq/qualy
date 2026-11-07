@@ -147,3 +147,24 @@ export const serverQueries = (): ServerQueries => {
       }),
   }
 }
+
+/**
+ * The answers among a page's reads, held under their keys for the page:
+ * what a server component hands its client part through
+ * @qualy/web-runtime/query-hydration. A read that did not end in an answer
+ * is left to the page, which asks for it itself; one that is a bug or a
+ * reader who left throws, as `settle` does.
+ */
+export const answersOf = async (
+  reads: readonly {
+    readonly key: QueryKey
+    readonly exit: Promise<Exit.Exit<unknown, unknown>>
+  }[],
+): Promise<DehydratedState> => {
+  const settled = await Promise.all(
+    reads.map(async ({ key, exit }) => ({ key, read: settle(await exit) })),
+  )
+  const queries = serverQueries()
+  for (const { key, read } of settled) if (read.kind === 'answer') queries.hold(key, read.value)
+  return queries.dehydrated()
+}
