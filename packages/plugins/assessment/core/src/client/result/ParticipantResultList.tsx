@@ -58,6 +58,7 @@ import { Spinner } from '@qualy/ui/spinner'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { useIsBelow, useIsMobile } from '@qualy/ui/use-mobile'
+import { AtWidth } from '@qualy/ui/at-width'
 import { UnitPath } from '@qualy/ui/unit-path'
 import { VisuallyHidden } from '@qualy/ui/visually-hidden'
 import { AddPeopleDialog } from '../roster/AddPeopleDialog.tsx'
@@ -112,7 +113,7 @@ import * as m from '#messages'
  * with its unit (144 at least), the waiting counts (144 at most), a total
  * (120) and a menu (32): 640. An inch narrower and the name is what gives.
  */
-const TWO_COLUMNS = 1280
+const TWO_COLUMNS = 1280 as const
 
 /**
  * The widest the reader may drag the unit tree.
@@ -448,7 +449,6 @@ export function ParticipantResultList({
     setTreeOpen(open)
     keepTreeOpen(open)
   }
-  const treeBeside = !narrow && treeOpen
 
   // the same words, asked the same way, as the list beside an open account
   const search = useRosterSearch(view.q, onView)
@@ -791,11 +791,11 @@ export function ParticipantResultList({
     },
   })
 
-  const tree = (
+  const treeIn = (bare: boolean) => (
     <RosterUnitTree
       units={units.data?.units ?? []}
       loading={units.isPending}
-      bare={narrow}
+      bare={bare}
       selected={view.unit}
       scope={view.scope}
       onSelect={(unit) => onView({ unit })}
@@ -840,7 +840,9 @@ export function ParticipantResultList({
       {...stylex.props(styles.listColumn)}
     >
       <div {...stylex.props(styles.toolbar)}>
-        {narrow ? (
+        {/* the units as a key that opens them where the tree has no room
+            beside the list, and the way to fold the tree where it has */}
+        <AtWidth below={TWO_COLUMNS}>
           <button
             type="button"
             data-testid="roster-unit-switch"
@@ -855,9 +857,10 @@ export function ParticipantResultList({
             <span {...stylex.props(styles.unitSwitchName)}>{unitWord}</span>
             <ChevronRightIcon aria-hidden {...stylex.props(styles.unitSwitchIcon)} />
           </button>
-        ) : (
-          // folded away, the control still says which units the list
-          // is of, and brings the tree back
+        </AtWidth>
+        <AtWidth from={TWO_COLUMNS}>
+          {/* folded away, the control still says which units the list is
+              of, and brings the tree back */}
           <button
             type="button"
             data-testid="roster-tree-toggle"
@@ -877,7 +880,7 @@ export function ParticipantResultList({
               </>
             )}
           </button>
-        )}
+        </AtWidth>
         <SearchField
           name="roster-search"
           value={search.draft}
@@ -1082,14 +1085,15 @@ export function ParticipantResultList({
                     {/* across a table the number leads, because that is
                         what the list is scanned by; stacked, a row is a
                         person with their facts under them */}
-                    {stacked ? (
+                    <AtWidth below={768}>
                       <>
                         <Cell lead>{who}</Cell>
                         <Cell numeric unlabelled tone={row.businessNo === null ? 'quiet' : 'muted'}>
                           {row.businessNo ?? m.roster_noBusinessNo({ businessNo })}
                         </Cell>
                       </>
-                    ) : (
+                    </AtWidth>
+                    <AtWidth from={768}>
                       <>
                         {/* under its column's head a missing number is a
                             dash, as a row with nothing waiting is: the words
@@ -1120,16 +1124,23 @@ export function ParticipantResultList({
                           {who}
                         </Cell>
                       </>
-                    )}
+                    </AtWidth>
                     {/* in a column, nothing waiting is a dash; stacked
                         under a name it is nothing at all, since a fact
                         with no words would only leave its rule behind */}
                     <Cell unlabelled>
-                      {stacked && !waitsOnAnything(row.filings) ? null : (
+                      {waitsOnAnything(row.filings) ? (
                         <RosterFilings
                           filings={row.filings}
                           columns={split ? kinds.template : undefined}
                         />
+                      ) : (
+                        <AtWidth from={768}>
+                          <RosterFilings
+                            filings={row.filings}
+                            columns={split ? kinds.template : undefined}
+                          />
+                        </AtWidth>
                       )}
                     </Cell>
                     {/* the total is what the list is scanned by, so
@@ -1255,10 +1266,11 @@ export function ParticipantResultList({
         initial={TREE_MOST}
         min={220}
         max={TREE_MOST}
-        collapsed={!treeBeside}
+        collapsed={!treeOpen}
+        besideOnly
         handleLabel={m.roster_unitsResize()}
         // Keep the list mounted as the tree folds, retaining its focus and scroll.
-        side={narrow ? null : <StickyFill>{tree}</StickyFill>}
+        side={<StickyFill>{treeIn(false)}</StickyFill>}
       >
         {listSection}
       </ResizableSplit>
@@ -1272,7 +1284,7 @@ export function ParticipantResultList({
           testId="roster-unit-sheet"
           fill
         >
-          <div {...stylex.props(styles.unitsSeat)}>{tree}</div>
+          <div {...stylex.props(styles.unitsSeat)}>{treeIn(true)}</div>
         </DetailSheet>
       )}
 

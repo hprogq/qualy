@@ -1385,8 +1385,10 @@ describe('one account beside its person', () => {
       await expect.element(head).toBeVisible()
       await expect.element(head.getByRole('heading', { level: 1 })).toHaveTextContent('郭航旗')
       // the number and where they stand stay; the rest waits behind the fold
-      const kind = head.element().querySelector('[data-fact="kind"]')!
-      await expect.element(head.element().querySelector('[data-fact="number"]')!).toBeVisible()
+      const kind = head.element().querySelector<HTMLElement>('[data-fact="kind"]')!
+      await expect
+        .element(head.element().querySelector<HTMLElement>('[data-fact="number"]')!)
+        .toBeVisible()
       await expect.element(kind).not.toBeVisible()
       await expect.element(head.getByTestId('participant-standing')).not.toBeVisible()
       const fold = head.getByTestId('participant-fold')

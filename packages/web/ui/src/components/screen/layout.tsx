@@ -40,6 +40,8 @@ const styles = stylex.create({
     transitionProperty: 'opacity, visibility',
     transitionDuration: { default: '220ms', '@media (prefers-reduced-motion: reduce)': '0ms' },
   },
+  // a side that stands only beside the main part, never stacked over it
+  sideBesideOnly: { display: { default: 'none', [breakpoints.wide]: 'block' } },
   sideClosed: {
     display: { default: 'none', [breakpoints.wide]: 'block' },
     opacity: 0,
@@ -111,6 +113,7 @@ export function ResizableSplit({
   max = 520,
   handleLabel,
   collapsed = false,
+  besideOnly = false,
   side,
   children,
 }: {
@@ -122,6 +125,12 @@ export function ResizableSplit({
   handleLabel: string
   /** Keep the main content mounted while the side folds out of view. */
   collapsed?: boolean
+  /**
+   * The side stands only where it can stand beside the main part, and is
+   * not drawn at all where the two would stack - the stylesheet's to say,
+   * so html a server drew is right at any width.
+   */
+  besideOnly?: boolean
   side: ReactNode
   children: ReactNode
 }) {
@@ -174,7 +183,11 @@ export function ResizableSplit({
         <div
           ref={sideRef}
           inert={collapsed}
-          {...stylex.props(styles.side, collapsed && styles.sideClosed)}
+          {...stylex.props(
+            styles.side,
+            besideOnly && styles.sideBesideOnly,
+            collapsed && styles.sideClosed,
+          )}
           data-testid="split-side"
         >
           <div {...stylex.props(styles.sideContent, styles.sideWidth(width))}>{side}</div>

@@ -884,7 +884,9 @@ describe('the roster on the results page', () => {
     try {
       await open({}, undefined, 1180 - 224 - 48)
       await expect.element(page.getByTestId('roster-unit-switch')).toBeVisible()
-      expect(page.getByTestId('split-handle').elements()).toHaveLength(0)
+      // the tree stands nowhere beside the list, and neither does its handle
+      await expect.element(page.getByTestId('split-side')).not.toBeVisible()
+      await expect.element(page.getByTestId('split-handle')).not.toBeVisible()
     } finally {
       await page.viewport(1280, 800)
     }
