@@ -42,10 +42,10 @@ import { Skeleton } from '@qualy/ui/skeleton'
 import { Sheet, SheetContent, SheetTitle } from '@qualy/ui/sheet'
 import { useIsBelow } from '@qualy/ui/use-mobile'
 import { TopBar } from './TopBar.tsx'
-import { AppsBar, BottomBar } from './BottomBar.tsx'
+import { AppsBar, BottomBar, MOST_CELLS } from './BottomBar.tsx'
 import { NavIcon } from './icons.tsx'
 import { useAppNavigation } from './useAppNavigation.ts'
-import { byOrder, fill, hasEntriesBelow, isHere, useCellsAcross, useNavDrawer } from './rail.ts'
+import { byOrder, fill, hasEntriesBelow, isHere, useNavDrawer } from './rail.ts'
 import * as m from '#messages'
 
 // The shape two contracts share: the same applications across the top, then
@@ -1134,9 +1134,6 @@ function CapableRailShell({
   // decision bar gets it: two bars stacked there is one too many, and that
   // screen is a task with a way back of its own.
   const sectionsAtFoot = !banner && !footTaken && !absent
-  const cells = useCellsAcross(5)
-  const across = run.length <= cells ? run : run.slice(0, cells - 1)
-  const spilled = run.length > across.length
   const exactly = (to: string) => hasEntriesBelow(to, paths)
 
   const toggle = (label: string) => (
@@ -1438,8 +1435,9 @@ function CapableRailShell({
             // open workspace may do are not known until it says, and a bar
             // that drew the two ungated ones first and the rest a beat later
             // read as the navigation having been lost and found.
-            pending={awaited > 0 ? cells : 0}
-            items={across.map((item) => ({
+            pending={awaited > 0 ? MOST_CELLS : 0}
+            // as many as the window has room for, the stylesheet deciding
+            items={run.slice(0, MOST_CELLS).map((item) => ({
               id: item.id,
               label: item.label,
               icon: item.icon,
@@ -1450,19 +1448,16 @@ function CapableRailShell({
                   <UiSlot token={badge} context={{ navigationId: item.id }} />
                 ) : undefined,
             }))}
-            more={
-              spilled
-                ? {
-                    label: m.shell_allSections(),
-                    // lit while what is open is one of the ones it holds, so
-                    // the bar never reads as though the reader is nowhere
-                    active:
-                      drawer.open ||
-                      !across.some((item) => isHere(pathname, item.to, exactly(item.to))),
-                    onPress: drawer.show,
-                  }
-                : undefined
-            }
+            folding={{
+              total: run.length,
+              label: m.shell_allSections(),
+              // lit while what is open is one of the ones it holds, so the
+              // bar never reads as though the reader is nowhere
+              active: (shown) =>
+                drawer.open ||
+                !run.slice(0, shown).some((item) => isHere(pathname, item.to, exactly(item.to))),
+              onPress: drawer.show,
+            }}
           />
         )
       )}

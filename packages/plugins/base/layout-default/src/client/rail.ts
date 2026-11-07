@@ -1,4 +1,3 @@
-import { useSyncExternalStore } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 
 // What the rail shells share below the components: how an entry is ordered,
@@ -69,35 +68,4 @@ export function useNavDrawer() {
     if (open) void navigate(-1)
   }
   return { open, show, hide }
-}
-
-/**
- * The width one cell of the bar at the foot needs: a mark over a word of two
- * or three characters, with air either side. Below it the words start to be
- * cut, which costs more than the cell was worth.
- */
-const CELL = 76
-
-const cellsAcross = (width: number, most: number) =>
-  Math.max(3, Math.min(most, Math.floor(width / CELL)))
-
-const watchWidth = (changed: () => void) => {
-  window.addEventListener('resize', changed)
-  return () => window.removeEventListener('resize', changed)
-}
-
-/**
- * How many cells this window has room for, watched rather than read once: a
- * rotation turns four into six and back.
- *
- * Before the window has been asked - a render with no window, a harness -
- * it answers with the most, which is what a wide window would have answered
- * anyway.
- */
-export function useCellsAcross(most: number): number {
-  return useSyncExternalStore(
-    watchWidth,
-    () => cellsAcross(window.innerWidth, most),
-    () => most,
-  )
 }

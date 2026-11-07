@@ -123,6 +123,98 @@ const styles = stylex.create({
   },
 })
 
+// How many cells a window has room for: one needs 76 pixels, a mark over a
+// word of two or three characters with air either side, and below that the
+// words start to be cut, which costs more than the cell was worth. Three at
+// the least, five at the most - so the window's width falls in one of three
+// bands, and the stylesheet answers which, from html a server drew on.
+const W4 = '@media (min-width: 304px)'
+const W5 = '@media (min-width: 380px)'
+const BAND3 = '@media (max-width: 303.98px)'
+const BAND4 = '@media (min-width: 304px) and (max-width: 379.98px)'
+const BAND5 = '@media (min-width: 380px)'
+
+/** the most cells a folded bar draws */
+export const MOST_CELLS = 5
+
+const fold = stylex.create({
+  // a cell shown only from a band up, or only below one
+  from4: { display: { default: 'none', [W4]: 'flex' } },
+  from5: { display: { default: 'none', [W5]: 'flex' } },
+  below4: { display: { default: 'flex', [W4]: 'none' } },
+  below5: { display: { default: 'flex', [W5]: 'none' } },
+  never: { display: 'none' },
+  // the cell that opens the rest, lit in the bands where what is open is
+  // among the rest: one rule for each set of bands, since a later rule
+  // for the same property replaces an earlier one whole
+  lit3: {
+    fontWeight: { default: 400, [BAND3]: 500 },
+    color: { default: tokens.mutedForeground, [BAND3]: tokens.foreground },
+  },
+  lit4: {
+    fontWeight: { default: 400, [BAND4]: 500 },
+    color: { default: tokens.mutedForeground, [BAND4]: tokens.foreground },
+  },
+  lit5: {
+    fontWeight: { default: 400, [BAND5]: 500 },
+    color: { default: tokens.mutedForeground, [BAND5]: tokens.foreground },
+  },
+  lit34: {
+    fontWeight: { default: 400, [BAND3]: 500, [BAND4]: 500 },
+    color: {
+      default: tokens.mutedForeground,
+      [BAND3]: tokens.foreground,
+      [BAND4]: tokens.foreground,
+    },
+  },
+  lit35: {
+    fontWeight: { default: 400, [BAND3]: 500, [BAND5]: 500 },
+    color: {
+      default: tokens.mutedForeground,
+      [BAND3]: tokens.foreground,
+      [BAND5]: tokens.foreground,
+    },
+  },
+  lit45: {
+    fontWeight: { default: 400, [BAND4]: 500, [BAND5]: 500 },
+    color: {
+      default: tokens.mutedForeground,
+      [BAND4]: tokens.foreground,
+      [BAND5]: tokens.foreground,
+    },
+  },
+  lit345: {
+    fontWeight: { default: 400, [BAND3]: 500, [BAND4]: 500, [BAND5]: 500 },
+    color: {
+      default: tokens.mutedForeground,
+      [BAND3]: tokens.foreground,
+      [BAND4]: tokens.foreground,
+      [BAND5]: tokens.foreground,
+    },
+  },
+})
+
+type Band = 3 | 4 | 5
+const BANDS: readonly Band[] = [3, 4, 5]
+
+/** how many of `count` entries a band shows, with the cell for the rest if they spill */
+const shownIn = (band: Band, count: number) => (count > band ? band - 1 : count)
+
+/**
+ * The rule that shows a cell in exactly the bands `shown` says: an entry's
+ * only ever widen with the window, the cell for the rest only narrow.
+ */
+const showing = (shown: (band: Band) => boolean): stylex.StyleXStyles | null => {
+  if (shown(3)) return shown(5) ? null : shown(4) ? fold.below5 : fold.below4
+  if (shown(4)) return fold.from4
+  if (shown(5)) return fold.from5
+  return fold.never
+}
+
+/** the rule that lights the cell for the rest in exactly the bands given */
+const lit = (bands: readonly Band[]): stylex.StyleXStyles | null =>
+  bands.length === 0 ? null : fold[`lit${bands.join('')}` as keyof typeof fold]
+
 export interface BottomItem {
   id: string
   label: ResolvedNavigationItem['label']
@@ -139,6 +231,7 @@ export function BottomBar({
   label,
   items,
   more,
+  folding,
   reach = 'phone',
   pending = 0,
 }: {
@@ -147,6 +240,19 @@ export function BottomBar({
   items: readonly BottomItem[]
   /** the cell at the end that opens everything this bar had no room for */
   more?: { label: string; active: boolean; onPress: () => void }
+  /**
+   * Fold `items` to the cells the window has room for, the rest behind a
+   * cell of their own - decided by the stylesheet, band by band. `active`
+   * says, for how many entries a band shows, whether the cell for the rest
+   * is lit.
+   */
+  folding?: {
+    /** how many entries there are in all, of which `items` are the first */
+    total: number
+    label: string
+    active: (shown: number) => boolean
+    onPress: () => void
+  }
   /** how wide a window still draws it: to the phone breakpoint, or wherever the rail is folded */
   reach?: 'phone' | 'narrow'
   /**
@@ -172,11 +278,60 @@ export function BottomBar({
       >
         <div {...stylex.props(styles.row)}>
           {Array.from({ length: pending }, (_, index) => (
-            <span key={index} aria-hidden {...stylex.props(styles.item, styles.itemIdle)}>
+            <span
+              key={index}
+              aria-hidden
+              {...stylex.props(
+                styles.item,
+                styles.itemIdle,
+                folding !== undefined && showing((band) => index < band),
+              )}
+            >
               <Skeleton height={22} width={22} radius={6} />
               <Skeleton height={9} width={28} radius={3} />
             </span>
           ))}
+        </div>
+      </nav>
+    )
+  }
+  if (folding !== undefined) {
+    const total = folding.total
+    const count = Math.min(items.length, MOST_CELLS)
+    const spills = (band: Band) => total > band
+    if (total < 2) return null
+    return (
+      <nav
+        data-testid="bottom-bar"
+        data-shell-bottom=""
+        aria-label={label}
+        {...stylex.props(styles.bar, reach === 'narrow' ? styles.barNarrow : styles.barPhone)}
+      >
+        <div {...stylex.props(styles.row)}>
+          {items.slice(0, count).map((item, index) => (
+            <BottomLink
+              key={item.id}
+              item={item}
+              xstyle={showing((band) => index < shownIn(band, total))}
+            />
+          ))}
+          {BANDS.some(spills) && (
+            <button
+              type="button"
+              data-testid="bottom-more"
+              aria-haspopup="dialog"
+              {...stylex.props(
+                styles.item,
+                styles.itemIdle,
+                showing(spills),
+                lit(BANDS.filter((band) => spills(band) && folding.active(shownIn(band, total)))),
+              )}
+              onClick={folding.onPress}
+            >
+              <MenuIcon aria-hidden {...stylex.props(styles.glyph)} />
+              <span {...stylex.props(styles.word)}>{folding.label}</span>
+            </button>
+          )}
         </div>
       </nav>
     )
@@ -219,7 +374,14 @@ export function BottomBar({
  * on a page not fetched yet did nothing visible until the page appeared,
  * which reads as a press that missed.
  */
-function BottomLink({ item }: { item: BottomItem }) {
+function BottomLink({
+  item,
+  xstyle = null,
+}: {
+  item: BottomItem
+  /** the bands of a folded bar it shows in */
+  xstyle?: stylex.StyleXStyles | null
+}) {
   const navigation = usePendingNavigation(item.to)
   return (
     <NavLink
@@ -234,6 +396,7 @@ function BottomLink({ item }: { item: BottomItem }) {
         stylex.props(
           styles.item,
           (item.active ?? isActive) || navigation.pending ? styles.itemActive : styles.itemIdle,
+          xstyle,
         ).className ?? ''
       }
     >
