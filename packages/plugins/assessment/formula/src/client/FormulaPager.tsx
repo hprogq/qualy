@@ -1,7 +1,6 @@
 import { useRef } from 'react'
 import { Pager } from '@qualy/ui/pager'
 import { CardFoot } from '@qualy/ui/screen'
-import { useIsBelow } from '@qualy/ui/use-mobile'
 import * as m from '#messages'
 
 export function FormulaPager({
@@ -16,7 +15,6 @@ export function FormulaPager({
   testId?: string
 }) {
   const seat = useRef<HTMLDivElement>(null)
-  const compact = useIsBelow(600)
   const { page, pageSize, total } = result
   if (total === 0) return null
 
@@ -32,7 +30,7 @@ export function FormulaPager({
           pageSize={pageSize}
           total={total}
           disabled={busy}
-          compact={compact}
+          compactBelow={600}
           summary={m.pagination_summary({ total })}
           onPage={(next) => {
             const results = seat.current?.closest<HTMLElement>('[data-formula-results]')

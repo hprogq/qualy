@@ -2,6 +2,7 @@
 
 import { Pagination } from '@mantine/core'
 import * as stylex from '@stylexjs/stylex'
+import { AtWidth, type FoldWidth } from './at-width.tsx'
 import { clsx } from 'clsx'
 import { tokens } from '../theme/tokens.stylex.ts'
 
@@ -90,6 +91,7 @@ export function Pager({
   previousLabel,
   nextLabel,
   compact = false,
+  compactBelow,
   disabled = false,
   testId,
 }: {
@@ -110,10 +112,31 @@ export function Pager({
    * that shares a narrow foot with something else.
    */
   compact?: boolean
+  /**
+   * Compact below this width only: which strip a width gets is the
+   * stylesheet's to say, so html a server drew shows the right one.
+   */
+  compactBelow?: FoldWidth
   disabled?: boolean
   testId?: string
 }) {
   const pages = Math.max(1, Math.ceil(total / pageSize))
+  const strip = (siblings: number) => (
+    <Pagination
+      aria-label={label}
+      size="sm"
+      radius="md"
+      siblings={siblings}
+      boundaries={1}
+      total={pages}
+      value={Math.min(page, pages)}
+      onChange={onPage}
+      disabled={disabled}
+      withEdges={false}
+      getControlProps={edgeLabels(previousLabel, nextLabel)}
+      classNames={controlClassNames}
+    />
+  )
   return (
     <div
       {...stylex.props(styles.seat)}
@@ -124,22 +147,15 @@ export function Pager({
     >
       {summary !== undefined && <span {...stylex.props(styles.summary)}>{summary}</span>}
       <span {...stylex.props(styles.spacer)} />
-      {pages > 1 && (
-        <Pagination
-          aria-label={label}
-          size="sm"
-          radius="md"
-          siblings={compact ? 0 : 1}
-          boundaries={1}
-          total={pages}
-          value={Math.min(page, pages)}
-          onChange={onPage}
-          disabled={disabled}
-          withEdges={false}
-          getControlProps={edgeLabels(previousLabel, nextLabel)}
-          classNames={controlClassNames}
-        />
-      )}
+      {pages > 1 &&
+        (compactBelow === undefined ? (
+          strip(compact ? 0 : 1)
+        ) : (
+          <>
+            <AtWidth below={compactBelow}>{strip(0)}</AtWidth>
+            <AtWidth from={compactBelow}>{strip(1)}</AtWidth>
+          </>
+        ))}
     </div>
   )
 }

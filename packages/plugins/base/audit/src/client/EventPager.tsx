@@ -1,7 +1,6 @@
 import { useRef } from 'react'
 import { Pager } from '@qualy/ui/pager'
 import { CardFoot } from '@qualy/ui/screen'
-import { useIsBelow } from '@qualy/ui/use-mobile'
 import type { ApiResult } from '@qualy/web-runtime/api'
 import type { auditApi } from './api.ts'
 import * as m from '#messages'
@@ -16,7 +15,6 @@ export function EventPager({
   onPage: (page: number) => void
 }) {
   const seat = useRef<HTMLDivElement>(null)
-  const compact = useIsBelow(480)
   const { page, pageSize, total, items } = result
   return (
     <div ref={seat}>
@@ -30,7 +28,7 @@ export function EventPager({
           pageSize={pageSize}
           total={total}
           disabled={busy}
-          compact={compact}
+          compactBelow={480}
           summary={m.events_pageSummary({
             from: total === 0 ? 0 : (page - 1) * pageSize + 1,
             to: (page - 1) * pageSize + items.length,
