@@ -19,6 +19,19 @@ const status = (code: number) =>
     }),
   })
 
+/**
+ * A status the contract does not name at all - a proxy's 503 - as the
+ * typed client reports it: a response it could not decode
+ * (HttpApiClient `statusOrElse`), carrying the status.
+ */
+const undeclared = (code: number) =>
+  new HttpClientError.HttpClientError({
+    reason: new HttpClientError.DecodeError({
+      request,
+      response: HttpClientResponse.fromWeb(request, new Response('busy', { status: code })),
+    }),
+  })
+
 class BatchNotFound extends Schema.TaggedError<BatchNotFound>()('ASSESSMENT_BATCH_NOT_FOUND', {
   batchId: Schema.String,
 }) {}
@@ -29,6 +42,7 @@ describe('how a read ended', () => {
     const refusal = new BatchNotFound({ batchId: 'b' })
     expect(settle(Exit.fail(refusal))).toEqual({ kind: 'refused', error: refusal })
     expect(settle(Exit.fail(status(503)))).toEqual({ kind: 'unanswered' })
+    expect(settle(Exit.fail(undeclared(503)))).toEqual({ kind: 'unanswered' })
   })
 
   it('ends with a reader who left, and throws a bug', () => {

@@ -33,15 +33,29 @@ export type Settled<A, E> =
 
 /**
  * The read did not get an answer this render can use, and the page asks
- * again in the browser: the network failed, or a status the contract does
- * not name came back - a server restarting, or a proxy in front of one.
+ * again in the browser: the network failed, or a server error came back -
+ * a server restarting, or a proxy in front of one answering for it.
+ *
+ * Told by the status, not by the shape the client gave the failure: a
+ * status the contract does not name at all arrives as a DecodeError
+ * (effect/http-api HttpApiClient, `statusOrElse`), and one it names whose
+ * body does not decode as a StatusCodeError. A 5xx is either way a server
+ * that could not answer; anything else that does not decode - an answer of
+ * the wrong shape - is a contract the two sides disagree on, and a bug.
  */
 const unanswered = (error: unknown): boolean => {
   if (typeof error !== 'object' || error === null) return false
-  const { _tag, reason } = error as { _tag?: unknown; reason?: { _tag?: unknown } }
+  const { _tag, reason } = error as {
+    _tag?: unknown
+    reason?: { _tag?: unknown; response?: { status?: unknown } }
+  }
+  if (_tag !== 'HttpClientError') return false
+  if (reason?._tag === 'TransportError') return true
+  const status = reason?.response?.status
   return (
-    _tag === 'HttpClientError' &&
-    (reason?._tag === 'TransportError' || reason?._tag === 'StatusCodeError')
+    (reason?._tag === 'StatusCodeError' || reason?._tag === 'DecodeError') &&
+    typeof status === 'number' &&
+    status >= 500
   )
 }
 
