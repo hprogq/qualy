@@ -397,12 +397,21 @@ describe('the administration lane of the overview', () => {
         Effect.succeed({ items: [], nextCursor: null, pendingTotal: 3, lapsedTotal: 0 }),
     })
     await expect.element(page.getByTestId('overview-actions')).toBeVisible()
-    for (const action of ['admin-placements', 'admin-access']) {
+    for (const action of ['admin-unreachable', 'admin-placements', 'admin-access']) {
       const line = row(action) as HTMLElement
-      const name = line.firstElementChild!.getBoundingClientRect()
+      const bounds = line.getBoundingClientRect()
+      const words = line.firstElementChild!.getBoundingClientRect()
       const verb = line.querySelector('button')!.getBoundingClientRect()
-      expect(verb.left, action).toBeGreaterThanOrEqual(name.right)
-      expect(verb.top, action).toBeLessThan(name.bottom)
+      expect(verb.left, action).toBeGreaterThanOrEqual(words.right)
+      expect(verb.top, action).toBeLessThan(words.bottom)
+      expect(
+        Math.abs(words.top - bounds.top - (bounds.bottom - words.bottom)),
+        action,
+      ).toBeLessThanOrEqual(1)
+      expect(
+        Math.abs(words.top + words.height / 2 - (verb.top + verb.height / 2)),
+        action,
+      ).toBeLessThan(1)
     }
     // nothing under the name: no empty line, the verb centred on the name
     const alone = row('admin-access') as HTMLElement

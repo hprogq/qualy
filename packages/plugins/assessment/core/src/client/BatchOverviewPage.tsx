@@ -315,9 +315,15 @@ const styles = stylex.create({
   // two lines before it gives way: a row can be a sentence as well as a
   // question's name, and a column narrowed by the plan beside it cut the
   // sentence at its first clause
-  todoSubject: {
+  todoWords: {
     gridColumnStart: 1,
     gridRowStart: 1,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 4,
+    minWidth: 0,
+  },
+  todoSubject: {
     display: '-webkit-box',
     WebkitBoxOrient: 'vertical',
     WebkitLineClamp: 2,
@@ -334,8 +340,7 @@ const styles = stylex.create({
   // under the words on a phone, a column of its own on a wide desk
   todoAt: {
     gridColumnStart: { default: 1, [wide]: 2 },
-    gridRowStart: { default: 3, [wide]: 1 },
-    gridRowEnd: { default: null, [wide]: 'span 2' },
+    gridRowStart: { default: 2, [wide]: 1 },
     marginTop: { default: 4, [wide]: 0 },
     textAlign: { default: 'left', [wide]: 'right' },
     fontSize: 12,
@@ -344,9 +349,6 @@ const styles = stylex.create({
     fontVariantNumeric: 'tabular-nums',
   },
   todoDetail: {
-    gridColumnStart: 1,
-    gridRowStart: 2,
-    marginTop: 4,
     display: '-webkit-box',
     WebkitBoxOrient: 'vertical',
     WebkitLineClamp: 2,
@@ -364,14 +366,11 @@ const styles = stylex.create({
   todoVerbSeat: {
     gridColumnStart: { default: 2, [wide]: 3 },
     gridRowStart: 1,
-    gridRowEnd: { default: 'span 3', [wide]: 'span 2' },
+    display: 'flex',
     alignSelf: 'center',
     justifySelf: 'end',
   },
-  // a row that is only its name keeps its verb on that one line: spanning
-  // the empty lines under it, the verb's height went to them and it sat
-  // below the name
-  todoVerbSeatLone: { gridRowEnd: 'auto' },
+  todoVerbSeatWithTime: { gridRowEnd: { default: 'span 2', [wide]: 'auto' } },
   todoVerb: {
     display: 'inline-flex',
     cursor: 'pointer',
@@ -1167,30 +1166,21 @@ function Desk({
                       }}
                       {...stylex.props(styles.todoRow)}
                     >
-                      <span
-                        {...stylex.props(
-                          styles.todoSubject,
-                          row.at === null && styles.todoTimeless,
-                        )}
+                      <div
+                        {...stylex.props(styles.todoWords, row.at === null && styles.todoTimeless)}
                       >
-                        {row.subject}
-                      </span>
+                        <span {...stylex.props(styles.todoSubject)}>{row.subject}</span>
+                        {row.detail !== null && (
+                          <span data-part="detail" {...stylex.props(styles.todoDetail)}>
+                            {row.detail}
+                          </span>
+                        )}
+                      </div>
                       {row.at !== null && <span {...stylex.props(styles.todoAt)}>{row.at}</span>}
-                      {row.detail !== null && (
-                        <span
-                          data-part="detail"
-                          {...stylex.props(
-                            styles.todoDetail,
-                            row.at === null && styles.todoTimeless,
-                          )}
-                        >
-                          {row.detail}
-                        </span>
-                      )}
                       <span
                         {...stylex.props(
                           styles.todoVerbSeat,
-                          row.detail === null && row.at === null && styles.todoVerbSeatLone,
+                          row.at !== null && styles.todoVerbSeatWithTime,
                         )}
                       >
                         {/* the row's own door with a handle for the keyboard:
