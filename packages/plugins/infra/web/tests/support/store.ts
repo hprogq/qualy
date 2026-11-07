@@ -3,7 +3,7 @@ import path from 'node:path'
 
 // A release store of a test's own, in the shape the installer writes
 // (packages/build/web/src/release-store.ts): one installed release, current,
-// its shell and public files, the assets it names in the shared directory,
+// its public files, the assets it names in the shared directory,
 // and beside them an asset of an earlier release that nothing current names.
 // Written by hand here rather than through the installer, so the serving
 // half is tested against the layout it reads and not against the installer.
@@ -16,8 +16,6 @@ export interface TestRelease {
   readonly hash?: string
   /** the surfaces this release's bundle can render, as the installer fingerprints them */
   readonly browserContract?: string
-  /** the shell's bytes; a plain page unless the test is about its content */
-  readonly shell?: string
   /** hashed assets, by name under assets/ */
   readonly assets?: Readonly<Record<string, string>>
   /** leave the release without its metadata: a store the host must refuse */
@@ -29,10 +27,6 @@ export const installTestRelease = (root: string, options: TestRelease = {}): voi
   const releaseRoot = path.join(root, 'releases', releaseId)
   fs.mkdirSync(releaseRoot, { recursive: true })
   fs.mkdirSync(path.join(root, 'assets'), { recursive: true })
-  fs.writeFileSync(
-    path.join(releaseRoot, 'index.html'),
-    options.shell ?? '<!doctype html><title>shell</title>',
-  )
   fs.writeFileSync(
     path.join(releaseRoot, 'favicon.svg'),
     '<svg xmlns="http://www.w3.org/2000/svg"/>',
@@ -59,4 +53,44 @@ export const installTestRelease = (root: string, options: TestRelease = {}): voi
     )
   }
   fs.writeFileSync(path.join(root, 'current.json'), JSON.stringify({ schema: 1, releaseId }))
+}
+
+/**
+ * A server's half of a build, placed where staging places one: a stand-in
+ * that draws a small document naming the request it was handed, the nonce
+ * and the api it was given, for the release it says it draws.
+ */
+export const placeTestServer = (
+  root: string,
+  releaseId = 'test-release',
+  /** a fixed document in place of the one naming the request */
+  document?: string,
+): void => {
+  fs.mkdirSync(path.join(root, 'rsc'), { recursive: true })
+  fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ type: 'module' }))
+  fs.writeFileSync(
+    path.join(root, '.qualy-server-build.json'),
+    JSON.stringify({ schema: 1, releaseId }),
+  )
+  if (document !== undefined) {
+    fs.writeFileSync(
+      path.join(root, 'rsc', 'index.js'),
+      `export default async () =>
+  new Response(${JSON.stringify(document)}, {
+    headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'private, no-store' },
+  })
+`,
+    )
+    return
+  }
+  fs.writeFileSync(
+    path.join(root, 'rsc', 'index.js'),
+    `export default async (request, context) =>
+  new Response(
+    '<!doctype html><title>drawn</title><p data-path="' + new URL(request.url).pathname +
+      '" data-nonce="' + context.nonce + '" data-api="' + context.apiOrigin + '">${releaseId}</p>',
+    { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'private, no-store' } },
+  )
+`,
+  )
 }

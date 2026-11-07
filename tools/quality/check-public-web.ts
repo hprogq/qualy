@@ -70,7 +70,7 @@ const shellBody = fs.existsSync(shell) ? fs.readFileSync(shell, 'utf8') : ''
 // asks the real question - is a source file named in public - rather than
 // matching a shape somebody has to remember to keep.
 {
-  const mapFile = path.join(repoRoot, 'apps/web/dist', BROWSER_SURFACE_MAP)
+  const mapFile = path.join(repoRoot, 'apps/web/dist-rsc/client', BROWSER_SURFACE_MAP)
   if (!fs.existsSync(mapFile)) {
     fail(`no ${BROWSER_SURFACE_MAP} beside the build; run \`pnpm build\` in this tree`)
   } else {

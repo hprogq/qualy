@@ -28,11 +28,10 @@ let service: ChildProcess | null = null
 
 beforeAll(() => {
   sourceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-proxy-'))
-  fs.writeFileSync(path.join(sourceRoot, 'index.html'), '<!doctype html><title>probe</title>\n')
   fs.writeFileSync(path.join(sourceRoot, 'package.json'), '{ "type": "module" }\n')
   fs.writeFileSync(
-    path.join(sourceRoot, 'vite.config.ts'),
-    `export default { server: { host: '127.0.0.1', port: ${String(webPort)} } }\n`,
+    path.join(sourceRoot, 'vite.rsc.config.ts'),
+    `export default {\n  server: { host: '127.0.0.1', port: ${String(webPort)} },\n  // the document the server draws, in place of the real renderer\n  plugins: [{\n    name: 'probe-document',\n    configureServer(server) {\n      server.middlewares.use((request, response, next) => {\n        if (request.url !== '/') return next()\n        response.setHeader('content-type', 'text/html')\n        response.end('<!doctype html><title>probe</title>')\n      })\n    },\n  }],\n}\n`,
   )
 })
 

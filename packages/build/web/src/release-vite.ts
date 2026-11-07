@@ -63,6 +63,13 @@ export const BROWSER_SURFACE_MAP = '.qualy-browser-surfaces.json'
  */
 export const PRIVATE_BUILD_FILES: readonly string[] = [WEB_BUILD_METADATA, BROWSER_SURFACE_MAP]
 
+/**
+ * Beside the server's half of a build, once it is placed where a host runs
+ * it: which release that server draws documents for, so a host can refuse
+ * to pair it with any other release's assets.
+ */
+export const SERVER_BUILD_METADATA = '.qualy-server-build.json'
+
 /** how a deployment names a production build: public, opaque, one build */
 export const RELEASE_ID_VARIABLE = 'QUALY_RELEASE_ID'
 

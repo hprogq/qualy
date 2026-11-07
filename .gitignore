@@ -15,6 +15,7 @@ out/
 
 # staged web assets
 client-dist/
+server-dist/
 
 # legacy source clones
 legacy/

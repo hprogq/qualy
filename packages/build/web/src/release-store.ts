@@ -14,17 +14,21 @@ import {
 import { browserContractHashOf } from '@qualy/ui-contract/browser-contract'
 import { BROWSER_SURFACE_MAP, PRIVATE_BUILD_FILES, WEB_BUILD_METADATA } from './release-vite.ts'
 
+export { SERVER_BUILD_METADATA } from './release-vite.ts'
+
 // The release store: where web builds are installed, and how they are kept.
 //
 //   <store>/
 //     current.json            the release a host starting now pins
 //     assets/                 every hashed asset of every retained release
-//     releases/<id>/          one release's shell: index.html, the public
-//                             files, and .qualy-release.json naming its
-//                             assembly, its time and its assets
+//     releases/<id>/          one release's own files: the public files
+//                             (its icons) and .qualy-release.json naming
+//                             its assembly, its time and its assets
 //
-// The shell is fixed per release and the hashed assets are shared across
-// them, which is the whole point: a browser running release A keeps finding
+// The documents themselves are drawn by the server that carries the
+// release's renderer (docs/adr/0012-rsc-data-mode.md), so a release holds
+// no shell. Its own files are fixed per release and the hashed assets are
+// shared across them, which is the whole point: a browser running release A keeps finding
 // A's chunks after B is installed, because installing B added B's files and
 // took nothing away. A hashed name is a promise about its bytes, so a name
 // arriving with different bytes is refused rather than overwritten.
@@ -339,7 +343,7 @@ export const gcWebReleases = (
 // installation
 
 export interface InstallOptions {
-  /** the build output: index.html, the public files, assets/, and the build's metadata */
+  /** the browser half of the build: the public files, assets/, and the build's metadata */
   readonly source: string
   readonly store: ReleaseStore
   /** the assembly the build was made from, as the lock records it */
@@ -514,9 +518,6 @@ export const installWebRelease = async (options: InstallOptions): Promise<Instal
   const built = parseWebBuildMetadata(readJson(metadataFile))
   if (built.mode !== 'production') {
     throw new Error(`${metadataFile} names a ${built.mode} release; install a production build`)
-  }
-  if (!fs.existsSync(path.join(source, 'index.html'))) {
-    throw new Error(`${source} has no index.html; run the web build first`)
   }
   // The surfaces this build carries, from the private map the build wrote
   // beside its output - the keys only, never the modules. Required rather

@@ -14,7 +14,7 @@ import { shellPolicyLayer } from '@qualy/api-kit/shell-policy'
 import { MAX_LOGGED_PER_WINDOW } from '../src/server/csp-reports.ts'
 import { WebConfig, layer as policyLayer, routes } from '../src/server/index.ts'
 import { composeShellPolicy, type CspMode } from '../src/server/shell-policy.ts'
-import { TEST_CONTRACT, installTestRelease } from './support/store.ts'
+import { TEST_CONTRACT, installTestRelease, placeTestServer } from './support/store.ts'
 
 // The policy on the wire: which header the shell sends in each mode, that
 // an asset sends none, and what the report endpoint answers to each kind
@@ -34,6 +34,8 @@ const assemblyInfo = Layer.succeed(
 
 const assetRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-web-csp-'))
 installTestRelease(assetRoot, { hash: HASH, assets: { 'app-abc123.js': 'export {}\n' } })
+const serverRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-web-csp-server-'))
+placeTestServer(serverRoot)
 
 /** every line the server logs at Warn or above, with its annotations */
 interface Logged {
@@ -58,7 +60,10 @@ const serve = (at: number, cspMode: CspMode) =>
     Layer.provide(assembledBarrier),
     Layer.provide(
       Layer.mergeAll(
-        Layer.succeed(WebConfig, WebConfig.of({ assetRoot, sourceRoot: assetRoot, cspMode })),
+        Layer.succeed(
+          WebConfig,
+          WebConfig.of({ assetRoot, sourceRoot: assetRoot, serverRoot, cspMode }),
+        ),
         Layer.sync(NodeServer, () => createServer()),
         assemblyInfo,
         policyLayer,
@@ -86,13 +91,18 @@ afterAll(async () => {
 })
 
 const base = `http://127.0.0.1:${port}`
-const expected = composeShellPolicy([])
+// the policy a document goes out under: the frozen one, naming the nonce
+// made for that document alone
+const expectedFor = (body: string) =>
+  composeShellPolicy([], { scriptNonce: /data-nonce="([^"]+)"/.exec(body)![1]! })
 
 describe('the policy on the shell', () => {
   it('reports by default, with the endpoint the policy refers to', async () => {
     const response = await fetch(`${base}/`)
     expect(response.status).toBe(200)
-    expect(response.headers.get('content-security-policy-report-only')).toBe(expected)
+    expect(response.headers.get('content-security-policy-report-only')).toBe(
+      expectedFor(await response.text()),
+    )
     expect(response.headers.get('content-security-policy')).toBeNull()
     expect(response.headers.get('reporting-endpoints')).toBe('csp="/csp-reports"')
     // the first step's document headers are still there
@@ -101,7 +111,7 @@ describe('the policy on the shell', () => {
 
   it('enforces under the other header name when told to', async () => {
     const response = await fetch(`http://127.0.0.1:${enforcePort}/`)
-    expect(response.headers.get('content-security-policy')).toBe(expected)
+    expect(response.headers.get('content-security-policy')).toBe(expectedFor(await response.text()))
     expect(response.headers.get('content-security-policy-report-only')).toBeNull()
   })
 

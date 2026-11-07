@@ -184,6 +184,31 @@ export const qualyEnvironmentModules = (): Plugin => {
       }
       return undefined
     },
+    // The surfaces this build carries, beside the browser's output as the
+    // page build writes them (qualyPlugins): the release store reads their
+    // keys into the browser contract a release is judged by, and the file
+    // stays private beside the build.
+    async generateBundle(_options, bundle) {
+      if (this.environment.name !== 'client') return
+      const chunks = new Map<string, string>()
+      for (const output of Object.values(bundle)) {
+        if (output.type !== 'chunk') continue
+        for (const id of Object.keys(output.modules)) chunks.set(id, output.fileName)
+      }
+      // A module that only gathers others - the shells' one module, which
+      // re-exports four - leaves nothing of its own in any chunk: it is
+      // found where what it gathers went.
+      const chunkOf = (file: string): string | undefined =>
+        chunks.get(file) ??
+        (this.getModuleInfo(file)?.importedIds ?? [])
+          .map((id) => chunks.get(id))
+          .find((chunk) => chunk !== undefined)
+      this.emitFile({
+        type: 'asset',
+        fileName: BROWSER_SURFACE_MAP,
+        source: await buildSurfaceMapSource({ chunkOf }),
+      })
+    },
   }
 }
 

@@ -75,7 +75,7 @@ describe('the web release deploy step', () => {
     await deploy({ assetRoot: image() })
     expect(readCurrentWebRelease(storeAt(deployment))?.releaseId).toBe('test-release')
     for (const id of ['earlier-release', 'test-release']) {
-      expect(fs.existsSync(path.join(deployment, 'releases', id, 'index.html'))).toBe(true)
+      expect(fs.existsSync(path.join(deployment, 'releases', id, 'favicon.svg'))).toBe(true)
     }
   })
 

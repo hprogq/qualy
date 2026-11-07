@@ -33,7 +33,9 @@ import { Empty, Missing, NotFound, Surface } from './frames.tsx'
 
 const appApi = Api.local(appApiGroup)
 
-const apiOrigin =
+// where the api answers when the host does not say: the development server's
+// backend beside it
+const defaultApiOrigin =
   process.env['QUALY_RENDER_API_ORIGIN'] ?? `http://127.0.0.1:${process.env['PORT'] ?? '3000'}`
 
 const cookiesOf = (header: string | null): Record<string, string> =>
@@ -48,7 +50,7 @@ const cookiesOf = (header: string | null): Record<string, string> =>
       }),
   )
 
-const renderRequestOf = (request: Request): RenderRequest => {
+const renderRequestOf = (request: Request, apiOrigin: string): RenderRequest => {
   const headers = Object.fromEntries(request.headers)
   return {
     url: new URL(request.url),
@@ -161,6 +163,11 @@ const renderSlotReference = async (scope: RenderRequest, manifest: Manifest) => 
  */
 export interface RenderContext {
   readonly nonce?: string | undefined
+  /**
+   * Where the api this render reads through answers: the host's own, as it
+   * listens. Unsaid, the development backend beside a development server.
+   */
+  readonly apiOrigin?: string | undefined
 }
 
 export default async function handler(
@@ -183,7 +190,7 @@ export default async function handler(
     if (declared.protocol !== String(webRelease.clientProtocol)) return refused('protocol')
     if (declared.release !== webRelease.releaseId) return refused('release')
   }
-  const asked = renderRequestOf(request)
+  const asked = renderRequestOf(request, context.apiOrigin ?? defaultApiOrigin)
   // the cookies the manifest's answer set, the one read finished before
   // anything goes out: a session it found lapsed is cleared there
   const heard: string[] = []

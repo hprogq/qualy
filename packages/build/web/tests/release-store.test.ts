@@ -40,19 +40,16 @@ const buildOutput = (
     readonly assets?: Record<string, string>
     readonly shell?: string
     readonly metadata?: boolean
-    readonly index?: boolean
     readonly revision?: string
     /** the surfaces this build's aggregate carries, by their public ids */
     readonly surfaces?: readonly string[]
   } = {},
 ) => {
   const dist = temp('qualy-dist-')
-  if (options.index !== false) {
-    fs.writeFileSync(
-      path.join(dist, 'index.html'),
-      options.shell ?? `<!doctype html><title>${releaseId}</title>`,
-    )
-  }
+  fs.writeFileSync(
+    path.join(dist, 'index.html'),
+    options.shell ?? `<!doctype html><title>${releaseId}</title>`,
+  )
   fs.writeFileSync(path.join(dist, 'favicon.svg'), '<svg/>')
   fs.mkdirSync(path.join(dist, 'assets'))
   const assets = options.assets ?? {
@@ -251,7 +248,6 @@ describe('installing', () => {
     const store = storeAt(temp('qualy-store-'))
     await install(store, 'A')
     await expect(install(store, 'B', { metadata: false })).rejects.toThrow(/release plugin/)
-    await expect(install(store, 'C', { index: false })).rejects.toThrow(/index\.html/)
     const unnamed = buildOutput('D')
     fs.writeFileSync(
       path.join(unnamed, WEB_BUILD_METADATA),

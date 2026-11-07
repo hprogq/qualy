@@ -54,7 +54,7 @@ describe('what a saved file asks for', () => {
     expect(asked('/repo/packages/plugins/infra/web/src/dev/index.ts')).toEqual({
       service: web.key,
     })
-    expect(asked('/repo/apps/web/vite.config.ts')).toEqual({ service: web.key })
+    expect(asked('/repo/apps/web/vite.rsc.config.ts')).toEqual({ service: web.key })
   })
 
   it('treats anything shared between the halves as structural', () => {

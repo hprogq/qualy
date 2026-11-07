@@ -27,11 +27,11 @@ interface SurfaceEntry {
   readonly chunk?: string
 }
 
-const distDir = new URL('../dist', import.meta.url).pathname
+const distDir = new URL('../dist-rsc/client', import.meta.url).pathname
 const mapFile = path.join(distDir, BROWSER_SURFACE_MAP)
 if (!fs.existsSync(mapFile)) {
   console.error(
-    `check-chunks: no ${BROWSER_SURFACE_MAP} in apps/web/dist; run \`pnpm build\` first`,
+    `check-chunks: no ${BROWSER_SURFACE_MAP} in apps/web/dist-rsc/client; run \`pnpm build\` first`,
   )
   process.exit(1)
 }

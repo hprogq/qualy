@@ -85,7 +85,7 @@
     "yaml": "catalog:"
   },
   "scripts": {
-    "build": "pnpm --filter @qualy/web-app build && node packages/build/web/src/stage.ts",
+    "build": "pnpm --filter @qualy/web-app build:rsc && node packages/build/web/src/stage.ts",
     "db:reset": "docker compose down -v && docker compose up -d --wait && node apps/cli/src/main.ts deploy",
     "dev": "node apps/server/src/dev/host.ts",
     "format": "oxfmt",

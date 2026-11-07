@@ -3,12 +3,16 @@ import path from 'node:path'
 import { transform } from 'lightningcss'
 import { lockPathFor, readLock } from '@qualy/assembly'
 import { manifestPath, repoRoot } from '../lib/manifest.ts'
-import { readCurrentWebRelease, storeAt } from '../../packages/build/web/src/release-store.ts'
+import {
+  readCurrentWebRelease,
+  SERVER_BUILD_METADATA,
+  storeAt,
+} from '../../packages/build/web/src/release-store.ts'
 import { PRIVATE_BUILD_FILES } from '../../packages/build/web/src/release-vite.ts'
 
 // The staged web release, whole: the store points at a release, the release
-// has its shell and every asset it names, and it was built from the assembly
-// the lock records. What CI asks after `pnpm build`, in place of looking for
+// has every asset it names, it was built from the assembly the lock records,
+// and the server placed beside it draws documents for that same release. What CI asks after `pnpm build`, in place of looking for
 // one file - and what a deployment may ask before starting a host.
 
 const fail = (message: string): never => {
@@ -31,8 +35,22 @@ const current = (() => {
   }
 })()
 if (current === undefined) fail(`no web release is installed at ${store.root}; run \`pnpm build\``)
-const { releaseId, root, release } = current!
-if (!fs.existsSync(path.join(root, 'index.html'))) fail(`release ${releaseId} has no index.html`)
+const { releaseId, release } = current!
+// the server that draws this release's documents, placed beside its store
+// by the same staging, and naming the same release
+{
+  const server = path.join(store.root, '..', 'server-dist')
+  const metadata = path.join(server, SERVER_BUILD_METADATA)
+  if (!fs.existsSync(path.join(server, 'rsc', 'index.js')) || !fs.existsSync(metadata)) {
+    fail(`no server is placed at ${server}; run \`pnpm build\``)
+  }
+  const drawn = (JSON.parse(fs.readFileSync(metadata, 'utf8')) as { releaseId?: unknown }).releaseId
+  if (drawn !== releaseId) {
+    fail(
+      `the server at ${server} draws release ${String(drawn)}, but the store serves ${releaseId}`,
+    )
+  }
+}
 const missing = release.assets.filter((asset) => !fs.existsSync(path.join(store.root, asset)))
 if (missing.length > 0) {
   fail(
@@ -125,8 +143,8 @@ if (leaked.length > 0) {
 // rather than a pipeline leaving work undone.
 const RE_MINIFY_TOLERANCE = 0.02
 {
-  const shell = fs.readFileSync(path.join(root, 'index.html'), 'utf8')
-  const linked = [...shell.matchAll(/href="\/?(assets\/[^"]+\.css)"/g)].map((one) => one[1]!)
+  // the stylesheet every document links has a role of its own in its name
+  const linked = release.assets.filter((asset) => /^assets\/s-[^/]+\.css$/.test(asset))
   // whitespace-tolerant on purpose: a stylesheet that went out unminified is
   // a different fault with a different answer below, and a detector that
   // could not see one would report it as the missing-stylesheet fault instead
@@ -143,7 +161,7 @@ const RE_MINIFY_TOLERANCE = 0.02
     )
   } else if (!linked.includes(carrying[0]!)) {
     fail(
-      `the shell links ${linked.join(', ') || 'no stylesheet'}, but the style rules are in ${carrying[0]!}`,
+      `the document stylesheet is ${linked.join(', ') || 'missing'}, but the style rules are in ${carrying[0]!}`,
     )
   }
 

@@ -14,7 +14,6 @@ import {
 import { bootstrapMessages } from '../../packages/web/i18n/src/bootstrap.ts'
 import { INLINE_BOOT_SCRIPT_HASH } from '../../packages/plugins/infra/web/src/server/shell-policy.ts'
 import { deferShellStyle, injectBootFrame } from '../../packages/build/web/src/vite.ts'
-import { readCurrentWebRelease, storeAt } from '../../packages/build/web/src/release-store.ts'
 
 // What index.html still carries by hand, and why, since the file itself
 // ships to every browser and explains nothing:
@@ -64,14 +63,6 @@ describe('the shell source', () => {
     expect(script).toBeDefined()
     const digest = `sha256-${createHash('sha256').update(script!).digest('base64')}`
     expect(INLINE_BOOT_SCRIPT_HASH).toBe(digest)
-    // the served file is the current release's; when one is installed, its
-    // script is the same bytes, or the hash above allows a script nobody serves
-    const current = readCurrentWebRelease(
-      storeAt(path.join(ROOT, 'packages/plugins/infra/web/client-dist')),
-    )
-    if (current !== undefined) {
-      expect(scriptOf(fs.readFileSync(path.join(current.root, 'index.html'), 'utf8'))).toBe(script)
-    }
   })
 
   it('resolves the theme from the key the application persists under', () => {

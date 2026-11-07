@@ -46,7 +46,7 @@ RUN pnpm install --frozen-lockfile --ignore-scripts
 # writes nothing, and a stale lock is a build failure rather than a repair
 RUN node apps/cli/src/main.ts resolve --frozen-lockfile \
  && node packages/build/messages/src/cli.ts \
- && pnpm --filter @qualy/web-app build \
+ && pnpm --filter @qualy/web-app build:rsc \
  && node packages/build/web/src/stage.ts \
  && node tools/quality/check-staged-web.ts
 
@@ -56,7 +56,7 @@ RUN node apps/cli/src/main.ts resolve --frozen-lockfile \
 # the maps carry the source, and this is not the last stage, so a plain build
 # never makes it.
 FROM scratch AS web-dist
-COPY --from=web /app/apps/web/dist /
+COPY --from=web /app/apps/web/dist-rsc/client /
 
 # --- the runtime tree: production dependencies of what runs, pruned ------------
 FROM source AS runtime
@@ -67,6 +67,9 @@ RUN pnpm install --frozen-lockfile --ignore-scripts --prod \
       --filter-prod 'qualy...' --filter-prod '@qualy/app...' --filter-prod '@qualy/cli...' \
  && node tools/release/prune-server-image.mjs
 COPY --from=web /app/packages/plugins/infra/web/client-dist /app/packages/plugins/infra/web/client-dist
+# the code that draws the release's documents, bundled whole by the build:
+# it runs from here, beside the store, and needs nothing from node_modules
+COPY --from=web /app/packages/plugins/infra/web/server-dist /app/packages/plugins/infra/web/server-dist
 # what the server says in the reader's language: the messages the web build
 # compiled, in the one module per locale a server loads at start
 COPY --from=web /app/.qualy/i18n/server /app/.qualy/i18n/server

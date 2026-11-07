@@ -1,6 +1,6 @@
 # ADR 0012：页面装配移到服务端，采用 React Router RSC Data Mode
 
-- 状态：**已接受，迁移进行中**（2026-11-07，阶段 2 已验收，阶段 3 尚未切换默认入口；证据见文末）
+- 状态：**已接受，迁移进行中**（2026-11-07，阶段 2 已验收；阶段 3 已在分支上切换默认构建与宿主，SPA 源文件和发布验收待完成；证据见文末）
 - 相关：[浏览器公开面](../architecture/browser-surface.md)、[Web Release 协议](../architecture/web-release.md)、[ADR 0010](0010-ui-widget-platform.md)、[ADR 0011](0011-i18n-paraglide.md)、[Web 性能记录](../notes/web-performance.md)
 
 ## 背景
@@ -114,3 +114,17 @@
 - **查询参数是否触发重新验证，按数据归属决定。** 现行的全局规则是"只改 search 不重新验证"，它只适用于外壳和由 Query 管理查询参数的页面，不能作为长期的统一规则。第一个由服务端读取并持有查询参数数据的页面，要连同下面的机制和验收一起实现：通过路由的 `lazy`，由页面服务端模块声明自己持有查询，持有查询的页面改用默认的重新验证。另外，数据是否需要重新读取，与是否触发离开确认，是两个独立的问题。
 - **登录页不再整表交付登录 renderer。** 读不到登录方式时，服务端不交付任何 renderer；页面请求服务端重绘，失败时显示不可用状态，可以重试。
 - **服务端读取的结果分类按状态码判断。** 契约没有声明的状态，typed client 报为 `DecodeError`，而不是 `StatusCodeError`。所有 5xx 都算"无法询问"，由页面在浏览器里重新读取；2xx 却无法解码，按契约不一致处理。
+
+## 阶段 3：默认入口切换（2026-11-07）
+
+分支上的 `pnpm build`、Dockerfile、开发服务和 `@qualy/plugin-web` 生产宿主已改用 RSC 构建。
+
+- **构建产物分两半。** 浏览器一半照旧装进 release store：资源共享、按保留策略回收，release 自己的目录只剩公共文件和元数据，不再有 shell。服务端一半是 RSC 与 SSR 两个环境的产物，由 staging 放到 `@qualy/plugin-web` 的 `server-dist`，随镜像固定，不从 store 读取；它带 `.qualy-server-build.json` 写明自己绘制哪个 release。两个服务端环境在构建时打包全部依赖，产物在没有 `node_modules` 的目录里能独立加载，镜像只需拷贝这个目录。
+- **浏览器契约。** RSC 构建的客户端环境写出与原 SPA 相同格式的 surface map，store 据此计算 `browserContractHash`；旧标签页判定规则不变。只做 re-export 的模块（四个 shell 的聚合模块）按它导出的模块定位所在 chunk。
+- **宿主。** 启动时核对 pinned release 与 `server-dist` 的 release 一致，否则拒启。`/assets/*` 和 release 的公共文件仍由文件服务处理；其余请求交给渲染器，每个响应生成独立 nonce，CSP 由 `ShellPolicyHeader.forDocument(nonce)` 用冻结后的插件贡献组合，并附加 frame、COOP、Reporting 等文档头。渲染器读取 API 的地址由宿主按请求传入（本进程端口的 loopback），不再依赖环境变量。隐藏路径仍然 404，唯一例外是 React Router 的路由清单请求 `/.manifest`。
+- **资源命名。** 服务端两个环境与客户端使用同一套 `a-[hash]` 资源命名，文档预加载的字体名称因此就是 store 里同一字节的文件名。
+- **开发服务** 运行 `vite.rsc.config.ts`（`appType: 'custom'`），并把开发后端的地址交给渲染器；监视器在该配置变化时重启 Web 服务。
+
+**验证：** 本地生产构建经 `pnpm build` 装入 store 并通过 `check-staged-web`、chunk、CSP 和公开面门禁；真实的 `run.ts production` 在临时库上启动，登录、批次列表、参评名单、我的申报和审核工作台由宿主直接渲染，水合前后版式一致（只剩计时文字在走）。RSC 验收脚本仍使用自己的宿主挂载同一构建。
+
+**未完成：** 删除 SPA 的 `index.html`、`main.tsx`、`vite.config.ts` 及其启动帧、shell 样式与首屏预算门禁（预算需要先有针对 RSC 入口的替代）；双版本安装与回滚验收；同条件性能对照；参评名单单位树的高度仍由 JS 按滚动位置测量。

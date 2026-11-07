@@ -17,7 +17,7 @@
 
 ## 当前开发状态
 
-- RSC 迁移在 `spike/rsc-data-mode`：阶段 2 已验收，阶段 3 的全部启用页面入口与公共资源命名准备通过本地生产构建验收。默认构建和宿主尚未切换，旧启动链与双版本发布验收待完成；范围和限制以 [ADR 0012](docs/adr/0012-rsc-data-mode.md) 为准。生产未因此改变。
+- RSC 迁移在 `spike/rsc-data-mode`：分支上的默认构建、开发服务和 `@qualy/plugin-web` 生产宿主已切换为服务端渲染，镜像携带渲染器；SPA 源文件与它的启动预算门禁尚未删除，双版本发布、回滚和同条件性能对照待完成。范围和限制以 [ADR 0012](docs/adr/0012-rsc-data-mode.md) 为准。分支未合并，生产未因此改变。
 - 上线前的 Effect、插件装配、Web release、沙箱、审计、遥测、Mantine/StyleX 和 Paraglide 迁移均已完成并有持续门禁。
 - 语言切换在写偏好和 cookie 前确认整页重载；每个已打开文档继续使用自己的 locale，请求不会因其他标签页改 cookie 而变语言。
 - API mutation 的平台失败由 runtime 处理；领域失败由调用处处理。多请求写工作流逐请求进入会话恢复边界，已成功的写入不会被整段重放。

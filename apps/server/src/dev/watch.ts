@@ -100,7 +100,7 @@ export const classify = (file: string, plan: WatchPlan): Action | 'restart-host'
 
   // the browser application and the packages only it imports
   if (posix.includes('/packages/web/')) return null
-  if (posix.endsWith('/apps/web/vite.config.ts')) {
+  if (posix.endsWith('/apps/web/vite.rsc.config.ts')) {
     const web = plan.services.find((service) => service.id === 'web')
     return web === undefined ? 'session' : { service: web.key }
   }
@@ -156,7 +156,7 @@ export const watchTargets = (plan: WatchPlan): readonly string[] => [
   path.join(plan.repoRoot, 'packages/contracts'),
   path.join(plan.repoRoot, 'packages/build'),
   path.join(plan.repoRoot, 'db/migrations'),
-  path.join(plan.repoRoot, 'apps/web/vite.config.ts'),
+  path.join(plan.repoRoot, 'apps/web/vite.rsc.config.ts'),
 ]
 
 /**

@@ -1,6 +1,8 @@
+import { randomBytes } from 'node:crypto'
 import fs from 'node:fs'
 import type { ServerResponse } from 'node:http'
 import path from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { Config, Context, Data, Effect, Layer, Schema } from 'effect'
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from 'effect/http'
 import sirv from 'sirv'
@@ -12,6 +14,7 @@ import { ClientAssembly, type ReleaseStanding } from '@qualy/api-kit/client-asse
 import type { ShellPolicy } from '@qualy/api-kit/shell-policy'
 import { fromConnect, type ConnectMiddleware } from '@qualy/api-kit/node'
 import {
+  SERVER_BUILD_METADATA,
   SHARED_ASSETS,
   readCurrentWebRelease,
   readInstalledRelease,
@@ -20,7 +23,7 @@ import {
   type ReleaseStore,
 } from '@qualy/web-build/release-store'
 import { decodePluginConfig } from '@qualy/plugin-kit/config'
-import { RELEASE_STORE_VARIABLE, WebManifestConfig, rootsFrom } from '../config.ts'
+import { RELEASE_STORE_VARIABLE, WebManifestConfig, rootsFrom, serverRoot } from '../config.ts'
 import { addReportRoute } from './csp-reports.ts'
 import {
   CSP_HEADER,
@@ -54,6 +57,12 @@ export class WebConfig extends Context.Service<
   {
     readonly sourceRoot: string
     readonly assetRoot: string
+    /**
+     * Where the server's half of the build was placed beside the store
+     * (`serverRoot` in config.ts): this package's own directory, which only
+     * a test that stands a server in its place names otherwise.
+     */
+    readonly serverRoot: string
     /**
      * The deployment's own release store, when it keeps one apart from the
      * image (RELEASE_STORE_VARIABLE); otherwise the asset root is the store.
@@ -92,6 +101,7 @@ export const config = (
       )).trim()
       return WebConfig.of({
         ...rootsFrom(declared, context.manifestDir),
+        serverRoot,
         releaseStore: releaseStore === '' ? undefined : releaseStore,
         cspMode,
       })
@@ -107,26 +117,10 @@ export const config = (
  */
 class WebUnservable extends Data.TaggedError('WebUnservable')<{ readonly message: string }> {}
 
+/** a document whose render threw rather than answering: a defect, the request's 500 */
+class DrawFailed extends Data.TaggedError('DrawFailed')<{ readonly cause: unknown }> {}
+
 const PLUGIN_ID = '@qualy/plugin-web'
-
-/** the content security policy as the shell sends it: which header, what value */
-interface ShellPolicySetting {
-  readonly header: (typeof CSP_HEADER)[CspMode]
-  readonly value: string
-}
-
-/** the document-only headers: the shell is a page, the assets are not */
-const documentHeaders = (response: ServerResponse, policy: ShellPolicySetting) => {
-  // no other site may frame it (clickjacking), and a page that opens it
-  // from another origin gets no handle back on its window (the repository
-  // opens no windows itself, so the isolation costs nothing)
-  response.setHeader('X-Frame-Options', 'DENY')
-  response.setHeader('Cross-Origin-Opener-Policy', 'same-origin')
-  // the policy, frozen once at the barrier, and where to report to under
-  // the Reporting API name the policy's report-to refers to
-  response.setHeader(policy.header, policy.value)
-  response.setHeader('Reporting-Endpoints', `${REPORTING_ENDPOINT}="${REPORT_PATH}"`)
-}
 
 /** on everything served: a script is a script and an image an image, never sniffed; a link out says no more than the origin */
 const commonHeaders = (response: ServerResponse) => {
@@ -135,24 +129,20 @@ const commonHeaders = (response: ServerResponse) => {
 }
 
 /**
- * The pinned release, served: two file servers behind one middleware.
+ * The pinned release's files, served: two file servers behind one middleware.
  *
  * The hashed assets come from the store's shared directory, where every
  * retained release's assets live side by side, so a browser on an earlier
  * release keeps finding its chunks; their names promise their bytes, so
  * they are cached for a year, immutable, and a name the store lacks is a
- * 404 and never the shell. Everything else - the shell for any navigation,
- * the icons, the public files - comes from the pinned release's own
- * directory and is never cached: those names do not change when their
- * bytes do. The static middleware writes the node response itself, so the
- * serve chain's headers never reach these bytes: whatever the shell and
- * the assets carry is set here, and only here.
+ * 404. The release's own public files - its icons - come from the pinned
+ * release's directory and are never cached: those names do not change when
+ * their bytes do. Documents are not files any more: the server draws them
+ * (`draw` below). The static middleware writes the node response itself, so
+ * the serve chain's headers never reach these bytes: whatever they carry is
+ * set here, and only here.
  */
-const serve = (
-  store: ReleaseStore,
-  current: CurrentWebRelease,
-  policy: ShellPolicySetting,
-): ConnectMiddleware => {
+const serve = (store: ReleaseStore, current: CurrentWebRelease) => {
   // Looked up on disk per request, not from a table taken at boot. The
   // store changes under a running host: an installer's collection removes
   // an asset no retained release names, and a host that had listed it at
@@ -174,34 +164,15 @@ const serve = (
       response.setHeader('Cache-Control', 'public,max-age=31536000,immutable')
     },
   })
-  const shell = sirv(current.root, {
+  const files = sirv(current.root, {
     dev: true,
-    // No validator, so never a 304. sirv answers a matching If-None-Match
-    // before it calls setHeaders, with no headers at all, and a browser keeps
-    // the headers it cached with the 200: the content security policy and
-    // frame refusal of whatever deployment it last loaded the shell from.
-    // Those change without the file changing - a QUALY_CSP_MODE switch, a
-    // storage origin - so a revalidated shell went on enforcing the old
-    // policy. The shell is a few kilobytes, compressed, fetched on a load.
     etag: false,
     brotli: true,
     gzip: true,
-    // spa fallback: extension-less GET/HEAD navigations get index.html,
-    // missing files with extensions stay 404
-    single: true,
+    single: false,
     setHeaders: (response) => {
       commonHeaders(response)
       response.setHeader('Cache-Control', 'no-cache')
-      // Every answer from the release's own directory carries the document
-      // headers, not only the ones whose path looks like a page. What is
-      // actually sent is not visible here - `pathname` is the REQUEST path -
-      // and the fallback decides by a rule of its own: `/portal.`,
-      // `/foo.bar/` and a literal `/index.html.br` all came back as the shell
-      // with no policy and no frame refusal, because their path has an
-      // extension. The directory holds the shell, its icons and their
-      // compressed twins; a frame refusal or a policy on an icon costs
-      // nothing.
-      documentHeaders(response, policy)
     },
   })
   const mount = `/${SHARED_ASSETS}`
@@ -209,12 +180,8 @@ const serve = (
     response.statusCode = 404
     response.end()
   }
-  return (request, response, next) => {
+  const middleware: ConnectMiddleware = (request, response, next) => {
     const url = request.url ?? '/'
-    if (namesHiddenPath(url)) {
-      notFound(response)
-      return
-    }
     // a range sirv would mishandle is not honoured at all: the whole file,
     // which a client asking for a range must accept (RFC 9110, section 14.2)
     if (!servableRange(request.headers.range)) delete request.headers.range
@@ -224,8 +191,27 @@ const serve = (
       assets(request, response, () => notFound(response))
       return
     }
-    shell(request, response, next)
+    files(request, response, next)
   }
+  /** whether a request names one of the release's own files, or the assets */
+  const names = (url: string): boolean => {
+    const pathname = url.split(/[?#]/)[0] ?? url
+    if (pathname === mount || pathname.startsWith(`${mount}/`)) return true
+    let decoded: string
+    try {
+      decoded = decodeURIComponent(pathname)
+    } catch {
+      return false
+    }
+    const file = path.join(current.root, path.normalize(decoded))
+    if (!file.startsWith(current.root) || file === current.root) return false
+    try {
+      return fs.statSync(file).isFile()
+    } catch {
+      return false
+    }
+  }
+  return { middleware, names }
 }
 
 /**
@@ -260,10 +246,11 @@ const currentOf = (store: ReleaseStore) =>
 const DEPLOY_JOB =
   "the deploy job for this image ('docker compose run --rm migrate', which runs 'qualy deploy')"
 
-const production = Effect.fn('Web.production')(function* (
-  roots: { readonly assetRoot: string; readonly releaseStore?: string | undefined },
-  policy: ShellPolicySetting,
-) {
+const production = Effect.fn('Web.production')(function* (roots: {
+  readonly assetRoot: string
+  readonly serverRoot: string
+  readonly releaseStore?: string | undefined
+}) {
   // The store's pointer is read once, here, and the release it names is
   // pinned for the life of this process: an installer moving the pointer
   // later changes nothing a running host serves. One process is one api
@@ -310,13 +297,6 @@ const production = Effect.fn('Web.production')(function* (
     }
     current = installed
   }
-  if (!fs.existsSync(path.join(current.root, 'index.html'))) {
-    return yield* Effect.die(
-      new WebUnservable({
-        message: `web release ${current.releaseId} at ${current.root} has no index.html`,
-      }),
-    )
-  }
   // The release names the assembly it was built from; this process knows the
   // assembly it runs. Serving assets built from a different one means the
   // browser registry, the typed client and the served api may each be a
@@ -347,13 +327,136 @@ const production = Effect.fn('Web.production')(function* (
       }),
     )
   }
+  // The code that draws this release's documents, from where the image put
+  // it, and only if it is this release's: its documents name these assets.
+  const draw = yield* placedServer(roots.serverRoot, current.releaseId)
   yield* Effect.logInfo(`serving web release ${current.releaseId} from ${current.root}`)
   return {
     current,
-    middleware: serve(store, current, policy),
+    draw,
+    files: serve(store, current),
     standingOf: judging(store, current),
   }
 })
+
+/** what the server's half of a build exports: a document request in, its answer out */
+type Draw = (
+  request: Request,
+  context: { readonly nonce?: string; readonly apiOrigin?: string },
+) => Promise<Response>
+
+/**
+ * The server's half of the build, as staging placed it beside the store
+ * (packages/build/web/src/stage.ts), loaded once: executable code is fixed
+ * with the image that runs it, never read from a store an installer changes.
+ * It names the release whose documents it draws; any other release's assets
+ * would not be the ones its documents link, so a mismatch refuses the start.
+ */
+const placedServer = Effect.fn('Web.placedServer')(function* (
+  serverRoot: string,
+  releaseId: string,
+) {
+  const entry = path.join(serverRoot, 'rsc', 'index.js')
+  const metadata = path.join(serverRoot, SERVER_BUILD_METADATA)
+  if (!fs.existsSync(entry) || !fs.existsSync(metadata)) {
+    return yield* Effect.die(
+      new WebUnservable({
+        message: `no server for the web release is placed at ${serverRoot}; run 'pnpm build'`,
+      }),
+    )
+  }
+  const drawn = yield* Effect.try({
+    try: () =>
+      (JSON.parse(fs.readFileSync(metadata, 'utf8')) as { readonly releaseId?: unknown }).releaseId,
+    catch: (error) =>
+      new WebUnservable({
+        message: `${metadata} is unreadable: ${error instanceof Error ? error.message : String(error)}`,
+      }),
+  }).pipe(Effect.orDie)
+  if (drawn !== releaseId) {
+    return yield* Effect.die(
+      new WebUnservable({
+        message: `the server placed at ${serverRoot} draws release ${String(drawn)}, but the store serves ${releaseId}; run 'pnpm build' so the two are one build`,
+      }),
+    )
+  }
+  const loaded = yield* Effect.tryPromise({
+    try: () => import(pathToFileURL(entry).href) as Promise<{ readonly default: Draw }>,
+    catch: (error) =>
+      new WebUnservable({
+        message: `the server at ${entry} did not load: ${error instanceof Error ? error.message : String(error)}`,
+      }),
+  }).pipe(Effect.orDie)
+  return loaded.default
+})
+
+/**
+ * One document, drawn: the request handed to the server's half with a nonce
+ * made for this response alone and the api it reads through, and its answer
+ * sent on under the document's own headers - the policy naming that nonce,
+ * the frame refusal, the opener isolation. The render goes on as long as its
+ * body is read; a reader who goes away lets the body go, and the render's
+ * signal ends with it.
+ */
+const drawDocument = (
+  draw: Draw,
+  policyFor: (nonce: string) => string,
+  mode: CspMode,
+  apiOrigin: string,
+) =>
+  Effect.gen(function* () {
+    const request = yield* HttpServerRequest.HttpServerRequest
+    // a request the platform could not read is not one a document answers
+    const web = yield* HttpServerRequest.toWeb(request).pipe(Effect.orDie)
+    const nonce = randomBytes(16).toString('base64')
+    const controller = new AbortController()
+    const response = yield* Effect.tryPromise({
+      try: () =>
+        draw(
+          new Request(web.url, {
+            method: web.method,
+            headers: web.headers,
+            signal: controller.signal,
+          }),
+          { nonce, apiOrigin },
+        ),
+      catch: (cause) => new DrawFailed({ cause }),
+    }).pipe(
+      Effect.onInterrupt(() => Effect.sync(() => controller.abort())),
+      Effect.orDie,
+    )
+    const body = response.body
+    const relayed =
+      body === null
+        ? null
+        : new ReadableStream<Uint8Array>({
+            async start(sink) {
+              const reader = body.getReader()
+              try {
+                for (;;) {
+                  const { done, value } = await reader.read()
+                  if (done) break
+                  sink.enqueue(value)
+                }
+                sink.close()
+              } catch (error) {
+                sink.error(error)
+              }
+            },
+            cancel(reason) {
+              controller.abort(reason)
+              return body.cancel(reason)
+            },
+          })
+    const headers = new Headers(response.headers)
+    headers.set('X-Content-Type-Options', 'nosniff')
+    headers.set('Referrer-Policy', 'strict-origin-when-cross-origin')
+    headers.set('X-Frame-Options', 'DENY')
+    headers.set('Cross-Origin-Opener-Policy', 'same-origin')
+    headers.set(CSP_HEADER[mode], policyFor(nonce))
+    headers.set('Reporting-Endpoints', `${REPORTING_ENDPOINT}="${REPORT_PATH}"`)
+    return HttpServerResponse.fromWeb(new Response(relayed, { status: response.status, headers }))
+  })
 
 /**
  * What a page's claimed release is to this process, for the serve chain.
@@ -427,6 +530,16 @@ const judging = (
  * name the very file this refuses while carrying neither. An escape that
  * does not decode is refused too - it cannot name a servable file either.
  */
+/**
+ * The router's request for the routes behind a set of addresses, which a
+ * page makes as the reader moves around (React Router's RSC route discovery
+ * asks `/.manifest?paths=...`). A path the renderer answers, never a file.
+ */
+const ROUTE_MANIFEST_PATH = '/.manifest'
+
+const asksRouteManifest = (url: string): boolean =>
+  (url.split(/[?#]/)[0] ?? url) === ROUTE_MANIFEST_PATH
+
 export const namesHiddenPath = (url: string): boolean => {
   const raw = url.split(/[?#]/)[0] ?? url
   let decoded: string
@@ -464,10 +577,15 @@ export const routes: Layer.Layer<
     }
     // built after the barrier, so the frozen policy is there to read
     const policy = yield* ShellPolicyHeader
-    const { current, middleware, standingOf } = yield* production(config, {
-      header: CSP_HEADER[config.cspMode],
-      value: policy.value(),
-    })
+    const { current, draw, files, standingOf } = yield* production(config)
+    // the api a render reads through: this process's own, over loopback
+    const port = yield* Config.Port('PORT').pipe(Config.withDefault(3000), Effect.orDie)
+    const document = drawDocument(
+      draw,
+      policy.forDocument,
+      config.cspMode,
+      `http://127.0.0.1:${String(port)}`,
+    )
     // The serve chain asks this of every request that names a release, and
     // nothing else can answer it: a page built from another plugin selection
     // must not go on talking to this api, and neither half can tell alone.
@@ -501,7 +619,18 @@ export const routes: Layer.Layer<
         // mistyped endpoint, which is how a doubled prefix looked like a
         // working request until the page tried to parse the shell as json.
         if (insideApi(request.url)) return yield* apiRouteNotFound
-        return yield* fromConnect(middleware)
+        // nothing hidden is served: the release's own metadata sits beside
+        // its public files. The one dotted path that is not a file is the
+        // router's own question about which routes a set of addresses has,
+        // asked of the renderer as the page is used.
+        if (namesHiddenPath(request.url) && !asksRouteManifest(request.url)) {
+          return HttpServerResponse.empty({ status: 404 })
+        }
+        // a file - an asset, an icon - is a file; anything else is a document
+        // the server draws, or the answer its renderer gives a path it has no
+        // page for
+        if (files.names(request.url)) return yield* fromConnect(files.middleware)
+        return yield* document
       }),
     )
   }),

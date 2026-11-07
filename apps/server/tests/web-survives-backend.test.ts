@@ -38,15 +38,14 @@ beforeAll(async () => {
   // the plugin collector in, none of which this is about, and its port is
   // the one a developer has open.
   sourceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-web-'))
-  fs.writeFileSync(path.join(sourceRoot, 'index.html'), '<!doctype html><title>probe</title>\n')
   fs.writeFileSync(path.join(sourceRoot, 'package.json'), '{ "type": "module" }\n')
   // No import of vite: a directory outside the workspace cannot resolve it,
   // and a config is a plain object anyway. The host is named because vite's
   // default binds whatever `localhost` happens to resolve to, and this asks
   // for the loopback address by number.
   fs.writeFileSync(
-    path.join(sourceRoot, 'vite.config.ts'),
-    `export default { server: { host: '127.0.0.1', port: ${String(webPort)} } }\n`,
+    path.join(sourceRoot, 'vite.rsc.config.ts'),
+    `export default {\n  server: { host: '127.0.0.1', port: ${String(webPort)} },\n  // the document the server draws, in place of the real renderer\n  plugins: [{\n    name: 'probe-document',\n    configureServer(server) {\n      server.middlewares.use((request, response, next) => {\n        if (request.url !== '/') return next()\n        response.setHeader('content-type', 'text/html')\n        response.end('<!doctype html><title>probe</title>')\n      })\n    },\n  }],\n}\n`,
   )
 }, 180_000)
 

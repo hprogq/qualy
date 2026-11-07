@@ -13,7 +13,7 @@ import { NodeServer } from '@qualy/api-kit/node'
 import { requestOriginGuard } from '@qualy/api-kit/origin'
 import { WebConfig, routes } from '../src/server/index.ts'
 import { composeShellPolicy, ShellPolicyHeader } from '../src/server/shell-policy.ts'
-import { TEST_CONTRACT, installTestRelease } from './support/store.ts'
+import { TEST_CONTRACT, installTestRelease, placeTestServer } from './support/store.ts'
 
 // One real violation, end to end: a browser loads a shell served with the
 // policy, the shell carries an inline script the policy does not hash, the
@@ -46,15 +46,19 @@ let unavailable: string | undefined
 
 const HASH = 'sha256:test'
 const assetRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-web-violation-'))
-installTestRelease(assetRoot, {
-  hash: HASH,
-  shell: [
+installTestRelease(assetRoot, { hash: HASH })
+// a document carrying an inline script without the nonce its policy names
+const serverRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-web-violation-server-'))
+placeTestServer(
+  serverRoot,
+  'test-release',
+  [
     '<!doctype html>',
     '<html><head><meta charset="utf-8"><title>violation</title>',
     "<script>document.title = 'the inline script ran'</script>",
-    '</head><body>shell</body></html>',
+    '</head><body>document</body></html>',
   ].join('\n'),
-})
+)
 
 interface Logged {
   readonly message: string
@@ -89,14 +93,21 @@ beforeAll(async () => {
       Layer.mergeAll(
         Layer.succeed(
           WebConfig,
-          WebConfig.of({ assetRoot, sourceRoot: assetRoot, cspMode: 'report' }),
+          WebConfig.of({ assetRoot, sourceRoot: assetRoot, serverRoot, cspMode: 'report' }),
         ),
         Layer.sync(NodeServer, () => createServer()),
         Layer.succeed(
           AssemblyInfo,
           AssemblyInfo.of({ resolutionHash: HASH, browserContractHash: TEST_CONTRACT }),
         ),
-        Layer.succeed(ShellPolicyHeader, ShellPolicyHeader.of({ value: () => withoutReportTo })),
+        Layer.succeed(
+          ShellPolicyHeader,
+          ShellPolicyHeader.of({
+            value: () => withoutReportTo,
+            forDocument: (nonce) =>
+              composeShellPolicy([], { scriptNonce: nonce }).replace('report-to csp; ', ''),
+          }),
+        ),
         clientAssemblyLayer,
       ),
     ),

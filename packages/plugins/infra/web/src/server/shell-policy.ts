@@ -188,6 +188,12 @@ export class ShellPolicyHeader extends Context.Service<
   ShellPolicyHeader,
   {
     readonly value: () => string
+    /**
+     * The policy a document a server draws goes out under: what every plugin
+     * contributed, frozen with the value, naming the nonce made for that
+     * document alone.
+     */
+    readonly forDocument: (nonce: string) => string
   }
 >()('@qualy/plugin-web/ShellPolicyHeader') {}
 
@@ -198,10 +204,12 @@ export const policyLayer: Layer.Layer<ShellPolicyHeader, never, ShellPolicy | As
       const registry = yield* ShellPolicy
       const assembled = yield* Assembled
       let frozen: string | undefined
+      let contributed: readonly ShellPolicyEntry[] | undefined
       yield* assembled.register({
         name: 'web/shell-policy',
         run: Effect.gen(function* () {
           const entries = yield* registry.entries
+          contributed = entries
           frozen = yield* Effect.try({
             try: () => composeShellPolicy(entries),
             catch: (cause) =>
@@ -220,6 +228,12 @@ export const policyLayer: Layer.Layer<ShellPolicyHeader, never, ShellPolicy | As
             throw new Error('the shell policy was read before the assembly barrier froze it')
           }
           return frozen
+        },
+        forDocument: (nonce) => {
+          if (contributed === undefined) {
+            throw new Error('the shell policy was read before the assembly barrier froze it')
+          }
+          return composeShellPolicy(contributed, { scriptNonce: nonce })
         },
       })
     }),

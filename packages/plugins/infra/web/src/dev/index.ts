@@ -24,6 +24,9 @@ import { decodePluginConfig } from '@qualy/plugin-kit/config'
 // refuses to drift to another port rather than quietly picking one - a proxy
 // pointed at nothing looks exactly like a backend that is down.
 
+/** the configuration of the development server: the one that draws documents on the server */
+const DEV_CONFIG = 'vite.rsc.config.ts'
+
 /** the two ways this service can turn out not to be runnable */
 class WebUnservable extends Data.TaggedError('WebUnservable')<{ readonly message: string }> {}
 
@@ -121,7 +124,7 @@ export const prepare = Effect.fn('Web.prepare')(function* (context: DevServiceCo
     ),
   )
   const { sourceRoot } = rootsFrom(declared, context.plugin.manifestDir)
-  for (const required of ['index.html', 'vite.config.ts']) {
+  for (const required of [DEV_CONFIG]) {
     if (!fs.existsSync(path.join(sourceRoot, required))) {
       return yield* new WebUnservable({
         message: `web source at ${sourceRoot} has no ${required}; set sourceRoot or disable @qualy/plugin-web`,
@@ -147,13 +150,18 @@ export const acquire = Effect.fn('Web.acquire')(function* (
   prepared: PreparedWeb,
   context: DevServiceContext,
 ) {
+  // where a render reads the api it draws from: the development backend
+  // this server stands in front of, read by the server's half as it loads
+  process.env['QUALY_RENDER_API_ORIGIN'] = context.runtime.origin
   const customLogger = yield* viteLogger
   const server = yield* Effect.acquireRelease(
     Effect.promise(() =>
       prepared.vite.createServer({
-        configFile: path.join(prepared.sourceRoot, 'vite.config.ts'),
+        configFile: path.join(prepared.sourceRoot, DEV_CONFIG),
         root: prepared.sourceRoot,
-        appType: 'spa',
+        // the server draws every document (docs/adr/0012-rsc-data-mode.md):
+        // there is no html file to fall back to
+        appType: 'custom',
         clearScreen: false,
         customLogger,
         server: {

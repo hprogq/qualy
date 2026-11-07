@@ -9,7 +9,6 @@ import { HttpRouter, HttpServerResponse } from 'effect/http'
 import fs from 'node:fs'
 import { createServer } from 'node:http'
 import os from 'node:os'
-import { brotliCompressSync } from 'node:zlib'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { QUALY_API_PREFIX } from '@qualy/api-kit'
@@ -17,9 +16,9 @@ import { QUALY_RELEASE_ENDPOINT, ReleaseProbeSchema } from '@qualy/release-contr
 import { AssemblyInfo } from '@qualy/api-kit/assembled'
 import { NodeServer } from '@qualy/api-kit/node'
 import { WebConfig, namesHiddenPath, routes } from '../src/server/index.ts'
-import { ShellPolicyHeader } from '../src/server/shell-policy.ts'
+import { composeShellPolicy, ShellPolicyHeader } from '../src/server/shell-policy.ts'
 import { viteLogger } from '../src/dev/index.ts'
-import { TEST_CONTRACT, TEST_HASH, installTestRelease } from './support/store.ts'
+import { TEST_CONTRACT, TEST_HASH, installTestRelease, placeTestServer } from './support/store.ts'
 
 // The boundary between the api and the browser shell.
 //
@@ -68,6 +67,9 @@ installFixture(assetRoot, {
   browserContract: 'sha256:other-surfaces',
 })
 installFixture(assetRoot)
+// the server's half of the same build, placed beside it as staging does
+const serverRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-web-server-'))
+placeTestServer(serverRoot)
 const assemblyInfo = Layer.succeed(
   AssemblyInfo,
   AssemblyInfo.of({ resolutionHash: HASH, browserContractHash: TEST_CONTRACT }),
@@ -75,7 +77,10 @@ const assemblyInfo = Layer.succeed(
 // a policy already frozen: which header the shell sends is another suite's question
 const policy = Layer.succeed(
   ShellPolicyHeader,
-  ShellPolicyHeader.of({ value: () => "default-src 'self'" }),
+  ShellPolicyHeader.of({
+    value: () => "default-src 'self'",
+    forDocument: (nonce) => composeShellPolicy([], { scriptNonce: nonce }),
+  }),
 )
 
 let scope: Scope.Closeable
@@ -103,7 +108,7 @@ beforeAll(async () => {
       Layer.mergeAll(
         Layer.succeed(
           WebConfig,
-          WebConfig.of({ assetRoot, sourceRoot: assetRoot, cspMode: 'report' }),
+          WebConfig.of({ assetRoot, sourceRoot: assetRoot, serverRoot, cspMode: 'report' }),
         ),
         Layer.sync(NodeServer, () => createServer()),
         assemblyInfo,
@@ -119,6 +124,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await Effect.runPromise(Scope.close(scope, Exit.void))
   fs.rmSync(assetRoot, { recursive: true, force: true })
+  fs.rmSync(serverRoot, { recursive: true, force: true })
 })
 
 describe('what the shell refuses to serve', () => {
@@ -142,11 +148,15 @@ describe('what the shell refuses to serve', () => {
   })
 })
 
-describe('the shell against the api mount', () => {
-  it('serves the shell for a route the browser owns', async () => {
+describe('documents against the api mount', () => {
+  it("draws a document for a route the browser owns, through this process's own api", async () => {
     const response = await fetch(`${base}/ping`)
     expect(response.status).toBe(200)
     expect(response.headers.get('content-type')).toContain('text/html')
+    const body = await response.text()
+    expect(body).toContain('data-path="/ping"')
+    // the render reads through this process, over loopback, on its own port
+    expect(body).toMatch(/data-api="http:\/\/127\.0\.0\.1:\d+"/)
   })
 
   it('leaves a declared api route alone', async () => {
@@ -171,7 +181,12 @@ describe('the shell against the api mount', () => {
                 Layer.mergeAll(
                   Layer.succeed(
                     WebConfig,
-                    WebConfig.of({ assetRoot: empty, sourceRoot: empty, cspMode: 'report' }),
+                    WebConfig.of({
+                      assetRoot: empty,
+                      sourceRoot: empty,
+                      serverRoot,
+                      cspMode: 'report',
+                    }),
                   ),
                   Layer.sync(NodeServer, () => createServer()),
                   assemblyInfo,
@@ -190,6 +205,48 @@ describe('the shell against the api mount', () => {
     }
   })
 
+  it("refuses to start without the server that draws its release, or with another release's", async () => {
+    const buildWith = (root: string) =>
+      Effect.runPromiseExit(
+        Effect.scoped(
+          Layer.build(
+            routes.pipe(
+              Layer.provide(
+                Layer.mergeAll(
+                  Layer.succeed(
+                    WebConfig,
+                    WebConfig.of({
+                      assetRoot,
+                      sourceRoot: assetRoot,
+                      serverRoot: root,
+                      cspMode: 'report',
+                    }),
+                  ),
+                  Layer.sync(NodeServer, () => createServer()),
+                  assemblyInfo,
+                  policy,
+                  clientAssemblyLayer,
+                  HttpRouter.layer,
+                ),
+              ),
+            ),
+          ),
+        ),
+      )
+    const none = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-web-no-server-'))
+    const another = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-web-other-server-'))
+    try {
+      expect(Exit.isFailure(await buildWith(none))).toBe(true)
+      // a server built with another release: its documents link assets that
+      // are not this release's
+      placeTestServer(another, 'another-release')
+      expect(Exit.isFailure(await buildWith(another))).toBe(true)
+    } finally {
+      fs.rmSync(none, { recursive: true, force: true })
+      fs.rmSync(another, { recursive: true, force: true })
+    }
+  })
+
   it('refuses a release built from a different assembly, and one without metadata', async () => {
     // the release and the process each name their assembly; a mismatch means
     // the browser registry and the served api are different selections
@@ -202,7 +259,12 @@ describe('the shell against the api mount', () => {
                 Layer.mergeAll(
                   Layer.succeed(
                     WebConfig,
-                    WebConfig.of({ assetRoot: root, sourceRoot: root, cspMode: 'report' }),
+                    WebConfig.of({
+                      assetRoot: root,
+                      sourceRoot: root,
+                      serverRoot,
+                      cspMode: 'report',
+                    }),
                   ),
                   Layer.sync(NodeServer, () => createServer()),
                   clientAssemblyLayer,
@@ -240,19 +302,28 @@ describe('the shell against the api mount', () => {
     }
   })
 
-  it('serves the shell and its public files uncached, and the hashed assets immutable', async () => {
-    // the shell's name never changes and its bytes do at every release
+  it('sends a document under its own policy and privately, its public files uncached, and the hashed assets immutable', async () => {
+    // a document is somebody's, drawn for them: never cached, and its inline
+    // scripts run by a nonce made for this response alone
     const page = await fetch(`${base}/`)
     expect(page.status).toBe(200)
-    expect(page.headers.get('cache-control')).toBe('no-cache')
+    expect(page.headers.get('cache-control')).toBe('private, no-store')
     expect(page.headers.get('x-frame-options')).toBe('DENY')
-    expect(page.headers.get('content-security-policy-report-only')).toBe("default-src 'self'")
-    // an icon is a public file of the release, not a hashed asset: the same
-    // rule as the shell, headers included
+    expect(page.headers.get('cross-origin-opener-policy')).toBe('same-origin')
+    const policyOf = (response: Response) =>
+      response.headers.get('content-security-policy-report-only') ?? ''
+    const nonceOf = (body: string) => /data-nonce="([^"]+)"/.exec(body)?.[1]
+    const first = nonceOf(await page.text())
+    expect(first).toBeDefined()
+    expect(policyOf(page)).toContain(`'nonce-${first!}'`)
+    const again = await fetch(`${base}/`)
+    const second = nonceOf(await again.text())
+    expect(second).not.toBe(first)
+    expect(policyOf(again)).toContain(`'nonce-${second!}'`)
+    // an icon is a public file of the release, not a hashed asset
     const icon = await fetch(`${base}/favicon.svg`)
     expect(icon.status).toBe(200)
     expect(icon.headers.get('cache-control')).toBe('no-cache')
-    expect(icon.headers.get('x-frame-options')).toBe('DENY')
     expect(icon.headers.get('x-content-type-options')).toBe('nosniff')
     // a hashed asset's name promises its bytes
     const asset = await fetch(`${base}/assets/index-current.js`)
@@ -261,35 +332,29 @@ describe('the shell against the api mount', () => {
     expect(asset.headers.get('x-frame-options')).toBeNull()
   })
 
-  it('answers a revalidated shell with the whole shell and its headers, never a bare 304', async () => {
+  it('draws a revalidated document whole with its headers, never a bare 304', async () => {
     // A 304 carries none of the headers it revalidates, and a browser keeps
     // the ones it cached with the 200: a policy changed by the environment
-    // alone never reached a visitor coming back. The file server's validator
-    // as it used to hand it out, sent back.
-    const shell = fs.statSync(path.join(assetRoot, 'releases', 'test-release', 'index.html'))
+    // alone never reached a visitor coming back.
     const first = await fetch(`${base}/`, { headers: { 'accept-encoding': 'identity' } })
     expect(first.headers.get('etag')).toBeNull()
     const again = await fetch(`${base}/`, {
       headers: {
         'accept-encoding': 'identity',
-        'if-none-match': `W/"${String(shell.size)}-${String(shell.mtime.getTime())}"`,
-        'if-modified-since': first.headers.get('last-modified') ?? new Date().toUTCString(),
+        'if-none-match': 'W/"35-1700000000000"',
+        'if-modified-since': new Date().toUTCString(),
       },
     })
     expect(again.status).toBe(200)
-    expect(again.headers.get('content-security-policy-report-only')).toBe("default-src 'self'")
+    expect(again.headers.get('content-security-policy-report-only')).toContain("'nonce-")
     expect(again.headers.get('x-frame-options')).toBe('DENY')
   })
 
-  it('never hands out the shell without its document headers, whatever the path looks like', async () => {
-    // The fallback serves the shell for any path its own rule does not take
-    // for a file, and the headers used to follow a different rule: a path
-    // with an extension. Each of these came back as the page itself, with
-    // no policy and no frame refusal - a link anybody can send.
-    fs.writeFileSync(
-      path.join(assetRoot, 'releases', 'test-release', 'index.html.br'),
-      brotliCompressSync('<!doctype html><title>shell</title>'),
-    )
+  it('never sends a document without its document headers, whatever the path looks like', async () => {
+    // A path that names no file is a document, and it carries the document's
+    // headers whatever it looks like: a path with an extension once came
+    // back as the page itself with no policy and no frame refusal - a link
+    // anybody can send.
     let served = 0
     for (const address of ['/portal.', '/x.', '/foo.bar/', '/a.b%20c', '/index.html.br']) {
       const response = await fetch(`${base}${address}`, {
@@ -301,8 +366,8 @@ describe('the shell against the api mount', () => {
       expect(response.status, address).toBe(200)
       expect(response.headers.get('x-frame-options'), address).toBe('DENY')
       expect(response.headers.get('cross-origin-opener-policy'), address).toBe('same-origin')
-      expect(response.headers.get('content-security-policy-report-only'), address).toBe(
-        "default-src 'self'",
+      expect(response.headers.get('content-security-policy-report-only'), address).toContain(
+        "'nonce-",
       )
     }
     expect(served).toBeGreaterThan(0)
@@ -375,16 +440,13 @@ describe('the shell against the api mount', () => {
   it('serves the release it pinned at boot, whatever the pointer says later', async () => {
     // an installer moves the pointer to a newer release while this process
     // runs: this process is one api assembly and one shell, until replaced
-    installFixture(assetRoot, {
-      releaseId: 'other-release',
-      shell: '<!doctype html><title>other</title>',
-    })
+    installFixture(assetRoot, { releaseId: 'other-release' })
     expect(JSON.parse(fs.readFileSync(path.join(assetRoot, 'current.json'), 'utf8'))).toEqual({
       schema: 1,
       releaseId: 'other-release',
     })
     const page = await fetch(`${base}/`)
-    expect(await page.text()).toContain('<title>shell</title>')
+    expect(await page.text()).toContain('>test-release</p>')
     const probe = Schema.decodeUnknownSync(ReleaseProbeSchema)(
       await (await fetch(`${base}${QUALY_RELEASE_ENDPOINT}`)).json(),
     )
@@ -405,20 +467,18 @@ describe('the shell against the api mount', () => {
     expect((await fetch(`${base}/`)).status).toBe(200)
   })
 
-  it('answers a missing asset with a 404 and never with the shell', async () => {
+  it('answers a missing asset with a 404 and never with a document', async () => {
     for (const missing of ['/assets/nope.js', '/assets/', '/assets']) {
       const response = await fetch(`${base}${missing}`)
       expect(response.status, missing).toBe(404)
       expect(response.headers.get('content-type') ?? '').not.toContain('text/html')
     }
-    // and nothing of the store's own is reachable through the shell
-    for (const internal of [
-      '/.qualy-release.json',
-      '/current.json',
-      '/releases/test-release/index.html',
-    ]) {
+    // and nothing of the store's own is reachable: its own metadata is
+    // hidden, and anything else is a path the renderer answers, never a file
+    expect((await fetch(`${base}/.qualy-release.json`)).status).toBe(404)
+    for (const internal of ['/current.json', '/releases/test-release/favicon.svg']) {
       const response = await fetch(`${base}${internal}`)
-      expect(response.status, internal).toBe(404)
+      expect(await response.text(), internal).toContain('<title>drawn</title>')
     }
   })
 
@@ -542,6 +602,7 @@ describe('a deployment that keeps its releases apart from the image', () => {
                   WebConfig.of({
                     assetRoot: imageRoot,
                     sourceRoot: imageRoot,
+                    serverRoot,
                     releaseStore,
                     cspMode: 'report',
                   }),

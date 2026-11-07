@@ -56,11 +56,20 @@ const serverModulesInServerComponents = (plugin: PluginOption): Plugin[] =>
 
 const repoRoot = fileURLToPath(new URL('../..', import.meta.url))
 
+// Public names identify bytes, never the plugin or component that produced
+// them; the entry stylesheet has a role of its own, so StyleX can append its
+// rules to the one every page loads. The server's two environments name
+// their assets the same way: a file a server half links - the face a
+// document preloads - is the browser build's own file of the same bytes, so
+// the name a document writes is a name the store serves.
+const assetFileNames = (info: { readonly names?: readonly string[] }) =>
+  info.names?.includes('entry.css') ? 'assets/s-[hash][extname]' : 'assets/a-[hash][extname]'
+
 // where the api answers while this server runs beside the development backend
 const apiOrigin =
   process.env['QUALY_RENDER_API_ORIGIN'] ?? `http://127.0.0.1:${process.env['PORT'] ?? '3000'}`
 
-export default defineConfig(({ mode }) => ({
+export default defineConfig(({ command, mode }) => ({
   envDir: false,
   cacheDir: 'node_modules/.vite-rsc',
   plugins: [
@@ -101,10 +110,20 @@ export default defineConfig(({ mode }) => ({
   // each environment's output under this build's own directory: the plugin
   // names them per environment, and left to it they land beside the page
   // build's own output
+  //
+  // A build's two server halves carry every package they run, so the image
+  // that serves them needs their files and nothing from node_modules: the
+  // executable code a server runs is fixed with the image it ships in, never
+  // resolved from a tree beside it. A development server keeps them external,
+  // where the optimizer handles them.
   environments: {
-    rsc: { build: { outDir: 'dist-rsc/rsc' } },
+    rsc: {
+      build: { outDir: 'dist-rsc/rsc', rollupOptions: { output: { assetFileNames } } },
+      ...(command === 'build' ? { resolve: { noExternal: true } } : {}),
+    },
     ssr: {
-      build: { outDir: 'dist-rsc/ssr' },
+      build: { outDir: 'dist-rsc/ssr', rollupOptions: { output: { assetFileNames } } },
+      ...(command === 'build' ? { resolve: { noExternal: true } } : {}),
       // These packages export hundreds of modules from their entry points.
       // Bundle them in the HTML renderer's own optimizer (not the React
       // server environment) instead of transforming each file on first view.
@@ -127,10 +146,7 @@ export default defineConfig(({ mode }) => ({
             // own so StyleX can append its rules to the one every page loads.
             entryFileNames: 'assets/e-[hash].js',
             chunkFileNames: 'assets/c-[hash].js',
-            assetFileNames: (info) =>
-              info.names?.includes('entry.css')
-                ? 'assets/s-[hash][extname]'
-                : 'assets/a-[hash][extname]',
+            assetFileNames,
           },
         },
       },

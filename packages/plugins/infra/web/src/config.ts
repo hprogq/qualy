@@ -28,6 +28,12 @@ export const RELEASE_STORE_VARIABLE = 'QUALY_WEB_RELEASE_STORE'
 /** anchored at this package, never at whatever directory a process started in */
 export const defaultAssetRoot = fileURLToPath(new URL('../client-dist/', import.meta.url))
 export const defaultSourceRoot = fileURLToPath(new URL('../../../../../apps/web/', import.meta.url))
+/**
+ * The server's half of the build, placed beside the store by staging: the
+ * code that draws documents, which runs from where the image put it and is
+ * never configured to come from anywhere else.
+ */
+export const serverRoot = fileURLToPath(new URL('../server-dist/', import.meta.url))
 
 export const WebManifestConfig = Schema.Struct({
   sourceRoot: Schema.optional(Schema.String),

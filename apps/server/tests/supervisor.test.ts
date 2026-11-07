@@ -76,12 +76,11 @@ const triggerFile = () => path.join(triggerRoot, 'src/server/marker.ts')
 
 beforeAll(() => {
   webRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-supervisor-web-'))
-  // the two files the web dev service checks for, and a port of this
+  // the configuration the web dev service runs, and a port of this
   // suite's own so a running `pnpm dev` is neither disturbed nor in the way
-  fs.writeFileSync(path.join(webRoot, 'index.html'), '<!doctype html>\n<title>test</title>\n')
   fs.writeFileSync(
-    path.join(webRoot, 'vite.config.ts'),
-    `export default { server: { port: ${String(webPort)} } }\n`,
+    path.join(webRoot, 'vite.rsc.config.ts'),
+    `export default {\n  server: { port: ${String(webPort)} },\n  // the document the server draws, in place of the real renderer\n  plugins: [{\n    name: 'probe-document',\n    configureServer(server) {\n      server.middlewares.use((request, response, next) => {\n        if (request.url !== '/') return next()\n        response.setHeader('content-type', 'text/html')\n        response.end('<!doctype html><title>probe</title>')\n      })\n    },\n  }],\n}\n`,
   )
   // so the config is read as the ESM it is written in; without a package.json
   // the nearest one decides, and vite warned that a future major will load it
