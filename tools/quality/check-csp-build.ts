@@ -4,8 +4,9 @@ import { repoRoot } from '../lib/manifest.ts'
 
 // No code from strings in the browser bundle.
 //
-// The shell's script policy names 'self' and the hash of one inline
-// script, and nothing else: no `eval`, no `Function` from a string. A
+// The document's script policy names 'self' and the nonce of the scripts
+// the server writes into it, and nothing else: no `eval`, no `Function`
+// from a string. A
 // dependency that compiles code at run time - a schema compiler, a
 // template engine, a JIT - is reported while the policy is reported-only
 // and stopped once it is enforced, so the build is read for the three
@@ -15,7 +16,9 @@ import { repoRoot } from '../lib/manifest.ts'
 // method. `Function('')` is a feature probe - an empty program runs nothing
 // - which a library may make once to learn whether it may compile at all.
 
-const distAssets = path.join(repoRoot, 'apps/web/dist/assets')
+// the browser's half of the build: the server's halves run in node, under
+// no page's policy
+const distAssets = path.join(repoRoot, 'apps/web/dist-rsc/client/assets')
 const SPELLINGS: readonly [name: string, pattern: RegExp][] = [
   ['eval(', /(?<![\w$.])eval\s*\(/g],
   ['new Function(', /\bnew\s+Function\s*\(/g],
