@@ -9,7 +9,7 @@ import * as stylex from '@stylexjs/stylex'
 /** a pointer that is not fine: a finger, with no hover and no keyboard to hint at */
 const COARSE = '@media not all and (pointer: fine)'
 
-export const pointerStyles = stylex.create({
+const pointerStyles = stylex.create({
   fineOnly: { display: { default: 'contents', [COARSE]: 'none' } },
 })
 
