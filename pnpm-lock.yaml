@@ -1243,6 +1243,9 @@ importers:
       '@qualy/web-i18n':
         specifier: workspace:*
         version: link:../../../web/i18n
+      '@qualy/web-rsc':
+        specifier: workspace:*
+        version: link:../../../web/rsc
       '@qualy/web-runtime':
         specifier: workspace:*
         version: link:../../../web/runtime
@@ -1352,6 +1355,9 @@ importers:
       '@qualy/web-i18n':
         specifier: workspace:*
         version: link:../../../web/i18n
+      '@qualy/web-rsc':
+        specifier: workspace:*
+        version: link:../../../web/rsc
       '@qualy/web-runtime':
         specifier: workspace:*
         version: link:../../../web/runtime

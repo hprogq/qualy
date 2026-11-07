@@ -15,9 +15,15 @@
     "./client/CalculatorSummary": "./src/client/CalculatorSummary.tsx",
     "./client/FormulaCodeEditor": "./src/client/FormulaCodeEditor.tsx",
     "./client/FormulaEditorPage": "./src/client/FormulaEditorPage.tsx",
-    "./client/FormulaListPage": "./src/client/FormulaListPage.tsx",
+    "./client/FormulaListPage": {
+      "react-server": "./src/client/FormulaListPage.server.tsx",
+      "default": "./src/client/FormulaListPage.tsx"
+    },
     "./client/FormulaTemplatePage": "./src/client/FormulaTemplatePage.tsx",
-    "./client/FormulaTemplatesPage": "./src/client/FormulaTemplatesPage.tsx",
+    "./client/FormulaTemplatesPage": {
+      "react-server": "./src/client/FormulaTemplatesPage.server.tsx",
+      "default": "./src/client/FormulaTemplatesPage.tsx"
+    },
     "./client/api": "./src/client/api.ts",
     "./client/formula-lsp/connection": "./src/client/formula-lsp/connection.ts",
     "./client/formula-lsp/conversions": "./src/client/formula-lsp/conversions.ts",
@@ -63,6 +69,7 @@
     "@qualy/ui-contract": "workspace:*",
     "@qualy/value-schema": "workspace:*",
     "@qualy/web-i18n": "workspace:*",
+    "@qualy/web-rsc": "workspace:*",
     "@qualy/web-runtime": "workspace:*",
     "@qualy/web-value-form": "workspace:*",
     "@shikijs/langs": "catalog:",

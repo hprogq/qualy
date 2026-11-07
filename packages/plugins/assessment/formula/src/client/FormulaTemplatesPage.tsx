@@ -1,6 +1,5 @@
 'use client'
 import { Input } from '@qualy/ui/input'
-import { pageNumber } from '@qualy/api-kit/schema'
 import { FormulaPager } from './FormulaPager.tsx'
 import { useLocale } from '@qualy/web-i18n'
 import * as stylex from '@stylexjs/stylex'
@@ -22,6 +21,7 @@ import { AsyncSection } from '@qualy/ui/admin'
 import { Screen } from '@qualy/ui/screen'
 import { ChevronRightIcon, LibraryIcon } from 'lucide-react'
 import { formulaApi } from './api.ts'
+import { libraryQueryOf } from './list-place.ts'
 
 import { LibrarySkeleton, ParameterChips } from './library.tsx'
 import { libraryStyles as l, shortWhen } from './library-styles.ts'
@@ -70,11 +70,9 @@ export default function FormulaTemplatesPage() {
   const [search] = usePageQueryState('search')
   const write = usePageQueryUpdate()
   const templates = useQuery({
+    // the question as the server drawing the page asks it too (list-place.ts)
     ...query.assessmentFormula.listFormulaTemplates.queryOptions({
-      query: {
-        page: String(pageNumber(pageParam)),
-        ...(search.trim() ? { search: search.trim() } : {}),
-      },
+      query: libraryQueryOf((key) => (key === 'page' ? pageParam : key === 'search' ? search : '')),
     }),
     meta: { formulaSearch: search },
     placeholderData: (previous, previousQuery) =>
