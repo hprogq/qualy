@@ -33,7 +33,7 @@ const styles = stylex.create({
   },
   option: {
     fontFamily: 'inherit',
-    color: tokens.mutedForeground,
+    color: { default: tokens.mutedForeground, ':is([data-active])': tokens.foreground },
   },
   // the control is the input's containing block, so each hit area covers
   // its own option rather than the whole run
@@ -121,6 +121,11 @@ function ToggleGroup({
       size="sm"
       radius="xl"
       withItemsBorders={false}
+      // The selected label's server-painted thumb uses these same variables
+      // until Mantine measures and takes it over with its floating indicator.
+      vars={() => ({
+        root: { '--sc-color': tokens.background, '--sc-shadow': '0 1px 2px 0 rgb(0 0 0 / 0.08)' },
+      })}
       classNames={{
         root: stylex.props(styles.ground).className,
         indicator: stylex.props(styles.thumb).className,
