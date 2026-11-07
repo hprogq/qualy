@@ -458,6 +458,7 @@ smtp 后端对着 Mailpit 跑同一套,CI 设 `QUALY_REQUIRE_MAILPIT_TESTS=1`,�
   管理员改邮箱、兑换改邮箱时作废该人全部未用链接。
 - **发信不与建链接同事务**:锁内建链接 → 提交 → 发信;发不出去就把该链接标为已用并记日志与指标,绝不 `BEGIN / INSERT / SMTP / COMMIT`。
   链接用 fragment(`/reset-password#token=…`、`/confirm-email#purpose=…&token=…`),token 不进任何服务端访问日志。
+  SSR/RSC 延续这一约定：服务端输出不依赖 fragment 的稳定初始状态，水合后才读取 token，并通过既有 API 的请求体检查或核销。页面渲染不消费链接，也不为提前判断页面状态把凭据移入 query；需要在服务端读取的普通筛选参数仍使用 query。
   重置页打开即调 `POST /auth/password-resets/inspections`(token 在请求体,只读不消费),失效的链接当场说明,不等填完两遍新密码;
   读出 token 后用 `history.replaceState` 把 fragment 从地址栏去掉。兑换时照旧在锁内原子消费——打开时有效不代表提交时仍有效。
   邮件文案在服务端 `mail-copy.ts`(中英两份,按请求的 Accept-Language 首选语言选),由 `@qualy/plugin-mail` 发出。

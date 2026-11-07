@@ -277,6 +277,8 @@ const tokenFrom = async (mail: Mailbox, to: string) => {
   const link = /https:\/\/\S+/.exec(sent.text)?.[0]
   if (link === undefined) throw new Error(`no link in ${sent.text}`)
   const url = new URL(link)
+  expect(url.searchParams.has('token')).toBe(false)
+  expect(new URLSearchParams(url.hash.slice(1)).get('token')).toBeTruthy()
   return { url, token: new URLSearchParams(url.hash.slice(1)).get('token')!, subject: sent.subject }
 }
 
