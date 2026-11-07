@@ -10,7 +10,10 @@
     "./actions": "./src/actions.ts",
     "./api": "./src/api.ts",
     "./client/BatchAccessPage": "./src/client/BatchAccessPage.tsx",
-    "./client/BatchListPage": "./src/client/BatchListPage.tsx",
+    "./client/BatchListPage": {
+      "react-server": "./src/client/BatchListPage.server.tsx",
+      "default": "./src/client/BatchListPage.tsx"
+    },
     "./client/BatchOverviewPage": {
       "react-server": "./src/client/BatchOverviewPage.server.tsx",
       "default": "./src/client/BatchOverviewPage.tsx"

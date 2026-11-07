@@ -205,6 +205,12 @@ const batchFields = {
  * the list's job is to say where each batch has got to, and a card that only
  * knows the current stage's name cannot draw the run of them.
  */
+export const batchListQuery = Schema.Struct({
+  ...numberedPageQuery,
+  status: Schema.optional(batchStatus),
+  q: Schema.optional(boundedText(100)),
+})
+
 const batchListView = Schema.Struct({
   ...batchFields,
   timeline: Schema.Array(batchTimelineEntry),
@@ -2821,11 +2827,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
   )
   .add(
     HttpApiEndpoint.get('listBatches', '/assessment/batches', {
-      query: Schema.Struct({
-        ...numberedPageQuery,
-        status: Schema.optional(batchStatus),
-        q: Schema.optional(boundedText(100)),
-      }),
+      query: batchListQuery,
       success: Schema.Struct({
         ...numberedPageOf(batchListView).fields,
         /** how many of each kind the search matches, for the filter chips */

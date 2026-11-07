@@ -3,12 +3,13 @@ import { pageNumber } from '@qualy/api-kit/schema'
 import { EasedHeight } from '@qualy/ui/eased-height'
 import { Pager } from '@qualy/ui/pager'
 import { useLocale } from '@qualy/web-i18n'
-import { useEffect, useState, type MouseEvent } from 'react'
+import { useEffect, useState, type MouseEvent, type ReactNode } from 'react'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import {
   PageLink,
   useApiQuery,
+  useDocumentNow,
   useLoadFailure,
   usePageNavigate,
   usePageTitle,
@@ -16,6 +17,8 @@ import {
   usePageQueryUpdate,
 } from '@qualy/web-runtime'
 
+import { useHydrating } from '@qualy/ui/use-hydrating'
+import { Skeleton } from '@qualy/ui/skeleton'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { layout } from '@qualy/ui/theme/layout.stylex'
@@ -33,6 +36,14 @@ import { Count } from '@qualy/ui/count'
 import { ChevronRightIcon, LayersIcon, PlusIcon, SearchIcon, XIcon } from 'lucide-react'
 
 import { assessmentApi } from './api.ts'
+import {
+  BATCH_LIST_FRESH_MS,
+  BATCH_LIST_PAGE_SIZE as PAGE_SIZE,
+  batchListRead,
+  batchStandingRead,
+  batchStatusOf,
+  type BatchStatusFilter,
+} from './batch-list-reads.ts'
 import { NewBatchDialog } from './NewBatchForm.tsx'
 import { standingOf, type BatchStanding } from './batch/standing.ts'
 import { dotDay } from './batch/dates.ts'
@@ -56,9 +67,6 @@ import * as m from '#messages'
 // batch is a link to the batch, not a selection this screen keeps: the
 // address names the batch and the section, so it survives a reload and can
 // be sent to somebody. Creation happens in a dialog on top of the list.
-
-/** rows per page; the page indicator divides the total by it */
-const PAGE_SIZE = 20
 
 // the card shows one running batch and says which; up to this many the
 // others are a pair of arrows away, past it they are a name to pick
@@ -369,6 +377,7 @@ const styles = stylex.create({
     minWidth: 640,
     tableLayout: 'fixed',
   },
+  tableBone: { display: 'flex', alignItems: 'center', height: '1lh' },
   head: {
     height: 'auto',
     paddingTop: 10,
@@ -401,9 +410,8 @@ const styles = stylex.create({
       ':hover': 'transparent',
     },
   },
-  row: {
-    cursor: 'pointer',
-  },
+  rowHeight: { height: 51 },
+  row: { cursor: 'pointer' },
   name: {
     display: 'block',
     overflow: 'hidden',
@@ -493,8 +501,6 @@ const styles = stylex.create({
   },
 })
 
-type StatusFilter = 'all' | 'draft' | 'active' | 'archived'
-
 /** a chip's number, said only once the server has counted, and not when it is none */
 const chipCount = (count: number | undefined) => (count === 0 ? null : <Count>{count}</Count>)
 
@@ -543,10 +549,11 @@ function timeOf(
   row: BatchCardRow & { createdAt: string },
   standing: BatchStanding,
   locale: string,
+  hydrating: boolean,
 ): { text: string; mark: string | null } {
   const zone = readableZone(row.timezone)
   const dated = (say: (date: string) => string, at: string) => {
-    const mark = zoneMarkOf(zone, locale, at)
+    const mark = hydrating ? null : zoneMarkOf(zone, locale, at)
     return { text: say(marked(dotDay(at, zone), mark)), mark }
   }
   const timeline = row.timeline
@@ -578,6 +585,60 @@ function RowTime({ time }: { time: { text: string; mark: string | null } }) {
   )
 }
 
+function BatchTable({ children }: { children: ReactNode }) {
+  return (
+    <div {...stylex.props(styles.sheetScroller)}>
+      <Table xstyle={styles.table}>
+        <TableHeader>
+          <TableRow xstyle={styles.headRow}>
+            <TableHead xstyle={[styles.head, styles.leading]}>{m.batch_columnBatch()}</TableHead>
+            <TableHead xstyle={[styles.head, styles.colStatus]}>{m.batch_filterStatus()}</TableHead>
+            <TableHead xstyle={[styles.head, styles.colStage]}>{m.batch_columnStage()}</TableHead>
+            <TableHead xstyle={[styles.head, styles.colTime]}>{m.batch_columnTime()}</TableHead>
+            <TableHead
+              aria-label={m.batch_enter()}
+              xstyle={[styles.head, styles.colOpen, styles.trailing]}
+            />
+          </TableRow>
+        </TableHeader>
+        <TableBody>{children}</TableBody>
+      </Table>
+    </div>
+  )
+}
+
+function BatchTableSkeleton() {
+  return (
+    <div {...stylex.props(styles.sheet)}>
+      <BatchTable>
+        {['62%', '46%', '55%', '40%'].map((width) => (
+          <TableRow key={width} xstyle={styles.rowHeight}>
+            <TableCell xstyle={[styles.cell, styles.leading]}>
+              <span {...stylex.props(styles.name, styles.tableBone)}>
+                <Skeleton height={14} width={width} radius="sm" />
+              </span>
+            </TableCell>
+            <TableCell xstyle={styles.cell}>
+              <Skeleton height={12} width={42} radius="sm" />
+            </TableCell>
+            <TableCell xstyle={styles.cell}>
+              <Skeleton height={13} width={64} radius="sm" />
+            </TableCell>
+            <TableCell xstyle={styles.cell}>
+              <Skeleton height={13} width={110} radius="sm" />
+            </TableCell>
+            <TableCell xstyle={[styles.cell, styles.trailing]}>
+              <span {...stylex.props(styles.openGlyph)}>
+                <Skeleton height={14} width={14} radius="sm" />
+              </span>
+            </TableCell>
+          </TableRow>
+        ))}
+      </BatchTable>
+    </div>
+  )
+}
+
 export default function BatchListPage() {
   const query = useApiQuery(assessmentApi)
   // the page changes shape, not just its measurements, so the choice is
@@ -586,6 +647,8 @@ export default function BatchListPage() {
   const [searchOpen, setSearchOpen] = useState(false)
   const searchInRow = narrow && searchOpen
   const locale = useLocale()
+  const hydrating = useHydrating()
+  const now = useDocumentNow()
   const failure = useLoadFailure()
   // the shell repeats this once the heading itself has scrolled away
   const titleRef = usePageTitle(m.batch_title())
@@ -602,11 +665,8 @@ export default function BatchListPage() {
     setSeenSearch(searchParam)
     setSearch(searchParam)
   }
-  const statusFilter: StatusFilter =
-    statusParam === 'draft' || statusParam === 'active' || statusParam === 'archived'
-      ? statusParam
-      : 'all'
-  const setStatusFilter = (value: StatusFilter) =>
+  const statusFilter = batchStatusOf(statusParam)
+  const setStatusFilter = (value: BatchStatusFilter) =>
     write({ status: value === 'all' ? '' : value, page: '' })
   const settledSearch = searchParam
   const currentPage = pageNumber(pageParam)
@@ -619,14 +679,10 @@ export default function BatchListPage() {
   }, [search, searchParam, write])
 
   const batches = useQuery({
-    ...query.assessment.listBatches.queryOptions({
-      query: {
-        ...(settledSearch !== '' ? { q: settledSearch } : {}),
-        ...(statusFilter !== 'all' ? { status: statusFilter } : {}),
-        page: String(currentPage),
-        limit: String(PAGE_SIZE),
-      },
-    }),
+    ...query.assessment.listBatches.queryOptions(
+      batchListRead(settledSearch, statusFilter, currentPage),
+    ),
+    staleTime: BATCH_LIST_FRESH_MS,
     // switching a filter re-keys the query; without a carried answer the
     // capabilities blink to false and the draft button jumps out from
     // under the pointer that is about to press it
@@ -642,7 +698,8 @@ export default function BatchListPage() {
   const agendas = useQuery({
     // The server includes every running card and its standing independently
     // of the paged list. Filter changes must not re-key this query.
-    ...query.assessment.listMyStanding.queryOptions({ query: {} }),
+    ...query.assessment.listMyStanding.queryOptions(batchStandingRead),
+    staleTime: BATCH_LIST_FRESH_MS,
     refetchInterval: 30_000,
   })
 
@@ -862,6 +919,7 @@ export default function BatchListPage() {
                               row={one}
                               agenda={agendaOf(agendas.data?.items ?? [], one.id)}
                               frame={{ kind: 'single' }}
+                              now={now}
                             />
                           </div>
                         ))}
@@ -890,6 +948,7 @@ export default function BatchListPage() {
                       row={shown}
                       agenda={agenda}
                       frame={frame}
+                      now={now}
                       entered={hero.entered}
                     />
                   )}
@@ -927,7 +986,7 @@ export default function BatchListPage() {
               // the same action so it does not surface only after the list.
               if (agendas.isError) void agendas.refetch()
             }}
-            skeleton={<ListSkeleton labelled={listLabelled} />}
+            skeleton={<ListSkeleton labelled={listLabelled} desktop={<BatchTableSkeleton />} />}
           >
             <section
               data-testid="batch-list"
@@ -952,7 +1011,9 @@ export default function BatchListPage() {
                     aria-label={m.batch_filterStatus()}
                     // a filter group always has an answer: clicking the active
                     // item would otherwise clear the group and mean nothing
-                    onValueChange={(next) => next !== '' && setStatusFilter(next as StatusFilter)}
+                    onValueChange={(next) =>
+                      next !== '' && setStatusFilter(next as BatchStatusFilter)
+                    }
                   >
                     <ToggleGroupItem value="all">
                       {m.batch_filterAll()}
@@ -1039,7 +1100,7 @@ export default function BatchListPage() {
                                   give, and its stage has just said so */}
                               {at !== 'draft' && (
                                 <span {...stylex.props(styles.rowWhen)}>
-                                  <RowTime time={timeOf(row, at, locale)} />
+                                  <RowTime time={timeOf(row, at, locale, hydrating)} />
                                 </span>
                               )}
                             </span>
@@ -1054,77 +1115,51 @@ export default function BatchListPage() {
                     })}
                   </div>
                 ) : (
-                  <div {...stylex.props(styles.sheetScroller)}>
-                    <Table xstyle={styles.table}>
-                      <TableHeader>
-                        <TableRow xstyle={styles.headRow}>
-                          <TableHead xstyle={[styles.head, styles.leading]}>
-                            {m.batch_columnBatch()}
-                          </TableHead>
-                          <TableHead xstyle={[styles.head, styles.colStatus]}>
-                            {m.batch_filterStatus()}
-                          </TableHead>
-                          <TableHead xstyle={[styles.head, styles.colStage]}>
-                            {m.batch_columnStage()}
-                          </TableHead>
-                          <TableHead xstyle={[styles.head, styles.colTime]}>
-                            {m.batch_columnTime()}
-                          </TableHead>
-                          <TableHead
-                            aria-label={m.batch_enter()}
-                            xstyle={[styles.head, styles.colOpen, styles.trailing]}
-                          />
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {rows.map((row) => {
-                          const at = standing(row)
-                          return (
-                            <TableRow
-                              key={row.id}
-                              data-testid="batch-row"
-                              data-batch={row.id}
-                              data-standing={at}
-                              xstyle={styles.row}
-                              onClick={(event) => openRow(event, row.id)}
+                  <BatchTable>
+                    {rows.map((row) => {
+                      const at = standing(row)
+                      return (
+                        <TableRow
+                          key={row.id}
+                          data-testid="batch-row"
+                          data-batch={row.id}
+                          data-standing={at}
+                          xstyle={[styles.rowHeight, styles.row]}
+                          onClick={(event) => openRow(event, row.id)}
+                        >
+                          <TableCell xstyle={[styles.cell, styles.leading]}>
+                            <PageLink
+                              page="assessment/batch"
+                              params={{ batchId: row.id }}
+                              className={stylex.props(styles.name).className}
                             >
-                              <TableCell xstyle={[styles.cell, styles.leading]}>
-                                <PageLink
-                                  page="assessment/batch"
-                                  params={{ batchId: row.id }}
-                                  className={stylex.props(styles.name).className}
-                                >
-                                  {row.name}
-                                </PageLink>
-                              </TableCell>
-                              <TableCell xstyle={styles.cell}>
-                                <span {...stylex.props(styles.standing, standingStyle[at])}>
-                                  <span aria-hidden {...stylex.props(styles.dot, dotStyle[at])} />
-                                  {{
-                                    draft: m.status_draft,
-                                    pending: m.status_pending,
-                                    active: m.status_active,
-                                    archived: m.status_archived,
-                                  }[at]()}
-                                </span>
-                              </TableCell>
-                              <TableCell xstyle={[styles.cell, styles.stage]}>
-                                {stageOf(row)}
-                              </TableCell>
-                              <TableCell xstyle={[styles.cell, styles.quiet, styles.time]}>
-                                <RowTime time={timeOf(row, at, locale)} />
-                              </TableCell>
-                              <TableCell xstyle={[styles.cell, styles.trailing]}>
-                                <span aria-hidden {...stylex.props(styles.openGlyph)}>
-                                  <ChevronRightIcon size={14} />
-                                </span>
-                              </TableCell>
-                            </TableRow>
-                          )
-                        })}
-                      </TableBody>
-                    </Table>
-                  </div>
+                              {row.name}
+                            </PageLink>
+                          </TableCell>
+                          <TableCell xstyle={styles.cell}>
+                            <span {...stylex.props(styles.standing, standingStyle[at])}>
+                              <span aria-hidden {...stylex.props(styles.dot, dotStyle[at])} />
+                              {{
+                                draft: m.status_draft,
+                                pending: m.status_pending,
+                                active: m.status_active,
+                                archived: m.status_archived,
+                              }[at]()}
+                            </span>
+                          </TableCell>
+                          <TableCell xstyle={[styles.cell, styles.stage]}>{stageOf(row)}</TableCell>
+                          <TableCell xstyle={[styles.cell, styles.quiet, styles.time]}>
+                            <RowTime time={timeOf(row, at, locale, hydrating)} />
+                          </TableCell>
+                          <TableCell xstyle={[styles.cell, styles.trailing]}>
+                            <span aria-hidden {...stylex.props(styles.openGlyph)}>
+                              <ChevronRightIcon size={14} />
+                            </span>
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
+                  </BatchTable>
                 )}
                 {/* the foot exists only when there is somewhere to page to:
                     how many there are is on the pills already */}

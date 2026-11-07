@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
@@ -50,42 +51,6 @@ const styles = stylex.create({
     padding: 3,
     borderRadius: tokens.radiusPill,
     backgroundColor: tokens.surfaceMuted,
-  },
-  sheet: {
-    overflow: 'hidden',
-    borderRadius: tokens.radiusLg,
-    backgroundColor: tokens.surface,
-    boxShadow: tokens.elevation1,
-  },
-  row: {
-    display: 'grid',
-    gridTemplateColumns: 'minmax(0, 1fr) 110px 150px 190px 64px',
-    alignItems: 'center',
-    columnGap: 24,
-    paddingInlineStart: 20,
-    paddingInlineEnd: 20,
-    borderBottomWidth: 1,
-    borderBottomStyle: 'solid',
-    borderBottomColor: tokens.divider,
-  },
-  headRow: {
-    paddingTop: 12,
-    paddingBottom: 14,
-  },
-  bodyRow: {
-    minHeight: 51,
-    borderBottomWidth: {
-      default: 1,
-      ':last-child': 0,
-    },
-  },
-  status: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 6,
-  },
-  end: {
-    justifySelf: 'end',
   },
 })
 
@@ -249,7 +214,7 @@ const ROWS = ['62%', '46%', '55%', '40%'] as const
  * The list's name, its filter pills and its rows, at their heights;
  * `labelled` when the page will give the list a name.
  */
-export function ListSkeleton({ labelled }: { labelled: boolean }) {
+export function ListSkeleton({ labelled, desktop }: { labelled: boolean; desktop: ReactNode }) {
   const narrow = useIsMobile()
   const head = (
     <div {...stylex.props(styles.listHead)}>
@@ -290,32 +255,7 @@ export function ListSkeleton({ labelled }: { labelled: boolean }) {
   return (
     <div data-testid="batch-list-skeleton" aria-hidden {...stylex.props(styles.list)}>
       {head}
-      <div {...stylex.props(styles.sheet)}>
-        <div {...stylex.props(styles.row, styles.headRow)}>
-          <Skeleton height={12} width={32} radius="sm" />
-          <Skeleton height={12} width={28} radius="sm" />
-          <Skeleton height={12} width={28} radius="sm" />
-          <Skeleton height={12} width={28} radius="sm" />
-          <span />
-        </div>
-        {ROWS.map((width, row) => (
-          <div key={row} {...stylex.props(styles.row, styles.bodyRow)}>
-            <Skeleton height={14} width={width} radius="sm" />
-            <div {...stylex.props(styles.status)}>
-              <Skeleton height={6} width={6} radius="xl" />
-              <Skeleton height={12} width={36} radius="sm" />
-            </div>
-            <Skeleton height={13} width={64} radius="sm" />
-            <Skeleton height={13} width={110} radius="sm" />
-            <Skeleton
-              height={14}
-              width={14}
-              radius="sm"
-              className={stylex.props(styles.end).className}
-            />
-          </div>
-        ))}
-      </div>
+      {desktop}
     </div>
   )
 }

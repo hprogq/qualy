@@ -424,6 +424,48 @@ describe('the batch list', () => {
     })
   })
 
+  it('keeps the desktop table header and row heights from its loading state', async () => {
+    let finish!: () => void
+    const waiting = new Promise<void>((resolve) => {
+      finish = resolve
+    })
+    const view = await screen(
+      {
+        listBatches: () =>
+          Effect.promise(async () => {
+            await waiting
+            return {
+              items: [listRow()],
+              total: 1,
+              page: 1,
+              pageSize: 20,
+              capabilities: { create: true },
+            }
+          }),
+      },
+      '/assessment/batches',
+    )
+    try {
+      const loading = page.getByTestId('batch-list-skeleton')
+      await expect.element(loading).toBeVisible()
+      const heights = (element: Element) =>
+        [...element.querySelectorAll('thead tr, tbody tr:first-child')].map(
+          (row) => row.getBoundingClientRect().height,
+        )
+      const before = heights(loading.element())
+      expect(before).toHaveLength(2)
+      finish()
+      const list = page.getByTestId('batch-list')
+      await expect.element(list).toBeVisible()
+      const after = heights(list.element())
+      expect(after).toHaveLength(2)
+      before.forEach((height, at) => expect(Math.abs(height - after[at]!)).toBeLessThan(1))
+    } finally {
+      finish()
+      await view.unmount()
+    }
+  })
+
   it('respects a new search and page from navigation within the same route', async () => {
     const seen: Request[] = []
     await renderScreen({
