@@ -3,7 +3,7 @@ import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { Skeleton } from '@qualy/ui/skeleton'
-import { useIsMobile } from '@qualy/ui/use-mobile'
+import { AtWidth } from '@qualy/ui/at-width'
 import { styles as card, phone as phoneCard } from './card.stylex.ts'
 
 // The batch list before its answers arrive, in the page's own shape.
@@ -43,6 +43,8 @@ const styles = stylex.create({
     alignItems: 'center',
     fontSize: 13,
   },
+  // a name only from a tablet up
+  labelAside: { display: { default: 'flex', [breakpoints.phone]: 'none' } },
   track: {
     display: 'inline-flex',
     alignSelf: 'flex-start',
@@ -103,46 +105,44 @@ const phone = stylex.create({
  * holds room for a taller shape; the hero eases from one height to the other.
  */
 export function HeroSkeleton() {
-  const narrow = useIsMobile()
-  if (narrow) {
-    return (
-      <div data-testid="batch-hero-skeleton" aria-hidden {...stylex.props(phoneCard.card)}>
-        <div {...stylex.props(phoneCard.head)}>
-          {/* the standing badge is 20 tall */}
-          <Skeleton height={20} width={64} radius="xl" />
-          <span {...stylex.props(phoneCard.title, styles.textBone)}>
-            <Skeleton height={20} width="70%" radius="sm" />
+  // both shapes, the stylesheet showing the one the window has room for
+  const phoneShape = (
+    <div data-testid="batch-hero-skeleton" aria-hidden {...stylex.props(phoneCard.card)}>
+      <div {...stylex.props(phoneCard.head)}>
+        {/* the standing badge is 20 tall */}
+        <Skeleton height={20} width={64} radius="xl" />
+        <span {...stylex.props(phoneCard.title, styles.textBone)}>
+          <Skeleton height={20} width="70%" radius="sm" />
+        </span>
+      </div>
+      <div {...stylex.props(phoneCard.agenda)}>
+        {[0, 1].map((row) => (
+          <div key={row} {...stylex.props(phoneCard.agendaRow)}>
+            <div {...stylex.props(phoneCard.agendaWords)}>
+              <span {...stylex.props(phoneCard.agendaLabel, styles.textBone)}>
+                <Skeleton height={12} width={72} radius="sm" />
+              </span>
+              <span {...stylex.props(phoneCard.agendaValue, styles.textBone)}>
+                <Skeleton height={15} width={120} radius="sm" />
+              </span>
+            </div>
+            <Skeleton height={14} width={14} radius="sm" />
+          </div>
+        ))}
+      </div>
+      <div {...stylex.props(phoneCard.foot)}>
+        <div {...stylex.props(phoneCard.plan)}>
+          <Skeleton height={6} radius="xl" />
+          <span {...stylex.props(phoneCard.meta, styles.textBone, styles.axisBones)}>
+            <Skeleton height={11} width={96} radius="sm" />
+            <Skeleton height={11} width={56} radius="sm" />
           </span>
         </div>
-        <div {...stylex.props(phoneCard.agenda)}>
-          {[0, 1].map((row) => (
-            <div key={row} {...stylex.props(phoneCard.agendaRow)}>
-              <div {...stylex.props(phoneCard.agendaWords)}>
-                <span {...stylex.props(phoneCard.agendaLabel, styles.textBone)}>
-                  <Skeleton height={12} width={72} radius="sm" />
-                </span>
-                <span {...stylex.props(phoneCard.agendaValue, styles.textBone)}>
-                  <Skeleton height={15} width={120} radius="sm" />
-                </span>
-              </div>
-              <Skeleton height={14} width={14} radius="sm" />
-            </div>
-          ))}
-        </div>
-        <div {...stylex.props(phoneCard.foot)}>
-          <div {...stylex.props(phoneCard.plan)}>
-            <Skeleton height={6} radius="xl" />
-            <span {...stylex.props(phoneCard.meta, styles.textBone, styles.axisBones)}>
-              <Skeleton height={11} width={96} radius="sm" />
-              <Skeleton height={11} width={56} radius="sm" />
-            </span>
-          </div>
-          <Skeleton height={44} radius="md" />
-        </div>
+        <Skeleton height={44} radius="md" />
       </div>
-    )
-  }
-  return (
+    </div>
+  )
+  const deskShape = (
     <div {...stylex.props(card.seat)}>
       <div data-testid="batch-hero-skeleton" aria-hidden {...stylex.props(card.card)}>
         <div {...stylex.props(card.main)}>
@@ -206,6 +206,12 @@ export function HeroSkeleton() {
       </div>
     </div>
   )
+  return (
+    <>
+      <AtWidth below={768}>{phoneShape}</AtWidth>
+      <AtWidth from={768}>{deskShape}</AtWidth>
+    </>
+  )
 }
 
 const ROWS = ['62%', '46%', '55%', '40%'] as const
@@ -215,14 +221,13 @@ const ROWS = ['62%', '46%', '55%', '40%'] as const
  * `labelled` when the page will give the list a name.
  */
 export function ListSkeleton({ labelled, desktop }: { labelled: boolean; desktop: ReactNode }) {
-  const narrow = useIsMobile()
+  // a phone with no card above the list gives it no name; from a tablet up
+  // it always has one
   const head = (
     <div {...stylex.props(styles.listHead)}>
-      {labelled && (
-        <span {...stylex.props(styles.label)}>
-          <Skeleton height={12} width={52} radius="sm" />
-        </span>
-      )}
+      <span {...stylex.props(styles.label, !labelled && styles.labelAside)}>
+        <Skeleton height={12} width={52} radius="sm" />
+      </span>
       <div {...stylex.props(styles.track)}>
         {[0, 1, 2, 3].map((pill) => (
           <Skeleton key={pill} height={30} width={72} radius="xl" />
@@ -230,10 +235,10 @@ export function ListSkeleton({ labelled, desktop }: { labelled: boolean; desktop
       </div>
     </div>
   )
-  if (narrow) {
-    return (
-      <div data-testid="batch-list-skeleton" aria-hidden {...stylex.props(styles.list)}>
-        {head}
+  return (
+    <div data-testid="batch-list-skeleton" aria-hidden {...stylex.props(styles.list)}>
+      {head}
+      <AtWidth below={768}>
         <div {...stylex.props(phone.rows)}>
           {ROWS.map((width, row) => (
             <div key={row} {...stylex.props(phone.row)}>
@@ -249,13 +254,8 @@ export function ListSkeleton({ labelled, desktop }: { labelled: boolean; desktop
             </div>
           ))}
         </div>
-      </div>
-    )
-  }
-  return (
-    <div data-testid="batch-list-skeleton" aria-hidden {...stylex.props(styles.list)}>
-      {head}
-      {desktop}
+      </AtWidth>
+      <AtWidth from={768}>{desktop}</AtWidth>
     </div>
   )
 }

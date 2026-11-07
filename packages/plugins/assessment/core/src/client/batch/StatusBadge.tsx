@@ -1,5 +1,6 @@
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
+import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { Badge } from '@qualy/ui/badge'
 
 import { standingOf } from './standing.ts'
@@ -49,6 +50,24 @@ const styles = stylex.create({
     flexShrink: 0,
     justifyContent: 'center',
     padding: 0,
+  },
+  // the same, only below a tablet: which width that is, the stylesheet says
+  compactPhone: {
+    width: { default: null, [breakpoints.phone]: 16 },
+    height: { default: null, [breakpoints.phone]: 16 },
+    flexShrink: { default: null, [breakpoints.phone]: 0 },
+    justifyContent: { default: null, [breakpoints.phone]: 'center' },
+    padding: { default: null, [breakpoints.phone]: 0 },
+    gap: { default: 6, [breakpoints.phone]: 0 },
+  },
+  // the word, kept for whoever reads rather than looks where it is not shown
+  wordPhone: {
+    position: { default: null, [breakpoints.phone]: 'absolute' },
+    width: { default: null, [breakpoints.phone]: 1 },
+    height: { default: null, [breakpoints.phone]: 1 },
+    overflow: { default: null, [breakpoints.phone]: 'hidden' },
+    clipPath: { default: null, [breakpoints.phone]: 'inset(50%)' },
+    whiteSpace: { default: null, [breakpoints.phone]: 'nowrap' },
   },
   // the widget's own label span clips its overflow, which cut the live
   // dot's halo into a rectangle mid-breath
@@ -114,8 +133,11 @@ export function StatusBadge({
 }: {
   status: 'draft' | 'active' | 'archived'
   currentPhaseId?: string | null
-  /** the dot and its ground only, for a bar with no room for the word */
-  compact?: boolean
+  /**
+   * The dot and its ground only, for a bar with no room for the word -
+   * always, or (`'phone'`) below a tablet.
+   */
+  compact?: boolean | 'phone'
   xstyle?: stylex.StyleXStyles
 }) {
   const standing = standingOf(status, currentPhaseId)
@@ -130,7 +152,13 @@ export function StatusBadge({
   return (
     <Badge
       className={
-        stylex.props(styles.badge, tone.badge, compact && styles.compact, xstyle).className
+        stylex.props(
+          styles.badge,
+          tone.badge,
+          compact === true && styles.compact,
+          compact === 'phone' && styles.compactPhone,
+          xstyle,
+        ).className
       }
       labelXstyle={styles.label}
       // where the round stands, said as a fact: the badge's word is copy and
@@ -140,13 +168,17 @@ export function StatusBadge({
       data-standing={standing}
       // the word is what goes, not the meaning: the colour and the dot still
       // say it, and whoever cannot see them is reading this instead
-      aria-label={compact ? label() : undefined}
+      aria-label={compact === true ? label() : undefined}
     >
       <span aria-hidden {...stylex.props(styles.dotSeat)}>
         {tone.live && <span {...stylex.props(styles.pulse, tone.dot)} />}
         <span {...stylex.props(styles.dot, tone.dot)} />
       </span>
-      {!compact && label()}
+      {compact === 'phone' ? (
+        <span {...stylex.props(styles.wordPhone)}>{label()}</span>
+      ) : (
+        !compact && label()
+      )}
     </Badge>
   )
 }

@@ -30,6 +30,7 @@ import { Reveal, Unfold } from '@qualy/ui/reveal'
 import { PageContainer } from '@qualy/ui/page-container'
 import { Input } from '@qualy/ui/input'
 import { useIsMobile } from '@qualy/ui/use-mobile'
+import { AtWidth } from '@qualy/ui/at-width'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@qualy/ui/table'
 import { ToggleGroup, ToggleGroupItem } from '@qualy/ui/toggle-group'
 import { Count } from '@qualy/ui/count'
@@ -217,6 +218,9 @@ const styles = stylex.create({
     alignItems: 'center',
     gap: 12,
   },
+  // the list's name only from a tablet up, where nothing else tells the
+  // list from the page
+  listHeadLineAside: { display: { default: 'flex', [breakpoints.phone]: 'none' } },
   listLabel: {
     fontSize: 13,
     fontWeight: 500,
@@ -362,7 +366,14 @@ const styles = stylex.create({
     backgroundColor: tokens.surface,
     boxShadow: tokens.elevation1,
   },
-  sheetBare: { backgroundColor: 'transparent', boxShadow: 'none', overflow: 'visible' },
+  // a phone's list with nothing in it stands on the page, not on a sheet
+  // (the sheet's own values restated: a later style's property replaces the
+  // earlier one whole, conditions and all)
+  sheetBarePhone: {
+    backgroundColor: { default: tokens.surface, [breakpoints.phone]: 'transparent' },
+    boxShadow: { default: tokens.elevation1, [breakpoints.phone]: 'none' },
+    overflow: { default: 'hidden', [breakpoints.phone]: 'visible' },
+  },
   sheetScroller: {
     overflowX: 'auto',
   },
@@ -641,8 +652,10 @@ function BatchTableSkeleton() {
 
 export default function BatchListPage() {
   const query = useApiQuery(assessmentApi)
-  // the page changes shape, not just its measurements, so the choice is
-  // made here rather than in a media query
+  // The page changes shape on a phone, not just its measurements: both
+  // shapes are in the html and the stylesheet shows the one the window has
+  // room for (AtWidth). Whether the search has opened into the title's row
+  // is the one thing only a running page decides.
   const narrow = useIsMobile()
   const [searchOpen, setSearchOpen] = useState(false)
   const searchInRow = narrow && searchOpen
@@ -801,18 +814,19 @@ export default function BatchListPage() {
   // the list's name tells it apart from the cards above it; a phone with no
   // card above has nothing to tell it from, and the page's own title
   // already says what it lists
-  const listLabelled = !narrow || heroPending || running.length > 0
+  const labelledEverywhere = heroPending || running.length > 0
 
-  const searchBox = (
+  /** the search, opened into the title's row on a phone or in the list's own row */
+  const searchBox = (seat: 'row' | 'list') => (
     <Input
       name="batches-search"
       value={search}
-      autoFocus={narrow}
+      autoFocus={seat === 'row'}
       placeholder={m.batch_search()}
       aria-label={m.batch_search()}
       onChange={(event) => setSearch(event.target.value)}
       lead={<SearchIcon aria-hidden className={stylex.props(styles.searchGlyph).className} />}
-      wrapperXstyle={narrow ? styles.searchOpenSeat : styles.searchSeat}
+      wrapperXstyle={seat === 'row' ? styles.searchOpenSeat : styles.searchSeat}
     />
   )
 
@@ -832,23 +846,25 @@ export default function BatchListPage() {
             </h1>
           )}
           <div {...stylex.props(styles.mastheadTools)}>
-            {narrow && !searchInRow && (
-              <button
-                type="button"
-                aria-label={m.batch_search()}
-                onClick={() => setSearchOpen(true)}
-                {...stylex.props(styles.iconButton)}
-              >
-                <SearchIcon size={20} aria-hidden />
-              </button>
+            {!searchInRow && (
+              <AtWidth below={768}>
+                <button
+                  type="button"
+                  aria-label={m.batch_search()}
+                  onClick={() => setSearchOpen(true)}
+                  {...stylex.props(styles.iconButton)}
+                >
+                  <SearchIcon size={20} aria-hidden />
+                </button>
+              </AtWidth>
             )}
-            {narrow && (
+            <AtWidth below={768}>
               <Unfold
                 show={searchOpen}
                 onClosed={() => setSearch('')}
                 className={stylex.props(styles.searchUnfold).className}
               >
-                {searchBox}
+                {searchBox('row')}
                 <button
                   type="button"
                   aria-label={commonMessages.action_close()}
@@ -858,10 +874,10 @@ export default function BatchListPage() {
                   <XIcon size={20} aria-hidden />
                 </button>
               </Unfold>
-            )}
+            </AtWidth>
             {canCreate && !searchInRow && (
               <>
-                {narrow ? (
+                <AtWidth below={768}>
                   <button
                     type="button"
                     aria-label={m.batch_new()}
@@ -870,7 +886,8 @@ export default function BatchListPage() {
                   >
                     <PlusIcon size={20} aria-hidden />
                   </button>
-                ) : (
+                </AtWidth>
+                <AtWidth from={768}>
                   <Button
                     className={stylex.props(styles.createButton).className}
                     onClick={() => setCreating(true)}
@@ -878,7 +895,7 @@ export default function BatchListPage() {
                     <PlusIcon />
                     {m.batch_new()}
                   </Button>
-                )}
+                </AtWidth>
               </>
             )}
           </div>
@@ -905,8 +922,9 @@ export default function BatchListPage() {
               onRetry={() => void agendas.refetch()}
               skeleton={<HeroSkeleton />}
             >
-              {narrow
-                ? // On a phone every running round is a card in a row that
+              <AtWidth below={768}>
+                {
+                  // On a phone every running round is a card in a row that
                   // snaps, rather than one card with a way to step between
                   // them: a thumb already knows how to do this, and arrows
                   // would be two more targets on the busiest part of the page.
@@ -940,18 +958,22 @@ export default function BatchListPage() {
                       )}
                     </div>
                   )
-                : shown !== undefined && (
-                    // keyed by the batch, so a change of batch is a new card
-                    // arriving rather than the old one's words swapped in place
-                    <BatchCard
-                      key={shown.id}
-                      row={shown}
-                      agenda={agenda}
-                      frame={frame}
-                      now={now}
-                      entered={hero.entered}
-                    />
-                  )}
+                }
+              </AtWidth>
+              <AtWidth from={768}>
+                {shown !== undefined && (
+                  // keyed by the batch, so a change of batch is a new card
+                  // arriving rather than the old one's words swapped in place
+                  <BatchCard
+                    key={shown.id}
+                    row={shown}
+                    agenda={agenda}
+                    frame={frame}
+                    now={now}
+                    entered={hero.entered}
+                  />
+                )}
+              </AtWidth>
             </AsyncSection>
           </EasedHeight>
 
@@ -986,7 +1008,9 @@ export default function BatchListPage() {
               // the same action so it does not surface only after the list.
               if (agendas.isError) void agendas.refetch()
             }}
-            skeleton={<ListSkeleton labelled={listLabelled} desktop={<BatchTableSkeleton />} />}
+            skeleton={
+              <ListSkeleton labelled={labelledEverywhere} desktop={<BatchTableSkeleton />} />
+            }
           >
             <section
               data-testid="batch-list"
@@ -999,11 +1023,14 @@ export default function BatchListPage() {
                   the whole page. A refresh that runs long is said just
                   after the pills, since it is their question being asked */}
               <div {...stylex.props(styles.listHead)}>
-                {listLabelled && (
-                  <div {...stylex.props(styles.listHeadLine)}>
-                    <span {...stylex.props(styles.listLabel)}>{m.batch_all()}</span>
-                  </div>
-                )}
+                <div
+                  {...stylex.props(
+                    styles.listHeadLine,
+                    !labelledEverywhere && styles.listHeadLineAside,
+                  )}
+                >
+                  <span {...stylex.props(styles.listLabel)}>{m.batch_all()}</span>
+                </div>
                 <div {...stylex.props(styles.pillScroller)}>
                   <ToggleGroup
                     className={stylex.props(styles.wide).className}
@@ -1043,15 +1070,10 @@ export default function BatchListPage() {
                     {refreshing && <Spinner aria-label={commonMessages.state_loading()} />}
                   </span>
                 </div>
-                {!narrow && searchBox}
+                <AtWidth from={768}>{searchBox('list')}</AtWidth>
               </div>
 
-              <div
-                {...stylex.props(
-                  styles.sheet,
-                  narrow && shownRows.length === 0 && styles.sheetBare,
-                )}
-              >
+              <div {...stylex.props(styles.sheet, shownRows.length === 0 && styles.sheetBarePhone)}>
                 {shownRows.length === 0 ? (
                   // says why there is nothing, and nothing more: the way on is
                   // already on the page - the search, the pills, and for
@@ -1069,97 +1091,104 @@ export default function BatchListPage() {
                       <EmptyDescription>{emptyWords[emptyKind].hint()}</EmptyDescription>
                     </EmptyHeader>
                   </Empty>
-                ) : narrow ? (
-                  <div {...stylex.props(styles.rows)}>
-                    {shownRows.map((row) => {
-                      const at = standing(row)
-                      return (
-                        <PageLink
-                          key={row.id}
-                          page="assessment/batch"
-                          params={{ batchId: row.id }}
-                          data-testid="batch-row"
-                          data-batch={row.id}
-                          data-standing={at}
-                          className={stylex.props(styles.rowCard).className}
-                        >
-                          <span {...stylex.props(styles.rowWords)}>
-                            <span {...stylex.props(styles.rowName)}>{row.name}</span>
-                            <span {...stylex.props(styles.rowMeta)}>
-                              <span {...stylex.props(styles.standing, standingStyle[at])}>
-                                <span aria-hidden {...stylex.props(styles.dot, dotStyle[at])} />
-                                {{
-                                  draft: m.status_draft,
-                                  pending: m.status_pending,
-                                  active: m.status_active,
-                                  archived: m.status_archived,
-                                }[at]()}
-                              </span>
-                              <span {...stylex.props(styles.rowStage)}>{stageOf(row)}</span>
-                              {/* a round still being set up has no date to
-                                  give, and its stage has just said so */}
-                              {at !== 'draft' && (
-                                <span {...stylex.props(styles.rowWhen)}>
-                                  <RowTime time={timeOf(row, at, locale, hydrating)} />
-                                </span>
-                              )}
-                            </span>
-                          </span>
-                          <ChevronRightIcon
-                            size={16}
-                            aria-hidden
-                            {...stylex.props(styles.rowGlyph)}
-                          />
-                        </PageLink>
-                      )
-                    })}
-                  </div>
                 ) : (
-                  <BatchTable>
-                    {rows.map((row) => {
-                      const at = standing(row)
-                      return (
-                        <TableRow
-                          key={row.id}
-                          data-testid="batch-row"
-                          data-batch={row.id}
-                          data-standing={at}
-                          xstyle={[styles.rowHeight, styles.row]}
-                          onClick={(event) => openRow(event, row.id)}
-                        >
-                          <TableCell xstyle={[styles.cell, styles.leading]}>
+                  <>
+                    <AtWidth below={768}>
+                      <div {...stylex.props(styles.rows)}>
+                        {shownRows.map((row) => {
+                          const at = standing(row)
+                          return (
                             <PageLink
+                              key={row.id}
                               page="assessment/batch"
                               params={{ batchId: row.id }}
-                              className={stylex.props(styles.name).className}
+                              data-testid="batch-row"
+                              data-batch={row.id}
+                              data-standing={at}
+                              className={stylex.props(styles.rowCard).className}
                             >
-                              {row.name}
+                              <span {...stylex.props(styles.rowWords)}>
+                                <span {...stylex.props(styles.rowName)}>{row.name}</span>
+                                <span {...stylex.props(styles.rowMeta)}>
+                                  <span {...stylex.props(styles.standing, standingStyle[at])}>
+                                    <span aria-hidden {...stylex.props(styles.dot, dotStyle[at])} />
+                                    {{
+                                      draft: m.status_draft,
+                                      pending: m.status_pending,
+                                      active: m.status_active,
+                                      archived: m.status_archived,
+                                    }[at]()}
+                                  </span>
+                                  <span {...stylex.props(styles.rowStage)}>{stageOf(row)}</span>
+                                  {/* a round still being set up has no date to
+                                  give, and its stage has just said so */}
+                                  {at !== 'draft' && (
+                                    <span {...stylex.props(styles.rowWhen)}>
+                                      <RowTime time={timeOf(row, at, locale, hydrating)} />
+                                    </span>
+                                  )}
+                                </span>
+                              </span>
+                              <ChevronRightIcon
+                                size={16}
+                                aria-hidden
+                                {...stylex.props(styles.rowGlyph)}
+                              />
                             </PageLink>
-                          </TableCell>
-                          <TableCell xstyle={styles.cell}>
-                            <span {...stylex.props(styles.standing, standingStyle[at])}>
-                              <span aria-hidden {...stylex.props(styles.dot, dotStyle[at])} />
-                              {{
-                                draft: m.status_draft,
-                                pending: m.status_pending,
-                                active: m.status_active,
-                                archived: m.status_archived,
-                              }[at]()}
-                            </span>
-                          </TableCell>
-                          <TableCell xstyle={[styles.cell, styles.stage]}>{stageOf(row)}</TableCell>
-                          <TableCell xstyle={[styles.cell, styles.quiet, styles.time]}>
-                            <RowTime time={timeOf(row, at, locale, hydrating)} />
-                          </TableCell>
-                          <TableCell xstyle={[styles.cell, styles.trailing]}>
-                            <span aria-hidden {...stylex.props(styles.openGlyph)}>
-                              <ChevronRightIcon size={14} />
-                            </span>
-                          </TableCell>
-                        </TableRow>
-                      )
-                    })}
-                  </BatchTable>
+                          )
+                        })}
+                      </div>
+                    </AtWidth>
+                    <AtWidth from={768}>
+                      <BatchTable>
+                        {rows.map((row) => {
+                          const at = standing(row)
+                          return (
+                            <TableRow
+                              key={row.id}
+                              data-testid="batch-row"
+                              data-batch={row.id}
+                              data-standing={at}
+                              xstyle={[styles.rowHeight, styles.row]}
+                              onClick={(event) => openRow(event, row.id)}
+                            >
+                              <TableCell xstyle={[styles.cell, styles.leading]}>
+                                <PageLink
+                                  page="assessment/batch"
+                                  params={{ batchId: row.id }}
+                                  className={stylex.props(styles.name).className}
+                                >
+                                  {row.name}
+                                </PageLink>
+                              </TableCell>
+                              <TableCell xstyle={styles.cell}>
+                                <span {...stylex.props(styles.standing, standingStyle[at])}>
+                                  <span aria-hidden {...stylex.props(styles.dot, dotStyle[at])} />
+                                  {{
+                                    draft: m.status_draft,
+                                    pending: m.status_pending,
+                                    active: m.status_active,
+                                    archived: m.status_archived,
+                                  }[at]()}
+                                </span>
+                              </TableCell>
+                              <TableCell xstyle={[styles.cell, styles.stage]}>
+                                {stageOf(row)}
+                              </TableCell>
+                              <TableCell xstyle={[styles.cell, styles.quiet, styles.time]}>
+                                <RowTime time={timeOf(row, at, locale, hydrating)} />
+                              </TableCell>
+                              <TableCell xstyle={[styles.cell, styles.trailing]}>
+                                <span aria-hidden {...stylex.props(styles.openGlyph)}>
+                                  <ChevronRightIcon size={14} />
+                                </span>
+                              </TableCell>
+                            </TableRow>
+                          )
+                        })}
+                      </BatchTable>
+                    </AtWidth>
+                  </>
                 )}
                 {/* the foot exists only when there is somewhere to page to:
                     how many there are is on the pills already */}
@@ -1173,7 +1202,7 @@ export default function BatchListPage() {
                       page={actualPage}
                       pageSize={PAGE_SIZE}
                       total={total}
-                      compact={narrow}
+                      compactBelow={768}
                       disabled={batches.isFetching}
                       summary={m.batch_pageOfTotal({ page: actualPage, pages: pageCount })}
                       onPage={(next) => {

@@ -1,10 +1,10 @@
 import { useLocale } from '@qualy/web-i18n'
 import { useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
 import * as stylex from '@stylexjs/stylex'
+import { AtWidth } from '@qualy/ui/at-width'
 import { ArrowRightIcon, ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
 import { PageLink } from '@qualy/web-runtime'
 import { Button } from '@qualy/ui/button'
-import { useIsMobile } from '@qualy/ui/use-mobile'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@qualy/ui/select'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@qualy/ui/tooltip'
 
@@ -434,9 +434,6 @@ function CardBody({
   const locale = useLocale()
   const zone = useBatchZone()
   const markOf = useZoneMark(locale)
-  // the card's own shape changes, not just its width, so the choice is made
-  // here rather than in a media query
-  const narrow = useIsMobile()
   const at = row.timeline.findIndex((entry) => entry.status === 'current')
   // asked of the clock rather than worked out here: a stage ends when the
   // next one begins, and this card used to say so in its own words - the
@@ -451,88 +448,88 @@ function CardBody({
   // The phone card is a different order, not a narrower one: what the
   // reader has to do moves above the run of stages. Two orders cannot be
   // one tree reflowed, because the work belongs to the right-hand column
-  // on a wide window and to the middle of the card on a narrow one.
-  if (narrow) {
-    return (
-      <article
-        data-testid="batch-hero"
-        data-batch={row.id}
-        {...stylex.props(
-          phone.card,
-          entered === 'forward' && styles.arriveForward,
-          entered === 'backward' && styles.arriveBackward,
-        )}
-      >
-        <div {...stylex.props(phone.head)}>
-          <StatusBadge status={row.status} currentPhaseId={row.currentPhaseId} />
-          <h2 {...stylex.props(phone.title)}>{row.name}</h2>
-        </div>
+  // on a wide window and to the middle of the card on a narrow one - so
+  // both are drawn, and the stylesheet shows the one the window has room
+  // for (AtWidth), right from html a server drew.
+  const phoneCard = (
+    <article
+      data-testid="batch-hero"
+      data-batch={row.id}
+      {...stylex.props(
+        phone.card,
+        entered === 'forward' && styles.arriveForward,
+        entered === 'backward' && styles.arriveBackward,
+      )}
+    >
+      <div {...stylex.props(phone.head)}>
+        <StatusBadge status={row.status} currentPhaseId={row.currentPhaseId} />
+        <h2 {...stylex.props(phone.title)}>{row.name}</h2>
+      </div>
 
-        {/* the reader's own business, and only that: somebody the round is
+      {/* the reader's own business, and only that: somebody the round is
             neither about nor answerable to gets no block at all rather
             than a sentence made up to fill one */}
-        {agenda.rows.length > 0 && (
-          <div {...stylex.props(phone.agenda)}>
-            {agenda.rows.map((line) => (
-              <PhoneAgendaRow key={line.kind} row={line} batchId={row.id} />
-            ))}
-          </div>
-        )}
+      {agenda.rows.length > 0 && (
+        <div {...stylex.props(phone.agenda)}>
+          {agenda.rows.map((line) => (
+            <PhoneAgendaRow key={line.kind} row={line} batchId={row.id} />
+          ))}
+        </div>
+      )}
 
-        <div {...stylex.props(phone.foot)}>
-          {row.timeline.length > 0 && (
-            <div {...stylex.props(phone.plan)}>
-              <div {...stylex.props(phone.lanes)} aria-hidden>
-                {row.timeline.map((entry, index) => (
-                  <span
-                    key={entry.displayName + String(index)}
-                    {...stylex.props(
-                      phone.lane,
-                      entry.status === 'ended'
-                        ? phone.laneEnded
-                        : entry.status === 'current'
-                          ? phone.laneCurrent
-                          : phone.laneFuture,
-                    )}
-                  />
-                ))}
-              </div>
-              {/* Where the round stands, in one line under the bar it
+      <div {...stylex.props(phone.foot)}>
+        {row.timeline.length > 0 && (
+          <div {...stylex.props(phone.plan)}>
+            <div {...stylex.props(phone.lanes)} aria-hidden>
+              {row.timeline.map((entry, index) => (
+                <span
+                  key={entry.displayName + String(index)}
+                  {...stylex.props(
+                    phone.lane,
+                    entry.status === 'ended'
+                      ? phone.laneEnded
+                      : entry.status === 'current'
+                        ? phone.laneCurrent
+                        : phone.laneFuture,
+                  )}
+                />
+              ))}
+            </div>
+            {/* Where the round stands, in one line under the bar it
                   belongs to: which stage of how many, its name, and the
                   clock. The clock is the shared one - it tells a stage
                   that has not been scheduled from one that has not begun,
                   and it turns amber and then red as the close comes up,
                   which is the thing on this card worth noticing. */}
-              <div {...stylex.props(phone.meta)}>
-                <span {...stylex.props(phone.metaWhere)}>
-                  {/* the bar above has just drawn the stages, so the count
+            <div {...stylex.props(phone.meta)}>
+              <span {...stylex.props(phone.metaWhere)}>
+                {/* the bar above has just drawn the stages, so the count
                       needs no noun after it */}
-                  <span {...stylex.props(phone.metaAt)}>
-                    {at === -1
-                      ? m.batch_stageCount({ total: row.timeline.length })
-                      : m.batch_stageAt({ current: at + 1, total: row.timeline.length })}
-                  </span>
-                  {row.currentPhaseName !== null && (
-                    <span {...stylex.props(phone.metaStage)}>{row.currentPhaseName}</span>
-                  )}
+                <span {...stylex.props(phone.metaAt)}>
+                  {at === -1
+                    ? m.batch_stageCount({ total: row.timeline.length })
+                    : m.batch_stageAt({ current: at + 1, total: row.timeline.length })}
                 </span>
-                <BatchProgress timeline={row.timeline} single xstyle={phone.metaClock} />
-              </div>
+                {row.currentPhaseName !== null && (
+                  <span {...stylex.props(phone.metaStage)}>{row.currentPhaseName}</span>
+                )}
+              </span>
+              <BatchProgress timeline={row.timeline} single xstyle={phone.metaClock} />
             </div>
-          )}
+          </div>
+        )}
 
-          <Button asChild className={stylex.props(phone.enter).className}>
-            <PageLink page="assessment/batch" params={{ batchId: row.id }}>
-              {m.batch_enter()}
-              <ArrowRightIcon aria-hidden />
-            </PageLink>
-          </Button>
-        </div>
-      </article>
-    )
-  }
+        <Button asChild className={stylex.props(phone.enter).className}>
+          <PageLink page="assessment/batch" params={{ batchId: row.id }}>
+            {m.batch_enter()}
+            <ArrowRightIcon aria-hidden />
+          </PageLink>
+        </Button>
+      </div>
+    </article>
+  )
 
-  return (
+  const deskCard = (
     <div {...stylex.props(styles.seat)}>
       <article
         data-testid="batch-hero"
@@ -614,5 +611,12 @@ function CardBody({
         </aside>
       </article>
     </div>
+  )
+
+  return (
+    <>
+      <AtWidth below={768}>{phoneCard}</AtWidth>
+      <AtWidth from={768}>{deskCard}</AtWidth>
+    </>
   )
 }

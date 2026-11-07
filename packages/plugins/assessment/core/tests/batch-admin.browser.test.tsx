@@ -1247,7 +1247,7 @@ describe('the batch list', () => {
     const said = empty.element().querySelector('[data-slot="empty-title"]')!
     expect(size(said)).toBeLessThan(size(title))
     // no card above the list, so the list has no name of its own to tell it apart
-    expect(page.getByText('全部批次', { exact: true }).elements()).toHaveLength(0)
+    await expect.element(page.getByText('全部批次', { exact: true })).not.toBeVisible()
     // the search opens out of its glyph, in the title's row
     await page.getByRole('button', { name: '搜索批次名称' }).click()
     const box = page.getByRole('textbox', { name: '搜索批次名称' })

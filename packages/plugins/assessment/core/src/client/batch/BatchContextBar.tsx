@@ -2,6 +2,7 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
+import { AtWidth } from '@qualy/ui/at-width'
 import { ArrowLeftIcon, ChevronRightIcon } from 'lucide-react'
 import {
   LoadFailure,
@@ -30,7 +31,7 @@ import { batchWorkspaceCapabilities } from './capabilities.ts'
 import * as m from '#messages'
 
 /** where the band stops being one line and becomes the window's own head */
-const HEAD_BREAKPOINT = 768
+const HEAD_BREAKPOINT = 768 as const
 
 const styles = stylex.create({
   // Three measured columns from a tablet up; on a phone two rows, because
@@ -348,12 +349,10 @@ export default function BatchContextBar() {
         {batch === undefined || plan.isPending ? (
           // only where the strip is a band of its own: across a desk this
           // column is the end of a line, and a line does not need an outline
-          head && (
-            <>
-              <Skeleton className={stylex.props(styles.stripBone).className} />
-              <Skeleton className={stylex.props(styles.stripBoneEnd).className} />
-            </>
-          )
+          <AtWidth below={HEAD_BREAKPOINT}>
+            <Skeleton className={stylex.props(styles.stripBone).className} />
+            <Skeleton className={stylex.props(styles.stripBoneEnd).className} />
+          </AtWidth>
         ) : stages.length === 0 || !running ? (
           // A round with no stages has no clock and no flow to open, and the
           // strip was left holding one door to an empty room. It says the
@@ -365,7 +364,7 @@ export default function BatchContextBar() {
           </span>
         ) : (
           <>
-            {head ? (
+            <AtWidth below={HEAD_BREAKPOINT}>
               <BatchZone zone={batch.timezone}>
                 <BatchProgress
                   showStage
@@ -375,7 +374,8 @@ export default function BatchContextBar() {
                   xstyle={styles.progressText}
                 />
               </BatchZone>
-            ) : (
+            </AtWidth>
+            <AtWidth from={HEAD_BREAKPOINT}>
               <button
                 type="button"
                 data-testid="stage-key"
@@ -390,10 +390,10 @@ export default function BatchContextBar() {
                 {/* heard after the stage it opens the plan of */}
                 <VisuallyHidden>{m.flow_view()}</VisuallyHidden>
               </button>
-            )}
+            </AtWidth>
             {/* the whole plan, one press away rather than repeated above
                 every section: a reader who wants it asks for it */}
-            {head && (
+            <AtWidth below={HEAD_BREAKPOINT}>
               <Button
                 variant="ghost"
                 size="sm"
@@ -403,7 +403,7 @@ export default function BatchContextBar() {
                 {m.flow_full()}
                 <ChevronRightIcon aria-hidden />
               </Button>
-            )}
+            </AtWidth>
           </>
         )}
       </div>

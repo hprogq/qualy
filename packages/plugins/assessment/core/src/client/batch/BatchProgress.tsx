@@ -1,6 +1,7 @@
 import { useLocale } from '@qualy/web-i18n'
 import { useEffect, useRef, useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
+import { AtWidth } from '@qualy/ui/at-width'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { Badge } from '@qualy/ui/badge'
@@ -224,7 +225,12 @@ export function BatchProgress({
   // rather than a number beside nothing. A caller that asks for `single` has
   // said the stage's name itself, right beside this, so it keeps the short
   // form at every width - the bar's own name for it would say it twice.
+  //
+  // Which side of that threshold a window is on is the stylesheet's to say,
+  // so a bar that changes its words by width carries both phrasings and
+  // shows one (AtWidth); `form` is what a running page reads.
   const tight = useIsMobile()
+  const byWidth = !dense && !single
   const form = dense ? 'bare' : single ? 'single' : tight ? 'bare' : 'full'
   // read once, as a server-drawn page says it while the page takes it over
   const documentNow = useDocumentNow()
@@ -251,11 +257,17 @@ export function BatchProgress({
   // offset for a reader whose device reads it on another clock
   const mark = progress.kind === 'starts' ? markOf(progress.at) : null
 
+  const sayIn = (as: typeof form) =>
+    progress.kind === 'until' || progress.kind === 'since'
+      ? ((span) => (span.message as Message)(span.values))(spanMessage(progress, as))
+      : null
   const said =
     progress.kind === 'until' || progress.kind === 'since'
-      ? // one call, not two: it is pure, but it is also called on every tick
-        // of every card in the list
-        ((span) => (span.message as Message)(span.values))(spanMessage(progress, form))
+      ? // one call per form drawn: it is pure, but it is also called on
+        // every tick of every card in the list
+        byWidth
+        ? null
+        : sayIn(form)
       : progress.kind === 'starts'
         ? marked(
             new Date(progress.at).toLocaleString(locale, {
@@ -267,7 +279,10 @@ export function BatchProgress({
           )
         : null
 
-  if (stage === null && said === null) return null
+  const spanned = progress.kind === 'until' || progress.kind === 'since'
+  const narrowSaid = spanned && byWidth ? sayIn('bare') : null
+  const wideSaid = spanned && byWidth ? sayIn('full') : null
+  if (stage === null && said === null && wideSaid === null) return null
 
   const tone = TONES[toneOf(progress)]
   const filled = progress.kind === 'until' ? progress.fraction : null
@@ -293,12 +308,12 @@ export function BatchProgress({
           )}
         </span>
       )}
-      {stage !== null && said !== null && (
+      {stage !== null && (said !== null || wideSaid !== null) && (
         // a rule rather than more space: the two halves answer different
         // questions, and at a glance the gap alone read as one long phrase
         <span aria-hidden {...stylex.props(styles.rule)} />
       )}
-      {said !== null && (
+      {(said !== null || wideSaid !== null) && (
         <span
           // What the clock says, as a fact rather than as a sentence: the
           // kind of span and its own number, so a test about "39 minutes
@@ -320,7 +335,18 @@ export function BatchProgress({
           {progress.kind === 'starts' && (
             <span {...stylex.props(styles.plannedLabel)}>{m.batch_plannedStart()}</span>
           )}
-          <Ticker value={said} />
+          {said !== null ? (
+            <Ticker value={said} />
+          ) : (
+            <>
+              <AtWidth as="span" below={768}>
+                <Ticker value={narrowSaid ?? ''} />
+              </AtWidth>
+              <AtWidth as="span" from={768}>
+                <Ticker value={wideSaid ?? ''} />
+              </AtWidth>
+            </>
+          )}
         </span>
       )}
     </span>
