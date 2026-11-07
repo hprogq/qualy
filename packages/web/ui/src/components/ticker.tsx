@@ -106,18 +106,23 @@ export const Ticker = memo(function Ticker({
 }) {
   const line = useRef<HTMLSpanElement>(null)
   const [width, setWidth] = useState<number | null>(null)
+  const lastValue = useRef(value)
   const still = useReducedMotion() === true
   // whether the first value has been drawn: a position that exists from the
   // start shows its character as it is, one that appears later arrives
   const [drawn, setDrawn] = useState(false)
   useEffect(() => setDrawn(true), [])
   useLayoutEffect(() => {
+    // Keep the first value at its intrinsic width through hydration and
+    // font loading. An explicit width is only needed for later changes.
+    if (lastValue.current === value) return
+    lastValue.current = value
     // The line is measured the moment the value changes, which is only right
     // because a leaving piece is out of the flow from its first frame (see
     // Piece). Left to an exit animation to take it out one frame later, this
     // measured both texts at once and the box kept the width of the two of
     // them - the stray gap at the end of the bar, and the overflow past it.
-    if (line.current) setWidth(line.current.offsetWidth)
+    if (line.current) setWidth(line.current.getBoundingClientRect().width)
   }, [value])
 
   const sx = stylex.props(styles.box, xstyle)
