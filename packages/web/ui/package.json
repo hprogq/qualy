@@ -67,6 +67,7 @@
     "./sheet": "./src/components/sheet.tsx",
     "./scroll-area": "./src/components/scroll-area.tsx",
     "./use-mobile": "./src/hooks/use-mobile.ts",
+    "./use-hydrating": "./src/hooks/use-hydrating.ts",
     "./date-time-picker": "./src/components/date-time-picker.tsx",
     "./tooltip": "./src/components/tooltip.tsx",
     "./textarea": "./src/components/textarea.tsx",
