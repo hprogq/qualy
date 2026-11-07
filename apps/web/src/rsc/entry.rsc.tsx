@@ -162,8 +162,6 @@ export default async function handler(
   // the cookies the manifest's answer set, the one read finished before
   // anything goes out: a session it found lapsed is cleared there
   const heard: string[] = []
-  let clearings: readonly string[] = []
-  let served: Response
   try {
     // who is signed in, asked first and asked as nobody in particular: the
     // manifest is the one read that answers that question
@@ -172,7 +170,7 @@ export default async function handler(
       () => readApi(appApi, (client) => client.app.getManifest()),
     )
     const passed = sessionClearings(heard, asked.cookie)
-    clearings = passed.forwarded
+    const clearings = passed.forwarded
     if (passed.dropped.length > 0) {
       console.warn('[qualy] render dropped cookies the api set', passed.dropped)
     }
@@ -189,18 +187,21 @@ export default async function handler(
           ? declared.identity
           : identityOfManifest(manifest),
     }
-    served = await withDocumentLocale(scope.locale, () =>
+    const served = await withDocumentLocale(scope.locale, () =>
       withRenderRequest(scope, () => renderServer(request, manifest)),
     )
+    const ssr = await import.meta.viteRsc.loadModule<typeof import('./entry.ssr.tsx')>(
+      'ssr',
+      'index',
+    )
+    return withCookies(
+      await ssr.renderDocument(request, served, asked.locale, context.nonce),
+      clearings,
+    )
   } catch (error) {
-    // the reader went away while the render was asking: its reads were
-    // cancelled with it, which is the render ending, not failing
+    // A disconnected reader can interrupt the API reads or the HTML
+    // renderer. Neither cancellation is a failed render.
     if (request.signal.aborted) return new Response(null, { status: 499 })
     throw error
   }
-  const ssr = await import.meta.viteRsc.loadModule<typeof import('./entry.ssr.tsx')>('ssr', 'index')
-  return withCookies(
-    await ssr.renderDocument(request, served, asked.locale, context.nonce),
-    clearings,
-  )
 }

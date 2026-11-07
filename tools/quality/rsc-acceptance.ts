@@ -8,7 +8,7 @@ import path from 'node:path'
 import { NodeHttpServer } from '@effect/platform-node'
 import { Effect, Fiber, Layer } from 'effect'
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from 'effect/http'
-import { chromium, type Browser, type BrowserContext, type Page } from 'playwright'
+import { chromium, type Browser, type BrowserContext, type Locator, type Page } from 'playwright'
 import {
   CSP_HEADER,
   composeShellPolicy,
@@ -672,6 +672,92 @@ const ownReads = async (page: Page, address: string): Promise<readonly string[]>
   return [...asked]
 }
 
+// Playwright's visibility check treats opacity: 0 as visible. A server
+// document must paint its content even when the browser cannot hydrate it.
+const painted = async (element: Locator): Promise<boolean> =>
+  (await element.isVisible()) &&
+  (await element.evaluate((node) => {
+    type Ancestor = { readonly parentElement: Ancestor | null }
+    const browser = globalThis as unknown as {
+      getComputedStyle(element: Ancestor): { readonly opacity: string }
+    }
+    for (
+      let ancestor = node as unknown as Ancestor | null;
+      ancestor;
+      ancestor = ancestor.parentElement
+    ) {
+      if (browser.getComputedStyle(ancestor).opacity === '0') return false
+    }
+    return true
+  }))
+
+const batchListFirstScreen = async (browser: Browser, batch: string) => {
+  const list = '/assessment/batches'
+  const overview = `${list}/${batch}`
+  const row = `[data-testid="batch-row"][data-batch="${batch}"]`
+  const staticContext = await signedInContext(browser, 'admin', { javaScriptEnabled: false })
+  const html = await staticContext.newPage()
+  await html.goto(`${site}${list}?q=RSC%20acceptance&status=draft&page=1`)
+  check('paints the filtered batch list without JavaScript', await painted(html.locator(row)))
+  const malformed = await html.goto(`${site}${list}?q=${'x'.repeat(101)}`)
+  check('keeps the batch list reachable with an invalid search', malformed?.status() === 200)
+  await staticContext.close()
+
+  const context = await signedInContext(browser, 'admin')
+  const page = await context.newPage()
+  const duplicateReads: string[] = []
+  page.on('request', (request) => {
+    const { pathname } = new URL(request.url())
+    if (pathname === '/api/assessment/batches' || pathname === '/api/assessment/standing') {
+      duplicateReads.push(pathname)
+    }
+  })
+  await page.goto(`${site}${list}`)
+  await hydrated(page)
+  await inPage(page, 'window.__same = true')
+  let resume!: () => void
+  const pending = new Promise<void>((resolve) => {
+    resume = resolve
+  })
+  await page.route(
+    (url) => url.pathname.startsWith(overview),
+    async (route) => {
+      await pending
+      await route.continue()
+    },
+  )
+  try {
+    await page.locator(row).getByRole('link').first().click()
+    const progress = page.getByRole('progressbar').filter({ visible: true })
+    const indicating = await progress
+      .first()
+      .waitFor({ timeout: 3_000 })
+      .then(
+        () => true,
+        () => false,
+      )
+    check(
+      'keeps the batch list on screen and indicates a pending navigation',
+      indicating && (await painted(page.locator(row))),
+    )
+    check(
+      'takes the batch list over without asking again',
+      duplicateReads.length === 0,
+      duplicateReads,
+    )
+  } finally {
+    resume()
+  }
+  await page.waitForURL(`${site}${overview}`)
+  await page.getByTestId('batch-note').waitFor()
+  check(
+    'shows the overview in the same document after navigation',
+    (await painted(page.getByTestId('batch-note'))) &&
+      (await inPage<boolean>(page, 'window.__same === true')),
+  )
+  await context.close()
+}
+
 /** the batch overview's first screen, as the server draws it and the page takes it over */
 const overviewFirstScreen = async (browser: Browser, batch: string) => {
   const address = `/assessment/batches/${batch}`
@@ -689,7 +775,7 @@ const overviewFirstScreen = async (browser: Browser, batch: string) => {
     await html.goto(`${site}${at}`)
     const shown = await Promise.all(
       ['batch-note', 'overview-clear', 'overview-activity-empty'].map((id) =>
-        html.getByTestId(id).isVisible(),
+        painted(html.getByTestId(id)),
       ),
     )
     check(`draws the overview's first screen in the html (${which})`, shown.every(Boolean), shown)
@@ -794,7 +880,9 @@ const checks = async () => {
   await underPolicy(browser)
   await changedHands(browser)
   await sessionWent(browser)
-  await overviewFirstScreen(browser, await batchFor(scratch))
+  const batch = await batchFor(scratch)
+  await batchListFirstScreen(browser, batch)
+  await overviewFirstScreen(browser, batch)
 }
 
 let server: QualyServer | undefined
