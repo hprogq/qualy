@@ -9,7 +9,10 @@
     ".": "./src/index.ts",
     "./actions": "./src/actions.ts",
     "./api": "./src/api.ts",
-    "./client/OrgPage": "./src/client/OrgPage.tsx",
+    "./client/OrgPage": {
+      "react-server": "./src/client/OrgPage.server.tsx",
+      "default": "./src/client/OrgPage.tsx"
+    },
     "./db": "./src/db/entities.ts",
     "./package.json": "./package.json",
     "./permissions": "./src/permissions.ts",
@@ -50,6 +53,7 @@
     "@qualy/ui": "workspace:*",
     "@qualy/ui-contract": "workspace:*",
     "@qualy/web-i18n": "workspace:*",
+    "@qualy/web-rsc": "workspace:*",
     "@qualy/web-runtime": "workspace:*",
     "@stylexjs/stylex": "catalog:",
     "@tanstack/react-query": "catalog:",
