@@ -1,6 +1,13 @@
 'use client'
 import { useEffect, useState, type ReactNode } from 'react'
-import { HydrationBoundary, useQueryClient, type DehydratedState } from '@tanstack/react-query'
+import {
+  HydrationBoundary,
+  useQueryClient,
+  type DehydratedState,
+  type Query,
+  type QueryClient,
+  type QueryKey,
+} from '@tanstack/react-query'
 import { useLocation } from 'react-router'
 
 // What a server read on a page's behalf, handed to the page's query cache
@@ -26,7 +33,15 @@ import { useLocation } from 'react-router'
 // still told the way it always was; the batch's live channel marks it stale.
 // A reader that says itself how long an answer stands keeps its own word.
 //
-// Both are held for as long as the reader stays at the address the
+// A read the server had not finished when the html went out comes after it,
+// down the same response, and is the page's read in the meantime: the page
+// draws it as on its way - its own skeleton, the way it always drew a read
+// it was waiting on - and does not ask for it again, and it lands where the
+// page reads it. A read the server could not answer for the page lands as
+// the page's own asking. In the html and in the browser's first frame alike
+// it is on its way, whenever it lands, so the two are drawn the same.
+//
+// All of these are held for as long as the reader stays at the address the
 // document was drawn for - a reader behind a lazily loaded part of the page
 // is taken over well after the rest - and let go when they go elsewhere:
 // mounting such a reader again then asks again, as it always did.
@@ -34,18 +49,75 @@ import { useLocation } from 'react-router'
 /** how long an answer a server handed over stands before a reader asks again */
 const HANDED_FRESH_MS = 30_000
 
+/** what a read that followed the html came to: an answer, or the page's to ask */
+export type Arrival =
+  | { readonly kind: 'answer'; readonly value: unknown }
+  | { readonly kind: 'ask' }
+
+/** a read still on its way when the html went out, under the key the page reads it with */
+export interface Coming {
+  readonly queryKey: QueryKey
+  readonly arrival: Promise<Arrival>
+}
+
+/**
+ * Opened once the browser has taken the document over, and never on the
+ * server. A read that lands before then waits for it: whether it had landed
+ * when a part of the page rendered would otherwise depend on timing - a part
+ * resumed after its code loaded, on either side - and the html and the
+ * first frame would disagree. Both draw it on its way; it lands after.
+ */
+let takeOver: () => void = () => {}
+const takenOver = new Promise<void>((resolve) => {
+  takeOver = resolve
+})
+
+/** the page's own asking, for a read the server could not answer for it */
+const askedBy = (client: QueryClient, query: Query) => {
+  const ask = query.options.queryFn
+  if (typeof ask !== 'function') throw new Error('no reader on the page asks for a handed read')
+  return ask({
+    client,
+    queryKey: query.queryKey,
+    meta: query.meta,
+    signal: new AbortController().signal,
+  })
+}
+
+/**
+ * A read on its way, made the page's: in flight under its key, so a reader
+ * that mounts waits on it rather than asking, ending as the server's read
+ * ends. Not for a key the browser already holds or is already asking for.
+ */
+const follow = (client: QueryClient, { queryKey, arrival }: Coming) => {
+  const query = client.getQueryCache().build(client, client.defaultQueryOptions({ queryKey }))
+  if (query.state.data !== undefined || query.state.fetchStatus !== 'idle') return
+  void query
+    .fetch(undefined, {
+      // What crossed from the server is a thenable whose `then` hands back
+      // nothing, not a promise; adopted into one first.
+      initialPromise: Promise.all([Promise.resolve(arrival), takenOver]).then(([landed]) =>
+        landed.kind === 'answer' ? landed.value : askedBy(client, query),
+      ),
+    })
+    .catch(() => {})
+}
+
 export function QueryHydration({
   state,
+  coming = [],
   children,
 }: {
   state: DehydratedState
+  /** the reads that followed the html (@qualy/web-rsc/queries `answersOf`) */
+  coming?: readonly Coming[]
   children: ReactNode
 }) {
   const client = useQueryClient()
   // set while rendering, before anything under this reads: the html and the
   // browser's first frame are drawn from it
-  const [held] = useState(() =>
-    state.queries.flatMap((query) => {
+  const [held] = useState(() => [
+    ...state.queries.flatMap((query) => {
       if (query.state.status === 'error') {
         client.setQueryDefaults(query.queryKey, { retryOnMount: false })
       } else if (query.state.status === 'success') {
@@ -53,7 +125,13 @@ export function QueryHydration({
       } else return []
       return [query.queryKey]
     }),
-  )
+    ...coming.map((read) => {
+      follow(client, read)
+      client.setQueryDefaults(read.queryKey, { staleTime: HANDED_FRESH_MS })
+      return read.queryKey
+    }),
+  ])
+  useEffect(() => takeOver(), [])
   const here = useLocation().key
   const [drawnAt] = useState(here)
   useEffect(() => {

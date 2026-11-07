@@ -1,5 +1,6 @@
 import { Cause, Exit, Option } from 'effect'
 import { QueryClient, dehydrate, type DehydratedState, type QueryKey } from '@tanstack/query-core'
+import type { Arrival, Coming } from '@qualy/web-runtime/query-hydration'
 
 // What a page's server entry reads on the page's behalf, and how it hands
 // that over (docs/adr/0012-rsc-data-mode.md).
@@ -11,6 +12,11 @@ import { QueryClient, dehydrate, type DehydratedState, type QueryKey } from '@ta
 // cache is then handed to the page (@qualy/web-runtime/query-hydration),
 // under the keys the page reads with (@qualy/web-runtime/query-key), so the
 // html carries what the page shows and the page does not ask for it again.
+//
+// A read is waited on only so long (`HTML_WAIT_MS`): the html goes out
+// with what has answered by then, and a slower read follows it down the same
+// response, the page drawn as waiting on it until it lands, rather than the
+// whole document waiting on the slowest read.
 //
 // What a read ended as decides what is handed over, and only an answer
 // the page would have had for itself is:
@@ -149,22 +155,99 @@ export const serverQueries = (): ServerQueries => {
 }
 
 /**
+ * How long a page's reads may hold its html back. What answers within it is
+ * in the html; what does not follows the html down the same response, and
+ * the page stands drawn as waiting for it until it lands, rather than the
+ * reader looking at a blank window while the slowest read finishes.
+ */
+export const HTML_WAIT_MS = 120
+
+/** the wait ending before the read did */
+class Late {}
+const LATE = new Late()
+
+/** the end of the wait, from now; let go of when nothing waits on it any more */
+const waitFor = (ms: number) => {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const over = new Promise<Late>((resolve) => {
+    timer = setTimeout(() => resolve(LATE), ms)
+  })
+  return { over, done: () => clearTimeout(timer) }
+}
+
+/**
+ * A read, if it ends within the wait: what a server entry decides by - who
+ * is on the page, whose claims open - only when it knows in time, and leaves
+ * to the page otherwise.
+ */
+export const within = async <A, E>(
+  exit: Promise<Exit.Exit<A, E>>,
+  ms: number = HTML_WAIT_MS,
+): Promise<Exit.Exit<A, E> | undefined> => {
+  const wait = waitFor(ms)
+  try {
+    const first = await Promise.race([exit, wait.over])
+    return first instanceof Late ? undefined : first
+  } finally {
+    wait.done()
+  }
+}
+
+/**
+ * What a read that missed the html comes to. Only an answer is handed over;
+ * anything else is the page's to ask for itself, as a read that ended in
+ * time and did not answer is. Nothing is thrown down a response already on
+ * its way: a bug is said in the server's log, and the page asks.
+ */
+const arrivalOf = (key: QueryKey, exit: Exit.Exit<unknown, unknown>): Arrival => {
+  try {
+    const read = settle(exit)
+    return read.kind === 'answer' ? { kind: 'answer', value: read.value } : { kind: 'ask' }
+  } catch (error) {
+    if (!(Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause))) {
+      console.error('a read that followed the html failed', key, error)
+    }
+    return { kind: 'ask' }
+  }
+}
+
+/** what a server entry hands its page: answers in the html, and reads still on their way */
+export interface Handed {
+  readonly state: DehydratedState
+  readonly coming: readonly Coming[]
+}
+
+/**
  * The answers among a page's reads, held under their keys for the page:
  * what a server component hands its client part through
- * @qualy/web-runtime/query-hydration. A read that did not end in an answer
- * is left to the page, which asks for it itself; one that is a bug or a
- * reader who left throws, as `settle` does.
+ * @qualy/web-runtime/query-hydration. A read that ends within the wait and
+ * did not answer is left to the page, which asks for it itself; one that is
+ * a bug or a reader who left throws, as `settle` does. A read that does not
+ * end within the wait is handed over still on its way.
  */
 export const answersOf = async (
   reads: readonly {
     readonly key: QueryKey
     readonly exit: Promise<Exit.Exit<unknown, unknown>>
   }[],
-): Promise<DehydratedState> => {
-  const settled = await Promise.all(
-    reads.map(async ({ key, exit }) => ({ key, read: settle(await exit) })),
-  )
+  ms: number = HTML_WAIT_MS,
+): Promise<Handed> => {
+  const wait = waitFor(ms)
+  const raced = await Promise.all(
+    reads.map(async ({ key, exit }) => {
+      const first: Exit.Exit<unknown, unknown> | Late = await Promise.race([exit, wait.over])
+      return { key, exit, first }
+    }),
+  ).finally(wait.done)
   const queries = serverQueries()
-  for (const { key, read } of settled) if (read.kind === 'answer') queries.hold(key, read.value)
-  return queries.dehydrated()
+  const coming: Coming[] = []
+  for (const { key, exit, first } of raced) {
+    if (first instanceof Late) {
+      coming.push({ queryKey: key, arrival: exit.then((late) => arrivalOf(key, late)) })
+      continue
+    }
+    const read = settle(first)
+    if (read.kind === 'answer') queries.hold(key, read.value)
+  }
+  return { state: queries.dehydrated(), coming }
 }
