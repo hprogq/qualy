@@ -58,8 +58,21 @@ type Order = 'newest' | 'oldest'
 const PHONE = '@media (max-width: 767.98px)'
 const BELOW_DESK = '@media (max-width: 1279.98px)'
 
+/** a pane wide enough for the claims' desk shape (ROOMY_PANE), asked of the pane */
+const ROOMY_QUERY = '@container item-pane (min-width: 720px)'
+/** where the requirements stand in a column of their own, beside the pane */
+const DESK = '@media (min-width: 1280px)'
+
 const styles = stylex.create({
-  root: { display: 'flex', minHeight: '100%', flexGrow: 1, flexDirection: 'column' },
+  root: {
+    display: 'flex',
+    minHeight: '100%',
+    flexGrow: 1,
+    flexDirection: 'column',
+    // what the two shapes are chosen by before the pane is measured
+    containerType: 'inline-size',
+    containerName: 'item-pane',
+  },
   head: {
     display: 'flex',
     minWidth: 0,
@@ -176,7 +189,7 @@ const styles = stylex.create({
   },
   heldIcon: { width: 14, height: 14, flexShrink: 0 },
   asideKey: {
-    display: 'flex',
+    display: { default: 'flex', [DESK]: 'none' },
     minWidth: 0,
     alignItems: 'center',
     gap: 8,
@@ -395,6 +408,10 @@ const styles = stylex.create({
   // width, not the window's
   insetRoomy: { paddingInline: 28 },
   insetCompact: { paddingInline: 16 },
+  insetByRoom: { paddingInline: { default: 16, [ROOMY_QUERY]: 28 } },
+  // the two shapes, while the pane's width is the stylesheet's to answer
+  compactOnly: { display: { default: 'contents', [ROOMY_QUERY]: 'none' } },
+  roomyOnly: { display: { default: 'none', [ROOMY_QUERY]: 'contents' } },
   addRow: {
     display: 'flex',
     width: '100%',
@@ -554,9 +571,12 @@ export function ItemPane({
   const still = useReducedMotion() === true
   // the toolbar and the rows lay out by the room the pane is given, not by
   // the window: at a desk inside a narrower page the pane is narrow too
+  // Until the pane has been measured - in html a server drew, and for the
+  // one layout pass before a pane's first paint - it carries both shapes,
+  // and a container query on the pane shows the one its width is for.
   const [paneRef, paneWidth] = useWidthOf()
-  const roomy = paneWidth === null ? mode === 'desk' : paneWidth >= ROOMY_PANE
-  const compact = !roomy
+  const measured = paneWidth !== null
+  const roomy = measured && paneWidth >= ROOMY_PANE
   const chips = useMemo(() => chipsFor(viewer, item), [viewer, item])
   const [search, setSearch] = useState('')
   const [searchOpen, setSearchOpen] = useState(false)
@@ -643,7 +663,8 @@ export function ItemPane({
     rowNeeds.key === offeredKey &&
     paneWidth !== null &&
     paneWidth < rowNeeds.width
-  const wide = roomy && !cramped
+  const wideNow = roomy && !cramped
+  const wide = wideNow
   useLayoutEffect(() => {
     const row = chipRow.current
     if (!wide || row === null || paneWidth === null) return
@@ -709,7 +730,8 @@ export function ItemPane({
           ? styles.tagOpen
           : styles.tagMoving
 
-  const toolbar = entries.length > 0 && (
+  /** the toolbar in one shape or the other: a row, or the narrower one where the filters wrap */
+  const toolbarIn = (wide: boolean) => (
     <div
       data-testid="entries-toolbar"
       data-shape={wide ? 'row' : 'wrap'}
@@ -720,7 +742,8 @@ export function ItemPane({
       )}
     >
       <div
-        ref={chipRow}
+        // measured only in the shape the pane is in
+        ref={wide === wideNow ? chipRow : undefined}
         role="group"
         aria-label={m.entries_filterLabel()}
         {...stylex.props(styles.chips, wide && styles.chipsDesk)}
@@ -848,7 +871,17 @@ export function ItemPane({
     </div>
   )
 
-  const inset = roomy ? styles.insetRoomy : styles.insetCompact
+  const inset = !measured ? styles.insetByRoom : roomy ? styles.insetRoomy : styles.insetCompact
+  /** a part drawn in the shape the pane is in, or in both until it is measured */
+  const shaped = (part: (roomy: boolean) => ReactNode) =>
+    measured ? (
+      part(roomy)
+    ) : (
+      <>
+        <div {...stylex.props(styles.compactOnly)}>{part(false)}</div>
+        <div {...stylex.props(styles.roomyOnly)}>{part(true)}</div>
+      </>
+    )
   const addLabel = (filing?.declared === true ? m.entry_declare : m.entry_new)()
   // Where another claim would start, the way in - or, while the stage has
   // shut it, why, in the words the way in would have had: a key that only
@@ -968,26 +1001,23 @@ export function ItemPane({
             </span>
           )}
         </div>
-        {/* the requirements have a column of their own only at a desk */}
-        {mode !== 'desk' && (
-          <button
-            type="button"
-            data-testid="requirements-key"
-            onClick={onRequirements}
-            {...stylex.props(styles.asideKey)}
-          >
-            <InfoIcon aria-hidden {...stylex.props(styles.asideKeyIcon)} />
-            <span {...stylex.props(styles.asideKeyWord)}>{m.entries_requirements()}</span>
-            <span {...stylex.props(styles.asideKeySummary)}>
-              {facts.join(m.entries_listJoin())}
-            </span>
-            <ChevronRightIcon aria-hidden {...stylex.props(styles.asideKeyChevron)} />
-          </button>
-        )}
+        {/* the requirements have a column of their own only at a desk, which
+            the stylesheet answers */}
+        <button
+          type="button"
+          data-testid="requirements-key"
+          onClick={onRequirements}
+          {...stylex.props(styles.asideKey)}
+        >
+          <InfoIcon aria-hidden {...stylex.props(styles.asideKeyIcon)} />
+          <span {...stylex.props(styles.asideKeyWord)}>{m.entries_requirements()}</span>
+          <span {...stylex.props(styles.asideKeySummary)}>{facts.join(m.entries_listJoin())}</span>
+          <ChevronRightIcon aria-hidden {...stylex.props(styles.asideKeyChevron)} />
+        </button>
       </div>
 
       <div {...stylex.props(styles.card)}>
-        {toolbar}
+        {entries.length > 0 && shaped((roomyShape) => toolbarIn(roomyShape && !cramped))}
         {/* A filter or a search narrows this list in place: rows that leave
             fade out of the way and the rest close up, and a claim that
             arrives fades in where it belongs, so the list reads as the same
@@ -995,29 +1025,32 @@ export function ItemPane({
             the list moves with it, or the rows closing up would slide over
             it on their way. */}
         <LayoutGroup>
-          {shown.length > 0 && (
-            <ul {...stylex.props(styles.rows, !compact && styles.rowsDesk)}>
-              <Sift>
-                {shown.map((entry) => (
-                  <SiftRow
-                    key={entry.id}
-                    className={compact ? undefined : stylex.props(styles.rowSeatDesk).className}
-                  >
-                    <EntryRow
-                      entry={entry}
-                      line={lines.get(entry.id)!}
-                      compact={compact}
-                      selected={entry.id === selectedEntryId}
-                      awaitingMe={awaitingMe?.has(entry.id) ?? false}
-                      unread={unreadEntries?.has(entry.id) ?? false}
-                      withItem={voidedWithItem(entry, item)}
-                      onOpen={() => onEntry(entry)}
-                    />
-                  </SiftRow>
-                ))}
-              </Sift>
-            </ul>
-          )}
+          {shown.length > 0 &&
+            shaped((roomyShape) => (
+              <ul {...stylex.props(styles.rows, roomyShape && styles.rowsDesk)}>
+                <Sift>
+                  {shown.map((entry) => (
+                    <SiftRow
+                      key={entry.id}
+                      className={
+                        roomyShape ? stylex.props(styles.rowSeatDesk).className : undefined
+                      }
+                    >
+                      <EntryRow
+                        entry={entry}
+                        line={lines.get(entry.id)!}
+                        compact={!roomyShape}
+                        selected={entry.id === selectedEntryId}
+                        awaitingMe={awaitingMe?.has(entry.id) ?? false}
+                        unread={unreadEntries?.has(entry.id) ?? false}
+                        withItem={voidedWithItem(entry, item)}
+                        onOpen={() => onEntry(entry)}
+                      />
+                    </SiftRow>
+                  ))}
+                </Sift>
+              </ul>
+            ))}
           {/* nothing shown because of a search, as against nothing there to
               show: a question with no claims at all is the only empty one */}
           {entries.length > 0 && filtered.length === 0 && (

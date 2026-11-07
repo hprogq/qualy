@@ -13,6 +13,7 @@ import { useClaimScreenFoot } from '@qualy/web-runtime'
 
 import { Button } from '@qualy/ui/button'
 import { liveStateOf, type LiveLine } from '@qualy/ui/live-mark'
+import { AtWidth } from '@qualy/ui/at-width'
 import { Drill } from '@qualy/ui/reveal'
 import { Sheet, SheetContent, SheetTitle } from '@qualy/ui/sheet'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
@@ -50,6 +51,8 @@ import * as m from '#messages'
 
 /** where a desk is wide enough for the broader structure and requirements columns */
 const WIDE = '@media (min-width: 1600px)'
+/** where the requirements stand in a column of their own (DESK_UP) */
+const DESK = '@media (min-width: 1280px)'
 
 /** the height of a phone's section head pinned over the rows under it, and a little room */
 const PINNED_HEAD = 48
@@ -95,17 +98,22 @@ const styles = stylex.create({
     flexBasis: '0%',
     gridTemplateRows: 'minmax(0, 1fr)',
   },
-  // a laptop's structure and requirements, and a wide screen's
-  columnsDesk: {
+  // a tablet's structure beside the question; a laptop's and a wide
+  // screen's with the requirements in a third column
+  columnsItem: {
     gridTemplateColumns: {
-      default: '340px minmax(0, 1fr) 300px',
+      default: '300px minmax(0, 1fr)',
+      [DESK]: '340px minmax(0, 1fr) 300px',
       [WIDE]: '380px minmax(0, 1fr) 360px',
     },
   },
-  columnsDeskGroup: {
-    gridTemplateColumns: { default: '340px minmax(0, 1fr)', [WIDE]: '380px minmax(0, 1fr)' },
+  columnsGroup: {
+    gridTemplateColumns: {
+      default: '300px minmax(0, 1fr)',
+      [DESK]: '340px minmax(0, 1fr)',
+      [WIDE]: '380px minmax(0, 1fr)',
+    },
   },
-  columnsTablet: { gridTemplateColumns: '300px minmax(0, 1fr)' },
   rail: {
     minWidth: 0,
     minHeight: 0,
@@ -169,7 +177,7 @@ const styles = stylex.create({
   },
   stepIcon: { width: 15, height: 15, flexShrink: 0, color: tokens.mutedForeground },
   aside: {
-    display: 'flex',
+    display: { default: 'none', [DESK]: 'flex' },
     minWidth: 0,
     minHeight: 0,
     flexDirection: 'column',
@@ -372,7 +380,20 @@ export interface WorkspaceProps {
 
 export function EntriesWorkspace(props: WorkspaceProps) {
   const mode = useWorkspaceMode()
-  return <Workspace {...props} mode={mode} />
+  // A phone's workspace is two screens and a wider one is columns: two
+  // trees, both in html a server drew, the stylesheet showing the one the
+  // window has room for (AtWidth). From a tablet up the columns themselves
+  // are the stylesheet's to lay out, so that tree is the same at any width.
+  return (
+    <>
+      <AtWidth below={768}>
+        <Workspace {...props} mode="phone" />
+      </AtWidth>
+      <AtWidth from={768}>
+        <Workspace {...props} mode={mode === 'phone' ? 'tablet' : mode} />
+      </AtWidth>
+    </>
+  )
 }
 
 function Workspace({
@@ -820,7 +841,6 @@ function Workspace({
     )
   }
 
-  const desk = mode === 'desk'
   return (
     <div
       ref={(node) => {
@@ -835,14 +855,7 @@ function Workspace({
     >
       {notice}
       <div
-        {...stylex.props(
-          styles.columns,
-          desk
-            ? item !== null
-              ? styles.columnsDesk
-              : styles.columnsDeskGroup
-            : styles.columnsTablet,
-        )}
+        {...stylex.props(styles.columns, item !== null ? styles.columnsItem : styles.columnsGroup)}
       >
         <div {...stylex.props(styles.rail)}>{rail('column')}</div>
         <div {...stylex.props(styles.main)}>
@@ -890,7 +903,9 @@ function Workspace({
             </nav>
           )}
         </div>
-        {desk && item !== null && (
+        {/* a column of its own only at a desk; under it the question's key
+            opens the same in a sheet */}
+        {item !== null && (
           <aside aria-label={m.entries_requirements()} {...stylex.props(styles.aside)}>
             <div {...stylex.props(styles.asideHead)}>
               <h2 {...stylex.props(styles.asideTitle)}>{m.entries_requirements()}</h2>

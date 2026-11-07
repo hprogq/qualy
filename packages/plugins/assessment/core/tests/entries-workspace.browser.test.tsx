@@ -344,7 +344,7 @@ describe('finding a question', () => {
     const aside = page.getByRole('complementary', { name: '填报要求' })
     await expect.element(aside).toBeVisible()
     await expect.element(aside.getByTestId('item-requirements')).toBeVisible()
-    expect(page.getByTestId('requirements-key').elements()).toHaveLength(0)
+    await expect.element(page.getByTestId('requirements-key')).not.toBeVisible()
 
     await page.viewport(834, 1112)
     await expect
@@ -988,7 +988,7 @@ describe('the head of the structure', () => {
 
   // The account follows the round while the line is open, and the head says
   // so beside the way to ask again - never "provisional" in its place.
-  it('says the account is kept live once the line opens, and nothing before', async () => {
+  it('says the account is kept live once the line opens, and connecting before', async () => {
     await page.viewport(1440, 900)
     let open = () => {}
     const opened = new Promise<void>((resolve) => {
@@ -1009,7 +1009,8 @@ describe('the head of the structure', () => {
       },
     })
     await expect.element(page.getByRole('heading', { name: '品德题目 1' })).toBeVisible()
-    expect(live().elements()).toHaveLength(0)
+    // in its place from the first frame, saying only that the line is on its way
+    await expect.element(live()).toHaveAttribute('data-state', 'connecting')
     open()
     await expect.element(live()).toHaveAttribute('data-state', 'live')
   })

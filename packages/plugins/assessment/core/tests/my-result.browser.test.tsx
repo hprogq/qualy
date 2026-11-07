@@ -1900,7 +1900,7 @@ describe('a round that moves while the page is open', () => {
     await expect.element(page.getByTestId('result-total')).toHaveTextContent('55.50')
   })
 
-  it('says the account is live once the line opens, and nothing before', async () => {
+  it('says the account is live once the line opens, and connecting before', async () => {
     const paper = normal()
     let open = () => {}
     const opened = new Promise<void>((resolve) => {
@@ -1918,7 +1918,10 @@ describe('a round that moves while the page is open', () => {
         ),
     })
     await expect.element(page.getByTestId('result-total')).toBeVisible()
-    expect(page.getByTestId('result-live').elements()).toHaveLength(0)
+    // in its place from the first frame, saying only that the line is on its way
+    await expect
+      .element(page.getByTestId('result-live'))
+      .toHaveAttribute('data-state', 'connecting')
     open()
     await expect.element(page.getByTestId('result-live')).toHaveAttribute('data-state', 'live')
   })

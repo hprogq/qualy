@@ -1,6 +1,8 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { Skeleton } from '@qualy/ui/skeleton'
+import { AtWidth } from '@qualy/ui/at-width'
+import { useHydrating } from '@qualy/ui/use-hydrating'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { ROOMY_PANE, useWidthOf, useWorkspaceMode, type WorkspaceMode } from './layout.ts'
 import type { Viewer } from './model.ts'
@@ -17,6 +19,9 @@ import { statsShownFor } from './preferences.ts'
 
 /** where a desk is wide enough for the broader structure and requirements columns */
 const WIDE = '@media (min-width: 1600px)'
+const DESK = '@media (min-width: 1280px)'
+/** the pane's width from which the claims take their desk shape (ROOMY_PANE) */
+const ROOMY_QUERY = '@container skeleton-pane (min-width: 720px)'
 const PHONE = '@media (max-width: 767.98px)'
 const BELOW_DESK = '@media (max-width: 1279.98px)'
 
@@ -32,13 +37,14 @@ const styles = stylex.create({
     overflow: 'hidden',
     backgroundColor: tokens.background,
   },
-  desk: {
+  // a tablet's two columns, a desk's three
+  columns: {
     gridTemplateColumns: {
-      default: '340px minmax(0, 1fr) 300px',
+      default: '300px minmax(0, 1fr)',
+      [DESK]: '340px minmax(0, 1fr) 300px',
       [WIDE]: '380px minmax(0, 1fr) 360px',
     },
   },
-  tablet: { gridTemplateColumns: '300px minmax(0, 1fr)' },
   // on a phone the workspace is part of the page, as tall as what it holds
   phone: {
     display: 'flex',
@@ -142,6 +148,13 @@ const styles = stylex.create({
   // and desk-shaped claims, or a narrower pane's keys and folded claims
   roomyInset: { paddingInline: 28 },
   compactInset: { paddingInline: 16 },
+  insetByRoom: { paddingInline: { default: 16, [ROOMY_QUERY]: 28 } },
+  // the pane's two shapes, while its width is the stylesheet's to answer
+  pane: { containerType: 'inline-size', containerName: 'skeleton-pane' },
+  compactOnly: { display: { default: 'contents', [ROOMY_QUERY]: 'none' } },
+  roomyOnly: { display: { default: 'none', [ROOMY_QUERY]: 'contents' } },
+  deskOnly: { display: { default: 'none', [DESK]: 'contents' } },
+  belowDesk: { display: { default: 'contents', [DESK]: 'none' } },
   chips: { height: 32, borderRadius: 9999 },
   search: { height: 32, borderRadius: 8 },
   sort: { height: 32, borderRadius: 8 },
@@ -176,6 +189,7 @@ const styles = stylex.create({
   },
   step: { height: 12, width: 132 },
   aside: {
+    display: { default: 'none', [DESK]: 'flex' },
     borderLeftWidth: 1,
     borderLeftStyle: 'solid',
     borderLeftColor: tokens.divider,
@@ -214,14 +228,45 @@ export function WorkspaceSkeleton({
   open: boolean
 }) {
   const mode = useWorkspaceMode()
+  // the workspace's own two trees, the stylesheet showing the one the
+  // window has room for, as the workspace does (EntriesWorkspace)
+  return (
+    <>
+      <AtWidth below={768}>
+        <Outline viewer={viewer} open={open} mode="phone" />
+      </AtWidth>
+      <AtWidth from={768}>
+        <Outline viewer={viewer} open={open} mode={mode === 'phone' ? 'tablet' : mode} />
+      </AtWidth>
+    </>
+  )
+}
+
+function Outline({ viewer, open, mode }: { viewer: Viewer; open: boolean; mode: WorkspaceMode }) {
+  // In html a server drew, the window's width is the stylesheet's to answer:
+  // what stands only at a desk, or only under one, is drawn either way and
+  // shown by the stylesheet; a running page draws only what its width is for.
+  const html = useHydrating()
+  const desk = mode === 'desk'
   // read once, the way the workspace reads it when it mounts
   const [statsShown] = useState(() => statsShownFor(viewer))
   const phone = mode === 'phone'
   // the question's toolbar and claims take the shape the pane will give them,
   // by the pane's own width as the pane itself decides it
   const [paneRef, paneWidth] = useWidthOf()
-  const roomy = paneWidth === null ? mode === 'desk' : paneWidth >= ROOMY_PANE
-  const inset = roomy ? styles.roomyInset : styles.compactInset
+  const measured = paneWidth !== null
+  const roomy = measured && paneWidth >= ROOMY_PANE
+  const inset = !measured ? styles.insetByRoom : roomy ? styles.roomyInset : styles.compactInset
+  /** a part drawn in the shape the pane is in, or in both until it is measured */
+  const shaped = (part: (roomy: boolean) => ReactNode) =>
+    measured ? (
+      part(roomy)
+    ) : (
+      <>
+        <div {...stylex.props(styles.compactOnly)}>{part(false)}</div>
+        <div {...stylex.props(styles.roomyOnly)}>{part(true)}</div>
+      </>
+    )
   const bone = (xstyle: stylex.StyleXStyles, width?: string | number) => (
     <Skeleton
       className={stylex.props(xstyle).className}
@@ -290,7 +335,7 @@ export function WorkspaceSkeleton({
   )
 
   const question = (
-    <div ref={paneRef} data-bone="question" {...stylex.props(styles.column)}>
+    <div ref={paneRef} data-bone="question" {...stylex.props(styles.column, styles.pane)}>
       {phone && (
         <div {...stylex.props(styles.phoneBar)}>
           {bone(styles.back)}
@@ -304,37 +349,43 @@ export function WorkspaceSkeleton({
         <div {...stylex.props(styles.line)}>
           {bone(styles.heading)}
           <span {...stylex.props(styles.spacer)} />
-          {mode === 'desk' && bone(styles.key)}
+          {(html || desk) && <span {...stylex.props(styles.deskOnly)}>{bone(styles.key)}</span>}
         </div>
         <div {...stylex.props(styles.facts)}>
           {[52, 72, 64].map((width) => (
             <span key={width}>{bone(styles.fact, width)}</span>
           ))}
         </div>
-        {mode !== 'desk' && bone(styles.asideKey)}
+        {(html || !desk) && (
+          <span {...stylex.props(styles.belowDesk)}>{bone(styles.asideKey)}</span>
+        )}
       </div>
-      <div
-        data-bone="toolbar"
-        data-shape={roomy ? 'row' : 'wrap'}
-        {...stylex.props(styles.toolbar, inset)}
-      >
-        {bone(styles.chips, roomy ? 180 : '52%')}
-        <span {...stylex.props(styles.spacer)} />
-        {roomy ? bone(styles.search, 160) : bone(styles.iconKey)}
-        {bone(styles.sort, roomy ? 120 : 56)}
-      </div>
-      {LEADS.map((lead) => (
-        <div key={lead} {...stylex.props(styles.claim, inset)}>
-          <span {...stylex.props(styles.claimWords)}>
-            {bone(styles.claimLead, lead)}
-            {bone(styles.claimSecond, '34%')}
-          </span>
-          {roomy && bone(styles.pill)}
-          <span {...stylex.props(styles.amount)}>
-            {bone(styles.amountValue)}
-            {bone(styles.amountWord)}
-          </span>
-        </div>
+      {shaped((roomy) => (
+        <>
+          <div
+            data-bone="toolbar"
+            data-shape={roomy ? 'row' : 'wrap'}
+            {...stylex.props(styles.toolbar, inset)}
+          >
+            {bone(styles.chips, roomy ? 180 : '52%')}
+            <span {...stylex.props(styles.spacer)} />
+            {roomy ? bone(styles.search, 160) : bone(styles.iconKey)}
+            {bone(styles.sort, roomy ? 120 : 56)}
+          </div>
+          {LEADS.map((lead) => (
+            <div key={lead} {...stylex.props(styles.claim, inset)}>
+              <span {...stylex.props(styles.claimWords)}>
+                {bone(styles.claimLead, lead)}
+                {bone(styles.claimSecond, '34%')}
+              </span>
+              {roomy && bone(styles.pill)}
+              <span {...stylex.props(styles.amount)}>
+                {bone(styles.amountValue)}
+                {bone(styles.amountWord)}
+              </span>
+            </div>
+          ))}
+        </>
       ))}
       {!phone && <span {...stylex.props(styles.fill)} />}
       {!phone && (
@@ -370,17 +421,11 @@ export function WorkspaceSkeleton({
       data-testid="workspace-skeleton"
       data-mode={mode}
       data-viewer={viewer}
-      {...stylex.props(styles.root, shapes[mode])}
+      {...stylex.props(styles.root, mode === 'phone' ? styles.phone : styles.columns)}
     >
       {phone ? (open ? question : rail) : rail}
       {!phone && question}
-      {mode === 'desk' && requirements}
+      {(html || desk) && requirements}
     </div>
   )
-}
-
-const shapes: Record<WorkspaceMode, stylex.StyleXStyles> = {
-  desk: styles.desk,
-  tablet: styles.tablet,
-  phone: styles.phone,
 }
