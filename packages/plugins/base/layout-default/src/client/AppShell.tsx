@@ -75,6 +75,9 @@ const styles = stylex.create({
     // named because nothing here wants a say in a sideways edge swipe.
     overscrollBehaviorY: 'contain',
     scrollPaddingTop: { default: shell.topBarHeight, [breakpoints.phone]: shell.phoneTopBarHeight },
+    // the page's room, for what a page sizes to it in its html, before any
+    // script could measure it (StickyFill)
+    containerType: 'size',
   },
   // The scroller and its floating head reserve the same native gutter from
   // the first paint. Overlay scrollbars do not take any layout space, and a

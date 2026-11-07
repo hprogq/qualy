@@ -385,6 +385,9 @@ const styles = stylex.create({
     flexShrink: 1,
     flexBasis: '0%',
     flexDirection: 'column',
+    // the page's room, for what a page sizes to it in its html, before any
+    // script could measure it (StickyFill)
+    containerType: 'size',
     overflowY: {
       default: 'auto',
       [stylex.when.ancestor(':has([data-screen-fill="always"])', shellRoot)]: 'hidden',

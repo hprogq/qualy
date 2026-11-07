@@ -11,6 +11,8 @@ import { useIsBelow } from '../../hooks/use-mobile.ts'
 
 const GAP = 20
 const FOOT = 16
+// how far under the top of its scroller a stuck box stands
+const UNDER = 12
 const CLIP_ROOM = 4
 
 const styles = stylex.create({
@@ -95,6 +97,15 @@ const styles = stylex.create({
   },
   gripLit: { backgroundColor: `color-mix(in oklab, ${tokens.foreground} 55%, transparent)` },
   fill: { position: 'sticky', display: 'flex', minHeight: 0, flexDirection: 'column' },
+  // Until the box is measured - in the html, before any script has run - it
+  // stands as tall as it is once stuck: the page's room, which the shell's
+  // scroller gives as its container, less the gap above and the foot. At the
+  // page's top that reaches a little under the window's edge, by what stands
+  // above it; measured, it ends at the edge.
+  fillDrawn: {
+    top: { default: null, [breakpoints.desktop]: UNDER },
+    height: { default: null, [breakpoints.desktop]: `calc(100cqh - ${String(UNDER + FOOT)}px)` },
+  },
 })
 
 /**
@@ -277,7 +288,8 @@ export function StickyFill({
       // where the bars end: the scroller says so for everything that scrolls
       // into view, and this is the same question
       const under =
-        (scroller === null ? 0 : parseFloat(getComputedStyle(scroller).scrollPaddingTop) || 0) + 12
+        (scroller === null ? 0 : parseFloat(getComputedStyle(scroller).scrollPaddingTop) || 0) +
+        UNDER
       // CSS sticky's top is relative to the scrollport. The measured marker
       // and viewport edges are not: the shell's bars may put this scrollport
       // well below the window's top, or leave another panel below it.
@@ -318,7 +330,7 @@ export function StickyFill({
       {/* where the box would stand if nothing stuck: what the height is measured from */}
       <div ref={mark} aria-hidden />
       <div
-        {...stylex.props(styles.fill)}
+        {...stylex.props(styles.fill, styles.fillDrawn)}
         style={box === null || !wide ? undefined : { top: box.top, height: box.height }}
         data-testid="sticky-fill"
         data-filling={wide}
