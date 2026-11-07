@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useSyncExternalStore } from 'react'
 
 /**
  * The width below which this is a phone.
@@ -18,19 +18,28 @@ const MOBILE_BREAKPOINT = 768
  * has to fold it at the width its own layout stops fitting - a panel beside a
  * table needs the room a table needs, which is not where the shell's own
  * columns give up.
+ *
+ * A server drawing the page has no viewport, and says no: the page is drawn
+ * at its widest, and a browser taking that html over says the same in its
+ * first frame before it answers for itself (docs/adr/0012-rsc-data-mode.md).
+ * A layout that must be right in the html is the stylesheet's to draw; this
+ * is for a tree that has to change.
  */
 export function useIsBelow(breakpoint: number): boolean {
-  const [below, setBelow] = useState(
-    () => typeof window !== 'undefined' && window.innerWidth < breakpoint,
+  const query = `(max-width: ${String(breakpoint - 1)}px)`
+  const subscribe = useCallback(
+    (changed: () => void) => {
+      const media = window.matchMedia(query)
+      media.addEventListener('change', changed)
+      return () => media.removeEventListener('change', changed)
+    },
+    [query],
   )
-  useEffect(() => {
-    const media = window.matchMedia(`(max-width: ${String(breakpoint - 1)}px)`)
-    const onChange = () => setBelow(media.matches)
-    onChange()
-    media.addEventListener('change', onChange)
-    return () => media.removeEventListener('change', onChange)
-  }, [breakpoint])
-  return below
+  return useSyncExternalStore(
+    subscribe,
+    () => window.matchMedia(query).matches,
+    () => false,
+  )
 }
 
 export const useIsMobile = (): boolean => useIsBelow(MOBILE_BREAKPOINT)
