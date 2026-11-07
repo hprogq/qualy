@@ -5,6 +5,17 @@ import { page } from 'vitest/browser'
 import { Effect } from 'effect'
 import { emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
+/**
+ * The elements a reader sees at this width. The shell draws its rail for a
+ * wide window and for a phone and its stylesheet shows one, so a server that
+ * cannot measure the window draws the right one; the other is in the
+ * document, not on screen.
+ */
+const shown = <E extends Element = Element>(selector: string): E[] =>
+  [...document.querySelectorAll<E>(selector)].filter(
+    (element) => element.getClientRects().length > 0,
+  )
+
 // How much this plugin holds about a person, beside the sections of their
 // record that hold it: counted in the shell the record really opens in, so
 // what the slot hands its badge is what the badge reads.
@@ -120,9 +131,7 @@ describe('the sections of a person’s record this plugin holds', () => {
         routes: [{ path: '/organization/users/:userId/*', element: <UserDetailShell /> }],
         route: `/organization/users/${USER_ID}/assessment/batches`,
       })
-      const counted = () => [
-        ...document.querySelectorAll<HTMLElement>('[data-testid="person-section-count"]'),
-      ]
+      const counted = () => [...shown<HTMLElement>('[data-testid="person-section-count"]')]
       // the counts wait on two reads and the shell's lazy sections
       await expect.poll(() => counted().length, { timeout: 5_000 }).toBe(2)
       const bySection = new Map(counted().map((badge) => [badge.dataset['section'], badge]))

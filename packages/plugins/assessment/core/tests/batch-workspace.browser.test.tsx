@@ -11,6 +11,17 @@ import type { ApiResult } from '@qualy/web-runtime/api'
 import type { assessmentApi } from '@qualy/plugin-assessment/client/api'
 import { addressNow, apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
+/**
+ * The elements a reader sees at this width. The shell draws its rail for a
+ * wide window and for a phone and its stylesheet shows one, so a server that
+ * cannot measure the window draws the right one; the other is in the
+ * document, not on screen.
+ */
+const shown = <E extends Element = Element>(selector: string): E[] =>
+  [...document.querySelectorAll<E>(selector)].filter(
+    (element) => element.getClientRects().length > 0,
+  )
+
 // The workspace around one batch, when the batch is not there for the reader
 // and when a screen of it is not theirs (§32.96); and the overview's lane for
 // whoever administers it, with the dots beside the rail entries it points at
@@ -564,7 +575,7 @@ describe('the administration lane of the overview', () => {
     await expect.element(page.getByTestId('workspace-rail')).toBeInTheDocument()
     expect(lane()).toHaveLength(0)
     expect(page.getByTestId('overview-actions').elements()).toHaveLength(0)
-    expect(document.querySelectorAll('[data-testid="rail-alert"]')).toHaveLength(0)
+    expect(shown('[data-testid="rail-alert"]')).toHaveLength(0)
     expect(reviewAlerts).not.toHaveBeenCalled()
     expect(listParticipantPlacements).not.toHaveBeenCalled()
     expect(previewAccessSync).toHaveBeenCalled()
@@ -580,9 +591,7 @@ describe('the administration lane of the overview', () => {
         Effect.succeed({ items: [], nextCursor: null, pendingTotal: 1, lapsedTotal: 4 }),
     })
     const dots = () =>
-      [...document.querySelectorAll('[data-testid="rail-alert"]')].map((dot) =>
-        dot.getAttribute('data-navigation'),
-      )
+      shown('[data-testid="rail-alert"]').map((dot) => dot.getAttribute('data-navigation'))
     await vi.waitFor(() =>
       expect(dots().sort((a, b) => (a ?? '').localeCompare(b ?? ''))).toEqual([
         'assessment/batch-access/rail',
@@ -593,9 +602,9 @@ describe('the administration lane of the overview', () => {
     const items = page.getByRole('link', { name: /项目配置/ })
     expect(items.element().querySelector('[role="img"][aria-label]')).not.toBeNull()
     expect(
-      document
-        .querySelector('[data-navigation="assessment/batch-access/rail"][data-testid="rail-alert"]')
-        ?.getAttribute('data-tone'),
+      shown(
+        '[data-navigation="assessment/batch-access/rail"][data-testid="rail-alert"]',
+      )[0]?.getAttribute('data-tone'),
     ).toBe('warning')
   })
 
@@ -620,7 +629,7 @@ describe('the administration lane of the overview', () => {
           },
         }),
     })
-    const dots = () => [...document.querySelectorAll('[data-testid="rail-alert"]')]
+    const dots = () => shown('[data-testid="rail-alert"]')
     await expect.poll(() => dots().length).toBe(1)
     expect(
       dots()
@@ -641,7 +650,7 @@ describe('the administration lane of the overview', () => {
         Effect.succeed({ items: [], nextCursor: null, pendingTotal: 1, lapsedTotal: 0 }),
     })
     const dots = () =>
-      [...document.querySelectorAll('[data-testid="rail-alert"]')]
+      shown('[data-testid="rail-alert"]')
         .map((dot) => dot.getAttribute('data-navigation'))
         .sort((a, b) => (a ?? '').localeCompare(b ?? ''))
     await expect
@@ -663,9 +672,7 @@ describe('the administration lane of the overview', () => {
           }),
       })
       const dot = () =>
-        document.querySelector(
-          '[data-navigation="assessment/batch-access/rail"][data-testid="rail-alert"]',
-        )
+        shown('[data-navigation="assessment/batch-access/rail"][data-testid="rail-alert"]')[0]
       await vi.waitFor(() => expect(dot()?.getAttribute('data-tone')).toBe('info'))
       expect(dot()?.getAttribute('aria-label')).toBeTruthy()
       // Information about an effective withdrawal is never listed as authority to accept.
@@ -719,7 +726,7 @@ describe('the administration lane of the overview', () => {
     await expect.element(page.getByTestId('overview-actions')).toBeVisible()
     expect(row('review-pending')).not.toBeNull()
     expect(lane()).toHaveLength(0)
-    expect(document.querySelectorAll('[data-testid="rail-alert"]')).toHaveLength(0)
+    expect(shown('[data-testid="rail-alert"]')).toHaveLength(0)
     expect(reviewAlerts).not.toHaveBeenCalled()
     expect(listParticipantPlacements).not.toHaveBeenCalled()
     expect(previewAccessSync).not.toHaveBeenCalled()
