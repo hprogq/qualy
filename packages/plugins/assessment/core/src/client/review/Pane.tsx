@@ -21,6 +21,7 @@ export const PART_LABEL: Record<WorkbenchPart, Message> = {
 }
 
 const belowLg = '@media (max-width: 1023.98px)'
+const aboveLg = '@media (min-width: 1024px)'
 
 const styles = stylex.create({
   // The root stays `relative` either way - an absolutely positioned
@@ -53,6 +54,21 @@ const styles = stylex.create({
   // The pager opens on the filing, the judged material: said in the
   // stylesheet, so a page a server drew opens there too. Where a browser
   // does not take it yet the pager is put there as the page runs.
+  // Each part in its own track of the bench's grid, said outright: the
+  // column handles are cells of that grid too, and a part left to find its
+  // own cell walked past the ones the handles hold, onto a second row.
+  inFlowTrack: {
+    gridColumn: { default: null, [aboveLg]: 1 },
+    gridRow: { default: null, [aboveLg]: 1 },
+  },
+  inFilingTrack: {
+    gridColumn: { default: null, [aboveLg]: 2 },
+    gridRow: { default: null, [aboveLg]: 1 },
+  },
+  inAboutTrack: {
+    gridColumn: { default: null, [aboveLg]: 3 },
+    gridRow: { default: null, [aboveLg]: 1 },
+  },
   opensHere: {
     scrollInitialTarget: { default: null, [belowLg]: 'nearest' },
   },
@@ -67,6 +83,12 @@ const styles = stylex.create({
     flexDirection: 'column',
   },
 })
+
+const TRACK = {
+  flow: styles.inFlowTrack,
+  filing: styles.inFilingTrack,
+  about: styles.inAboutTrack,
+} as const
 
 /**
  * One workbench pane. It scrolls inside itself at every width - beside the
@@ -105,7 +127,7 @@ export function Pane({
     <As
       data-workbench-part={part}
       aria-label={label}
-      {...stylex.props(styles.pane, part === 'filing' && styles.opensHere, xstyle)}
+      {...stylex.props(styles.pane, TRACK[part], part === 'filing' && styles.opensHere, xstyle)}
     >
       <ScrollArea className={stylex.props(styles.scroller).className}>
         <div {...stylex.props(styles.column, innerXstyle)}>{children}</div>

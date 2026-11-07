@@ -491,6 +491,14 @@ describe('one workbench, three widths', () => {
         .width ?? 0
     const handle = page.getByTestId('bench-handle-flow')
     const seat = handle.element() as HTMLElement
+    // the three parts side by side in one row, the handles standing on their
+    // edges: a part left to find its own cell once landed on a second row
+    const boxes = [...document.querySelectorAll<HTMLElement>('[data-workbench-part]')].map((part) =>
+      part.getBoundingClientRect(),
+    )
+    expect(boxes).toHaveLength(3)
+    expect(new Set(boxes.map((box) => Math.round(box.top))).size).toBe(1)
+    expect(Math.abs(seat.getBoundingClientRect().left + 4 - boxes[1]!.left)).toBeLessThanOrEqual(1)
     // the boundary says what it will take, the way any separator does: a
     // column dragged to a sliver is one the next filing cannot be read in
     expect(seat.getAttribute('role')).toBe('separator')
