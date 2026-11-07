@@ -6,7 +6,8 @@ import { LiveMark, liveStateOf, type LiveLine } from '@qualy/ui/live-mark'
 import '../src/app.css'
 
 // The mark a screen keeping time with something wears, from what its channel
-// says of the line: nothing until the line has carried a word, live while
+// says of the line: connecting until the line has carried a word, and
+// nothing once a first dial failed with none, live while
 // it holds and across a planned renewal, reconnecting when - and only when -
 // the channel counts the line as lost, and waiting while every seat is
 // taken. Asserted on the mark's state, never on its words, which are the
@@ -34,11 +35,12 @@ const LOST = { live: false, lost: true, heard: true, waiting: false }
 const WAITING = { live: false, lost: true, heard: false, waiting: true }
 
 describe('a live mark', () => {
-  it('says nothing for a line that has never carried a word, lost or not', async () => {
+  it('says connecting for a line not heard from yet, and nothing once its first dial failed', async () => {
     const screen = await render(
       <Probe line={{ live: false, lost: false, heard: false, waiting: false }} />,
     )
-    expect(said()).toBe('nothing')
+    // what a server drew says until the page runs and its line opens
+    await expect.poll(said).toBe('connecting')
     // a first dial left unanswered: never live, so not reconnecting either
     await screen.rerender(
       <Probe line={{ live: false, lost: true, heard: false, waiting: false }} />,

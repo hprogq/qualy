@@ -13,12 +13,15 @@ import { VisuallyHidden } from '../lib/visually-hidden.tsx'
 //
 // Only where the screen really follows along. A screen that polls, or whose
 // subject no longer moves, draws no mark at all: saying "live" there, or
-// "provisional" in its place, would promise changes nobody sends.
+// "provisional" in its place, would promise changes nobody sends. A screen
+// that will follow but has not been heard from yet says it is connecting -
+// what html a server drew shows until the page runs and its line opens - so
+// the mark is in its place from the first frame and only changes its word.
 //
 // Text-free like the rest of this package: the caller says the words for
 // each state.
 
-export type LiveState = 'live' | 'reconnecting' | 'waiting'
+export type LiveState = 'connecting' | 'live' | 'reconnecting' | 'waiting'
 
 /**
  * What a screen that follows a channel knows of its line, in the shape the
@@ -46,15 +49,17 @@ export interface LiveLine {
  * failed or ended before it proved steady, or a dial left unanswered past
  * its allowance, is lost; the planned renewal after one that lasted is not;
  * and a line that has never carried a word is not reconnecting, it was
- * never live. A line waiting for a seat says so whether or not it was ever
- * live: the reader may be holding the others open in tabs of their own.
+ * never live: it is connecting while its first dial is out, and says
+ * nothing once that dial failed - the screen goes on by asking. A line
+ * waiting for a seat says so whether or not it was ever live: the reader
+ * may be holding the others open in tabs of their own.
  * `null` in, nothing out: the screen does not follow, or its subject no
  * longer moves.
  */
 export function liveStateOf(line: LiveLine | null): LiveState | null {
   if (line === null) return null
   if (line.waiting) return 'waiting'
-  if (!line.heard) return null
+  if (!line.heard) return line.lost ? null : 'connecting'
   return line.live || !line.lost ? 'live' : 'reconnecting'
 }
 
@@ -106,6 +111,11 @@ const styles = stylex.create({
     backgroundColor: tokens.warning,
     '::after': { animationName: 'none' },
   },
+  // not yet a line, nor one lost: a quiet dot, and no ring
+  dotConnecting: {
+    backgroundColor: `color-mix(in oklab, ${tokens.mutedForeground} 60%, transparent)`,
+    '::after': { animationName: 'none' },
+  },
 })
 
 export function LiveMark({
@@ -133,7 +143,13 @@ export function LiveMark({
       {...props}
       {...stylex.props(styles.mark, down && styles.lost)}
     >
-      <span aria-hidden {...stylex.props(styles.dot, down && styles.dotLost)} />
+      <span
+        aria-hidden
+        {...stylex.props(
+          styles.dot,
+          state === 'connecting' ? styles.dotConnecting : down && styles.dotLost,
+        )}
+      />
       {children}
       {hint !== undefined && <VisuallyHidden>{hint}</VisuallyHidden>}
     </span>
