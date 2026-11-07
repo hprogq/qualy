@@ -15,7 +15,10 @@
       "default": "./src/client/AccountRolesPage.tsx"
     },
     "./client/RolePage": "./src/client/RolePage.tsx",
-    "./client/RolesPage": "./src/client/RolesPage.tsx",
+    "./client/RolesPage": {
+      "react-server": "./src/client/RolesPage.server.tsx",
+      "default": "./src/client/RolesPage.tsx"
+    },
     "./client/UserRoleGrantsPage": {
       "react-server": "./src/client/UserRoleGrantsPage.server.tsx",
       "default": "./src/client/UserRoleGrantsPage.tsx"
