@@ -52,6 +52,7 @@ import { UnitPath } from './users/UnitPath.tsx'
 import { UserJump } from './users/UserJump.tsx'
 import { UnitTree, type UnitNode } from './users/UnitTree.tsx'
 import { rememberRoster } from './users/roster-address.ts'
+import { USERS_PAGE_SIZE, usersFilterOf } from './users-place.ts'
 import { authApi } from '../api.ts'
 import * as commonMessages from '@qualy/web-i18n/messages'
 import * as m from '#messages'
@@ -75,7 +76,7 @@ import * as m from '#messages'
 const ALL_TYPES = 'all'
 
 /** people to a page */
-const PAGE_SIZE = 50
+const PAGE_SIZE = USERS_PAGE_SIZE
 
 const styles = stylex.create({
   // never squeezed to a square: the band it sits in holds a name, a count
@@ -230,6 +231,14 @@ export default function UsersPage() {
   const active = nodes.find((entry) => entry.orgNodeId === anchor) ?? nodes[0]
   const userTypes = options.data?.userTypes ?? []
   const within: 'self' | 'subtree' = scope === 'self' ? 'self' : 'subtree'
+  const addressed: Readonly<Record<string, string>> = {
+    anchor,
+    scope,
+    type: typeFilter,
+    q: search,
+    standing: standingParam,
+    page: pageParam,
+  }
 
   // typing should not fire a request per keystroke
   useEffect(() => {
@@ -239,16 +248,8 @@ export default function UsersPage() {
     return () => clearTimeout(timer)
   }, [draft, search, write])
 
-  const filter = {
-    orgNodeId: active?.orgNodeId ?? '',
-    scope: within,
-    // either state: the list asks for neither
-    ...(standing === 'any' ? {} : { status: standing }),
-    ...(search ? { search } : {}),
-    ...(typeFilter ? { userTypeId: typeFilter } : {}),
-    page: String(page),
-    limit: String(PAGE_SIZE),
-  }
+  // the question as the server drawing the page asks it too (users-place.ts)
+  const { filter } = usersFilterOf((key) => addressed[key] ?? '', nodes)
   const users = useQuery({
     ...query.identity.listUsers.queryOptions({ query: filter }),
     enabled: active !== undefined,
