@@ -258,12 +258,18 @@ const styles = stylex.create({
     letterSpacing: '0.06em',
     color: tokens.mutedForeground,
   },
+  // The group's name stands in the middle of the key's height, and its
+  // figure and the short mark under it share the column at the end: a name
+  // laid on the figure's line sat at the top of a key that the mark made
+  // taller, which read as off centre.
   outlineItem: {
-    display: 'flex',
+    display: 'grid',
     flexShrink: 0,
     width: '100%',
-    flexDirection: 'column',
-    gap: 5,
+    gridTemplateColumns: 'minmax(0, 1fr) auto',
+    alignItems: 'center',
+    columnGap: 8,
+    rowGap: 5,
     paddingInline: 10,
     paddingBlock: 7,
     borderWidth: 0,
@@ -277,7 +283,15 @@ const styles = stylex.create({
     outlineOffset: -2,
   },
   outlineItemOn: { backgroundColor: tokens.surfaceMuted },
-  outlineRow: { display: 'flex', width: '100%', alignItems: 'baseline', gap: 8, fontSize: 13 },
+  outlineLead: {
+    display: 'flex',
+    minWidth: 0,
+    alignItems: 'baseline',
+    gap: 8,
+    fontSize: 13,
+  },
+  // beside the figure and the mark under it, as tall as both
+  outlineLeadMetered: { gridRow: 'span 2' },
   outlineNo: {
     flexShrink: 0,
     fontSize: 11,
@@ -294,8 +308,7 @@ const styles = stylex.create({
   },
   outlineNameOn: { fontWeight: 600, color: tokens.foreground },
   outlineScore: {
-    flexShrink: 0,
-    marginInlineStart: 'auto',
+    justifySelf: 'end',
     fontSize: 12,
     whiteSpace: 'nowrap',
     color: tokens.mutedForeground,
@@ -305,7 +318,8 @@ const styles = stylex.create({
   // the whole row in ink, a full group read as a rule between the rows
   meter: {
     display: 'block',
-    alignSelf: 'flex-end',
+    gridColumn: 2,
+    justifySelf: 'end',
     width: 48,
     height: 3,
     overflow: 'hidden',
@@ -1409,7 +1423,12 @@ function Outline({
             onClick={() => onJump(group.id)}
             {...stylex.props(styles.outlineItem, on && styles.outlineItemOn)}
           >
-            <span {...stylex.props(styles.outlineRow)}>
+            <span
+              {...stylex.props(
+                styles.outlineLead,
+                group.capCents !== null && styles.outlineLeadMetered,
+              )}
+            >
               <span aria-hidden {...stylex.props(styles.outlineNo)}>
                 {group.no}
               </span>
@@ -1419,9 +1438,9 @@ function Outline({
               >
                 {group.name}
               </span>
-              <span {...stylex.props(styles.outlineScore, group.cents < 0 && styles.negative)}>
-                {scoreOf(group)}
-              </span>
+            </span>
+            <span {...stylex.props(styles.outlineScore, group.cents < 0 && styles.negative)}>
+              {scoreOf(group)}
             </span>
             {group.capCents !== null && (
               <span aria-hidden {...stylex.props(styles.meter)}>
