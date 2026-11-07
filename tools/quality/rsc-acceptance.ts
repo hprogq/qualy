@@ -870,7 +870,14 @@ const ownReads = async (page: Page, address: string): Promise<readonly string[]>
 
 // Playwright's visibility check treats opacity: 0 as visible. A server
 // document must paint its content even when the browser cannot hydrate it.
-const painted = async (element: Locator): Promise<boolean> =>
+// A part that is a different tree at another width is in the html twice, the
+// stylesheet showing one (AtWidth): the one shown is what has to be painted.
+const painted = async (located: Locator): Promise<boolean> => {
+  const element = located.filter({ visible: true }).first()
+  return (await element.count()) > 0 && paintedOne(element)
+}
+
+const paintedOne = async (element: Locator): Promise<boolean> =>
   (await element.isVisible()) &&
   (await element.evaluate((node) => {
     type Ancestor = { readonly parentElement: Ancestor | null }
