@@ -1,0 +1,73 @@
+import { describe, expect, it } from 'vitest'
+import { Cause, Exit, Schema } from 'effect'
+import { HttpClientError, HttpClientRequest, HttpClientResponse } from 'effect/http'
+import { QueryClient, hydrate } from '@tanstack/query-core'
+import { queryKeyOf } from '@qualy/web-runtime/query-key'
+import { isSessionRefusal, serverQueries, settle } from '../src/queries.ts'
+
+// What a page's server entry hands over of its reads: answers under the
+// keys the page reads with, a refusal the page shows as it is as a plain
+// tag, and nothing for a session that went or a server that could not be
+// asked - the page asks for those itself.
+
+const request = HttpClientRequest.get('http://api.test/assessment/batches/b')
+const status = (code: number) =>
+  new HttpClientError.HttpClientError({
+    reason: new HttpClientError.StatusCodeError({
+      request,
+      response: HttpClientResponse.fromWeb(request, new Response(null, { status: code })),
+    }),
+  })
+
+class BatchNotFound extends Schema.TaggedError<BatchNotFound>()('ASSESSMENT_BATCH_NOT_FOUND', {
+  batchId: Schema.String,
+}) {}
+
+describe('how a read ended', () => {
+  it('is an answer, a refusal the contract names, or a server that could not be asked', () => {
+    expect(settle(Exit.succeed(1))).toEqual({ kind: 'answer', value: 1 })
+    const refusal = new BatchNotFound({ batchId: 'b' })
+    expect(settle(Exit.fail(refusal))).toEqual({ kind: 'refused', error: refusal })
+    expect(settle(Exit.fail(status(503)))).toEqual({ kind: 'unanswered' })
+  })
+
+  it('ends with a reader who left, and throws a bug', () => {
+    expect(() => settle(Exit.failCause(Cause.interrupt()))).toThrow()
+    expect(() => settle(Schema.decodeUnknownExit(Schema.String)(1))).toThrow()
+    expect(() => settle(Exit.die(new Error('defect')))).toThrow('defect')
+  })
+
+  it("tells the session's refusals from the rest", () => {
+    expect(isSessionRefusal({ _tag: 'SESSION_EXPIRED' })).toBe(true)
+    expect(isSessionRefusal({ _tag: 'IDENTITY_CHANGED' })).toBe(true)
+    expect(isSessionRefusal(new BatchNotFound({ batchId: 'b' }))).toBe(false)
+  })
+})
+
+describe('what is handed to the page', () => {
+  it('lands where the page reads, answers and refusals alike', () => {
+    const queries = serverQueries()
+    const read = { params: { batchId: 'b' } }
+    queries.hold(queryKeyOf('assessment', 'getTimeline', read), { timeline: [] })
+    queries.holdRefusal(
+      queryKeyOf('assessment', 'getBatch', read),
+      new BatchNotFound({ batchId: 'b' }),
+    )
+    // what crosses to the browser is plain data, nothing the server's
+    // refusal carried beyond its tag
+    const state = JSON.parse(JSON.stringify(queries.dehydrated()))
+    const page = new QueryClient()
+    hydrate(page, state)
+    expect(page.getQueryData(queryKeyOf('assessment', 'getTimeline', read))).toEqual({
+      timeline: [],
+    })
+    const refused = page.getQueryState(queryKeyOf('assessment', 'getBatch', read))
+    expect(refused?.status).toBe('error')
+    expect(refused?.error).toEqual({ _tag: 'ASSESSMENT_BATCH_NOT_FOUND' })
+  })
+
+  it('is made for one request: nothing held for one is handed to the next', () => {
+    serverQueries().hold(['assessment', 'getBatch'], { batch: 'one reader' })
+    expect(serverQueries().dehydrated().queries).toEqual([])
+  })
+})

@@ -60,6 +60,9 @@ catalogs:
     '@stylexjs/unplugin':
       specifier: 0.19.1
       version: 0.19.1
+    '@tanstack/query-core':
+      specifier: 5.105.0
+      version: 5.105.0
     '@tanstack/react-query':
       specifier: 5.105.0
       version: 5.105.0
@@ -2798,6 +2801,9 @@ importers:
       '@qualy/web-runtime':
         specifier: workspace:*
         version: link:../runtime
+      '@tanstack/query-core':
+        specifier: 'catalog:'
+        version: 5.105.0
       effect:
         specifier: 'catalog:'
         version: 4.0.6

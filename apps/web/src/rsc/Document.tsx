@@ -1,10 +1,12 @@
 'use client'
-import { useMemo, type ComponentType, type ReactNode } from 'react'
+import { useMemo, type ComponentProps, type ComponentType, type ReactNode } from 'react'
+import { QueryHydration } from '@qualy/web-runtime/query-hydration'
 import type { SupportedLocale } from '@qualy/i18n-contract'
 import { UiProvider } from '@qualy/ui/provider'
 import { primaryFontLatin } from '@qualy/ui/primary-font'
 import { DocumentLocaleContext } from '@qualy/web-i18n'
 import {
+  DocumentNow,
   RuntimeProvider,
   ThemeProvider,
   emptyComponentRegistry,
@@ -43,6 +45,8 @@ export function Document({
   slots,
   locale,
   releaseId,
+  renderedAt,
+  hydration,
   nonce,
   children,
 }: {
@@ -50,6 +54,10 @@ export function Document({
   slots: Readonly<Record<string, Readonly<Record<string, ComponentType<any>>>>>
   locale: SupportedLocale
   releaseId: string
+  /** the moment the server drew this document */
+  renderedAt: number
+  /** what the page read first on the server, for every surface's queries */
+  hydration?: ComponentProps<typeof QueryHydration>['state'] | undefined
   /** the inline scripts' nonce; a browser hides its value once read, hence no hydration check */
   nonce?: string | undefined
   children: ReactNode
@@ -109,21 +117,27 @@ export function Document({
           {/* the release protocol's screen, over the page rather than in its
               place, so a page that has to reload keeps what the reader typed */}
           <ReleaseRecoveryGate coordinator={releases} copy={bootstrapMessages}>
-            <DocumentLocaleContext value={locale}>
-              <ThemeProvider>
-                <WidgetBridge>
-                  <RuntimeProvider
-                    registry={registry}
-                    manifest={manifest}
-                    clientIdentity={webRelease}
-                    onClientUnsupported={(reason) => releases.notifyClientUnsupported(reason)}
-                    signInPage={SIGN_IN_PAGE}
-                  >
-                    {children}
-                  </RuntimeProvider>
-                </WidgetBridge>
-              </ThemeProvider>
-            </DocumentLocaleContext>
+            <DocumentNow at={renderedAt}>
+              <DocumentLocaleContext value={locale}>
+                <ThemeProvider>
+                  <WidgetBridge>
+                    <RuntimeProvider
+                      registry={registry}
+                      manifest={manifest}
+                      clientIdentity={webRelease}
+                      onClientUnsupported={(reason) => releases.notifyClientUnsupported(reason)}
+                      signInPage={SIGN_IN_PAGE}
+                    >
+                      {hydration === undefined ? (
+                        children
+                      ) : (
+                        <QueryHydration state={hydration}>{children}</QueryHydration>
+                      )}
+                    </RuntimeProvider>
+                  </WidgetBridge>
+                </ThemeProvider>
+              </DocumentLocaleContext>
+            </DocumentNow>
           </ReleaseRecoveryGate>
         </div>
       </body>

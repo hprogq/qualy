@@ -8,6 +8,7 @@ import { QUALY_IDENTITY_HEADER, QUALY_LOCALE_HEADER } from '@qualy/api-kit'
 import type { SupportedLocale } from '@qualy/i18n-contract'
 import { QUALY_CLIENT_PROTOCOL_HEADER, QUALY_CLIENT_RELEASE_HEADER } from '@qualy/release-contract'
 import type { BrowserSurface } from '@qualy/ui-contract'
+import type { DehydratedState } from '@tanstack/query-core'
 
 // One document request, as everything rendering it sees it
 // (docs/adr/0012-rsc-data-mode.md).
@@ -20,8 +21,25 @@ import type { BrowserSurface } from '@qualy/ui-contract'
 // same typed contract and the same network transport the browser uses, as
 // the viewer who asked for the document.
 
+/**
+ * What a page reads first for the address asked, before the document is
+ * drawn: its server entry's `prefetch`, answering with the cache it filled
+ * (@qualy/web-rsc/queries) for the whole document to be drawn from, or
+ * nothing to hand over.
+ */
+export type PagePrefetch = (route: {
+  /** the route's params, as the address named them */
+  readonly params: Readonly<Record<string, string | undefined>>
+  /** the address asked for, query and all */
+  readonly url: URL
+}) => Promise<DehydratedState | undefined>
+
 /** a loader for one surface's module, as the server's table holds it */
-export type SurfaceLoader = () => Promise<{ readonly default: ComponentType<any> }>
+export type SurfaceLoader = () => Promise<{
+  readonly default: ComponentType<any>
+  /** a page's server entry: what it reads first, on the page's behalf */
+  readonly prefetch?: PagePrefetch
+}>
 
 /** the four tables the build collected, keyed the way the manifest names surfaces */
 export interface SurfaceTables {
@@ -33,6 +51,13 @@ export interface SurfaceTables {
 }
 
 export interface RenderRequest {
+  /** the address asked for, query and all: what a page's server entry reads first for */
+  readonly url: URL
+  /**
+   * The moment the document is drawn: what its clock reads say in the html
+   * and in the browser's first frame (@qualy/web-runtime/document-now).
+   */
+  readonly renderedAt: number
   /** the document's language, fixed for its whole life */
   readonly locale: SupportedLocale
   /** the build this document is rendered by, named to the api as the page's would be */
@@ -148,6 +173,17 @@ export const readApiExit = <ApiId extends string, Groups extends HttpApiGroup.Co
   >
 }
 
+const loaderOf = (surface: BrowserSurface): SurfaceLoader | undefined => {
+  const tables = renderRequest().surfaces
+  return surface.kind === 'page'
+    ? tables.pageComponents[surface.id]
+    : surface.kind === 'layout'
+      ? tables.layoutComponents[surface.id]
+      : surface.kind === 'login'
+        ? tables.loginComponents[surface.id]
+        : tables.slotComponents[surface.slot]?.[surface.id]
+}
+
 /**
  * The implementation of one surface, as the browser will be handed it: a
  * reference to its client module, or nothing when this build carries none.
@@ -155,14 +191,14 @@ export const readApiExit = <ApiId extends string, Groups extends HttpApiGroup.Co
 export const loadSurface = async (
   surface: BrowserSurface,
 ): Promise<ComponentType<any> | undefined> => {
-  const tables = renderRequest().surfaces
-  const load =
-    surface.kind === 'page'
-      ? tables.pageComponents[surface.id]
-      : surface.kind === 'layout'
-        ? tables.layoutComponents[surface.id]
-        : surface.kind === 'login'
-          ? tables.loginComponents[surface.id]
-          : tables.slotComponents[surface.slot]?.[surface.id]
+  const load = loaderOf(surface)
   return load === undefined ? undefined : (await load()).default
+}
+
+/** what a page reads first on its own behalf, when its server entry says */
+export const loadPrefetch = async (
+  surface: BrowserSurface & { readonly kind: 'page' },
+): Promise<PagePrefetch | undefined> => {
+  const load = loaderOf(surface)
+  return load === undefined ? undefined : (await load()).prefetch
 }

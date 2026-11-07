@@ -13,7 +13,11 @@
     "./release": "./src/release.ts",
     "./surface-scope": "./src/surface-scope.tsx",
     "./revalidation": "./src/revalidation.ts",
-    "./rendered-fetch": "./src/rendered-fetch.ts"
+    "./rendered-fetch": "./src/rendered-fetch.ts",
+    "./query-key": "./src/query-key.ts",
+    "./hydrating": "./src/hydrating.ts",
+    "./query-hydration": "./src/query-hydration.tsx",
+    "./document-now": "./src/document-now.tsx"
   },
   "peerDependencies": {
     "react": "catalog:"

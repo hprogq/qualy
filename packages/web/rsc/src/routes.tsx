@@ -9,7 +9,8 @@ import type { Manifest } from '@qualy/web-runtime'
 import { surfaceLabel, type BrowserSurface, type NamespacedId } from '@qualy/ui-contract'
 import type { SupportedLocale } from '@qualy/i18n-contract'
 import { pageRevalidation } from '@qualy/web-runtime/revalidation'
-import { loadSurface, renderRequest } from './request.ts'
+import type { DehydratedState } from '@tanstack/query-core'
+import { loadPrefetch, loadSurface, renderRequest } from './request.ts'
 
 // The authorized manifest as a route tree the server renders
 // (docs/adr/0012-rsc-data-mode.md).
@@ -30,6 +31,14 @@ export interface RouteFrames {
     readonly slots: Readonly<Record<string, Readonly<Record<string, ComponentType<any>>>>>
     readonly locale: SupportedLocale
     readonly releaseId: string
+    /** the moment the server drew the document, for the clock reads in it */
+    readonly renderedAt: number
+    /**
+     * What the page's server entry read first, for the query cache every
+     * surface of the document reads from - layouts and slots as much as the
+     * page - before any of them asks
+     */
+    readonly hydration?: DehydratedState | undefined
     /** the document's script nonce, when its host sends a policy that asks for one */
     readonly nonce?: string | undefined
     readonly children: ReactNode
@@ -58,16 +67,34 @@ export interface ServerRoutesOptions {
 
 type Page = Manifest['pages'][number]
 
+/** a matched route, as a server component of the route tree is told about it */
+interface RouteMatch {
+  readonly id: string
+  readonly params: Readonly<Record<string, string | undefined>>
+}
+
 const pageHref = (page: Page, next: string) =>
   `${page.path}?${new URLSearchParams({ next }).toString()}`
 
-/** one surface the manifest named, drawn in its frame, or said to be missing */
+/**
+ * One surface the manifest named, drawn in its frame, or said to be missing.
+ * Handed its route's params: a page's server entry reads for the address
+ * asked for (`params`), and a page drawn in the browser alone ignores them.
+ */
 const surfaceRoute = (surface: BrowserSurface, frames: RouteFrames) =>
-  async function SurfaceRoute() {
+  async function SurfaceRoute({
+    params,
+  }: {
+    params?: Readonly<Record<string, string | undefined>>
+  }) {
     const Implementation = await loadSurface(surface)
     return (
       <frames.Surface surface={surface}>
-        {Implementation === undefined ? <frames.Missing surface={surface} /> : <Implementation />}
+        {Implementation === undefined ? (
+          <frames.Missing surface={surface} />
+        ) : (
+          <Implementation params={params ?? {}} />
+        )}
       </frames.Surface>
     )
   }
@@ -151,18 +178,48 @@ export const serverRoutes = ({
     ],
   }))
 
+  // which page a matched route draws, by the route's id
+  const pageOfRoute = new Map(
+    routable.map((page) => [surfaceLabel({ kind: 'page', id: page.id }), page] as const),
+  )
+  /**
+   * What the matched page reads first, read before the document is drawn:
+   * the page is not the first to ask - the layout's bar over it reads the
+   * same subject - so the answers go to the top of the document, where
+   * every surface finds them before it asks.
+   */
+  const firstReads = async (
+    matches: readonly RouteMatch[],
+  ): Promise<DehydratedState | undefined> => {
+    const match = matches.findLast((candidate) => pageOfRoute.has(candidate.id))
+    const page = match === undefined ? undefined : pageOfRoute.get(match.id)
+    if (match === undefined || page === undefined) return undefined
+    const prefetch = await loadPrefetch({ kind: 'page', id: page.id })
+    return prefetch?.({ params: match.params, url: renderRequest().url })
+  }
+
   return [
     {
       id: 'qualy:document',
       path: '',
       shouldRevalidate: pageRevalidation,
-      Component: async function DocumentRoute() {
+      Component: async function DocumentRoute({
+        matches = [],
+      }: {
+        matches?: readonly RouteMatch[]
+      }) {
+        const [slots, hydration] = await Promise.all([
+          authorizedSlots(manifest),
+          firstReads(matches),
+        ])
         return (
           <frames.Document
             manifest={manifest}
-            slots={await authorizedSlots(manifest)}
+            slots={slots}
+            hydration={hydration}
             locale={renderRequest().locale}
             releaseId={renderRequest().release.releaseId}
+            renderedAt={renderRequest().renderedAt}
             nonce={renderRequest().nonce}
           >
             <Outlet />

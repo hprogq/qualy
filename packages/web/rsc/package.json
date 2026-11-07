@@ -7,6 +7,7 @@
   "sideEffects": false,
   "exports": {
     "./document-locale": "./src/document-locale.ts",
+    "./queries": "./src/queries.ts",
     "./request": "./src/request.ts",
     "./routes": "./src/routes.tsx"
   },
@@ -20,6 +21,7 @@
     "@qualy/release-contract": "workspace:*",
     "@qualy/ui-contract": "workspace:*",
     "@qualy/web-runtime": "workspace:*",
+    "@tanstack/query-core": "catalog:",
     "effect": "catalog:",
     "react-router": "catalog:"
   },

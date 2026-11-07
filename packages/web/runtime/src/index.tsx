@@ -131,6 +131,7 @@ export {
 } from './navigation.tsx'
 export { ThemeProvider, useTheme, type ThemeChoice } from './theme.tsx'
 export { useHydrating } from './hydrating.ts'
+export { DocumentNow, useDocumentNow } from './document-now.tsx'
 
 /**
  * A lazy component whose module can be fetched ahead of time, and which

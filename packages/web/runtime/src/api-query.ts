@@ -1,4 +1,5 @@
 import { queryOptions, type QueryKey } from '@tanstack/react-query'
+import { queryKeyOf } from './query-key.ts'
 import { Effect } from 'effect'
 import { isBackendUnavailable, isTransportError } from '@qualy/web-i18n'
 import { asTheDocument } from './document-identity.ts'
@@ -199,13 +200,8 @@ export const createQueryUtils = <C extends Client>(
     const bound: Record<string, unknown> = { key: () => [group] }
     for (const [endpoint, call] of Object.entries(endpoints)) {
       if (typeof call !== 'function') continue
-      // the argument is part of the key: two calls that differ by input are
-      // different entries, and dropping it would serve one page's data to
-      // another
-      const keyOf = (args: readonly unknown[]) =>
-        (args.length > 0 && args[0] !== undefined
-          ? [group, endpoint, args[0]]
-          : [group, endpoint]) as QueryKey
+      // the argument is part of the key (query-key.ts)
+      const keyOf = (args: readonly unknown[]) => queryKeyOf(group, endpoint, args[0])
       bound[endpoint] = {
         queryOptions: (...args: never[]) =>
           effectQueryOptions(keyOf(args), () => call(...args), runtime),
