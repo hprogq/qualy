@@ -22,6 +22,10 @@ import { Button } from './button.tsx'
 // had got to - and a press after they came back, while that turn is still
 // ending, simply keeps it going.
 //
+// Where the reader asks for less motion there is no turn, and the press is
+// still answered: the icon dims while the reads are out, for long enough to
+// be seen even when they come back at once.
+//
 // Text-free like the rest of this package: the caller names it.
 
 const turn = stylex.keyframes({ '100%': { transform: 'rotate(360deg)' } })
@@ -38,11 +42,15 @@ const styles = stylex.create({
   icon: { width: 15, height: 15 },
   turning: {
     animationName: { default: turn, [REDUCE]: 'none' },
+    opacity: { default: null, [REDUCE]: 0.4 },
     animationDuration: '0.8s',
     animationTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
     animationIterationCount: 'infinite',
   },
 })
+
+/** how long a press is answered for at least, where nothing turns */
+const STILL_ANSWER_MS = 600
 
 const reducedMotion = () =>
   typeof window !== 'undefined' &&
@@ -68,14 +76,16 @@ export function RefreshButton({
     settled.current = false
     setAsking(true)
     setTurning(true)
+    const seen = new Promise((resolve) => setTimeout(resolve, STILL_ANSWER_MS))
     void Promise.resolve()
       .then(onRefresh)
       .catch(() => undefined)
       .finally(() => {
         settled.current = true
         setAsking(false)
-        // without motion there is no turn to end on
-        if (reducedMotion()) setTurning(false)
+        // without motion there is no turn to end on; the dimmed icon is
+        // answer enough once it has been seen
+        if (reducedMotion()) void seen.then(() => settled.current && setTurning(false))
       })
   }
 
