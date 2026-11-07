@@ -27,18 +27,23 @@ import type { DehydratedState } from '@tanstack/query-core'
  * (@qualy/web-rsc/queries) for the whole document to be drawn from, or
  * nothing to hand over.
  */
-export type PagePrefetch = (route: {
+export interface PrefetchedSurface {
+  readonly hydration: DehydratedState
+  readonly workspaceCapabilities?: readonly string[]
+}
+
+export type SurfacePrefetch = (route: {
   /** the route's params, as the address named them */
   readonly params: Readonly<Record<string, string | undefined>>
   /** the address asked for, query and all */
   readonly url: URL
-}) => Promise<DehydratedState | undefined>
+}) => Promise<PrefetchedSurface | undefined>
 
 /** a loader for one surface's module, as the server's table holds it */
 export type SurfaceLoader = () => Promise<{
   readonly default: ComponentType<any>
   /** a page's server entry: what it reads first, on the page's behalf */
-  readonly prefetch?: PagePrefetch
+  readonly prefetch?: SurfacePrefetch
 }>
 
 /** the four tables the build collected, keyed the way the manifest names surfaces */
@@ -195,10 +200,10 @@ export const loadSurface = async (
   return load === undefined ? undefined : (await load()).default
 }
 
-/** what a page reads first on its own behalf, when its server entry says */
+/** what a surface reads before its first paint, when its server entry says */
 export const loadPrefetch = async (
-  surface: BrowserSurface & { readonly kind: 'page' },
-): Promise<PagePrefetch | undefined> => {
+  surface: BrowserSurface,
+): Promise<SurfacePrefetch | undefined> => {
   const load = loaderOf(surface)
   return load === undefined ? undefined : (await load()).prefetch
 }

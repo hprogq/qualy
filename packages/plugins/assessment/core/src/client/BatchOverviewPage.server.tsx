@@ -1,10 +1,11 @@
 import { Schema } from 'effect'
 import { uuidInput } from '@qualy/api-kit/schema'
 import { queryKeyOf } from '@qualy/web-runtime/query-key'
-import { readApiExit, type PagePrefetch } from '@qualy/web-rsc/request'
+import { readApiExit, type SurfacePrefetch } from '@qualy/web-rsc/request'
 import { isSessionRefusal, serverQueries, settle } from '@qualy/web-rsc/queries'
 import { assessmentApi } from './api.ts'
 import { ACTIVITY_LANE, ACTIVITY_PAGE, laneOf, overviewReads } from './overview-reads.ts'
+import { batchWorkspaceCapabilities } from './batch/capabilities.ts'
 import { adminAlertReads, owesAdministration } from './batch/admin-alert-reads.ts'
 
 // The batch overview as a server draws it (docs/adr/0012-rsc-data-mode.md).
@@ -26,7 +27,7 @@ export { default } from './BatchOverviewPage.tsx'
 
 const recordId = Schema.is(uuidInput)
 
-export const prefetch: PagePrefetch = async ({ params, url }) => {
+export const prefetch: SurfacePrefetch = async ({ params, url }) => {
   const batchId = params['batchId']
   // an address that cannot name a batch is not asked about, by the page either
   if (batchId === undefined || !recordId(batchId)) return undefined
@@ -48,7 +49,7 @@ export const prefetch: PagePrefetch = async ({ params, url }) => {
     queries.holdRefusal(key, subject.error)
   }
   // the rest only alongside a batch to show them in
-  if (subject.kind !== 'answer') return queries.dehydrated()
+  if (subject.kind !== 'answer') return { hydration: queries.dehydrated() }
   const held = (endpoint: string, input: unknown, exit: Parameters<typeof settle>[0]) => {
     const read = settle<unknown, unknown>(exit)
     if (read.kind === 'answer') queries.hold(queryKeyOf('assessment', endpoint, input), read.value)
@@ -71,5 +72,8 @@ export const prefetch: PagePrefetch = async ({ params, url }) => {
     held('listParticipantPlacements', owed.placements, placements)
     held('previewAccessSync', owed.access, access)
   }
-  return queries.dehydrated()
+  return {
+    hydration: queries.dehydrated(),
+    workspaceCapabilities: batchWorkspaceCapabilities(subject.value.batch.capabilities),
+  }
 }

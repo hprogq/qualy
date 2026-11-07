@@ -1014,12 +1014,13 @@ export interface RailShellProps {
 }
 
 export function RailShell(props: RailShellProps) {
+  const { pathname } = useLocation()
   // Around a workspace, wide enough for the rail to stand beside the page,
   // its column can be lent to the open screen. Around a record the sections
   // stand inside the page's own measure and there is no column to lend.
   const lends = !useIsBelow(SHELL_BREAKPOINT) && props.banner !== true
   return (
-    <WorkspaceCapabilityScope>
+    <WorkspaceCapabilityScope pathname={pathname}>
       <SubjectScope>
         <ScreenFillScope>
           <ScreenFootScope>
@@ -1305,7 +1306,7 @@ function CapableRailShell({
         {owned && (
           <div {...stylex.props(styles.headAccount)}>
             <UiSlot token={headerActions} />
-            <UiSlot token={sidebarUser} />
+            <UiSlot token={sidebarUser} waitForFirstPaint />
           </div>
         )}
       </div>

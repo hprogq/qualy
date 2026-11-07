@@ -691,6 +691,50 @@ const painted = async (element: Locator): Promise<boolean> =>
     return true
   }))
 
+const ownSessionChanges = async (browser: Browser) => {
+  const context = await browser.newContext({ locale: 'en-US' })
+  try {
+    const page = await context.newPage()
+    const list = '/assessment/batches'
+    const refused: string[] = []
+    page.on('response', (response) => {
+      const marker = response.headers()[QUALY_RENDER_REFUSED_HEADER]
+      if (marker !== undefined) refused.push(marker)
+    })
+    await page.goto(`${site}/login?method=local&next=${encodeURIComponent(list)}`)
+    await hydrated(page)
+    await page.locator('#email').fill(accounts.admin.email)
+    await page.locator('#password').fill(accounts.admin.password)
+    await inPage(page, 'window.__same = true')
+    await page.getByTestId('local-submit').click()
+    await page.waitForURL(`${site}${list}`, { timeout: 12_000 })
+    await hydrated(page)
+    const account = page.getByRole('button', { name: '系统管理员' })
+    await account.waitFor()
+    check(
+      'signs in through the form into a new document without an identity refusal',
+      refused.length === 0 && !(await inPage<boolean>(page, 'window.__same === true')),
+      refused,
+    )
+
+    await inPage(page, 'window.__same = true')
+    await account.click()
+    await page.getByRole('menuitem', { name: /^(Sign out|退出登录)$/ }).click()
+    await page.waitForURL(`${site}/login`, { timeout: 12_000 })
+    await hydrated(page)
+    check(
+      'signs out from the account menu into a fresh login document',
+      refused.length === 0 &&
+        !(await inPage<boolean>(page, 'window.__same === true')) &&
+        !(await page.getByTestId('session-recovery').isVisible()) &&
+        !(await page.getByRole('progressbar').isVisible()),
+      refused,
+    )
+  } finally {
+    await context.close()
+  }
+}
+
 const batchListFirstScreen = async (browser: Browser, batch: string) => {
   const list = '/assessment/batches'
   const overview = `${list}/${batch}`
@@ -699,6 +743,27 @@ const batchListFirstScreen = async (browser: Browser, batch: string) => {
   const html = await staticContext.newPage()
   await html.goto(`${site}${list}?q=RSC%20acceptance&status=draft&page=1`)
   check('paints the filtered batch list without JavaScript', await painted(html.locator(row)))
+  await html.goto(`${site}${list}`)
+  check(
+    'paints the account menu on the batch list without JavaScript',
+    await painted(html.getByRole('button', { name: '系统管理员' })),
+  )
+  const listControls = (page: Page, hydrated: boolean) =>
+    inPage<{ checked: boolean; thumb: string; border: string }>(
+      page,
+      `(() => {
+      const radio = document.querySelector('[data-slot="toggle-group"] input[value="all"]')
+      const search = document.querySelector('input[name="batches-search"]')
+      const thumb = ${hydrated}
+        ? radio.closest('[data-slot="toggle-group"]').querySelector('.mantine-SegmentedControl-indicator')
+        : radio.nextElementSibling
+      return { checked: radio.checked,
+        thumb: getComputedStyle(thumb, ${hydrated} ? null : '::before').backgroundColor,
+        border: getComputedStyle(search).borderTopColor,
+      }
+    })()`,
+    )
+  const firstControls = await listControls(html, false)
   const malformed = await html.goto(`${site}${list}?q=${'x'.repeat(101)}`)
   check('keeps the batch list reachable with an invalid search', malformed?.status() === 200)
   await staticContext.close()
@@ -708,12 +773,28 @@ const batchListFirstScreen = async (browser: Browser, batch: string) => {
   const duplicateReads: string[] = []
   page.on('request', (request) => {
     const { pathname } = new URL(request.url())
-    if (pathname === '/api/assessment/batches' || pathname === '/api/assessment/standing') {
+    if (
+      ['/api/assessment/batches', '/api/assessment/standing', '/api/auth/session'].includes(
+        pathname,
+      )
+    ) {
       duplicateReads.push(pathname)
     }
   })
   await page.goto(`${site}${list}`)
   await hydrated(page)
+  await page.locator('.mantine-SegmentedControl-indicator').first().waitFor()
+  const finalControls = await listControls(page, true)
+  check(
+    'paints the selected filter and search border before hydration',
+    firstControls.checked &&
+      finalControls.checked &&
+      firstControls.thumb !== 'rgba(0, 0, 0, 0)' &&
+      firstControls.thumb === finalControls.thumb &&
+      firstControls.border !== 'rgba(0, 0, 0, 0)' &&
+      firstControls.border === finalControls.border,
+    { firstControls, finalControls },
+  )
   await inPage(page, 'window.__same = true')
   let resume!: () => void
   const pending = new Promise<void>((resolve) => {
@@ -780,6 +861,12 @@ const overviewFirstScreen = async (browser: Browser, batch: string) => {
     )
     check(`draws the overview's first screen in the html (${which})`, shown.every(Boolean), shown)
   }
+  const rail = html.getByTestId('workspace-rail')
+  check(
+    'paints the account and authorized workspace rail without JavaScript',
+    (await painted(html.getByRole('button', { name: '系统管理员' }))) &&
+      (await painted(rail.locator(`a[href="${address}/items"]`))),
+  )
   await html.goto(`${site}${missing}`)
   check(
     'draws a batch that is not there as not there in the html',
@@ -872,17 +959,100 @@ const overviewFirstScreen = async (browser: Browser, batch: string) => {
   }
 }
 
+const hydrationPositions = async (browser: Browser, batch: string) => {
+  const context = await signedInContext(browser, 'admin')
+  try {
+    const list = '/assessment/batches'
+    const overview = `${list}/${batch}`
+    const plan = await context.request.put(`${site}/api${overview}/phases`, {
+      data: { phases: [{ phaseKey: 'hydration-position', displayName: '复审审核期' }] },
+    })
+    if (!plan.ok()) throw new Error(`could not prepare the layout fixture: ${plan.status()}`)
+    const { phases } = (await plan.json()) as { phases: readonly { id: string }[] }
+    const started = await context.request.put(`${site}/api${overview}/phase`, {
+      data: { to: phases[0]?.id },
+    })
+    if (!started.ok()) throw new Error(`could not start the layout fixture: ${started.status()}`)
+
+    for (const address of [list, overview]) {
+      const page = await context.newPage()
+      const isList = address === list
+      const anchor = isList
+        ? page.locator('[data-shell-head]').getByRole('button', { name: '系统管理员' })
+        : page.getByTestId('stage-key')
+      const label = isList ? 'account trigger' : 'current-stage control'
+      const targets = isList ? [anchor] : [anchor, anchor.getByTestId('stage-clock')]
+      let release!: () => void
+      const scripts = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      await page.route('**/*', async (route) => {
+        if (route.request().resourceType() === 'script') await scripts
+        await route.continue()
+      })
+      try {
+        await page.clock.setFixedTime(new Date())
+        await page.goto(`${site}${address}`, { waitUntil: 'commit' })
+        await Promise.all(targets.map((target) => target.waitFor()))
+        await inPage(page, 'document.fonts.ready.then(() => true)')
+        const gutter = await inPage<number>(
+          page,
+          `(() => {
+          const main = document.querySelector('main')
+          return main.offsetWidth - main.clientWidth
+        })()`,
+        )
+        const before = await Promise.all(targets.map((target) => target.boundingBox()))
+        release()
+        await page.waitForFunction(
+          () => (globalThis as { __routerInitialized?: boolean }).__routerInitialized === true,
+        )
+        await inPage(
+          page,
+          'new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))',
+        )
+        const after = await Promise.all(targets.map((target) => target.boundingBox()))
+        const close = after.every((box, index) => {
+          const first = before[index]
+          return (
+            box !== null &&
+            first != null &&
+            (['x', 'y', 'width', 'height'] as const).every(
+              (key) => Math.abs(box[key] - first[key]) <= 0.0625,
+            )
+          )
+        })
+        check(`keeps the ${label} in place through hydration`, gutter > 0 && close, {
+          gutter,
+          before,
+          after,
+        })
+      } finally {
+        release()
+        await page.close()
+      }
+    }
+  } finally {
+    await context.close()
+  }
+}
+
 const checks = async () => {
   await refusals()
   await cookies(scratch)
   await cancellation()
-  browser = await chromium.launch()
+  browser = await chromium.launch({
+    ignoreDefaultArgs: ['--hide-scrollbars'],
+    args: ['--disable-features=OverlayScrollbar'],
+  })
   await underPolicy(browser)
   await changedHands(browser)
+  await ownSessionChanges(browser)
   await sessionWent(browser)
   const batch = await batchFor(scratch)
   await batchListFirstScreen(browser, batch)
   await overviewFirstScreen(browser, batch)
+  await hydrationPositions(browser, batch)
 }
 
 let server: QualyServer | undefined

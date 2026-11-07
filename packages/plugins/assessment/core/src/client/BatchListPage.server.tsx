@@ -1,7 +1,7 @@
 import { Schema } from 'effect'
 import { pageNumber } from '@qualy/api-kit/schema'
 import { queryKeyOf } from '@qualy/web-runtime/query-key'
-import { readApiExit, type PagePrefetch } from '@qualy/web-rsc/request'
+import { readApiExit, type SurfacePrefetch } from '@qualy/web-rsc/request'
 import { isSessionRefusal, serverQueries, settle } from '@qualy/web-rsc/queries'
 import { batchListQuery } from '../api.ts'
 import { assessmentApi } from './api.ts'
@@ -11,7 +11,7 @@ export { default } from './BatchListPage.tsx'
 
 const validQuery = Schema.is(batchListQuery)
 
-export const prefetch: PagePrefetch = async ({ url }) => {
+export const prefetch: SurfacePrefetch = async ({ url }) => {
   const query = url.searchParams
   const list = batchListRead(
     query.get('q') ?? '',
@@ -35,5 +35,5 @@ export const prefetch: PagePrefetch = async ({ url }) => {
       queries.holdRefusal(key, read.error)
     }
   }
-  return queries.dehydrated()
+  return { hydration: queries.dehydrated() }
 }

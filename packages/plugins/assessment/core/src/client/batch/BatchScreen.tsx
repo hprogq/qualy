@@ -13,7 +13,8 @@ import { assessmentApi } from '../api.ts'
 
 import type { BatchDto } from '../phase/model.ts'
 import { BatchZone, ZoneAwayNotice } from './BatchZone.tsx'
-import { holdsStanding, useBatchAbsence, type BatchStanding } from './absence.ts'
+import { useBatchAbsence } from './absence.ts'
+import { holdsStanding, type BatchStanding } from './capabilities.ts'
 import * as commonMessages from '@qualy/web-i18n/messages'
 import * as m from '#messages'
 

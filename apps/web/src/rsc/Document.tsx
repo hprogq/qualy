@@ -40,6 +40,7 @@ const EARLY_THEME = `(function () {
   var dark = choice === 'dark' || (choice !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches)
   var root = document.documentElement
   root.setAttribute('data-mode', dark ? 'dark' : 'light')
+  root.setAttribute('data-mantine-color-scheme', dark ? 'dark' : 'light')
   if (dark) root.classList.add('dark')
   root.style.colorScheme = dark ? 'dark' : 'light'
 })()`
@@ -96,6 +97,7 @@ export function Document({
   releaseId,
   renderedAt,
   hydration,
+  initialWorkspaceCapabilities,
   nonce,
   children,
 }: {
@@ -107,6 +109,7 @@ export function Document({
   renderedAt: number
   /** what the page read first on the server, for every surface's queries */
   hydration?: ComponentProps<typeof QueryHydration>['state'] | undefined
+  initialWorkspaceCapabilities?: readonly string[] | undefined
   /** the inline scripts' nonce; a browser hides its value once read, hence no hydration check */
   nonce?: string | undefined
   children: ReactNode
@@ -116,7 +119,13 @@ export function Document({
     [slots],
   )
   return (
-    <html lang={locale} data-locale={locale} data-release={releaseId} suppressHydrationWarning>
+    <html
+      lang={locale}
+      data-locale={locale}
+      data-release={releaseId}
+      data-mantine-color-scheme="light"
+      suppressHydrationWarning
+    >
       <head>
         <meta charSet="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
@@ -173,6 +182,7 @@ export function Document({
                     <RuntimeProvider
                       registry={registry}
                       manifest={manifest}
+                      initialWorkspaceCapabilities={initialWorkspaceCapabilities}
                       clientIdentity={webRelease}
                       onClientUnsupported={(reason) => releases.notifyClientUnsupported(reason)}
                       signInPage={SIGN_IN_PAGE}

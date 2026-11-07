@@ -1,4 +1,5 @@
 import { useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { RuntimeContext } from './runtime-context.tsx'
 import { sharedContext } from './shared-context.ts'
 
 // Who the reader is inside the thing currently open, as an opaque set of
@@ -24,15 +25,34 @@ interface CapabilityScope {
 const Scope = sharedContext<CapabilityScope | null>('workspace-capabilities', null)
 
 /** mounted by the workspace shell, around both its rail and its content */
-export function WorkspaceCapabilityScope({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<WorkspaceCapabilities>({ status: 'loading' })
+export function WorkspaceCapabilityScope({
+  children,
+  pathname,
+}: {
+  children: ReactNode
+  pathname?: string
+}) {
+  const initial = useContext(RuntimeContext)?.initialWorkspaceCapabilities
+  const [published, setPublished] = useState<{
+    pathname: string | undefined
+    state: WorkspaceCapabilities
+  }>()
+  const state = useMemo<WorkspaceCapabilities>(() => {
+    if (published !== undefined && published.pathname === pathname) return published.state
+    return initial === undefined
+      ? { status: 'loading' }
+      : { status: 'ready', values: new Set(initial) }
+  }, [initial, pathname, published])
   // a stable identity, deliberately: the publisher's effect depends on this
   // function, and a publish that minted a new publisher re-armed that effect
   // - publish, re-arm, withdraw, publish - until React called the loop out
   const publish = useCallback(
     (values: ReadonlySet<string> | null) =>
-      setState(values === null ? { status: 'loading' } : { status: 'ready', values }),
-    [],
+      setPublished({
+        pathname,
+        state: values === null ? { status: 'loading' } : { status: 'ready', values },
+      }),
+    [pathname],
   )
   const value = useMemo<CapabilityScope>(() => ({ state, publish }), [state, publish])
   return <Scope.Provider value={value}>{children}</Scope.Provider>

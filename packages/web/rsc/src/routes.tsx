@@ -39,6 +39,7 @@ export interface RouteFrames {
      * page - before any of them asks
      */
     readonly hydration?: DehydratedState | undefined
+    readonly initialWorkspaceCapabilities?: readonly string[] | undefined
     /** the document's script nonce, when its host sends a policy that asks for one */
     readonly nonce?: string | undefined
     readonly children: ReactNode
@@ -188,14 +189,42 @@ export const serverRoutes = ({
    * same subject - so the answers go to the top of the document, where
    * every surface finds them before it asks.
    */
-  const firstReads = async (
-    matches: readonly RouteMatch[],
-  ): Promise<DehydratedState | undefined> => {
+  const firstReads = async (matches: readonly RouteMatch[]) => {
     const match = matches.findLast((candidate) => pageOfRoute.has(candidate.id))
     const page = match === undefined ? undefined : pageOfRoute.get(match.id)
-    if (match === undefined || page === undefined) return undefined
-    const prefetch = await loadPrefetch({ kind: 'page', id: page.id })
-    return prefetch?.({ params: match.params, url: renderRequest().url })
+    // A catch-all or an index can still render the layout's slots.
+    const layout = manifest.layouts.find(({ contract }) =>
+      matches.some(({ id }) => id === surfaceLabel({ kind: 'layout', id: contract })),
+    )
+    const { url, surfaces } = renderRequest()
+    const address = { params: match?.params ?? {}, url }
+    const slotReads = (
+      layout === undefined ? [] : (surfaces.layoutSlots[layout.contract] ?? [])
+    ).flatMap((slot) =>
+      (manifest.slots[slot] ?? []).map(async ({ id }) => {
+        const prefetch = await loadPrefetch({ kind: 'slot', slot, id })
+        return prefetch?.(address)
+      }),
+    )
+    const [fromPage, ...fromSlots] = await Promise.all([
+      page === undefined
+        ? undefined
+        : loadPrefetch({ kind: 'page', id: page.id }).then((prefetch) => prefetch?.(address)),
+      ...slotReads,
+    ])
+    const states = [fromPage, ...fromSlots].flatMap((result) =>
+      result === undefined ? [] : [result.hydration],
+    )
+    return {
+      hydration:
+        states.length === 0
+          ? undefined
+          : {
+              queries: states.flatMap((state) => state.queries),
+              mutations: states.flatMap((state) => state.mutations),
+            },
+      workspaceCapabilities: fromPage?.workspaceCapabilities,
+    }
   }
 
   return [
@@ -208,15 +237,13 @@ export const serverRoutes = ({
       }: {
         matches?: readonly RouteMatch[]
       }) {
-        const [slots, hydration] = await Promise.all([
-          authorizedSlots(manifest),
-          firstReads(matches),
-        ])
+        const [slots, first] = await Promise.all([authorizedSlots(manifest), firstReads(matches)])
         return (
           <frames.Document
             manifest={manifest}
             slots={slots}
-            hydration={hydration}
+            hydration={first.hydration}
+            initialWorkspaceCapabilities={first.workspaceCapabilities}
             locale={renderRequest().locale}
             releaseId={renderRequest().release.releaseId}
             renderedAt={renderRequest().renderedAt}

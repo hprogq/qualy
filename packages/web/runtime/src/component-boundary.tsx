@@ -90,6 +90,8 @@ export interface PluginComponentProps {
    */
   props?: Record<string, unknown>
   loading: ReactNode
+  /** let the enclosing server render wait for a first-frame contribution */
+  waitForFirstPaint?: boolean
   fallback: (retry: () => void) => ReactNode
   missing: ReactNode
 }
@@ -99,6 +101,7 @@ export function PluginComponent({
   registry,
   props,
   loading,
+  waitForFirstPaint = false,
   fallback,
   missing,
 }: PluginComponentProps) {
@@ -120,11 +123,10 @@ export function PluginComponent({
     })
     return <>{missing}</>
   }
+  const component = <Resolved {...(props ?? {})} />
   return (
     <PluginComponentBoundary surface={surface} fallback={fallback}>
-      <Suspense fallback={loading}>
-        <Resolved {...(props ?? {})} />
-      </Suspense>
+      {waitForFirstPaint ? component : <Suspense fallback={loading}>{component}</Suspense>}
     </PluginComponentBoundary>
   )
 }

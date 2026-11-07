@@ -46,6 +46,10 @@ export interface Runtime {
   utilsFor: (api: HttpApi.Constraint) => unknown
   manifest: Manifest
   registry: ComponentRegistry
+  /** the document's first authorized workspace navigation, when rendered on the server */
+  initialWorkspaceCapabilities?: readonly string[] | undefined
+  /** an explicit identity change opens a new server-rendered document */
+  serverRendered?: boolean
 }
 
 export const RuntimeContext = sharedContext<Runtime | null>('runtime', null)

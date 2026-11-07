@@ -462,7 +462,7 @@ export function TopBar({
       </nav>
       <div {...stylex.props(styles.end)}>
         <UiSlot token={headerActions} />
-        <UiSlot token={sidebarUser} />
+        <UiSlot token={sidebarUser} waitForFirstPaint />
       </div>
     </div>
   )

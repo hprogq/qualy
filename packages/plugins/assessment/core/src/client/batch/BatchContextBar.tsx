@@ -25,7 +25,8 @@ import { BatchFlow } from './BatchFlow.tsx'
 import { BatchZone } from './BatchZone.tsx'
 import { BatchProgress } from './BatchProgress.tsx'
 import { BatchSwitcher } from './BatchSwitcher.tsx'
-import { holdsStanding, useBatchAbsence } from './absence.ts'
+import { useBatchAbsence } from './absence.ts'
+import { batchWorkspaceCapabilities } from './capabilities.ts'
 import * as m from '#messages'
 
 /** where the band stops being one line and becomes the window's own head */
@@ -275,17 +276,7 @@ export default function BatchContextBar() {
   // straight from the server's projection, withdrawn while a batch loads so
   // gated rail entries never flash before the answer arrives
   usePublishWorkspaceCapabilities(
-    batch === undefined
-      ? null
-      : new Set(
-          [
-            batch.capabilities.personal && 'assessment/personal',
-            batch.capabilities.review && 'assessment/review',
-            batch.capabilities.record && 'assessment/record',
-            batch.capabilities.manage && 'assessment/manage',
-            holdsStanding(batch.capabilities, 'results') && 'assessment/results',
-          ].filter((token): token is string => token !== false),
-        ),
+    batch === undefined ? null : new Set(batchWorkspaceCapabilities(batch.capabilities)),
   )
   // the derived timeline, which is where "the stage ends when the next one
   // starts" is already worked out; the bar only counts the clock down to it

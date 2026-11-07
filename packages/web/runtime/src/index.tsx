@@ -220,6 +220,7 @@ export interface RuntimeProviderProps {
    * routes render (docs/adr/0012-rsc-data-mode.md).
    */
   manifest?: Manifest
+  initialWorkspaceCapabilities?: readonly string[] | undefined
   children: ReactNode
 }
 
@@ -303,6 +304,7 @@ export function RuntimeProvider({
   liveTiming,
   registry,
   manifest: rendered,
+  initialWorkspaceCapabilities,
   children,
 }: RuntimeProviderProps) {
   const [manifestKey] = useState(() => ({ current: undefined as QueryKey | undefined }))
@@ -409,6 +411,7 @@ export function RuntimeProvider({
             registry={registry}
             channels={channels}
             manifest={rendered}
+            initialWorkspaceCapabilities={initialWorkspaceCapabilities}
           >
             {children}
           </RenderedRuntime>
@@ -438,6 +441,7 @@ function RenderedRuntime({
   registry,
   channels,
   manifest,
+  initialWorkspaceCapabilities,
   children,
 }: Runtime & { channels: LiveChannels; children: ReactNode }) {
   const queryClient = useQueryClient()
@@ -456,7 +460,16 @@ function RenderedRuntime({
   // every request it makes (document-identity.ts)
   adoptDocumentIdentity(identityOfManifest(manifest))
   return (
-    <RuntimeContext.Provider value={{ clientFor, utilsFor, registry, manifest }}>
+    <RuntimeContext.Provider
+      value={{
+        clientFor,
+        utilsFor,
+        registry,
+        manifest,
+        initialWorkspaceCapabilities,
+        serverRendered: true,
+      }}
+    >
       {children}
     </RuntimeContext.Provider>
   )
@@ -638,6 +651,17 @@ export function useSessionTransition() {
       // browser for them goes before the next person can find it. Signing
       // in from nobody leaves nobody.
       if (manifest.viewer === 'authenticated') signingOut()
+      if (runtime.serverRendered) {
+        // The cookie now belongs to the new session. An in-document RSC
+        // navigation would still assert the old document's identity.
+        const href = sessionDestinationHref(options.destination, manifest.pages)
+        void queryClient.cancelQueries()
+        unguarded(() => {
+          if (options.replace === false) window.location.assign(href)
+          else window.location.replace(href)
+        })
+        return
+      }
       const manifestKey = (
         runtime.utilsFor(appApi) as QueryUtils<ClientOf<typeof appApi>>
       ).app.getManifest.queryOptions().queryKey
@@ -1003,6 +1027,7 @@ export function UiSlot({
   context,
   fallback,
   loading,
+  waitForFirstPaint = false,
 }: {
   token: UiSlotToken
   context?: unknown
@@ -1025,9 +1050,11 @@ export function UiSlot({
    * skeleton here instead.
    */
   loading?: ReactNode
+  /** keep this chrome in the first HTML frame of a server-rendered document */
+  waitForFirstPaint?: boolean
 }) {
   const manifest = useManifest()
-  const registry = useRuntime().registry
+  const { registry, serverRendered } = useRuntime()
   const items = manifest.slots[token.key] ?? []
   if (items.length === 0) return <>{fallback ?? null}</>
   // While the contribution's chunk is in flight the fallback holds its place.
@@ -1043,6 +1070,7 @@ export function UiSlot({
           registry={registry}
           props={{ context }}
           loading={loading ?? fallback ?? null}
+          waitForFirstPaint={serverRendered === true && waitForFirstPaint}
           fallback={() => null}
           missing={null}
         />

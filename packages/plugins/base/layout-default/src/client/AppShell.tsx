@@ -67,11 +67,6 @@ const styles = stylex.create({
     flexShrink: 1,
     flexBasis: '0%',
     overflowY: 'auto',
-    // The scrollbar's room is held whether or not the page needs it: a page
-    // long enough to scroll lost a scrollbar's width, and the centred
-    // measure moved left by that much from one page to the next. Where the
-    // scrollbar floats over the page - every phone - it holds nothing.
-    scrollbarGutter: 'stable',
     // The page bounces at its ends and the bars do not, which is what a
     // phone has always done and what the bars being an overlay is for.
     // `contain` keeps the bounce and stops only the chaining - a flick at
@@ -83,16 +78,20 @@ const styles = stylex.create({
   // a screen that fills the room scrolls inside itself; the shell does not
   // scroll around it, and holds no strip down the right for a scrollbar
   // that cannot come
-  mainFilled: {
-    overflowY: 'hidden',
-    scrollbarGutter: 'auto',
-  },
+  mainFilled: { overflowY: 'hidden' },
+  // The scroller and its floating head reserve the same native gutter from
+  // the first paint. Overlay scrollbars do not take any layout space.
+  gutter: { scrollbarGutter: 'stable' },
   head: {
     position: 'absolute',
     insetInline: 0,
     top: 0,
     zIndex: HEAD_LAYER,
+    overflow: 'hidden',
+    // The gutter remains reachable on the scroller underneath.
+    pointerEvents: 'none',
   },
+  headContent: { pointerEvents: 'auto' },
   // beside a column the bar is ruled from the start: the column's own line
   // has to meet something, and a bar that earns its rule only once the page
   // moves leaves that line ending in mid air
@@ -212,9 +211,6 @@ function Shell() {
   // rather than assumed: a height read once was right until the first
   // rotation, and then quietly wrong by eight pixels.
   const [barHeight, setBarHeight] = useState(0)
-  // how much of the scroller's width its own scrollbar takes, so the bars
-  // floating over it stop short of it
-  const [gutter, setGutter] = useState(0)
   // whether the page's own band has taken the sections; a page with no band
   // leaves them here, above its content
   const [sectionsTaken, setSectionsTaken] = useState(false)
@@ -231,21 +227,6 @@ function Shell() {
     measure.observe(bars)
     setBarHeight(bars.offsetHeight)
     return () => measure.disconnect()
-  }, [])
-
-  // The bars float over the page, which is what lets the page pass under
-  // them - but they floated over its scrollbar too, and the top of the thumb
-  // was behind them. The bar ends where the scrollbar begins. Where the
-  // browser draws its scrollbars as an overlay this is zero and nothing
-  // moves.
-  useEffect(() => {
-    const root = main.current
-    if (root === null) return
-    const measure = () => setGutter(root.offsetWidth - root.clientWidth)
-    measure()
-    const watch = new ResizeObserver(measure)
-    watch.observe(root)
-    return () => watch.disconnect()
   }, [])
 
   useEffect(() => {
@@ -294,16 +275,17 @@ function Shell() {
         ref={head}
         data-shell-head=""
         data-scrolled={scrolled ? '' : undefined}
-        style={gutter === 0 ? undefined : { right: gutter }}
-        {...stylex.props(styles.head, beside && styles.headRuled)}
+        {...stylex.props(styles.head, !filled && styles.gutter)}
       >
-        <TopBar
-          apps={apps}
-          activeApp={activeApp}
-          scrolled={scrolled}
-          title={title}
-          titleShown={titleShown}
-        />
+        <div {...stylex.props(styles.headContent, beside && styles.headRuled)}>
+          <TopBar
+            apps={apps}
+            activeApp={activeApp}
+            scrolled={scrolled}
+            title={title}
+            titleShown={titleShown}
+          />
+        </div>
       </div>
       {/* auto rather than scroll, so a page that fits shows no track. The
           gutter is held (see the style) so pages do not shift sideways from
@@ -319,7 +301,7 @@ function Shell() {
         {...stylex.props(
           styles.main,
           bottomBar ? styles.footRoom : styles.safeRoom,
-          filled && styles.mainFilled,
+          filled ? styles.mainFilled : styles.gutter,
         )}
       >
         <div
