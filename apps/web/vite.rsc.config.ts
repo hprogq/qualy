@@ -80,8 +80,28 @@ export default defineConfig(({ mode }) => ({
   // build's own output
   environments: {
     rsc: { build: { outDir: 'dist-rsc/rsc' } },
-    ssr: { build: { outDir: 'dist-rsc/ssr' } },
-    client: { build: { outDir: 'dist-rsc/client' } },
+    ssr: {
+      build: { outDir: 'dist-rsc/ssr' },
+      // These packages export hundreds of modules from their entry points.
+      // Bundle them in the HTML renderer's own optimizer (not the React
+      // server environment) instead of transforming each file on first view.
+      optimizeDeps: {
+        include: [
+          'lucide-react',
+          '@qualy/ui > @mantine/core',
+          '@qualy/ui > @mantine/dates',
+          '@qualy/ui > @mantine/hooks',
+        ],
+      },
+    },
+    client: {
+      build: { outDir: 'dist-rsc/client' },
+      optimizeDeps: {
+        entries: ['src/rsc/entry.browser.tsx'],
+        // Loaded by the router's Flight references, outside static imports.
+        include: ['react-router/internal/react-server-client'],
+      },
+    },
   },
   server: {
     port: 5180,

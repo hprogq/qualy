@@ -124,19 +124,39 @@ export const qualyEnvironmentModules = (): Plugin => {
   const directory = path.join(repoRoot, 'apps/web/.qualy/rsc')
   const surfacesFile = path.join(directory, 'surfaces.ts')
   const browserPluginsFile = path.join(directory, 'browser-plugins.ts')
+  const scanFile = path.join(directory, 'scan.ts')
   return {
     name: 'qualy-environment-modules',
-    async config() {
+    async config(_config, { command }) {
       const sources = await buildEnvironmentModuleSources({ fromDir: directory })
       for (const [file, source] of [
         [surfacesFile, sources.surfaces],
         [browserPluginsFile, sources.browserPlugins],
+        ...(command === 'serve'
+          ? [[scanFile, await buildPluginScanSource({ fromDir: directory })] as const]
+          : []),
       ] as const) {
         const current = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : undefined
         if (current === source) continue
         fs.mkdirSync(directory, { recursive: true })
         fs.writeFileSync(file, source)
       }
+      if (command === 'serve') {
+        // Client references arrive through Flight, outside the browser
+        // entry's import graph. Give the dependency scanner the same static
+        // surface and worker inputs as the SPA before the first navigation.
+        return {
+          environments: {
+            client: {
+              optimizeDeps: {
+                entries: [scanFile],
+                rolldownOptions: { plugins: [workerDependencyScan()] },
+              },
+            },
+          },
+        }
+      }
+      return undefined
     },
     async resolveId(id, importer) {
       // a surface's module, named by its plugin's export subpath and found
