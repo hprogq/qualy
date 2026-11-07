@@ -24,14 +24,14 @@ export default async function ReviewInbox({
   }
   const queue = queueReadOf(batchId, queueRequestOf(queuePlaceOf(renderRequest().url.searchParams)))
   const awaiting = awaitingReadOf(batchId)
-  const state = await answersOf([
+  const handed = await answersOf([
     keyed('listReviewInbox', queue, (client) => client.assessment.listReviewInbox(queue)),
     keyed('listAwaitingSupplements', awaiting, (client) =>
       client.assessment.listAwaitingSupplements(awaiting),
     ),
   ])
   return (
-    <QueryHydration state={state}>
+    <QueryHydration {...handed}>
       <ReviewInboxPage />
     </QueryHydration>
   )

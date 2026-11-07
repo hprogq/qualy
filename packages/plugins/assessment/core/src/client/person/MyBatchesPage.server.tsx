@@ -13,7 +13,7 @@ import MyBatchesPage from './MyBatchesPage.tsx'
 export default async function MyBatches() {
   const page = membershipPageOf(renderRequest().url.searchParams.get(MEMBERSHIPS_PAGE))
   const key = membershipPageKey(queryKeyOf('assessment', 'listMyBatches', { query: {} }), page)
-  const state = await answersOf([
+  const handed = await answersOf([
     {
       key,
       exit: readApiExit(
@@ -24,7 +24,7 @@ export default async function MyBatches() {
     },
   ])
   return (
-    <QueryHydration state={state}>
+    <QueryHydration {...handed}>
       <MyBatchesPage />
     </QueryHydration>
   )

@@ -18,13 +18,13 @@ export default async function MyResult({
   const batchId = batchIdOf(params)
   if (batchId === undefined) return <MyResultPage />
   const batch = { params: { batchId } }
-  const state = await answersOf([
+  const handed = await answersOf([
     keyed('getMyResult', batch, (client) => client.assessment.getMyResult(batch)),
     keyed('listItems', batch, (client) => client.assessment.listItems(batch)),
     readMyEntries(batchId),
   ])
   return (
-    <QueryHydration state={state}>
+    <QueryHydration {...handed}>
       <MyResultPage />
     </QueryHydration>
   )

@@ -1,7 +1,7 @@
 import { queryKeyOf } from '@qualy/web-runtime/query-key'
 import { QueryHydration } from '@qualy/web-runtime/query-hydration'
 import { readApiExit, renderRequest } from '@qualy/web-rsc/request'
-import { serverQueries, settle } from '@qualy/web-rsc/queries'
+import { answersOf, settle } from '@qualy/web-rsc/queries'
 import { assessmentApi } from './api.ts'
 import { ACTIVITY_LANE, ACTIVITY_PAGE, laneOf, overviewReads } from './overview-reads.ts'
 import { batchIdOf, readBatch } from './batch/batch-reads.server.ts'
@@ -40,23 +40,32 @@ export default async function BatchOverview({
     overview: queryKeyOf('assessment', 'getMyOverview', reads.overview),
     activity: queryKeyOf('assessment', 'listMyActivity', reads.activity),
   }
-  const [subject, overview, activity] = await Promise.all([
+  const [subject, handed] = await Promise.all([
     readBatch(batchId).exit.then(settle),
-    readApiExit(assessmentApi, (client) => client.assessment.getMyOverview(reads.overview), {
-      key: keys.overview,
-    }).then(settle),
-    readApiExit(assessmentApi, (client) => client.assessment.listMyActivity(reads.activity), {
-      key: keys.activity,
-    }).then(settle),
+    answersOf([
+      {
+        key: keys.overview,
+        exit: readApiExit(
+          assessmentApi,
+          (client) => client.assessment.getMyOverview(reads.overview),
+          { key: keys.overview },
+        ),
+      },
+      {
+        key: keys.activity,
+        exit: readApiExit(
+          assessmentApi,
+          (client) => client.assessment.listMyActivity(reads.activity),
+          { key: keys.activity },
+        ),
+      },
+    ]),
   ])
   // a batch that is not there is the workspace's to say, and it has
   if (subject.kind !== 'answer') return <BatchOverviewPage />
-  const queries = serverQueries()
-  if (overview.kind === 'answer') queries.hold(keys.overview, overview.value)
-  if (activity.kind === 'answer') queries.hold(keys.activity, activity.value)
   const text = subject.value.batch.descriptionMd?.trim() ?? ''
   return (
-    <QueryHydration state={queries.dehydrated()}>
+    <QueryHydration {...handed}>
       <BatchOverviewPage
         {...(text === '' ? {} : { drawnNote: { text, drawn: <NoteMarkdown text={text} /> } })}
       />

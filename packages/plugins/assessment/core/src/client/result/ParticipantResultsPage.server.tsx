@@ -1,6 +1,6 @@
 import { QueryHydration } from '@qualy/web-runtime/query-hydration'
 import { renderRequest } from '@qualy/web-rsc/request'
-import { answersOf, settle } from '@qualy/web-rsc/queries'
+import { answersOf, settle, within } from '@qualy/web-rsc/queries'
 import { batchIdOf, keyed, namesRecord, readBatch } from '../batch/batch-reads.server.ts'
 import { holdsStanding } from '../batch/capabilities.ts'
 import { queueReadOf } from '../review/inbox-reads.ts'
@@ -35,12 +35,12 @@ export default async function ParticipantResults({
   }
   const view = rosterViewOf((key) => search.get(key) ?? '')
   const participantId = search.get('participant') ?? ''
-  const state =
+  const handed =
     participantId === ''
       ? await rosterReads(batchId, view)
       : await accountReads(batchId, participantId, view, subject.value.batch.capabilities.review)
   return (
-    <QueryHydration state={state}>
+    <QueryHydration {...handed}>
       <ParticipantResultsPage />
     </QueryHydration>
   )
@@ -64,9 +64,11 @@ async function rosterReads(batchId: string, view: RosterView) {
   }
   const accounts = pageOfRoster(batchId, view)
   const units = keyed('listRosterUnits', tree, (client) => client.assessment.listRosterUnits(tree))
-  // the page's totals, asked once its rows are known, as the page asks them
-  const rows = settle(await accounts.exit)
-  const ids = rows.kind === 'answer' ? rows.value.items.map((row) => row.id) : []
+  // the page's totals, asked once its rows are known, as the page asks them;
+  // rows that miss the html are the page's to total when they land
+  const known = await within(accounts.exit)
+  const rows = known === undefined ? undefined : settle(known)
+  const ids = rows?.kind === 'answer' ? rows.value.items.map((row) => row.id) : []
   const totals = { params: { batchId }, query: { participantIds: ids } }
   return answersOf([
     accounts,
@@ -114,10 +116,12 @@ async function accountReads(
   const account = keyed('getParticipantResult', person, (client) =>
     client.assessment.getParticipantResult(person),
   )
-  // the claims only where this reader opens them, which the person says
-  const read = settle(await who.exit)
+  // the claims only where this reader opens them, which the person says;
+  // a person who misses the html leaves the claims to the page
+  const known = await within(who.exit)
+  const read = known === undefined ? undefined : settle(known)
   const claims =
-    read.kind === 'answer' && read.value.claims
+    read?.kind === 'answer' && read.value.claims
       ? [readParticipantEntries(batchId, participantId)]
       : []
   return answersOf([who, account, ...around, ...claims])

@@ -37,12 +37,12 @@ export default async function ReviewInstance({
     limit: '20',
   })
   const round = { params: { instanceId } }
-  const state = await answersOf([
+  const handed = await answersOf([
     keyed('getReviewInstance', round, (client) => client.assessment.getReviewInstance(round)),
     keyed('listReviewInbox', run, (client) => client.assessment.listReviewInbox(run)),
   ])
   return (
-    <QueryHydration state={state}>
+    <QueryHydration {...handed}>
       <ReviewInstancePage />
     </QueryHydration>
   )
