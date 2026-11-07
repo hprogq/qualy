@@ -42,7 +42,10 @@
       "default": "./src/client/entry/MyEntriesPage.tsx"
     },
     "./client/items/FixedCalculatorEditor": "./src/client/items/FixedCalculatorEditor.tsx",
-    "./client/items/ItemSettingsPage": "./src/client/items/ItemSettingsPage.tsx",
+    "./client/items/ItemSettingsPage": {
+      "react-server": "./src/client/items/ItemSettingsPage.server.tsx",
+      "default": "./src/client/items/ItemSettingsPage.tsx"
+    },
     "./client/person/MyBatchesPage": {
       "react-server": "./src/client/person/MyBatchesPage.server.tsx",
       "default": "./src/client/person/MyBatchesPage.tsx"
