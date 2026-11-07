@@ -71,7 +71,7 @@ export default defineConfig({
     // harness that mounts each test, never by a plugin module. Found late,
     // it made Vite re-bundle and reload mid-run, and on a cold cache - every
     // CI run - the files in flight at that moment failed to import.
-    include: ['react-dom/client', 'effect/http/HttpServerRequest'],
+    include: ['react-dom/client', 'react-dom/server', 'effect/http/HttpServerRequest'],
   },
   test: {
     // measured only when asked (`pnpm test:browser:coverage`); Chromium only -

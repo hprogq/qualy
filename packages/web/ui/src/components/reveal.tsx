@@ -8,16 +8,16 @@ import { tokens } from '../theme/tokens.stylex.ts'
 import { useColdStartHandoff } from './spinner.tsx'
 import { useHydrating } from '../hooks/use-hydrating.ts'
 
-// The entrance a screen makes: a short fade and lift, once, on mount.
-// Deliberately subtle - page content should arrive, not perform.
-//
-// Not under the cold start: there the application's own fade-in is the
-// entrance, and a second one playing inside it is a jump on a browser that
-// captures the incoming page as a still rather than painting it live. Nor in
-// a page a server drew (docs/adr/0012-rsc-data-mode.md): the html is on
-// screen before any script, and an entrance written into it is the screen
-// held at nothing until the page has taken over. Read once, at mount: what
-// matters is the screen this one arrived under.
+/** Play an entrance only for content added to an already interactive page. */
+export function useEntryMotion(): boolean {
+  const handoff = useColdStartHandoff()
+  const hydrating = useHydrating()
+  const reduced = useReducedMotion() === true
+  const [enter] = useState(!handoff && !hydrating)
+  return enter && !reduced
+}
+
+/** A short fade and lift for newly opened screen content. */
 export function Reveal({
   className,
   delay = 0,
@@ -27,13 +27,11 @@ export function Reveal({
   delay?: number
   children: ReactNode
 }) {
-  const handoff = useColdStartHandoff()
-  const hydrating = useHydrating()
-  const [still] = useState(handoff || hydrating)
+  const enter = useEntryMotion()
   return (
     <motion.div
       className={className}
-      initial={still ? false : { opacity: 0, y: 8 }}
+      initial={enter ? { opacity: 0, y: 8 } : false}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.24, delay, ease: 'easeOut' }}
     >
@@ -65,6 +63,7 @@ export function Settling({
   children: ReactNode
 }) {
   const reduced = useReducedMotion() === true
+  const hydrating = useHydrating()
   // A move only from a drawing that is on screen as this one arrives: the
   // page being left, replaced in the same commit. Arriving from a page that
   // had no band, or after a loading screen stood between the two, there is
@@ -75,7 +74,7 @@ export function Settling({
   // And only that move. Once the band is where it belongs, anything else
   // that shifts it - the band's words arriving and taking another line -
   // puts it there at once rather than springing it down the page.
-  const [moving, setMoving] = useState(() => (onScreen.get(name) ?? 0) > 0)
+  const [moving, setMoving] = useState(() => !hydrating && (onScreen.get(name) ?? 0) > 0)
   useLayoutEffect(() => {
     onScreen.set(name, (onScreen.get(name) ?? 0) + 1)
     return () => {
@@ -87,11 +86,10 @@ export function Settling({
     const done = setTimeout(() => setMoving(false), SETTLE_MS)
     return () => clearTimeout(done)
   }, [moving])
-  if (reduced) return <div className={className}>{children}</div>
   return (
     <motion.div
-      layoutId={name}
-      layout="position"
+      layoutId={reduced ? undefined : name}
+      layout={reduced ? false : 'position'}
       className={className}
       transition={moving ? SLIDE : STILL}
       onLayoutAnimationComplete={() => setMoving(false)}
@@ -130,12 +128,13 @@ export function Portion({
   share: number
   className?: string
 }) {
+  const enter = useEntryMotion()
   const reduced = useReducedMotion() === true
   return (
     <motion.span
       aria-hidden
       className={className}
-      initial={reduced ? false : { width: 0 }}
+      initial={enter ? { width: 0 } : false}
       animate={{ width: `${share}%` }}
       transition={{ duration: reduced ? 0 : 0.55, ease: [0.22, 0.61, 0.36, 1] }}
     />
@@ -184,9 +183,10 @@ export function Resizing({ className, children }: { className?: string; children
 
   useEffect(() => {
     if (content === null) return
-    const watch = new ResizeObserver(() => setHeight(content.offsetHeight))
+    const measure = () => setHeight(content.getBoundingClientRect().height)
+    const watch = new ResizeObserver(measure)
     watch.observe(content)
-    setHeight(content.offsetHeight)
+    measure()
     return () => watch.disconnect()
   }, [content])
 
@@ -254,6 +254,7 @@ export function Drill({
   // asked for less motion: the travel goes, the crossfade stays, because an
   // instant swap is the thing that loses the reader
   const reduced = useReducedMotion() === true
+  const hydrating = useHydrating()
   const going: Going =
     move === 'none'
       ? { ...OFFSET.none, fade: false }
@@ -274,7 +275,7 @@ export function Drill({
       custom={going}
       className={className}
       variants={drilling}
-      initial="enter"
+      initial={hydrating ? false : 'enter'}
       animate="settled"
       transition={{ duration: move === 'none' ? 0 : 0.2, ease: [0.22, 0.61, 0.36, 1] }}
     >
@@ -385,8 +386,7 @@ export function DoneMark({
   xstyle?: StyleXStyles
   className?: string
 }) {
-  const reduced = useReducedMotion()
-  const still = reduced === true
+  const still = !useEntryMotion()
   const sx = stylex.props(ringStyles.mark, xstyle)
   return (
     <svg viewBox="0 0 76 76" {...sx} className={clsx(sx.className, className)} aria-hidden>
@@ -501,10 +501,11 @@ export function Stagger({
   children: ReactNode
 }) {
   const reduced = useReducedMotion()
+  const enter = useEntryMotion()
   return (
     <motion.div
       className={className}
-      initial="hidden"
+      initial={enter ? 'hidden' : false}
       animate="shown"
       variants={{
         shown: {
@@ -631,6 +632,7 @@ export function Unfold({
       }
   return (
     <AnimatePresence
+      initial={false}
       mode="popLayout"
       {...(onClosed === undefined ? {} : { onExitComplete: onClosed })}
     >
