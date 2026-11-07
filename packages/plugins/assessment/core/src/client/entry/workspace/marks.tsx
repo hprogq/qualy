@@ -1,5 +1,6 @@
 import * as stylex from '@stylexjs/stylex'
 import { motion, useReducedMotion } from 'motion/react'
+import { useEntryMotion } from '@qualy/ui/reveal'
 import { VisuallyHidden } from '@qualy/ui/visually-hidden'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 
@@ -148,6 +149,9 @@ export function SectionMeter({
   large?: boolean
 }) {
   const reduced = useReducedMotion() === true
+  // a pie a server drew stands as drawn; only one that comes on screen in a
+  // page already running fills in
+  const enter = useEntryMotion()
   const share = cap <= 0 ? 0 : Math.max(0, Math.min(1, got / cap))
   const full = got >= cap
   return (
@@ -176,7 +180,7 @@ export function SectionMeter({
           strokeWidth={WEDGE * 2}
           strokeDasharray={ROUND}
           transform="rotate(-90 7 7)"
-          initial={reduced ? false : { strokeDashoffset: ROUND }}
+          initial={enter ? { strokeDashoffset: ROUND } : false}
           animate={{ strokeDashoffset: ROUND * (1 - share) }}
           transition={{ duration: reduced ? 0 : 0.5, ease: [0.22, 0.61, 0.36, 1] }}
           {...stylex.props(styles.wedge, full && styles.full)}
