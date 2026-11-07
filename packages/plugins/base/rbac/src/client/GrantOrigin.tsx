@@ -5,6 +5,7 @@ import {
 } from '@qualy/ui-contract'
 import { PluginSurface, useUiCollection } from '@qualy/web-runtime'
 import { Skeleton } from '@qualy/ui/skeleton'
+import { grantPresenterOf } from './grant-presenter.ts'
 import * as m from '#messages'
 
 /** as much of a grant as saying where it came from needs */
@@ -31,9 +32,7 @@ export interface OriginGrant {
 export function GrantOrigin({ grant }: { grant: OriginGrant }) {
   const presenters = useUiCollection(resourceGrantPresenters)
   const resource = grant.resource!
-  const presenter = presenters.find(
-    (candidate) => candidate.namespace === resource.namespace && candidate.type === resource.type,
-  )
+  const presenter = grantPresenterOf(presenters, resource)
   const plain = (
     <span data-testid="grant-origin-plain">
       {m.grants_confinedPlain({ namespace: resource.namespace, type: resource.type })}

@@ -58,15 +58,17 @@ export const renderedFetch =
     readonly onClientUnsupported: (reason: ClientUnsupportedReason) => void
     /** the network; the page's own unless a harness brings one */
     readonly fetch?: typeof globalThis.fetch
+    /** only a router navigation needs to remain pending behind recovery */
+    readonly holdRefusals?: boolean
   }) =>
   async (request: Request): Promise<Response> => {
     const send = options.fetch ?? globalThis.fetch
+    const identity = documentIdentity()
     const ask = async (): Promise<Response> => {
       const headers = new Headers(request.headers)
       headers.set(QUALY_CLIENT_RELEASE_HEADER, options.identity.releaseId)
       headers.set(QUALY_CLIENT_PROTOCOL_HEADER, String(options.identity.clientProtocol))
       headers.set(QUALY_LOCALE_HEADER, options.locale)
-      const identity = documentIdentity()
       if (identity !== undefined) headers.set(QUALY_IDENTITY_HEADER, identity)
       const response = await send(new Request(request, { headers }))
       const refusal = response.headers.get(QUALY_RENDER_REFUSED_HEADER)
@@ -89,6 +91,7 @@ export const renderedFetch =
         const reason = (error as { reason?: string }).reason
         options.onClientUnsupported(reason === 'protocol' ? 'protocol' : 'release')
       } else if (!HELD.has(tag)) throw error
+      if (options.holdRefusals === false) throw error
       // the page stays as it is; the navigation ends when the router lets it go
       return heldUntilCancelled(request.signal)
     }

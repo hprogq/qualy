@@ -28,6 +28,7 @@ import {
 import { Button } from '@qualy/ui/button'
 
 import { GrantOrigin } from './GrantOrigin.tsx'
+import { GRANT_FRESH_MS } from './grant-presenter.ts'
 import { GrantRoleDialog } from './GrantRoleForm.tsx'
 import { accessApi } from './api.ts'
 import { useMoment } from './when.ts'
@@ -94,7 +95,10 @@ export default function UserRoleGrantsPage() {
   // each opening is a form of its own, mounted afresh
   const [opening, setOpening] = useState(0)
 
-  const grants = useQuery(query.access.getUserRoleGrants.queryOptions({ params: { userId } }))
+  const grants = useQuery({
+    ...query.access.getUserRoleGrants.queryOptions({ params: { userId } }),
+    staleTime: GRANT_FRESH_MS,
+  })
   const items: readonly Grant[] = grants.data?.grants ?? []
   const grantable = grants.data?.grantable ?? { tenant: false, organization: false }
   const organizational = items.filter((grant) => grant.resource === null)

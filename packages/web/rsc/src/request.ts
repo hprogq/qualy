@@ -7,7 +7,8 @@ import { HttpApiClient, type HttpApi, type HttpApiGroup } from 'effect/http-api'
 import { QUALY_IDENTITY_HEADER, QUALY_LOCALE_HEADER } from '@qualy/api-kit'
 import type { SupportedLocale } from '@qualy/i18n-contract'
 import { QUALY_CLIENT_PROTOCOL_HEADER, QUALY_CLIENT_RELEASE_HEADER } from '@qualy/release-contract'
-import type { BrowserSurface } from '@qualy/ui-contract'
+import type { BrowserSurface, SlotSurface } from '@qualy/ui-contract'
+import type { Manifest } from '@qualy/web-runtime'
 import type { DehydratedState } from '@tanstack/query-core'
 
 // One document request, as everything rendering it sees it
@@ -30,6 +31,7 @@ import type { DehydratedState } from '@tanstack/query-core'
 export interface PrefetchedSurface {
   readonly hydration: DehydratedState
   readonly workspaceCapabilities?: readonly string[]
+  readonly slotReferences?: readonly SlotSurface[]
 }
 
 export type SurfacePrefetch = (route: {
@@ -37,6 +39,7 @@ export type SurfacePrefetch = (route: {
   readonly params: Readonly<Record<string, string | undefined>>
   /** the address asked for, query and all */
   readonly url: URL
+  readonly manifest: Manifest
 }) => Promise<PrefetchedSurface | undefined>
 
 /** a loader for one surface's module, as the server's table holds it */

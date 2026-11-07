@@ -6,6 +6,7 @@ import { Api } from '@qualy/api-kit/local'
 import { appApiGroup } from '@qualy/app-contract'
 import { sharedContext } from './shared-context.ts'
 import { buildPageHref, type PageHrefOptions } from './pages.ts'
+import type { LoadSlotReference } from './slot-reference.tsx'
 import type { ComponentRegistry } from './registry.ts'
 import type { ClientOf } from './api.ts'
 
@@ -50,6 +51,7 @@ export interface Runtime {
   initialWorkspaceCapabilities?: readonly string[] | undefined
   /** an explicit identity change opens a new server-rendered document */
   serverRendered?: boolean
+  loadSlotReference?: LoadSlotReference | undefined
 }
 
 export const RuntimeContext = sharedContext<Runtime | null>('runtime', null)

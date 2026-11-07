@@ -4,10 +4,10 @@ import { Api } from '@qualy/api-kit/local'
 import { appApiGroup } from '@qualy/app-contract'
 import { ANONYMOUS_IDENTITY, QUALY_IDENTITY_HEADER } from '@qualy/api-kit'
 import { localeOfRequest } from '@qualy/api-kit/locale'
-import { primaryNavigation } from '@qualy/ui-contract'
+import { primaryNavigation, SLOT_REFERENCE_PATH } from '@qualy/ui-contract'
 import { SIGN_IN_PAGE } from '@qualy/auth-contract/sign-in-failure'
 import { withDocumentLocale } from '@qualy/web-rsc/document-locale'
-import { readApi, withRenderRequest, type RenderRequest } from '@qualy/web-rsc/request'
+import { loadSurface, readApi, withRenderRequest, type RenderRequest } from '@qualy/web-rsc/request'
 import { serverRoutes } from '@qualy/web-rsc/routes'
 import * as surfaces from 'virtual:qualy/surfaces'
 import { webRelease } from 'virtual:qualy/release'
@@ -133,6 +133,26 @@ const renderServer = async (request: Request, manifest: Manifest) => {
   })
 }
 
+const renderSlotReference = async (scope: RenderRequest, manifest: Manifest) => {
+  const { searchParams } = scope.url
+  const [slot] = searchParams.getAll('slot')
+  const [id] = searchParams.getAll('id')
+  if (searchParams.size !== 2 || slot === undefined || id === undefined) {
+    return new Response(null, { status: 400, headers: PRIVATE })
+  }
+  const items = Object.hasOwn(manifest.slots, slot) ? manifest.slots[slot] : undefined
+  if (items?.some((item) => item.id === id) !== true) {
+    return new Response(null, { status: 404, headers: PRIVATE })
+  }
+  const component = await loadSurface({ kind: 'slot', slot, id })
+  if (component === undefined) return new Response(null, { status: 409, headers: PRIVATE })
+  // The raw reference is a field of the result. Nothing renders the
+  // component here, and the request can never supply its props.
+  return new Response(renderToReadableStream({ component }, { signal: scope.signal }), {
+    headers: { ...PRIVATE, 'content-type': 'text/x-component' },
+  })
+}
+
 /**
  * What the host serving this handler hands each request beside it: the
  * nonce its content security policy for this response names, when it sends
@@ -146,6 +166,10 @@ export default async function handler(
   request: Request,
   context: RenderContext = {},
 ): Promise<Response> {
+  const slotReference = new URL(request.url).pathname === SLOT_REFERENCE_PATH
+  if (slotReference && request.method !== 'GET') {
+    return new Response(null, { status: 405, headers: { ...PRIVATE, allow: 'GET' } })
+  }
   if (request.method !== 'GET' && request.method !== 'HEAD') {
     return new Response(null, { status: 405, headers: { allow: 'GET, HEAD' } })
   }
@@ -153,7 +177,7 @@ export default async function handler(
   // is not this one, or a protocol it does not speak, could not use what this
   // build would send; a new document is this build's by definition.
   const declared = declarationOf(request)
-  const fromPage = declared.protocol !== undefined
+  const fromPage = declared.protocol !== undefined || slotReference
   if (fromPage) {
     if (declared.protocol !== String(webRelease.clientProtocol)) return refused('protocol')
     if (declared.release !== webRelease.releaseId) return refused('release')
@@ -186,6 +210,14 @@ export default async function handler(
         fromPage && declared.identity !== undefined
           ? declared.identity
           : identityOfManifest(manifest),
+    }
+    if (slotReference) {
+      return withCookies(
+        await withDocumentLocale(scope.locale, () =>
+          withRenderRequest(scope, () => renderSlotReference(scope, manifest)),
+        ),
+        clearings,
+      )
     }
     const served = await withDocumentLocale(scope.locale, () =>
       withRenderRequest(scope, () => renderServer(request, manifest)),

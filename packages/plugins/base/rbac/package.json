@@ -10,10 +10,16 @@
     "./actions": "./src/actions.ts",
     "./api": "./src/api.ts",
     "./assembly": "./src/assembly/index.ts",
-    "./client/AccountRolesPage": "./src/client/AccountRolesPage.tsx",
+    "./client/AccountRolesPage": {
+      "react-server": "./src/client/AccountRolesPage.server.tsx",
+      "default": "./src/client/AccountRolesPage.tsx"
+    },
     "./client/RolePage": "./src/client/RolePage.tsx",
     "./client/RolesPage": "./src/client/RolesPage.tsx",
-    "./client/UserRoleGrantsPage": "./src/client/UserRoleGrantsPage.tsx",
+    "./client/UserRoleGrantsPage": {
+      "react-server": "./src/client/UserRoleGrantsPage.server.tsx",
+      "default": "./src/client/UserRoleGrantsPage.tsx"
+    },
     "./client/api": "./src/client/api.ts",
     "./db": "./src/db/entities.ts",
     "./package.json": "./package.json",
@@ -47,6 +53,7 @@
     "@qualy/ui": "workspace:*",
     "@qualy/ui-contract": "workspace:*",
     "@qualy/web-i18n": "workspace:*",
+    "@qualy/web-rsc": "workspace:*",
     "@qualy/web-runtime": "workspace:*",
     "@stylexjs/stylex": "catalog:",
     "@tanstack/react-query": "catalog:",

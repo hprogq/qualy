@@ -39,3 +39,10 @@ export type BrowserSurfaceKind = BrowserSurface['kind']
  */
 export const surfaceLabel = (surface: BrowserSurface): string =>
   surface.kind === 'slot' ? `slot:${surface.slot}:${surface.id}` : `${surface.kind}:${surface.id}`
+
+export const SLOT_REFERENCE_PATH = '/__qualy/surfaces'
+
+export type SlotSurface = Extract<BrowserSurface, { readonly kind: 'slot' }>
+
+export const slotReferenceHref = ({ slot, id }: SlotSurface): string =>
+  `${SLOT_REFERENCE_PATH}?${new URLSearchParams({ slot, id })}`

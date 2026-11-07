@@ -11,6 +11,7 @@
     "./document-identity": "./src/document-identity.ts",
     "./identity": "./src/identity.ts",
     "./release": "./src/release.ts",
+    "./slot-reference": "./src/slot-reference.tsx",
     "./surface-scope": "./src/surface-scope.tsx",
     "./revalidation": "./src/revalidation.ts",
     "./rendered-fetch": "./src/rendered-fetch.ts",

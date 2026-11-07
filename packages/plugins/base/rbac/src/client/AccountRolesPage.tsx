@@ -2,7 +2,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
-import { useApiQuery, useLoadFailure } from '@qualy/web-runtime'
+import { useApiQuery, useDocumentNow, useLoadFailure } from '@qualy/web-runtime'
 import type { ApiResult } from '@qualy/web-runtime/api'
 
 import { AsyncSection } from '@qualy/ui/admin'
@@ -12,6 +12,7 @@ import { tokens } from '@qualy/ui/theme/tokens.stylex'
 
 import { accessApi } from './api.ts'
 import { GrantOrigin } from './GrantOrigin.tsx'
+import { GRANT_FRESH_MS } from './grant-presenter.ts'
 import { useMoment } from './when.ts'
 import * as commonMessages from '@qualy/web-i18n/messages'
 import * as m from '#messages'
@@ -53,7 +54,10 @@ export default function AccountRolesPage() {
   const query = useApiQuery(accessApi)
 
   const describe = useLoadFailure()
-  const roles = useQuery(query.access.listSelfRoles.queryOptions({}))
+  const roles = useQuery({
+    ...query.access.listSelfRoles.queryOptions({}),
+    staleTime: GRANT_FRESH_MS,
+  })
   const items = roles.data?.roles ?? []
   return (
     <div {...stylex.props(styles.page)}>
@@ -100,6 +104,7 @@ function RoleRow({ role }: { role: Role }) {
         ? m.grants_atSubtree({ node: role.target.orgNodeName })
         : m.grants_atNode({ node: role.target.orgNodeName })
   const powers = open ? role.permissions : role.permissions.slice(0, SHOWN)
+  const now = useDocumentNow()
   return (
     <div
       data-testid="account-role"
@@ -123,7 +128,7 @@ function RoleRow({ role }: { role: Role }) {
               }}
             />
           )}
-          {role.validFrom !== null && new Date(role.validFrom).getTime() > Date.now() && (
+          {role.validFrom !== null && new Date(role.validFrom).getTime() > now && (
             <span>{m.grants_validFrom({ when: moment(role.validFrom) })}</span>
           )}
           {role.validUntil !== null && (

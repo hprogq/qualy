@@ -37,6 +37,11 @@ import { isAuthenticationError, isUseCaseApiFailure, type UseCaseApiFailure } fr
 import { captureDiagnostic, captureException } from '@qualy/browser-observability'
 import { handlePlatformFailure, type RateLimit } from './mutation-failure.ts'
 
+import {
+  SlotReferenceComponent,
+  staleSlotReference,
+  type LoadSlotReference,
+} from './slot-reference.tsx'
 import { LoadingScreen } from '@qualy/ui/spinner'
 import { clientFor, type ClientIdentity, type ClientOf, type TransportOptions } from './api.ts'
 import { signingOut } from './identity.ts'
@@ -221,6 +226,7 @@ export interface RuntimeProviderProps {
    */
   manifest?: Manifest
   initialWorkspaceCapabilities?: readonly string[] | undefined
+  loadSlotReference?: LoadSlotReference | undefined
   children: ReactNode
 }
 
@@ -305,6 +311,7 @@ export function RuntimeProvider({
   registry,
   manifest: rendered,
   initialWorkspaceCapabilities,
+  loadSlotReference,
   children,
 }: RuntimeProviderProps) {
   const [manifestKey] = useState(() => ({ current: undefined as QueryKey | undefined }))
@@ -412,6 +419,7 @@ export function RuntimeProvider({
             channels={channels}
             manifest={rendered}
             initialWorkspaceCapabilities={initialWorkspaceCapabilities}
+            loadSlotReference={loadSlotReference}
           >
             {children}
           </RenderedRuntime>
@@ -442,6 +450,7 @@ function RenderedRuntime({
   channels,
   manifest,
   initialWorkspaceCapabilities,
+  loadSlotReference,
   children,
 }: Runtime & { channels: LiveChannels; children: ReactNode }) {
   const queryClient = useQueryClient()
@@ -451,6 +460,9 @@ function RenderedRuntime({
       utilsFor(appApi) as QueryUtils<ClientOf<typeof appApi>>
     ).app.getManifest.queryOptions().queryKey
     queryClient.setQueryData(key, manifest)
+    queryClient.removeQueries({
+      predicate: ({ queryKey }) => staleSlotReference(queryKey, manifest),
+    })
   }, [queryClient, utilsFor, manifest])
   const liveIdentity = liveIdentityOf(manifest)
   useEffect(() => {
@@ -467,6 +479,7 @@ function RenderedRuntime({
         registry,
         manifest,
         initialWorkspaceCapabilities,
+        loadSlotReference,
         serverRendered: true,
       }}
     >
@@ -880,7 +893,11 @@ export function useApiMutation<A, E, V = void, C = unknown>(
  * was. That is exactly what the sign-in screen used to do.
  */
 export function PluginSurface(props: Omit<PluginComponentProps, 'registry'>) {
-  return <PluginComponent {...props} registry={useRuntime().registry} />
+  const { registry, loadSlotReference } = useRuntime()
+  if (props.surface.kind === 'slot' && loadSlotReference !== undefined) {
+    return <SlotReferenceComponent {...props} surface={props.surface} load={loadSlotReference} />
+  }
+  return <PluginComponent {...props} registry={registry} />
 }
 /** query utilities for an api definition, memoised per definition */
 export function useApiQuery<Api extends HttpApi.Constraint>(api: Api): QueryUtils<ClientOf<Api>> {
@@ -1054,7 +1071,7 @@ export function UiSlot({
   waitForFirstPaint?: boolean
 }) {
   const manifest = useManifest()
-  const { registry, serverRendered } = useRuntime()
+  const { serverRendered } = useRuntime()
   const items = manifest.slots[token.key] ?? []
   if (items.length === 0) return <>{fallback ?? null}</>
   // While the contribution's chunk is in flight the fallback holds its place.
@@ -1064,10 +1081,9 @@ export function UiSlot({
   return (
     <>
       {items.map((item) => (
-        <PluginComponent
+        <PluginSurface
           key={item.id}
           surface={{ kind: 'slot', slot: token.key, id: item.id }}
-          registry={registry}
           props={{ context }}
           loading={loading ?? fallback ?? null}
           waitForFirstPaint={serverRendered === true && waitForFirstPaint}

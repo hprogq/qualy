@@ -6,9 +6,15 @@ import {
   type unstable_RSCRouteConfigEntry as RSCRouteConfigEntry,
 } from 'react-router'
 import type { Manifest } from '@qualy/web-runtime'
-import { surfaceLabel, type BrowserSurface, type NamespacedId } from '@qualy/ui-contract'
+import {
+  surfaceLabel,
+  type BrowserSurface,
+  type NamespacedId,
+  type SlotSurface,
+} from '@qualy/ui-contract'
 import type { SupportedLocale } from '@qualy/i18n-contract'
 import { pageRevalidation } from '@qualy/web-runtime/revalidation'
+import { SurfaceScope } from '@qualy/web-runtime/surface-scope'
 import type { DehydratedState } from '@tanstack/query-core'
 import { loadPrefetch, loadSurface, renderRequest } from './request.ts'
 
@@ -27,7 +33,7 @@ export interface RouteFrames {
   /** the whole document: providers, the html element, and the routes under it */
   readonly Document: ComponentType<{
     readonly manifest: Manifest
-    /** every slot item the viewer may see, by slot and item */
+    /** authorized slot items declared by the current layout */
     readonly slots: Readonly<Record<string, Readonly<Record<string, ComponentType<any>>>>>
     readonly locale: SupportedLocale
     readonly releaseId: string
@@ -100,21 +106,15 @@ const surfaceRoute = (surface: BrowserSurface, frames: RouteFrames) =>
     )
   }
 
-/**
- * Every slot item the manifest authorizes, by surface label, as references
- * the browser can render. Slots are not declared per page, so the document
- * carries all the viewer may see; narrowing this to what a page renders is a
- * decision the slice measures rather than one it takes.
- */
-const authorizedSlots = async (manifest: Manifest) => {
+const authorizedSlots = async (manifest: Manifest, references: readonly SlotSurface[]) => {
   const found: Record<string, Record<string, ComponentType<any>>> = {}
   await Promise.all(
-    Object.entries(manifest.slots).flatMap(([slot, items]) =>
-      (items ?? []).map(async (item) => {
-        const implementation = await loadSurface({ kind: 'slot', slot, id: item.id })
-        if (implementation !== undefined) (found[slot] ??= {})[item.id] = implementation
-      }),
-    ),
+    references.map(async (surface) => {
+      const { slot, id } = surface
+      if (!manifest.slots[slot]?.some((item) => item.id === id)) return
+      const implementation = await loadSurface(surface)
+      if (implementation !== undefined) (found[slot] ??= {})[id] = implementation
+    }),
   )
   return found
 }
@@ -189,18 +189,12 @@ export const serverRoutes = ({
    * same subject - so the answers go to the top of the document, where
    * every surface finds them before it asks.
    */
-  const firstReads = async (matches: readonly RouteMatch[]) => {
+  const firstReads = async (matches: readonly RouteMatch[], slotKeys: readonly string[]) => {
     const match = matches.findLast((candidate) => pageOfRoute.has(candidate.id))
     const page = match === undefined ? undefined : pageOfRoute.get(match.id)
-    // A catch-all or an index can still render the layout's slots.
-    const layout = manifest.layouts.find(({ contract }) =>
-      matches.some(({ id }) => id === surfaceLabel({ kind: 'layout', id: contract })),
-    )
-    const { url, surfaces } = renderRequest()
-    const address = { params: match?.params ?? {}, url }
-    const slotReads = (
-      layout === undefined ? [] : (surfaces.layoutSlots[layout.contract] ?? [])
-    ).flatMap((slot) =>
+    const { url } = renderRequest()
+    const address = { params: match?.params ?? {}, url, manifest }
+    const slotReads = slotKeys.flatMap((slot) =>
       (manifest.slots[slot] ?? []).map(async ({ id }) => {
         const prefetch = await loadPrefetch({ kind: 'slot', slot, id })
         return prefetch?.(address)
@@ -224,6 +218,7 @@ export const serverRoutes = ({
               mutations: states.flatMap((state) => state.mutations),
             },
       workspaceCapabilities: fromPage?.workspaceCapabilities,
+      slotReferences: fromPage?.slotReferences ?? [],
     }
   }
 
@@ -237,7 +232,19 @@ export const serverRoutes = ({
       }: {
         matches?: readonly RouteMatch[]
       }) {
-        const [slots, first] = await Promise.all([authorizedSlots(manifest), firstReads(matches)])
+        const layout = manifest.layouts.find(({ contract }) =>
+          matches.some(({ id }) => id === surfaceLabel({ kind: 'layout', id: contract })),
+        )
+        const slotKeys =
+          layout === undefined ? [] : (renderRequest().surfaces.layoutSlots[layout.contract] ?? [])
+        const layoutReferences = slotKeys.flatMap((slot) =>
+          (manifest.slots[slot] ?? []).map(({ id }): SlotSurface => ({ kind: 'slot', slot, id })),
+        )
+        const [slots, first] = await Promise.all([
+          authorizedSlots(manifest, layoutReferences),
+          firstReads(matches, slotKeys),
+        ])
+        const pageSlots = await authorizedSlots(manifest, first.slotReferences)
         return (
           <frames.Document
             manifest={manifest}
@@ -249,7 +256,9 @@ export const serverRoutes = ({
             renderedAt={renderRequest().renderedAt}
             nonce={renderRequest().nonce}
           >
-            <Outlet />
+            <SurfaceScope surfaces={{ slots: pageSlots }}>
+              <Outlet />
+            </SurfaceScope>
           </frames.Document>
         )
       },

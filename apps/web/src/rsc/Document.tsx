@@ -22,6 +22,7 @@ import { SIGN_IN_PAGE } from '@qualy/auth-contract/sign-in-failure'
 import { bootstrapMessages } from '@qualy/web-i18n/bootstrap'
 import { releases, webRelease } from '../release.ts'
 import { ReleaseRecoveryGate } from '../release-ui.tsx'
+import { browserSlotLoader } from './slot-reference.ts'
 import '../app.css'
 
 // The document a server rendered, as the page holds it
@@ -118,6 +119,7 @@ export function Document({
     () => ({ ...emptyComponentRegistry(), slots }),
     [slots],
   )
+  const loadSlotReference = useMemo(() => browserSlotLoader(locale), [locale])
   return (
     <html
       lang={locale}
@@ -182,6 +184,7 @@ export function Document({
                     <RuntimeProvider
                       registry={registry}
                       manifest={manifest}
+                      loadSlotReference={loadSlotReference}
                       initialWorkspaceCapabilities={initialWorkspaceCapabilities}
                       clientIdentity={webRelease}
                       onClientUnsupported={(reason) => releases.notifyClientUnsupported(reason)}
