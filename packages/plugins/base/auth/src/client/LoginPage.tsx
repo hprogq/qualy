@@ -514,17 +514,8 @@ export default function LoginPage({ rendered }: { rendered?: RenderedSignIn } = 
   const still = useReducedMotion() === true
   // Drawn by a server that could not read the ways in: none of their
   // renderers came with the page, so the page does not read the list for
-  // itself and draw ways in it cannot open. It asks the server to draw it
-  // again, once on its own and then on the reader's retry; the server reads
-  // the list and hands over exactly the renderers it names.
+  // itself and draw ways in it cannot open (UnreadWaysIn).
   const unrendered = rendered !== undefined && rendered.context === undefined
-  const revalidator = useRevalidator()
-  const [redrawAsked, setRedrawAsked] = useState(false)
-  useEffect(() => {
-    if (!unrendered || redrawAsked) return
-    setRedrawAsked(true)
-    void revalidator.revalidate()
-  }, [unrendered, redrawAsked, revalidator])
   const context = useQuery({
     ...query.auth.listLoginMethods.queryOptions(),
     ...(rendered?.context === undefined ? {} : { initialData: rendered.context }),
@@ -708,6 +699,24 @@ export default function LoginPage({ rendered }: { rendered?: RenderedSignIn } = 
     </>
   )
 
+  // the page while it waits to know who is here and which ways in there are
+  const waiting = (
+    <div data-testid="sign-in-waiting" aria-busy {...stylex.props(styles.panel)}>
+      <Skeleton className={stylex.props(styles.boneLine).className} />
+      <h1 {...stylex.props(styles.title)}>{m.login_title()}</h1>
+      <Skeleton className={stylex.props(styles.boneSub).className} />
+      <div {...stylex.props(styles.primaries)}>
+        {[0, 1, 2].map((key) => (
+          <Skeleton key={key} className={stylex.props(styles.boneKey).className} />
+        ))}
+      </div>
+      <div {...stylex.props(styles.boneTiles)}>
+        {[0, 1, 2, 3, 4].map((key) => (
+          <Skeleton key={key} className={stylex.props(styles.boneTile).className} />
+        ))}
+      </div>
+    </div>
+  )
   const panel = (() => {
     // signed in for the page waiting in the other tab, which carries on now;
     // this tab closes itself where the browser lets it
@@ -724,50 +733,11 @@ export default function LoginPage({ rendered }: { rendered?: RenderedSignIn } = 
         </div>
       )
     }
-    // the server could not say which ways in this workspace has, and asked
-    // again it still could not
-    if (unrendered && redrawAsked && revalidator.state === 'idle') {
-      return (
-        <div {...stylex.props(styles.panel)}>
-          {header}
-          <Block
-            testId="sign-in-unavailable"
-            icon={<WifiOffIcon size={18} color="currentColor" />}
-            tone="danger"
-            title={m.login_methodsFailed()}
-            body={m.login_methodsFailedHint()}
-            action={
-              <button
-                type="button"
-                {...stylex.props(styles.retry)}
-                onClick={() => void revalidator.revalidate()}
-              >
-                {commonMessages.action_retry()}
-              </button>
-            }
-          />
-        </div>
-      )
-    }
+    // the server could not say which ways in this workspace has
+    if (unrendered) return <UnreadWaysIn header={header} waiting={waiting} />
     // the form waits until it is known nobody is signed in
     if (!entering && (context.isPending || !decided || signedIn)) {
-      return (
-        <div data-testid="sign-in-waiting" aria-busy {...stylex.props(styles.panel)}>
-          <Skeleton className={stylex.props(styles.boneLine).className} />
-          <h1 {...stylex.props(styles.title)}>{m.login_title()}</h1>
-          <Skeleton className={stylex.props(styles.boneSub).className} />
-          <div {...stylex.props(styles.primaries)}>
-            {[0, 1, 2].map((key) => (
-              <Skeleton key={key} className={stylex.props(styles.boneKey).className} />
-            ))}
-          </div>
-          <div {...stylex.props(styles.boneTiles)}>
-            {[0, 1, 2, 3, 4].map((key) => (
-              <Skeleton key={key} className={stylex.props(styles.boneTile).className} />
-            ))}
-          </div>
-        </div>
-      )
+      return waiting
     }
     if (context.isError) {
       return (
@@ -1386,6 +1356,45 @@ function MethodRenderer({
         }
         fallback={() => unavailable}
         missing={unavailable}
+      />
+    </div>
+  )
+}
+
+/**
+ * A sign-in page a server drew without its ways in: it could not read them,
+ * so it handed over none of their renderers. Only such a page mounts this,
+ * and only a server-drawn page has the router it asks: it asks the server to
+ * draw the page again, once on its own and then on the reader's retry, and
+ * the server hands over exactly the renderers the list it reads names.
+ */
+function UnreadWaysIn({ header, waiting }: { header: ReactNode; waiting: ReactNode }) {
+  const revalidator = useRevalidator()
+  const [asked, setAsked] = useState(false)
+  useEffect(() => {
+    if (asked) return
+    setAsked(true)
+    void revalidator.revalidate()
+  }, [asked, revalidator])
+  if (!asked || revalidator.state !== 'idle') return <>{waiting}</>
+  return (
+    <div {...stylex.props(styles.panel)}>
+      {header}
+      <Block
+        testId="sign-in-unavailable"
+        icon={<WifiOffIcon size={18} color="currentColor" />}
+        tone="danger"
+        title={m.login_methodsFailed()}
+        body={m.login_methodsFailedHint()}
+        action={
+          <button
+            type="button"
+            {...stylex.props(styles.retry)}
+            onClick={() => void revalidator.revalidate()}
+          >
+            {commonMessages.action_retry()}
+          </button>
+        }
       />
     </div>
   )
