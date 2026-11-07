@@ -78,6 +78,8 @@ export type { LedgerEntry, LedgerItem, LedgerResult } from './ledger.ts'
 
 /** below this much room the outline folds into chips over the ledger */
 const OUTLINE_AT = 880
+/** the same width, asked of the ledger by the stylesheet */
+const OUTLINE_QUERY = '@container ledger (min-width: 880px)'
 /** the outline's own column */
 const OUTLINE_WIDTH = 232
 /** the ledger never reads wider than a statement does */
@@ -109,12 +111,27 @@ const styles = stylex.create({
     display: 'flex',
     minWidth: 0,
     flexDirection: 'column',
+    // what the layout is chosen by before the ledger is measured
+    containerType: 'inline-size',
+    containerName: 'ledger',
   },
   measure: { width: '100%', marginInline: 'auto' },
   // inside a page that lines its own content up at the start
   measureStart: { marginInlineStart: 0 },
   measureWide: { maxWidth: OUTLINE_WIDTH + 24 + LEDGER_WIDTH },
   measureNarrow: { maxWidth: LEDGER_WIDTH },
+  // Until the ledger has been measured - in html a server drew - it carries
+  // both the outline and the strip, and the stylesheet chooses by the
+  // ledger's own width (OUTLINE_AT), as the measured ledger would.
+  measureByRoom: { maxWidth: { default: LEDGER_WIDTH, [OUTLINE_QUERY]: 1076 } },
+  bodyByRoom: {
+    display: { default: 'flex', [OUTLINE_QUERY]: 'grid' },
+    gridTemplateColumns: { default: null, [OUTLINE_QUERY]: '232px minmax(0, 1fr)' },
+    alignItems: { default: null, [OUTLINE_QUERY]: 'start' },
+    gap: { default: 16, [OUTLINE_QUERY]: 24 },
+  },
+  stripByRoom: { display: { default: 'contents', [OUTLINE_QUERY]: 'none' } },
+  outlineByRoom: { display: { default: 'none', [OUTLINE_QUERY]: 'contents' } },
   head: {
     display: 'flex',
     flexWrap: 'wrap',
@@ -987,10 +1004,13 @@ export function ResultLedger({
   const seat = useRef<HTMLDivElement>(null)
   const width = useSeatWidth(seat)
   const viewport = useViewportHeight(seat)
+  const measured = width !== null
   const wide = width === null || width >= OUTLINE_AT
   const moving = model.tops.length >= 2
   const outline = wide && moving
   const strip = !wide && moving
+  // both, the stylesheet choosing, until the ledger knows its width
+  const byRoom = moving && !measured
   const bandTop = stickyTop + (strip ? STRIP_HEIGHT : 0)
 
   const sections = useRef(new Map<string, HTMLElement>())
@@ -1088,7 +1108,7 @@ export function ResultLedger({
       <div
         {...stylex.props(
           styles.measure,
-          outline ? styles.measureWide : styles.measureNarrow,
+          byRoom ? styles.measureByRoom : outline ? styles.measureWide : styles.measureNarrow,
           align === 'start' && styles.measureStart,
         )}
       >
@@ -1102,33 +1122,37 @@ export function ResultLedger({
         />
       </div>
       {/* a direct child of the whole ledger, so it holds for all of it */}
-      {strip && (
-        <Strip
-          model={model}
-          active={current}
-          top={stickyTop}
-          start={align === 'start'}
-          onJump={jump}
-        />
-      )}
+      {(strip || byRoom) &&
+        ((strip: ReactNode) =>
+          byRoom ? <div {...stylex.props(styles.stripByRoom)}>{strip}</div> : strip)(
+          <Strip
+            model={model}
+            active={current}
+            top={stickyTop}
+            start={align === 'start'}
+            onJump={jump}
+          />,
+        )}
       <div
         {...stylex.props(
           styles.measure,
-          outline ? styles.measureWide : styles.measureNarrow,
+          byRoom ? styles.measureByRoom : outline ? styles.measureWide : styles.measureNarrow,
           align === 'start' && styles.measureStart,
           styles.body,
-          outline && styles.bodyWide,
+          byRoom ? styles.bodyByRoom : outline && styles.bodyWide,
         )}
       >
-        {outline && (
-          <Outline
-            model={model}
-            active={current}
-            top={stickyTop + 16}
-            room={viewport === null ? null : viewport - stickyTop - 32}
-            onJump={jump}
-          />
-        )}
+        {outline &&
+          ((outline: ReactNode) =>
+            byRoom ? <div {...stylex.props(styles.outlineByRoom)}>{outline}</div> : outline)(
+            <Outline
+              model={model}
+              active={current}
+              top={stickyTop + 16}
+              room={viewport === null ? null : viewport - stickyTop - 32}
+              onJump={jump}
+            />,
+          )}
         {model.empty ? (
           <Nothing action={emptyAction} />
         ) : (

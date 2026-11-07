@@ -1,6 +1,5 @@
 'use client'
 import { Pager } from '@qualy/ui/pager'
-import { useIsMobile } from '@qualy/ui/use-mobile'
 import { useLocale, useList } from '@qualy/web-i18n'
 import {
   lazy,
@@ -977,7 +976,6 @@ function Desk({
   const setLane = (value: Lane) =>
     write({ [ACTIVITY_LANE]: value === 'all' ? '' : value, [ACTIVITY_PAGE]: '' })
   const activityRef = useRef<HTMLElement>(null)
-  const compact = useIsMobile()
   // the desk's list fragments join in the reader's own punctuation
   const listJoin = useList()
 
@@ -1438,7 +1436,7 @@ function Desk({
                     page={activity.data.page}
                     pageSize={activity.data.pageSize}
                     total={activity.data.total}
-                    compact={compact}
+                    compactBelow={768}
                     disabled={activity.isFetching}
                     summary={m.review_pageSummary({
                       from:
