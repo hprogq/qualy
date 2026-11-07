@@ -27,6 +27,19 @@ const undecodable = new HttpClientError.HttpClientError({
   }),
 })
 
+/**
+ * A status the contract does not name at all - a proxy's 503 - as the
+ * typed client reports it: a response it could not decode
+ * (HttpApiClient `statusOrElse`), carrying the status.
+ */
+const undeclared = (code: number) =>
+  new HttpClientError.HttpClientError({
+    reason: new HttpClientError.DecodeError({
+      request,
+      response: HttpClientResponse.fromWeb(request, new Response('busy', { status: code })),
+    }),
+  })
+
 describe('whether somebody is signed in, as the render passes it on', () => {
   it('is yes on an answer', () => {
     expect(presenceOf(Exit.succeed({ user: {} }))).toBe(true)
@@ -41,10 +54,13 @@ describe('whether somebody is signed in, as the render passes it on', () => {
     expect(presenceOf(Exit.fail(unreachable))).toBeUndefined()
     expect(presenceOf(Exit.fail(status(502)))).toBeUndefined()
     expect(presenceOf(Exit.fail(status(503)))).toBeUndefined()
+    expect(presenceOf(Exit.fail(undeclared(503)))).toBeUndefined()
   })
 
   it('throws what is a bug rather than calling it undecided', () => {
     expect(() => presenceOf(Exit.fail(undecodable))).toThrow()
+    // a status that is the client's to fix, not the server's to recover from
+    expect(() => presenceOf(Exit.fail(status(400)))).toThrow()
     // an answer the contract does not describe
     expect(() => presenceOf(Schema.decodeUnknownExit(Schema.String)(1))).toThrow()
     expect(() => presenceOf(Exit.die(new Error('defect')))).toThrow('defect')
@@ -63,6 +79,7 @@ describe('the ways in, as the render passes them on', () => {
   it('leaves them for the page to ask when the server could not be asked', () => {
     expect(methodsOf(Exit.fail(unreachable))).toBeUndefined()
     expect(methodsOf(Exit.fail(status(504)))).toBeUndefined()
+    expect(methodsOf(Exit.fail(undeclared(502)))).toBeUndefined()
   })
 
   it('throws a failure the contract names, and a bug', () => {

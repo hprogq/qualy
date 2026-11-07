@@ -29,13 +29,12 @@ export default async function SignInPage() {
   ])
   const context = methodsOf(listed)
   const signedIn = presenceOf(present)
-  // the ways in name the renderers the page needs; with no list to go by,
-  // the page will be drawing whichever the list it asks for names, so it is
-  // handed every one this build carries rather than none of them
+  // The ways in name the renderers the page needs, and only those are
+  // handed over: what the browser is handed it is told about. With no list
+  // to go by none are, and the page asks this server to draw it again
+  // rather than drawing ways in it has no renderer for.
   const types =
-    context === undefined
-      ? Object.keys(renderRequest().surfaces.loginComponents)
-      : [...new Set(context.methods.map((method) => method.type))]
+    context === undefined ? [] : [...new Set(context.methods.map((method) => method.type))]
   const login: Record<string, ComponentType<any>> = {}
   await Promise.all(
     types.map(async (type) => {

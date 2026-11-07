@@ -10,7 +10,7 @@ import {
   type PointerEvent,
   type ReactNode,
 } from 'react'
-import { useLocation, useNavigate, useSearchParams } from 'react-router'
+import { useLocation, useNavigate, useRevalidator, useSearchParams } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import * as stylex from '@stylexjs/stylex'
@@ -512,9 +512,23 @@ export default function LoginPage({ rendered }: { rendered?: RenderedSignIn } = 
   const startSession = useSessionTransition()
   const [params, setParams] = useSearchParams()
   const still = useReducedMotion() === true
+  // Drawn by a server that could not read the ways in: none of their
+  // renderers came with the page, so the page does not read the list for
+  // itself and draw ways in it cannot open. It asks the server to draw it
+  // again, once on its own and then on the reader's retry; the server reads
+  // the list and hands over exactly the renderers it names.
+  const unrendered = rendered !== undefined && rendered.context === undefined
+  const revalidator = useRevalidator()
+  const [redrawAsked, setRedrawAsked] = useState(false)
+  useEffect(() => {
+    if (!unrendered || redrawAsked) return
+    setRedrawAsked(true)
+    void revalidator.revalidate()
+  }, [unrendered, redrawAsked, revalidator])
   const context = useQuery({
     ...query.auth.listLoginMethods.queryOptions(),
     ...(rendered?.context === undefined ? {} : { initialData: rendered.context }),
+    enabled: !unrendered,
   })
   // somebody already signed in has nothing to do here: one browser holds one
   // session, and signing in again would replace it without a word. Asked
@@ -706,6 +720,31 @@ export default function LoginPage({ rendered }: { rendered?: RenderedSignIn } = 
             icon={<CircleCheckIcon size={18} color="currentColor" />}
             title={m.login_resumedTitle()}
             body={m.login_resumedHint()}
+          />
+        </div>
+      )
+    }
+    // the server could not say which ways in this workspace has, and asked
+    // again it still could not
+    if (unrendered && redrawAsked && revalidator.state === 'idle') {
+      return (
+        <div {...stylex.props(styles.panel)}>
+          {header}
+          <Block
+            testId="sign-in-unavailable"
+            icon={<WifiOffIcon size={18} color="currentColor" />}
+            tone="danger"
+            title={m.login_methodsFailed()}
+            body={m.login_methodsFailedHint()}
+            action={
+              <button
+                type="button"
+                {...stylex.props(styles.retry)}
+                onClick={() => void revalidator.revalidate()}
+              >
+                {commonMessages.action_retry()}
+              </button>
+            }
           />
         </div>
       )

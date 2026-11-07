@@ -221,6 +221,16 @@ const mountHandler = async () => {
           contentType: 'application/json',
         })
       }
+      // A server that cannot say which ways in this workspace has: the list
+      // answered with a status the contract does not name
+      if (
+        url.pathname.endsWith('/auth/login-methods') &&
+        /(?:^|;\s*)acceptance_fault=login-methods(?:;|$)/.test(
+          String(request.headers['cookie'] ?? ''),
+        )
+      ) {
+        return HttpServerResponse.text('unavailable', { status: 503 })
+      }
       if (url.pathname.startsWith('/api') || url.pathname.startsWith('/health')) {
         const web = yield* HttpServerRequest.toWeb(request)
         const upstream = yield* Effect.promise((signal) =>
@@ -519,6 +529,64 @@ const cancellation = async () => {
     render !== undefined && (render.aborted || render.streamed),
     render,
   )
+}
+
+/**
+ * A sign-in page drawn by a server that could not read the ways in: it is
+ * handed no login renderer rather than every one this build carries, asks
+ * the server to draw it again, says the ways in are unavailable while they
+ * are, and on a retry once they are back is drawn with the one it needs.
+ */
+const loginMethodsUnread = async (browser: Browser) => {
+  const context = await browser.newContext({ viewport: { width: 1400, height: 900 } })
+  await context.addCookies([{ name: 'acceptance_fault', value: 'login-methods', url: site }])
+  const page = await context.newPage()
+  const redraws: string[] = []
+  page.on('request', (request) => {
+    const url = new URL(request.url())
+    if (url.pathname.startsWith('/login') && request.resourceType() === 'fetch') redraws.push(url.pathname + url.search)
+  })
+  await page.goto(`${site}/login`)
+  await hydrated(page)
+  const handed = await inPage<string>(page, `(self.__FLIGHT_DATA || []).join('')`)
+  const unavailable = await page
+    .getByTestId('sign-in-unavailable')
+    .waitFor({ timeout: 10_000 })
+    .then(
+      () => true,
+      () => false,
+    )
+  check(
+    'hands no login renderer over when the ways in could not be read, and asks to be drawn again',
+    handed.includes('"login":{}') &&
+      unavailable &&
+      redraws.length === 1 &&
+      (await page.getByTestId('sign-in-tile').count()) === 0,
+    { renderers: handed.includes('"login":{}') ? 'none' : 'some', unavailable, redraws },
+  )
+  await context.clearCookies({ name: 'acceptance_fault' })
+  await page.getByTestId('sign-in-unavailable').getByRole('button').click()
+  const tile = page.getByTestId('sign-in-tile').first()
+  const back = await tile.waitFor({ timeout: 10_000 }).then(
+    () => true,
+    () => false,
+  )
+  if (back) await tile.click()
+  const opened = back
+    ? await page
+        .getByLabel(/邮箱|email/i)
+        .first()
+        .waitFor({ timeout: 10_000 })
+        .then(
+          () => true,
+          () => false,
+        )
+    : false
+  check('draws the ways in with their renderers once they can be read again', back && opened, {
+    back,
+    opened,
+  })
+  await context.close()
 }
 
 const underPolicy = async (browser: Browser) => {
@@ -1590,6 +1658,7 @@ const checks = async () => {
     args: ['--disable-features=OverlayScrollbar'],
   })
   await underPolicy(browser)
+  await loginMethodsUnread(browser)
   await changedHands(browser)
   await ownSessionChanges(browser)
   await sessionWent(browser)
