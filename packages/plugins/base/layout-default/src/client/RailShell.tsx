@@ -24,17 +24,15 @@ import {
   type UiSlotToken,
 } from '@qualy/ui-contract'
 import {
-  ScreenAsideScope,
   ScreenFillScope,
   ScreenFootScope,
+  ScreenAsideScope,
   SubjectScope,
   UiSlot,
   useIdlePagePrefetch,
   usePagePrefetch,
   usePendingNavigation,
   useUiCollection,
-  useScreenAsideSeat,
-  useScreenFillClaimed,
   useScreenFootClaimed,
   useSubjectAbsenceSeat,
   WorkspaceCapabilityScope,
@@ -190,14 +188,25 @@ const styles = stylex.create({
     overflow: 'hidden',
     // the same room held as the column under it holds for its scrollbar, so
     // the banner's measure and the page's are centred on the same line
-    scrollbarGutter: 'stable',
+    scrollbarGutter: {
+      default: 'stable',
+      // a phone's scrollbar floats over the page, and a window that narrow
+      // holds no strip for one either
+      [breakpoints.phone]: 'auto',
+      // a screen that fills the room says so in its html (ScreenFill)
+      [stylex.when.ancestor(':has([data-screen-fill="always"])')]: 'auto',
+      [stylex.when.ancestor(':has([data-screen-fill="tablet"])')]: 'auto',
+      // beside a column of its own a screen runs to the window's edge;
+      // only the gutter goes - a long account beside it still scrolls
+      [stylex.when.ancestor(':has([data-screen-aside])')]: {
+        default: 'stable',
+        [breakpoints.phone]: 'auto',
+        [breakpoints.desktop]: 'auto',
+      },
+    },
     paddingTop: 14,
     paddingBottom: 20,
     paddingInline: { default: 24, [breakpoints.phone]: 16 },
-  },
-  // and none, while the column under it holds none
-  contextBannerEdge: {
-    scrollbarGutter: 'auto',
   },
   // the hairlines every other band in the product opens on, gathered in the
   // far corner and gone before they reach the words
@@ -233,7 +242,19 @@ const styles = stylex.create({
     flexBasis: '0%',
   },
   aside: {
-    display: { default: 'none', [breakpoints.desktop]: 'block' },
+    // A screen that stands something of its own beside its work - one
+    // person on a roster - draws that column itself, in the rail's place,
+    // and the rail stands down while it does: the way back to the sections
+    // is that screen's way out. Said in the screen's html, so the column and
+    // not the rail is what a server drew.
+    display: {
+      default: 'none',
+      [breakpoints.desktop]: 'block',
+      [stylex.when.ancestor(':has([data-screen-aside])')]: {
+        default: 'none',
+        [breakpoints.desktop]: 'none',
+      },
+    },
     height: '100%',
     flexShrink: 0,
     overflow: 'hidden',
@@ -252,22 +273,6 @@ const styles = stylex.create({
     borderRightWidth: 1,
     borderRightStyle: 'solid',
     borderRightColor: tokens.border,
-  },
-  // The column lent to the open screen: wider than the rail, because what
-  // stands in it is one thing described rather than a list of places, and
-  // its longest line - where somebody stands - is the one worth the room.
-  asideLent: {
-    width: 280,
-    borderRightWidth: 1,
-    borderRightStyle: 'solid',
-    borderRightColor: tokens.border,
-  },
-  lentSeat: {
-    display: 'flex',
-    height: '100%',
-    width: 280,
-    flexDirection: 'column',
-    overflowY: 'auto',
   },
   // the rail is always its full width; the column around it is what narrows
   railNav: {
@@ -380,21 +385,35 @@ const styles = stylex.create({
     flexShrink: 1,
     flexBasis: '0%',
     flexDirection: 'column',
-    overflowY: 'auto',
+    overflowY: {
+      default: 'auto',
+      [stylex.when.ancestor(':has([data-screen-fill="always"])')]: 'hidden',
+      [stylex.when.ancestor(':has([data-screen-fill="tablet"])')]: {
+        default: 'hidden',
+        [breakpoints.phone]: 'auto',
+      },
+    },
     // The scrollbar's room is held whether or not the page needs it: a page
     // long enough to scroll lost a scrollbar's width, and the centred
     // measure moved left by that much from one page to the next. Where the
     // scrollbar floats over the page - every phone - it holds nothing.
-    scrollbarGutter: 'stable',
+    scrollbarGutter: {
+      default: 'stable',
+      // a phone's scrollbar floats over the page, and a window that narrow
+      // holds no strip for one either
+      [breakpoints.phone]: 'auto',
+      // a screen that fills the room says so in its html (ScreenFill)
+      [stylex.when.ancestor(':has([data-screen-fill="always"])')]: 'auto',
+      [stylex.when.ancestor(':has([data-screen-fill="tablet"])')]: 'auto',
+      // beside a column of its own a screen runs to the window's edge;
+      // only the gutter goes - a long account beside it still scrolls
+      [stylex.when.ancestor(':has([data-screen-aside])')]: {
+        default: 'stable',
+        [breakpoints.phone]: 'auto',
+        [breakpoints.desktop]: 'auto',
+      },
+    },
   },
-  // A workbench or a screen beside a lent column runs to the window's edge.
-  // Borrowing the column only gives up the gutter: a long score account
-  // beside it still scrolls as a whole. Only a screen that explicitly fills
-  // its height owns scrolling inside itself.
-  mainEdge: {
-    scrollbarGutter: 'auto',
-  },
-  mainFilled: { overflowY: 'hidden' },
   // the applications' bar at the foot of a phone, held clear of the last row
   mainApps: {
     paddingBottom: {
@@ -481,12 +500,34 @@ const styles = stylex.create({
     flexGrow: 1,
     flexShrink: 1,
     flexBasis: '0%',
-    overflowY: 'auto',
+    overflowY: {
+      default: 'auto',
+      [stylex.when.ancestor(':has([data-screen-fill="always"])')]: 'hidden',
+      [stylex.when.ancestor(':has([data-screen-fill="tablet"])')]: {
+        default: 'hidden',
+        [breakpoints.phone]: 'auto',
+      },
+    },
     // The scrollbar's room is held whether or not the page needs it: a page
     // long enough to scroll lost a scrollbar's width, and the centred
     // measure moved left by that much from one page to the next. Where the
     // scrollbar floats over the page - every phone - it holds nothing.
-    scrollbarGutter: 'stable',
+    scrollbarGutter: {
+      default: 'stable',
+      // a phone's scrollbar floats over the page, and a window that narrow
+      // holds no strip for one either
+      [breakpoints.phone]: 'auto',
+      // a screen that fills the room says so in its html (ScreenFill)
+      [stylex.when.ancestor(':has([data-screen-fill="always"])')]: 'auto',
+      [stylex.when.ancestor(':has([data-screen-fill="tablet"])')]: 'auto',
+      // beside a column of its own a screen runs to the window's edge;
+      // only the gutter goes - a long account beside it still scrolls
+      [stylex.when.ancestor(':has([data-screen-aside])')]: {
+        default: 'stable',
+        [breakpoints.phone]: 'auto',
+        [breakpoints.desktop]: 'auto',
+      },
+    },
     backgroundColor: tokens.background,
     paddingInline: { default: 24, [breakpoints.phone]: 16 },
   },
@@ -996,16 +1037,16 @@ export interface RailShellProps {
 
 export function RailShell(props: RailShellProps) {
   const { pathname } = useLocation()
-  // Around a workspace, wide enough for the rail to stand beside the page,
-  // its column can be lent to the open screen. Around a record the sections
-  // stand inside the page's own measure and there is no column to lend.
-  const lends = !useIsBelow(SHELL_BREAKPOINT) && props.banner !== true
   return (
     <WorkspaceCapabilityScope pathname={pathname}>
       <SubjectScope>
         <ScreenFillScope>
           <ScreenFootScope>
-            <ScreenAsideScope offered={lends}>
+            {/* Around a workspace the rail's column may be taken by the open
+                screen, from the width the rail stands beside the page at;
+                around a record the sections stand inside the page's own
+                measure and there is no column to take. */}
+            <ScreenAsideScope offered={props.banner !== true}>
               <CapableRailShell {...props} />
             </ScreenAsideScope>
           </ScreenFootScope>
@@ -1035,10 +1076,6 @@ function CapableRailShell({
   const footTaken = useScreenFootClaimed()
   // a screen that has something to stand beside its work has asked for the
   // rail's column, and draws there instead of the rail
-  const lent = useScreenAsideSeat()
-  // a screen that fills the room scrolls inside itself, and gives up the
-  // strip the shell holds for a scrollbar that will never come
-  const filled = useScreenFillClaimed()
   // The record the shell is drawn around, gone: its owner said so from the
   // band, and handed over what to show instead. Everything bound to the
   // record folds away - the band, the rail, the sections at the foot - and
@@ -1189,7 +1226,7 @@ function CapableRailShell({
   )
 
   return (
-    <div {...stylex.props(styles.root)}>
+    <div {...stylex.props(styles.root, stylex.defaultMarker())}>
       {/* Above a record the bar stays whatever the width: it carries the
           product's own mark, and a record opened from somewhere else with
           no mark above it reads as a different site. Inside a workspace on
@@ -1214,7 +1251,6 @@ function CapableRailShell({
         {...stylex.props(
           styles.contextBar,
           banner ? styles.contextBanner : styles.contextLine,
-          banner && filled && styles.contextBannerEdge,
           absent && styles.folded,
         )}
       >
@@ -1298,8 +1334,6 @@ function CapableRailShell({
         <main
           {...stylex.props(
             styles.personMain,
-            filled && styles.mainEdge,
-            filled && styles.mainFilled,
             absent && styles.personMainBare,
             absent && styles.mainApps,
           )}
@@ -1361,26 +1395,9 @@ function CapableRailShell({
           {!absent && (
             <aside
               data-testid="workspace-rail"
-              data-lent={lent.claimed || undefined}
-              // named after what the screen holding it put there
-              aria-label={lent.label}
-              {...stylex.props(
-                styles.aside,
-                lent.claimed ? styles.asideLent : railOpen ? styles.asideOpen : styles.asideClosed,
-              )}
+              {...stylex.props(styles.aside, railOpen ? styles.asideOpen : styles.asideClosed)}
             >
-              {/* The open screen's own column, while it holds it: the way back
-                to the sections is that screen's way out, so the rail is not
-                drawn behind it as well. */}
-              {lent.claimed ? (
-                <div
-                  ref={lent.seat}
-                  data-testid="workspace-aside"
-                  {...stylex.props(styles.lentSeat)}
-                />
-              ) : (
-                rail
-              )}
+              {rail}
             </aside>
           )}
           {/* auto, not scroll: the screens that fill the viewport - the review
@@ -1389,8 +1406,6 @@ function CapableRailShell({
           <main
             {...stylex.props(
               styles.main,
-              (lent.claimed || filled) && styles.mainEdge,
-              filled && styles.mainFilled,
               // one bar or the other at the foot, never both
               absent && styles.mainApps,
               sectionsAtFoot && styles.mainFoot,

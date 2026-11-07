@@ -9,7 +9,7 @@ import {
   useApiQuery,
   useLoadFailure,
   usePageNavigate,
-  useClaimScreenFill,
+  ScreenFill,
   useClaimScreenFoot,
   usePageQueryState,
   usePageRouteParams,
@@ -649,9 +649,13 @@ const heldWordsOf = (staged: StagedDecision): HeldWords =>
 
 export default function ReviewInstancePage() {
   return (
-    <BatchScreen title={m.review_detailTab()} size="full" chrome="none" fill>
-      {(batch) => <Workbench batch={batch} />}
-    </BatchScreen>
+    <>
+      {/* a screenful at every width: the parts scroll inside it, never the page */}
+      <ScreenFill />
+      <BatchScreen title={m.review_detailTab()} size="full" chrome="none" fill>
+        {(batch) => <Workbench batch={batch} />}
+      </BatchScreen>
+    </>
   )
 }
 
@@ -1211,8 +1215,6 @@ function Workbench({ batch }: { batch: BatchDto }) {
   // actionable review replaces it with the decision bar; waiting for the
   // response before claiming made the shell control flash for one frame.
   useClaimScreenFoot(bar || (addressable && review === undefined && detail.isPending))
-  // a screenful at every width: the parts scroll inside it, never the page
-  useClaimScreenFill(true)
 
   // The round the address names is not there, not this reader's, or could
   // not be read before anything was shown: said in the room the workbench

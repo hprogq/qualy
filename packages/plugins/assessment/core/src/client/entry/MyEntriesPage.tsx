@@ -5,7 +5,7 @@ import {
   useRunApi,
   useApi,
   useApiQuery,
-  useClaimScreenFill,
+  ScreenFill,
   useLoadFailure,
   usePageQueryState,
   usePageQueryUpdate,
@@ -70,19 +70,21 @@ export default function MyEntriesPage() {
   // their own place and the window never does, so it says so to the shell,
   // which then keeps no room for a scroll bar that never comes. On a phone
   // it is a page like any other.
-  useClaimScreenFill(useWorkspaceMode() !== 'phone')
   return (
-    // no band: the rail carries the page's own name and numbers, and the
-    // workspace fills whatever the shell gives it
-    <BatchScreen title={m.entry_tab()} size="full" chrome="none" requires="personal">
-      {(batch) => (
-        <Body
-          batchId={batch.id}
-          materialRange={batch.materialRange}
-          round={{ status: batch.status, phaseName: batch.currentPhaseName }}
-        />
-      )}
-    </BatchScreen>
+    <>
+      <ScreenFill from="tablet" />
+      {/* no band: the rail carries the page's own name and numbers, and the
+          workspace fills whatever the shell gives it */}
+      <BatchScreen title={m.entry_tab()} size="full" chrome="none" requires="personal">
+        {(batch) => (
+          <Body
+            batchId={batch.id}
+            materialRange={batch.materialRange}
+            round={{ status: batch.status, phaseName: batch.currentPhaseName }}
+          />
+        )}
+      </BatchScreen>
+    </>
   )
 }
 

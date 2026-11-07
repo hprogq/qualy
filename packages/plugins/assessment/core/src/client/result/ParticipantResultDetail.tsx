@@ -9,7 +9,6 @@ import {
   useApiMutation,
   isRecordId,
   LoadFailure,
-  ScreenAside,
   useApi,
   useApiQuery,
   useLoadFailure,
@@ -34,7 +33,7 @@ import { Skeleton } from '@qualy/ui/skeleton'
 import { Drill, Swap, type DrillMove } from '@qualy/ui/reveal'
 import { liveStateOf } from '@qualy/ui/live-mark'
 import { UnitPath } from '@qualy/ui/unit-path'
-import { useIsMobile } from '@qualy/ui/use-mobile'
+import { AtWidth } from '@qualy/ui/at-width'
 import { a11yStyles } from '@qualy/ui/visually-hidden'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
@@ -57,8 +56,10 @@ import * as m from '#messages'
 // One participant's whole account, in the page the list came from.
 //
 // Who they are stands beside the work rather than above it. Where the
-// workspace shell has a column beside the page, the rail of the round's
-// sections gives it up to this person: their name, where they stand in the
+// window is wide enough for a column beside the page, the rail of the
+// round's sections gives its place up to this person - the page draws the
+// column itself and the shell's stylesheet stands the rail down for it
+// (`data-screen-aside`), so html a server drew is already laid out so: their name, where they stand in the
 // organization and on this round's roster, the two halves of their account,
 // the way to the people either side of them and the way back to the list -
 // and under all that the list itself, so the next person to open is a press
@@ -84,9 +85,38 @@ const styles = stylex.create({
     flexGrow: 1,
     flexShrink: 1,
     flexBasis: '0%',
+    flexDirection: { default: 'column', [breakpoints.desktop]: 'row' },
+  },
+  // The column beside the work, as wide as the shell's own rail column is
+  // when it is lent: what stands in it is one thing described rather than a
+  // list of places, and its longest line - where somebody stands - is the
+  // one worth the room. It scrolls by itself, so the list under the facts
+  // stays where it is while the work scrolls.
+  column: {
+    display: 'flex',
+    width: 280,
+    flexShrink: 0,
+    flexDirection: 'column',
+    overflowY: 'auto',
+    borderRightWidth: 1,
+    borderRightStyle: 'solid',
+    borderRightColor: tokens.border,
+  },
+  // Beside the column the work scrolls inside its own room; over a head it
+  // is part of a page the shell scrolls.
+  work: {
+    display: 'flex',
+    minWidth: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
     flexDirection: 'column',
   },
-  // ---- beside the work, in the column the shell lends ----
+  workBeside: {
+    minHeight: { default: null, [breakpoints.desktop]: 0 },
+    overflowY: { default: null, [breakpoints.desktop]: 'auto' },
+  },
+  // ---- beside the work, in the column ----
   // As tall as the column at least, the list under the facts taking what
   // they leave; a column too short for both scrolls whole.
   panel: {
@@ -304,6 +334,10 @@ const styles = stylex.create({
   // starts a line of its own, and whatever it leaves over ends that line
   lineUnit: { minWidth: 0, maxWidth: '100%' },
   fold: { width: 16, height: 16, transitionProperty: 'transform', transitionDuration: '150ms' },
+  // what folds behind the name on a phone, and the key that unfolds it
+  foldable: { display: { default: 'inline-flex', [breakpoints.phone]: 'none' } },
+  unfolded: { display: 'inline-flex' },
+  foldKey: { display: { default: 'none', [breakpoints.phone]: 'inline-flex' } },
   foldOpen: { transform: 'rotate(180deg)' },
   tabs: { display: 'flex', alignItems: 'center', gap: 4, marginBottom: -1 },
   tab: {
@@ -337,15 +371,20 @@ const styles = stylex.create({
     minWidth: 0,
     flexDirection: 'column',
   },
-  bodyFilled: { minHeight: 0, flexGrow: 1, flexShrink: 1, flexBasis: '0%' },
+  bodyFilled: {
+    minHeight: { default: 0, [breakpoints.phone]: null },
+    flexGrow: 1,
+    flexShrink: { default: 1, [breakpoints.phone]: 0 },
+    flexBasis: { default: '0%', [breakpoints.phone]: 'auto' },
+  },
   bodyGrown: { flexGrow: 1, flexShrink: 0, flexBasis: 'auto' },
   swapFilled: {
-    display: 'flex',
-    minHeight: 0,
-    flexGrow: 1,
-    flexShrink: 1,
-    flexBasis: '0%',
-    flexDirection: 'column',
+    display: { default: 'flex', [breakpoints.phone]: null },
+    minHeight: { default: 0, [breakpoints.phone]: null },
+    flexGrow: { default: 1, [breakpoints.phone]: null },
+    flexShrink: { default: 1, [breakpoints.phone]: null },
+    flexBasis: { default: '0%', [breakpoints.phone]: null },
+    flexDirection: { default: 'column', [breakpoints.phone]: null },
   },
   // The account keeps its own reading measure - its outline, the gap and
   // the ledger at their widest, 1076, inside this padding - and a window
@@ -441,8 +480,12 @@ export function ParticipantResultDetail({
   step: DrillMove
   /** which claim is open, if any; the drawer over either half */
   entryId: string
-  /** the way to the people either side, in the list this page was opened from */
-  neighbors?: ReactNode
+  /**
+   * The way to the people either side, in the list this page was opened
+   * from: in the column, where the list stands under it, or in the head,
+   * where it opens the list.
+   */
+  neighbors?: (seat: 'column' | 'head') => ReactNode
   /** that list itself, under the facts in the column beside the work */
   roster?: ReactNode
   /** who this is as that list read them, said until they are read themselves */
@@ -473,9 +516,6 @@ export function ParticipantResultDetail({
   const unfolded = unfoldedFor === participantId
   const locale = useLocale()
   const zone = useBatchZone()
-  const phone = useIsMobile()
-  // beside the work, where the shell lends its column; over it otherwise
-  const beside = useScreenAsideOffered()
   const businessNo = useTerm(authTerms.businessNumber)
   // what waits on this reader's own review is marked in the claims half; the
   // queue behind it moves with the same wake-ups the review pages hear
@@ -754,11 +794,13 @@ export function ParticipantResultDetail({
 
   // Nobody to name: the name, the facts and the two halves stand down, and
   // the state in the work says why once; only the ways out stay.
-  const name =
+  const nameIn = (seat: 'column' | 'head') =>
     absent !== null ? null : participant === undefined ? (
       <Skeleton className={stylex.props(styles.nameBone).className} />
     ) : (
-      <h1 {...stylex.props(styles.name, !beside && styles.headName)}>{participant.displayName}</h1>
+      <h1 {...stylex.props(styles.name, seat === 'head' && styles.headName)}>
+        {participant.displayName}
+      </h1>
     )
 
   /** where they stand, said from its own end, the whole chain a press away */
@@ -830,11 +872,11 @@ export function ParticipantResultDetail({
     <div data-testid="participant-panel" data-absent={absent?.kind} {...stylex.props(styles.panel)}>
       <div {...stylex.props(styles.panelTop)}>
         {back}
-        {neighbors}
+        {neighbors?.('column')}
       </div>
       {absent === null && (
         <div {...stylex.props(styles.identity)}>
-          {name}
+          {nameIn('column')}
           {chips !== null && (
             <div {...stylex.props(styles.standingLine)}>
               {chips}
@@ -892,16 +934,18 @@ export function ParticipantResultDetail({
 
   // Over the work: the same things in a head. On a phone the facts and the
   // way to take somebody off fold behind the name, so the work starts high
-  // on a short screen; a press on the fold brings them out.
-  const folded = phone && !unfolded
+  // on a short screen; a press on the fold brings them out. Which width is a
+  // phone is the stylesheet's to say, so the fold is right in html a server
+  // drew.
+  const foldable = [styles.foldable, unfolded && styles.unfolded]
   const headWho = (
     <>
       <div {...stylex.props(styles.headWho)}>
-        {name}
+        {nameIn('head')}
         {chips}
         <span {...stylex.props(styles.headEnd)}>
-          {!folded && standingKey}
-          {phone && (
+          {standingKey !== null && <span {...stylex.props(foldable)}>{standingKey}</span>}
+          <span {...stylex.props(styles.foldKey)}>
             <Button
               size="icon-sm"
               variant="ghost"
@@ -915,7 +959,7 @@ export function ParticipantResultDetail({
                 {...stylex.props(styles.fold, unfolded && styles.foldOpen)}
               />
             </Button>
-          )}
+          </span>
         </span>
       </div>
       {participant === undefined ? (
@@ -938,20 +982,18 @@ export function ParticipantResultDetail({
                 <span {...stylex.props(styles.lineUnit)}>{unit}</span>
               </span>
             )}
-            {!folded && kind !== undefined && (
-              <span data-fact="kind" {...stylex.props(styles.lineFact)}>
+            {kind !== undefined && (
+              <span data-fact="kind" {...stylex.props(styles.lineFact, foldable)}>
                 <span aria-hidden {...stylex.props(styles.lineRule)} />
                 {kind.name}
               </span>
             )}
-            {!folded && (
-              <span data-fact="roster" {...stylex.props(styles.lineFact)}>
-                <span aria-hidden {...stylex.props(styles.lineRule)} />
-                {(excluded ? m.participant_excludedOn : m.participant_includedOn)({
-                  date: included,
-                })}
-              </span>
-            )}
+            <span data-fact="roster" {...stylex.props(styles.lineFact, foldable)}>
+              <span aria-hidden {...stylex.props(styles.lineRule)} />
+              {(excluded ? m.participant_excludedOn : m.participant_includedOn)({
+                date: included,
+              })}
+            </span>
           </div>
         </div>
       )}
@@ -983,191 +1025,219 @@ export function ParticipantResultDetail({
     >
       <div {...stylex.props(styles.headTop)}>
         {back}
-        {neighbors}
+        {neighbors?.('head')}
       </div>
       {absent === null && headWho}
     </header>
   )
 
-  // on a phone the claims are part of the page, as long as they are
-  const filled = view === 'entries' && !phone
+  // the claims fill the room and scroll inside it, except on a phone, where
+  // they are part of the page, as long as they are
+  const filled = view === 'entries'
+  // a shell with a column for the screen to take - a workspace's, from a
+  // desk's width up - gets the person standing in it
+  const column = useScreenAsideOffered()
   return (
-    <div data-testid="participant-account" data-beside={beside} {...stylex.props(styles.root)}>
-      <ScreenAside label={participant?.displayName}>{panel}</ScreenAside>
-      {!beside && head}
-      {/* Beside the column the name stands in the column, which is a
-          landmark of its own; the work still says whose it is, for a reader
-          moving by headings through the main part of the page. */}
-      {beside && participant !== undefined && absent === null && (
-        <h2 {...stylex.props(a11yStyles.visuallyHidden)}>
-          {m.participantResults_accountHeading({
-            name: participant.displayName,
-            half: (view === 'score'
-              ? m.participantResults_scoreTab
-              : m.participantResults_entriesTab)(),
-          })}
-        </h2>
+    <div data-testid="participant-account" {...stylex.props(styles.root)}>
+      {/* Beside the work where the window has room for a column: the page's
+          own, standing where the rail of the round's sections stands, which
+          the shell puts away while it does. */}
+      {column && (
+        <AtWidth from={1024}>
+          <aside
+            data-screen-aside=""
+            data-testid="participant-column"
+            aria-label={participant?.displayName}
+            {...stylex.props(styles.column)}
+          >
+            {panel}
+          </aside>
+        </AtWidth>
       )}
-      {/* another person's work arrives from the way the list went; the
-          two halves of one person's replace each other in place */}
-      <Drill
-        move={step}
-        drillKey={participantId}
-        className={
-          stylex.props(
-            styles.body,
-            filled && absent === null ? styles.bodyFilled : styles.bodyGrown,
-          ).className
-        }
+      <div
+        data-testid="participant-work"
+        {...stylex.props(styles.work, column && styles.workBeside)}
       >
-        {absent !== null ? (
-          <div data-testid="participant-absent" {...stylex.props(styles.absent)}>
-            <LoadFailure
-              failure={absent}
-              size="section"
-              // the rest of the account failed with the person, and comes back with them
-              // the claims come back with the person, where they open
-              onRetry={() => {
-                void who.refetch()
-                void result.refetch()
-              }}
-              retrying={who.isFetching}
-              extra={
-                <Button variant={absent.retryable ? 'outline' : 'default'} onClick={onBack}>
-                  {m.participantResults_back()}
-                </Button>
-              }
-            />
-          </div>
-        ) : (
-          <Swap swapKey={view} className={stylex.props(filled && styles.swapFilled).className}>
-            {view === 'entries' && claimsOpen !== true ? (
-              // whether the claims open is said with the person: until then
-              // the claims are not asked for, since a reader who reads the
-              // account alone would only be refused them
-              <WorkspaceSkeleton viewer="staff" open={false} />
-            ) : view === 'entries' ? (
-              <ParticipantEntries
-                batchId={batchId}
-                participantId={participantId}
-                entryId={entryId}
-                may={{
-                  returnForRevision: writable && manageable,
-                  withdraw: writable && mayRecord,
-                  record: writable && mayRecord,
+        {column ? <AtWidth below={1024}>{head}</AtWidth> : head}
+        {/* Beside the column the name stands in the column, which is a
+            landmark of its own; the work still says whose it is, for a reader
+            moving by headings through the main part of the page. */}
+        {column && participant !== undefined && absent === null && (
+          <AtWidth from={1024}>
+            <h2 {...stylex.props(a11yStyles.visuallyHidden)}>
+              {m.participantResults_accountHeading({
+                name: participant.displayName,
+                half: (view === 'score'
+                  ? m.participantResults_scoreTab
+                  : m.participantResults_entriesTab)(),
+              })}
+            </h2>
+          </AtWidth>
+        )}
+        {/* another person's work arrives from the way the list went; the
+          two halves of one person's replace each other in place */}
+        <Drill
+          move={step}
+          drillKey={participantId}
+          className={
+            stylex.props(
+              styles.body,
+              filled && absent === null ? styles.bodyFilled : styles.bodyGrown,
+            ).className
+          }
+        >
+          {absent !== null ? (
+            <div data-testid="participant-absent" {...stylex.props(styles.absent)}>
+              <LoadFailure
+                failure={absent}
+                size="section"
+                // the rest of the account failed with the person, and comes back with them
+                // the claims come back with the person, where they open
+                onRetry={() => {
+                  void who.refetch()
+                  void result.refetch()
                 }}
-                line={line}
-                closed={!writable || participant?.status === 'excluded'}
-                onEntry={onEntry}
+                retrying={who.isFetching}
+                extra={
+                  <Button variant={absent.retryable ? 'outline' : 'default'} onClick={onBack}>
+                    {m.participantResults_back()}
+                  </Button>
+                }
               />
-            ) : (
-              <div {...stylex.props(styles.ledger)}>
-                {unreadable ? (
-                  <ResultUnavailable
-                    error={result.error}
-                    retrying={result.isFetching}
-                    onRetry={() => void result.refetch()}
-                  />
-                ) : (
-                  <AsyncSection
-                    pending={result.isPending || items.isPending || claimsPending || who.isPending}
-                    // a read that failed with nothing to show; one that failed
-                    // later keeps what it showed, and the account says it may
-                    // be behind
-                    error={
-                      [result, items, entries]
-                        .map((read) =>
-                          read.data === undefined && read.error !== null
-                            ? formatError(read.error)
-                            : null,
-                        )
-                        .find((said) => said !== null) ?? null
-                    }
-                    loadingLabel={commonMessages.state_loading()}
-                    retryLabel={commonMessages.action_retry()}
-                    onRetry={() => {
-                      void result.refetch()
-                      void items.refetch()
-                      if (claimsOpen === true) void entries.refetch()
-                    }}
-                    skeleton={
-                      <div>
-                        <div {...stylex.props(styles.skBand)}>
-                          <span {...stylex.props(styles.skTotal)}>
-                            <Skeleton
-                              className={stylex.props(styles.skBone).className}
-                              width={64}
-                            />
-                            <Skeleton height={34} width={96} radius={6} />
-                          </span>
-                          <span {...stylex.props(styles.skBars)}>
-                            <Skeleton height={12} radius={9999} />
-                            <Skeleton
-                              className={stylex.props(styles.skBone).className}
-                              width="60%"
-                            />
-                          </span>
-                        </div>
-                        <div {...stylex.props(styles.skGroups)}>
-                          {['52%', '38%', '61%', '44%'].map((width, index) => (
-                            <div key={index} {...stylex.props(styles.skGroupRow)}>
+            </div>
+          ) : (
+            <Swap swapKey={view} className={stylex.props(filled && styles.swapFilled).className}>
+              {view === 'entries' && claimsOpen !== true ? (
+                // whether the claims open is said with the person: until then
+                // the claims are not asked for, since a reader who reads the
+                // account alone would only be refused them
+                <WorkspaceSkeleton viewer="staff" open={false} />
+              ) : view === 'entries' ? (
+                <ParticipantEntries
+                  batchId={batchId}
+                  participantId={participantId}
+                  entryId={entryId}
+                  may={{
+                    returnForRevision: writable && manageable,
+                    withdraw: writable && mayRecord,
+                    record: writable && mayRecord,
+                  }}
+                  line={line}
+                  closed={!writable || participant?.status === 'excluded'}
+                  onEntry={onEntry}
+                />
+              ) : (
+                <div {...stylex.props(styles.ledger)}>
+                  {unreadable ? (
+                    <ResultUnavailable
+                      error={result.error}
+                      retrying={result.isFetching}
+                      onRetry={() => void result.refetch()}
+                    />
+                  ) : (
+                    <AsyncSection
+                      pending={
+                        result.isPending || items.isPending || claimsPending || who.isPending
+                      }
+                      // a read that failed with nothing to show; one that failed
+                      // later keeps what it showed, and the account says it may
+                      // be behind
+                      error={
+                        [result, items, entries]
+                          .map((read) =>
+                            read.data === undefined && read.error !== null
+                              ? formatError(read.error)
+                              : null,
+                          )
+                          .find((said) => said !== null) ?? null
+                      }
+                      loadingLabel={commonMessages.state_loading()}
+                      retryLabel={commonMessages.action_retry()}
+                      onRetry={() => {
+                        void result.refetch()
+                        void items.refetch()
+                        if (claimsOpen === true) void entries.refetch()
+                      }}
+                      skeleton={
+                        <div>
+                          <div {...stylex.props(styles.skBand)}>
+                            <span {...stylex.props(styles.skTotal)}>
                               <Skeleton
                                 className={stylex.props(styles.skBone).className}
-                                width={width}
+                                width={64}
                               />
-                              <Skeleton className={stylex.props(styles.skBone).className} />
-                            </div>
-                          ))}
+                              <Skeleton height={34} width={96} radius={6} />
+                            </span>
+                            <span {...stylex.props(styles.skBars)}>
+                              <Skeleton height={12} radius={9999} />
+                              <Skeleton
+                                className={stylex.props(styles.skBone).className}
+                                width="60%"
+                              />
+                            </span>
+                          </div>
+                          <div {...stylex.props(styles.skGroups)}>
+                            {['52%', '38%', '61%', '44%'].map((width, index) => (
+                              <div key={index} {...stylex.props(styles.skGroupRow)}>
+                                <Skeleton
+                                  className={stylex.props(styles.skBone).className}
+                                  width={width}
+                                />
+                                <Skeleton className={stylex.props(styles.skBone).className} />
+                              </div>
+                            ))}
+                          </div>
                         </div>
-                      </div>
-                    }
-                  >
-                    {result.data !== undefined && (
-                      <>
-                        {result.error !== null && (
-                          <StandingNotice
-                            error={result.error}
-                            stale
-                            retrying={result.isFetching}
-                            onRetry={() => void result.refetch()}
+                      }
+                    >
+                      {result.data !== undefined && (
+                        <>
+                          {result.error !== null && (
+                            <StandingNotice
+                              error={result.error}
+                              stale
+                              retrying={result.isFetching}
+                              onRetry={() => void result.refetch()}
+                            />
+                          )}
+                          <ResultLedger
+                            result={result.data}
+                            items={items.data?.items ?? []}
+                            entries={claims.map((one) => one.entry)}
+                            // somebody else's account, read by whoever runs the round
+                            reader="staff"
+                            // an archived round, or somebody taken off it, no longer moves
+                            closed={!writable ? 'archived' : excluded ? 'excluded' : null}
+                            // kept current while the line is open, by the rule the
+                            // claims half and the owner's own pages keep; a total
+                            // already said to be behind is not also live
+                            stream={result.error === null ? liveStateOf(line) : null}
+                            align="start"
+                            // a number leads back to the filing it came from, on
+                            // the question it was filed under; this is the reason
+                            // the two halves are one page
+                            {...(claimsOpen === true
+                              ? {
+                                  onEntryOpen: (id: string) =>
+                                    onFollow(
+                                      id,
+                                      claims.find((one) => one.entry.id === id)?.entry.itemId ??
+                                        null,
+                                    ),
+                                  onItemOpen: onItem,
+                                }
+                              : {})}
                           />
-                        )}
-                        <ResultLedger
-                          result={result.data}
-                          items={items.data?.items ?? []}
-                          entries={claims.map((one) => one.entry)}
-                          // somebody else's account, read by whoever runs the round
-                          reader="staff"
-                          // an archived round, or somebody taken off it, no longer moves
-                          closed={!writable ? 'archived' : excluded ? 'excluded' : null}
-                          // kept current while the line is open, by the rule the
-                          // claims half and the owner's own pages keep; a total
-                          // already said to be behind is not also live
-                          stream={result.error === null ? liveStateOf(line) : null}
-                          align="start"
-                          // a number leads back to the filing it came from, on
-                          // the question it was filed under; this is the reason
-                          // the two halves are one page
-                          {...(claimsOpen === true
-                            ? {
-                                onEntryOpen: (id: string) =>
-                                  onFollow(
-                                    id,
-                                    claims.find((one) => one.entry.id === id)?.entry.itemId ?? null,
-                                  ),
-                                onItemOpen: onItem,
-                              }
-                            : {})}
-                        />
-                      </>
-                    )}
-                  </AsyncSection>
-                )}
-              </div>
-            )}
-          </Swap>
-        )}
-      </Drill>
+                        </>
+                      )}
+                    </AsyncSection>
+                  )}
+                </div>
+              )}
+            </Swap>
+          )}
+        </Drill>
+      </div>
       <ConfirmDialog
         open={excluding !== null && excluding === participantId}
         title={m.roster_excludeTitle({ name: participant?.displayName ?? '' })}

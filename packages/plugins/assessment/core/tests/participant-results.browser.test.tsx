@@ -1105,11 +1105,13 @@ describe('one account beside its person', () => {
     })
   const open = `/assessment/batches/${BATCH_ID}/results?participant=${PARTICIPANT_ID}`
 
-  it('stands the person in the rail’s column, and gives the rail back on the way out', async () => {
+  it('stands the person in the rail’s place, and gives the rail back on the way out', async () => {
     await page.viewport(1280, 800)
     await shelled(open)
-    const column = page.getByTestId('workspace-rail')
-    await expect.element(column).toHaveAttribute('data-lent', 'true')
+    const rail = page.getByTestId('workspace-rail')
+    const column = page.getByTestId('participant-column')
+    await expect.element(column).toBeVisible()
+    await expect.element(rail).not.toBeVisible()
     const panel = column.getByTestId('participant-panel')
     await expect.element(panel.getByRole('heading', { level: 1 })).toHaveTextContent('郭航旗')
     // the halves of the account are the column's entries now, not a row
@@ -1117,9 +1119,6 @@ describe('one account beside its person', () => {
     await expect
       .element(panel.getByTestId('participant-tab-entries'))
       .toHaveAttribute('aria-current', 'true')
-    await expect
-      .element(page.getByTestId('participant-account'))
-      .toHaveAttribute('data-beside', 'true')
     expect(page.getByTestId('participant-head').elements()).toHaveLength(0)
     expect(column.getByRole('link', { name: '参评名单' }).elements()).toHaveLength(0)
     // the score half carries the total beside its name
@@ -1127,8 +1126,8 @@ describe('one account beside its person', () => {
 
     await panel.getByRole('button', { name: '返回参评名单' }).click()
     await expect.poll(() => addressNow()).not.toContain('participant=')
-    await expect.element(column).not.toHaveAttribute('data-lent')
-    await expect.element(column.getByRole('link', { name: '参评名单' })).toBeVisible()
+    await expect.element(rail).toBeVisible()
+    await expect.element(rail.getByRole('link', { name: '参评名单' })).toBeVisible()
   })
 
   it('names the column after the person and says whose work the main part is', async () => {
@@ -1268,15 +1267,19 @@ describe('one account beside its person', () => {
     await expect.element(page.getByTestId('participant-panel')).toBeVisible()
     const ledger = page.getByTestId('result-ledger')
     await expect.element(ledger).toBeVisible()
-    const main = page.getByRole('main').element() as HTMLElement
-    // Borrowing the rail does not make the account an internally scrolling
-    // workbench: its last group must remain reachable through the page.
-    expect(main.scrollHeight).toBeGreaterThan(main.clientHeight + 500)
-    expect(getComputedStyle(main).overflowY).toBe('auto')
-    main.scrollTop = main.scrollHeight
+    // Beside the person's column the account scrolls in the room beside it,
+    // the column standing still: its last group must remain reachable.
+    const work = page.getByTestId('participant-work').element() as HTMLElement
+    expect(work.scrollHeight).toBeGreaterThan(work.clientHeight + 500)
+    expect(getComputedStyle(work).overflowY).toBe('auto')
+    const column = page.getByTestId('participant-column').element().getBoundingClientRect()
+    work.scrollTop = work.scrollHeight
     await expect
       .poll(() => ledger.element().getBoundingClientRect().bottom)
-      .toBeLessThanOrEqual(main.getBoundingClientRect().bottom)
+      .toBeLessThanOrEqual(work.getBoundingClientRect().bottom)
+    expect(page.getByTestId('participant-column').element().getBoundingClientRect().top).toBe(
+      column.top,
+    )
   })
 
   it('stands the account in the middle of a wide window, not against the column', async () => {
@@ -1285,10 +1288,11 @@ describe('one account beside its person', () => {
       await shelled(`${open}&view=score`)
       const ledger = page.getByTestId('result-ledger')
       await expect.element(ledger).toBeVisible()
-      const main = page.getByRole('main').element().getBoundingClientRect()
+      // the room beside the person's column
+      const room = page.getByTestId('participant-work').element().getBoundingClientRect()
       const drawn = ledger.element().getBoundingClientRect()
-      const before = drawn.left - main.left
-      const after = main.right - drawn.right
+      const before = drawn.left - room.left
+      const after = room.right - drawn.right
       // room to spare on both sides, and the same on each
       expect(before).toBeGreaterThan(100)
       expect(Math.abs(before - after)).toBeLessThanOrEqual(2)
@@ -1316,9 +1320,6 @@ describe('one account beside its person', () => {
     try {
       await shelled(open)
       await expect.element(page.getByTestId('participant-head')).toBeVisible()
-      await expect
-        .element(page.getByTestId('participant-account'))
-        .toHaveAttribute('data-beside', 'false')
       expect(page.getByTestId('participant-panel').elements()).toHaveLength(0)
     } finally {
       await page.viewport(1280, 800)
@@ -1384,14 +1385,15 @@ describe('one account beside its person', () => {
       await expect.element(head).toBeVisible()
       await expect.element(head.getByRole('heading', { level: 1 })).toHaveTextContent('郭航旗')
       // the number and where they stand stay; the rest waits behind the fold
-      await expect.poll(() => document.querySelector('[data-fact="number"]')).not.toBeNull()
-      expect(document.querySelector('[data-fact="kind"]')).toBeNull()
-      expect(head.getByTestId('participant-standing').elements()).toHaveLength(0)
+      const kind = head.element().querySelector('[data-fact="kind"]')!
+      await expect.element(head.element().querySelector('[data-fact="number"]')!).toBeVisible()
+      await expect.element(kind).not.toBeVisible()
+      await expect.element(head.getByTestId('participant-standing')).not.toBeVisible()
       const fold = head.getByTestId('participant-fold')
       await expect.element(fold).toHaveAttribute('aria-expanded', 'false')
       await fold.click()
       await expect.element(fold).toHaveAttribute('aria-expanded', 'true')
-      await expect.poll(() => document.querySelector('[data-fact="kind"]')).not.toBeNull()
+      await expect.element(kind).toBeVisible()
       await expect.element(head.getByTestId('participant-standing')).toBeVisible()
     } finally {
       await page.viewport(1280, 800)
@@ -1573,7 +1575,7 @@ describe('the list beside an open account', () => {
   it('stands the list under the facts in the column, the open person in its middle', async () => {
     await page.viewport(1280, 800)
     await shelled(at(23, '&list-page=2')).rendered
-    const column = page.getByTestId('workspace-rail')
+    const column = page.getByTestId('participant-column')
     const list = column.getByTestId('roster-walk')
     await expect.element(list).toHaveAttribute('data-total', '45')
     await expect.poll(() => current()?.dataset['participant']).toBe(personId(23))
@@ -1595,7 +1597,7 @@ describe('the list beside an open account', () => {
       expect(scroller.getBoundingClientRect().top).toBeGreaterThanOrEqual(halves.bottom)
       const list = page.getByTestId('roster-walk').element().getBoundingClientRect()
       expect(list.height).toBeGreaterThanOrEqual(239)
-      const seat = page.getByTestId('workspace-aside').element()
+      const seat = page.getByTestId('participant-column').element()
       expect(seat.scrollHeight).toBeGreaterThan(seat.clientHeight)
     } finally {
       await page.viewport(1280, 800)

@@ -82,7 +82,8 @@ function Results({ batch, participantId }: { batch: BatchDto; participantId: str
   // rendered with. Two writes from one press would race, and the second
   // would silently drop the first.
   const address = usePageQueryUpdate()
-  const beside = useScreenAsideOffered()
+  // the list stands in the column a shell offers; without one, the head opens it
+  const column = useScreenAsideOffered()
   const walk = useRosterWalk({
     batchId: batch.id,
     participantId,
@@ -160,16 +161,16 @@ function Results({ batch, participantId }: { batch: BatchDto; participantId: str
           // the claims unless the address asks for the total
           view={view === 'score' ? 'score' : 'entries'}
           entryId={entryId}
-          neighbors={
+          // in the column the list stands under the way to either side; in
+          // a head, where this person stands opens it
+          neighbors={(seat) => (
             <RosterNeighbors
               walk={walk}
               onOpen={walkTo}
-              // with a column of its own the list stands in it; without,
-              // where this person stands opens it
-              {...(beside ? {} : { list: (close: () => void) => list('sheet', close) })}
+              {...(seat === 'column' ? {} : { list: (close: () => void) => list('sheet', close) })}
             />
-          }
-          roster={beside ? list('column') : undefined}
+          )}
+          roster={column ? list('column') : undefined}
           listed={walk.here}
           onListMoved={walk.refresh}
           onView={(next) => address({ view: next === 'entries' ? '' : next })}

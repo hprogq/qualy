@@ -1104,13 +1104,14 @@ export {
   type WorkspaceCapabilities,
 } from './workspace-capabilities.tsx'
 export { ScreenFootScope, useScreenFootClaimed, useClaimScreenFoot } from './screen-foot.tsx'
+export { SCREEN_ASIDE, ScreenAsideScope, useScreenAsideOffered } from './screen-aside.tsx'
 export {
-  ScreenAside,
-  ScreenAsideScope,
-  useScreenAsideOffered,
-  useScreenAsideSeat,
-} from './screen-aside.tsx'
-export { ScreenFillScope, useScreenFillClaimed, useClaimScreenFill } from './screen-fill.tsx'
+  SCREEN_FILL,
+  ScreenFill,
+  ScreenFillScope,
+  useScreenFillClaimed,
+  type ScreenFillFrom,
+} from './screen-fill.tsx'
 export { SubjectAbsence, SubjectScope, useSubjectAbsenceSeat } from './subject.tsx'
 export {
   DataRouterLeaveGuard,

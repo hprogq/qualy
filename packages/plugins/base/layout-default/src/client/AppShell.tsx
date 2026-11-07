@@ -4,12 +4,7 @@ import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { layout } from '@qualy/ui/theme/layout.stylex'
-import {
-  PageTitleScope,
-  ScreenFillScope,
-  usePageTitleClaim,
-  useScreenFillClaimed,
-} from '@qualy/web-runtime'
+import { PageTitleScope, ScreenFillScope, usePageTitleClaim } from '@qualy/web-runtime'
 import { SectionChips, TopBar } from './TopBar.tsx'
 import { AppsBar } from './BottomBar.tsx'
 import { AppFooter } from './AppFooter.tsx'
@@ -62,7 +57,16 @@ const styles = stylex.create({
     flexGrow: 1,
     flexShrink: 1,
     flexBasis: '0%',
-    overflowY: 'auto',
+    // a screen that fills the room scrolls inside itself, and the shell does
+    // not scroll around it - said by the screen in its html (ScreenFill)
+    overflowY: {
+      default: 'auto',
+      [stylex.when.ancestor(':has([data-screen-fill="always"])')]: 'hidden',
+      [stylex.when.ancestor(':has([data-screen-fill="tablet"])')]: {
+        default: 'hidden',
+        [breakpoints.phone]: 'auto',
+      },
+    },
     // The page bounces at its ends and the bars do not, which is what a
     // phone has always done and what the bars being an overlay is for.
     // `contain` keeps the bounce and stops only the chaining - a flick at
@@ -72,13 +76,18 @@ const styles = stylex.create({
     overscrollBehaviorY: 'contain',
     scrollPaddingTop: { default: shell.topBarHeight, [breakpoints.phone]: shell.phoneTopBarHeight },
   },
-  // a screen that fills the room scrolls inside itself; the shell does not
-  // scroll around it, and holds no strip down the right for a scrollbar
-  // that cannot come
-  mainFilled: { overflowY: 'hidden' },
   // The scroller and its floating head reserve the same native gutter from
-  // the first paint. Overlay scrollbars do not take any layout space.
-  gutter: { scrollbarGutter: 'stable' },
+  // the first paint. Overlay scrollbars do not take any layout space, and a
+  // window as narrow as a phone holds none either; nor does one around a
+  // screen that fills the room, for a scrollbar that cannot come.
+  gutter: {
+    scrollbarGutter: {
+      default: 'stable',
+      [breakpoints.phone]: 'auto',
+      [stylex.when.ancestor(':has([data-screen-fill="always"])')]: 'auto',
+      [stylex.when.ancestor(':has([data-screen-fill="tablet"])')]: 'auto',
+    },
+  },
   head: {
     position: 'absolute',
     insetInline: 0,
@@ -109,12 +118,44 @@ const styles = stylex.create({
     flexGrow: 1,
     flexShrink: 0,
   },
-  frameFilled: { minHeight: 0, flexShrink: 1 },
+  // exactly the room the bars leave, around a screen that fills it
+  frameFilled: {
+    minHeight: {
+      default: null,
+      [stylex.when.ancestor(':has([data-screen-fill="always"])')]: 0,
+      [stylex.when.ancestor(':has([data-screen-fill="tablet"])')]: {
+        default: 0,
+        [breakpoints.phone]: null,
+      },
+    },
+    flexShrink: {
+      default: null,
+      [stylex.when.ancestor(':has([data-screen-fill="always"])')]: 1,
+      [stylex.when.ancestor(':has([data-screen-fill="tablet"])')]: {
+        default: 1,
+        [breakpoints.phone]: null,
+      },
+    },
+  },
   // Stuck under the bars for the height they leave, so a long page scrolls
   // past it and a long list of sections scrolls inside it. It has no ground
   // of its own: the page's ground runs under it, ruled off by one line.
   side: {
-    display: { default: 'none', [breakpoints.desktop]: 'block' },
+    // a workbench that fills the room takes the column's room too: the way
+    // out of it is the top bar, and a list of sibling pages beside an
+    // editor is width it needs
+    display: {
+      default: 'none',
+      [breakpoints.desktop]: 'block',
+      [stylex.when.ancestor(':has([data-screen-fill="always"])')]: {
+        default: 'none',
+        [breakpoints.desktop]: 'none',
+      },
+      [stylex.when.ancestor(':has([data-screen-fill="tablet"])')]: {
+        default: 'none',
+        [breakpoints.desktop]: 'none',
+      },
+    },
     position: 'sticky',
     top: shell.topBarHeight,
     height: `calc(100dvh - ${shell.topBarHeight})`,
@@ -160,8 +201,33 @@ const styles = stylex.create({
   },
   // exactly the height the bars leave, and no more however much it holds
   pageFilled: {
-    minHeight: 0,
-    flexShrink: 1,
+    minHeight: {
+      default: null,
+      [stylex.when.ancestor(':has([data-screen-fill="always"])')]: 0,
+      [stylex.when.ancestor(':has([data-screen-fill="tablet"])')]: {
+        default: 0,
+        [breakpoints.phone]: null,
+      },
+    },
+    flexShrink: {
+      default: null,
+      [stylex.when.ancestor(':has([data-screen-fill="always"])')]: 1,
+      [stylex.when.ancestor(':has([data-screen-fill="tablet"])')]: {
+        default: 1,
+        [breakpoints.phone]: null,
+      },
+    },
+  },
+  // a workbench that fills the room has no foot under it
+  foot: {
+    display: {
+      default: 'contents',
+      [stylex.when.ancestor(':has([data-screen-fill="always"])')]: 'none',
+      [stylex.when.ancestor(':has([data-screen-fill="tablet"])')]: {
+        default: 'none',
+        [breakpoints.phone]: 'contents',
+      },
+    },
   },
   // Room under everything for the bar at the foot of a narrow window. On a
   // window with no such bar the page still keeps the device's own gesture
@@ -188,8 +254,6 @@ const styles = stylex.create({
 function Shell() {
   const { apps, activeApp, sections, sectionGroups } = useAppNavigation()
 
-  // a workbench fills the room under the bars and has no foot under it
-  const filled = useScreenFillClaimed()
   const main = useRef<HTMLElement>(null)
   const head = useRef<HTMLDivElement>(null)
   const sentinel = useRef<HTMLDivElement>(null)
@@ -205,10 +269,9 @@ function Shell() {
   // rotation, and then quietly wrong by eight pixels.
   const [barHeight, setBarHeight] = useState(0)
   const sectioned = sections.length >= 2
-  // one or the other carries the sections, never both - and a workbench that
-  // fills the room takes the column's room too: the way out of it is the top
-  // bar, and a list of sibling pages beside an editor is width it needs
-  const beside = sectioned && !filled
+  // one or the other carries the sections, never both; a workbench that
+  // fills the room puts the column away in the stylesheet
+  const beside = sectioned
   useEffect(() => {
     const bars = head.current
     if (bars === null) return
@@ -259,12 +322,12 @@ function Shell() {
   }, [heading, barHeight])
 
   return (
-    <div {...stylex.props(styles.root)}>
+    <div {...stylex.props(styles.root, stylex.defaultMarker())}>
       <div
         ref={head}
         data-shell-head=""
         data-scrolled={scrolled ? '' : undefined}
-        {...stylex.props(styles.head, !filled && styles.gutter)}
+        {...stylex.props(styles.head, styles.gutter)}
       >
         <div {...stylex.props(styles.headContent)}>
           <TopBar
@@ -287,24 +350,18 @@ function Shell() {
           the bars. */}
       <main
         ref={main}
-        {...stylex.props(
-          styles.main,
-          bottomBar ? styles.footRoom : styles.safeRoom,
-          filled ? styles.mainFilled : styles.gutter,
-        )}
+        {...stylex.props(styles.main, bottomBar ? styles.footRoom : styles.safeRoom, styles.gutter)}
       >
         <div aria-hidden {...stylex.props(styles.headRoom)} />
         <div ref={sentinel} aria-hidden {...stylex.props(styles.sentinel)} />
-        <div {...stylex.props(styles.frame, filled && styles.frameFilled)}>
+        <div {...stylex.props(styles.frame, styles.frameFilled)}>
           {beside && (
             <aside {...stylex.props(styles.side)}>
               <SideNav groups={sectionGroups} label={m.shell_sideNav()} />
             </aside>
           )}
           <div {...stylex.props(styles.column)}>
-            <div
-              {...stylex.props(styles.page, filled && styles.pageFilled, stylex.defaultMarker())}
-            >
+            <div {...stylex.props(styles.page, styles.pageFilled, stylex.defaultMarker())}>
               {/* The sections hang under the page's own words rather than
                   standing in a bar above them: a second band of chrome is
                   one more thing to look past on a screen that has little
@@ -318,7 +375,9 @@ function Shell() {
                 <Outlet />
               </BandFootScope>
             </div>
-            {filled ? null : <AppFooter />}
+            <div {...stylex.props(styles.foot)}>
+              <AppFooter />
+            </div>
           </div>
         </div>
       </main>

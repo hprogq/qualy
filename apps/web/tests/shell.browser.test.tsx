@@ -8,14 +8,12 @@ import { useQuery } from '@tanstack/react-query'
 import {
   isRecordId,
   LoadFailure,
-  ScreenAside,
+  ScreenFill,
   SubjectAbsence,
-  useClaimScreenFill,
   useClaimScreenFoot,
   useLoadFailure,
   usePageRouteParams,
   usePageTitle,
-  useScreenAsideOffered,
 } from '@qualy/web-runtime'
 import { Screen } from '@qualy/ui/screen'
 import { PageLoading } from '@qualy/ui/spinner'
@@ -1119,20 +1117,19 @@ describe('a press on the rail', () => {
   })
 })
 
-describe('the rail’s column, lent to the open screen', () => {
-  // A screen that has one thing open - one person on a roster - asks for the
-  // column the rail stands in and draws who it is there, for as long as it
-  // holds it. On a window too narrow for the rail there is no column to
-  // lend, and the screen is told so and draws the same in its own flow.
-  function Lending() {
-    const offered = useScreenAsideOffered()
+describe('a screen’s own column, in the rail’s place', () => {
+  // A screen that has one thing open - one person on a roster - draws who it
+  // is in a column of its own beside its work, marked in its html, and the
+  // shell stands its rail down for as long as the column is there: the
+  // stylesheet's doing, so html a server drew is already laid out so.
+  function Beside() {
     const [holding, setHolding] = useState(true)
     return (
-      <div data-testid="lending" data-offered={offered}>
+      <div data-testid="beside">
         {holding && (
-          <ScreenAside label="郭航旗">
-            <div data-testid="lent-content">郭航旗</div>
-          </ScreenAside>
+          <aside data-screen-aside="" aria-label="郭航旗">
+            <div data-testid="own-column">郭航旗</div>
+          </aside>
         )}
         <button type="button" onClick={() => setHolding(false)}>
           give back
@@ -1147,57 +1144,49 @@ describe('the rail’s column, lent to the open screen', () => {
       children: (
         <Routes>
           <Route element={<WorkspaceShell />}>
-            <Route path="/assessment/batches/:batchId/phases" element={<Lending />} />
+            <Route path="/assessment/batches/:batchId/phases" element={<Beside />} />
           </Route>
         </Routes>
       ),
     })
 
-  it('draws the screen’s column where the rail stood, and the rail again once it lets go', async () => {
+  it('puts the rail away while the screen’s column stands, and back once it goes', async () => {
     await page.viewport(1280, 800)
     await mount()
-    const column = page.getByTestId('workspace-rail')
-    await expect.element(column).toHaveAttribute('data-lent', 'true')
-    await expect.element(column.getByTestId('lent-content')).toBeVisible()
-    await expect.element(page.getByTestId('lending')).toHaveAttribute('data-offered', 'true')
-    // the rail is not drawn behind it
-    expect(column.getByRole('link', { name: '阶段安排' }).elements()).toHaveLength(0)
-
-    await page.getByRole('button', { name: 'give back' }).click()
-    await expect.element(column).not.toHaveAttribute('data-lent')
-    await expect.element(column.getByRole('link', { name: '阶段安排' })).toBeVisible()
-  })
-
-  it('names the column after what the screen holding it put there', async () => {
-    await page.viewport(1280, 800)
-    await mount()
-    // a landmark a reader can find by the person it is about
+    await expect.element(page.getByTestId('own-column')).toBeVisible()
+    const rail = page.getByTestId('workspace-rail')
+    await expect.element(rail).not.toBeVisible()
+    // a landmark a reader can find by the person it is about, and only one
     await expect.element(page.getByRole('complementary', { name: '郭航旗' })).toBeVisible()
+
     await page.getByRole('button', { name: 'give back' }).click()
-    await expect.element(page.getByTestId('workspace-rail')).not.toHaveAttribute('data-lent')
-    await expect.element(page.getByTestId('workspace-rail')).not.toHaveAttribute('aria-label')
+    await expect.element(rail).toBeVisible()
+    await expect.element(rail.getByRole('link', { name: '阶段安排' })).toBeVisible()
+    await expect.element(rail).not.toHaveAttribute('aria-label')
   })
 
-  it('runs the open screen to the window’s edge while it holds the column', async () => {
+  it('runs the open screen to the window’s edge while its column stands', async () => {
     await page.viewport(1280, 800)
     await mount()
     const main = page.getByRole('main')
     // the strip a scrollbar would take, held open whether or not one shows
     const gutter = () => main.element().getBoundingClientRect().width - main.element().clientWidth
-    await expect.element(page.getByTestId('workspace-rail')).toHaveAttribute('data-lent', 'true')
+    await expect.element(page.getByTestId('own-column')).toBeVisible()
     await expect.poll(gutter).toBe(0)
-    // given back, the sections' pages keep the room they hold for one
+    // gone, the sections' pages keep the room they hold for one
     await page.getByRole('button', { name: 'give back' }).click()
-    await expect.element(page.getByTestId('workspace-rail')).not.toHaveAttribute('data-lent')
     await expect.poll(gutter).toBeGreaterThan(0)
   })
 
-  it('lends nothing on a window too narrow for the rail', async () => {
+  it('keeps the strip on a window too narrow for a column beside the work', async () => {
     await page.viewport(800, 900)
     try {
       await mount()
-      await expect.element(page.getByTestId('lending')).toHaveAttribute('data-offered', 'false')
-      expect(page.getByTestId('lent-content').elements()).toHaveLength(0)
+      const main = page.getByRole('main')
+      await expect.element(page.getByTestId('beside')).toBeVisible()
+      await expect
+        .poll(() => main.element().getBoundingClientRect().width - main.element().clientWidth)
+        .toBeGreaterThan(0)
     } finally {
       await page.viewport(1280, 800)
     }
@@ -1242,9 +1231,9 @@ describe('a screen that fills the room', () => {
   // shift sideways from one to the next - is an empty band beside one.
   function Filling() {
     const [holding, setHolding] = useState(true)
-    useClaimScreenFill(holding)
     return (
       <div data-testid="filling" data-holding={holding}>
+        {holding && <ScreenFill />}
         <button type="button" onClick={() => setHolding(false)}>
           let go
         </button>
@@ -1302,11 +1291,14 @@ describe('a screen that fills the room', () => {
     // sideways by a scrollbar's width.
     const frames: number[] = []
     function Arriving() {
-      useClaimScreenFill(true)
       useLayoutEffect(() => {
         queueMicrotask(() => frames.push(gutterOf()))
       }, [])
-      return <div data-testid="arrived" />
+      return (
+        <div data-testid="arrived">
+          <ScreenFill />
+        </div>
+      )
     }
     await page.viewport(1280, 800)
     await renderScreen({

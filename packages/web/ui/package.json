@@ -26,6 +26,7 @@
     "./ticker": "./src/components/ticker.tsx",
     "./live-mark": "./src/components/live-mark.tsx",
     "./refresh-button": "./src/components/refresh-button.tsx",
+    "./at-width": "./src/components/at-width.tsx",
     "./timeline": "./src/components/timeline.tsx",
     "./alert": "./src/components/alert.tsx",
     "./theme.css": "./src/styles/theme.css",

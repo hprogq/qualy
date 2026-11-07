@@ -1,4 +1,5 @@
 import { useCallback, useContext, useLayoutEffect, useMemo, useState, type ReactNode } from 'react'
+import { useIsBelow } from '@qualy/ui/use-mobile'
 import { sharedContext } from './shared-context.ts'
 
 // Whether the screen currently open fills the room under the shell's bars.
@@ -15,18 +16,28 @@ import { sharedContext } from './shared-context.ts'
 // rail shells around a workspace or a person - has only one thing to give
 // up for it: the strip it holds down the right for a scrollbar, which is
 // there so pages do not shift sideways from one to the next, and beside a
-// workbench is an empty band that can never fill. A screen declares itself
-// with one line where it decides its own shape:
+// workbench is an empty band that can never fill.
 //
-//   useClaimScreenFill(mode !== 'phone')
+// The screen says so in its html, with one element where it decides its own
+// shape:
 //
-// at the widths where it scrolls inside itself, including while it is
-// still a skeleton - claimed only once the data arrives, the whole screen
-// would move sideways by a gutter at that moment.
+//   <ScreenFill from="tablet" />
 //
-// Counted rather than a flag, like the screen foot: two screens overlap for
-// the length of a route change, and the one leaving must not take the room
-// back from the one arriving.
+// and the shell's stylesheet answers it (`:has([data-screen-fill])`), so a
+// page a server drew is laid out the way it will stay from its first frame,
+// before any script has run, at whatever width the window is. `from` names
+// the widths where it scrolls inside itself; a skeleton says it too - claimed
+// only once the data arrives, the whole screen would move sideways by a
+// gutter at that moment.
+//
+// The same claim is also counted for whatever has to know it in javascript,
+// like the screen foot: two screens overlap for the length of a route
+// change, and the one leaving must not take the room back from the one
+// arriving.
+
+/** the attribute a filling screen's mark carries, and the widths it names */
+export const SCREEN_FILL = 'data-screen-fill'
+export type ScreenFillFrom = 'always' | 'tablet'
 
 interface FillScope {
   readonly claimed: boolean
@@ -53,12 +64,18 @@ export function useScreenFillClaimed(): boolean {
 }
 
 /**
- * Fills the room under the shell's bars while `holding`, and gives it back on
- * the way out. A screen that claims it lays itself out to the height it is
- * given and scrolls inside; usually only at the widths where it is a
- * workbench rather than a page.
+ * Fills the room under the shell's bars - at every width, or from a tablet
+ * up - and gives it back on the way out. A screen that claims it lays itself
+ * out to the height it is given and scrolls inside, at the widths where it
+ * is a workbench rather than a page.
  */
-export function useClaimScreenFill(holding: boolean): void {
+export function ScreenFill({ from = 'always' }: { from?: ScreenFillFrom }) {
+  const phone = useIsBelow(768)
+  useClaimScreenFill(from === 'always' || !phone)
+  return <span hidden {...{ [SCREEN_FILL]: from }} />
+}
+
+function useClaimScreenFill(holding: boolean): void {
   const claim = useContext(Scope)?.claim
   // before the browser may paint the screen: a route change is committed in
   // a transition, whose passive effects can run after the first frame is

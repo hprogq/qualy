@@ -14,7 +14,7 @@ import {
   isRecordId,
   useApi,
   useApiQuery,
-  useClaimScreenFill,
+  ScreenFill,
   useLoadFailure,
   useHandlePlatformFailure,
   usePageHref,
@@ -749,7 +749,19 @@ function Hinted({
   )
 }
 
+// A workbench at every width: it takes the room under the application's bars
+// and scrolls inside, said in its html so the shell is laid out for it from
+// the first frame.
 export default function FormulaEditorPage() {
+  return (
+    <>
+      <ScreenFill />
+      <FormulaEditor />
+    </>
+  )
+}
+
+function FormulaEditor() {
   const { functionId } = usePageRouteParams('functionId')
   const api = useApi(formulaApi)
   const run = useRunApi()
@@ -806,12 +818,9 @@ export default function FormulaEditorPage() {
   // where somebody else's formula can be started from, when this viewer may go there
   const templatesHref = usePageHref('assessment-formula/templates')
   const goto = usePageNavigate()
-  // A workbench at every width: it takes the room under the application's
-  // bars and scrolls inside. Side by side where there is room, and on a
-  // phone the same parts spread over tabs, with the step that comes next
-  // standing at the foot.
+  // Side by side where there is room, and on a phone the same parts spread
+  // over tabs, with the step that comes next standing at the foot.
   const narrow = useIsMobile()
-  useClaimScreenFill(true)
   // the editors' buffers, undo histories and language sessions live as long
   // as this page does, not as long as whatever currently draws them
   const [editorLease] = useState(() => `formula-page-${newTestKey()}`)

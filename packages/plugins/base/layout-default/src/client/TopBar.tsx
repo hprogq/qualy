@@ -87,8 +87,21 @@ const styles = stylex.create({
   barStacked: {
     borderBottomColor: tokens.divider,
   },
+  // the line along the column of sections, which a screen that fills the
+  // room has put away
   barRuled: {
-    boxShadow: { default: null, [breakpoints.desktop]: `inset 0 -1px 0 ${tokens.border}` },
+    boxShadow: {
+      default: null,
+      [breakpoints.desktop]: `inset 0 -1px 0 ${tokens.border}`,
+      [stylex.when.ancestor(':has([data-screen-fill="always"])')]: {
+        default: null,
+        [breakpoints.desktop]: 'none',
+      },
+      [stylex.when.ancestor(':has([data-screen-fill="tablet"])')]: {
+        default: null,
+        [breakpoints.desktop]: 'none',
+      },
+    },
   },
   barScrolled: {
     backgroundColor: `color-mix(in oklch, ${tokens.background} 62%, transparent)`,
