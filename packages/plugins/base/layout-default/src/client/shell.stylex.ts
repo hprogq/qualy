@@ -18,3 +18,10 @@ export const shell = stylex.defineConsts({
   phoneTopBarHeight: '48px',
   sectionBarHeight: '40px',
 })
+
+// The shell's own root, for the rules that answer what the open screen says
+// in its html (`:has([data-screen-fill])`, `:has([data-screen-aside])`).
+// A marker of its own, not StyleX's default one: every `when.ancestor(':hover')`
+// in the product asks the default marker, and a shell root carrying it made
+// a pointer anywhere in the window count as hovering each of them.
+export const shellRoot = stylex.defineMarker()

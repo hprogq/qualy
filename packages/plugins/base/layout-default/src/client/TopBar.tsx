@@ -5,7 +5,7 @@ import { Wordmark } from '@qualy/brand/wordmark'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { layout } from '@qualy/ui/theme/layout.stylex'
-import { shell } from './shell.stylex.ts'
+import { shell, shellRoot } from './shell.stylex.ts'
 import { pending } from './pending.ts'
 import { chipRowFades, chips, useChipRow } from './chip-row.ts'
 import {
@@ -93,11 +93,11 @@ const styles = stylex.create({
     boxShadow: {
       default: null,
       [breakpoints.desktop]: `inset 0 -1px 0 ${tokens.border}`,
-      [stylex.when.ancestor(':has([data-screen-fill="always"])')]: {
+      [stylex.when.ancestor(':has([data-screen-fill="always"])', shellRoot)]: {
         default: null,
         [breakpoints.desktop]: 'none',
       },
-      [stylex.when.ancestor(':has([data-screen-fill="tablet"])')]: {
+      [stylex.when.ancestor(':has([data-screen-fill="tablet"])', shellRoot)]: {
         default: null,
         [breakpoints.desktop]: 'none',
       },

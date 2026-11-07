@@ -253,6 +253,23 @@ describe('the application shell', () => {
     expect(page.getByRole('link', { name: '全部测评' }).elements()).toHaveLength(0)
   })
 
+  // A tab's underline answers a pointer on that tab, and nowhere else: the
+  // shell's own root once carried the marker the tabs ask, and a pointer
+  // anywhere in the window underlined every one of them.
+  it('underlines only the tab under the pointer', async () => {
+    await shell(<AppShell />, '/organization/users', '/organization/users')
+    const tab = page.getByRole('link', { name: '测评' })
+    await expect.element(tab).toBeVisible()
+    const underline = () => getComputedStyle(tab.element().firstElementChild!, '::after').transform
+    const shown = 'matrix(1, 0, 0, 1, 0, 0)'
+    await page.getByRole('main').hover()
+    await expect.poll(underline).not.toBe(shown)
+    await tab.hover()
+    await expect.poll(underline).toBe(shown)
+    await page.getByRole('link', { name: '组织与权限' }).hover()
+    await expect.poll(underline).not.toBe(shown)
+  })
+
   it('says when the page has moved under its bars, and only then', async () => {
     // the bars sit inside the scrolling element; a page taller than it
     // puts them to the test

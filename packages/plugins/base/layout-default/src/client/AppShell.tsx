@@ -12,7 +12,7 @@ import { SideNav } from './SideNav.tsx'
 import { BandFootScope } from '@qualy/ui/screen'
 
 import { useAppNavigation } from './useAppNavigation.ts'
-import { shell } from './shell.stylex.ts'
+import { shell, shellRoot } from './shell.stylex.ts'
 import * as m from '#messages'
 
 // app-shell/v1 provider: applications across the top, the sections of the
@@ -61,8 +61,8 @@ const styles = stylex.create({
     // not scroll around it - said by the screen in its html (ScreenFill)
     overflowY: {
       default: 'auto',
-      [stylex.when.ancestor(':has([data-screen-fill="always"])')]: 'hidden',
-      [stylex.when.ancestor(':has([data-screen-fill="tablet"])')]: {
+      [stylex.when.ancestor(':has([data-screen-fill="always"])', shellRoot)]: 'hidden',
+      [stylex.when.ancestor(':has([data-screen-fill="tablet"])', shellRoot)]: {
         default: 'hidden',
         [breakpoints.phone]: 'auto',
       },
@@ -84,8 +84,8 @@ const styles = stylex.create({
     scrollbarGutter: {
       default: 'stable',
       [breakpoints.phone]: 'auto',
-      [stylex.when.ancestor(':has([data-screen-fill="always"])')]: 'auto',
-      [stylex.when.ancestor(':has([data-screen-fill="tablet"])')]: 'auto',
+      [stylex.when.ancestor(':has([data-screen-fill="always"])', shellRoot)]: 'auto',
+      [stylex.when.ancestor(':has([data-screen-fill="tablet"])', shellRoot)]: 'auto',
     },
   },
   head: {
@@ -119,16 +119,16 @@ const styles = stylex.create({
     // around a screen that fills the room, exactly the room the bars leave
     minHeight: {
       default: 'auto',
-      [stylex.when.ancestor(':has([data-screen-fill="always"])')]: 0,
-      [stylex.when.ancestor(':has([data-screen-fill="tablet"])')]: {
+      [stylex.when.ancestor(':has([data-screen-fill="always"])', shellRoot)]: 0,
+      [stylex.when.ancestor(':has([data-screen-fill="tablet"])', shellRoot)]: {
         default: 0,
         [breakpoints.phone]: 'auto',
       },
     },
     flexShrink: {
       default: 0,
-      [stylex.when.ancestor(':has([data-screen-fill="always"])')]: 1,
-      [stylex.when.ancestor(':has([data-screen-fill="tablet"])')]: {
+      [stylex.when.ancestor(':has([data-screen-fill="always"])', shellRoot)]: 1,
+      [stylex.when.ancestor(':has([data-screen-fill="tablet"])', shellRoot)]: {
         default: 1,
         [breakpoints.phone]: 0,
       },
@@ -144,11 +144,11 @@ const styles = stylex.create({
     display: {
       default: 'none',
       [breakpoints.desktop]: 'block',
-      [stylex.when.ancestor(':has([data-screen-fill="always"])')]: {
+      [stylex.when.ancestor(':has([data-screen-fill="always"])', shellRoot)]: {
         default: 'none',
         [breakpoints.desktop]: 'none',
       },
-      [stylex.when.ancestor(':has([data-screen-fill="tablet"])')]: {
+      [stylex.when.ancestor(':has([data-screen-fill="tablet"])', shellRoot)]: {
         default: 'none',
         [breakpoints.desktop]: 'none',
       },
@@ -182,16 +182,16 @@ const styles = stylex.create({
     // around a screen that fills the room, exactly the room the bars leave
     minHeight: {
       default: 'auto',
-      [stylex.when.ancestor(':has([data-screen-fill="always"])')]: 0,
-      [stylex.when.ancestor(':has([data-screen-fill="tablet"])')]: {
+      [stylex.when.ancestor(':has([data-screen-fill="always"])', shellRoot)]: 0,
+      [stylex.when.ancestor(':has([data-screen-fill="tablet"])', shellRoot)]: {
         default: 0,
         [breakpoints.phone]: 'auto',
       },
     },
     flexShrink: {
       default: 0,
-      [stylex.when.ancestor(':has([data-screen-fill="always"])')]: 1,
-      [stylex.when.ancestor(':has([data-screen-fill="tablet"])')]: {
+      [stylex.when.ancestor(':has([data-screen-fill="always"])', shellRoot)]: 1,
+      [stylex.when.ancestor(':has([data-screen-fill="tablet"])', shellRoot)]: {
         default: 1,
         [breakpoints.phone]: 0,
       },
@@ -216,8 +216,8 @@ const styles = stylex.create({
   foot: {
     display: {
       default: 'contents',
-      [stylex.when.ancestor(':has([data-screen-fill="always"])')]: 'none',
-      [stylex.when.ancestor(':has([data-screen-fill="tablet"])')]: {
+      [stylex.when.ancestor(':has([data-screen-fill="always"])', shellRoot)]: 'none',
+      [stylex.when.ancestor(':has([data-screen-fill="tablet"])', shellRoot)]: {
         default: 'none',
         [breakpoints.phone]: 'contents',
       },
@@ -316,7 +316,7 @@ function Shell() {
   }, [heading, barHeight])
 
   return (
-    <div {...stylex.props(styles.root, stylex.defaultMarker())}>
+    <div {...stylex.props(styles.root, shellRoot)}>
       <div
         ref={head}
         data-shell-head=""

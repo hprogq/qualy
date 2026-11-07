@@ -7,7 +7,7 @@ import { Loader } from '@qualy/brand/loader'
 import { a11yStyles } from '@qualy/ui/visually-hidden'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
-import { shell } from './shell.stylex.ts'
+import { shell, shellRoot } from './shell.stylex.ts'
 import { pending } from './pending.ts'
 import { chipRowFades, chips, useChipRow } from './chip-row.ts'
 import {
@@ -194,11 +194,11 @@ const styles = stylex.create({
       // holds no strip for one either
       [breakpoints.phone]: 'auto',
       // a screen that fills the room says so in its html (ScreenFill)
-      [stylex.when.ancestor(':has([data-screen-fill="always"])')]: 'auto',
-      [stylex.when.ancestor(':has([data-screen-fill="tablet"])')]: 'auto',
+      [stylex.when.ancestor(':has([data-screen-fill="always"])', shellRoot)]: 'auto',
+      [stylex.when.ancestor(':has([data-screen-fill="tablet"])', shellRoot)]: 'auto',
       // beside a column of its own a screen runs to the window's edge;
       // only the gutter goes - a long account beside it still scrolls
-      [stylex.when.ancestor(':has([data-screen-aside])')]: {
+      [stylex.when.ancestor(':has([data-screen-aside])', shellRoot)]: {
         default: 'stable',
         [breakpoints.phone]: 'auto',
         [breakpoints.desktop]: 'auto',
@@ -250,7 +250,7 @@ const styles = stylex.create({
     display: {
       default: 'none',
       [breakpoints.desktop]: 'block',
-      [stylex.when.ancestor(':has([data-screen-aside])')]: {
+      [stylex.when.ancestor(':has([data-screen-aside])', shellRoot)]: {
         default: 'none',
         [breakpoints.desktop]: 'none',
       },
@@ -387,8 +387,8 @@ const styles = stylex.create({
     flexDirection: 'column',
     overflowY: {
       default: 'auto',
-      [stylex.when.ancestor(':has([data-screen-fill="always"])')]: 'hidden',
-      [stylex.when.ancestor(':has([data-screen-fill="tablet"])')]: {
+      [stylex.when.ancestor(':has([data-screen-fill="always"])', shellRoot)]: 'hidden',
+      [stylex.when.ancestor(':has([data-screen-fill="tablet"])', shellRoot)]: {
         default: 'hidden',
         [breakpoints.phone]: 'auto',
       },
@@ -403,11 +403,11 @@ const styles = stylex.create({
       // holds no strip for one either
       [breakpoints.phone]: 'auto',
       // a screen that fills the room says so in its html (ScreenFill)
-      [stylex.when.ancestor(':has([data-screen-fill="always"])')]: 'auto',
-      [stylex.when.ancestor(':has([data-screen-fill="tablet"])')]: 'auto',
+      [stylex.when.ancestor(':has([data-screen-fill="always"])', shellRoot)]: 'auto',
+      [stylex.when.ancestor(':has([data-screen-fill="tablet"])', shellRoot)]: 'auto',
       // beside a column of its own a screen runs to the window's edge;
       // only the gutter goes - a long account beside it still scrolls
-      [stylex.when.ancestor(':has([data-screen-aside])')]: {
+      [stylex.when.ancestor(':has([data-screen-aside])', shellRoot)]: {
         default: 'stable',
         [breakpoints.phone]: 'auto',
         [breakpoints.desktop]: 'auto',
@@ -502,8 +502,8 @@ const styles = stylex.create({
     flexBasis: '0%',
     overflowY: {
       default: 'auto',
-      [stylex.when.ancestor(':has([data-screen-fill="always"])')]: 'hidden',
-      [stylex.when.ancestor(':has([data-screen-fill="tablet"])')]: {
+      [stylex.when.ancestor(':has([data-screen-fill="always"])', shellRoot)]: 'hidden',
+      [stylex.when.ancestor(':has([data-screen-fill="tablet"])', shellRoot)]: {
         default: 'hidden',
         [breakpoints.phone]: 'auto',
       },
@@ -518,11 +518,11 @@ const styles = stylex.create({
       // holds no strip for one either
       [breakpoints.phone]: 'auto',
       // a screen that fills the room says so in its html (ScreenFill)
-      [stylex.when.ancestor(':has([data-screen-fill="always"])')]: 'auto',
-      [stylex.when.ancestor(':has([data-screen-fill="tablet"])')]: 'auto',
+      [stylex.when.ancestor(':has([data-screen-fill="always"])', shellRoot)]: 'auto',
+      [stylex.when.ancestor(':has([data-screen-fill="tablet"])', shellRoot)]: 'auto',
       // beside a column of its own a screen runs to the window's edge;
       // only the gutter goes - a long account beside it still scrolls
-      [stylex.when.ancestor(':has([data-screen-aside])')]: {
+      [stylex.when.ancestor(':has([data-screen-aside])', shellRoot)]: {
         default: 'stable',
         [breakpoints.phone]: 'auto',
         [breakpoints.desktop]: 'auto',
@@ -1223,7 +1223,7 @@ function CapableRailShell({
   )
 
   return (
-    <div {...stylex.props(styles.root, stylex.defaultMarker())}>
+    <div {...stylex.props(styles.root, shellRoot)}>
       {/* Above a record the bar stays whatever the width: it carries the
           product's own mark, and a record opened from somewhere else with
           no mark above it reads as a different site. Inside a workspace on
