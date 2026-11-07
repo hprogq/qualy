@@ -217,7 +217,12 @@ export const serverRoutes = ({
               queries: states.flatMap((state) => state.queries),
               mutations: states.flatMap((state) => state.mutations),
             },
-      workspaceCapabilities: fromPage?.workspaceCapabilities,
+      // who the reader is in the open workspace, from whichever surface
+      // prepares the workspace - its bar, usually - rather than from
+      // whichever page happens to be open under it
+      workspaceCapabilities: [fromPage, ...fromSlots].find(
+        (result) => result?.workspaceCapabilities !== undefined,
+      )?.workspaceCapabilities,
       slotReferences: fromPage?.slotReferences ?? [],
     }
   }

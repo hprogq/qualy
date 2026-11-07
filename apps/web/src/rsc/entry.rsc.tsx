@@ -52,6 +52,7 @@ const renderRequestOf = (request: Request): RenderRequest => {
   const headers = Object.fromEntries(request.headers)
   return {
     url: new URL(request.url),
+    reads: new Map(),
     renderedAt: Date.now(),
     locale: localeOfRequest({ headers, cookies: cookiesOf(request.headers.get('cookie')) }),
     release: { releaseId: webRelease.releaseId, clientProtocol: webRelease.clientProtocol },

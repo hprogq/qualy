@@ -9,7 +9,7 @@ import type { SupportedLocale } from '@qualy/i18n-contract'
 import { QUALY_CLIENT_PROTOCOL_HEADER, QUALY_CLIENT_RELEASE_HEADER } from '@qualy/release-contract'
 import type { BrowserSurface, SlotSurface } from '@qualy/ui-contract'
 import type { Manifest } from '@qualy/web-runtime'
-import type { DehydratedState } from '@tanstack/query-core'
+import { hashKey, type DehydratedState, type QueryKey } from '@tanstack/query-core'
 
 // One document request, as everything rendering it sees it
 // (docs/adr/0012-rsc-data-mode.md).
@@ -92,6 +92,12 @@ export interface RenderRequest {
    * scripts run by, made fresh for each document; none where no policy asks.
    */
   readonly nonce?: string | undefined
+  /**
+   * The reads this request has made under a query key, each made once
+   * however many parts of the document ask: the bar over a batch's pages and
+   * the page under it read the same batch.
+   */
+  readonly reads?: Map<string, Promise<Exit.Exit<unknown, unknown>>>
   /** ends when the reader goes away: every read below is cancelled with it */
   readonly signal: AbortSignal
   readonly surfaces: SurfaceTables
@@ -174,11 +180,26 @@ export const readApi = <ApiId extends string, Groups extends HttpApiGroup.Constr
 export const readApiExit = <ApiId extends string, Groups extends HttpApiGroup.Constraint, A, E>(
   api: HttpApi.HttpApi<ApiId, Groups>,
   read: (client: HttpApiClient.Client<Groups>) => Effect.Effect<A, E>,
+  options: {
+    /**
+     * The key the page reads this under (@qualy/web-runtime/query-key):
+     * named, the read is made once for the whole request, and every part of
+     * the document that asks with the same key is handed the same answer.
+     */
+    readonly key?: QueryKey
+  } = {},
 ): Promise<Exit.Exit<A, E | HttpClientError.HttpClientError | Schema.SchemaError>> => {
+  type Read = Promise<Exit.Exit<A, E | HttpClientError.HttpClientError | Schema.SchemaError>>
   const request = renderRequest()
-  return Effect.runPromiseExit(reading(api, read, request), { signal: request.signal }) as Promise<
-    Exit.Exit<A, E | HttpClientError.HttpClientError | Schema.SchemaError>
-  >
+  const run = () =>
+    Effect.runPromiseExit(reading(api, read, request), { signal: request.signal }) as Read
+  if (options.key === undefined || request.reads === undefined) return run()
+  const hash = hashKey(options.key)
+  const made = request.reads.get(hash)
+  if (made !== undefined) return made as Read
+  const making = run()
+  request.reads.set(hash, making as Promise<Exit.Exit<unknown, unknown>>)
+  return making
 }
 
 const loaderOf = (surface: BrowserSurface): SurfaceLoader | undefined => {
