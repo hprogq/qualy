@@ -16,6 +16,7 @@ import {
 import { QUALY_IDENTITY_HEADER, QUALY_LOCALE_COOKIE, QUALY_LOCALE_HEADER } from '@qualy/api-kit'
 import { LIVE_CLOSE, LIVE_SUBPROTOCOL } from '@qualy/api-kit/live-socket'
 import { SLOT_REFERENCE_PATH, slotReferenceHref } from '@qualy/ui-contract'
+import { collectWebPlugins } from '@qualy/web-build/collect'
 import {
   QUALY_CLIENT_PROTOCOL_HEADER,
   QUALY_CLIENT_RELEASE_HEADER,
@@ -23,6 +24,7 @@ import {
 } from '@qualy/release-contract'
 import { repoRoot } from '../lib/manifest.ts'
 import { startQualyServer, type QualyServer } from '../lib/qualy-server.ts'
+import { acceptEntries } from './rsc-entries.ts'
 
 // The server-rendered document, accepted end to end on data of its own
 // (docs/adr/0012-rsc-data-mode.md).
@@ -69,6 +71,32 @@ const accounts = {
 const results: { readonly name: string; readonly ok: boolean; readonly detail?: string }[] = []
 const check = (name: string, ok: boolean, detail?: unknown) => {
   results.push({ name, ok, ...(ok ? {} : { detail: JSON.stringify(detail) }) })
+}
+
+const publicAssetNames = () => {
+  const directory = path.join(dist, 'client/assets')
+  const files = fs.readdirSync(directory)
+  const named = files.filter((file) => !/^[ecwas]-[\w-]+\.[\w.]+$/.test(file))
+  check(
+    'names public chunks, styles, fonts and workers without source module names',
+    named.length === 0,
+    named,
+  )
+  const scripts = files.filter((file) => file.endsWith('.js'))
+  const maps = scripts.filter((file) =>
+    fs.readFileSync(path.join(directory, file), 'utf8').includes('sourceMappingURL'),
+  )
+  check(
+    'keeps source map pointers out of the public RSC scripts',
+    scripts.length > 0 && maps.length === 0,
+    maps,
+  )
+  const shell = files.filter((file) => /^s-[\w-]+\.css$/.test(file))
+  check(
+    'puts the compiled StyleX rules in the document stylesheet',
+    shell.length === 1 &&
+      /@layer priority\d/.test(fs.readFileSync(path.join(directory, shell[0]!), 'utf8')),
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -1476,8 +1504,11 @@ const recoveryLinkHydration = async (browser: Browser) => {
     ]) {
       const page = await context.newPage()
       const errors: string[] = []
+      const requested: string[] = []
       page.on('pageerror', (error) => errors.push(error.message))
+      page.on('request', (request) => requested.push(request.url()))
       const response = await page.goto(site + path)
+      const html = await response?.text()
       await hydrated(page)
       const state = path.startsWith('/confirm-email')
         ? page.getByTestId('confirm-state')
@@ -1488,6 +1519,12 @@ const recoveryLinkHydration = async (browser: Browser) => {
         response?.status() === 200 && errors.length === 0,
         errors,
       )
+      check(
+        `keeps a recovery credential out of document requests and HTML (${path.split('#')[0]})`,
+        !requested.some((url) => url.includes('invalid-fixture-token')) &&
+          html !== undefined &&
+          !html.includes('invalid-fixture-token'),
+      )
       await page.close()
     }
   } finally {
@@ -1495,7 +1532,56 @@ const recoveryLinkHydration = async (browser: Browser) => {
   }
 }
 
+const pluginEntries = async (browser: Browser, batchId: string) => {
+  const { userId, typeId } = await scratch.row<{ userId: string; typeId: string }>(
+    'select id as "userId", user_type_id as "typeId" from users where email = $1',
+    [accounts.student.email],
+  )
+  const { roleId } = await scratch.row<{ roleId: string }>(
+    'select id as "roleId" from roles where code = $1',
+    ['org-manager'],
+  )
+  const response = await fetch(`${site}/api/assessment/formula-functions`, {
+    method: 'POST',
+    headers: { cookie: await signIn('admin'), 'content-type': 'application/json' },
+    body: JSON.stringify({ name: 'RSC entry acceptance' }),
+  })
+  if (!response.ok) throw new Error(`could not create the entry's formula: ${response.status}`)
+  const { function: formula } = (await response.json()) as { function: { id: string } }
+  const plugins = await collectWebPlugins()
+  await acceptEntries({
+    site,
+    expectedPages: plugins.flatMap((plugin) =>
+      plugin.surfaces.flatMap(({ surface }) => (surface.kind === 'page' ? [surface.id] : [])),
+    ),
+    viewers: [
+      {
+        name: 'anonymous',
+        context: (width) => browser.newContext({ viewport: { width, height: 900 } }),
+      },
+      ...(['admin', 'student'] as const).map((who) => ({
+        name: who,
+        context: (width: number) => signedInContext(browser, who, { width }),
+      })),
+    ],
+    records: {
+      batchId: { id: batchId },
+      userId: { id: userId },
+      typeId: { id: typeId },
+      roleId: { id: roleId },
+      functionId: { id: formula.id },
+      // This fixture has neither a published formula nor a submitted review.
+      // These two entries cover their explicit missing-record states only.
+      versionId: { id: '00000000-0000-4000-8000-000000000001', missing: true },
+      instanceId: { id: '00000000-0000-4000-8000-000000000002', missing: true },
+    },
+    hydrated,
+    check,
+  })
+}
+
 const checks = async () => {
+  publicAssetNames()
   await refusals()
   await cookies(scratch)
   await cancellation()
@@ -1516,6 +1602,7 @@ const checks = async () => {
   await grantSurfaces(browser, batch)
   await guardedNavigation(browser, batch)
   await frozenLiveChannels(browser, batch)
+  await pluginEntries(browser, batch)
 }
 
 let server: QualyServer | undefined

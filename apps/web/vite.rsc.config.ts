@@ -56,7 +56,7 @@ export default defineConfig(({ mode }) => ({
         // for its shell: left to the plugin, the rules went to whichever
         // stylesheet came first, one page's lazy one, and every other page
         // drew unstyled.
-        cssInjectionTarget: (file) => /(^|[\\/])entry-[^\\/]*\.css$/.test(file),
+        cssInjectionTarget: (file) => /(^|[\\/])s-[^\\/]*\.css$/.test(file),
         lightningcssOptions: { minify: mode === 'production' },
       }),
     ),
@@ -95,11 +95,36 @@ export default defineConfig(({ mode }) => ({
       },
     },
     client: {
-      build: { outDir: 'dist-rsc/client' },
+      build: {
+        outDir: 'dist-rsc/client',
+        rollupOptions: {
+          output: {
+            // Public names identify bytes, never the plugin or component
+            // that produced them. The entry stylesheet has a role of its
+            // own so StyleX can append its rules to the one every page loads.
+            entryFileNames: 'assets/e-[hash].js',
+            chunkFileNames: 'assets/c-[hash].js',
+            assetFileNames: (info) =>
+              info.names?.includes('entry.css')
+                ? 'assets/s-[hash][extname]'
+                : 'assets/a-[hash][extname]',
+          },
+        },
+      },
       optimizeDeps: {
         entries: ['src/rsc/entry.browser.tsx'],
         // Loaded by the router's Flight references, outside static imports.
         include: ['react-router/internal/react-server-client'],
+      },
+    },
+  },
+  worker: {
+    format: 'es',
+    rollupOptions: {
+      output: {
+        entryFileNames: 'assets/w-[hash].js',
+        chunkFileNames: 'assets/w-[hash].js',
+        assetFileNames: 'assets/a-[hash][extname]',
       },
     },
   },
