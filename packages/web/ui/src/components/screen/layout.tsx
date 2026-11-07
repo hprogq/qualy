@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '../../theme/tokens.stylex.ts'
 import { breakpoints } from '../../theme/breakpoints.stylex.ts'
+import { useIsBelow } from '../../hooks/use-mobile.ts'
 
 // Two pieces of page geometry a tree-beside-a-list screen needs and CSS alone
 // does not give: a side column the reader sets the width of, and a box in it
@@ -26,8 +27,8 @@ const styles = stylex.create({
   },
   splitDragging: { transitionDuration: '0ms' },
   columns: (width: number, gap: number) => ({
-    gridTemplateColumns: `${width}px minmax(0, 1fr)`,
-    columnGap: gap,
+    gridTemplateColumns: { default: null, [breakpoints.wide]: `${width}px minmax(0, 1fr)` },
+    columnGap: { default: null, [breakpoints.wide]: gap },
   }),
   side: {
     minWidth: 0,
@@ -39,10 +40,13 @@ const styles = stylex.create({
     transitionProperty: 'opacity, visibility',
     transitionDuration: { default: '220ms', '@media (prefers-reduced-motion: reduce)': '0ms' },
   },
-  sideClosed: { opacity: 0, visibility: 'hidden' },
-  sideStackedClosed: { display: 'none' },
+  sideClosed: {
+    display: { default: 'none', [breakpoints.wide]: 'block' },
+    opacity: 0,
+    visibility: 'hidden',
+  },
   sideContent: { height: '100%' },
-  sideWidth: (width: number) => ({ width }),
+  sideWidth: (width: number) => ({ width: { default: null, [breakpoints.wide]: width } }),
   main: { minWidth: 0 },
   // the strip between the two, wide enough to catch and drawn only on hover
   handle: {
@@ -50,7 +54,7 @@ const styles = stylex.create({
     top: 0,
     bottom: 0,
     zIndex: 5,
-    display: { default: 'flex', [breakpoints.phone]: 'none', [breakpoints.tablet]: 'none' },
+    display: { default: 'none', [breakpoints.wide]: 'flex' },
     width: 12,
     alignItems: 'center',
     justifyContent: 'center',
@@ -91,8 +95,6 @@ const styles = stylex.create({
   fill: { position: 'sticky', display: 'flex', minHeight: 0, flexDirection: 'column' },
 })
 
-const DESKTOP = '(min-width: 1024px)'
-
 /**
  * A side column and what it opens, with the boundary between them the
  * reader's to move.
@@ -107,7 +109,6 @@ export function ResizableSplit({
   initial = 300,
   min = 240,
   max = 520,
-  from = 1024,
   handleLabel,
   collapsed = false,
   side,
@@ -117,15 +118,6 @@ export function ResizableSplit({
   initial?: number
   min?: number
   max?: number
-  /**
-   * The width from which the two stand side by side.
-   *
-   * The default is where two columns first fit at all. A page whose main
-   * side needs more than that says so: below it the two stack, which is the
-   * only way a side that has folded to one line stops taking a column the
-   * other side needed.
-   */
-  from?: number
   /** spoken name of the boundary */
   handleLabel: string
   /** Keep the main content mounted while the side folds out of view. */
@@ -133,17 +125,8 @@ export function ResizableSplit({
   side: ReactNode
   children: ReactNode
 }) {
-  const beside = `(min-width: ${String(from)}px)`
   const clamp = useCallback((width: number) => Math.min(max, Math.max(min, width)), [min, max])
-  const [width, setWidth] = useState(() => {
-    try {
-      const stored = Number(window.localStorage.getItem(storageKey))
-      return Number.isFinite(stored) && stored > 0 ? clamp(stored) : initial
-    } catch {
-      return initial
-    }
-  })
-  const [wide, setWide] = useState(() => window.matchMedia(beside).matches)
+  const [width, setWidth] = useState(initial)
   const [dragging, setDragging] = useState(false)
   const [hover, setHover] = useState(false)
   const origin = useRef<{ x: number; width: number } | null>(null)
@@ -157,13 +140,14 @@ export function ResizableSplit({
     }
   }, [collapsed])
 
-  useEffect(() => {
-    const media = window.matchMedia(beside)
-    const listen = () => setWide(media.matches)
-    listen()
-    media.addEventListener('change', listen)
-    return () => media.removeEventListener('change', listen)
-  }, [beside])
+  useLayoutEffect(() => {
+    try {
+      const stored = Number(window.localStorage.getItem(storageKey))
+      if (Number.isFinite(stored) && stored > 0) setWidth(clamp(stored))
+    } catch {
+      // Without storage the default width already drawn is the preference.
+    }
+  }, [clamp, storageKey])
 
   const keep = (next: number) => {
     try {
@@ -177,7 +161,7 @@ export function ResizableSplit({
     <div
       {...stylex.props(
         styles.split,
-        wide && hasSide && styles.columns(collapsed ? 0 : width, collapsed ? 0 : GAP),
+        hasSide && styles.columns(collapsed ? 0 : width, collapsed ? 0 : GAP),
         dragging && styles.splitDragging,
       )}
       data-split-width={width}
@@ -190,17 +174,13 @@ export function ResizableSplit({
         <div
           ref={sideRef}
           inert={collapsed}
-          {...stylex.props(
-            styles.side,
-            collapsed && styles.sideClosed,
-            collapsed && !wide && styles.sideStackedClosed,
-          )}
+          {...stylex.props(styles.side, collapsed && styles.sideClosed)}
           data-testid="split-side"
         >
-          <div {...stylex.props(styles.sideContent, wide && styles.sideWidth(width))}>{side}</div>
+          <div {...stylex.props(styles.sideContent, styles.sideWidth(width))}>{side}</div>
         </div>
       )}
-      {hasSide && wide && !collapsed && (
+      {hasSide && !collapsed && (
         <button
           type="button"
           role="separator"
@@ -269,13 +249,7 @@ export function StickyFill({
   const [box, setBox] = useState<{ top: number; height: number } | null>(null)
   // stacked under one another there is no side column to fill: the box is
   // then as tall as the caller lets its content be
-  const [wide, setWide] = useState(() => window.matchMedia(DESKTOP).matches)
-  useEffect(() => {
-    const media = window.matchMedia(DESKTOP)
-    const listen = () => setWide(media.matches)
-    media.addEventListener('change', listen)
-    return () => media.removeEventListener('change', listen)
-  }, [])
+  const wide = !useIsBelow(1024)
 
   useLayoutEffect(() => {
     const node = mark.current

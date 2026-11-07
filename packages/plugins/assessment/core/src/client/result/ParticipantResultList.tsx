@@ -1243,7 +1243,6 @@ export function ParticipantResultList({
         initial={TREE_MOST}
         min={220}
         max={TREE_MOST}
-        from={TWO_COLUMNS}
         collapsed={!treeBeside}
         handleLabel={m.roster_unitsResize()}
         // Keep the list mounted as the tree folds, retaining its focus and scroll.

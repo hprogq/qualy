@@ -1,6 +1,6 @@
 import * as stylex from '@stylexjs/stylex'
 
-// The three widths the product is laid out for, named once.
+// The widths the product is laid out for, named once.
 //
 // Every media query in browser code goes through these, so the phone
 // boundary is the same number everywhere: the hook that folds the shell
@@ -18,4 +18,5 @@ export const breakpoints = stylex.defineConsts({
   phone: '@media (max-width: 767.98px)',
   tablet: '@media (min-width: 768px) and (max-width: 1023.98px)',
   desktop: '@media (min-width: 1024px)',
+  wide: '@media (min-width: 1280px)',
 })
