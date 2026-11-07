@@ -1406,6 +1406,95 @@ const frozenLiveChannels = async (browser: Browser, batch: string) => {
   }
 }
 
+const shellFirstPaint = async (browser: Browser) => {
+  for (const width of [1440, 390]) {
+    const context = await signedInContext(browser, 'admin', { width })
+    try {
+      for (const address of ['/library/formulas', '/organization/tree', '/organization/users']) {
+        const page = await context.newPage()
+        const errors: string[] = []
+        page.on('pageerror', (error) => errors.push(error.message))
+        let resume!: () => void
+        const scripts = new Promise<void>((resolve) => {
+          resume = resolve
+        })
+        await page.route('**/*', async (route) => {
+          if (route.request().resourceType() === 'script') await scripts
+          await route.continue()
+        })
+        try {
+          await page.goto(site + address, { waitUntil: 'commit' })
+          const heading = page.getByRole('heading', { level: 1 })
+          const head = page.locator('[data-shell-head]')
+          const side = page.getByTestId('side-nav')
+          await heading.waitFor()
+          await inPage(page, 'document.fonts.ready.then(() => true)')
+          const before = await Promise.all([heading.boundingBox(), head.boundingBox()])
+          const sidebar = await side.isVisible()
+          resume()
+          await hydrated(page)
+          await inPage(
+            page,
+            'new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))',
+          )
+          const after = await Promise.all([heading.boundingBox(), head.boundingBox()])
+          const stable = before.every((first, index) => {
+            const last = after[index]
+            return (
+              first !== null &&
+              last != null &&
+              (['x', 'y', 'width', 'height'] as const).every(
+                (key) => Math.abs(first[key] - last[key]) <= 0.0625,
+              )
+            )
+          })
+          check(
+            `keeps the shell geometry during hydration (${address}, ${width}px)`,
+            stable &&
+              sidebar === width >= 1024 &&
+              (await side.isVisible()) === sidebar &&
+              errors.length === 0,
+            { before, after, sidebar, errors },
+          )
+        } finally {
+          resume()
+          await page.close()
+        }
+      }
+    } finally {
+      await context.close()
+    }
+  }
+}
+
+const recoveryLinkHydration = async (browser: Browser) => {
+  const context = await browser.newContext()
+  try {
+    for (const path of [
+      '/reset-password#token=invalid-fixture-token',
+      '/confirm-email#token=invalid-fixture-token&purpose=verify',
+    ]) {
+      const page = await context.newPage()
+      const errors: string[] = []
+      page.on('pageerror', (error) => errors.push(error.message))
+      const response = await page.goto(site + path)
+      await hydrated(page)
+      const state = path.startsWith('/confirm-email')
+        ? page.getByTestId('confirm-state')
+        : page.getByRole('heading', { name: /链接已失效|Link.*expired/ })
+      await state.waitFor({ timeout: 10_000 })
+      check(
+        `hydrates a recovery link whose token stays in the fragment (${path.split('#')[0]})`,
+        response?.status() === 200 && errors.length === 0,
+        errors,
+      )
+      await page.close()
+    }
+  } finally {
+    await context.close()
+  }
+}
+
 const checks = async () => {
   await refusals()
   await cookies(scratch)
@@ -1422,6 +1511,8 @@ const checks = async () => {
   await batchListFirstScreen(browser, batch)
   await overviewFirstScreen(browser, batch)
   await hydrationPositions(browser, batch)
+  await shellFirstPaint(browser)
+  await recoveryLinkHydration(browser)
   await grantSurfaces(browser, batch)
   await guardedNavigation(browser, batch)
   await frozenLiveChannels(browser, batch)
