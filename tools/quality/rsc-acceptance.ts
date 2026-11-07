@@ -357,9 +357,12 @@ const signIn = async (who: keyof typeof accounts): Promise<string> => {
  * A batch the student takes part in, made as an administrator makes one:
  * through the business api, importing the student's class and type.
  */
-const batchFor = async (scratch: {
-  row: <Row>(text: string, params?: readonly unknown[]) => Promise<Row>
-}): Promise<string> => {
+const batchFor = async (
+  scratch: {
+    row: <Row>(text: string, params?: readonly unknown[]) => Promise<Row>
+  },
+  name = 'RSC acceptance',
+): Promise<string> => {
   const admin = await signIn('admin')
   const { org, type } = await scratch.row<{ org: string; type: string }>(
     `select primary_org_node_id as org, user_type_id as type from users where email = $1`,
@@ -369,7 +372,7 @@ const batchFor = async (scratch: {
     method: 'POST',
     headers: { cookie: admin, 'content-type': 'application/json' },
     body: JSON.stringify({
-      name: 'RSC acceptance',
+      name,
       descriptionMd: 'Bring **the certificates** you are claiming for.',
       materialRange: { start: '2026-09-01', end: '2027-07-31' },
       timezone: 'Asia/Shanghai',
@@ -380,6 +383,89 @@ const batchFor = async (scratch: {
     throw new Error(`the batch was not made: ${response.status} ${await response.text()}`)
   }
   return ((await response.json()) as { batch: { id: string } }).batch.id
+}
+
+/**
+ * A batch whose stage is open, for the pages a participant reads: made as
+ * `batchFor` makes one, given a stage, and moved into it - a participant
+ * sees a round once a stage of it is current, not while it waits to begin.
+ */
+const startedBatchFor = async (scratch: {
+  row: <Row>(text: string, params?: readonly unknown[]) => Promise<Row>
+}): Promise<string> => {
+  const batch = await batchFor(scratch, 'RSC acceptance running')
+  const admin = await signIn('admin')
+  const write = async (method: string, path: string, body: unknown) => {
+    const response = await fetch(`${site}/api/assessment/batches/${batch}${path}`, {
+      method,
+      headers: { cookie: admin, 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    if (response.status !== 200) {
+      throw new Error(`${method} ${path}: ${response.status} ${await response.text()}`)
+    }
+    return response.json() as Promise<{ phases: { id: string }[] }>
+  }
+  const { phases } = await write('PUT', '/phases', {
+    phases: [{ phaseKey: 'acceptance-filing', displayName: 'Acceptance filing' }],
+  })
+  await write('PUT', '/phase', { to: phases[0]!.id })
+  const seen = await fetch(`${site}/api/assessment/batches/${batch}`, {
+    headers: { cookie: await signIn('student') },
+  })
+  const standing = seen.ok
+    ? ((await seen.json()) as { batch: { capabilities: { personal: boolean } } }).batch.capabilities
+        .personal
+    : false
+  if (!standing) throw new Error(`the open batch is not the participant’s: ${seen.status}`)
+  return batch
+}
+
+/**
+ * The student made a reviewer in a batch, through the business api: a role
+ * that processes reviews, granted to them over their own unit there.
+ */
+const reviewerIn = async (
+  scratch: { row: <Row>(text: string, params?: readonly unknown[]) => Promise<Row> },
+  batch: string,
+) => {
+  const { id: userId, primary_org_node_id: orgNodeId } = await scratch.row<{
+    id: string
+    primary_org_node_id: string
+  }>('select id, primary_org_node_id from users where email = $1', [accounts.student.email])
+  const cookie = await signIn('admin')
+  const write = async <A>(method: string, path: string, input: object): Promise<A> => {
+    const response = await fetch(`${site}/api${path}`, {
+      method,
+      headers: { cookie, 'content-type': 'application/json' },
+      body: JSON.stringify(input),
+    })
+    if (!response.ok) {
+      throw new Error(`${method} ${path}: ${response.status} ${await response.text()}`)
+    }
+    return (await response.json()) as A
+  }
+  const { id: roleId, version: draft } = await write<{ id: string; version: number }>(
+    'POST',
+    '/iam/roles',
+    { name: 'RSC review queue', kind: 'org' },
+  )
+  const role = `/iam/roles/${roleId}`
+  const { version: eligible } = await write<{ version: number }>('PUT', `${role}/eligibility`, {
+    version: draft,
+    holderPolicy: { mode: 'unrestricted' },
+    anchorPolicy: { mode: 'unrestricted' },
+  })
+  const { version: configured } = await write<{ version: number }>('PUT', `${role}/permissions`, {
+    version: eligible,
+    codes: ['assessment.review.process'],
+  })
+  await write('PUT', `${role}/status`, { version: configured, status: 'active' })
+  await write('POST', `/assessment/batches/${batch}/access`, {
+    roleId,
+    userIds: [userId],
+    orgNodeIds: [orgNodeId],
+  })
 }
 
 const manifestOf = async (cookie: string) =>
@@ -961,6 +1047,75 @@ const batchListFirstScreen = async (browser: Browser, batch: string) => {
   await context.close()
 }
 
+/**
+ * A page's first screen, drawn by the server and taken over by the page: its
+ * own content is painted before any of the application's own code runs -
+ * the html, and the parts the server streamed after it, which React's own
+ * inline scripts put in place - and once the page
+ * is the reader's it asks for none of what the server read for it - until
+ * the batch's live channel says otherwise, or for a few seconds where there
+ * is none. In a phone's width in another time zone too, where what the
+ * device says and the server cannot is the browser's to add, without the
+ * tree disagreeing with the html.
+ */
+const pageFirstScreen = async (
+  browser: Browser,
+  page: {
+    readonly name: string
+    readonly who: keyof typeof accounts
+    readonly address: string
+    /** the test id of the page's own content */
+    readonly content: string
+    /** the reads the server made for the page, by their api path and query */
+    readonly reads: readonly RegExp[]
+  },
+) => {
+  const still = await signedInContext(browser, page.who)
+  const html = await still.newPage()
+  // the application's modules never arrive: what is on screen is the server's
+  await html.route('**/assets/**/*.js', (route) => route.abort())
+  await html.goto(`${site}${page.address}`)
+  await html.waitForLoadState('load')
+  const drawn = await painted(html.getByTestId(page.content))
+  // what was on screen instead, to say why when it was not
+  const instead = drawn
+    ? []
+    : await html.locator('[data-testid]').evaluateAll((nodes) =>
+        (
+          nodes as unknown as {
+            getClientRects(): { readonly length: number }
+            getAttribute(name: string): string | null
+          }[]
+        )
+          .filter((node) => node.getClientRects().length > 0)
+          .map((node) => node.getAttribute('data-testid')),
+      )
+  await still.close()
+  for (const [width, timezoneId] of [
+    [1400, undefined],
+    [390, 'America/New_York'],
+  ] as const) {
+    const context = await signedInContext(browser, page.who, {
+      width,
+      ...(timezoneId === undefined ? {} : { timezoneId }),
+    })
+    const tab = await context.newPage()
+    const mismatches: string[] = []
+    tab.on('console', (message) => {
+      if (/hydrat/i.test(message.text())) mismatches.push(message.text().slice(0, 300))
+    })
+    tab.on('pageerror', (error) => mismatches.push(error.message.slice(0, 300)))
+    const asked = await ownReads(tab, page.address)
+    const again = asked.filter((url) => page.reads.some((read) => read.test(url)))
+    check(
+      `draws ${page.name} in the html and takes it over without asking again (${width}px)`,
+      drawn && again.length === 0 && mismatches.length === 0,
+      { drawn, again, mismatches, ...(drawn ? {} : { instead }) },
+    )
+    await context.close()
+  }
+}
+
 /** the batch overview's first screen, as the server draws it and the page takes it over */
 const overviewFirstScreen = async (browser: Browser, batch: string) => {
   const address = `/assessment/batches/${batch}`
@@ -1301,7 +1456,8 @@ const grantSurfaces = async (browser: Browser, batch: string) => {
     })
     await page.goto(site + address)
     await hydrated(page)
-    const presenter = page.getByTestId('grant-origin-batch')
+    // the grant over the acceptance batch, of however many the person holds
+    const presenter = page.locator(`[data-testid="grant-origin-batch"][data-batch-id="${batch}"]`)
     const linked = await presenter
       .getByRole('link', { name: 'RSC acceptance' })
       .waitFor({ timeout: 10_000 })
@@ -1687,6 +1843,49 @@ const checks = async () => {
   const batch = await batchFor(scratch)
   await batchListFirstScreen(browser, batch)
   await overviewFirstScreen(browser, batch)
+  const started = await startedBatchFor(scratch)
+  await pageFirstScreen(browser, {
+    name: "the participant's account",
+    who: 'student',
+    address: `/assessment/batches/${started}/my-result`,
+    content: 'result-ledger',
+    reads: [/\/me\/result(?:\?|$)/, /\/items(?:\?|$)/, /\/me\/entries(?:\?|$)/],
+  })
+  await pageFirstScreen(browser, {
+    name: "the participant's filings",
+    who: 'student',
+    address: `/assessment/batches/${started}/my-entries`,
+    // a round with no question yet open to filing says so
+    content: 'entries-empty',
+    reads: [
+      /\/me\/result(?:\?|$)/,
+      /\/items(?:\?|$)/,
+      /\/me\/entries(?:\?|$)/,
+      /\/score-groups(?:\?|$)/,
+    ],
+  })
+  await pageFirstScreen(browser, {
+    name: 'the roster',
+    who: 'admin',
+    address: `/assessment/batches/${started}/results`,
+    content: 'roster',
+    reads: [/\/participant-accounts\?/, /\/roster-units\?/, /\/participant-scores\?/],
+  })
+  await reviewerIn(scratch, started)
+  await pageFirstScreen(browser, {
+    name: 'the review queue',
+    who: 'student',
+    address: `/assessment/batches/${started}/reviews?view=time`,
+    content: 'review-inbox-empty',
+    reads: [/^\/assessment\/review\/inbox\?/, /^\/assessment\/review\/supplement-requests\?/],
+  })
+  await pageFirstScreen(browser, {
+    name: "the reader's rounds",
+    who: 'student',
+    address: '/account/batches',
+    content: 'person-batches',
+    reads: [/^\/assessment\/me\/batches(?:\?|$)/],
+  })
   await hydrationPositions(browser, batch)
   await shellFirstPaint(browser)
   await recoveryLinkHydration(browser)
@@ -1730,10 +1929,12 @@ try {
   if (process.env['RSC_ACCEPTANCE_HOLD'] === '1') {
     // the stack kept up for looking at by hand, until interrupted
     const batch = await batchFor(scratch)
+    const started = await startedBatchFor(scratch)
+    await reviewerIn(scratch, started)
     console.log(`rsc-acceptance: holding ${site}`)
     fs.writeFileSync(
       path.join(repoRoot, 'node_modules/.cache/rsc-acceptance.json'),
-      JSON.stringify({ site, accounts, batch }),
+      JSON.stringify({ site, accounts, batch, started }),
     )
     await new Promise<void>((resolve) => process.once('SIGINT', () => resolve()))
   } else {
