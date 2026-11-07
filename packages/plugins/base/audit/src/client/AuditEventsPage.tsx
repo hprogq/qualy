@@ -1,7 +1,6 @@
 'use client'
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
-import { pageNumber } from '@qualy/api-kit/schema'
 import { UserRoundIcon, UserRoundXIcon, XIcon } from 'lucide-react'
 import { peoplePicker, type PeoplePickerContext } from '@qualy/ui-contract'
 import * as stylex from '@stylexjs/stylex'
@@ -23,6 +22,7 @@ import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 
 import { auditApi } from './api.ts'
+import { eventsFilterOf, eventsQueryOf } from './events-place.ts'
 import { EventTable } from './EventTable.tsx'
 import { EventPager } from './EventPager.tsx'
 import * as commonMessages from '@qualy/web-i18n/messages'
@@ -70,18 +70,12 @@ export default function AuditEventsPage() {
 
   const options = useQuery(query.audit.getAuditEventOptions.queryOptions({}))
 
-  const outcomeFilter: 'success' | 'denied' | 'failure' | undefined =
-    outcome === 'success' || outcome === 'denied' || outcome === 'failure' ? outcome : undefined
-  const filter = {
-    ...(action ? { actionCode: action } : {}),
-    ...(actor ? { actorUserId: actor } : {}),
-    ...(outcomeFilter !== undefined ? { outcome: outcomeFilter } : {}),
-  }
-  const filterKey = JSON.stringify(filter)
+  // the question as the server drawing the page asks it too (events-place.ts)
+  const addressed: Readonly<Record<string, string>> = { action, outcome, actor, page: pageParam }
+  const at = (key: string) => addressed[key] ?? ''
+  const filterKey = JSON.stringify(eventsFilterOf(at))
   const events = useQuery({
-    ...query.audit.listAuditEvents.queryOptions({
-      query: { ...filter, page: String(pageNumber(pageParam)) },
-    }),
+    ...query.audit.listAuditEvents.queryOptions({ query: eventsQueryOf(at) }),
     meta: { auditFilter: filterKey },
     // Keep the current page while turning it, but never show a different filter's rows.
     placeholderData: (previous, previousQuery) =>

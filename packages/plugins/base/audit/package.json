@@ -8,7 +8,10 @@
   "exports": {
     ".": "./src/index.ts",
     "./api": "./src/api.ts",
-    "./client/AuditEventsPage": "./src/client/AuditEventsPage.tsx",
+    "./client/AuditEventsPage": {
+      "react-server": "./src/client/AuditEventsPage.server.tsx",
+      "default": "./src/client/AuditEventsPage.tsx"
+    },
     "./client/UserAuditPage": "./src/client/UserAuditPage.tsx",
     "./client/api": "./src/client/api.ts",
     "./db": "./src/db/entities.ts",
@@ -41,6 +44,7 @@
     "@qualy/ui": "workspace:*",
     "@qualy/ui-contract": "workspace:*",
     "@qualy/web-i18n": "workspace:*",
+    "@qualy/web-rsc": "workspace:*",
     "@qualy/web-runtime": "workspace:*",
     "@stylexjs/stylex": "catalog:",
     "@tanstack/react-query": "catalog:",
