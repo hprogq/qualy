@@ -9,7 +9,10 @@
     ".": "./src/index.ts",
     "./actions": "./src/actions.ts",
     "./api": "./src/api.ts",
-    "./client/BatchAccessPage": "./src/client/BatchAccessPage.tsx",
+    "./client/BatchAccessPage": {
+      "react-server": "./src/client/BatchAccessPage.server.tsx",
+      "default": "./src/client/BatchAccessPage.tsx"
+    },
     "./client/BatchListPage": {
       "react-server": "./src/client/BatchListPage.server.tsx",
       "default": "./src/client/BatchListPage.tsx"
@@ -18,7 +21,10 @@
       "react-server": "./src/client/BatchOverviewPage.server.tsx",
       "default": "./src/client/BatchOverviewPage.tsx"
     },
-    "./client/BatchPhasesPage": "./src/client/BatchPhasesPage.tsx",
+    "./client/BatchPhasesPage": {
+      "react-server": "./src/client/BatchPhasesPage.server.tsx",
+      "default": "./src/client/BatchPhasesPage.tsx"
+    },
     "./client/BatchSettingsPage": "./src/client/BatchSettingsPage.tsx",
     "./client/access/BatchGrantPresenter": "./src/client/access/BatchGrantPresenter.tsx",
     "./client/api": "./src/client/api.ts",
