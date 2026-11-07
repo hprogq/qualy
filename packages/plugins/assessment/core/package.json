@@ -22,8 +22,14 @@
     "./client/BatchSettingsPage": "./src/client/BatchSettingsPage.tsx",
     "./client/access/BatchGrantPresenter": "./src/client/access/BatchGrantPresenter.tsx",
     "./client/api": "./src/client/api.ts",
-    "./client/batch/AdminAlertBadge": "./src/client/batch/AdminAlertBadge.tsx",
-    "./client/batch/BatchContextBar": "./src/client/batch/BatchContextBar.tsx",
+    "./client/batch/AdminAlertBadge": {
+      "react-server": "./src/client/batch/AdminAlertBadge.server.tsx",
+      "default": "./src/client/batch/AdminAlertBadge.tsx"
+    },
+    "./client/batch/BatchContextBar": {
+      "react-server": "./src/client/batch/BatchContextBar.server.tsx",
+      "default": "./src/client/batch/BatchContextBar.tsx"
+    },
     "./client/browser": "./src/client/browser.ts",
     "./client/entry/MyEntriesPage": "./src/client/entry/MyEntriesPage.tsx",
     "./client/items/FixedCalculatorEditor": "./src/client/items/FixedCalculatorEditor.tsx",
@@ -35,7 +41,10 @@
     "./client/record/AdministrativeRecordsPage": "./src/client/record/AdministrativeRecordsPage.tsx",
     "./client/result/MyResultPage": "./src/client/result/MyResultPage.tsx",
     "./client/result/ParticipantResultsPage": "./src/client/result/ParticipantResultsPage.tsx",
-    "./client/review/QueueBadge": "./src/client/review/QueueBadge.tsx",
+    "./client/review/QueueBadge": {
+      "react-server": "./src/client/review/QueueBadge.server.tsx",
+      "default": "./src/client/review/QueueBadge.tsx"
+    },
     "./client/review/ReviewInboxPage": "./src/client/review/ReviewInboxPage.tsx",
     "./client/review/ReviewInstancePage": "./src/client/review/ReviewInstancePage.tsx",
     "./db": "./src/db/entities.ts",

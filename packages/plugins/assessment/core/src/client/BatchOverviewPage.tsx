@@ -649,7 +649,17 @@ const styles = stylex.create({
 type OverviewDto = ApiResult<typeof assessmentApi, 'assessment', 'getMyOverview'>
 type ActivityItem = ApiResult<typeof assessmentApi, 'assessment', 'listMyActivity'>['items'][number]
 
-export default function BatchOverviewPage() {
+/**
+ * The batch's note as a server drew it (BatchOverviewPage.server.tsx), with
+ * the words it was drawn from: shown while the batch the page holds still
+ * says those words, and drawn here again once it says others.
+ */
+export interface DrawnNote {
+  readonly text: string
+  readonly drawn: ReactNode
+}
+
+export default function BatchOverviewPage({ drawnNote }: { drawnNote?: DrawnNote } = {}) {
   const { batchId } = usePageRouteParams('batchId')
   const query = useApiQuery(assessmentApi)
 
@@ -696,7 +706,12 @@ export default function BatchOverviewPage() {
               owed={owesAdministration(batch)}
               note={
                 batch.descriptionMd !== null && batch.descriptionMd.trim() !== '' ? (
-                  <BatchNote text={batch.descriptionMd.trim()} />
+                  <BatchNote
+                    text={batch.descriptionMd.trim()}
+                    drawn={
+                      drawnNote?.text === batch.descriptionMd.trim() ? drawnNote.drawn : undefined
+                    }
+                  />
                 ) : null
               }
             />
@@ -741,7 +756,7 @@ function NoteText({ text }: { text: string }) {
  * document to read. About four lines at first, and the whole of it in a
  * dialog of its own rather than pushing the rest of the page down.
  */
-function BatchNote({ text }: { text: string }) {
+function BatchNote({ text, drawn }: { text: string; drawn?: ReactNode }) {
   const id = useId()
   const body = useRef<HTMLDivElement | null>(null)
   const [reading, setReading] = useState(false)
@@ -777,7 +792,7 @@ function BatchNote({ text }: { text: string }) {
         ref={body}
         {...stylex.props(styles.noteText, styles.noteFolded, long && styles.noteFaded)}
       >
-        <NoteText text={text} />
+        {drawn ?? <NoteText text={text} />}
       </div>
       {long && (
         <button
@@ -797,7 +812,7 @@ function BatchNote({ text }: { text: string }) {
           </DialogHeader>
           <DialogBody>
             <div {...stylex.props(styles.noteText, styles.noteDialogText)}>
-              <NoteText text={text} />
+              {drawn ?? <NoteText text={text} />}
             </div>
           </DialogBody>
         </DialogContent>

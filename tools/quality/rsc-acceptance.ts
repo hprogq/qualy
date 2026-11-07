@@ -370,7 +370,7 @@ const batchFor = async (scratch: {
     headers: { cookie: admin, 'content-type': 'application/json' },
     body: JSON.stringify({
       name: 'RSC acceptance',
-      descriptionMd: 'Bring the certificates you are claiming for.',
+      descriptionMd: 'Bring **the certificates** you are claiming for.',
       materialRange: { start: '2026-09-01', end: '2027-07-31' },
       timezone: 'Asia/Shanghai',
       import: { orgNodeIds: [org], userTypeIds: [type] },
@@ -544,7 +544,8 @@ const loginMethodsUnread = async (browser: Browser) => {
   const redraws: string[] = []
   page.on('request', (request) => {
     const url = new URL(request.url())
-    if (url.pathname.startsWith('/login') && request.resourceType() === 'fetch') redraws.push(url.pathname + url.search)
+    if (url.pathname.startsWith('/login') && request.resourceType() === 'fetch')
+      redraws.push(url.pathname + url.search)
   })
   await page.goto(`${site}/login`)
   await hydrated(page)
@@ -987,6 +988,27 @@ const overviewFirstScreen = async (browser: Browser, batch: string) => {
     'paints the account and authorized workspace rail without JavaScript',
     (await painted(html.getByRole('button', { name: '系统管理员' }))) &&
       (await painted(rail.locator(`a[href="${address}/items"]`))),
+  )
+  // the note is the server's own: drawn there from its markup, styled by
+  // rules compiled in the server component environment
+  const strong = html.getByTestId('batch-note').locator('strong').first()
+  const weight = (await painted(strong))
+    ? await strong.evaluate(
+        (node) =>
+          (
+            globalThis as unknown as {
+              getComputedStyle(element: unknown): { readonly fontWeight: string }
+            }
+          ).getComputedStyle(node).fontWeight,
+      )
+    : null
+  check("draws the batch's note on the server with its own styles", weight === '600', weight)
+  // what the workspace's rail may show is the workspace's to prepare, so a
+  // page of the batch with no server entry of its own is drawn with it too
+  await html.goto(`${site}${address}/phases`)
+  check(
+    'paints the authorized workspace rail on a batch page with no server entry',
+    await painted(html.getByTestId('workspace-rail').locator(`a[href="${address}/items"]`)),
   )
   await html.goto(`${site}${missing}`)
   check(

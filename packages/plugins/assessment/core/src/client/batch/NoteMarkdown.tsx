@@ -1,4 +1,4 @@
-import { Fragment, useMemo, type ReactNode } from 'react'
+import { Fragment, type ReactNode } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { parseNote, type Inline } from './note-markdown.ts'
@@ -6,6 +6,10 @@ import { parseNote, type Inline } from './note-markdown.ts'
 // The batch note, rendered: loaded when a note is shown, never with the page
 // that might not have one. Every element here is one this component chose;
 // the note itself only ever becomes text inside them.
+//
+// No hooks and no directive, so it renders as a server component too
+// (BatchOverviewPage.server.tsx): a note a server drew reaches the page as
+// its elements, without this renderer or the parser coming with them.
 
 const styles = stylex.create({
   note: {
@@ -57,7 +61,7 @@ const lines = (all: readonly (readonly Inline[])[]): ReactNode =>
   ))
 
 export default function NoteMarkdown({ text }: { text: string }) {
-  const blocks = useMemo(() => parseNote(text), [text])
+  const blocks = parseNote(text)
   return (
     <div data-testid="note-markdown" {...stylex.props(styles.note)}>
       {blocks.map((block, index) =>
