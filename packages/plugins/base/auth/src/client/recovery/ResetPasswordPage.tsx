@@ -7,11 +7,14 @@ import {
   useApiQuery,
   usePageHref,
   useRunApi,
+  useHydrating,
 } from '@qualy/web-runtime'
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { Link, useLocation } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
+import { useEntryMotion } from '@qualy/ui/reveal'
+import { Spinner } from '@qualy/ui/spinner'
 import * as stylex from '@stylexjs/stylex'
 import { ArrowLeftIcon, CheckIcon, CircleAlertIcon, EyeIcon, MailCheckIcon } from 'lucide-react'
 
@@ -226,12 +229,12 @@ function Said({ children }: { children: ReactNode }) {
 
 /** a state that has arrived somewhere: the badge settles in after the column */
 function Badge({ tone, children }: { tone?: 'danger'; children: ReactNode }) {
-  const still = useReducedMotion() === true
+  const enter = useEntryMotion()
   return (
     <motion.span
       aria-hidden
       {...stylex.props(styles.badge, tone === 'danger' && styles.badgeDanger)}
-      initial={still ? false : { scale: 0.88, opacity: 0 }}
+      initial={enter ? { scale: 0.88, opacity: 0 } : false}
       animate={{ scale: 1, opacity: 1 }}
       transition={{ duration: 0.28, ease: [0.2, 0.8, 0.2, 1], delay: 0.08 }}
     >
@@ -242,23 +245,38 @@ function Badge({ tone, children }: { tone?: 'danger'; children: ReactNode }) {
 
 export default function ResetPasswordPage() {
   const hash = useLocation().hash
+  const hydrating = useHydrating()
   // read once and kept: the address bar lets go of it below, so asking for
   // a new link is this page forgetting it rather than a navigation
-  const [token, setToken] = useState(() => new URLSearchParams(hash.slice(1)).get('token'))
+  const [token, setToken] = useState<string | null | undefined>(() =>
+    hydrating ? undefined : new URLSearchParams(hash.slice(1)).get('token'),
+  )
   useEffect(() => {
+    const inspected = token === undefined ? new URLSearchParams(hash.slice(1)).get('token') : token
+    if (token === undefined) setToken(inspected)
     // out of the history and out of a screenshot; the router is not told,
     // since nothing it renders depends on the fragment any more
-    if (token !== null && window.location.hash !== '') {
+    if (inspected !== null && window.location.hash !== '') {
       window.history.replaceState(
         window.history.state,
         '',
         window.location.pathname + window.location.search,
       )
     }
-  }, [token])
+  }, [hash, token])
   return (
     <AuthShell>
-      {token === null ? <Ask /> : <SetNew token={token} onAskAgain={() => setToken(null)} />}
+      {token === undefined ? (
+        <div {...stylex.props(styles.panel)}>
+          <BackToSignIn />
+          <h1 {...stylex.props(styles.title)}>{m.reset_title()}</h1>
+          <Spinner />
+        </div>
+      ) : token === null ? (
+        <Ask />
+      ) : (
+        <SetNew token={token} onAskAgain={() => setToken(null)} />
+      )}
     </AuthShell>
   )
 }

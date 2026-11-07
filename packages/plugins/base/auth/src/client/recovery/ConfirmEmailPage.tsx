@@ -4,8 +4,9 @@ import { type ReactNode } from 'react'
 import { useLocation } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
-import { PageLink, useApi, usePageHref, useRunApi } from '@qualy/web-runtime'
-import { motion, useReducedMotion } from 'motion/react'
+import { PageLink, useApi, useHydrating, usePageHref, useRunApi } from '@qualy/web-runtime'
+import { motion } from 'motion/react'
+import { useEntryMotion } from '@qualy/ui/reveal'
 import { CheckIcon, CircleAlertIcon } from 'lucide-react'
 import { Spinner } from '@qualy/ui/spinner'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
@@ -58,12 +59,12 @@ const styles = stylex.create({
 
 /** the outcome's badge, settling in after the column */
 function Badge({ tone, children }: { tone?: 'danger'; children: ReactNode }) {
-  const still = useReducedMotion() === true
+  const enter = useEntryMotion()
   return (
     <motion.span
       aria-hidden
       {...stylex.props(styles.badge, tone === 'danger' && styles.badgeDanger)}
-      initial={still ? false : { scale: 0.88, opacity: 0 }}
+      initial={enter ? { scale: 0.88, opacity: 0 } : false}
       animate={{ scale: 1, opacity: 1 }}
       transition={{ duration: 0.28, ease: [0.2, 0.8, 0.2, 1], delay: 0.08 }}
     >
@@ -73,9 +74,10 @@ function Badge({ tone, children }: { tone?: 'danger'; children: ReactNode }) {
 }
 
 export default function ConfirmEmailPage() {
+  const hydrating = useHydrating()
   const fragment = new URLSearchParams(useLocation().hash.slice(1))
-  const token = fragment.get('token')
-  const purpose = fragment.get('purpose') === 'change' ? 'change' : 'verify'
+  const token = hydrating ? null : fragment.get('token')
+  const purpose = !hydrating && fragment.get('purpose') === 'change' ? 'change' : 'verify'
   const api = useApi(authApi)
   const run = useRunApi()
 
@@ -100,8 +102,9 @@ export default function ConfirmEmailPage() {
     refetchOnReconnect: false,
   })
 
-  const outcome =
-    token === null
+  const outcome = hydrating
+    ? null
+    : token === null
       ? { state: 'missing', tone: 'danger' as const, said: m.confirm_missing() }
       : confirm.isSuccess
         ? {

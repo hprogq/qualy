@@ -1026,7 +1026,7 @@ function Home({
     <div {...stylex.props(styles.panel)}>
       {header}
       <p {...stylex.props(styles.sub)}>{m.login_choose()}</p>
-      <AnimatePresence initial={!still}>
+      <AnimatePresence initial={false}>
         {notice !== undefined && failed !== undefined && (
           <motion.div
             key={failed._tag}

@@ -1,8 +1,9 @@
 import type { ReactNode } from 'react'
-import { motion, useReducedMotion } from 'motion/react'
+import { motion } from 'motion/react'
+import { useEntryMotion } from '@qualy/ui/reveal'
 import * as stylex from '@stylexjs/stylex'
 import { CheckIcon, ChevronDownIcon, GlobeIcon, MonitorIcon, MoonIcon, SunIcon } from 'lucide-react'
-import { useHydrating, useTheme, type ThemeChoice } from '@qualy/web-runtime'
+import { useTheme, type ThemeChoice } from '@qualy/web-runtime'
 import { Mark } from '@qualy/brand/mark'
 import { Wordmark } from '@qualy/brand/wordmark'
 import { localeNames, useLocale } from '@qualy/web-i18n'
@@ -286,10 +287,7 @@ export function AuthShell({
   overlay?: ReactNode
   footer?: ReactNode
 }) {
-  // what a server drew is on screen already: it is not brought in again
-  const reduced = useReducedMotion() === true
-  const hydrating = useHydrating()
-  const still = reduced || hydrating
+  const enter = useEntryMotion()
   const Colophon = useColophon()
   const noted = Colophon !== null
   return (
@@ -324,7 +322,7 @@ export function AuthShell({
               only what changed. */}
           <motion.div
             {...stylex.props(styles.content, noted && styles.contentNoted)}
-            initial={still ? false : { opacity: 0, y: 6 }}
+            initial={enter ? { opacity: 0, y: 6 } : false}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3, ease: [0.2, 0.8, 0.2, 1] }}
           >
