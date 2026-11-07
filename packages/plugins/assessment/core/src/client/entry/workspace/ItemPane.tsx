@@ -837,8 +837,9 @@ export function ItemPane({
         <SelectTrigger
           size="sm"
           // a quiet key at every width: the order is a way of reading the
-          // list, not a field of it, and it still says the order in force
-          quiet
+          // list, not a field of it, and it still says the order in force -
+          // with a field's edge in the row where the search is a field
+          quiet={wide ? 'framed' : true}
           aria-label={m.entries_sortLabel()}
           data-testid="entries-sort"
           data-order={order}

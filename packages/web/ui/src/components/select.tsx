@@ -311,6 +311,14 @@ const triggerStyles = stylex.create({
     outline: 'none',
     boxShadow: { default: 'none', ':focus-visible': `0 0 0 2px ${tokens.focusRing}` },
   },
+  // the same key with a field's edge, beside a field: without one its words
+  // seemed to stop short of the edge of what stood under it
+  framed: {
+    boxShadow: {
+      default: `inset 0 0 0 1px ${tokens.border}`,
+      ':focus-visible': `inset 0 0 0 1px ${tokens.border}, 0 0 0 2px ${tokens.focusRing}`,
+    },
+  },
 })
 
 const styles = stylex.create({
@@ -416,9 +424,10 @@ function SelectTrigger({
   /**
    * Drawn as a quiet key rather than a field: no box and no chevron, for a
    * toolbar whose neighbours are icon keys. What it shows must still say
-   * the choice in force.
+   * the choice in force. `'framed'` gives it a field's edge, for a key
+   * standing beside a field.
    */
-  quiet?: boolean
+  quiet?: boolean | 'framed'
   /**
    * The standard StyleX seat, composed over the trigger's base styles -
    * sizing a field is its main use. `className` stays as the legacy escape
@@ -469,7 +478,11 @@ function SelectTrigger({
         {...(quiet
           ? {
               variant: 'unstyled',
-              classNames: { input: stylex.props(triggerStyles.quiet).className ?? '' },
+              classNames: {
+                input:
+                  stylex.props(triggerStyles.quiet, quiet === 'framed' && triggerStyles.framed)
+                    .className ?? '',
+              },
             }
           : {
               // the widget's chevron grey carries a blue cast; it speaks in
