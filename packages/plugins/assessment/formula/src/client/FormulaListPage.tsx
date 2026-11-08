@@ -7,6 +7,7 @@ import {
   useApi,
   PageLink,
   useApiQuery,
+  useDocumentNow,
   useLoadFailure,
   usePageQueryState,
   usePageQueryUpdate,
@@ -185,6 +186,7 @@ function NewFormulaDialog({
 export default function FormulaListPage() {
   const query = useApiQuery(formulaApi)
   const locale = useLocale()
+  const now = useDocumentNow()
   const failure = useLoadFailure()
   const titleRef = usePageTitle(m.list_title())
   const navigate = usePageNavigate()
@@ -314,7 +316,7 @@ export default function FormulaListPage() {
                           </span>
                         </span>
                       )
-                    const updated = shortWhen(row.updatedAt, locale)
+                    const updated = shortWhen(row.updatedAt, locale, new Date(now))
                     return (
                       <div
                         key={row.id}

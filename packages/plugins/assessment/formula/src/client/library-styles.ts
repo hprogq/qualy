@@ -1,3 +1,5 @@
+import { formatDateTime } from '@qualy/web-i18n'
+import type { SupportedLocale } from '@qualy/i18n-contract'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
@@ -202,7 +204,7 @@ export const libraryStyles = stylex.create({
   skeletonRow: { display: 'flex', flexDirection: 'column', gap: 8, paddingBlock: 16 },
 })
 
-const clock = (locale: string) =>
+const clock = (locale: SupportedLocale) =>
   new Intl.DateTimeFormat(locale, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
 
 /**
@@ -212,7 +214,7 @@ const clock = (locale: string) =>
  * ("8月29日 14:30", "Aug 29, 14:30") rather than as digits between dots, which
  * in a column of numbers read as one more number.
  */
-export function shortWhen(at: string, locale: string, now: Date = new Date()): string {
+export function shortWhen(at: string, locale: SupportedLocale, now: Date = new Date()): string {
   const date = new Date(at)
   const startOf = (day: Date) =>
     new Date(day.getFullYear(), day.getMonth(), day.getDate()).getTime()
@@ -220,31 +222,18 @@ export function shortWhen(at: string, locale: string, now: Date = new Date()): s
   if (days === 0) return m.when_today({ time: clock(locale).format(date) })
   if (days === 1) return m.when_yesterday({ time: clock(locale).format(date) })
   return date.getFullYear() === now.getFullYear()
-    ? new Intl.DateTimeFormat(locale, {
-        month: 'short',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-        hourCycle: 'h23',
-      }).format(date)
+    ? formatDateTime(date, locale, { month: 'short', day: 'numeric' })
     : new Intl.DateTimeFormat(locale, { year: 'numeric', month: 'short', day: 'numeric' }).format(
         date,
       )
 }
 
 /** the clock alone, for something that happened while the page was open */
-export function shortTime(at: string, locale: string): string {
+export function shortTime(at: string, locale: SupportedLocale): string {
   return clock(locale).format(new Date(at))
 }
 
 /** the moment in full, for a page that names one thing */
-export function fullWhen(at: string, locale: string): string {
-  return new Intl.DateTimeFormat(locale, {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    hourCycle: 'h23',
-  }).format(new Date(at))
+export function fullWhen(at: string, locale: SupportedLocale): string {
+  return formatDateTime(new Date(at), locale, { year: 'numeric', month: 'short', day: 'numeric' })
 }

@@ -7,6 +7,7 @@ import { useQuery } from '@tanstack/react-query'
 import {
   PageLink,
   useApiQuery,
+  useDocumentNow,
   useLoadFailure,
   usePageQueryState,
   usePageQueryUpdate,
@@ -62,6 +63,7 @@ const styles = stylex.create({
 export default function FormulaTemplatesPage() {
   const query = useApiQuery(formulaApi)
   const locale = useLocale()
+  const now = useDocumentNow()
   const failure = useLoadFailure()
   const titleRef = usePageTitle(m.templates_title())
   const navigate = usePageNavigate()
@@ -148,7 +150,7 @@ export default function FormulaTemplatesPage() {
                   {items.map((row, index) => {
                     const archived = row.sourceStatus === 'archived'
                     const author = row.authorName ?? m.templates_authorUnknown()
-                    const published = shortWhen(row.publishedAt, locale)
+                    const published = shortWhen(row.publishedAt, locale, new Date(now))
                     const version =
                       row.releaseName ?? m.history_releaseOrdinal({ number: row.versionNo })
                     return (

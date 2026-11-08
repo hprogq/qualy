@@ -114,3 +114,11 @@ Bun 的 Undici 兼容路径不能完成当前实现，实测包括 `agent.close 
 最终统一运行监督者、混合运行时、代理及插件／发布边界回归，9 个文件共 81 项通过；固定浏览器回归通过；端口占用拒绝、中断后释放自己的前后端两个探针也通过，专用临时库没有遗留。CI 已接入该回归，沿用现有 Chromium 安装，并显式使用 CI 自己的临时 PostgreSQL 服务。完整类型检查及改动文件的格式、类型 lint 通过。按照不推送的约束，本轮没有远程 Linux CI 执行结果，不将本机结果表述为 Linux 验收通过。
 
 该变更属于 RSC 分支的开发链路，先合入 `spike/rsc-data-mode`，不单独带入 main；本地分支为线性继承关系时使用快进合并，不重写已签名的提交。生产构建和后端运行时仍保持 Node。
+
+## 日期连接格式与水合（2026-11-08）
+
+同一 `en-US` locale、时区和日期时间选项，在本机 Node 输出 `Sep 19, 05:30`，Bun 输出 `Sep 19 at 05:30`；Brave 的英文公式列表实际重现了这组 SSR／水合差异。ECMA-402 的 locale 格式模式有[实现相关部分](https://tc39.es/ecma402/2025/#sec-implementation-dependencies)，不能仅凭字样不同判定运行时违反规范；但它不满足 [React 水合必须匹配](https://react.dev/reference/react-dom/client/hydrateRoot#caveats)的要求。
+
+`@qualy/web-i18n` 的 `formatDateTime` 分别格式化日期与时钟，由消息 `date_time` 明确组合。公式列表、版本时间、账号安全记录和角色有效期复用它；不按 Node/Bun 分支处理，也不压制水合错误。列表首帧的“今天／昨天”使用文档渲染时间。Node／Bun 的修复后探针均为 `Sep 19, 05:30`，回归测试拒绝重新交给组合 Intl 模式决定连接文字。
+
+该修复不等于所有 `Intl` 输出都获得跨版本字节一致性保证，也没有改变本轮未涉及的设备时区策略。开发 renderer 继续使用 Bun，生产与测试驱动继续使用 Node。
