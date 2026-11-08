@@ -2,6 +2,7 @@ import * as stylex from '@stylexjs/stylex'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { recordColumns } from './columns.stylex.ts'
+import { recordTable } from './table.stylex.ts'
 
 /**
  * A list arriving, in the shape of the list.
@@ -15,16 +16,6 @@ import { recordColumns } from './columns.stylex.ts'
  */
 
 const styles = stylex.create({
-  card: {
-    display: 'flex',
-    minWidth: 0,
-    flexDirection: 'column',
-    overflow: 'hidden',
-    borderRadius: tokens.radiusLg,
-    backgroundColor: tokens.surface,
-    boxShadow: tokens.elevation1,
-    containerType: 'inline-size',
-  },
   // the band the column names sit in, there before the names are
   head: {
     display: { default: 'block', [recordColumns.stacked]: 'none' },
@@ -97,7 +88,12 @@ export function ListSkeleton({
   kind?: 'entries' | 'acts' | 'imports'
 }) {
   return (
-    <div {...stylex.props(styles.card)} aria-hidden data-testid="list-skeleton" data-kind={kind}>
+    <div
+      {...stylex.props(recordTable.card)}
+      aria-hidden
+      data-testid="list-skeleton"
+      data-kind={kind}
+    >
       <div {...stylex.props(styles.head)} />
       {Array.from({ length: rows }, (_, at) => (
         <div key={at} {...stylex.props(styles.row, styles[kind])} data-testid="list-skeleton-row">

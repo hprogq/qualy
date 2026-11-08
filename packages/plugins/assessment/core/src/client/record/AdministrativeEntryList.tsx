@@ -1,3 +1,4 @@
+import { recordTable } from './table.stylex.ts'
 import { pageNumber } from '@qualy/api-kit/schema'
 import { RecordPager } from './RecordPager.tsx'
 import { useQuery } from '@tanstack/react-query'
@@ -58,16 +59,6 @@ const styles = stylex.create({
     color: tokens.mutedForeground,
   },
   indented: { paddingLeft: 36 },
-  card: {
-    display: 'flex',
-    minWidth: 0,
-    flexDirection: 'column',
-    overflow: 'hidden',
-    borderRadius: tokens.radiusLg,
-    backgroundColor: tokens.surface,
-    boxShadow: tokens.elevation1,
-    containerType: 'inline-size',
-  },
   head: {
     display: { default: 'grid', [recordColumns.stacked]: 'none' },
     gridTemplateColumns: {
@@ -263,7 +254,7 @@ export function AdministrativeEntryList({
         ) : (
           <>
             <div
-              {...stylex.props(styles.card)}
+              {...stylex.props(recordTable.card)}
               data-testid="administrative-entries"
               tabIndex={-1}
               aria-busy={book.isFetching}

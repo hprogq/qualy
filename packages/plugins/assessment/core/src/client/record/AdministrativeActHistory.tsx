@@ -1,3 +1,4 @@
+import { recordTable } from './table.stylex.ts'
 import { pageNumber } from '@qualy/api-kit/schema'
 import { RecordPager } from './RecordPager.tsx'
 import { useQuery } from '@tanstack/react-query'
@@ -31,16 +32,6 @@ import * as m from '#messages'
 const PAGE = 30
 
 const styles = stylex.create({
-  card: {
-    display: 'flex',
-    minWidth: 0,
-    flexDirection: 'column',
-    overflow: 'hidden',
-    borderRadius: tokens.radiusLg,
-    backgroundColor: tokens.surface,
-    boxShadow: tokens.elevation1,
-    containerType: 'inline-size',
-  },
   head: {
     display: { default: 'grid', [recordColumns.stacked]: 'none' },
     gridTemplateColumns: {
@@ -197,7 +188,7 @@ export function AdministrativeActHistory({
       ) : (
         <>
           <div
-            {...stylex.props(styles.card)}
+            {...stylex.props(recordTable.card)}
             data-testid="administrative-acts"
             tabIndex={-1}
             aria-busy={history.isFetching}
