@@ -986,9 +986,6 @@ importers:
 
   packages/core/telemetry:
     dependencies:
-      '@effect/platform-node':
-        specifier: 'catalog:'
-        version: 4.0.6(effect@4.0.6)(redis@6.2.1)
       effect:
         specifier: 'catalog:'
         version: 4.0.6

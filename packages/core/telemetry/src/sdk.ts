@@ -1,5 +1,5 @@
-import { NodeHttpClient } from '@effect/platform-node'
 import { Config, ConfigProvider, Context, Effect, Layer, Logger, Option, Tracer } from 'effect'
+import { FetchHttpClient } from 'effect/http'
 import {
   OtlpExporter,
   OtlpLogger,
@@ -123,7 +123,7 @@ export const telemetryLayer: Layer.Layer<OtlpExporter.Flusher> = Layer.unwrap(
       ),
       // telemetry owns its transport; nothing else in the process is asked
       // to provide an HttpClient
-      Layer.provide(NodeHttpClient.layerUndici),
+      Layer.provide(FetchHttpClient.layer),
     )
   }).pipe(Effect.orDie),
 ).pipe(Layer.provide(specDefaults))

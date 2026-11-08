@@ -1,6 +1,6 @@
-import { NodeHttpClient, NodeHttpServer } from '@effect/platform-node'
+import { NodeHttpServer } from '@effect/platform-node'
 import { Effect, Exit, Layer, Logger, Metric, References, Scope } from 'effect'
-import { HttpRouter, HttpServerResponse } from 'effect/http'
+import { FetchHttpClient, HttpRouter, HttpServerResponse } from 'effect/http'
 import { OtlpSerialization, OtlpTracer } from 'effect/observability'
 import { createServer, type Server } from 'node:http'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -91,10 +91,7 @@ beforeAll(async () => {
             url: `http://127.0.0.1:${receiverPort}/v1/traces`,
             resource: { serviceName: 'client-closed-under-test' },
             exportInterval: 50,
-          }).pipe(
-            Layer.provide(OtlpSerialization.layerJson),
-            Layer.provide(NodeHttpClient.layerUndici),
-          ),
+          }).pipe(Layer.provide(OtlpSerialization.layerJson), Layer.provide(FetchHttpClient.layer)),
         ),
         Layer.provide(capture),
         Layer.provide(Layer.succeed(References.MinimumLogLevel, 'All')),

@@ -1,6 +1,6 @@
-import { NodeHttpClient, NodeHttpServer } from '@effect/platform-node'
+import { NodeHttpServer } from '@effect/platform-node'
 import { Cause, Effect, Exit, Layer, Logger, Metric, Option, Schedule, Scope, Stream } from 'effect'
-import { HttpRouter, HttpServerRequest, HttpServerResponse } from 'effect/http'
+import { FetchHttpClient, HttpRouter, HttpServerRequest, HttpServerResponse } from 'effect/http'
 import { OtlpSerialization, OtlpTracer } from 'effect/observability'
 import { createServer, type Server } from 'node:http'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -215,10 +215,7 @@ beforeAll(async () => {
         url: `http://127.0.0.1:${receiverPort}/v1/traces`,
         resource: { serviceName: 'api-kit-under-test' },
         exportInterval: 50,
-      }).pipe(
-        Layer.provide(OtlpSerialization.layerJson),
-        Layer.provide(NodeHttpClient.layerUndici),
-      ),
+      }).pipe(Layer.provide(OtlpSerialization.layerJson), Layer.provide(FetchHttpClient.layer)),
     ),
   )
   const bareApplication = HttpRouter.serve(routes, {
