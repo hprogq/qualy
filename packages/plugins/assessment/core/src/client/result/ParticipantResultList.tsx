@@ -86,6 +86,7 @@ import { ROSTER_MAX_WAIT, ROSTER_SETTLE, settler, SYNC_FRESH } from '../roster/l
 import { ScoresNotice } from '../roster/ScoresNotice.tsx'
 import { type BatchLiveEvent } from '../../api.ts'
 import { ParticipantRosterRows } from './ParticipantRosterSkeleton.tsx'
+import { rosterStyles, rosterColumns, rosterWideColumns } from './roster-presentation.ts'
 import * as commonMessages from '@qualy/web-i18n/messages'
 import * as m from '#messages'
 
@@ -125,17 +126,6 @@ const TWO_COLUMNS = 1280 as const
  * rather than squeezing the menu out of the row.
  */
 const TREE_MOST = 312
-
-/**
- * The columns around the person and what waits on them. The waiting column
- * takes only what its counts need, capped so multiple states wrap together.
- * The person and their organization take the remaining room. The total is
- * wide enough for the longest reason there is none beside the button that
- * asks again; a reason longer still, in some language, takes a second line
- * rather than the button.
- */
-const numberColumn = '6.5rem'
-const tailColumns = '7.5rem 2rem'
 
 /** whether the reader keeps the unit tree open beside the list, remembered per browser */
 const TREE_OPEN_KEY = 'qualy:assessment-roster-tree-open'
@@ -181,44 +171,7 @@ const WAITING_WORDS: Record<RosterWaiting, () => string> = {
   blocked: m.roster_waitingBlocked,
 }
 
-/** where a row is stacked, and what stands against it has to say so */
-const phone = '@media (max-width: 767.98px)'
-
 const styles = stylex.create({
-  // The whole content area, from the top: the page says its own name on one
-  // line and the list starts under it, rather than under a band, a heading
-  // and a second heading over the list itself.
-  panel: {
-    display: 'flex',
-    minWidth: 0,
-    flexGrow: 1,
-    flexDirection: 'column',
-    gap: 12,
-    paddingInline: { default: 24, [breakpoints.phone]: 16 },
-    paddingTop: { default: 18, [breakpoints.phone]: 14 },
-    paddingBottom: 16,
-  },
-  head: {
-    display: { default: 'flex', [breakpoints.phone]: 'grid' },
-    minHeight: 34,
-    gridTemplateColumns: { default: null, [breakpoints.phone]: 'auto minmax(0, 1fr) auto' },
-    gridTemplateRows: { default: null, [breakpoints.phone]: '34px auto' },
-    alignItems: 'center',
-    columnGap: 12,
-    rowGap: 8,
-  },
-  title: {
-    margin: 0,
-    fontSize: { default: 18, [breakpoints.phone]: 17 },
-    lineHeight: '1.5rem',
-    fontWeight: 600,
-    letterSpacing: '-0.01em',
-    flexShrink: 0,
-    whiteSpace: 'nowrap',
-    minWidth: 0,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-  },
   count: {
     fontSize: 13,
     fontVariantNumeric: 'tabular-nums',
@@ -230,25 +183,6 @@ const styles = stylex.create({
     textOverflow: 'ellipsis',
   },
   spacer: { display: { default: 'block', [breakpoints.phone]: 'none' }, flexGrow: 1 },
-  actions: {
-    display: 'flex',
-    flexShrink: 0,
-    alignItems: 'center',
-    gap: 8,
-    marginInlineStart: 'auto',
-    gridColumn: { default: null, [breakpoints.phone]: '1 / -1' },
-    gridRow: { default: null, [breakpoints.phone]: 2 },
-  },
-  // stacked, it stands against the whole row beside what the row is scanned
-  // by, rather than auto-placing itself on the first line; a reader with
-  // nothing to do on a row still gets the seat, so both lay out alike
-  rowAct: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    justifySelf: 'end',
-    gridColumn: { default: null, [phone]: 3 },
-    gridRow: { default: null, [phone]: '1 / 3' },
-  },
   unitsSeat: { display: 'flex', minHeight: 0, minWidth: 0, flexGrow: 1, flexDirection: 'column' },
   // Which units the list is of, as one control in the toolbar: where the
   // tree is folded away it says the unit and brings the tree back; where
@@ -303,65 +237,13 @@ const styles = stylex.create({
     color: tokens.mutedForeground,
   },
   offTreeName: { minWidth: 0, overflowWrap: 'anywhere' },
-  listColumn: {
-    containerType: 'inline-size',
-    display: 'flex',
-    minWidth: 0,
-    flexDirection: 'column',
-    gap: 10,
-    scrollMarginTop: 12,
-  },
-  table: (template: string, wide: string) => ({
-    '--q-roster-columns': {
-      default: template,
-      '@container (min-width: 800px)': wide,
-    },
-  }),
-  // One row from a tablet up, however narrow the list gets beside the rail:
-  // the choices and the search give a little rather than the last choice
-  // dropping to a line of its own. On a phone the search takes a line and
-  // the choices share the next.
-  toolbar: {
-    display: 'flex',
-    flexWrap: { default: 'nowrap', [breakpoints.phone]: 'wrap' },
-    alignItems: 'center',
-    gap: 8,
-  },
-  // the search takes what the row leaves the choices, within reason
-  search: {
-    minWidth: { default: '8rem', [breakpoints.phone]: 0 },
-    maxWidth: { default: '20rem', [breakpoints.phone]: 'none' },
-    width: { default: 'auto', [breakpoints.phone]: '100%' },
-    flexGrow: 1,
-    flexShrink: 1,
-    flexBasis: { default: '10rem', [breakpoints.phone]: 'auto' },
-  },
-  choice: {
-    width: { default: '8rem', [breakpoints.phone]: 'auto' },
-    minWidth: { default: '6.5rem', [breakpoints.phone]: 0 },
-    flexGrow: { default: 0, [breakpoints.phone]: 1 },
-    flexShrink: 4,
-    flexBasis: { default: null, [breakpoints.phone]: '0%' },
-  },
   busy: { width: 14, height: 14, flexShrink: 0, color: tokens.mutedForeground },
-  who: {
-    display: 'flex',
-    minWidth: 0,
-    maxWidth: 480,
-    flexDirection: 'column',
-    gap: 1,
-    paddingBlock: 4,
-  },
   nameWithMark: { display: 'inline-flex', minWidth: 0, alignItems: 'center', gap: 8 },
   name: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
   mark: { display: 'inline-flex', flexShrink: 0 },
   unitLine: { display: 'flex', minWidth: 0, fontWeight: 400 },
   // a column's none, as light as the dash of a row with nothing waiting
   none: { color: `color-mix(in oklab, ${tokens.mutedForeground} 55%, transparent)` },
-  // the total's own edge, which is the row's: the digits of every row line
-  // up against the menu, where the eye running down the column meets them
-  scoreSeat: { display: 'flex', minWidth: 0, justifyContent: 'flex-end', paddingInlineEnd: 12 },
-  headEnd: { textAlign: 'end', paddingInlineEnd: 12 },
 })
 
 export function ParticipantResultList({
@@ -756,7 +638,7 @@ export function ParticipantResultList({
   const unitWord = view.unit === '' ? m.roster_unitsAll() : (unitName ?? m.roster_unitChosen())
   const waitingHead = m.roster_columnWaiting()
   const separateKinds = rows.some((row) => waitsOnAnything(row.filings))
-  const columns = `${numberColumn} minmax(144px, 1fr) ${separateKinds ? WAITING_COLUMN : '3rem'} ${tailColumns}`
+  const columns = rosterColumns(separateKinds ? WAITING_COLUMN : '3rem')
   const filingsFor = (filings: Parameters<typeof RosterFilings>[0]['filings']) => (
     <RosterFilings filings={filings} columns={separateKinds ? KIND_COLUMNS : undefined} />
   )
@@ -772,9 +654,9 @@ export function ParticipantResultList({
     <section
       ref={listTop}
       aria-label={m.participantResults_tab()}
-      {...stylex.props(styles.listColumn)}
+      {...stylex.props(rosterStyles.listColumn)}
     >
-      <div {...stylex.props(styles.toolbar)}>
+      <div {...stylex.props(rosterStyles.toolbar)}>
         {/* the units as a key that opens them where the tree has no room
             beside the list, and the way to fold the tree where it has */}
         <AtWidth below={TWO_COLUMNS}>
@@ -821,7 +703,7 @@ export function ParticipantResultList({
           value={search.draft}
           onChange={search.setDraft}
           label={m.roster_search({ businessNo })}
-          xstyle={styles.search}
+          xstyle={rosterStyles.search}
         />
         <Select
           value={view.status === '' ? ALL : view.status}
@@ -832,7 +714,7 @@ export function ParticipantResultList({
           <SelectTrigger
             aria-label={m.roster_statusLabel()}
             data-testid="roster-status"
-            xstyle={styles.choice}
+            xstyle={rosterStyles.choice}
           >
             <SelectValue />
           </SelectTrigger>
@@ -851,7 +733,7 @@ export function ParticipantResultList({
           <SelectTrigger
             aria-label={m.roster_waitingLabel()}
             data-testid="roster-waiting"
-            xstyle={styles.choice}
+            xstyle={rosterStyles.choice}
           >
             <SelectValue />
           </SelectTrigger>
@@ -872,7 +754,7 @@ export function ParticipantResultList({
           <SelectTrigger
             aria-label={m.roster_sortLabel()}
             data-testid="roster-sort"
-            xstyle={styles.choice}
+            xstyle={rosterStyles.choice}
           >
             <SelectValue />
           </SelectTrigger>
@@ -948,12 +830,7 @@ export function ParticipantResultList({
         <Card ref={listCard} data-testid="roster">
           <div
             {...stylex.props(
-              styles.table(
-                columns,
-                separateKinds
-                  ? `6.5rem minmax(180px, min(480px, 30%)) minmax(0, 1fr) ${tailColumns}`
-                  : columns,
-              ),
+              rosterStyles.table(columns, separateKinds ? rosterWideColumns : columns),
             )}
           >
             <Table columns="var(--q-roster-columns)">
@@ -965,7 +842,7 @@ export function ParticipantResultList({
                 ) : (
                   <span>{waitingHead}</span>
                 )}
-                <span {...stylex.props(styles.headEnd)}>{m.roster_columnScore()}</span>
+                <span {...stylex.props(rosterStyles.headEnd)}>{m.roster_columnScore()}</span>
                 <span />
               </TableHead>
               {rows.length === 0 ? (
@@ -974,7 +851,7 @@ export function ParticipantResultList({
                 rows.map((row) => {
                   const { steps, path, unknown } = unitPath(row.anchorLineage)
                   const who = (
-                    <span data-testid="participant-who" {...stylex.props(styles.who)}>
+                    <span data-testid="participant-who" {...stylex.props(rosterStyles.who)}>
                       <span {...stylex.props(styles.nameWithMark)}>
                         <span data-testid="participant-name" {...stylex.props(styles.name)}>
                           {row.displayName}
@@ -1077,7 +954,7 @@ export function ParticipantResultList({
                       {/* the total is what the list is scanned by, so
                         stacked it keeps the end of the row */}
                       <Cell narrow="end" end unlabelled>
-                        <span {...stylex.props(styles.scoreSeat)}>
+                        <span {...stylex.props(rosterStyles.scoreSeat)}>
                           <RosterScore
                             batchId={batchId}
                             participantId={row.id}
@@ -1090,7 +967,7 @@ export function ParticipantResultList({
                         </span>
                       </Cell>
                       {/* the act on one person, where the person is */}
-                      <span {...stylex.props(styles.rowAct)}>
+                      <span {...stylex.props(rosterStyles.rowAct)}>
                         {manageable && (
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
@@ -1162,13 +1039,13 @@ export function ParticipantResultList({
   )
 
   return (
-    <div {...stylex.props(styles.panel)}>
+    <div {...stylex.props(rosterStyles.panel)}>
       {/* The page's name, how many it holds and what can be done to it, on
           one line: the rail already says which section this is, and the bar
           above it which round, so a band saying it again only pushed the
           list down. */}
-      <header data-testid="roster-heading" {...stylex.props(styles.head)}>
-        <h1 {...stylex.props(styles.title)}>{m.participantResults_tab()}</h1>
+      <header data-testid="roster-heading" {...stylex.props(rosterStyles.head)}>
+        <h1 {...stylex.props(rosterStyles.title)}>{m.participantResults_tab()}</h1>
         {/* how many the list holds, or how many answer what it was asked;
             an empty list says so itself, below */}
         {total > 0 && (
@@ -1184,7 +1061,7 @@ export function ParticipantResultList({
         <span {...stylex.props(styles.spacer)} />
 
         {manageable && (
-          <span {...stylex.props(styles.actions)}>
+          <span {...stylex.props(rosterStyles.actions)}>
             <Button size="sm" variant="outline" onClick={() => setImporting(true)}>
               {m.roster_import()}
             </Button>

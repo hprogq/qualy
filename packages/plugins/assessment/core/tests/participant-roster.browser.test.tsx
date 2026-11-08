@@ -1,3 +1,4 @@
+import { ParticipantRosterSkeleton } from '../src/client/result/ParticipantRosterSkeleton.tsx'
 import ParticipantResultsPage from '../src/client/result/ParticipantResultsPage.tsx'
 import { lazy } from 'react'
 import { describe, expect, it, vi } from 'vitest'
@@ -1984,6 +1985,109 @@ describe('people the review steps find nowhere', () => {
       expect(warnings.element().getBoundingClientRect().bottom).toBeLessThanOrEqual(
         window.innerHeight,
       )
+    } finally {
+      await page.viewport(1280, 800)
+    }
+  })
+})
+
+// Compare the streamed outline with the populated screen, not a second
+// handwritten copy of its CSS. The shell supplies a size container before
+// hydration; no fallback is allowed to measure the window to find its foot.
+describe('roster first-paint geometry', () => {
+  it.each([
+    [1440, 900, 224],
+    [1180, 820, 224],
+    [390, 844, 0],
+    [375, 640, 0],
+  ])('keeps the real roster measure at %i × %i', async (width, height, rail) => {
+    await page.viewport(width, height)
+    try {
+      const loaded = await open(
+        {
+          listParticipantAccounts: (request: Request) =>
+            pageOf(
+              request,
+              EVERYONE.map((one) => ({
+                ...one,
+                filings: { ...NONE, inReview: 2 },
+              })),
+            ),
+        },
+        undefined,
+        width - rail,
+        'zh-CN',
+        {},
+        112,
+      )
+      await expect.element(rows().first()).toBeVisible()
+      await expect
+        .element(page.getByTestId('participant-score').first())
+        .toHaveAttribute('data-score-state', 'scored')
+      const realRow = rows().first().element().getBoundingClientRect()
+      const realCard = page.getByTestId('roster').element().getBoundingClientRect()
+      const realHeading = page.getByTestId('roster-heading').element().getBoundingClientRect()
+      const realTree =
+        width >= 1280
+          ? page.getByTestId('roster-unit-tree').element().getBoundingClientRect()
+          : null
+      await loaded.unmount()
+      await renderScreen({
+        client: fakeClient({ app: { getManifest: () => Effect.succeed(emptyManifest()) } }),
+        children: (
+          <div
+            style={{
+              width: width - rail,
+              height: '100dvh',
+              display: 'flex',
+              flexDirection: 'column',
+            }}
+          >
+            <div style={{ height: 112, flexShrink: 0 }} />
+            <div
+              data-testid="skeleton-scroll"
+              style={{ flex: 1, minHeight: 0, containerType: 'size', overflowY: 'auto' }}
+            >
+              <ParticipantRosterSkeleton />
+            </div>
+          </div>
+        ),
+      })
+      await expect.element(page.getByTestId('roster-pending')).toBeVisible()
+      const pending = page.getByTestId('roster-pending').element()
+      const card = page.getByTestId('roster-skeleton').element().getBoundingClientRect()
+      const first = page
+        .getByTestId('roster-skeleton-row')
+        .first()
+        .element()
+        .getBoundingClientRect()
+      const heading = pending.querySelector('header')!.getBoundingClientRect()
+      expect(Math.abs(heading.height - realHeading.height)).toBeLessThanOrEqual(1)
+      expect(Math.abs(card.left - realCard.left)).toBeLessThanOrEqual(1)
+      expect(Math.abs(card.width - realCard.width)).toBeLessThanOrEqual(1)
+      expect(Math.abs(card.top - realCard.top)).toBeLessThanOrEqual(1)
+      expect(Math.abs(first.height - realRow.height)).toBeLessThanOrEqual(2)
+      expect(Math.abs(first.top - realRow.top)).toBeLessThanOrEqual(1)
+      const scroll = page.getByTestId('skeleton-scroll').element()
+      expect(
+        Math.abs(card.bottom - (scroll.getBoundingClientRect().bottom - 16)),
+      ).toBeLessThanOrEqual(1)
+      expect(scroll.scrollHeight - scroll.clientHeight).toBeLessThanOrEqual(1)
+      expect(scroll.scrollWidth - scroll.clientWidth).toBeLessThanOrEqual(1)
+      if (realTree) {
+        const tree = page.getByTestId('roster-skeleton-tree').element().getBoundingClientRect()
+        expect(Math.abs(tree.left - realTree.left)).toBeLessThanOrEqual(1)
+        expect(Math.abs(tree.width - realTree.width)).toBeLessThanOrEqual(1)
+        expect(Math.abs(tree.bottom - card.bottom)).toBeLessThanOrEqual(1)
+      } else await expect.element(page.getByTestId('roster-skeleton-tree')).not.toBeVisible()
+      expect(pending.querySelector('button, input, select, a[href]')).toBeNull()
+      // The same mounted fallback grows with the available room, without
+      // adding rows, changing data or waiting for a measured layout pass.
+      const rowCount = pending.querySelectorAll('[data-testid="roster-skeleton-row"]').length
+      await page.viewport(width, height + 160)
+      const taller = page.getByTestId('roster-skeleton').element().getBoundingClientRect()
+      expect(Math.abs(taller.bottom - card.bottom - 160)).toBeLessThanOrEqual(1)
+      expect(pending.querySelectorAll('[data-testid="roster-skeleton-row"]').length).toBe(rowCount)
     } finally {
       await page.viewport(1280, 800)
     }
