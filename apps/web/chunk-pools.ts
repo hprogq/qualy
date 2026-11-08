@@ -13,7 +13,7 @@ import type { Rolldown } from 'vite'
 // for 61 files; 22 of them were under 2 KB and held 13 KB between
 // them.
 /** where a pool of messages several pages say is merged into its nearest neighbour */
-const MESSAGE_POOL_BYTES = 48 * 1024
+export const MESSAGE_POOL_BYTES = 48 * 1024
 
 export const chunkPools: NonNullable<Rolldown.OutputOptions['codeSplitting']> = {
   groups: [

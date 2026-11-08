@@ -3,11 +3,12 @@ import path from 'node:path'
 import { brotliCompressSync } from 'node:zlib'
 import { build, type Plugin } from 'vite'
 import { staticClosure } from '../../packages/build/web/src/chunk-graph.ts'
-import { screenBudgets, messagePoolBytes } from '../../apps/web/performance-budget.ts'
+import { screenBudgets } from '../../apps/web/performance-budget.ts'
+import { MESSAGE_POOL_BYTES } from '../../apps/web/chunk-pools.ts'
 import { repoRoot } from '../lib/manifest.ts'
 
 // Explicit benchmark invocation; normal builds never read an environment override.
-const pools = process.argv.includes('--sweep') ? [16, 32, 48, 64, 96] : [messagePoolBytes / 1024]
+const pools = process.argv.includes('--sweep') ? [16, 32, 48, 64, 96] : [MESSAGE_POOL_BYTES / 1024]
 const results: unknown[] = []
 for (const pool of pools) {
   let report: unknown
