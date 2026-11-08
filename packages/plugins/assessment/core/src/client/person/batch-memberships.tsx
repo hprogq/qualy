@@ -17,7 +17,7 @@ import {
   Card,
   CardEmpty,
   Cell,
-  EditorSkeleton,
+  TableSkeleton,
   LeadWord,
   SectionHead,
   Status,
@@ -188,7 +188,21 @@ export function BatchMemberships({
         loadingLabel={commonMessages.state_loading()}
         retryLabel={commonMessages.action_retry()}
         onRetry={() => void rows.refetch()}
-        skeleton={<EditorSkeleton />}
+        skeleton={
+          <Card>
+            <TableSkeleton
+              rows={3}
+              columns={`minmax(0, 1.4fr) minmax(0, 1fr) 6rem ${momentColumn}`}
+              openable={batchReachable}
+              headers={[
+                m.person_batchColumn(),
+                m.person_anchorColumn(),
+                m.person_membershipColumn(),
+                m.person_includedColumn(),
+              ]}
+            />
+          </Card>
+        }
       >
         <Card data-testid="person-batches" tabIndex={-1} aria-busy={rows.isFetching}>
           {items.length === 0 ? (
@@ -246,6 +260,7 @@ export function BatchMemberships({
           )}
           {rows.data !== undefined && (
             <RecordPager
+              separated
               result={rows.data}
               busy={rows.isFetching}
               target="person-batches"

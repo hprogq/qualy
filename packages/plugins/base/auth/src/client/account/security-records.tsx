@@ -15,17 +15,9 @@ import { keepPreviousData, useInfiniteQuery, useQuery, useQueryClient } from '@t
 import * as stylex from '@stylexjs/stylex'
 
 import { AsyncSection, ConfirmDialog } from '@qualy/ui/admin'
+import { Skeleton } from '@qualy/ui/skeleton'
 import { Button } from '@qualy/ui/button'
-import {
-  Card,
-  CardEmpty,
-  CardFoot,
-  CardHead,
-  DetailSheet,
-  Spacer,
-  Status,
-  TableSkeleton,
-} from '@qualy/ui/screen'
+import { Card, CardEmpty, CardFoot, CardHead, DetailSheet, Spacer, Status } from '@qualy/ui/screen'
 import { type ApiResult } from '@qualy/web-runtime/api'
 import { toast } from '@qualy/ui/toast'
 import { ToggleGroup, ToggleGroupItem } from '@qualy/ui/toggle-group'
@@ -71,6 +63,7 @@ const styles = stylex.create({
     fontVariantNumeric: 'tabular-nums',
   },
   end: { flexShrink: 0 },
+  boneText: { minHeight: '1lh' },
   when: { fontVariantNumeric: 'tabular-nums' },
   whole: { display: 'flex', flexDirection: 'column', gap: 12 },
   // the record's own controls: which ones, and which days
@@ -96,6 +89,29 @@ const styles = stylex.create({
     textDecoration: 'none',
   },
 })
+
+/** Session and activity rows have two lines and a status/action at the end. */
+export function RecordRowsSkeleton({ rows = 3 }: { rows?: number }) {
+  return (
+    <div aria-hidden data-testid="record-rows-skeleton">
+      {Array.from({ length: rows }, (_, index) => (
+        <div key={index} {...stylex.props(styles.row)}>
+          <span {...stylex.props(styles.words)}>
+            <span {...stylex.props(styles.line, styles.boneText)}>
+              <Skeleton height={18} width="46%" />
+            </span>
+            <span {...stylex.props(styles.meta, styles.boneText)}>
+              <Skeleton height={16} width="68%" />
+            </span>
+          </span>
+          <span {...stylex.props(styles.end)}>
+            <Skeleton height={24} width={56} />
+          </span>
+        </div>
+      ))}
+    </div>
+  )
+}
 
 /** the door, the address and the time of one row, whichever are known */
 function Meta({ parts }: { parts: readonly (string | null)[] }) {
@@ -229,7 +245,7 @@ export function SessionsCard({ person }: { person?: RecordPerson }) {
         loadingLabel={commonMessages.state_loading()}
         retryLabel={commonMessages.action_retry()}
         onRetry={() => void sessions.refetch()}
-        skeleton={<TableSkeleton rows={2} />}
+        skeleton={<RecordRowsSkeleton rows={2} />}
       >
         {/* the reader's own list always has the session in hand; somebody
             else's may have none at all */}
@@ -523,7 +539,7 @@ function RecordCard<Item extends { readonly id: string }>({
         loadingLabel={commonMessages.state_loading()}
         retryLabel={commonMessages.action_retry()}
         onRetry={() => void recent.refetch()}
-        skeleton={<TableSkeleton rows={3} />}
+        skeleton={<RecordRowsSkeleton rows={3} />}
       >
         {items.length === 0 ? (
           <CardEmpty>{empty}</CardEmpty>
@@ -663,7 +679,7 @@ function AllSignIns({ person }: { person: RecordPerson | undefined }) {
           loadingLabel={commonMessages.state_loading()}
           retryLabel={commonMessages.action_retry()}
           onRetry={() => void signIns.refetch()}
-          skeleton={<TableSkeleton rows={6} />}
+          skeleton={<RecordRowsSkeleton rows={6} />}
         >
           {items.length === 0 ? (
             <CardEmpty>{m.signIns_empty()}</CardEmpty>
@@ -715,7 +731,7 @@ function AllChanges() {
           loadingLabel={commonMessages.state_loading()}
           retryLabel={commonMessages.action_retry()}
           onRetry={() => void changes.refetch()}
-          skeleton={<TableSkeleton rows={6} />}
+          skeleton={<RecordRowsSkeleton rows={6} />}
         >
           {items.length === 0 ? (
             <CardEmpty>{m.activity_changesEmpty()}</CardEmpty>

@@ -18,7 +18,7 @@ import {
   Card,
   CardEmpty,
   Cell,
-  EditorSkeleton,
+  TableSkeleton,
   SectionHead,
   Status,
   Table,
@@ -147,7 +147,21 @@ export default function UserEntriesPage() {
         loadingLabel={commonMessages.state_loading()}
         retryLabel={commonMessages.action_retry()}
         onRetry={() => void rows.refetch()}
-        skeleton={<EditorSkeleton />}
+        skeleton={
+          <Card>
+            <TableSkeleton
+              rows={4}
+              columns="minmax(0, 1.1fr) minmax(0, 1.3fr) 6rem 6rem 8.5rem"
+              headers={[
+                m.person_columnBatch(),
+                m.person_columnItem(),
+                m.person_columnStatus(),
+                m.person_columnSource(),
+                m.person_columnWhen(),
+              ]}
+            />
+          </Card>
+        }
       >
         <Card data-testid="person-entries" tabIndex={-1} aria-busy={rows.isFetching}>
           {items.length === 0 ? (

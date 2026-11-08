@@ -6,8 +6,9 @@ import { useApiQuery, useDocumentNow, useLoadFailure } from '@qualy/web-runtime'
 import type { ApiResult } from '@qualy/web-runtime/api'
 
 import { AsyncSection } from '@qualy/ui/admin'
+import { Skeleton } from '@qualy/ui/skeleton'
 import { Button } from '@qualy/ui/button'
-import { Card, CardEmpty, SectionHead, TableSkeleton, Tag } from '@qualy/ui/screen'
+import { Card, CardEmpty, SectionHead, Tag } from '@qualy/ui/screen'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 
 import { accessApi } from './api.ts'
@@ -75,7 +76,21 @@ export default function AccountRolesPage() {
         onRetry={() => void roles.refetch()}
         skeleton={
           <Card>
-            <TableSkeleton rows={2} />
+            <div aria-hidden data-testid="account-roles-skeleton">
+              {[0, 1].map((row) => (
+                <div key={row} {...stylex.props(styles.row)}>
+                  <div {...stylex.props(styles.head)}>
+                    <Skeleton height={20} width={128} />
+                    <Skeleton height={16} width={160} />
+                  </div>
+                  <div {...stylex.props(styles.powers)}>
+                    {[0, 1, 2].map((power) => (
+                      <Skeleton key={power} height={22} width={80} />
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
           </Card>
         }
       >

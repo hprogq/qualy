@@ -8,17 +8,19 @@ export function RecordPager({
   busy,
   target,
   onPage,
+  separated = false,
 }: {
   result: { page: number; pageSize: number; total: number; items: readonly unknown[] }
   busy: boolean
   target: string
   onPage: (page: number) => void
+  separated?: boolean
 }) {
   const seat = useRef<HTMLDivElement>(null)
   const { page, pageSize, total, items } = result
   return (
     <div ref={seat}>
-      <CardFoot compact={total <= pageSize}>
+      <CardFoot separated={separated} compact={total <= pageSize}>
         <Pager
           testId={`${target}-pager`}
           label={m.record_pages()}

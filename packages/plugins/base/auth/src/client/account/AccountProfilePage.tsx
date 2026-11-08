@@ -6,10 +6,11 @@ import { useApiQuery, useLoadFailure } from '@qualy/web-runtime'
 import { useTerm } from '@qualy/plugin-settings/client/terms'
 import { authTerms } from '@qualy/auth-contract/terms'
 import { AsyncSection } from '@qualy/ui/admin'
-import { Card, DefLine, DefList, DefListSkeleton, SectionHead } from '@qualy/ui/screen'
+import { Card, DefLine, DefList, SectionHead } from '@qualy/ui/screen'
 
 import { authApi } from '../api.ts'
 import { EmailWithStanding } from '../iam/person-facts.tsx'
+import { Skeleton } from '@qualy/ui/skeleton'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { LocaleChoicePicker } from '../identity-bits.tsx'
 import { useChooseLocale } from '../locale-choice.tsx'
@@ -47,6 +48,14 @@ const styles = stylex.create({
   preferenceLabel: { fontSize: 14, fontWeight: 500 },
   preferenceHint: { fontSize: 12, lineHeight: 1.5, color: tokens.mutedForeground },
   preferenceControl: { flexShrink: 0 },
+  pendingValue: { position: 'relative', display: 'block', width: '46%' },
+  pendingBone: {
+    position: 'absolute',
+    insetBlock: 0,
+    marginBlock: 'auto',
+    width: '100%',
+    height: 13,
+  },
 })
 
 export default function AccountProfilePage() {
@@ -71,8 +80,23 @@ export default function AccountProfilePage() {
           retryLabel={commonMessages.action_retry()}
           onRetry={() => void self.refetch()}
           skeleton={
-            <Card>
-              <DefListSkeleton rows={5} />
+            <Card data-testid="account-profile-pending">
+              <DefList>
+                {[
+                  m.field_name(),
+                  businessNoWord,
+                  m.users_email(),
+                  m.field_userType(),
+                  m.users_anchor(),
+                ].map((label) => (
+                  <DefLine key={label} label={label}>
+                    <span aria-hidden {...stylex.props(styles.pendingValue)}>
+                      {'\u00a0'}
+                      <Skeleton className={stylex.props(styles.pendingBone).className} />
+                    </span>
+                  </DefLine>
+                ))}
+              </DefList>
             </Card>
           }
         >
@@ -118,7 +142,7 @@ export default function AccountProfilePage() {
           )}
         </AsyncSection>
       </section>
-      {me && (
+      {(me || self.isPending) && (
         <section {...stylex.props(styles.section)}>
           <SectionHead title={m.preference_settings()} />
           <Card data-testid="account-preferences">
@@ -128,7 +152,11 @@ export default function AccountProfilePage() {
                 <span {...stylex.props(styles.preferenceHint)}>{m.preference_languageHint()}</span>
               </div>
               <div {...stylex.props(styles.preferenceControl)}>
-                <LocaleChoicePicker value={me.preferredLocale} onChoose={chooseLocale} />
+                {me ? (
+                  <LocaleChoicePicker value={me.preferredLocale} onChoose={chooseLocale} />
+                ) : (
+                  <Skeleton height={32} width={136} />
+                )}
               </div>
             </div>
           </Card>

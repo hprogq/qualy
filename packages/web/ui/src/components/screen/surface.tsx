@@ -672,7 +672,45 @@ const TableColumns = createContext<{
  * what is coming - it also lands at whatever height it was written with and
  * then shoves the page when the real rows arrive. These are the rows.
  */
-export function TableSkeleton({ rows = 6 }: { rows?: number }) {
+export function TableSkeleton({
+  rows = 6,
+  columns,
+  headers,
+  openable = false,
+}: {
+  rows?: number
+  columns?: string
+  headers?: readonly ReactNode[]
+  openable?: boolean
+}) {
+  if (columns !== undefined && headers !== undefined)
+    return (
+      <div aria-hidden data-testid="table-bones">
+        <Table columns={columns} openable={openable}>
+          <TableHead>
+            {headers.map((header, index) => (
+              <span key={index}>{header}</span>
+            ))}
+          </TableHead>
+          {Array.from({ length: rows }, (_, row) => (
+            <TableRow key={row}>
+              {headers.map((_, column) => (
+                <Cell
+                  key={column}
+                  lead={column === 0}
+                  narrow={headers[column] === '' ? 'end' : undefined}
+                >
+                  <Skeleton
+                    height={headers[column] === '' ? 24 : column === 0 ? 14 : 12}
+                    width={headers[column] === '' ? 56 : column === 0 ? '72%' : '60%'}
+                  />
+                </Cell>
+              ))}
+            </TableRow>
+          ))}
+        </Table>
+      </div>
+    )
   return (
     <div {...stylex.props(styles.bones)} aria-hidden data-testid="table-bones">
       {Array.from({ length: rows }, (_, index) => (

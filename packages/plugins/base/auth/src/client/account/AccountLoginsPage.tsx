@@ -195,7 +195,16 @@ export default function AccountLoginsPage() {
         }}
         skeleton={
           <Card>
-            <TableSkeleton rows={3} />
+            <TableSkeleton
+              rows={3}
+              columns="minmax(0, 1fr) minmax(0, 1.4fr) 9.5rem 7rem"
+              headers={[
+                m.loginMethods_title(),
+                m.person_columnAccount(),
+                m.person_columnLastUsed(),
+                '',
+              ]}
+            />
           </Card>
         }
       >

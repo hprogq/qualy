@@ -15,9 +15,10 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 
 import { AsyncSection, Field, FormDialog, useSettledCheck } from '@qualy/ui/admin'
+import { Skeleton } from '@qualy/ui/skeleton'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
-import { Card, DefListSkeleton, SectionHead } from '@qualy/ui/screen'
+import { Card, SectionHead } from '@qualy/ui/screen'
 import { toast } from '@qualy/ui/toast'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
@@ -104,7 +105,17 @@ export default function AccountSecurityPage() {
         onRetry={() => void self.refetch()}
         skeleton={
           <Card>
-            <DefListSkeleton rows={2} />
+            <div aria-hidden data-testid="security-settings-skeleton">
+              {[m.account_password(), m.users_email()].map((name) => (
+                <Setting
+                  key={name}
+                  testId="security-setting-skeleton"
+                  name={name}
+                  standing={<Skeleton height={20} width={120} />}
+                  actions={<Skeleton height={24} width={64} />}
+                />
+              ))}
+            </div>
           </Card>
         }
       >
@@ -114,10 +125,10 @@ export default function AccountSecurityPage() {
               <PasswordSetting standing={me.passwordStatus} emailVerified={me.emailVerified} />
               <EmailSetting email={me.email} verified={me.emailVerified} />
             </Card>
-            <SessionsCard />
           </>
         )}
       </AsyncSection>
+      <SessionsCard />
     </div>
   )
 }

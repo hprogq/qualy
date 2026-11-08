@@ -95,6 +95,57 @@ const stubs = (entrances: Entrance[], over: Record<string, unknown> = {}) => ({
   },
 })
 
+it.each([1280, 390])(
+  'keeps profile and preferences in place while facts load at %i px',
+  async (width) => {
+    await page.viewport(width, 900)
+    let release!: () => void
+    const waiting = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    try {
+      await renderScreen({
+        client: fakeClient(
+          stubs([], {
+            getSelf: () =>
+              Effect.promise(async () => {
+                await waiting
+                return me()
+              }),
+          }),
+        ),
+        route: '/account',
+        children: <AccountProfilePage />,
+      })
+      const bones = page.getByTestId('account-profile-pending')
+      await expect.element(bones).toBeVisible()
+      const facts = bones.element().getBoundingClientRect()
+      const preferences = page.getByTestId('account-preferences').element().getBoundingClientRect()
+      release()
+      const profile = page.getByTestId('account-profile')
+      await expect.element(profile).toBeVisible()
+      const loaded = profile.element().getBoundingClientRect()
+      const settled = page.getByTestId('account-preferences').element().getBoundingClientRect()
+      for (const key of ['x', 'y', 'width', 'height'] as const)
+        expect(
+          Math.abs(loaded[key] - facts[key]),
+          JSON.stringify({
+            key,
+            facts,
+            loaded,
+            lines: [...profile.element().querySelectorAll('dl > div')].map(
+              (node) => node.getBoundingClientRect().height,
+            ),
+          }),
+        ).toBeLessThanOrEqual(3)
+      expect(Math.abs(settled.y - preferences.y)).toBeLessThanOrEqual(3)
+    } finally {
+      release()
+      await page.viewport(1280, 800)
+    }
+  },
+)
+
 describe('the reader’s banner', () => {
   const facts = () =>
     [...document.querySelectorAll('[data-testid="person-fact"]')].map((el) =>
