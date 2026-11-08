@@ -197,8 +197,22 @@ export default defineConfig(({ command, mode }) => ({
       [QUALY_API_PREFIX]: { target: apiOrigin, ws: true },
       '/health': { target: apiOrigin },
     },
+    // It listens beyond this machine, so what it reads is what whoever
+    // reaches it can read: the application, the workspace packages and the
+    // installed dependencies, and none of the secrets or dumps that may sit
+    // among them (tools/tests/dev-server-files.test.ts).
     fs: {
       allow: [`${repoRoot}apps/web`, `${repoRoot}packages`, `${repoRoot}node_modules`],
+      deny: [
+        '.env',
+        '.env.*',
+        '*.{crt,pem,key,p12,pfx,cer,der}',
+        '.npmrc',
+        '.yarnrc.yml',
+        '**/.git/**',
+        '**/*.env',
+        '**/*.dump',
+      ],
     },
   },
 }))

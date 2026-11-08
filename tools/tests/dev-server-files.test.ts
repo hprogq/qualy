@@ -15,7 +15,7 @@ const repo = fileURLToPath(new URL('../..', import.meta.url))
 
 afterEach(() => vi.unstubAllEnvs())
 
-const resolved = async (file = 'apps/web/vite.config.ts') => {
+const resolved = async (file = 'apps/web/vite.rsc.config.ts') => {
   const loaded = await loadConfigFromFile(
     { command: 'serve', mode: 'development' },
     path.join(repo, file),
@@ -44,9 +44,9 @@ const served = async () => {
   return (file: string) => isFileServingAllowed(config, `/@fs${repo}${file}`)
 }
 
-it('includes the host HTML entry in dependency discovery alongside plugin entries', async () => {
+it("discovers the browser's dependencies from the document's browser entry", async () => {
   const config = await resolved()
-  expect(config.optimizeDeps.entries).toContain('index.html')
+  expect(config.environments['client']?.optimizeDeps.entries).toContain('src/rsc/entry.browser.tsx')
 })
 
 describe('development hostnames', () => {
@@ -68,7 +68,7 @@ describe('what the development server serves from the file system', () => {
   it('serves the application, the workspace packages and the installed dependencies', async () => {
     const allowed = await served()
     for (const file of [
-      'apps/web/src/main.tsx',
+      'apps/web/src/rsc/entry.browser.tsx',
       // generated at build time, so absent from a fresh checkout
       path.posix.join('apps/web/.qualy', 'plugins.ts'),
       'packages/web/ui/package.json',
