@@ -6,9 +6,11 @@ import {
   type DehydratedState,
   type Query,
   type QueryClient,
-  type QueryKey,
 } from '@tanstack/react-query'
 import { useLocation } from 'react-router'
+import type { Coming } from './query-handoff.ts'
+
+export type { Arrival, Coming } from './query-handoff.ts'
 
 // What a server read on a page's behalf, handed to the page's query cache
 // (docs/adr/0012-rsc-data-mode.md).
@@ -48,17 +50,6 @@ import { useLocation } from 'react-router'
 
 /** how long an answer a server handed over stands before a reader asks again */
 const HANDED_FRESH_MS = 30_000
-
-/** what a read that followed the html came to: an answer, or the page's to ask */
-export type Arrival =
-  | { readonly kind: 'answer'; readonly value: unknown }
-  | { readonly kind: 'ask' }
-
-/** a read still on its way when the html went out, under the key the page reads it with */
-export interface Coming {
-  readonly queryKey: QueryKey
-  readonly arrival: Promise<Arrival>
-}
 
 /**
  * Opened once the browser has taken the document over, and never on the

@@ -1,6 +1,6 @@
 import { Cause, Exit, Option } from 'effect'
 import { QueryClient, dehydrate, type DehydratedState, type QueryKey } from '@tanstack/query-core'
-import type { Arrival, Coming } from '@qualy/web-runtime/query-hydration'
+import type { Arrival, Coming } from '@qualy/web-runtime/query-handoff'
 
 // What a page's server entry reads on the page's behalf, and how it hands
 // that over (docs/adr/0012-rsc-data-mode.md).
