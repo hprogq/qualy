@@ -88,7 +88,10 @@ export async function acceptParticipantLoading({
     const listReader = slow.body!.getReader()
     let outline = ''
     try {
-      while (!outline.includes('data-testid="roster-pending"')) {
+      while (
+        !outline.includes('data-testid="roster-pending"') ||
+        !outline.includes('data-testid="roster-skeleton"')
+      ) {
         const part = await listReader.read()
         if (part.done) break
         outline += decoder.decode(part.value, { stream: true })

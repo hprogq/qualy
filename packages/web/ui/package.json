@@ -85,7 +85,8 @@
     "./theme/tokens.stylex": "./src/theme/tokens.stylex.ts",
     "./provider": "./src/theme/mantine.tsx",
     "./theme/breakpoints.stylex": "./src/theme/breakpoints.stylex.ts",
-    "./theme/layout.stylex": "./src/theme/layout.stylex.ts"
+    "./theme/layout.stylex": "./src/theme/layout.stylex.ts",
+    "./fonts.css": "./src/styles/fonts.css"
   },
   "peerDependencies": {
     "react": "catalog:",

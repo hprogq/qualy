@@ -88,7 +88,7 @@ export default defineConfig(({ command, mode }) => ({
       stylexUnplugin({
         useCSSLayers: true,
         dev: mode !== 'production',
-        devMode: 'css-only',
+        devMode: 'full',
         runtimeInjection: false,
         unstable_moduleResolution: { type: 'commonJS', rootDir: repoRoot },
         // Into the stylesheet every document links, as the page build does

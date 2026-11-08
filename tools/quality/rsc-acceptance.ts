@@ -792,19 +792,20 @@ const underPolicy = async (browser: Browser) => {
  * A navigation the router asks the server to render: to another page the
  * reader can open, by its address, as a link would. Answers where it went.
  */
-const navigateElsewhere = (page: Page) =>
-  inPage<string>(
-    page,
-    `(() => {
-      const here = location.pathname
-      const to = [...document.querySelectorAll('a[href^="/"]')]
-        .map((anchor) => new URL(anchor.href).pathname)
-        .find((pathname) => pathname !== here && pathname !== '/login')
-      if (to === undefined) throw new Error('no other page to go to from ' + here)
-      void window.__reactRouterDataRouter.navigate(to)
-      return to
-    })()`,
-  )
+const navigateElsewhere = async (page: Page): Promise<string> => {
+  const here = new URL(page.url()).pathname
+  // A router object exists before its React providers finish hydrating.
+  // Exercise real input and event replay, not a call that bypasses both.
+  for (const link of await page.locator('a[href^="/"]').all()) {
+    const href = await link.getAttribute('href')
+    if (href === null || !(await link.isVisible())) continue
+    const to = new URL(href, page.url()).pathname
+    if (to === here || to === '/login') continue
+    await link.click()
+    return to
+  }
+  throw new Error('no other page to go to from ' + here)
+}
 
 /** a signed-in page whose browser then signs somebody else in */
 const changedHands = async (browser: Browser) => {

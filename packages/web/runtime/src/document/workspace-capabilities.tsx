@@ -1,4 +1,12 @@
-import { useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import {
+  startTransition,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react'
 import { RuntimeContext } from '../runtime-context.tsx'
 import { sharedContext } from '../shared-context.ts'
 
@@ -47,12 +55,33 @@ export function WorkspaceCapabilityScope({
   // function, and a publish that minted a new publisher re-armed that effect
   // - publish, re-arm, withdraw, publish - until React called the loop out
   const publish = useCallback(
-    (values: ReadonlySet<string> | null) =>
-      setPublished({
-        pathname,
-        state: values === null ? { status: 'loading' } : { status: 'ready', values },
-      }),
-    [pathname],
+    (values: ReadonlySet<string> | null) => {
+      // Publishing background reads must not discard visible server content
+      // whose client module is still loading in a nested Suspense boundary.
+      startTransition(() =>
+        setPublished((before) => {
+          const current =
+            before !== undefined && before.pathname === pathname
+              ? before.state
+              : initial === undefined
+                ? { status: 'loading' as const }
+                : { status: 'ready' as const, values: new Set(initial) }
+          if (
+            values === null
+              ? current.status === 'loading'
+              : current.status === 'ready' &&
+                values.size === current.values.size &&
+                [...values].every((value) => current.values.has(value))
+          )
+            return before
+          return {
+            pathname,
+            state: values === null ? { status: 'loading' } : { status: 'ready', values },
+          }
+        }),
+      )
+    },
+    [pathname, initial],
   )
   const value = useMemo<CapabilityScope>(() => ({ state, publish }), [state, publish])
   return <Scope.Provider value={value}>{children}</Scope.Provider>

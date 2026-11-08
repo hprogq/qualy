@@ -1,5 +1,6 @@
 import {
   use,
+  startTransition,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -7,7 +8,6 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import { useHydrating } from './document/hydrating.ts'
 import { sharedContext } from './shared-context.ts'
 
 // Light, dark, or whatever the machine prefers - the third is the default,
@@ -60,10 +60,11 @@ const bootResolved = (): 'light' | 'dark' | null => {
   return mode === 'light' || mode === 'dark' ? mode : null
 }
 
-/** the three things on the root that say which scheme the page is in */
+/** the root attributes owned by the product's resolved theme */
 const applyMode = (mode: 'light' | 'dark') => {
   const root = document.documentElement
   root.dataset['mode'] = mode
+  root.dataset['mantineColorScheme'] = mode
   root.classList.toggle('dark', mode === 'dark')
   root.style.colorScheme = mode
 }
@@ -78,7 +79,12 @@ const applyMode = (mode: 'light' | 'dark') => {
 // what a component draws differently by scheme, such as an icon.
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const hydrating = useHydrating()
+  const [hydrating, setHydrating] = useState(true)
+  useEffect(() => {
+    // Adopt browser preferences without abandoning code-split server HTML.
+    // The document boot script owns the root scheme until this commits.
+    startTransition(() => setHydrating(false))
+  }, [])
   const [choice, setChoiceState] = useState<ThemeChoice>(storedChoice)
   const [systemDark, setSystemDark] = useState(() => {
     // the boot script already answered the system's preference for this

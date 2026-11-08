@@ -1,1 +1,1 @@
-declare module 'virtual:stylex:css-only'
+declare module 'virtual:stylex:runtime'

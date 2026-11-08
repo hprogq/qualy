@@ -97,6 +97,16 @@ try {
   await fs.writeFile(
     module,
     `import * as web from ${JSON.stringify(spec.moduleUrl)}
+const ask = globalThis.fetch
+let delayed = false
+// Force the first roster read beyond the server HTML wait, without changing production code.
+globalThis.fetch = async (request, options) => {
+  if (!delayed && String(request instanceof Request ? request.url : request).includes('/participant-accounts')) {
+    delayed = true
+    await new Promise(resolve => setTimeout(resolve, 180))
+  }
+  return ask(request, options)
+}
 export const prepare = web.prepare
 export const acquire = (prepared, context) => web.acquire({
   ...prepared,
@@ -125,11 +135,11 @@ export const acquire = (prepared, context) => web.acquire({
     await browser.close()
     cancelled.signal.throwIfAborted()
   }
-  const context = await browser.newContext({ locale: 'en-US' })
+  const context = await browser.newContext({ locale: 'en-US', colorScheme: 'dark' })
   const login = await context.request.post(`${site}/api/auth/local/local/login`, { data: account })
   assert.equal(login.status(), 200, 'Login POST must survive the Bun Vite proxy')
-  const student = await scratch.row<{ org: string; type: string }>(
-    'select primary_org_node_id as org, user_type_id as type from users where email=$1',
+  const student = await scratch.row<{ id: string; org: string; type: string }>(
+    'select id, primary_org_node_id as org, user_type_id as type from users where email=$1',
     ['student@example.edu'],
   )
   const batchName = 'Mixed development acceptance'
@@ -144,15 +154,32 @@ export const acquire = (prepared, context) => web.acquire({
   })
   assert.equal(created.status(), 200, 'The proxy must preserve a JSON business write')
   const createdBatch = (await created.json()) as { batch: { id: string } }
+  const record = await browser.newContext({
+    storageState: await context.storageState(),
+    locale: 'zh-CN',
+    colorScheme: 'dark',
+  })
+  try {
+    await traceDevelopmentPaint(
+      record,
+      `${site}/organization/users/${student.id}/assessment/batches`,
+      'cold-user-batches',
+      'dark',
+    )
+  } finally {
+    await record.close()
+  }
   await traceDevelopmentPaint(
     context,
     `${site}/assessment/batches/${createdBatch.batch.id}/settings`,
     'cold-settings',
+    'dark',
   )
   await traceDevelopmentPaint(
     context,
     `${site}/assessment/batches/${createdBatch.batch.id}/results`,
     'cold-roster',
+    'dark',
   )
 
   const planned = await context.request.put(
@@ -178,9 +205,34 @@ export const acquire = (prepared, context) => web.acquire({
       participant,
       `${site}/assessment/batches/${createdBatch.batch.id}/my-result`,
       'cold-my-result',
+      'light',
     )
   } finally {
     await participant.close()
+  }
+
+  await traceDevelopmentPaint(
+    context,
+    `${site}/assessment/batches/${createdBatch.batch.id}/settings`,
+    'warm-settings',
+    'dark',
+  )
+  for (const choice of ['light', 'dark'] as const) {
+    const themed = await browser.newContext({
+      storageState: await context.storageState(),
+      colorScheme: choice === 'light' ? 'dark' : 'light',
+    })
+    try {
+      await themed.addInitScript((value) => localStorage.setItem('qualy.theme', value), choice)
+      await traceDevelopmentPaint(
+        themed,
+        `${site}/assessment/batches/${createdBatch.batch.id}/settings`,
+        `stored-${choice}`,
+        choice,
+      )
+    } finally {
+      await themed.close()
+    }
   }
 
   const anonymous = await browser.newContext({ locale: 'en-US' })

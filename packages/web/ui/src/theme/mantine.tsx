@@ -261,12 +261,14 @@ const cssVariables: CSSVariablesResolver = () => ({
   },
 })
 
+const documentOwnedRoot = () => undefined
+
 /**
  * Mounts the widget library under the Qualy theme.
  *
  * `scheme` must be the resolved value from the product ThemeProvider
- * (`useTheme().resolved`); passing it as `forceColorScheme` makes Mantine a
- * follower with no color-scheme state, storage or listeners of its own.
+ * (`useTheme().resolved`). The document owns root attributes, including its
+ * static reduced-motion policy; Mantine consumes the resolved scheme only.
  */
 export function UiProvider({
   scheme,
@@ -285,6 +287,10 @@ export function UiProvider({
         theme={qualyMantineTheme}
         forceColorScheme={scheme}
         cssVariablesResolver={cssVariables}
+        // ThemeProvider and the document boot script own the root attributes.
+        // The widget provider must not overwrite their early theme with its
+        // SSR snapshot while a deferred client boundary is still hydrating.
+        getRootElement={documentOwnedRoot}
       >
         {children}
       </MantineProvider>

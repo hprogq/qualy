@@ -1,4 +1,7 @@
 import type { BrowserContext, Page, Request as BrowserRequest } from 'playwright'
+import fs from 'node:fs/promises'
+import path from 'node:path'
+import { repoRoot } from '../lib/manifest.ts'
 import { SIGN_IN_PAGE } from '@qualy/auth-contract/sign-in-failure'
 
 // Entry coverage comes from the authorized manifests, so adding a plugin
@@ -122,6 +125,13 @@ export const acceptEntries = async ({
               serverFailed,
               errors,
             })
+            if (!ok) {
+              const directory = path.join(repoRoot, 'node_modules/.cache/rsc-entry-failures')
+              await fs.mkdir(directory, { recursive: true })
+              const name = `${entry.id.replaceAll('/', '-')}-${viewer.name}-${width}`
+              await fs.writeFile(path.join(directory, `${name}-server.html`), html ?? '')
+              await fs.writeFile(path.join(directory, `${name}-client.html`), await page.content())
+            }
             if (ok) covered.add(entry.id)
           } catch (error) {
             check(`renders and hydrates the plugin entry (${label})`, false, {

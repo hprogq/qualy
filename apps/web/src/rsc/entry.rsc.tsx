@@ -1,3 +1,5 @@
+import type { ComponentProps } from 'react'
+import FontStyles from './font-styles.tsx'
 import { createTemporaryReferenceSet, renderToReadableStream } from '@vitejs/plugin-rsc/rsc'
 import { unstable_matchRSCServerRequest as matchRSCServerRequest } from 'react-router'
 import { Api } from '@qualy/api-kit/local'
@@ -109,6 +111,15 @@ const identityRefusal = (
   return signedIn === ANONYMOUS_IDENTITY ? 'session' : 'identity-changed'
 }
 
+function DocumentHtml({ children, ...props }: ComponentProps<typeof HtmlDocument>) {
+  return (
+    <HtmlDocument {...props}>
+      <FontStyles />
+      {children}
+    </HtmlDocument>
+  )
+}
+
 const renderServer = async (request: Request, manifest: Manifest) => {
   const home = (manifest.collections[primaryNavigation.key] ?? []) as readonly {
     readonly target: { readonly kind: string; readonly path?: string }
@@ -117,10 +128,13 @@ const renderServer = async (request: Request, manifest: Manifest) => {
   return matchRSCServerRequest({
     createTemporaryReferenceSet,
     request,
+    // The authorized manifest already describes the full route catalog.
+    // Lazy discovery adds route-context updates during deferred hydration.
+    routeDiscovery: { mode: 'initial' },
     routes: serverRoutes({
       manifest,
       frames: {
-        Html: HtmlDocument,
+        Html: DocumentHtml,
         Document,
         DocumentError,
         LayoutError,
