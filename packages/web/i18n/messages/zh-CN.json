@@ -5,6 +5,7 @@
   "action_close": "关闭",
   "answer_yes": "是",
   "answer_no": "否",
+  "list_separator": "、",
   "state_loading": "加载中",
   "state_stillLoading": "加载时间较长，请稍候…",
   "release_updateAvailableTitle": "Qualy 已更新",

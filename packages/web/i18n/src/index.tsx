@@ -1,5 +1,6 @@
 import { createContext, useContext } from 'react'
 import { defaultLocale, supportedLocales, type SupportedLocale } from '@qualy/i18n-contract'
+import { formatList } from './list.ts'
 
 export {
   formatPlatformFailure,
@@ -47,24 +48,13 @@ export function useLocale(): SupportedLocale {
 /**
  * An enumeration in the reader's own language.
  *
- * The separator between two names is language, not data: components joined
- * with the ideographic comma directly, so an en-US reader was shown Chinese
- * punctuation inside a sentence that had been translated around it. The
- * platform knows the rule for every locale it serves, so no catalog needs a
- * key for a comma.
- *
- * `unit` rather than `conjunction`: these are lists of things - names,
- * tokens, units - and none of them wants an "and" before the last one.
+ * Compact lists use the catalog's separator, with no conjunction before
+ * the last item. This stays identical across server and browser runtimes,
+ * whose Intl list-formatting data can differ.
  */
 export function useList(): (items: readonly string[]) => string {
   const locale = useLocale()
-  // conjunction-narrow, not unit-narrow: a unit list in Chinese has no
-  // separator at all, so three names came out as one run-together word. This
-  // is the one form that is a plain enumeration in both languages - "A、B、C"
-  // and "A, B, C" - with no "and" before the last, which a list of names in
-  // a table cell does not want either.
-  return (items) =>
-    new Intl.ListFormat(locale, { type: 'conjunction', style: 'narrow' }).format(items)
+  return (items) => formatList(items, locale)
 }
 
 const isSupported = (value: string | null | undefined): value is SupportedLocale =>

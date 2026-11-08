@@ -5,6 +5,7 @@
   "action_close": "Close",
   "answer_yes": "Yes",
   "answer_no": "No",
+  "list_separator": ", ",
   "state_loading": "Loading",
   "state_stillLoading": "Taking longer than expected…",
   "release_updateAvailableTitle": "Qualy has been updated",
