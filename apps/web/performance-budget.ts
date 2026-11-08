@@ -86,4 +86,3 @@ export const screenBudgets: readonly ScreenBudget[] = [
 export const entryBrotliBudget = 70 * 1024
 // Everything the entry imports, measured 2026-10-28 at 262370 bytes; same rule.
 export const bootBrotliBudget = 285 * 1024
-export const messagePoolBytes = 48 * 1024

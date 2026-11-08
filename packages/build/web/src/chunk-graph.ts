@@ -109,6 +109,13 @@ export const qualyChunkGraph = (options: {
   /** Brotli bytes of everything the entry imports statically, the entry included */
   bootBrotliBudget?: number
   screens?: readonly ScreenBudget[]
+  /**
+   * Modules, repository-relative, that every screen loads besides the entry
+   * and its surfaces: a server-drawn document's own client components,
+   * which its html asks for alongside the entry rather than the entry
+   * importing them.
+   */
+  hostModules?: readonly string[]
 }): Plugin => ({
   name: 'qualy-chunk-graph',
   apply: 'build',
@@ -189,11 +196,19 @@ export const qualyChunkGraph = (options: {
           if (!chunk) this.error(`budget ${screen.name}: missing surface ${surface}`)
           return chunk
         }
+        const hosts = (options.hostModules ?? []).map((module) => {
+          const chunk = [...modules].find(([, ids]) =>
+            ids.some((id) => readable(id, options.root) === module),
+          )?.[0]
+          if (chunk === undefined) this.error(`host module ${module} is in no chunk of this build`)
+          return chunk
+        })
         for (const screen of options.screens) {
           // in the order the runtime asks for them: the boot, then what it
           // waits for once the manifest is in, then what the drawn shell adds
           const drawn = staticClosure(imports, [
             ...entries,
+            ...hosts,
             ...screen.surfaces.map((surface) => chunkOf(screen, surface)),
           ])
           const closure = [

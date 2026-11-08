@@ -208,3 +208,35 @@ it('counts the slots a shell renders after its layouts and page', () => {
     /screen example: 5\/4 JS requests/,
   )
 })
+
+it("counts a server-drawn document's own client components on every screen", () => {
+  const bundle = {
+    e: chunk('e.js', [], ['/repo/apps/web/src/rsc/entry.browser.tsx'], 10, true),
+    document: chunk('document.js', ['host.js'], ['/repo/apps/web/src/rsc/Document.tsx'], 10),
+    host: chunk('host.js', [], ['/repo/host.ts'], 10),
+    page: chunk('page.js', [], ['/repo/page.ts'], 10),
+    '.qualy-browser-surfaces.json': {
+      type: 'asset',
+      source: JSON.stringify({ 'page:example': { chunk: 'page.js' } }),
+    },
+  }
+  const screen = (requests: number) => ({
+    name: 'example',
+    surfaces: ['page:example'],
+    requests,
+    brotli: 10_000,
+    small1: 10,
+    small2: 10,
+  })
+  // the entry, the page, and the document with what it imports
+  expect(
+    run(bundle, 5000, { screens: [screen(3)], hostModules: ['apps/web/src/rsc/Document.tsx'] }),
+  ).toMatch(/screen example: 4\/3 JS requests/)
+  expect(
+    run(bundle, 5000, { screens: [screen(4)], hostModules: ['apps/web/src/rsc/Document.tsx'] }),
+  ).toBeUndefined()
+  // a host module the build does not carry is a list gone stale
+  expect(
+    run(bundle, 5000, { screens: [screen(4)], hostModules: ['apps/web/src/rsc/Gone.tsx'] }),
+  ).toMatch(/host module apps\/web\/src\/rsc\/Gone.tsx is in no chunk/)
+})

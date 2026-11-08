@@ -13,6 +13,14 @@ import { fileURLToPath } from 'node:url'
 import { defineConfig, type Plugin, type PluginOption } from 'vite'
 import { QUALY_API_PREFIX } from '@qualy/api-kit'
 import { qualyEnvironmentModules, qualyRelease } from '@qualy/web-build/vite'
+import { qualyChunkGraph } from '../../packages/build/web/src/chunk-graph.ts'
+import { chunkPools } from './chunk-pools.ts'
+import {
+  DOCUMENT_HOST_MODULES,
+  documentBootBrotliBudget,
+  documentBudgets,
+  documentEntryBrotliBudget,
+} from './document-budget.ts'
 import { qualyMessages } from '@qualy/message-build/vite'
 
 const stylexUnplugin =
@@ -100,6 +108,20 @@ export default defineConfig(({ command, mode }) => ({
         client: './src/rsc/entry.browser.tsx',
       },
     }),
+    // The browser's half fails here, rather than in a visitor's browser,
+    // when its chunks import one another or a document grows past what it
+    // was measured at (chunk-graph.ts).
+    {
+      ...qualyChunkGraph({
+        root: repoRoot,
+        bootBudget: 2 * 1024 * 1024,
+        entryBrotliBudget: documentEntryBrotliBudget,
+        bootBrotliBudget: documentBootBrotliBudget,
+        screens: documentBudgets,
+        hostModules: DOCUMENT_HOST_MODULES,
+      }),
+      applyToEnvironment: (environment) => environment.name === 'client',
+    },
   ],
   resolve: {
     dedupe: ['react', 'react-dom'],
@@ -147,6 +169,7 @@ export default defineConfig(({ command, mode }) => ({
             entryFileNames: 'assets/e-[hash].js',
             chunkFileNames: 'assets/c-[hash].js',
             assetFileNames,
+            codeSplitting: chunkPools,
           },
         },
       },
