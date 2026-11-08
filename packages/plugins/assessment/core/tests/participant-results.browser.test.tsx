@@ -397,19 +397,16 @@ describe('the participant results screen', () => {
     expect(addressNow()).toContain(`participant=${PARTICIPANT_ID}`)
   })
 
-  it('keeps the screen entrance mounted while drilling in and back out', async () => {
+  it('keeps the unanimated screen mounted while only its detail drills in and out', async () => {
     await screen()
     await expect.element(page.getByTestId('participant-row').first()).toBeVisible()
-    const ancestors: HTMLElement[] = []
-    for (
-      let node = page.getByTestId('participant-row').first().element().parentElement;
-      node;
-      node = node.parentElement
-    ) {
-      if (node.style.opacity !== '') ancestors.push(node)
-    }
-    const entrance = ancestors.at(-1)!
+    const entrance = page
+      .getByTestId('participant-row')
+      .first()
+      .element()
+      .closest('[data-arrival="still"]')!
     expect(entrance).toBeDefined()
+    expect(getComputedStyle(entrance).opacity).toBe('1')
     await page.getByTestId('participant-row').first().click()
     await expect.element(page.getByTestId('participant-tab-score')).toBeVisible()
     expect(entrance.isConnected).toBe(true)

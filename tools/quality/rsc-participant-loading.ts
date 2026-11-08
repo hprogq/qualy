@@ -74,6 +74,48 @@ export async function acceptParticipantLoading({
       (await page.getByTestId('participant-pending').getByTestId('participant-head').isVisible()) &&
         !(await page.getByTestId('participant-column').first().isVisible()),
     )
+    await unhydrated.close()
+    unhydrated = undefined
+
+    await context.addCookies([{ name: 'acceptance_fault', value: 'roster-slow', url: site }])
+    const roster = new URL(address, site).pathname
+    const slow = await fetch(`${site}${roster}`, {
+      headers: {
+        cookie: (await context.cookies()).map(({ name, value }) => `${name}=${value}`).join('; '),
+      },
+      signal: AbortSignal.timeout(15_000),
+    })
+    const listReader = slow.body!.getReader()
+    let outline = ''
+    try {
+      while (!outline.includes('data-testid="roster-pending"')) {
+        const part = await listReader.read()
+        if (part.done) break
+        outline += decoder.decode(part.value, { stream: true })
+      }
+      check(
+        'streams a roster heading and row skeleton instead of a centered spinner',
+        slow.ok &&
+          outline.includes('data-testid="roster-pending"') &&
+          outline.includes('data-testid="roster-skeleton"'),
+      )
+    } finally {
+      await listReader.cancel()
+    }
+    unhydrated = await browser.newContext({
+      storageState: await context.storageState(),
+      javaScriptEnabled: false,
+    })
+    const listPage = await unhydrated.newPage()
+    await listPage.goto(`${site}${roster}`)
+    check(
+      'keeps the slow roster outline visible without hydration',
+      await listPage.getByTestId('roster-pending').isVisible(),
+    )
+    await listPage.screenshot({
+      path: path.join(directory, 'roster-before-hydration.png'),
+      animations: 'disabled',
+    })
   } finally {
     await unhydrated?.close()
     await context.close()

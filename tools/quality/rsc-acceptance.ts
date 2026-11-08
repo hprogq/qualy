@@ -15,6 +15,7 @@ import {
 } from '../../packages/plugins/infra/web/src/server/shell-policy.ts'
 import { QUALY_IDENTITY_HEADER, QUALY_LOCALE_COOKIE, QUALY_LOCALE_HEADER } from '@qualy/api-kit'
 import { LIVE_CLOSE, LIVE_SUBPROTOCOL } from '@qualy/api-kit/live-socket'
+import { RECENT_LOGIN_METHOD_COOKIE } from '@qualy/auth-contract/recent-method'
 import { SLOT_REFERENCE_PATH, slotReferenceHref } from '@qualy/ui-contract'
 import { collectWebPlugins } from '@qualy/web-build/collect'
 import {
@@ -235,10 +236,14 @@ const mountHandler = async () => {
       }
       if (url.pathname.startsWith('/api') || url.pathname.startsWith('/health')) {
         if (
-          /\/participants\/[^/]+(?:\/|$)/.test(url.pathname) &&
-          /(?:^|;\s*)acceptance_fault=participant-slow(?:;|$)/.test(
-            String(request.headers['cookie'] ?? ''),
-          )
+          (/\/participants\/[^/]+(?:\/|$)/.test(url.pathname) &&
+            /(?:^|;\s*)acceptance_fault=participant-slow(?:;|$)/.test(
+              String(request.headers['cookie'] ?? ''),
+            )) ||
+          (/\/(?:participant-accounts|roster-units)$/.test(url.pathname) &&
+            /(?:^|;\s*)acceptance_fault=roster-slow(?:;|$)/.test(
+              String(request.headers['cookie'] ?? ''),
+            ))
         ) {
           yield* Effect.sleep(900)
         }
@@ -688,18 +693,42 @@ const loginMethodsUnread = async (browser: Browser) => {
 
 const underPolicy = async (browser: Browser) => {
   const context = await browser.newContext()
+  await context.addCookies([{ name: RECENT_LOGIN_METHOD_COOKIE, value: 'local', url: site }])
   const page = await context.newPage()
   const violations: string[] = []
   page.on('console', (message) => {
-    if (/Content Security Policy|Refused to/i.test(message.text())) violations.push(message.text())
+    if (
+      /Content Security Policy|Refused to|Hydration failed|script tag while rendering/i.test(
+        message.text(),
+      )
+    )
+      violations.push(message.text())
   })
+  page.on('pageerror', (error) => violations.push(error.message))
   await page.addInitScript(`
     window.__violations = []
     document.addEventListener('securitypolicyviolation', (event) => {
       window.__violations.push(event.violatedDirective + ' ' + event.blockedURI)
     })
+    window.__loginPaint = { first: null, replaced: false, opacity: 1, watching: true }
+    const sample = () => {
+      const state = window.__loginPaint
+      if (!state.watching) return
+      const shell = document.querySelector('[data-testid="auth-shell"]')
+      if (state.first === null && shell !== null) state.first = shell
+      if (state.first !== null && !state.first.isConnected) state.replaced = true
+      let node = document.querySelector('[data-testid="sign-in-tile"], [data-testid="sign-in-primary"]')
+      while (node !== null && node !== shell) {
+        state.opacity = Math.min(state.opacity, Number(getComputedStyle(node).opacity))
+        node = node.parentElement
+      }
+      requestAnimationFrame(sample)
+    }
+    requestAnimationFrame(sample)
   `)
   const response = await page.goto(`${site}/login`)
+  const markup = await response!.text()
+  check('draws the recent login method in the initial HTML', markup.includes('data-last="true"'))
   const policy = response?.headers()['content-security-policy'] ?? ''
   check(
     'sends an enforced policy that names a nonce',
@@ -707,6 +736,19 @@ const underPolicy = async (browser: Browser) => {
     policy,
   )
   await hydrated(page)
+  const paint = await inPage<{ replaced: boolean; opacity: number }>(
+    page,
+    `(() => {
+    const state = window.__loginPaint
+    state.watching = false
+    return { replaced: state.replaced, opacity: state.opacity }
+  })()`,
+  )
+  check(
+    'hydrates the remembered login without remounting or replaying an entrance',
+    !paint.replaced && paint.opacity === 1,
+    paint,
+  )
   const seen = await inPage<{
     mode: string | null
     flight: boolean

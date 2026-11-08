@@ -273,11 +273,13 @@ describe('the roster on the results page', () => {
 
     // the rows are up while their totals are still being worked out
     await expect.element(rows().first()).toBeVisible()
+    const firstRow = rows().first().element()
     const score = (n: number) => page.getByTestId('participant-score').nth(n - 1)
     await expect.element(score(1)).toHaveAttribute('data-score-state', 'pending')
     release!()
     await expect.element(score(1)).toHaveAttribute('data-score-state', 'scored')
     await expect.element(score(1)).toHaveAttribute('data-score', '92.00')
+    expect(rows().first().element()).toBe(firstRow)
     await expect.element(score(2)).toHaveAttribute('data-score-state', 'unavailable')
     await expect.element(score(2)).toHaveAttribute('data-score-reason', 'account-too-large')
     await expect.element(score(3)).toHaveAttribute('data-score-state', 'deferred')

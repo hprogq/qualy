@@ -1,7 +1,7 @@
 'use client'
 import * as stylex from '@stylexjs/stylex'
 import { ScreenFill, useScreenAsideOffered } from '@qualy/web-runtime'
-import { PageLoading } from '@qualy/ui/spinner'
+import { ParticipantRosterSkeleton } from './ParticipantRosterSkeleton.tsx'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { AtWidth } from '@qualy/ui/at-width'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
@@ -30,7 +30,7 @@ const styles = stylex.create({
 /** A read-only outline: no queries or live subscriptions in a streaming fallback. */
 export function ParticipantResultsPending({ detail }: { detail: boolean }) {
   const column = useScreenAsideOffered()
-  if (!detail) return <PageLoading />
+  if (!detail) return <ParticipantRosterSkeleton />
   const head = (
     <header data-testid="participant-head" {...stylex.props(styles.head)}>
       <Skeleton height={14} width={90} />

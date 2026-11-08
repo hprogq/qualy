@@ -53,7 +53,6 @@ import {
 
 import { Pager } from '@qualy/ui/pager'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@qualy/ui/select'
-import { Skeleton } from '@qualy/ui/skeleton'
 import { Spinner } from '@qualy/ui/spinner'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
@@ -86,6 +85,7 @@ import { useBatchLive } from '../live.ts'
 import { ROSTER_MAX_WAIT, ROSTER_SETTLE, settler, SYNC_FRESH } from '../roster/live-settle.ts'
 import { ScoresNotice } from '../roster/ScoresNotice.tsx'
 import { type BatchLiveEvent } from '../../api.ts'
+import { ParticipantRosterRows } from './ParticipantRosterSkeleton.tsx'
 import * as commonMessages from '@qualy/web-i18n/messages'
 import * as m from '#messages'
 
@@ -370,36 +370,6 @@ const styles = stylex.create({
   // up against the menu, where the eye running down the column meets them
   scoreSeat: { display: 'flex', minWidth: 0, justifyContent: 'flex-end' },
   headEnd: { textAlign: 'end' },
-  // the table's own shape, greyed: a head and rows of the widths a roster
-  // actually has. One slab says only "something is coming".
-  skFrame: {
-    display: 'flex',
-    flexDirection: 'column',
-    overflow: 'hidden',
-    borderRadius: tokens.radiusLg,
-    borderWidth: 1,
-    borderStyle: 'solid',
-    borderColor: tokens.border,
-  },
-  skRow: {
-    display: 'grid',
-    alignItems: 'center',
-    gap: 16,
-    gridTemplateColumns: {
-      default: '6.5rem minmax(0, 1fr) 6rem 7.5rem',
-      [breakpoints.phone]: 'minmax(0, 1fr) 4rem',
-    },
-    borderBottomWidth: 1,
-    borderBottomStyle: 'solid',
-    borderBottomColor: tokens.divider,
-    paddingInline: 16,
-    paddingBlock: 14,
-    ':last-child': { borderBottomWidth: 0 },
-  },
-  skHead: { backgroundColor: tokens.surfaceInset, paddingBlock: 9 },
-  skWide: { display: { default: null, [breakpoints.phone]: 'none' } },
-  skBone: { height: 13, borderRadius: 4 },
-  skChip: { height: 13, width: '3rem', borderRadius: 4 },
 })
 
 export function ParticipantResultList({
@@ -1008,21 +978,7 @@ export function ParticipantResultList({
         loadingLabel={commonMessages.state_loading()}
         retryLabel={commonMessages.action_retry()}
         onRetry={() => void participants.refetch()}
-        skeleton={
-          <div {...stylex.props(styles.skFrame)}>
-            {['60%', '45%', '70%', '52%', '64%', '48%'].map((width, index) => (
-              <div key={index} {...stylex.props(styles.skRow, index === 0 && styles.skHead)}>
-                <Skeleton
-                  className={stylex.props(styles.skBone, styles.skWide).className}
-                  width="70%"
-                />
-                <Skeleton className={stylex.props(styles.skBone).className} width={width} />
-                <Skeleton className={stylex.props(styles.skChip, styles.skWide).className} />
-                <Skeleton className={stylex.props(styles.skBone).className} width="60%" />
-              </div>
-            ))}
-          </div>
-        }
+        skeleton={<ParticipantRosterRows />}
       >
         <Card ref={listCard} data-testid="roster">
           <Table columns={columns}>

@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
+import { createContext, useContext, useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { LoadFailure, isRecordId, useApiQuery, usePageRouteParams } from '@qualy/web-runtime'
 
@@ -162,29 +162,6 @@ const DENIED = {
 } as const satisfies Record<BatchStanding, unknown>
 
 /**
- * The screen's entrance, or the same box without one: decided once, when
- * it mounts, so nothing under it is mounted again when that changes.
- */
-function Arrival({
-  play,
-  className,
-  children,
-}: {
-  play: boolean
-  className: string | undefined
-  children: ReactNode
-}) {
-  const [entering] = useState(play)
-  return entering ? (
-    <Reveal className={className}>{children}</Reveal>
-  ) : (
-    <div data-arrival="still" className={className}>
-      {children}
-    </div>
-  )
-}
-
-/**
  * What the band says while something inside the section is open.
  *
  * Rendered from wherever the open thing lives, because its title and its
@@ -267,14 +244,6 @@ export function BatchScreen({
   })
   const batch = detail.data?.batch
   const absent = useBatchAbsence(batchId, detail)
-  // Whether this screen has shown its batch yet. A screen that moves
-  // between a bare section and one that draws its own edges - a list and
-  // the person opened from it - is moving inside itself, and makes its
-  // entrance once rather than again under the move it is already making.
-  const [shown, setShown] = useState(false)
-  useEffect(() => {
-    if (batch !== undefined && !shown) setShown(true)
-  }, [batch, shown])
 
   // No batch to be a screen of. Inside the workspace shell the bar above
   // has already said so and the shell has folded this screen away; this is
@@ -325,8 +294,8 @@ export function BatchScreen({
         xstyle={[styles.fillColumn, fill && styles.boundedColumn]}
       >
         {batch && (
-          <Arrival
-            play={chrome === 'bare' && !shown}
+          <div
+            data-arrival="still"
             className={stylex.props(styles.bareColumn, fill && styles.boundedColumn).className}
           >
             {chrome === 'bare' && batch.status === 'draft' && (
@@ -336,7 +305,7 @@ export function BatchScreen({
               {chrome === 'bare' && <ZoneAwayNotice xstyle={styles.bareNote} />}
               {children(batch)}
             </BatchZone>
-          </Arrival>
+          </div>
         )}
       </AsyncSection>
     )
