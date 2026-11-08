@@ -142,6 +142,11 @@ export default defineConfig(({ command, mode }) => ({
       ...(command === 'build' ? { resolve: { noExternal: true } } : {}),
     },
     ssr: {
+      // Every document needs this module. Keep speculative work on the
+      // server's shared graph; warming all surfaces delays the first page.
+      ...(command === 'serve'
+        ? { dev: { warmup: ['./src/rsc/Document.tsx'], preTransformRequests: true } }
+        : {}),
       build: { outDir: 'dist-rsc/ssr', rollupOptions: { output: { assetFileNames } } },
       ...(command === 'build' ? { resolve: { noExternal: true } } : {}),
       // These packages export hundreds of modules from their entry points.
