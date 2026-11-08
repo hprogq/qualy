@@ -1,30 +1,17 @@
 import { fixed, wordmarkLayout } from './geometry.ts'
 
-// The first frame, as data.
+// The wordmark frame, as data.
 //
-// index.html paints the wordmark before any script runs, and the loading
-// screen that takes it over must paint the same wordmark in the same place
-// to the pixel. Both used to hold the numbers - one by hand, one from the
-// geometry - and a test held them together. Now both read them from here:
-// the build writes this markup into index.html in place of a marker, and
-// the loading screen positions itself with the same placement. Nothing at
-// run time needs this module for the first frame; that is the point of it.
+// The loading screen and the page the edge serves while no release answers
+// (deploy/demo/maintenance.html) paint the same wordmark in the same place
+// to the pixel, and both read the placement from here rather than holding
+// numbers of their own.
 
-/** the element index.html paints, and the loading screen removes */
+/** the element the loading screen takes over where a page painted one */
 export const BOOT_ID = 'qualy-boot'
-
-/** the marker index.html carries for the build to replace with the frame */
-export const BOOT_PLACEHOLDER = '<!-- qualy-boot -->'
 
 /** the data block beside the frame holding what the shell's watchdog says, per locale */
 export const BOOT_COPY_ID = 'qualy-boot-copy'
-
-/**
- * the attribute on the served shell's one stylesheet link, which the build
- * turns into a preload so the frame does not wait for it, and which the
- * entry applies before the application draws
- */
-export const SHELL_STYLE_ATTRIBUTE = 'data-qualy-shell-style'
 
 export interface BootPlacement {
   /** cap height of the wordmark in CSS pixels */

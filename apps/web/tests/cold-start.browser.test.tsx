@@ -4,101 +4,17 @@ import { commands, page } from 'vitest/browser'
 import { render } from 'vitest-browser-react'
 import { useQuery } from '@tanstack/react-query'
 import { emptyManifest, fakeClient, renderScreen } from '@qualy/testkit/browser'
-import { BOOT_COPY_ID, bootFrame } from '@qualy/brand/boot'
 import { Wordmark } from '@qualy/brand/wordmark'
 import { ColdStart, LoadingScreen, PageLoading } from '@qualy/ui/spinner'
-import { resolveInitialLocale, resolveLocale } from '@qualy/web-i18n'
-import { bootstrapMessages } from '@qualy/web-i18n/bootstrap'
 import '../src/app.css'
 
-// The cold start as the browser runs it: the first frame index.html paints
-// and the loading screen that takes it over stand in the same place to the
-// pixel; a wait that ends inside the threshold never lights the loop; a
-// wait that runs long says so, and one that runs too long offers a way
-// out with the loop at rest. Asserted on geometry, animations and roles,
+// The loading screen as the browser runs it: a wait that ends inside the
+// threshold never lights the loop; a wait that runs long says so, and one
+// that runs too long offers a way out with the loop at rest. Asserted on geometry, animations and roles,
 // never on pixels or copy. The view transition itself is the browser's;
 // what is asserted here is what it is handed.
 
 const copy = { loading: 'Loading', stillLoading: 'Still loading', retry: 'Retry' }
-
-/** index.html as the source holds it, resolved against the suite's root, which is the app */
-const shellSource = () => commands.readFile('index.html')
-
-/**
- * index.html's first frame, as a fragment this page can carry: the static
- * style the source holds, and the element the build writes in place of the
- * source's marker, generated here from the same brand module the build uses
- */
-const firstFrame = async () => {
-  const style = /<style id="qualy-boot-style">([\s\S]*?)<\/style>/.exec(await shellSource())?.[1]
-  if (style === undefined) throw new Error('index.html has no boot style')
-  const sheet = document.createElement('style')
-  sheet.id = 'qualy-boot-style'
-  sheet.textContent = style
-  document.head.append(sheet)
-  const host = document.createElement('div')
-  // the frame and, beside it, the watchdog's words, which the build writes
-  // from the same table the application reads
-  host.innerHTML =
-    bootFrame().markup +
-    `<script type="application/json" id="${BOOT_COPY_ID}">${JSON.stringify(bootstrapMessages)}</script>`
-  document.body.prepend(...host.children)
-  const lang = document.documentElement.lang
-  return () => {
-    sheet.remove()
-    document.getElementById('qualy-boot')?.remove()
-    document.getElementById(BOOT_COPY_ID)?.remove()
-    // the boot script marks the root; the next test starts unmarked
-    document.documentElement.lang = lang
-    delete document.documentElement.dataset['locale']
-    document.cookie = 'qualy.locale=; path=/; max-age=0'
-    localStorage.removeItem('qualy.locale')
-  }
-}
-
-/** what the watchdog's link says in the locale the boot script marked the root with */
-const reloadName = () =>
-  bootstrapMessages[document.documentElement.dataset['locale'] as keyof typeof bootstrapMessages]
-    .reload
-
-/** the boot script as the source holds it, run in this page */
-/**
- * What the boot script left on the window, taken back after each test.
- *
- * A page runs it once; these tests run it again and again in one window. Its
- * error listener and watchdog outlive the test that started them, and one
- * whose frame was taken down before it spoke is still listening when a later
- * test fails a file - so that test's frame gets two notes, not one.
- */
-const leftBehind: (() => void)[] = []
-
-const runBootScript = async () => {
-  const script = /<script>([\s\S]*?)<\/script>/.exec(await shellSource())?.[1]
-  if (script === undefined) throw new Error('index.html has no boot script')
-  const listen = window.addEventListener
-  const schedule = window.setTimeout
-  window.addEventListener = function (
-    this: Window,
-    type: string,
-    listener: EventListenerOrEventListenerObject,
-    options?: boolean | AddEventListenerOptions,
-  ) {
-    leftBehind.push(() => window.removeEventListener(type, listener, options))
-    listen.call(this, type, listener, options)
-  } as typeof window.addEventListener
-  window.setTimeout = ((handler: TimerHandler, timeout?: number) => {
-    const id = schedule(handler, timeout)
-    leftBehind.push(() => clearTimeout(id))
-    return id
-  }) as typeof window.setTimeout
-  try {
-    // eslint-disable-next-line typescript/no-implied-eval -- runs the boot script the page would
-    new Function(script)()
-  } finally {
-    window.addEventListener = listen
-    window.setTimeout = schedule
-  }
-}
 
 /** when this page first painted, which is where the threshold counts from */
 const firstPaintedAt = () =>
@@ -135,34 +51,11 @@ const rectOf = (element: Element) => {
 }
 
 afterEach(() => {
-  for (const undo of leftBehind.splice(0)) undo()
   vi.useRealTimers()
   document.documentElement.removeAttribute('data-cold-start')
 })
 
 describe('the cold start', () => {
-  it('takes the first frame over in its exact place, and takes it down', async () => {
-    const restore = await firstFrame()
-    try {
-      const placeholder = document.querySelector('#qualy-boot svg')!
-      const before = rectOf(placeholder)
-      expect(before.width).toBeGreaterThan(0)
-
-      await render(<Booting done={false} />)
-      await expect.element(page.getByRole('status')).toBeInTheDocument()
-      const drawn = overlay()!.querySelector('svg')!
-      const after = rectOf(drawn)
-      for (const side of ['left', 'top', 'width', 'height'] as const) {
-        expect(after[side]).toBeCloseTo(before[side], 1)
-      }
-      // the placeholder left in the same frame the overlay arrived
-      expect(document.getElementById('qualy-boot')).toBeNull()
-      expect(document.documentElement.hasAttribute('data-cold-start')).toBe(true)
-    } finally {
-      restore()
-    }
-  })
-
   it('counts the threshold from the first frame, and leaves without the loop when the wait ends inside it', async () => {
     let finish!: () => void
     function Screen() {
@@ -381,105 +274,6 @@ describe('the cold start', () => {
       }
     }),
   )
-
-  it('offers a reload from the first frame when nothing takes it over in time', async () => {
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
-    const restore = await firstFrame()
-    try {
-      await runBootScript()
-      // the watchdog says nothing while the application may still arrive
-      vi.advanceTimersByTime(19_000)
-      expect(page.getByRole('link', { name: reloadName() }).elements()).toHaveLength(0)
-      vi.advanceTimersByTime(1_000)
-      const reload = page.getByRole('link', { name: reloadName() })
-      await expect.element(reload).toBeVisible()
-      // under the wordmark, inside the frame the application would have removed
-      expect(document.querySelector('#qualy-boot p a')).toBe(reload.element())
-    } finally {
-      restore()
-    }
-  })
-
-  it('says nothing once the application has taken the first frame down', async () => {
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
-    const restore = await firstFrame()
-    try {
-      await runBootScript()
-      document.getElementById('qualy-boot')?.remove()
-      vi.advanceTimersByTime(20_000)
-      expect(page.getByRole('link', { name: reloadName() }).elements()).toHaveLength(0)
-    } finally {
-      restore()
-    }
-  })
-
-  it('offers a reload at once when a file of the page fails to load before the application runs', async () => {
-    const restore = await firstFrame()
-    try {
-      await runBootScript()
-      const locale = document.documentElement.dataset['locale'] as keyof typeof bootstrapMessages
-      // the entry script of a shell the browser cached, gone from the server
-      // since: the error reaches the window in the capture phase
-      const missing = document.createElement('script')
-      missing.src = '/assets/index-gone.js'
-      document.body.append(missing)
-      try {
-        const reload = page.getByRole('link', { name: bootstrapMessages[locale].reload })
-        await expect.element(reload).toBeVisible()
-        const note = document.querySelector('#qualy-boot p')
-        expect(note?.textContent).toBe(
-          bootstrapMessages[locale].assetFailedLead + bootstrapMessages[locale].reload,
-        )
-        // a second failure says nothing more
-        document.body.append(
-          Object.assign(document.createElement('script'), { src: '/assets/also-gone.js' }),
-        )
-        await new Promise((resolve) => setTimeout(resolve, 200))
-        expect(document.querySelectorAll('#qualy-boot p')).toHaveLength(1)
-      } finally {
-        missing.remove()
-        document.querySelector('script[src="/assets/also-gone.js"]')?.remove()
-      }
-    } finally {
-      restore()
-    }
-  })
-
-  it('resolves the locale once, before the first frame, and the application takes it from the root', async () => {
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
-    const restore = await firstFrame()
-    try {
-      // a choice kept in this browser: applied by the script, taken by the runtime
-      document.cookie = 'qualy.locale=en-US; path=/'
-      await runBootScript()
-      expect(document.documentElement.dataset['locale']).toBe('en-US')
-      expect(document.documentElement.lang).toBe('en-US')
-      expect(resolveInitialLocale()).toBe('en-US')
-      // the mark is the answer, not the cookie: the runtime does not decide again
-      document.cookie = 'qualy.locale=zh-CN; path=/'
-      expect(resolveInitialLocale()).toBe('en-US')
-      // a choice an earlier release kept in storage becomes the cookie, once
-      document.cookie = 'qualy.locale=; path=/; max-age=0'
-      localStorage.setItem('qualy.locale', 'en-US')
-      delete document.documentElement.dataset['locale']
-      await runBootScript()
-      expect(document.documentElement.dataset['locale']).toBe('en-US')
-      expect(document.cookie).toContain('qualy.locale=en-US')
-      expect(localStorage.getItem('qualy.locale')).toBeNull()
-      // nothing chosen: the browser's own languages, through the chain the
-      // runtime would have walked
-      document.cookie = 'qualy.locale=; path=/; max-age=0'
-      delete document.documentElement.dataset['locale']
-      await runBootScript()
-      expect(document.documentElement.dataset['locale']).toBe(
-        resolveLocale({ preferred: navigator.languages }),
-      )
-      expect(document.documentElement.lang).toBe(document.documentElement.dataset['locale'])
-      expect(resolveInitialLocale()).toBe(document.documentElement.dataset['locale'])
-    } finally {
-      restore()
-    }
-  })
 
   it('never draws a screen of its own inside a host, not even in its first render', async () => {
     // Every element added to the page while the tree mounts, read as it

@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest'
 import { defaultLocale, supportedLocales } from '@qualy/i18n-contract'
 import { bootFrame } from '../../packages/web/brand/src/boot.ts'
 import { bootstrapMessages } from '../../packages/web/i18n/src/bootstrap.ts'
+import { localeOfRequest } from '../../packages/core/api-kit/src/locale.ts'
 
 // The page the edge serves while no release answers - an upgrade under
 // maintenance, or both colors down - is the one screen of Qualy no build
@@ -12,8 +13,9 @@ import { bootstrapMessages } from '../../packages/web/i18n/src/bootstrap.ts'
 // (ops/reverse-proxy/Caddyfile). So it is written by hand, and held here to
 // what it stands in for: the first frame's wordmark in the first frame's
 // place, the application's colours, its words from the bootstrap table in
-// every locale, the locale and theme resolved the way the shell resolves
-// them, and nothing fetched from the server that is down.
+// every locale, the theme resolved the way a document resolves it and the
+// language the server would have drawn the page in, and nothing fetched
+// from the server that is down.
 //
 // Everything the page needs is in the file. While it is up, every request
 // that is not the API's is answered with it - a favicon included - so the
@@ -22,7 +24,7 @@ import { bootstrapMessages } from '../../packages/web/i18n/src/bootstrap.ts'
 const ROOT = path.resolve(import.meta.dirname, '../..')
 const read = (file: string) => fs.readFileSync(path.join(ROOT, file), 'utf8')
 const page = read('deploy/demo/maintenance.html')
-const shell = read('apps/web/index.html')
+const document = read('apps/web/src/rsc/Document.tsx')
 const tokens = read('packages/web/ui/src/styles/tokens.css')
 const caddy = read('ops/reverse-proxy/Caddyfile')
 
@@ -75,21 +77,60 @@ describe('the maintenance page', () => {
     expect(page).toContain(`<html lang="${defaultLocale}" data-locale="${defaultLocale}"`)
   })
 
-  it('resolves the locale and the theme as the shell does', () => {
+  it('resolves the theme from the key the document resolves it from', () => {
     expect(page).toContain(`localStorage.getItem('qualy.theme')`)
-    expect(shell).toContain(`localStorage.getItem('qualy.theme')`)
-    // the language a person chose is the cookie both pages read first
-    const chosen = (source: string) =>
-      /var cookie = [^\n]*\n\s*var stored = [^\n]*/.exec(source)?.[0]
-    expect(chosen(page)).toBeDefined()
-    expect(chosen(page)).toBe(chosen(shell))
+    expect(document).toContain(`localStorage.getItem('qualy.theme')`)
+  })
+
+  it('picks the language the server would have drawn the page in', () => {
     const listed = /var locales = (\[[^\]]*\])/.exec(page)?.[1]
     expect(JSON.parse(listed!.replaceAll("'", '"'))).toEqual([...supportedLocales])
-    expect(page).toContain(`if (locale === null) locale = '${defaultLocale}'`)
-    const resolution = (source: string) =>
-      /var languages[\s\S]*?root\.setAttribute\('data-locale', locale\)/.exec(source)?.[0]
-    expect(resolution(page)).toBeDefined()
-    expect(resolution(page)).toBe(resolution(shell))
+    // what the page's own script decides, run against a browser's answers
+    const script = /<script>([\s\S]*?)<\/script>/.exec(page)?.[1] ?? ''
+    const decided = (cookie: string, languages: readonly string[]) => {
+      const root = {
+        lang: '',
+        style: {} as Record<string, string>,
+        classList: { add: () => {} },
+        attributes: {} as Record<string, string>,
+        setAttribute(name: string, value: string) {
+          this.attributes[name] = value
+        },
+      }
+      // eslint-disable-next-line typescript/no-implied-eval -- runs the page's own script in a stand-in browser
+      new Function(
+        'document',
+        'localStorage',
+        'matchMedia',
+        'navigator',
+        'fetch',
+        'setTimeout',
+        'location',
+        script,
+      )(
+        { cookie, documentElement: root },
+        { getItem: () => null },
+        () => ({ matches: false }),
+        { languages, language: languages[0] },
+        () => Promise.resolve({ ok: false }),
+        () => 0,
+        { reload: () => {} },
+      )
+      return root.attributes['data-locale']
+    }
+    for (const [cookie, languages] of [
+      ['qualy.locale=en-US', ['zh-CN']],
+      ['qualy.locale=xx', ['en-GB', 'zh-CN']],
+      ['', ['fr-FR', 'en']],
+      ['', ['fr-FR']],
+      ['', []],
+    ] as const) {
+      const server = localeOfRequest({
+        headers: { 'accept-language': languages.join(',') },
+        cookies: Object.fromEntries(cookie === '' ? [] : [cookie.split('=') as [string, string]]),
+      })
+      expect(decided(cookie, languages), `${cookie} ${languages.join(',')}`).toBe(server)
+    }
   })
 
   it("paints in the application's colours, light and dark", () => {

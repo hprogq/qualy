@@ -197,7 +197,7 @@ function ObservedRoute({ pages }: { pages: Manifest['pages'] }) {
   return null
 }
 
-// Whatever index.html called the product, kept as the suffix every page
+// Whatever the document called the product, kept as the suffix every page
 // hangs off. Read once, before anything has changed it.
 const PRODUCT = typeof document === 'undefined' ? '' : document.title
 

@@ -16,17 +16,10 @@ import {
 // - script-src carries no 'unsafe-inline', and never will from a plugin: a
 //   selected plugin may add only a named https origin its code must load
 //   from (a CAPTCHA vendor that serves its widget from its own host), never
-//   a keyword, nonce, hash or scheme. The one inline script the shell
-//   has - the boot script in index.html: the theme resolver that must run
-//   before the first paint, and the watchdog that offers a reload when the
-//   application never takes over - is allowed by the hash of its exact
-//   bytes. The hash is a constant here rather than computed from the
-//   served file so that a change to that script is a deliberate change to
-//   the policy: the repository gate (tools/tests/index-html.test.ts) fails
-//   the moment the two drift. Vite leaves a non-module inline script
-//   untouched, and the staged index.html was compared byte for byte with
-//   the source (2026-09-13: identical), so the hash is taken from the
-//   source file.
+//   a keyword, nonce, hash or scheme. A document's own inline scripts -
+//   the theme resolver that must run before the first paint, and what the
+//   server streams into the document as it draws - run by a nonce made for
+//   that one document (`scriptNonce`).
 // - style-src keeps 'unsafe-inline' and NO hash: the editor injects
 //   <style> elements at run time, and a hash or nonce anywhere in
 //   style-src makes a browser ignore 'unsafe-inline' (CSP3), which would
@@ -37,9 +30,6 @@ import {
 // - frame-ancestors is ignored by a browser in report-only mode; the
 //   X-Frame-Options header set beside this one covers framing until the
 //   policy is enforced.
-
-/** sha256, base64, of the bytes between the shell's `<script>` and `</script>` */
-export const INLINE_BOOT_SCRIPT_HASH = 'sha256-g6ntCYmA/0OMvNUOnkJMeRzgeQigdLrdfD8GWWxD6tA='
 
 /** the report endpoint, in the shell's own namespace outside the api mount */
 export const REPORT_PATH = '/csp-reports'
@@ -62,7 +52,7 @@ type Line = readonly [directive: string, sources: readonly string[]]
  */
 const FIXED: readonly Line[] = [
   ['default-src', ["'self'"]],
-  ['script-src', ["'self'", `'${INLINE_BOOT_SCRIPT_HASH}'`]],
+  ['script-src', ["'self'"]],
   ['style-src', ["'self'", "'unsafe-inline'"]],
   ['img-src', ["'self'", 'data:', 'blob:']],
   ['font-src', ["'self'"]],
@@ -120,8 +110,7 @@ export const composeShellPolicy = (
      * A document a server rendered streams inline scripts of its own - its
      * payload, the scripts that place late html - whose bytes no constant
      * can hash. Such a document runs its inline scripts by a nonce made for
-     * it alone, and this policy names that nonce in place of the boot
-     * script's hash, which such a document does not carry.
+     * it alone, which this policy names beside 'self'.
      */
     readonly scriptNonce?: string
   } = {},
@@ -161,12 +150,9 @@ export const composeShellPolicy = (
     }
   }
   const lines = FIXED.map(([directive, fixed]) => {
+    // a document's own inline scripts run by the nonce made for it alone
     const sources =
-      nonce !== undefined && directive === 'script-src'
-        ? fixed.map((source) =>
-            source === `'${INLINE_BOOT_SCRIPT_HASH}'` ? `'nonce-${nonce}'` : source,
-          )
-        : fixed
+      nonce !== undefined && directive === 'script-src' ? [...fixed, `'nonce-${nonce}'`] : fixed
     const extra = (added.get(directive as ShellPolicyDirective) ?? []).filter(
       (source) => !sources.includes(source),
     )

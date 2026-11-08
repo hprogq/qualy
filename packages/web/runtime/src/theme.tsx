@@ -18,9 +18,9 @@ import { sharedContext } from './shared-context.ts'
 // The resolved scheme is told to the document root three ways at once, and
 // always together: `data-mode`, which the first frame's own style and the
 // tokens read; the `dark` class, which the tokens read as well; and
-// `color-scheme`, which the browser reads. The boot script in index.html
+// `color-scheme`, which the browser reads. The document's early script
 // sets the same three before any script of ours runs, and this provider
-// takes its first answer from what the boot script left rather than
+// takes its first answer from what that script left rather than
 // resolving the question a second time - two resolutions of one question
 // once disagreed for one frame in a fresh browser, and the page painted
 // light under a dark chrome.

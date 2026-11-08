@@ -3,14 +3,10 @@ import * as m from '#messages'
 
 // The few words the application needs before it has a language.
 //
-// Two places speak before the application has marked a language anywhere,
-// and neither can wait: the cold-start screen, which stands above everything
-// else by design, and the watchdog in index.html, which runs when no script
-// of the application ever did. Both read this table in the locale the
-// shell's boot script resolved, through the same preference chain the
-// application follows, so the language does not change hands as it arrives.
-// The build writes the watchdog's lines into index.html from here; nothing
-// is typed there.
+// The cold-start screen speaks before the application has marked a
+// language anywhere, and cannot wait: it stands above everything else by
+// design. It reads this table, so the language does not change hands as
+// the application arrives.
 //
 // A third place speaks with no application at all: the edge's maintenance
 // page (deploy/demo/maintenance.html), served while no release answers. It

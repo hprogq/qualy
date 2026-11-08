@@ -169,8 +169,8 @@ export function Document({
           dangerouslySetInnerHTML={{ __html: EARLY_THEME }}
         />
         {/* The development server's StyleX rules and the script that keeps
-            them current: what the StyleX plugin writes into index.html, which
-            a document React draws does not have. A build puts the rules in
+            them current: what the StyleX plugin writes into an html file,
+            which a document React draws does not have. A build puts the rules in
             the entry's stylesheet instead. The script disables the link once
             it holds the rules itself, before this page hydrates. */}
         {import.meta.env.DEV && (

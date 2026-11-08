@@ -7,7 +7,7 @@
    invert the cascade (first declaration fixes a layer's position for the
    whole document).
 
-   Keep in sync with index.html and the browser test setup
+   Keep in sync with src/rsc/Document.tsx and the browser test setup
    (tests/support/cascade-layers.ts). */
 @layer theme, base, mantine, components, priority1, priority2, priority3, priority4, priority5;
 

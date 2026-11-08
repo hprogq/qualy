@@ -1,9 +1,7 @@
 import type { Rolldown } from 'vite'
 
-// How the browser's chunks are pooled: one set of rules for every build of
-// the browser's half (vite.config.ts, vite.rsc.config.ts).
-//
-// How the pieces are pooled, decided by what a request costs.
+// How the browser's chunks are pooled (vite.rsc.config.ts), decided by what
+// a request costs.
 //
 // Splitting is not free the way it looks in a `dist` listing. On the
 // link a phone actually has, a request costs a round trip whatever it

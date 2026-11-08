@@ -15,7 +15,6 @@
   "dependencies": {
     "@qualy/assembly": "workspace:*",
     "@qualy/auth-contract": "workspace:*",
-    "@qualy/brand": "workspace:*",
     "@qualy/i18n-contract": "workspace:*",
     "@qualy/plugin-kit": "workspace:*",
     "@qualy/plugin-ui-registry": "workspace:*",

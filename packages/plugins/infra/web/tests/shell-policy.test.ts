@@ -4,7 +4,6 @@ import { assembledLayer, runBootHooks } from '@qualy/api-kit/assembled'
 import { ShellPolicy, shellPolicyLayer } from '@qualy/api-kit/shell-policy'
 import {
   composeShellPolicy,
-  INLINE_BOOT_SCRIPT_HASH,
   policyLayer,
   ShellPolicyHeader,
   ShellPolicyRefused,
@@ -22,7 +21,7 @@ import {
 
 const FIXED = [
   "default-src 'self'",
-  `script-src 'self' '${INLINE_BOOT_SCRIPT_HASH}'`,
+  "script-src 'self'",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
   "font-src 'self'",
@@ -120,7 +119,7 @@ describe('composing the shell policy', () => {
       { owner: 'other', 'script-src': ['https://example.com:8443'] },
     ])
     expect(composed).toContain(
-      `script-src 'self' '${INLINE_BOOT_SCRIPT_HASH}' https://challenges.cloudflare.com https://example.com:8443;`,
+      "script-src 'self' https://challenges.cloudflare.com https://example.com:8443;",
     )
     expect(composed).toContain("frame-src 'self' blob: https://challenges.cloudflare.com;")
     for (const source of [
@@ -152,11 +151,11 @@ describe('composing the shell policy', () => {
       { owner: 'x', 'script-src': ['https://a.example', 'https://b.example'] },
     ])
     const script = /script-src ([^;]+)/.exec(composed)?.[1] ?? ''
-    expect(script.startsWith(`'self' '${INLINE_BOOT_SCRIPT_HASH}'`)).toBe(true)
+    expect(script.startsWith("'self'")).toBe(true)
     expect(script).not.toMatch(/unsafe-|strict-dynamic|nonce-|data:|blob:/)
   })
 
-  it('runs a server-rendered document by its own nonce in place of the boot hash', () => {
+  it('runs a server-rendered document by its own nonce', () => {
     const nonce = 'q0Fq3l9Yw2c4V8xT1bZ7mA'
     const composed = composeShellPolicy([{ owner: 'x', 'script-src': ['https://a.example'] }], {
       scriptNonce: nonce,
@@ -165,7 +164,7 @@ describe('composing the shell policy', () => {
       `'self' 'nonce-${nonce}' https://a.example`,
     )
     // every other line is the shell's as ever
-    expect(composed.replace(`'nonce-${nonce}'`, `'${INLINE_BOOT_SCRIPT_HASH}'`)).toBe(
+    expect(composed.replace(` 'nonce-${nonce}'`, '')).toBe(
       composeShellPolicy([{ owner: 'x', 'script-src': ['https://a.example'] }]),
     )
   })

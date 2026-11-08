@@ -1,9 +1,7 @@
-// The same application rendered on a server (docs/adr/0012-rsc-data-mode.md).
+// The application, drawn on a server (docs/adr/0012-rsc-data-mode.md).
 //
-// Beside vite.config.ts, not instead of it, while the page-rendered build
-// stays the product's: its own cache, its own output and its own port, so
-// neither build rewrites the other's modules or files. Three environments:
-// `rsc` resolves a request's surfaces and renders the server components,
+// Three environments: `rsc` resolves a request's surfaces and renders the
+// server components,
 // `ssr` draws their answer as html, `client` hydrates it and runs the
 // plugins' browser halves.
 import * as stylexUnpluginModule from '@stylexjs/unplugin/vite'

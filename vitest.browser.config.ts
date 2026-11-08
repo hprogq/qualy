@@ -100,7 +100,7 @@ export default defineConfig({
     // click() reported success. A genuine regression fails twice.
     retry: 1,
     // runs in the browser before any test module: pins the cascade layer
-    // order the app's index.html pins in production (see that file), and
+    // order the document pins in production (apps/web/src/rsc/Document.tsx), and
     // holds each test until the previous one's overlays have left
     setupFiles: ['tests/support/cascade-layers.ts', 'tests/support/settled.ts'],
     browser: {
