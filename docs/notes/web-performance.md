@@ -400,3 +400,13 @@ HMR 在内置浏览器中检查。名单已经水合且搜索框保留输入后�
 应用已有的 UI 问题也要分开：内置浏览器的 Node 基线登录页在已有“上次使用”偏好时出现水合不匹配；Node 与 Bun 的名单搜索/HMR 均观察到现有的单 blocker 告警。这些不因编译提速而消失，本轮没有修改或掩盖它们。
 
 本轮未运行全量 Node、全量覆盖率、WebKit、镜像或部署矩阵，未推送。自己启动的前后端进程与临时测试数据库在结束时清理。
+
+## RSC 开发首绘：非空账本与 CSS 交接探测（2026-11-08）
+
+产品基线为 `d3a0783df`。用仓库固定 Node 驱动、Bun renderer 与真实 Chromium，在 1920 × 1080 视口运行 [dev-web-acceptance.ts](../../tools/quality/dev-web-acceptance.ts)。API 固定 3330，Web 固定 5186；数据库由 `createTestContext` 在测试实例上隔离创建，不读取开发 `.env`。fixture 经业务 API 建立一个 paper 根、两个叶组、两道固定分值题和两条 approved 行政记录，并验证参评人总分为 `8.00`。
+
+正常轮与延迟对照轮分别重建环境；每轮在 MyResult 和 Settings 首次文档请求前重启 renderer，同轮保留 optimizer 磁盘缓存、重建进程内 StyleX pool。[rsc-dev-paint.ts](../../tools/quality/rsc-dev-paint.ts) 保存 CSS 原文、状态与请求时序、样式节点增删/属性变化和有效 stylesheet 快照，以及可见节点的逐帧几何与布局属性。对照只把 runtime 的带 query CSS 请求先取回，再延迟交付 1500 ms；首张 stylesheet link 不延迟、不改内容。
+
+两轮完整通过。SSR HTML 已含两个 ledger group 和两个 item。正常轮重启 MyResult 共采样 169 帧，延迟轮共 255 帧；其中所有可见帧的内部 grid 容器均为 1076px、列宽为 `232px 820px`，outline 为 232px，两组题目区均为 820px，x/width 与采样的布局属性稳定。顶层 `result-ledger` 宽为 1633px，不与内部 grid 混同。Settings 两轮也通过；观察到原始 StyleX link 到 live sheet 的接管，没有采到样式空窗。原始日志为本机 `.qualy/rsc-cold-scored-normal.log`、`.qualy/rsc-cold-scored-delayed.log`，逐帧、CSS、诊断及 HTML 产物在 `node_modules/.cache/rsc-first-paint/`。
+
+本轮**未复现所报告的短暂 FOUC 或整页无样式**，不能据此宣布用户问题已修复，也不能排除其他数据、路由、视口或调度条件。未实施产品 CSS/SSR 修复、全页面预热或新的样式协议。这里验证的是几何/CSS 正确性与交接顺序，不作为冷启动性能对照；这两轮开发探测本身不涵盖生产验收、WebKit 或全量测试。测试进程、临时目录与隔离库已清理，固定端口已释放。

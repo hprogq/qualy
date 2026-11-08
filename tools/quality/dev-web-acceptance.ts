@@ -7,7 +7,7 @@ import path from 'node:path'
 import { createServer } from 'node:net'
 import { pathToFileURL } from 'node:url'
 import { promisify } from 'node:util'
-import { chromium, type Browser } from 'playwright'
+import { chromium, type APIResponse, type Browser } from 'playwright'
 import { resolveAssembly } from '@qualy/assembly'
 import { compileMessages } from '@qualy/message-build'
 import {
@@ -34,6 +34,8 @@ process.env['QUALY_TEST_DATABASE_URL'] ??= 'postgres://qualy:qualy@127.0.0.1:543
 const { createTestContext } = await import('@qualy/plugin-database/testkit')
 const apiPort = Number(process.env['DEV_WEB_API_PORT'] ?? 3330)
 const port = Number(process.env['DEV_WEB_ACCEPTANCE_PORT'] ?? 5186)
+const stylexUpdateDelayMs = Number(process.env['DEV_WEB_STYLEX_UPDATE_DELAY_MS'] ?? 0)
+assert.ok(Number.isFinite(stylexUpdateDelayMs) && stylexUpdateDelayMs >= 0)
 // Never accept readiness from a server this run did not start, and never
 // change ports behind the browser's back.
 for (const candidate of [apiPort, port]) {
@@ -88,6 +90,7 @@ try {
   })
   await backend.waitUntilReady()
   cancelled.signal.throwIfAborted()
+  const apiBase = backend.base
 
   const resolution = await resolveAssembly({ manifestPath: path.join(repoRoot, 'qualy.yml') })
   const spec = devTopology(resolution).find((service) => service.id === 'web')
@@ -118,16 +121,21 @@ export const acquire = (prepared, context) => web.acquire({
 }, context)
 `,
   )
-  web = forkService({ ...spec, moduleUrl: pathToFileURL(module).href }, backend.base, {
-    ...process.env,
-    QUALY_DEV_RUNTIME: undefined,
-    QUALY_CONFIG: path.join(repoRoot, 'qualy.yml'),
-    NODE_ENV: 'development',
-  })
-  assert.equal(web.process.spawnfile, 'bun')
-  await servicePrepared(web)
-  send(web, { protocol: PROTOCOL, type: 'accept' })
-  await serviceReady(web)
+  const launchRenderer = async () => {
+    const child = forkService({ ...spec, moduleUrl: pathToFileURL(module).href }, apiBase, {
+      ...process.env,
+      QUALY_DEV_RUNTIME: undefined,
+      QUALY_CONFIG: path.join(repoRoot, 'qualy.yml'),
+      NODE_ENV: 'development',
+    })
+    web = child
+    assert.equal(child.process.spawnfile, 'bun')
+    await servicePrepared(child)
+    send(child, { protocol: PROTOCOL, type: 'accept' })
+    await serviceReady(child)
+    return child
+  }
+  web = await launchRenderer()
   cancelled.signal.throwIfAborted()
 
   browser = await chromium.launch()
@@ -154,6 +162,87 @@ export const acquire = (prepared, context) => web.acquire({
   })
   assert.equal(created.status(), 200, 'The proxy must preserve a JSON business write')
   const createdBatch = (await created.json()) as { batch: { id: string } }
+  // Exercise the real multi-group ledger, not only its empty-state branch.
+  // All facts enter through business APIs on the test context's scratch DB.
+  const paperResponse = await context.request.put(
+    `${site}/api/assessment/batches/${createdBatch.batch.id}/score-groups`,
+    {
+      data: {
+        expectedVersion: 1,
+        groups: [{ name: 'Paint fixture paper', parentGroupId: null, cap: '20.00', floor: null }],
+      },
+    },
+  )
+  assert.equal(paperResponse.status(), 200, await paperResponse.text())
+  const paper = (await paperResponse.json()) as {
+    groups: {
+      id: string
+      name: string
+      parentGroupId: string | null
+      cap: string | null
+      floor: string | null
+    }[]
+    version: number
+  }
+  assert.equal(paper.groups.length, 1)
+  const grouped = await context.request.put(
+    `${site}/api/assessment/batches/${createdBatch.batch.id}/score-groups`,
+    {
+      data: {
+        expectedVersion: paper.version,
+        groups: [
+          paper.groups[0],
+          ...['Academic paint fixture', 'Activity paint fixture'].map((name) => ({
+            name,
+            parentGroupId: paper.groups[0]!.id,
+            cap: '10.00',
+            floor: null,
+          })),
+        ],
+      },
+    },
+  )
+  assert.equal(grouped.status(), 200, await grouped.text())
+  const tree = (await grouped.json()) as { groups: { id: string; parentGroupId: string | null }[] }
+  const groups = tree.groups.filter((group) => group.parentGroupId !== null)
+  assert.equal(groups.length, 2)
+  const fixtureItems: { id: string; revisionId: string }[] = []
+  for (const [index, group] of groups.entries()) {
+    const item = await context.request.post(
+      `${site}/api/assessment/batches/${createdBatch.batch.id}/items`,
+      {
+        data: {
+          itemType: 'declaration',
+          title: `Scored paint fixture ${String(index + 1)}`,
+          scoreGroupId: group.id,
+          maxEntries: 1,
+          config: {
+            entryChannels: ['administrative'],
+            formConfig: {},
+            scoringConfig: {
+              calculator: { ref: 'fixed@1', config: { value: index === 0 ? '3.00' : '5.00' } },
+              aggregator: { ref: 'sum@1', config: {} },
+            },
+            reviewPolicy: { mode: 'none' },
+          },
+        },
+      },
+    )
+    assert.equal(item.status(), 200, await item.text())
+    const { item: question } = (await item.json()) as { item: { id: string } }
+    const activated = await context.request.put(
+      `${site}/api/assessment/items/${question.id}/status`,
+      {
+        data: { status: 'active' },
+      },
+    )
+    assert.equal(activated.status(), 200, await activated.text())
+    const { item: active } = (await activated.json()) as {
+      item: { currentRevision: { id: string } | null }
+    }
+    assert.ok(active.currentRevision)
+    fixtureItems.push({ id: question.id, revisionId: active.currentRevision.id })
+  }
   const record = await browser.newContext({
     storageState: await context.storageState(),
     locale: 'zh-CN',
@@ -185,7 +274,15 @@ export const acquire = (prepared, context) => web.acquire({
   const planned = await context.request.put(
     `${site}/api/assessment/batches/${createdBatch.batch.id}/phases`,
     {
-      data: { phases: [{ phaseKey: 'paint-check', displayName: 'Paint check' }] },
+      data: {
+        phases: [
+          {
+            phaseKey: 'paint-check',
+            displayName: 'Paint check',
+            permissionProfile: ['assessment.entry.record'],
+          },
+        ],
+      },
     },
   )
   assert.equal(planned.status(), 200)
@@ -195,21 +292,69 @@ export const acquire = (prepared, context) => web.acquire({
     { data: { to: phases[0]!.id } },
   )
   assert.equal(started.status(), 200)
+  const rosterResponse = await context.request.get(
+    `${site}/api/assessment/batches/${createdBatch.batch.id}/participants`,
+  )
+  assert.equal(rosterResponse.status(), 200)
+  const roster = (await rosterResponse.json()) as { items: { id: string; userId: string }[] }
+  const enrolled = roster.items.find((one) => one.userId === student.id)
+  assert.ok(enrolled, 'The isolated student is enrolled in the fixture batch')
+  for (const item of fixtureItems) {
+    const recorded: APIResponse = await context.request.post(`${site}/api/assessment/entries`, {
+      data: {
+        itemId: item.id,
+        participantId: enrolled.id,
+        expectedItemRevisionId: item.revisionId,
+        payload: {},
+        note: 'Isolated cold-paint fixture.',
+      },
+    })
+    assert.equal(recorded.status(), 200, await recorded.text())
+    assert.equal(
+      ((await recorded.json()) as { entry: { status: string } }).entry.status,
+      'approved',
+    )
+  }
   const participant = await browser.newContext({ locale: 'en-US' })
   try {
     const signedIn = await participant.request.post(`${site}/api/auth/local/local/login`, {
       data: { email: 'student@example.edu', password: account.password },
     })
     assert.equal(signedIn.status(), 200)
+    const result = await participant.request.get(
+      `${site}/api/assessment/batches/${createdBatch.batch.id}/me/result`,
+    )
+    assert.equal(result.status(), 200, await result.text())
+    assert.equal(((await result.json()) as { total: string }).total, '8.00')
     await traceDevelopmentPaint(
       participant,
       `${site}/assessment/batches/${createdBatch.batch.id}/my-result`,
       'cold-my-result',
       'light',
+      { expectLedger: true },
+    )
+    await stop(web, 10_000)
+    web = await launchRenderer()
+    await traceDevelopmentPaint(
+      participant,
+      `${site}/assessment/batches/${createdBatch.batch.id}/my-result`,
+      'restart-my-result',
+      'light',
+      { expectLedger: true, stylexUpdateDelayMs },
     )
   } finally {
     await participant.close()
   }
+
+  await stop(web, 10_000)
+  web = await launchRenderer()
+  await traceDevelopmentPaint(
+    context,
+    `${site}/assessment/batches/${createdBatch.batch.id}/settings`,
+    'restart-settings',
+    'dark',
+    { stylexUpdateDelayMs },
+  )
 
   await traceDevelopmentPaint(
     context,
