@@ -27,7 +27,7 @@ export type WorkspaceCapabilities =
 
 interface CapabilityScope {
   readonly state: WorkspaceCapabilities
-  readonly publish: (values: ReadonlySet<string> | null) => void
+  readonly publish: (values: ReadonlySet<string> | null) => () => void
 }
 
 const Scope = sharedContext<CapabilityScope | null>('workspace-capabilities', null)
@@ -43,43 +43,38 @@ export function WorkspaceCapabilityScope({
   const initial = useContext(RuntimeContext)?.initialWorkspaceCapabilities
   const [published, setPublished] = useState<{
     pathname: string | undefined
+    initial: readonly string[] | undefined
     state: WorkspaceCapabilities
   }>()
   const state = useMemo<WorkspaceCapabilities>(() => {
-    if (published !== undefined && published.pathname === pathname) return published.state
+    if (published !== undefined && published.pathname === pathname && published.initial === initial)
+      return published.state
     return initial === undefined
       ? { status: 'loading' }
       : { status: 'ready', values: new Set(initial) }
   }, [initial, pathname, published])
-  // a stable identity, deliberately: the publisher's effect depends on this
-  // function, and a publish that minted a new publisher re-armed that effect
-  // - publish, re-arm, withdraw, publish - until React called the loop out
+  // A live publication belongs to the address and server projection it was
+  // read under. A new server projection replaces it immediately, even while
+  // the replacement context component is still loading.
   const publish = useCallback(
     (values: ReadonlySet<string> | null) => {
+      const publication = {
+        pathname,
+        initial,
+        state:
+          values === null ? { status: 'loading' as const } : { status: 'ready' as const, values },
+      }
       // Publishing background reads must not discard visible server content
       // whose client module is still loading in a nested Suspense boundary.
-      startTransition(() =>
-        setPublished((before) => {
-          const current =
-            before !== undefined && before.pathname === pathname
-              ? before.state
-              : initial === undefined
-                ? { status: 'loading' as const }
-                : { status: 'ready' as const, values: new Set(initial) }
-          if (
-            values === null
-              ? current.status === 'loading'
-              : current.status === 'ready' &&
-                values.size === current.values.size &&
-                [...values].every((value) => current.values.has(value))
-          )
-            return before
-          return {
-            pathname,
-            state: values === null ? { status: 'loading' } : { status: 'ready', values },
-          }
-        }),
-      )
+      startTransition(() => setPublished(publication))
+      // Unmounting a context slot is not an authorization result. Let the
+      // server projection stand until a live publisher takes over again;
+      // an old publisher must not withdraw its replacement's publication.
+      return () => {
+        startTransition(() =>
+          setPublished((before) => (before === publication ? undefined : before)),
+        )
+      }
     },
     [pathname, initial],
   )
@@ -98,8 +93,9 @@ export function useWorkspaceCapabilities(): WorkspaceCapabilities {
 }
 
 /**
- * Publishes the capability set of the open workspace, and withdraws it when
- * the values are null (a new workspace is loading) or the publisher leaves.
+ * Publishes the capability set of the open workspace. Null explicitly means
+ * a workspace is loading; unmounting releases only this live publication,
+ * leaving the server projection (if any) in place.
  * Called by the plugin that owns the workspace context, with values it read
  * from its own server - never computed in the browser.
  */
@@ -111,7 +107,6 @@ export function usePublishWorkspaceCapabilities(values: ReadonlySet<string> | nu
   const key = values === null ? null : [...values].sort().join(' ')
   useEffect(() => {
     if (publish === undefined) return
-    publish(key === null ? null : new Set(key === '' ? [] : key.split(' ')))
-    return () => publish(null)
+    return publish(key === null ? null : new Set(key === '' ? [] : key.split(' ')))
   }, [publish, key])
 }

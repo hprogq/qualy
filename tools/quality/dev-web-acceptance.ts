@@ -434,13 +434,33 @@ export const acquire = (prepared, context) => web.acquire({
   await page.waitForLoadState('networkidle')
   for (const suffix of ['', '/results', '/phases', '/results']) {
     const href = `/assessment/batches/${createdBatch.batch.id}${suffix}`
-    await page.evaluate((to) => {
-      return (
-        globalThis as unknown as {
-          __reactRouterDataRouter: { navigate: (to: string) => Promise<void> }
+    if (suffix !== '')
+      await page.evaluate(`(() => {
+        const samples = []
+        const read = () => {
+          const rail = [...document.querySelectorAll('[data-testid="workspace-rail"]')].find(
+            (node) => node.checkVisibility(),
+          )
+          samples.push({
+            bones: rail?.querySelector('[data-testid="rail-bones"]')?.checkVisibility() === true,
+            links: rail?.querySelectorAll('a').length ?? 0,
+            active: rail?.querySelector('[aria-current="page"]')?.textContent ?? null,
+          })
         }
-      ).__reactRouterDataRouter.navigate(to)
-    }, href)
+        const observer = new MutationObserver(read)
+        observer.observe(document.body, { childList: true, subtree: true, attributes: true })
+        read()
+        globalThis.__railNavigation = { samples, observer }
+      })()`)
+    if (suffix === '')
+      await page.evaluate((to) => {
+        return (
+          globalThis as unknown as {
+            __reactRouterDataRouter: { navigate: (to: string) => Promise<void> }
+          }
+        ).__reactRouterDataRouter.navigate(to)
+      }, href)
+    else await page.getByTestId('workspace-rail').locator(`a[href="${href}"]`).click()
     await page.waitForURL(`${site}${href}`)
     await page.waitForLoadState('networkidle')
     // A router promise settles before React commits its transition. Wait
@@ -450,6 +470,31 @@ export const acquire = (prepared, context) => web.acquire({
       await page
         .getByRole('heading', { name: suffix === '/phases' ? 'Stages' : 'Overview', exact: true })
         .waitFor()
+    if (suffix !== '') {
+      const samples = await page.evaluate<
+        { bones: boolean; links: number; active: string | null }[]
+      >(`(() => {
+        const { samples, observer } = globalThis.__railNavigation
+        observer.disconnect()
+        delete globalThis.__railNavigation
+        return samples.filter(
+          (one, i) => i === 0 || JSON.stringify(one) !== JSON.stringify(samples[i - 1]),
+        )
+      })()`)
+      console.log('workspace navigation', suffix, samples)
+      const current = await page
+        .getByTestId('workspace-rail')
+        .locator('[aria-current="page"]')
+        .textContent()
+      const active = new Set([samples[0]!.active, current])
+      assert.ok(
+        samples.every(
+          (sample) =>
+            !sample.bones && sample.links === samples[0]!.links && active.has(sample.active),
+        ),
+        'Workspace navigation must retain its entries and selection without skeletons',
+      )
+    }
   }
   await page.getByRole('button', { name: '系统管理员' }).click()
   const [ended] = await Promise.all([
