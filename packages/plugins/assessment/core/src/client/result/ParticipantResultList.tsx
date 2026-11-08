@@ -311,11 +311,10 @@ const styles = stylex.create({
     gap: 10,
     scrollMarginTop: 12,
   },
-  kindGrid: (template: string) => ({
-    gridTemplateColumns: {
+  table: (template: string, wide: string) => ({
+    '--q-roster-columns': {
       default: template,
-      '@container (min-width: 800px)':
-        '6.5rem minmax(180px, min(480px, 30%)) minmax(0, 1fr) 7.5rem 2rem',
+      '@container (min-width: 800px)': wide,
     },
   }),
   // One row from a tablet up, however narrow the list gets beside the rail:
@@ -361,8 +360,8 @@ const styles = stylex.create({
   none: { color: `color-mix(in oklab, ${tokens.mutedForeground} 55%, transparent)` },
   // the total's own edge, which is the row's: the digits of every row line
   // up against the menu, where the eye running down the column meets them
-  scoreSeat: { display: 'flex', minWidth: 0, justifyContent: 'flex-end' },
-  headEnd: { textAlign: 'end' },
+  scoreSeat: { display: 'flex', minWidth: 0, justifyContent: 'flex-end', paddingInlineEnd: 12 },
+  headEnd: { textAlign: 'end', paddingInlineEnd: 12 },
 })
 
 export function ParticipantResultList({
@@ -757,7 +756,7 @@ export function ParticipantResultList({
   const unitWord = view.unit === '' ? m.roster_unitsAll() : (unitName ?? m.roster_unitChosen())
   const waitingHead = m.roster_columnWaiting()
   const separateKinds = rows.some((row) => waitsOnAnything(row.filings))
-  const columns = `${numberColumn} minmax(144px, 1fr) ${WAITING_COLUMN} ${tailColumns}`
+  const columns = `${numberColumn} minmax(144px, 1fr) ${separateKinds ? WAITING_COLUMN : '3rem'} ${tailColumns}`
   const filingsFor = (filings: Parameters<typeof RosterFilings>[0]['filings']) => (
     <RosterFilings filings={filings} columns={separateKinds ? KIND_COLUMNS : undefined} />
   )
@@ -947,180 +946,193 @@ export function ParticipantResultList({
         skeleton={<ParticipantRosterRows />}
       >
         <Card ref={listCard} data-testid="roster">
-          <Table
-            columns={columns}
-            sharedTracks
-            xstyle={separateKinds ? styles.kindGrid(columns) : undefined}
+          <div
+            {...stylex.props(
+              styles.table(
+                columns,
+                separateKinds
+                  ? `6.5rem minmax(180px, min(480px, 30%)) minmax(0, 1fr) ${tailColumns}`
+                  : columns,
+              ),
+            )}
           >
-            <TableHead>
-              <span>{businessNo}</span>
-              <span>{m.roster_columnName()}</span>
-              {separateKinds ? (
-                <RosterFilingsHead columns={KIND_COLUMNS} />
+            <Table columns="var(--q-roster-columns)">
+              <TableHead>
+                <span>{businessNo}</span>
+                <span>{m.roster_columnName()}</span>
+                {separateKinds ? (
+                  <RosterFilingsHead columns={KIND_COLUMNS} />
+                ) : (
+                  <span>{waitingHead}</span>
+                )}
+                <span {...stylex.props(styles.headEnd)}>{m.roster_columnScore()}</span>
+                <span />
+              </TableHead>
+              {rows.length === 0 ? (
+                <CardEmpty>{(narrowed ? m.roster_noMatch : m.roster_empty)()}</CardEmpty>
               ) : (
-                <span>{waitingHead}</span>
-              )}
-              <span {...stylex.props(styles.headEnd)}>{m.roster_columnScore()}</span>
-              <span />
-            </TableHead>
-            {rows.length === 0 ? (
-              <CardEmpty>{(narrowed ? m.roster_noMatch : m.roster_empty)()}</CardEmpty>
-            ) : (
-              rows.map((row) => {
-                const { steps, path, unknown } = unitPath(row.anchorLineage)
-                const who = (
-                  <span data-testid="participant-who" {...stylex.props(styles.who)}>
-                    <span {...stylex.props(styles.nameWithMark)}>
-                      <span data-testid="participant-name" {...stylex.props(styles.name)}>
-                        {row.displayName}
-                      </span>
-                      {/* taking part is what a roster row is, so only
+                rows.map((row) => {
+                  const { steps, path, unknown } = unitPath(row.anchorLineage)
+                  const who = (
+                    <span data-testid="participant-who" {...stylex.props(styles.who)}>
+                      <span {...stylex.props(styles.nameWithMark)}>
+                        <span data-testid="participant-name" {...stylex.props(styles.name)}>
+                          {row.displayName}
+                        </span>
+                        {/* taking part is what a roster row is, so only
                           the exception is said, beside the name it is
                           about rather than in a column of its own */}
-                      {row.status === 'excluded' && (
-                        <span {...stylex.props(styles.mark)}>
-                          <Status tone="bad" data-testid="participant-excluded">
-                            {m.roster_excluded()}
-                          </Status>
+                        {row.status === 'excluded' && (
+                          <span {...stylex.props(styles.mark)}>
+                            <Status tone="bad" data-testid="participant-excluded">
+                              {m.roster_excluded()}
+                            </Status>
+                          </span>
+                        )}
+                        <PlacementMark placement={row.placement} />
+                      </span>
+                      {/* said from the unit's own end: the class tells two
+                        people apart, the college above it rarely does */}
+                      {steps.length > 0 && (
+                        <span
+                          data-testid="participant-unit"
+                          data-unknown={unknown}
+                          // the whole path as the row says it; the hint on
+                          // hover is the line's own
+                          data-path={path}
+                          {...stylex.props(styles.unitLine)}
+                        >
+                          <UnitPath steps={steps} title={path} />
                         </span>
                       )}
-                      <PlacementMark placement={row.placement} />
                     </span>
-                    {/* said from the unit's own end: the class tells two
-                        people apart, the college above it rarely does */}
-                    {steps.length > 0 && (
-                      <span
-                        data-testid="participant-unit"
-                        data-unknown={unknown}
-                        // the whole path as the row says it; the hint on
-                        // hover is the line's own
-                        data-path={path}
-                        {...stylex.props(styles.unitLine)}
-                      >
-                        <UnitPath steps={steps} title={path} />
-                      </span>
-                    )}
-                  </span>
-                )
-                return (
-                  <TableRow
-                    key={row.id}
-                    height="compact"
-                    nested
-                    onOpen={() => onOpen(row.id)}
-                    data-testid="participant-row"
-                    data-participant={row.id}
-                    data-participant-status={row.status}
-                  >
-                    {/* across a table the number leads, because that is
+                  )
+                  return (
+                    <TableRow
+                      key={row.id}
+                      height="compact"
+                      nested
+                      onOpen={() => onOpen(row.id)}
+                      data-testid="participant-row"
+                      data-participant={row.id}
+                      data-participant-status={row.status}
+                    >
+                      {/* across a table the number leads, because that is
                         what the list is scanned by; stacked, a row is a
                         person with their facts under them */}
-                    <AtWidth below={768}>
-                      <>
-                        <Cell lead>{who}</Cell>
-                        <Cell numeric unlabelled tone={row.businessNo === null ? 'quiet' : 'muted'}>
-                          {row.businessNo ?? m.roster_noBusinessNo({ businessNo })}
-                        </Cell>
-                      </>
-                    </AtWidth>
-                    <AtWidth from={768}>
-                      <>
-                        {/* under its column's head a missing number is a
+                      <AtWidth below={768}>
+                        <>
+                          <Cell lead>{who}</Cell>
+                          <Cell
+                            numeric
+                            unlabelled
+                            tone={row.businessNo === null ? 'quiet' : 'muted'}
+                          >
+                            {row.businessNo ?? m.roster_noBusinessNo({ businessNo })}
+                          </Cell>
+                        </>
+                      </AtWidth>
+                      <AtWidth from={768}>
+                        <>
+                          {/* under its column's head a missing number is a
                             dash, as a row with nothing waiting is: the words
                             for it are longer than the column in some
                             languages, and stay a hover and a reader away */}
-                        <Cell
-                          lead
-                          numeric
-                          tone={row.businessNo === null ? 'quiet' : 'plain'}
-                          title={
-                            row.businessNo === null
-                              ? m.roster_noBusinessNo({ businessNo })
-                              : undefined
-                          }
-                        >
-                          {row.businessNo ?? (
-                            <span data-testid="participant-no-number">
-                              <span aria-hidden {...stylex.props(styles.none)}>
-                                —
+                          <Cell
+                            lead
+                            numeric
+                            tone={row.businessNo === null ? 'quiet' : 'plain'}
+                            title={
+                              row.businessNo === null
+                                ? m.roster_noBusinessNo({ businessNo })
+                                : undefined
+                            }
+                          >
+                            {row.businessNo ?? (
+                              <span data-testid="participant-no-number">
+                                <span aria-hidden {...stylex.props(styles.none)}>
+                                  —
+                                </span>
+                                <VisuallyHidden>
+                                  {m.roster_noBusinessNo({ businessNo })}
+                                </VisuallyHidden>
                               </span>
-                              <VisuallyHidden>
-                                {m.roster_noBusinessNo({ businessNo })}
-                              </VisuallyHidden>
-                            </span>
-                          )}
-                        </Cell>
-                        <Cell tone="plain" unlabelled>
-                          {who}
-                        </Cell>
-                      </>
-                    </AtWidth>
-                    {/* in a column, nothing waiting is a dash; stacked
+                            )}
+                          </Cell>
+                          <Cell tone="plain" unlabelled>
+                            {who}
+                          </Cell>
+                        </>
+                      </AtWidth>
+                      {/* in a column, nothing waiting is a dash; stacked
                         under a name it is nothing at all, since a fact
                         with no words would only leave its rule behind */}
-                    <Cell unlabelled>
-                      {waitsOnAnything(row.filings) ? (
-                        filingsFor(row.filings)
-                      ) : (
-                        <AtWidth from={768}>{filingsFor(row.filings)}</AtWidth>
-                      )}
-                    </Cell>
-                    {/* the total is what the list is scanned by, so
+                      <Cell unlabelled>
+                        {waitsOnAnything(row.filings) ? (
+                          filingsFor(row.filings)
+                        ) : (
+                          <AtWidth from={768}>{filingsFor(row.filings)}</AtWidth>
+                        )}
+                      </Cell>
+                      {/* the total is what the list is scanned by, so
                         stacked it keeps the end of the row */}
-                    <Cell narrow="end" end unlabelled>
-                      <span {...stylex.props(styles.scoreSeat)}>
-                        <RosterScore
-                          batchId={batchId}
-                          participantId={row.id}
-                          name={row.displayName}
-                          answer={scored.get(row.id)}
-                          answeredAt={scores.dataUpdatedAt}
-                          waiting={scores.isPending && scores.fetchStatus !== 'idle'}
-                          movedAt={movedAt}
-                        />
+                      <Cell narrow="end" end unlabelled>
+                        <span {...stylex.props(styles.scoreSeat)}>
+                          <RosterScore
+                            batchId={batchId}
+                            participantId={row.id}
+                            name={row.displayName}
+                            answer={scored.get(row.id)}
+                            answeredAt={scores.dataUpdatedAt}
+                            waiting={scores.isPending && scores.fetchStatus !== 'idle'}
+                            movedAt={movedAt}
+                          />
+                        </span>
+                      </Cell>
+                      {/* the act on one person, where the person is */}
+                      <span {...stylex.props(styles.rowAct)}>
+                        {manageable && (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                size="icon-xs"
+                                variant="ghost"
+                                data-testid="participant-actions"
+                                aria-label={m.roster_rowActions({ name: row.displayName })}
+                                onClick={(event) => event.stopPropagation()}
+                              >
+                                <EllipsisIcon aria-hidden />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onSelect={() => onOpen(row.id)}>
+                                {m.participantResults_open()}
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                data-testid="participant-standing"
+                                onSelect={() =>
+                                  row.status === 'excluded'
+                                    ? setStatus.mutate({
+                                        participantId: row.id,
+                                        status: 'active',
+                                      })
+                                    : setExcluding({ id: row.id, name: row.displayName })
+                                }
+                              >
+                                {(row.status === 'excluded'
+                                  ? m.roster_restore
+                                  : m.roster_exclude)()}
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        )}
                       </span>
-                    </Cell>
-                    {/* the act on one person, where the person is */}
-                    <span {...stylex.props(styles.rowAct)}>
-                      {manageable && (
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button
-                              size="icon-xs"
-                              variant="ghost"
-                              data-testid="participant-actions"
-                              aria-label={m.roster_rowActions({ name: row.displayName })}
-                              onClick={(event) => event.stopPropagation()}
-                            >
-                              <EllipsisIcon aria-hidden />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onSelect={() => onOpen(row.id)}>
-                              {m.participantResults_open()}
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              data-testid="participant-standing"
-                              onSelect={() =>
-                                row.status === 'excluded'
-                                  ? setStatus.mutate({
-                                      participantId: row.id,
-                                      status: 'active',
-                                    })
-                                  : setExcluding({ id: row.id, name: row.displayName })
-                              }
-                            >
-                              {(row.status === 'excluded' ? m.roster_restore : m.roster_exclude)()}
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      )}
-                    </span>
-                  </TableRow>
-                )
-              })
-            )}
-          </Table>
+                    </TableRow>
+                  )
+                })
+              )}
+            </Table>
+          </div>
           {total > 0 && (
             <CardFoot>
               <Pager

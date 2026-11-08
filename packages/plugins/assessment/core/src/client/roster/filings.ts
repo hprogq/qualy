@@ -41,8 +41,8 @@ export const COLUMNS: readonly RosterWaiting[] = [
   'blocked',
 ]
 
-/** CSS measures waiting text across the shared table tracks, including server HTML. */
-export const WAITING_COLUMN = 'fit-content(9rem)'
+/** The narrow layout keeps a bounded column for waiting text. */
+export const WAITING_COLUMN = '9rem'
 
 /** Each kind sizes its own heading without a browser measurement. */
 export const KIND_COLUMNS = `repeat(${String(COLUMNS.length)}, minmax(max-content, 1fr))`

@@ -1600,7 +1600,9 @@ describe('the room the roster gives its rows', () => {
     const cell = score.element().parentElement!.parentElement!
     expect(
       cell.getBoundingClientRect().right - score.element().getBoundingClientRect().right,
-    ).toBeLessThan(2)
+    ).toBeCloseTo(12, 1)
+    const menu = rows().first().getByTestId('participant-actions').element().getBoundingClientRect()
+    expect(menu.left - score.element().getBoundingClientRect().right).toBeGreaterThanOrEqual(28)
   })
 
   it('draws no count and no pages over a roster with nobody on it', async () => {
