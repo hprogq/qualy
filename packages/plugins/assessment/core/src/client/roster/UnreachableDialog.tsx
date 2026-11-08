@@ -1,4 +1,4 @@
-import { useLocale } from '@qualy/web-i18n'
+import { useList } from '@qualy/web-i18n'
 import { useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
@@ -395,13 +395,8 @@ function QuestionRow({
 }
 
 function QuestionHeading({ route, large = false }: { route: Route; large?: boolean }) {
-  const locale = useLocale()
-  const levels =
-    route.levelNames.length === 0
-      ? null
-      : new Intl.ListFormat(locale, { type: 'conjunction', style: 'narrow' }).format(
-          route.levelNames,
-        )
+  const listed = useList()
+  const levels = route.levelNames.length === 0 ? null : listed(route.levelNames)
   return (
     <>
       <span {...stylex.props(styles.what)}>

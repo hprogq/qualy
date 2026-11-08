@@ -1,6 +1,6 @@
-import { useLocale } from '@qualy/web-i18n'
+import { useList } from '@qualy/web-i18n'
 import { RESERVED } from '../reserved.ts'
-import { memo, useMemo } from 'react'
+import { memo } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { FineHint } from './hint.tsx'
 import { Kbd } from '@qualy/ui/kbd'
@@ -329,12 +329,8 @@ function AboutParts({
   review: ReviewDto
   onOpenSibling: (entryId: string) => void
 }) {
-  const locale = useLocale()
   const fine = useFinePointer()
-  const listed = useMemo(
-    () => new Intl.ListFormat(locale, { style: 'narrow', type: 'conjunction' }),
-    [locale],
-  )
+  const listed = useList()
   const context = review.context
   // Blocks under hairlines rather than four bordered cards: at 19rem a card's
   // border and padding cost more width than they buy, and boxing every peer
@@ -494,7 +490,7 @@ function Route({
   title: string | null
   stages: ReviewDto['chain']['normal']
   here: string | null
-  listed: Intl.ListFormat
+  listed: ReturnType<typeof useList>
 }) {
   const at = stages.findIndex((stage) => stage.id === here)
   return (
@@ -532,7 +528,7 @@ function Route({
                         ? (stage.skipped === 'no-holder'
                             ? m.review_stageNoHolder
                             : m.review_stageSkipped)()
-                        : (stage.label ?? `${stage.nodeName}／${listed.format(stage.roleNames)}`)}
+                        : (stage.label ?? `${stage.nodeName}／${listed(stage.roleNames)}`)}
                   </span>
                   <span {...stylex.props(styles.spacer)} />
                   {/* what happened at this step, where the eye already is:
@@ -551,7 +547,7 @@ function Route({
                   <span {...stylex.props(styles.stepWho)}>
                     {stage.reviewers.length === 0
                       ? m.review_stageNobody()
-                      : m.review_stageReviewers({ who: listed.format(stage.reviewers) })}
+                      : m.review_stageReviewers({ who: listed(stage.reviewers) })}
                   </span>
                 )}
                 {/* what the concluded sitting here said, name by name: the
