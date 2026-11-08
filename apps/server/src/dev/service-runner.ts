@@ -124,6 +124,9 @@ await Effect.runPromise(
     Effect.annotateLogs(
       Effect.scoped(
         Effect.gen(function* () {
+          yield* Effect.logInfo(
+            `development service ${spec.spec.key} using ${process.versions['bun'] === undefined ? 'Node' : 'Bun'} ${process.versions['bun'] ?? process.versions.node} (${process.execPath})`,
+          )
           const prepared = yield* service.prepare(context)
           yield* Effect.sync(() =>
             tell({ protocol: PROTOCOL, type: 'prepared', role: 'service', key: spec.spec.key }),

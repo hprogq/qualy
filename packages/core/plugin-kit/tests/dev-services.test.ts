@@ -23,7 +23,10 @@ const source = (descriptor: PluginDescriptor) => ({
 
 describe('the development services an assembly declares', () => {
   it('collects them with the key a supervisor addresses them by', () => {
-    const web = Plugin.define('@qualy/plugin-web', Dev.service({ id: 'web', module: './dev' }))
+    const web = Plugin.define(
+      '@qualy/plugin-web',
+      Dev.service({ id: 'web', module: './dev', runtime: 'bun' }),
+    )
     const [only, ...rest] = collectDevServices([source(web)], context)
     expect(rest).toEqual([])
     expect(only).toMatchObject({
@@ -31,6 +34,7 @@ describe('the development services an assembly declares', () => {
       pluginId: '@qualy/plugin-web',
       id: 'web',
       moduleUrl: 'file:///resolved/@qualy/plugin-web/dev',
+      runtime: 'bun',
       manifestDir: '/somewhere',
       pluginRoot: '/packages/@qualy/plugin-web',
     })

@@ -90,6 +90,18 @@ jobs:
         with:
           node-version: 24.22.1
           cache: pnpm
+      - name: read the development runtime pin
+        id: dev-runtime
+        run: |
+          node --input-type=module -e '
+            import fs from "node:fs";
+            const version = /^bun\s*=\s*"([^"]+)"/m.exec(fs.readFileSync("mise.toml", "utf8"))?.[1];
+            if (!version) throw new Error("mise.toml has no Bun version");
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, `version=${version}\n`);
+          '
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ steps.dev-runtime.outputs.version }}
       # The compile cache below is filled by the first step of every run and
       # then thrown away with the runner, so every run paid for it and no run
       # arrived with one. Keyed by what decides its contents - the node that

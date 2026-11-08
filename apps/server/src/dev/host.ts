@@ -244,7 +244,7 @@ const own = (child: Child) => {
 const sameTopology = (next: readonly DevServiceSpec[]) => {
   const key = (specs: readonly DevServiceSpec[]) =>
     specs
-      .map((spec) => `${spec.key}@${spec.moduleUrl}`)
+      .map((spec) => `${spec.key}@${spec.moduleUrl}:${spec.runtime ?? 'node'}`)
       .sort((a, b) => a.localeCompare(b))
       .join('|')
   return key(next) === key(active.topology)

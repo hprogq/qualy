@@ -57,21 +57,35 @@ const start = (
   entry: string,
   argv: readonly string[],
   env: NodeJS.ProcessEnv,
+  runtime: 'node' | 'bun' = 'node',
 ) => {
   generation += 1
-  const process = fork(entry, [...argv], { env, stdio: 'inherit' })
+  const process = fork(entry, [...argv], {
+    env,
+    stdio: 'inherit',
+    ...(runtime === 'bun' ? { execPath: 'bun', execArgv: ['--no-env-file', '--no-install'] } : {}),
+  })
   // an EventEmitter that emits `error` with nobody listening throws, and a
   // channel torn down mid-write is the one thing children reliably do
-  process.on('error', () => {})
+  process.on('error', (error) => {
+    if (process.pid === undefined) {
+      globalThis.process.stderr.write(
+        `${label}: could not start ${runtime}: ${error.message}; install the mise tools or set QUALY_DEV_RUNTIME=node\n`,
+      )
+    }
+  })
   let latch: (code: number | null) => void = () => {}
   const exit = new Promise<number | null>((resolve) => {
     latch = resolve
   })
   const child: Child = { name: `${label}#${String(generation)}`, kind, process, gone: false, exit }
-  process.once('exit', (code) => {
+  const finish = (code: number | null) => {
     child.gone = true
     latch(code)
-  })
+  }
+  process.once('exit', finish)
+  // A failed spawn emits error and close, without an exit event.
+  process.once('close', finish)
   return child
 }
 
@@ -83,7 +97,11 @@ export const forkService = (
   origin: string,
   env: NodeJS.ProcessEnv,
 ): Child => {
-  const child = start(`dev:${spec.id}`, 'service', serviceEntry, [], env)
+  const runtime = env['QUALY_DEV_RUNTIME'] ?? spec.runtime ?? 'node'
+  if (runtime !== 'node' && runtime !== 'bun') {
+    throw new Error('QUALY_DEV_RUNTIME must be node or bun')
+  }
+  const child = start(`dev:${spec.id}`, 'service', serviceEntry, [], env, runtime)
   send(child, { protocol: PROTOCOL, type: 'spec', spec, origin })
   return child
 }

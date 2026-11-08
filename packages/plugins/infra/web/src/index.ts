@@ -20,7 +20,7 @@ const plugin = Plugin.define(
   // the other plugins registered
   Plugin.layer(layer),
   Plugin.capability('web-release', () => import('./assembly/index.ts')),
-  Dev.service({ id: 'web', module: './dev' }),
+  Dev.service({ id: 'web', module: './dev', runtime: 'bun' }),
 )
 
 export default plugin

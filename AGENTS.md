@@ -35,7 +35,7 @@ Qualy 是单一代码库、单一产品、单一发布物的插件化综合素�
 
 ## 工程基线
 
-- Node 由 `mise.toml` 固定，pnpm 由 `package.json#packageManager` 固定；版本不要复制到多份文档。
+- Node 与开发用 Bun 由 `mise.toml` 固定，pnpm 由 `package.json#packageManager` 固定；版本不要复制到多份文档。只有 Web 开发服务使用 Bun，监督者、后端、沙箱、CLI、测试与生产构建继续使用 Node，见[开发进程](docs/development/runtime.md)。
 - 服务端以 Node strip-types 直接运行 workspace TypeScript。禁止 enum、namespace、参数属性等需要转换的语法；相对导入带 `.ts` 扩展名。
 - 脚本跨平台，环境文件通过 `node --env-file-if-exists=.env` 读取，不写内联 shell 环境变量。
 - 共享框架依赖走 `pnpm-workspace.yaml` catalog；包内写 `catalog:`，避免重复模块实例。

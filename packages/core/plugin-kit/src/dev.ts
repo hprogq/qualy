@@ -25,6 +25,8 @@ export interface DevServiceContribution {
    * `'./dev'` on `@qualy/plugin-web` resolves as `@qualy/plugin-web/dev`.
    */
   readonly module: `./${string}`
+  /** The development runner only; the backend keeps its own runtime. */
+  readonly runtime?: 'node' | 'bun'
 }
 
 /** every plugin's development services; interpreted by the supervisor alone */
@@ -53,6 +55,7 @@ export interface DevServiceSpec {
   readonly id: string
   /** absolute file url, resolved through the host's dependency graph */
   readonly moduleUrl: string
+  readonly runtime?: 'node' | 'bun'
   /** the manifest block this plugin was configured with, uninterpreted */
   readonly config: unknown
   readonly manifestDir: string
@@ -118,6 +121,7 @@ export function collectDevServices(
         pluginId: descriptor.id,
         id: service.id,
         moduleUrl,
+        ...(service.runtime === undefined ? {} : { runtime: service.runtime }),
         config,
         manifestDir: context.manifestDir,
         pluginRoot: packageRoot,

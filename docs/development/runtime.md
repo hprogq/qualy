@@ -5,7 +5,7 @@
 ## 进程分工
 
 ```text
-browser → Vite (:5173)
+browser → Vite
              ├─ Web modules / HMR
              └─ /api, /health → current backend candidate
 
@@ -15,7 +15,25 @@ dev host
   └─ stages and accepts backend candidates
 ```
 
-Vite 是 `@qualy/plugin-web` 声明的开发服务，由监督者管理，但不随每次后端重载退出。开发态后端不服务 SPA；生产态由 Web 插件服务已经 stage 的 release。
+Vite 是 `@qualy/plugin-web` 声明的开发服务，由监督者管理，但不随每次后端重载退出。开发态的 RSC、SSR 和浏览器模块由同一个 Vite 进程协调；生产态由 Node 下的 Web 插件运行已经 stage 的 release。
+
+## 开发服务运行时
+
+监督者、Effect API、CLI 和沙箱继续由 Node 运行。Web 插件通过 `Dev.service` 声明 `runtime: 'bun'`，监督者仅为这个开发服务选择 Bun 可执行文件，继续沿用原有 IPC、准备、接力和关闭协议。其他未声明运行时的开发服务默认使用监督者的 Node，不按插件名称硬编码选择。
+
+Node 与 Bun 的项目版本都由根 `mise.toml` 固定；pnpm 仍由 `package.json#packageManager` 固定。准备好工具后仍执行 `pnpm dev`。Bun 从 PATH 查找，官方安装与 mise 安装均可；mise 激活时优先选择项目固定版本。启动日志会打印开发服务身份、实际运行时版本和可执行文件路径。
+
+监督者统一加载环境，Bun 子进程带 `--no-env-file --no-install`，只继承已确定的环境和 pnpm 安装树，不再自动读取环境文件或安装依赖。Bun 不存在或启动失败时明确报错，不自动改用 Node。
+
+需要对照或临时回退时，在开发环境中显式设置：
+
+```dotenv
+QUALY_DEV_RUNTIME=node
+```
+
+该变量只覆盖插件开发服务，不改变监督者、后端、沙箱、CLI、测试驱动或生产构建。删除它后恢复各服务自己的声明。取值只接受 `node` 或 `bun`。
+
+采用依据与混合链路验收见 [Bun 运行时记录](../notes/bun-runtime.md)。本次没有把生产构建或产品后端迁到 Bun。
 
 ## 后端接力
 

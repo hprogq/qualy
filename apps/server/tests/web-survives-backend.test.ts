@@ -10,6 +10,7 @@ import {
 } from '@qualy/plugin-database/testkit'
 import type { DevServiceSpec } from '@qualy/plugin-kit/dev'
 import { PROTOCOL, type ChildMessage } from '../src/dev/protocol.ts'
+import { forkService, send, servicePrepared, serviceReady } from '../src/dev/child.ts'
 
 // The point of the whole exercise, in one file.
 //
@@ -25,7 +26,6 @@ import { PROTOCOL, type ChildMessage } from '../src/dev/protocol.ts'
 const port = 3200
 const webPort = 5199
 const backendEntry = path.resolve(import.meta.dirname, '../src/run.ts')
-const serviceEntry = path.resolve(import.meta.dirname, '../src/dev/service-runner.ts')
 
 let db: TestContext | null = null
 let sourceRoot = ''
@@ -102,31 +102,27 @@ const spoken = (child: ChildProcess, type: ChildMessage['type']) =>
   })
 
 const startWeb = async () => {
-  const child = fork(serviceEntry, [], {
-    env: { ...process.env, NODE_ENV: 'development' },
-    stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
-  })
-  children.push(forwarded(child, 'web'))
   const spec: DevServiceSpec = {
     key: '@qualy/plugin-web:web',
     pluginId: '@qualy/plugin-web',
     id: 'web',
+    runtime: 'bun',
     moduleUrl: new URL('../../../packages/plugins/infra/web/src/dev/index.ts', import.meta.url)
       .href,
     config: { sourceRoot },
     manifestDir: sourceRoot,
     pluginRoot: sourceRoot,
   }
-  child.send({
-    protocol: PROTOCOL,
-    type: 'spec',
-    spec,
-    origin: `http://127.0.0.1:${String(port)}`,
+  const child = forkService(spec, `http://127.0.0.1:${String(port)}`, {
+    ...process.env,
+    QUALY_DEV_RUNTIME: undefined,
+    NODE_ENV: 'development',
   })
-  await spoken(child, 'prepared')
-  child.send({ protocol: PROTOCOL, type: 'accept' })
-  await spoken(child, 'ready')
-  return child
+  children.push(child.process)
+  await servicePrepared(child)
+  send(child, { protocol: PROTOCOL, type: 'accept' })
+  await serviceReady(child)
+  return child.process
 }
 
 const startBackend = async () => {
@@ -157,6 +153,16 @@ const stopBackend = (child: ChildProcess) =>
   })
 
 describe.runIf(postgresAvailable)('the browser server and the backend beside it', () => {
+  it('forwards a bodyless sign-out without changing its content type', async () => {
+    await startWeb()
+    await startBackend()
+    const response = await fetch(`http://127.0.0.1:${String(webPort)}/api/auth/session`, {
+      method: 'DELETE',
+    })
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({ ok: true })
+  })
+
   it('keeps serving, as the same process, across backend replacements', async () => {
     const web = await startWeb()
     const wasPid = web.pid

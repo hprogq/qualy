@@ -6,6 +6,7 @@
 # and the one that loses is whichever the reader did not check.
 [tools]
 node = "24.22.1"
+bun = "1.4.4"
 
 [settings]
 # read `packageManager` out of package.json, the way corepack did - which node
