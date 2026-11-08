@@ -236,6 +236,19 @@ const drilling = {
   settled: { opacity: 1, x: 0, y: 0 },
 }
 
+const drillStyles = stylex.create({
+  // The viewport stays still; clipping the translated pane itself would
+  // still let its transformed bounds enlarge the parent scrollport.
+  viewport: { overflowX: 'clip', minWidth: 0, display: 'flex', flexDirection: 'column' },
+  pane: {
+    display: 'flex',
+    flexDirection: 'column',
+    flexGrow: 1,
+    minWidth: 0,
+    minHeight: 0,
+  },
+})
+
 export function Drill({
   move,
   drillKey,
@@ -268,17 +281,19 @@ export function Drill({
   // renders into, sits empty for the length of the exit. The direction it
   // comes from is enough to say which way the reader went.
   return (
-    <motion.div
-      key={drillKey}
-      custom={going}
-      className={className}
-      variants={drilling}
-      initial={hydrating ? false : 'enter'}
-      animate="settled"
-      transition={{ duration: move === 'none' ? 0 : 0.2, ease: [0.22, 0.61, 0.36, 1] }}
-    >
-      {children}
-    </motion.div>
+    <div className={clsx(stylex.props(drillStyles.viewport).className, className)}>
+      <motion.div
+        key={drillKey}
+        custom={going}
+        {...stylex.props(drillStyles.pane)}
+        variants={drilling}
+        initial={hydrating ? false : 'enter'}
+        animate="settled"
+        transition={{ duration: move === 'none' ? 0 : 0.2, ease: [0.22, 0.61, 0.36, 1] }}
+      >
+        {children}
+      </motion.div>
+    </div>
   )
 }
 
