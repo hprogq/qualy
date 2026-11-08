@@ -10,7 +10,7 @@ import {
 import { getApiErrorCode, isBackendUnavailable } from '@qualy/web-i18n'
 import { localeOfRequest } from '@qualy/api-kit/locale'
 import { QUALY_ACTIVITY_HEADER } from '@qualy/api-kit'
-import { clientFor } from '../src/api.ts'
+import { clientFor } from '../src/data/api.ts'
 
 // What a browser api request says about the page, and what the page hears
 // back: the identity on every request from the one transport, and the

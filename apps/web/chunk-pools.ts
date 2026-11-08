@@ -15,6 +15,37 @@ export const MESSAGE_POOL_BYTES = 48 * 1024
 
 export const chunkPools: NonNullable<Rolldown.OutputOptions['codeSplitting']> = {
   groups: [
+    // The typed transport's schemas and implementation have no UI imports.
+    // Keep those mutually dependent leaves together without pulling widgets
+    // or query observers into the bootstrap graph.
+    {
+      name: 'platform-api',
+      test: /[\\/](?:node_modules[\\/]effect[\\/]|packages[\\/](?:core[\\/](?:api-kit|text)|contracts[\\/](?:app|auth|i18n|release|ui))[\\/]src[\\/])/,
+      priority: 3,
+      includeDependenciesRecursively: false,
+    },
+    // Query's providers and observers are one document-level dependency.
+    // They import no product module and can share a stable vendor chunk.
+    {
+      name: 'query',
+      test: /[\\/]node_modules[\\/]@tanstack[\\/](?:query-core|react-query)[\\/]/,
+      priority: 3,
+      includeDependenciesRecursively: false,
+    },
+    // Presentation primitives and their shared contexts are one foundation.
+    // Product surfaces and the providers that use them remain outside it.
+    {
+      name: 'document-foundation',
+      test: /[\\/]packages[\\/]web[\\/](?:brand[\\/]src[\\/]|ui[\\/]src[\\/](?:theme[\\/]|lib[\\/](?:heading-rank|visually-hidden|veil|xstyle|overlay-motion|panel)\.|hooks[\\/](?:use-hydrating|use-mobile)\.|components[\\/](?:spinner|portal|at-width|avatar|badge|field-fill|page-container|pager|popover|skeleton|ticker|toggle-group)\.)|runtime[\\/]src[\\/](?:shared-context|runtime-context|routing[\\/]links|document[\\/](?:page-title|screen-aside|screen-fill|screen-foot|subject|workspace-capabilities))\.tsx?$)/,
+      priority: 4,
+      includeDependenciesRecursively: false,
+    },
+    {
+      name: 'motion',
+      test: /[\\/]node_modules[\\/](?:framer-motion|motion-dom|motion-utils)[\\/]/,
+      priority: 3,
+      includeDependenciesRecursively: false,
+    },
     // The icons in two pools. Each is a few hundred bytes, and pooled
     // by which entries draw it every icon was a chunk of its own: 51
     // of the 53 that held one were under 2 KB, and they were a fifth
@@ -35,24 +66,6 @@ export const chunkPools: NonNullable<Rolldown.OutputOptions['codeSplitting']> = 
     {
       name: 'icons',
       test: /[\\/]node_modules[\\/]lucide-react[\\/]/,
-      priority: 4,
-      includeDependenciesRecursively: false,
-    },
-    // The shell's small parts in one pool: the base pieces nearly
-    // every screen draws and the runtime's page furniture, each a few
-    // hundred bytes, each a chunk of its own when pooled by which
-    // entries draw it. Named one by one rather than by package,
-    // because a package-wide pool is not this: all of @qualy/ui
-    // brings the date pickers and the photo viewer, whose
-    // stylesheets then land in the shell, and every small module of
-    // the platform at once closed a ring and put 20 KB on the sign-in
-    // page. A part qualifies when it is small, imports no stylesheet,
-    // and reaches only the widgets, StyleX, React and the runtime's
-    // core, none of which imports it back; and when the boot does not
-    // draw it, so the pool stays out of the first wave.
-    {
-      name: 'parts',
-      test: /[\\/]packages[\\/]web[\\/](?:ui[\\/]src[\\/](?:components[\\/](?:avatar|badge|field-fill|page-container|pager|popover|skeleton|ticker|toggle-group)\.tsx?|lib[\\/](?:overlay-motion|panel)\.ts)|runtime[\\/]src[\\/](?:links|page-title|screen-aside|screen-fill|screen-foot|subject|workspace-capabilities)\.tsx)$/,
       priority: 4,
       includeDependenciesRecursively: false,
     },

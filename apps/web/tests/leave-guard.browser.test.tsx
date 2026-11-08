@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
 import { render } from 'vitest-browser-react'
+import { flushSync } from 'react-dom'
 import { StrictMode, useState } from 'react'
-import { Link, Route, Routes, useNavigate } from 'react-router'
+import { Link, createBrowserRouter, RouterProvider, Outlet, useNavigate } from 'react-router'
 import { Effect } from 'effect'
 import { UiProvider } from '@qualy/ui/provider'
-import { GuardedBrowserRouter, useLeaveGuard, useSessionTransition } from '@qualy/web-runtime'
+import { DataRouterLeaveGuard, useLeaveGuard, useSessionTransition } from '@qualy/web-runtime'
 import { addressNow, emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
 
 // A page with changes on it asks before it is left - however the reader
@@ -233,19 +234,28 @@ describe('a page with unsaved changes, under the browser’s own history', () =>
     window.history.replaceState(null, '', origin)
   })
 
-  const mountInBrowser = (editor: React.ReactNode = <Editor saves={false} />) =>
-    render(
+  const mountInBrowser = (editor: React.ReactNode = <Editor saves={false} />) => {
+    const router = createBrowserRouter([
+      {
+        Component: () => (
+          <DataRouterLeaveGuard>
+            <Outlet />
+          </DataRouterLeaveGuard>
+        ),
+        children: [
+          { path: '/start', element: <Link to="/editor">open the editor</Link> },
+          { path: '/editor', element: editor },
+        ],
+      },
+    ])
+    return render(
       <StrictMode>
         <UiProvider scheme="light">
-          <GuardedBrowserRouter>
-            <Routes>
-              <Route path="/start" element={<Link to="/editor">open the editor</Link>} />
-              <Route path="/editor" element={editor} />
-            </Routes>
-          </GuardedBrowserRouter>
+          <RouterProvider router={router} />
         </UiProvider>
       </StrictMode>,
     )
+  }
 
   it('undoes the browser’s back while it asks, and takes it again once the reader goes', async () => {
     const screen = await mountInBrowser()
@@ -285,11 +295,11 @@ describe('a page with unsaved changes, under the browser’s own history', () =>
   // entry the step lands on, so the pop is known for the page's however
   // long it is in coming - here, behind a task that holds the thread for
   // longer than any wait for it would have lasted.
-  it('lets the page’s own step back through however late the browser answers it', async () => {
+  it('lets a discarded draft step back however late the browser answers it', async () => {
     function Leaving() {
       const [draft, setDraft] = useState('')
       const navigate = useNavigate()
-      const { bypass } = useLeaveGuard({ when: draft !== '' })
+      useLeaveGuard({ when: draft !== '' })
       return (
         <div data-testid="editor" data-dirty={draft !== ''}>
           <input
@@ -300,7 +310,8 @@ describe('a page with unsaved changes, under the browser’s own history', () =>
           <button
             type="button"
             onClick={() => {
-              bypass(() => void navigate(-1))
+              flushSync(() => setDraft(''))
+              void navigate(-1)
               const until = performance.now() + 1_200
               let spins = 0
               while (performance.now() < until) spins += 1

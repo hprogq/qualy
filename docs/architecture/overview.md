@@ -59,7 +59,7 @@ package.json + qualy.yml + qualy.lock.json
 
 后端 API 以 Effect HttpApi 契约为单一来源。插件拥有自己的 group 和 handler layer；浏览器从插件私有 typed client 取得调用类型。服务端始终承担身份、授权、租户隔离、输入校验和审计，manifest 只负责能力发现。
 
-浏览器收到的是页面、布局、槽位和登录方式等产品身份，不会收到实现它们的包名或源码路径。Vite 在构建期把这些身份映射到动态 import；私有映射和 sourcemap 不进入公开 release store。详见[浏览器公开面](browser-surface.md)和 [Web Release 协议](web-release.md)。
+Web 展示层由 RSC 渲染器和浏览器共同组成。构建期从插件描述器生成服务端私有 surface 表；渲染器按当前请求的授权 manifest 选择页面、布局、槽位和登录实现，输出 HTML 与 RSC 结果，浏览器接管交互和 Query。完整实现表不进入浏览器，客户端只接收所需的获准组件引用；manifest 与组件结果作为同一次渲染更新，不再由浏览器单独重建路由。业务读写仍通过同一 HttpApi 契约。详见 [ADR 0012](../adr/0012-rsc-data-mode.md)、[浏览器公开面](browser-surface.md)和 [Web Release 协议](web-release.md)。
 
 国际化由包私有 ICU JSON 和 Paraglide 编译期消息函数完成。每个浏览器文档在生命周期内固定一种语言；切换语言需要确认并整页重载，其他已打开文档继续使用各自的原语言。设计与性能基线见 [ADR 0011](../adr/0011-i18n-paraglide.md)。
 

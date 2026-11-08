@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isRecordId, loadFailureKind, subjectFailureKind } from '../src/failure-kind.ts'
+import { isRecordId, loadFailureKind, subjectFailureKind } from '../src/feedback/failure-kind.ts'
 
 // A reading that failed, told apart by what the reader can do about it.
 // The errors are built in the shapes the typed client actually surfaces:

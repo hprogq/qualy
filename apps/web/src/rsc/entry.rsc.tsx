@@ -20,6 +20,8 @@ import {
 import { identityOfManifest } from '@qualy/web-runtime/document-identity'
 import type { Manifest } from '@qualy/web-runtime'
 import { Document } from './Document.tsx'
+import { HtmlDocument } from './html-document.tsx'
+import { DocumentError, LayoutError, PageError } from './route-error.tsx'
 import { sessionClearings, withCookies } from './session-clearing.ts'
 import { Empty, Missing, NotFound, Surface } from './frames.tsx'
 
@@ -117,7 +119,17 @@ const renderServer = async (request: Request, manifest: Manifest) => {
     request,
     routes: serverRoutes({
       manifest,
-      frames: { Document, Surface, Missing, NotFound, Empty },
+      frames: {
+        Html: HtmlDocument,
+        Document,
+        DocumentError,
+        LayoutError,
+        PageError,
+        Surface,
+        Missing,
+        NotFound,
+        Empty,
+      },
       ...(homePath === undefined ? {} : { homePath }),
       signInPage: SIGN_IN_PAGE,
     }),

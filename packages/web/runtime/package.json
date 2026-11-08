@@ -7,19 +7,20 @@
   "sideEffects": false,
   "exports": {
     ".": "./src/index.tsx",
-    "./api": "./src/api.ts",
-    "./document-identity": "./src/document-identity.ts",
-    "./identity": "./src/identity.ts",
+    "./api": "./src/data/api.ts",
+    "./document-identity": "./src/session/document-identity.ts",
+    "./identity": "./src/session/identity.ts",
     "./release": "./src/release.ts",
-    "./slot-reference": "./src/slot-reference.tsx",
-    "./surface-scope": "./src/surface-scope.tsx",
-    "./revalidation": "./src/revalidation.ts",
-    "./rendered-fetch": "./src/rendered-fetch.ts",
-    "./query-key": "./src/query-key.ts",
-    "./hydrating": "./src/hydrating.ts",
-    "./query-handoff": "./src/query-handoff.ts",
-    "./query-hydration": "./src/query-hydration.tsx",
-    "./document-now": "./src/document-now.tsx"
+    "./slot-reference": "./src/surfaces/slot-reference.tsx",
+    "./surface-scope": "./src/surfaces/surface-scope.tsx",
+    "./revalidation": "./src/routing/revalidation.ts",
+    "./rendered-fetch": "./src/routing/rendered-fetch.ts",
+    "./render-network-error": "./src/routing/render-network-error.ts",
+    "./query-key": "./src/data/query-key.ts",
+    "./hydrating": "./src/document/hydrating.ts",
+    "./query-handoff": "./src/data/query-handoff.ts",
+    "./query-hydration": "./src/data/query-hydration.tsx",
+    "./document-now": "./src/document/document-now.tsx"
   },
   "peerDependencies": {
     "react": "catalog:"

@@ -5,10 +5,10 @@ import type { HttpApi } from 'effect/http-api'
 import { Api } from '@qualy/api-kit/local'
 import { appApiGroup } from '@qualy/app-contract'
 import { sharedContext } from './shared-context.ts'
-import { buildPageHref, type PageHrefOptions } from './pages.ts'
-import type { LoadSlotReference } from './slot-reference.tsx'
-import type { ComponentRegistry } from './registry.ts'
-import type { ClientOf } from './api.ts'
+import { buildPageHref, type PageHrefOptions } from './routing/pages.ts'
+import type { LoadSlotReference } from './surfaces/slot-reference.tsx'
+import type { ComponentRegistry } from './surfaces/registry.ts'
+import type { ClientOf } from './data/api.ts'
 
 // What the runtime is, and the hooks that read it - in a module of their own
 // rather than in the package's entry.
@@ -49,8 +49,8 @@ export interface Runtime {
   registry: ComponentRegistry
   /** the document's first authorized workspace navigation, when rendered on the server */
   initialWorkspaceCapabilities?: readonly string[] | undefined
-  /** an explicit identity change opens a new server-rendered document */
-  serverRendered?: boolean
+  /** The host owns full document navigation, including explicit identity changes. */
+  navigateDocument: (href: string, options: { replace: boolean }) => void | Promise<void>
   loadSlotReference?: LoadSlotReference | undefined
 }
 

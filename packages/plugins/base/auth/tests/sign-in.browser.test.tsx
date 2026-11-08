@@ -861,10 +861,11 @@ describe('the password form on its way and on its way out', () => {
     } finally {
       watch.disconnect()
     }
+    // A new document does not refetch the old login form’s session query.
     expect({ skeleton, enabledAgain, sessionsAfter }).toEqual({
       skeleton: false,
       enabledAgain: false,
-      sessionsAfter: 1,
+      sessionsAfter: 0,
     })
   })
 })

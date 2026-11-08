@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { handlePlatformFailure } from '../src/mutation-failure.ts'
+import { handlePlatformFailure } from '../src/data/mutation-failure.ts'
 import * as m from '@qualy/web-i18n/messages'
 
 afterEach(() => {

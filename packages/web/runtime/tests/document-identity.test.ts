@@ -3,10 +3,10 @@ import { Effect, Schema } from 'effect'
 import { FetchHttpClient } from 'effect/http'
 import { HttpApi, HttpApiEndpoint, HttpApiGroup } from 'effect/http-api'
 import { ANONYMOUS_IDENTITY, QUALY_IDENTITY_HEADER } from '@qualy/api-kit'
-import { clientFor } from '../src/api.ts'
-import { browserRuntime } from '../src/api-query.ts'
-import { adoptDocumentIdentity, identityOfManifest } from '../src/document-identity.ts'
-import { installSessionRecovery } from '../src/session-recovery.ts'
+import { clientFor } from '../src/data/api.ts'
+import { browserRuntime } from '../src/data/api-query.ts'
+import { adoptDocumentIdentity, identityOfManifest } from '../src/session/document-identity.ts'
+import { installSessionRecovery } from '../src/session/session-recovery.ts'
 
 // Whose the page is, on every request it makes (docs/adr/0013-document-identity.md):
 // the identity it took from its manifest, fixed as each call starts, so a call

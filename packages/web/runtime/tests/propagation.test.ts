@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { Effect, Schema } from 'effect'
 import { FetchHttpClient } from 'effect/http'
 import { HttpApi, HttpApiClient, HttpApiEndpoint, HttpApiGroup } from 'effect/http-api'
-import { clientFor } from '../src/api.ts'
+import { clientFor } from '../src/data/api.ts'
 
 // What a browser request tells the server about tracing: nothing.
 //

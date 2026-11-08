@@ -1,10 +1,14 @@
 import { describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
 import { lazy } from 'react'
-import { Outlet } from 'react-router'
+import { Outlet, useLocation } from 'react-router'
 import { Effect } from 'effect'
 import type { DrawerSignOutContext } from '@qualy/ui-contract'
-import { emptyComponentRegistry, ManifestRoutes, type ComponentRegistry } from '@qualy/web-runtime'
+import {
+  emptyComponentRegistry,
+  PluginComponentBoundary,
+  type ComponentRegistry,
+} from '@qualy/web-runtime'
 import { useRouteSlots } from '../src/route-states.tsx'
 import { apiError, emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
 
@@ -70,7 +74,28 @@ const registry = (): ComponentRegistry => ({
 /** the host's route tree over `shown`, with the home the host resolved */
 function Host({ shown, homePath }: { shown: Manifest; homePath?: string }) {
   const slots = useRouteSlots(homePath)
-  return <ManifestRoutes manifest={shown} registry={registry()} homePath={homePath} slots={slots} />
+  const { pathname } = useLocation()
+  if (shown.pages.length === 0 && pathname === '/') return <>{slots.empty}</>
+  return (
+    <>
+      {slots.notFound({
+        ...(homePath === undefined ? {} : { homePath }),
+        standalone: shown.pages.length === 0,
+      })}
+    </>
+  )
+}
+
+function BrokenSurface({ homePath }: { homePath: string | undefined }) {
+  const slots = useRouteSlots(homePath)
+  return (
+    <PluginComponentBoundary
+      surface={{ kind: 'page', id: 'probe/broken' }}
+      fallback={slots.pageError}
+    >
+      <Broken />
+    </PluginComponentBoundary>
+  )
 }
 
 const mount = (shown: Manifest, route: string, homePath?: string) =>
@@ -78,7 +103,18 @@ const mount = (shown: Manifest, route: string, homePath?: string) =>
     client: fakeClient({ app: { getManifest: () => Effect.succeed(shown) } }),
     registry: registry(),
     route,
-    children: <Host shown={shown} {...(homePath === undefined ? {} : { homePath })} />,
+    routes: [
+      {
+        path: '/',
+        element: <Host shown={shown} {...(homePath === undefined ? {} : { homePath })} />,
+      },
+      { path: '/home', element: <p data-testid="home">home</p> },
+      { path: '/broken', element: <BrokenSurface homePath={homePath} /> },
+      {
+        path: '*',
+        element: <Host shown={shown} {...(homePath === undefined ? {} : { homePath })} />,
+      },
+    ],
   })
 
 const state = () => document.querySelector<HTMLElement>('[data-slot="resource-state"]')

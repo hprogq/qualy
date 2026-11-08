@@ -1018,119 +1018,18 @@ describe('a press on the rail', () => {
     await expect.element(pressed).toHaveAttribute('aria-current', 'page')
   })
 
-  it('fetches the rail pages while idle, and a bar link on hover', async () => {
+  it('does not fetch client page implementations from the server-owned registry', async () => {
     await page.viewport(1280, 800)
-    const preloads = {
-      phases: vi.fn(() => Promise.resolve()),
-      entries: vi.fn(() => Promise.resolve()),
-      users: vi.fn(() => Promise.resolve()),
-    }
-    const registered = (preload: () => Promise<void>) =>
-      Object.assign(
-        lazy(() => Promise.resolve({ default: () => null })),
-        { preload },
-      )
+    const preload = vi.fn(() => Promise.resolve())
     await renderScreen({
-      client: fakeClient({
-        app: {
-          getManifest: () =>
-            Effect.succeed({
-              ...manifest(),
-              pages: [
-                {
-                  id: 'assessment/batch-phases',
-                  path: '/assessment/batches/:batchId/phases',
-                  layout: 'workspace-shell/v1',
-                },
-                {
-                  id: 'assessment/batch-entries',
-                  path: '/assessment/batches/:batchId/entries',
-                  layout: 'workspace-shell/v1',
-                },
-                {
-                  id: 'auth/users',
-                  path: '/organization/users',
-                  layout: 'app-shell/v1',
-                },
-              ],
-            }),
-        },
-      }),
-      registry: {
-        pages: {
-          'assessment/batch-phases': registered(preloads.phases),
-          'assessment/batch-entries': registered(preloads.entries),
-          'auth/users': registered(preloads.users),
-        },
-      },
-      routes: [{ path: '/assessment/batches/:batchId/phases', element: <WorkspaceShell /> }],
+      client: fakeClient({ app: { getManifest: () => Effect.succeed(settledManifest()) } }),
       route: `/assessment/batches/${BATCH_ID}/phases`,
+      registry: { pages: { 'assessment/batches': Object.assign(() => null, { preload }) } },
+      children: <AppShell />,
     })
-    await expect.element(page.getByRole('link', { name: '参评名单' })).toBeVisible()
-    // the rail's pages, fetched once the shell has painted
-    await vi.waitFor(() => {
-      expect(preloads.phases).toHaveBeenCalled()
-      expect(preloads.entries).toHaveBeenCalled()
-    })
-    // an application's first page is nobody's rail entry: fetched when
-    // the tab is pointed at
-    expect(preloads.users).not.toHaveBeenCalled()
-    await page.getByRole('link', { name: '组织与权限' }).hover()
-    await vi.waitFor(() => expect(preloads.users).toHaveBeenCalled())
-  })
-
-  it('waits for the open page’s own reads before it fetches the rail pages', async () => {
-    await page.viewport(1280, 800)
-    const phases = vi.fn(() => Promise.resolve())
-    const registered = (preload: () => Promise<void>) =>
-      Object.assign(
-        lazy(() => Promise.resolve({ default: () => null })),
-        { preload },
-      )
-    let answer = () => {}
-    const answered = new Promise<string>((resolve) => (answer = () => resolve('read')))
-    // the open page, still waiting for what it asked for
-    const Reading = () => {
-      const read = useQuery({ queryKey: ['probe', 'open page'], queryFn: () => answered })
-      return <output data-testid="page-read">{read.data ?? ''}</output>
-    }
-    await renderScreen({
-      client: fakeClient({
-        app: {
-          getManifest: () =>
-            Effect.succeed({
-              ...manifest(),
-              pages: [
-                {
-                  id: 'assessment/batch-phases',
-                  path: '/assessment/batches/:batchId/phases',
-                  layout: 'workspace-shell/v1',
-                },
-              ],
-            }),
-        },
-      }),
-      registry: { pages: { 'assessment/batch-phases': registered(phases) } },
-      routes: [
-        {
-          path: '/assessment/batches/:batchId/phases',
-          element: (
-            <>
-              <WorkspaceShell />
-              <Reading />
-            </>
-          ),
-        },
-      ],
-      route: `/assessment/batches/${BATCH_ID}/phases`,
-    })
-    await expect.element(page.getByRole('link', { name: '参评名单' })).toBeVisible()
-    // painted and idle, but the page's read is still out: its neighbours wait
-    await new Promise((settle) => setTimeout(settle, 2_500))
-    expect(phases).not.toHaveBeenCalled()
-    answer()
-    await expect.element(page.getByTestId('page-read')).toHaveTextContent('read')
-    await vi.waitFor(() => expect(phases).toHaveBeenCalled())
+    await page.getByTestId('top-bar-apps').getByRole('link', { name: '测评' }).hover()
+    await new Promise((resolve) => setTimeout(resolve, 300))
+    expect(preload).not.toHaveBeenCalled()
   })
 })
 

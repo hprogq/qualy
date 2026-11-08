@@ -1,12 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
 import { useEffect, useState } from 'react'
-import { Navigate, Outlet } from 'react-router'
+import { Navigate } from 'react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Effect } from 'effect'
 import {
   listenForWaitingPage,
-  preloadable,
   useManifest,
   useRunApi,
   useSessionTransition,
@@ -126,7 +125,7 @@ describe('a change of identity', () => {
     await page.getByRole('button', { name: 'in' }).click()
     await expect.element(page.getByTestId('home')).toBeInTheDocument()
   })
-  it('keeps the page it leaves in place while the next identity’s layout loads', async () => {
+  it('keeps the page it leaves in place while the next document is being prepared', async () => {
     let signedIn = false
     let mounts = 0
     let arrive!: () => void
@@ -167,15 +166,15 @@ describe('a change of identity', () => {
                     ...emptyManifest(),
                     pages: [{ id: 'auth/login', path: '/login', layout: 'blank' }],
                   },
+            ).pipe(
+              Effect.andThen((manifest) =>
+                signedIn
+                  ? Effect.promise(() => arrived.then(() => manifest))
+                  : Effect.succeed(manifest),
+              ),
             ),
         },
       }),
-      registry: {
-        // the signed-in shell's code is still on its way when its manifest answers
-        layouts: {
-          'shell/v1': preloadable(() => arrived.then(() => ({ default: () => <Outlet /> }))),
-        },
-      },
       routes: [
         { path: '/login', element: <Door /> },
         { path: '/', element: <main data-testid="home" /> },
@@ -328,7 +327,7 @@ describe('leaving a signed-in identity', () => {
 })
 
 describe('a session that stops working while a page is open', () => {
-  it('drops what the last identity was shown and asks the manifest again, once', async () => {
+  it('keeps the document and its data behind recovery when concurrent reads lose the session', async () => {
     let expired = false
     let manifests = 0
     const Secret = () => {
@@ -372,7 +371,11 @@ describe('a session that stops working while a page is open', () => {
           getManifest: () =>
             Effect.sync(() => {
               manifests += 1
-              return { ...emptyManifest(), viewer: expired ? 'anonymous' : 'authenticated' }
+              return {
+                ...emptyManifest(),
+                viewer: expired ? 'anonymous' : 'authenticated',
+                identity: 'reader',
+              }
             }),
         },
       }),
@@ -382,12 +385,13 @@ describe('a session that stops working while a page is open', () => {
     await expect.element(page.getByTestId('records')).toHaveTextContent('secret records')
     const before = manifests
     await page.getByRole('button', { name: 'later' }).click()
-    await expect.element(page.getByTestId('secret')).toHaveAttribute('data-viewer', 'anonymous')
-    // nothing the last identity was shown is still on the screen
-    expect(page.getByTestId('records').element().textContent).toBe('')
-    // however many requests found out, the manifest was asked once
-    await new Promise((settle) => setTimeout(settle, 300))
-    expect(manifests - before).toBe(1)
+    await expect
+      .element(page.getByTestId('session-recovery'))
+      .toHaveAttribute('data-state', 'expired')
+    await expect.element(page.getByTestId('secret')).toHaveAttribute('data-viewer', 'authenticated')
+    expect(page.getByTestId('records').element().textContent).toBe('secret records')
+    // A business refusal does not replace the authorized document projection.
+    expect(manifests - before).toBe(0)
   })
 
   it('leaves an anonymous visitor alone when a request says nobody is signed in', async () => {
@@ -752,7 +756,7 @@ describe('a signed-in page that finds somebody else signed in', () => {
     const { signInElsewhere, counted, moves } = await screen()
     signInElsewhere()
     // coming back to the tab: everything asked again at once
-    moves.refetch?.()
+    window.dispatchEvent(new Event('focus'))
     await locked()
     const before = { ...counted }
     moves.refetch?.()
@@ -779,7 +783,6 @@ describe('the manifest, asked again in the background', () => {
     let failing = false
     let refused = 0
     const Standing = () => {
-      const client = useQueryClient()
       return (
         <main data-testid="standing">
           <button
@@ -787,7 +790,7 @@ describe('the manifest, asked again in the background', () => {
             onClick={() => {
               // the connection drops while the reader is away; coming back asks again
               failing = true
-              void client.refetchQueries()
+              window.dispatchEvent(new Event('focus'))
             }}
           >
             back

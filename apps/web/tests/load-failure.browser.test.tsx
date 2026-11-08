@@ -1,17 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 import { page, userEvent } from 'vitest/browser'
-import { lazy, useState } from 'react'
-import { Outlet } from 'react-router'
+import { useState } from 'react'
 import { Effect } from 'effect'
 import { useQuery } from '@tanstack/react-query'
 import { AsyncSection } from '@qualy/ui/admin'
-import {
-  emptyComponentRegistry,
-  LoadFailure,
-  ManifestRoutes,
-  useLoadFailure,
-  type RouteSlots,
-} from '@qualy/web-runtime'
+import { LoadFailure, useLoadFailure } from '@qualy/web-runtime'
 import { apiError, emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
 
 // A reading that failed, told by what the reader can do about it: not
@@ -177,15 +170,6 @@ describe('the tab of a page that cannot be shown', () => {
   // A record's page opened at an address that names nothing still matches
   // the page; the tab says what stands there instead of the page's name,
   // and the page's name comes back once the state is gone.
-  const slots: RouteSlots = {
-    pageLoading: null,
-    layoutLoading: null,
-    pageError: () => null,
-    layoutError: () => null,
-    componentMissing: () => null,
-    notFound: () => null,
-    empty: null,
-  }
   function Record() {
     const describe = useLoadFailure()
     const [gone, setGone] = useState(true)
@@ -220,19 +204,8 @@ describe('the tab of a page that cannot be shown', () => {
     await renderScreen({
       client: fakeClient({ app: { getManifest: () => Effect.succeed(shown) } }),
       route: '/records/nothing',
-      children: (
-        <ManifestRoutes
-          manifest={shown}
-          registry={{
-            ...emptyComponentRegistry(),
-            layouts: {
-              'app-shell/v1': lazy(() => Promise.resolve({ default: () => <Outlet /> })),
-            },
-            pages: { 'probe/record': lazy(() => Promise.resolve({ default: Record })) },
-          }}
-          slots={slots}
-        />
-      ),
+      path: '/records/:recordId',
+      children: <Record />,
     })
     await expect.element(page.getByRole('heading', { name: 'no such record' })).toBeVisible()
     await vi.waitFor(() => expect(document.title).toBe(`no such record - ${product}`))

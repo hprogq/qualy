@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import { useHydrating } from './hydrating.ts'
+import { useHydrating } from './document/hydrating.ts'
 import { sharedContext } from './shared-context.ts'
 
 // Light, dark, or whatever the machine prefers - the third is the default,

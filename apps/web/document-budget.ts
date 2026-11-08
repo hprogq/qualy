@@ -9,6 +9,8 @@ import type { ScreenBudget } from '../../packages/build/web/src/chunk-graph.ts'
 /** the document's own client components, which every document's html asks for */
 export const DOCUMENT_HOST_MODULES = [
   'apps/web/src/rsc/Document.tsx',
+  'apps/web/src/rsc/html-document.tsx',
+  'apps/web/src/rsc/route-error.tsx',
   'apps/web/src/rsc/frames.tsx',
 ]
 

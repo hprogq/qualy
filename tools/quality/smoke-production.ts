@@ -19,17 +19,19 @@ import { readCurrentWebRelease, storeAt } from '../../packages/build/web/src/rel
 // one hashed asset - and then asserts it can also STOP: SIGTERM has to run
 // the finalizers and exit zero.
 
+const databaseUrl = process.env['DATABASE_URL']
+if (databaseUrl === undefined) throw new Error('smoke requires an explicit DATABASE_URL')
+
 const PORT = process.env.SMOKE_PORT ?? '3197'
 const base = `http://127.0.0.1:${PORT}`
 
 const server = startQualyServer({
   port: PORT,
+  envFile: false,
   env: {
-    // production refuses to assume a database; the smoke falls back to the
-    // compose stack's url, the same one development assumes. Migrations
-    // follow the runner's production default (off): the lineage was applied
-    // by `pnpm qualy deploy`, exactly as a deployment would have.
-    DATABASE_URL: process.env.DATABASE_URL ?? 'postgres://qualy:qualy@localhost:5432/qualy',
+    // The caller supplies an already deployed test database. Starting the
+    // server never applies migrations or selects the developer database.
+    DATABASE_URL: databaseUrl,
   },
 })
 
@@ -61,19 +63,15 @@ let shell = ''
 await check('/', async (response) => {
   shell = await response.text()
   if (response.status !== 200) return `status ${response.status}`
-  if (!shell.includes('<!doctype html')) return 'no html shell'
-  // the first frame the build wrote in place of the source's marker, and
-  // no comment left for a browser to download
-  if (!shell.includes('id="qualy-boot"') || !shell.includes('data-seg="1-7"')) {
-    return 'the shell carries no generated first frame'
+  if (!/<!doctype html/i.test(shell)) return 'no HTML document'
+  if (!shell.includes('id="root"') || !shell.includes('data-release=')) {
+    return 'the document carries no rendered root or release identity'
   }
-  if (shell.includes('<!--')) return 'the shell carries a comment'
-  // the shell's name never changes and its bytes do at every release
-  if (response.headers.get('cache-control') !== 'no-cache') {
-    return `cache-control: ${response.headers.get('cache-control') ?? 'absent'}, expected no-cache`
+  if (shell.includes('id="qualy-boot"')) return 'the document still carries the SPA boot overlay'
+  if (response.headers.get('cache-control') !== 'private, no-store') {
+    return `cache-control: ${response.headers.get('cache-control') ?? 'absent'}, expected private, no-store`
   }
-  // the document-only headers, set by the static middleware rather than
-  // the serve chain, which never sees these bytes
+  // Document headers belong to the renderer, not the static asset server.
   for (const [name, expected] of [
     ['x-frame-options', 'DENY'],
     ['cross-origin-opener-policy', 'same-origin'],
@@ -88,11 +86,12 @@ await check('/', async (response) => {
   // contribution, reported rather than enforced until a deployment says so
   const policy = response.headers.get('content-security-policy-report-only')
   if (policy === null) return 'no content-security-policy-report-only'
-  if (!policy.includes("script-src 'self' 'sha256-"))
-    return `policy hashes no inline script: ${policy}`
+  const nonce = /<script\b[^>]*\bnonce="([^"]+)"/.exec(shell)?.[1]
+  if (nonce === undefined || !policy.includes(`'nonce-${nonce}'`))
+    return 'the document script nonce is not authorized by its policy'
   if (!policy.endsWith('report-uri /csp-reports'))
     return `policy names no report endpoint: ${policy}`
-  console.log(`smoke: / policy ${policy}`)
+  console.log('smoke: / document nonce and policy agree')
   return undefined
 })
 // the shell again, by way of a path whose last segment looks like a file:
@@ -363,7 +362,9 @@ await check('/__qualy/release', async (response) => {
 
 // one hashed asset out of the shell it actually served, so the check follows
 // the build instead of hardcoding a chunk name
-const asset = /(?:src|href)="(\/assets\/[^"]+\.js)"/.exec(shell)?.[1]
+const asset =
+  /(?:src|href)="(\/assets\/[^"]+\.js)"/.exec(shell)?.[1] ??
+  /(?:import\(|from\s*)["'](\/assets\/[^"']+\.js)["']/.exec(shell)?.[1]
 if (!asset) fail('the shell references no /assets/*.js entry')
 await check(asset!, async (response) => {
   if (response.status !== 200) return `status ${response.status}`
@@ -408,9 +409,10 @@ console.log('smoke: shutdown clean (exit 0), finalizers reported')
 // change that quietly took either with it is exactly what this guards.
 {
   const interrupted = startQualyServer({
+    envFile: false,
     port: PORT,
     env: {
-      DATABASE_URL: process.env.DATABASE_URL ?? 'postgres://qualy:qualy@localhost:5432/qualy',
+      DATABASE_URL: databaseUrl,
     },
   })
   await interrupted.waitUntilReady().catch((error: unknown) => {
@@ -464,9 +466,10 @@ const refuses = async (field: 'resolutionHash' | 'browserContractHash') => {
     `${JSON.stringify({ ...JSON.parse(original), [field]: 'sha256:not-this-one' }, null, 2)}\n`,
   )
   const refused = startQualyServer({
+    envFile: false,
     port: refusalPort,
     env: {
-      DATABASE_URL: process.env.DATABASE_URL ?? 'postgres://qualy:qualy@localhost:5432/qualy',
+      DATABASE_URL: databaseUrl,
     },
   })
   try {
@@ -508,9 +511,10 @@ for (const field of ['resolutionHash', 'browserContractHash'] as const) {
 // other probe above has it.
 {
   const refused = startQualyServer({
+    envFile: false,
     port: refusalPort,
     env: {
-      DATABASE_URL: process.env.DATABASE_URL ?? 'postgres://qualy:qualy@localhost:5432/qualy',
+      DATABASE_URL: databaseUrl,
       QUALY_SECRETS_MASTER_KEY: '',
     },
   })

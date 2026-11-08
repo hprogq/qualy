@@ -8,13 +8,8 @@ import { layout } from '@qualy/ui/theme/layout.stylex'
 import { shell, shellRoot } from './shell.stylex.ts'
 import { pending } from './pending.ts'
 import { chipRowFades, chips, useChipRow } from './chip-row.ts'
-import {
-  headerActions,
-  sidebarUser,
-  type NamespacedId,
-  type ResolvedNavigationItem,
-} from '@qualy/ui-contract'
-import { UiSlot, usePagePrefetch, usePendingNavigation } from '@qualy/web-runtime'
+import { headerActions, sidebarUser, type ResolvedNavigationItem } from '@qualy/ui-contract'
+import { UiSlot, usePendingNavigation } from '@qualy/web-runtime'
 
 // The one bar that never changes: which applications there are, which one is
 // open, and the account. Everything below it belongs to the application.
@@ -321,7 +316,6 @@ export interface AppEntry {
 // the wordmark, never live here: the loop belongs to the loading screen.
 // Its title names the link, so nothing else has to
 function Brand({ to }: { to?: string }) {
-  // marked as the place the cold start's loading screen flies its wordmark to
   const mark = <Wordmark height={14} title="Qualy" data-brand-wordmark="" />
   return to === undefined ? (
     <span {...stylex.props(styles.brand)}>{mark}</span>
@@ -333,22 +327,8 @@ function Brand({ to }: { to?: string }) {
 }
 
 /** the page an application's tab leads to, which is its first entry's */
-const firstPageOf = (app: AppEntry): NamespacedId | undefined => {
-  for (const item of app.items) {
-    if (item.target.kind === 'page') return item.target.pageId
-  }
-  return undefined
-}
-
-/**
- * A link of the bars: lit from the press until the page it leads to has
- * arrived, and its page's code fetched as soon as it is pointed at. The
- * entry lighting is what says the press was heard; the ink under the word
- * says which entry is open.
- */
 function BarLink({
   to,
-  page,
   active,
   end,
   idle,
@@ -358,7 +338,6 @@ function BarLink({
   children,
 }: {
   to: string
-  page: NamespacedId | undefined
   /** the bar's own notion of which entry is open, when it has one */
   active?: boolean
   end?: boolean
@@ -369,8 +348,6 @@ function BarLink({
   children: ReactNode
 }) {
   const navigation = usePendingNavigation(to)
-  const prefetch = usePagePrefetch()
-  const warm = page === undefined ? undefined : () => prefetch(page)
   const open = (isActive: boolean) => active ?? isActive
   const going = (isActive: boolean) => navigation.pending && !open(isActive)
   return (
@@ -378,8 +355,6 @@ function BarLink({
       to={to}
       end={end}
       onClick={navigation.onClick}
-      onPointerEnter={warm}
-      onFocus={warm}
       aria-busy={navigation.pending || undefined}
       data-pending={navigation.pending ? '' : undefined}
       {...(active === undefined ? {} : { 'aria-current': active ? 'page' : undefined })}
@@ -472,7 +447,6 @@ export function TopBar({
             <li key={app.id}>
               <BarLink
                 to={app.path}
-                page={firstPageOf(app)}
                 active={app.id === activeApp}
                 base={styles.tab}
                 lit={styles.tabActive}
@@ -516,12 +490,7 @@ export function SectionChips({ items }: { items: readonly ResolvedNavigationItem
     >
       {items.map((item) =>
         item.target.kind === 'page' ? (
-          <SectionChip
-            key={item.id}
-            to={item.target.path}
-            page={item.target.pageId}
-            label={item.label}
-          />
+          <SectionChip key={item.id} to={item.target.path} label={item.label} />
         ) : (
           <a
             key={item.id}
@@ -537,25 +506,14 @@ export function SectionChips({ items }: { items: readonly ResolvedNavigationItem
   )
 }
 
-function SectionChip({
-  to,
-  page,
-  label,
-}: {
-  to: string
-  page: NamespacedId
-  label: ResolvedNavigationItem['label']
-}) {
+function SectionChip({ to, label }: { to: string; label: ResolvedNavigationItem['label'] }) {
   const navigation = usePendingNavigation(to)
-  const prefetch = usePagePrefetch()
   return (
     <NavLink
       to={to}
       end
       data-testid="section-chip"
       onClick={navigation.onClick}
-      onPointerEnter={() => prefetch(page)}
-      onFocus={() => prefetch(page)}
       aria-busy={navigation.pending || undefined}
       data-pending={navigation.pending ? '' : undefined}
       className={({ isActive }) =>
@@ -580,7 +538,6 @@ export function SectionBar({ items }: { items: readonly ResolvedNavigationItem[]
               {item.target.kind === 'page' ? (
                 <BarLink
                   to={item.target.path}
-                  page={item.target.pageId}
                   base={styles.sectionLink}
                   lit={styles.sectionActive}
                   idle={styles.sectionIdle}

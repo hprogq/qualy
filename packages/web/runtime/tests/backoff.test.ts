@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { Effect } from 'effect'
 import { FetchHttpClient, HttpClient } from 'effect/http'
-import { retryQuery } from '../src/api-query.ts'
-import { liveBackoffMs } from '../src/live-channel.ts'
+import { retryQuery } from '../src/data/api-query.ts'
+import { liveBackoffMs } from '../src/live/live-channel.ts'
 
 // Both policies here answer the same question - how long to wait before
 // knocking again - and both used to answer it from something that does not

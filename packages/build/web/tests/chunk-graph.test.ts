@@ -117,7 +117,7 @@ describe('the build check', () => {
         'big.js',
         [],
         [
-          '/repo/packages/web/runtime/src/navigation.tsx',
+          '/repo/packages/web/runtime/src/routing/navigation.tsx',
           '/repo/node_modules/.pnpm/monaco-editor@0.57.0/node_modules/monaco-editor/esm/vs/editor.js',
         ],
         500,

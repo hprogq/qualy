@@ -25,6 +25,7 @@ import {
 import { repoRoot } from '../lib/manifest.ts'
 import { startQualyServer, type QualyServer } from '../lib/qualy-server.ts'
 import { acceptEntries } from './rsc-entries.ts'
+import { acceptRouteErrors } from './rsc-route-errors.ts'
 
 // The server-rendered document, accepted end to end on data of its own
 // (docs/adr/0012-rsc-data-mode.md).
@@ -241,7 +242,7 @@ const mountHandler = async () => {
             duplex: 'half',
             signal,
             redirect: 'manual',
-          } as RequestInit),
+          }),
         )
         const copy = new Response(upstream.body, upstream)
         copy.headers.delete('content-length')
@@ -1609,7 +1610,7 @@ const guardedNavigation = async (browser: Browser, batch: string) => {
     await navigate(address)
     await question.getByRole('button', { name: /放弃修改|Discard/ }).click()
     await page.locator('[data-release-recovery]').waitFor({ timeout: 10_000 })
-    const preserved = await original!.evaluate((element) => {
+    const preserved = await original.evaluate((element) => {
       const input = element as unknown as {
         isConnected: boolean
         closest(selector: string): object | null
@@ -1846,6 +1847,12 @@ const checks = async () => {
   await loginMethodsUnread(browser)
   await changedHands(browser)
   await ownSessionChanges(browser)
+  await acceptRouteErrors({
+    context: await signedInContext(browser, 'admin'),
+    site,
+    hydrated,
+    check,
+  })
   await sessionWent(browser)
   const batch = await batchFor(scratch)
   await batchListFirstScreen(browser, batch)

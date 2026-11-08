@@ -21,7 +21,7 @@ import { loadPrefetch, loadSurface, renderRequest } from './request.ts'
 // The authorized manifest as a route tree the server renders
 // (docs/adr/0012-rsc-data-mode.md).
 //
-// The same rules the browser's route builder applies - pages grouped under
+// Pages grouped under
 // the layout they name, the origin sent home, an address an anonymous
 // viewer cannot place sent to sign in first - with every route named by the
 // surface it renders, so a route id is a product identity and never a
@@ -30,13 +30,22 @@ import { loadPrefetch, loadSurface, renderRequest } from './request.ts'
 
 /** the host's client components a route is drawn in; each a client reference */
 export interface RouteFrames {
-  /** the whole document: providers, the html element, and the routes under it */
+  /** HTML and shared appearance, including when the document route fails. */
+  readonly Html: ComponentType<{
+    readonly locale: SupportedLocale
+    readonly releaseId: string
+    readonly nonce?: string | undefined
+    readonly children: ReactNode
+  }>
+  readonly DocumentError: ComponentType
+  readonly PageError: ComponentType
+  readonly LayoutError: ComponentType
+  /** the document's runtime providers and the routes under them */
   readonly Document: ComponentType<{
     readonly manifest: Manifest
     /** authorized slot items declared by the current layout */
     readonly slots: Readonly<Record<string, Readonly<Record<string, ComponentType<any>>>>>
     readonly locale: SupportedLocale
-    readonly releaseId: string
     /** the moment the server drew the document, for the clock reads in it */
     readonly renderedAt: number
     /**
@@ -46,8 +55,6 @@ export interface RouteFrames {
      */
     readonly hydration?: DehydratedState | undefined
     readonly initialWorkspaceCapabilities?: readonly string[] | undefined
-    /** the document's script nonce, when its host sends a policy that asks for one */
-    readonly nonce?: string | undefined
     readonly children: ReactNode
   }>
   /** one surface, behind its own boundary and suspense */
@@ -167,12 +174,14 @@ export const serverRoutes = ({
   const layouts: RSCRouteConfigEntry[] = manifest.layouts.map((layout) => ({
     id: surfaceLabel({ kind: 'layout', id: layout.contract }),
     Component: surfaceRoute({ kind: 'layout', id: layout.contract }, frames),
+    ErrorBoundary: frames.LayoutError,
     shouldRevalidate: pageRevalidation,
     children: [
       ...(byLayout.get(layout.contract) ?? []).map((page): RSCRouteConfigEntry => ({
         id: surfaceLabel({ kind: 'page', id: page.id }),
         path: page.path,
         Component: surfaceRoute({ kind: 'page', id: page.id }, frames),
+        ErrorBoundary: frames.PageError,
         shouldRevalidate: pageRevalidation,
       })),
       ...(layout.contract === shell ? [index, catchAll] : []),
@@ -232,6 +241,15 @@ export const serverRoutes = ({
       id: 'qualy:document',
       path: '',
       shouldRevalidate: pageRevalidation,
+      Layout: function DocumentLayout({ children }: { children: ReactNode }) {
+        const { locale, release, nonce } = renderRequest()
+        return (
+          <frames.Html locale={locale} releaseId={release.releaseId} nonce={nonce}>
+            {children}
+          </frames.Html>
+        )
+      },
+      ErrorBoundary: frames.DocumentError,
       Component: async function DocumentRoute({
         matches = [],
       }: {
@@ -257,9 +275,7 @@ export const serverRoutes = ({
             hydration={first.hydration}
             initialWorkspaceCapabilities={first.workspaceCapabilities}
             locale={renderRequest().locale}
-            releaseId={renderRequest().release.releaseId}
             renderedAt={renderRequest().renderedAt}
-            nonce={renderRequest().nonce}
           >
             <SurfaceScope surfaces={{ slots: pageSlots }}>
               <Outlet />

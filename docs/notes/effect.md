@@ -34,7 +34,7 @@ schema 体)不做对象结构解析,不受影响——恰好实现「envelope �
   `decoded-only`(默认)返回解码值,`response-only` 返回原始响应,`decoded-and-response` 返回二者。调用处
   不传参数时类型正确;但从方法类型上推导(`ReturnType`、`infer`)会把模式放宽为三者之一,首次 typecheck
   报 3587 个错误。本产品从不传 `responseMode`,所以在所有浏览器 client 共经的边界
-  `packages/web/runtime/src/api.ts` 的 `ClientOf` 上把每个方法收窄为只解码的签名(去掉 `responseMode`
+  `packages/web/runtime/src/data/api.ts` 的 `ClientOf` 上把每个方法收窄为只解码的签名(去掉 `responseMode`
   参数,成功通道去掉上游 `Client.Response` 的另两种形状;错误与服务通道上游只在 `response-only` 下收窄,
   原样沿用),不在 47 处调用方各自套辅助类型。`QueryUtils` 去掉 `Client` 约束:泛型 api 的 client 是延迟
   求值的映射类型,约束看不进去,逐方法由 `Bound` 判定。

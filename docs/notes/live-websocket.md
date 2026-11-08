@@ -16,8 +16,8 @@ EO 主站默认 15 秒回源应答超时曾在首个 25 秒心跳前切断已返
 | 批次通道的鉴权、配额、受众过滤、指标与日志       | `packages/plugins/assessment/core/src/live/watch.ts`                                                            |
 | 配额账本（作用域内占位，释放恰好一次）           | `packages/plugins/assessment/core/src/live/connections.ts`                                                      |
 | 会话是否仍有效（只读，不续期）                   | `SessionPresence`：契约 `@qualy/auth-contract/session`，实现 `packages/plugins/base/auth/src/server/session.ts` |
-| 标签页内共享连接、状态机、退避                   | `packages/web/runtime/src/live-channel.ts`                                                                      |
-| React 接入 `useLiveChannel`                      | `packages/web/runtime/src/live-channel-context.tsx`                                                             |
+| 标签页内共享连接、状态机、退避                   | `packages/web/runtime/src/live/live-channel.ts`                                                                 |
+| React 接入 `useLiveChannel`                      | `packages/web/runtime/src/live/live-channel-context.tsx`                                                        |
 | 测试用假服务器                                   | `@qualy/testkit/browser`（`packages/testkit/browser/src/live.ts`）                                              |
 
 服务端 socket 使用 Effect 自带的 `HttpServerRequest.upgrade` 与 `effect/socket` 的 reader/writer（`repos/effect/packages/effect/src/socket/Socket.ts`、`repos/effect/packages/platform/node/src/NodeHttpServer.ts`）；浏览器端用 `Socket.makeWebSocket` 加 `WebSocketConstructor`，测试注入假构造器。握手、跟踪 span 与连接作用域沿用 formula LSP 已有的 `webSocketSession`。

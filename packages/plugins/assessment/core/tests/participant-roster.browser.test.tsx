@@ -1157,6 +1157,7 @@ describe('the room the roster gives its rows', () => {
       await expect.element(card).toBeVisible()
       const bottom = () => card.element().getBoundingClientRect().bottom
       await expect.poll(bottom).toBeCloseTo(884, 0)
+      await expect.element(rows().first()).toBeVisible()
       const scroller = page.getByTestId('roster-page-scroll').element()
       scroller.scrollTop = 200
       await expect.poll(() => scroller.scrollTop).toBeGreaterThan(100)

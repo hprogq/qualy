@@ -2,8 +2,7 @@ import type { ReactNode } from 'react'
 import { NavLink } from 'react-router'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import type { NamespacedId } from '@qualy/ui-contract'
-import { useIdlePagePrefetch, usePagePrefetch, usePendingNavigation } from '@qualy/web-runtime'
+import { usePendingNavigation } from '@qualy/web-runtime'
 import { NavIcon } from './icons.tsx'
 import { hasEntriesBelow } from './rail.ts'
 import type { SectionGroup } from './useAppNavigation.ts'
@@ -70,27 +69,21 @@ const styles = stylex.create({
 
 function SideLink({
   to,
-  page,
   icon,
   exact,
   children,
 }: {
   to: string
-  page: NamespacedId | undefined
   icon: string | undefined
   exact: boolean
   children: ReactNode
 }) {
   const navigation = usePendingNavigation(to)
-  const prefetch = usePagePrefetch()
-  const warm = page === undefined ? undefined : () => prefetch(page)
   return (
     <NavLink
       to={to}
       end={exact}
       onClick={navigation.onClick}
-      onPointerEnter={warm}
-      onFocus={warm}
       aria-busy={navigation.pending || undefined}
       className={({ isActive }) =>
         stylex.props(styles.link, isActive || navigation.pending ? styles.lit : styles.idle)
@@ -107,13 +100,6 @@ export function SideNav({ groups, label }: { groups: readonly SectionGroup[]; la
   const paths = groups.flatMap((group) =>
     group.items.flatMap((item) => (item.target.kind === 'page' ? [item.target.path] : [])),
   )
-  // every section the column can reach, fetched while the reader looks at
-  // this one, so a press that finds its code here waits for nothing
-  useIdlePagePrefetch(
-    groups.flatMap((group) =>
-      group.items.flatMap((item) => (item.target.kind === 'page' ? [item.target.pageId] : [])),
-    ),
-  )
   return (
     <nav aria-label={label} data-testid="side-nav" {...stylex.props(styles.nav)}>
       {groups.map((group) => (
@@ -125,7 +111,6 @@ export function SideNav({ groups, label }: { groups: readonly SectionGroup[]; la
                 {item.target.kind === 'page' ? (
                   <SideLink
                     to={item.target.path}
-                    page={item.target.pageId}
                     icon={item.icon}
                     exact={hasEntriesBelow(item.target.path, paths)}
                   >

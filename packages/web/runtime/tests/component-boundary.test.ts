@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { PluginComponentBoundary } from '../src/component-boundary.tsx'
+import { PluginComponentBoundary } from '../src/surfaces/component-boundary.tsx'
 
 // A boundary outlives a route change: React keeps the instance where the
 // element type and position match, so what it remembers has to belong to the

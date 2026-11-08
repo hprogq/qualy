@@ -7,11 +7,10 @@ import {
   type BrowserSurface,
   type DrawerSignOutContext,
 } from '@qualy/ui-contract'
-import { Failure, UiSlot, useManifest, type RouteSlots } from '@qualy/web-runtime'
+import { Failure, UiSlot, useManifest } from '@qualy/web-runtime'
 
 import { Button } from '@qualy/ui/button'
 import { ResourceState } from '@qualy/ui/resource-state'
-import { LoadingScreen, PageLoading } from '@qualy/ui/spinner'
 import { webRelease } from './release.ts'
 import * as commonMessages from '@qualy/web-i18n/messages'
 
@@ -20,6 +19,14 @@ import * as commonMessages from '@qualy/web-i18n/messages'
 // nowhere, and nothing to open at all. Every one of them is the same state
 // a page draws for a record that is not there, with the ways out the host
 // can offer.
+
+export interface RouteStates {
+  pageError: (retry: () => void) => React.ReactNode
+  layoutError: (retry: () => void) => React.ReactNode
+  componentMissing: (surface: BrowserSurface) => React.ReactNode
+  notFound: (context: { homePath?: string; standalone: boolean }) => React.ReactNode
+  empty: React.ReactNode
+}
 
 const styles = stylex.create({
   // no shell around it: the state is the viewport
@@ -36,20 +43,18 @@ const STANDALONE: DrawerSignOutContext = { standalone: true }
  * manifest resolved; rebuilt when the locale changes, so no fallback keeps
  * the previous language.
  */
-export function useRouteSlots(homePath: string | undefined): RouteSlots {
+export function useRouteSlots(homePath: string | undefined): RouteStates {
   const manifest = useManifest()
   // With no shell there is no drawer, and so no way out of the session but
   // the one a screen offers itself: whoever owns sessions contributes it, and
   // a visitor who is not signed in has nothing to leave.
   const signedIn =
     manifest.viewer === 'authenticated' && (manifest.slots[drawerSignOut.key]?.length ?? 0) > 0
-  return useMemo<RouteSlots>(() => {
+  return useMemo<RouteStates>(() => {
     const signOut = signedIn
       ? [<UiSlot key="sign-out" token={drawerSignOut} context={STANDALONE} />]
       : []
     return {
-      pageLoading: <PageLoading />,
-      layoutLoading: <LoadingScreen />,
       // A page's code that failed is drawn as any page that cannot be shown
       // is: where the page would have been, with a retry and the way home.
       pageError: (retry) => (

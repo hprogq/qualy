@@ -1,7 +1,7 @@
 import { definePage } from '@qualy/ui-contract'
 import { describe, expect, it } from 'vitest'
 import { QueryClient, QueryObserver } from '@tanstack/react-query'
-import { buildPageHref, sessionDestinationHref } from '../src/pages.ts'
+import { buildPageHref, sessionDestinationHref } from '../src/routing/pages.ts'
 
 // url construction from a page reference: the one place a path becomes a
 // string, so its encoding rules are pinned here

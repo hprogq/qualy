@@ -723,7 +723,7 @@ describe('filing a claim', () => {
 
   it('does not create the draft again when submission recovers an expired session', async () => {
     const { installSessionRecovery } =
-      await import('../../../../web/runtime/src/session-recovery.ts')
+      await import('../../../../web/runtime/src/session/session-recovery.ts')
     const created = vi.fn(() => Effect.succeed({ entry: entry() }))
     let attempts = 0
     const submitted = vi.fn(() =>

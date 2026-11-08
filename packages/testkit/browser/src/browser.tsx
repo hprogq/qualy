@@ -1,9 +1,22 @@
 import { StrictMode, type ReactNode } from 'react'
-import { Route, Routes, useLocation } from 'react-router'
+import {
+  createMemoryRouter,
+  RouterProvider,
+  Outlet,
+  useLoaderData,
+  useLocation,
+  useNavigate,
+  useRouteError,
+  useRouteLoaderData,
+} from 'react-router'
 import { render } from 'vitest-browser-react'
 import { locators, type Locator } from 'vitest/browser'
 import {
-  GuardedMemoryRouter,
+  DataRouterLeaveGuard,
+  RouteMetadata,
+  Failure,
+  useLoadFailure,
+  type Manifest,
   ThemeProvider,
   RuntimeProvider,
   emptyComponentRegistry,
@@ -217,53 +230,95 @@ export function renderScreen({
   // the toast queue is module-global: a success said in one test would
   // replay into the next screen's toaster and stand over its top bar
   toast.dismiss()
-  // Under the same strictness the app runs under. Not pedantry: React
-  // re-invokes state updaters and re-runs effects here, which is how an
-  // impure updater shows itself. One that sent an api request from inside
-  // `setState` posted every review decision twice, and the suite was quiet
-  // about it because only the browser had StrictMode on.
+  // A screen receives a document projection, just like an RSC response.
+  // The harness models full document navigation with a new provider/cache;
+  // ordinary router navigation keeps them, as it does in the product.
+  let generation = 0
+  const openDocument = async (href: string, options: { replace: boolean }) => {
+    generation++
+    await router.navigate(href, options)
+  }
+  function TestDocument() {
+    const data = useLoaderData() as { manifest: Manifest; generation: number }
+    return (
+      <RuntimeProvider
+        key={data.generation}
+        manifest={data.manifest}
+        clientFor={() => client}
+        navigateDocument={openDocument}
+        webSocket={(live ?? refusingLiveServer()).webSocket}
+        {...(liveTiming === undefined ? {} : { liveTiming })}
+        {...(onClientUnsupported === undefined ? {} : { onClientUnsupported })}
+        registry={{ ...emptyComponentRegistry(), ...registry }}
+      >
+        <DataRouterLeaveGuard>
+          <RouteMetadata>
+            <Address />
+            <Outlet />
+          </RouteMetadata>
+        </DataRouterLeaveGuard>
+      </RuntimeProvider>
+    )
+  }
+  function DocumentFailure() {
+    const failure = useLoadFailure().of(useRouteError())
+    const navigate = useNavigate()
+    const location = useLocation()
+    return (
+      <Failure {...failure} fullscreen onRetry={() => void navigate(location, { replace: true })} />
+    )
+  }
+  function Subject() {
+    const data = useRouteLoaderData('test:document') as { generation: number }
+    const { pathname } = useLocation()
+    // A standalone fixture supplies only this screen, not the destination
+    // document. Explicit route fixtures supply both sides when needed.
+    if (
+      path === undefined &&
+      data.generation > 0 &&
+      pathname !== new URL(route, 'http://test').pathname
+    )
+      return null
+    return <>{children}</>
+  }
+  const entries = routes?.map((entry) => ({
+    ...entry,
+    children: entry.children?.map((child) =>
+      child.path === undefined ? { index: true as const, element: child.element } : child,
+    ),
+  })) ?? [
+    ...(path === undefined ? [{ index: true as const, element: <Subject /> }] : []),
+    {
+      path: path ?? '*',
+      element: <Subject />,
+    },
+  ]
+  const router = createMemoryRouter(
+    [
+      {
+        id: 'test:document',
+        path: '/',
+        shouldRevalidate: () => true,
+        HydrateFallback: () => null,
+        loader: async ({ request }) => ({
+          manifest: await Effect.runPromise(
+            (client['app']!['getManifest'] as () => Effect.Effect<Manifest>)(),
+            { signal: request.signal },
+          ),
+          generation,
+        }),
+        Component: TestDocument,
+        ErrorBoundary: DocumentFailure,
+        children: routes === undefined ? entries : [...entries, { path: '*', element: null }],
+      },
+    ],
+    { initialEntries: [route] },
+  )
   return render(
     <StrictMode>
-      {/* the same order the app composes: theme around the runtime, so a
-            component reading the theme works here exactly as it does there */}
       <ThemeProvider>
         <WidgetBridge>
-          <RuntimeProvider
-            clientFor={() => client}
-            webSocket={(live ?? refusingLiveServer()).webSocket}
-            {...(liveTiming === undefined ? {} : { liveTiming })}
-            {...(onClientUnsupported === undefined ? {} : { onClientUnsupported })}
-            registry={{ ...emptyComponentRegistry(), ...registry }}
-          >
-            {/* the app's own router over a history in memory: a page that
-                  asks before it is left asks here too */}
-            <GuardedMemoryRouter initialEntries={[route]}>
-              <Address />
-              {routes ? (
-                <Routes>
-                  {routes.map((entry) => (
-                    <Route key={entry.path} path={entry.path} element={<>{entry.element}</>}>
-                      {entry.children?.map((child) =>
-                        child.path === undefined ? (
-                          <Route key="index" index element={<>{child.element}</>} />
-                        ) : (
-                          <Route
-                            key={child.path}
-                            path={child.path}
-                            element={<>{child.element}</>}
-                          />
-                        ),
-                      )}
-                    </Route>
-                  ))}
-                </Routes>
-              ) : path ? (
-                <RouteHost path={path}>{children}</RouteHost>
-              ) : (
-                children
-              )}
-            </GuardedMemoryRouter>
-          </RuntimeProvider>
+          <RouterProvider router={router} />
         </WidgetBridge>
       </ThemeProvider>
     </StrictMode>,
@@ -290,13 +345,3 @@ function Address() {
 
 /** what the address holds right now, for a test that just pressed something */
 export const addressNow = () => document.querySelector('[data-testid="address"]')?.textContent ?? ''
-
-// mounts the subject under a real route so a screen reading `:userId` gets
-// it from the router rather than from a prop the harness made up
-function RouteHost({ path, children }: { path: string; children: ReactNode }) {
-  return (
-    <Routes>
-      <Route path={path} element={<>{children}</>} />
-    </Routes>
-  )
-}

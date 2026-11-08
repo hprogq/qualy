@@ -58,7 +58,7 @@ it('filters platform failures, preserves payloads and settles every action once'
 
 it('recovers only the refused request after an earlier workflow write succeeded', async () => {
   const { installSessionRecovery } =
-    await import('../../../packages/web/runtime/src/session-recovery.ts')
+    await import('../../../packages/web/runtime/src/session/session-recovery.ts')
   const { useRunApi } = await import('@qualy/web-runtime')
   const created = vi.fn(() => 'saved-id')
   const submitted = vi.fn()

@@ -5,15 +5,13 @@ import * as stylex from '@stylexjs/stylex'
 import type { StyleXStyles } from '@stylexjs/stylex'
 import { clsx } from 'clsx'
 import { tokens } from '../theme/tokens.stylex.ts'
-import { useColdStartHandoff } from './spinner.tsx'
 import { useHydrating } from '../hooks/use-hydrating.ts'
 
 /** Play an entrance only for content added to an already interactive page. */
 export function useEntryMotion(): boolean {
-  const handoff = useColdStartHandoff()
   const hydrating = useHydrating()
   const reduced = useReducedMotion() === true
-  const [enter] = useState(!handoff && !hydrating)
+  const [enter] = useState(!hydrating)
   return enter && !reduced
 }
 

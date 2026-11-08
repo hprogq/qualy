@@ -5,7 +5,7 @@ import {
   installSessionRecovery,
   presentedManifest,
   recovering,
-} from '../src/session-recovery.ts'
+} from '../src/session/session-recovery.ts'
 
 // A call that finds the session gone is held for the reader to sign in again
 // and then made once more; everything else fails as it would have.

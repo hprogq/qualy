@@ -1,6 +1,6 @@
 # ADR 0012：页面装配移到服务端，采用 React Router RSC Data Mode
 
-- 状态：**已接受，迁移进行中**（2026-11-07，阶段 2 已验收；阶段 3 已在分支上切换默认构建与宿主，SPA 源文件和发布验收待完成；证据见文末）
+- 状态：**已接受，迁移进行中**（2026-11-08，阶段 2 已验收；分支已切换默认构建与宿主并清理 SPA 启动、装配和路由适配；双版本发布与性能对照待完成；证据见文末）
 - 相关：[浏览器公开面](../architecture/browser-surface.md)、[Web Release 协议](../architecture/web-release.md)、[ADR 0010](0010-ui-widget-platform.md)、[ADR 0011](0011-i18n-paraglide.md)、[Web 性能记录](../notes/web-performance.md)
 
 ## 背景
@@ -153,4 +153,25 @@
 - **开发服务的文件读取范围：** 原有测试守的是已经不用的 SPA 配置。改为测 `vite.rsc.config.ts` 后发现 RSC 配置缺少 deny 列表（数据库 dump、证书、`.env`），已补上。
 - **维护页：** 测试改为让维护页的脚本在模拟浏览器里运行，核对它选出的语言与服务端 `localeOfRequest` 一致，不再与已删除的 `index.html` 逐字比较。
 - **CI：** `check-csp-build` 改读 `dist-rsc/client/assets`。`pnpm build` 只产出 RSC 构建后，它读的旧目录已经不存在。
-- `ColdStart` 组件与 `useColdStartHandoff` 仍在 `@qualy/ui`，产品里没有使用者，留待单独清理。
+
+## RSC runtime 收敛与路由错误边界（2026-11-08）
+
+**删除已被替代的职责。** 浏览器不再保留 manifest 启动查询、`RuntimeLoader`、manifest 路由装配、`HistoryRouter` 与自定义 history 补偿。`ColdStart`、wordmark 交接动画及无消费者的页面预取 hook 一并删除。页面局部的 `PageLoading`、Skeleton 和导航进度继续保留，它们表达的是实际等待状态。私有构建聚合模块仍供测试检查描述器使用，没有为清理而删除有效消费者。
+
+**一个文档只采用成对到达的授权投影与 surface。** `RuntimeProvider` 必须接收服务端 manifest，普通 RSC 导航复用 QueryClient；权限变更后的 `useManifestRefresh` 通过 Router 重新验证，不再让一个无人观察的旧 manifest Query 独立失效。登录、退出等明确身份转换创建新文档，并先取消旧查询、冻结实时连接。后台探测只判断会话恢复，不独立替换文档投影。
+
+**错误边界使用现有产品状态。** 根路由、布局和页面分别设置公开的 Router `ErrorBoundary`。根路由通过 `Layout` 共用 HTML、nonce、主题、字体和发布恢复层；页面错误保留可用的外壳。实际 transport 拒绝用独立错误类型表达，普通渲染 `TypeError` 不冒充网络故障。界面复用 `Failure`、`ResourceState` 和现有消息，不显示框架堆栈与实现路径。重试以 replace 导航同一地址，保留 state 和滚动位置；测试同时覆盖慢请求与立即成功的重试，避免错误边界因批量更新而不复位。身份、会话和版本拒绝仍在 transport 进入既有恢复流程，不能落进普通错误页卸载编辑器。
+
+**整理模块，而不建立新兼容层。** runtime 按 `data`、`routing`、`session`、`surfaces`、`document`、`feedback` 和 `live` 分目录，包公开子路径保持稳定。`index.tsx` 从 1131 行收为导出入口；`RailShell` 的样式拆出，保留布局组件；`spinner` 只保留有效加载组件。浏览器 testkit 改用 Data Router 和显式新文档切换，与产品执行路径一致；原有会话、历史导航和离开确认用例随之迁移。
+
+**构建代价与限制。** 按依赖方向归组 API 基础、文档基础组件、Query 和 Motion，保留原预算并检查 chunk 环。生产构建的 JS 请求数 / Brotli 字节为：登录 63 / 390657、批次列表 89 / 452258、批次概览 87 / 435892、我的申报 116 / 527512、组织结构 78 / 421854。各场景均在既有预算内，chunk 环为零；启动闭包为 236720 字节，相对上一节基线增加约 19 KB。这是构建图证据，不能据此宣称首屏更快。真实双版本与性能对照仍未完成。
+
+验证使用隔离测试库与本地生产构建，不读取开发库：
+
+- `pnpm typecheck` 与本轮改动文件的 type-aware lint、oxfmt 通过。
+- runtime、RSC 与测试分层门禁的 Node 回归 146 项通过。
+- Chromium 完整运行 140 个文件、1811 项中 1810 项通过，阶段排期的连续键盘时间输入出现一次失败；该用例单独运行和所在的 138 项批次管理套件随后均通过，保留并行运行时序不稳定这一限制。前一轮的两个空首页失败来自 testkit 的 index 路由配置，修正后 6 项路由状态测试及完整复跑中的该文件均通过，没有放宽断言。
+- 生产 RSC 验收 210 项通过，新增真实 Flight 网络失败、产品错误态、无内部诊断泄露与不整页重载的重试检查，明暗截图保存在忽略的本地缓存中。
+- 三环境生产构建通过公开面、循环依赖与原预算检查。隔离库上的 Node 生产宿主冒烟验证文档 nonce/CSP、私有缓存、资源压缩、兼容拒绝和关闭清理；不沿用旧 SPA shell 与 hash CSP 的断言。
+
+没有运行镜像发布、WebKit、全量 coverage 或真实双版本切换；这次收敛不等于发布验收完成。

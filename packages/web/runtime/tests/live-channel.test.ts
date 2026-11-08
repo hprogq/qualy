@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { LIVE_PONG, LIVE_SUBPROTOCOL } from '@qualy/api-kit/live-socket'
-import { LiveChannels, type LiveChannelState, type LiveTiming } from '../src/live-channel.ts'
+import { LiveChannels, type LiveChannelState, type LiveTiming } from '../src/live/live-channel.ts'
 // the screens' own fake server, so the channel is tested against what they meet
 import { fakeLiveServer, type FakeLiveSocket } from '../../../testkit/browser/src/live.ts'
 

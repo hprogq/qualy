@@ -105,6 +105,10 @@ describe('the live channels of a tab', () => {
     const before = who.asked
     expect(live.sockets[0]!.closedWith).toBeUndefined()
     who.current = null
+    await expect
+      .element(page.getByTestId('session-recovery'))
+      .toHaveAttribute('data-state', 'expired')
+    window.dispatchEvent(new Event('focus'))
     await expect.poll(() => who.asked, { timeout: 3_000 }).toBeGreaterThan(before)
     await new Promise((resolve) => setTimeout(resolve, 300))
     // and it does not dial into the same refusal again

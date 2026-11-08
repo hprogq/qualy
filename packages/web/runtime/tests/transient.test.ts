@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { isBackendUnavailable } from '@qualy/web-i18n'
-import { retryDelay, retryManifest, retryQuery } from '../src/api-query.ts'
+import { retryDelay, retryQuery } from '../src/data/api-query.ts'
 
 // Telling "wait a moment" apart from "this failed".
 //
@@ -53,15 +53,8 @@ describe('how long a page waits it out', () => {
     expect(retryQuery(8, transient)).toBe(false)
   })
 
-  it('waits longer for the manifest, because nothing renders without it', () => {
-    expect(retryManifest(8, transient)).toBe(true)
-    expect(retryManifest(19, transient)).toBe(true)
-    expect(retryManifest(20, transient)).toBe(false)
-  })
-
   it('does not wait out a refusal', () => {
     expect(retryQuery(0, refused)).toBe(false)
-    expect(retryManifest(0, refused)).toBe(false)
   })
 
   it('climbs and then holds, because a replacement takes seconds', () => {

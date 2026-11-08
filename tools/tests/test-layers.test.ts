@@ -334,14 +334,20 @@ describe('test layering', () => {
       // running them, which is what carries E across into the query's TError
       // the browser's single runtime: pages hand it effects rather than
       // running them, which is what carries E across into the query's TError
-      'packages/web/runtime/src/api-query.ts',
+      'packages/web/runtime/src/data/api-query.ts',
       // the browser's client factory: builds one typed client per api
       // definition, synchronously and memoised - the runSync that used to
       // live in the composition root, moved to where the definitions arrive
-      'packages/web/runtime/src/index.tsx',
+      'packages/web/runtime/src/runtime-provider.tsx',
+      // The request-scoped renderer API bridge is the server half of the
+      // same frontend execution boundary; components never run Effects.
+      'packages/web/rsc/src/request.ts',
+      // Screen fixtures obtain a document projection before mounting the
+      // real runtime. This is a test boundary, never a product importer.
+      'packages/testkit/browser/src/browser.tsx',
       // the browser's live channels: each connection is one fiber the tab's
       // registry starts and interrupts, and nothing runs inside a page
-      'packages/web/runtime/src/live-channel.ts',
+      'packages/web/runtime/src/live/live-channel.ts',
     ]
     // A comment is not a call. The pattern matches the name anywhere in the
     // file, so prose explaining why a boundary is where it is would otherwise
