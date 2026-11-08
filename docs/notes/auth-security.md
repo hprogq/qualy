@@ -130,7 +130,7 @@ default-src 'self'; script-src 'self' 'sha256-pKAg+of2SxxrkLJX27pRnCgcyN5Ud1dmuO
 
 逐条理由:
 
-- `script-src` 不放 `'unsafe-inline'`。壳唯一的内联脚本是 `index.html` 里的 boot 脚本(首帧前跑的主题判定 + 20 秒后应用仍未接管时给出刷新链接的 watchdog),用其**精确字节**的 sha256(base64)放行。hash 是 `packages/plugins/infra/web/src/server/shell-policy.ts` 里的常量而不是启动时对产物现算——脚本一改,hash 必须跟着改,这是有意的:改壳脚本就是改策略。`tools/tests/index-html.test.ts` 守「常量 = 当前 `apps/web/index.html` 内联脚本的 digest」,client-dist 存在时再守「产物脚本字节 = 源文件」。2026-09-13 实查:Vite 对非 module 内联脚本原样保留,产物与源文件逐字节相同,所以对源文件算。
+- (2026-11-08 起文档由服务端绘制,内联脚本按每个文档自己的 nonce 放行,策略里不再有下面所说的 hash,见 ADR 0012。)`script-src` 不放 `'unsafe-inline'`。壳唯一的内联脚本是 `index.html` 里的 boot 脚本(首帧前跑的主题判定 + 20 秒后应用仍未接管时给出刷新链接的 watchdog),用其**精确字节**的 sha256(base64)放行。hash 是 `packages/plugins/infra/web/src/server/shell-policy.ts` 里的常量而不是启动时对产物现算——脚本一改,hash 必须跟着改,这是有意的:改壳脚本就是改策略。`tools/tests/index-html.test.ts` 守「常量 = 当前 `apps/web/index.html` 内联脚本的 digest」,client-dist 存在时再守「产物脚本字节 = 源文件」。2026-09-13 实查:Vite 对非 module 内联脚本原样保留,产物与源文件逐字节相同,所以对源文件算。
 - `style-src 'self' 'unsafe-inline'`,**不加 hash**:Monaco 运行时向页面注入 `<style>`,两个内联 `<style>` 也靠它;CSP3 规定 style-src 里一旦出现 hash/nonce,`'unsafe-inline'` 被忽略,Monaco 会被拦。
 - `img-src` 的 `data:` / `blob:`:react-photo-view 与附件预览用到;Report-Only 阶段验证后可收紧。
 - `frame-src 'self' blob:`:规格写的是 `'self'`,实查 `DocumentLightbox` 是把附件字节经 API 取回、自己定类型做成 Blob 再 `<iframe src={blob:…}>`,blob: URL 不在 `'self'` 之内,少了它第一个预览就会报违例(强制时被拦)。

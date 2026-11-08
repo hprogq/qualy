@@ -19,23 +19,23 @@
 - `pnpm build` = RSC 构建(`qualyRelease()` 写 `virtual:qualy/release` 与 `dist-rsc/client/.qualy-web-build.json`)+ `packages/build/web/src/stage.ts`:浏览器一半经 `installWebRelease` 装进 `packages/plugins/infra/web/client-dist`,服务端一半(打包好的 RSC 与 SSR 环境)整体放到同插件的 `server-dist`。
 - Store 布局:`current.json`、`assets/`(所有保留 release 的 hashed 资源共存)、`releases/<id>/`(public 文件、`.qualy-release.json`;文档由服务端绘制,release 不再带 shell)。安装顺序 assets → shell(临时目录整体 rename)→ pointer;同名 asset 字节不同硬失败;同 release 重装幂等;`current` 永远指向完整的 release。
 - 保留策略:最近 `QUALY_WEB_RELEASE_RETAIN_COUNT`(默认 5)个 ∪ 最近 `QUALY_WEB_RELEASE_RETAIN_HOURS`(默认 72)小时;current 永不删;任何 release 的 metadata 读不出来则整个不 GC。
-- `node tools/quality/check-staged-web.ts [store]`:校验 current release 完整(index.html、所有 declared assets、resolutionHash = lock)并打印 releaseId;CI 在 build 后跑它。
+- `node tools/quality/check-staged-web.ts [store]`:校验 current release 完整(release metadata、所有 declared assets、resolutionHash = lock)并打印 releaseId;CI 在 build 后跑它。
 - 部署(2026-09-27 定,纠正 2026-09-17「store 随镜像、只装当前 release」;理由见 docs/deployment.md §3.1):镜像仍带着构建它时的 release(web 插件 `client-dist` 里只有这一个),部署另有一个比镜像活得久的 store(compose 的 `web_releases` 卷,`QUALY_WEB_RELEASE_STORE`)。`qualy deploy` 的 `web-release` 能力(`@qualy/plugin-web` 的 `src/assembly`)以 `promoteWebRelease` 把镜像 store 的 current release 连同资源与压缩件搬进部署 store 并设为 current,与 `installWebRelease` 共用同一段安装逻辑(资源 → shell 整体 rename → 指针 → GC),重跑幂等,回滚镜像时把旧 release 设回 current;`installedAt` 取装进部署 store 的时刻,保留策略按它计。
 
 ## 生产服务(`@qualy/plugin-web`)
 
-- boot 读一次 `current.json` → 校验 release metadata、index.html、`resolutionHash == AssemblyInfo` → **pin 到进程生命周期**;之后 pointer 改变不影响本进程。设了 `QUALY_WEB_RELEASE_STORE` 时从部署 store 服务,并先核对它的 current 就是 asset root(镜像)里的那个 release,不是或 store 为空即拒启,提示先跑部署任务;没设时 asset root 就是 store。
-- shell 与 public 文件**不带 ETag**(2026-09-27):sirv 对匹配的 `If-None-Match` 在调用 `setHeaders` 之前直接写 304,不带任何头,浏览器沿用缓存里的 CSP 与 frame 拒绝,只改环境变量(`QUALY_CSP_MODE`、存储来源)的部署因此到不了回访的浏览器。shell 只有几 KB,每次加载完整返回;哈希资源仍带 ETag 且 immutable。
+- boot 读一次 `current.json` → 校验 release metadata、`resolutionHash == AssemblyInfo` → **pin 到进程生命周期**;之后 pointer 改变不影响本进程。设了 `QUALY_WEB_RELEASE_STORE` 时从部署 store 服务,并先核对它的 current 就是 asset root(镜像)里的那个 release,不是或 store 为空即拒启,提示先跑部署任务;没设时 asset root 就是 store。
+- public 文件**不带 ETag**(2026-09-27):sirv 对匹配的 `If-None-Match` 在调用 `setHeaders` 之前直接写 304,不带任何头,浏览器沿用缓存里的头,只改环境变量的部署因此到不了回访的浏览器;哈希资源仍带 ETag 且 immutable。文档由服务端逐次绘制,`no-store`,每次带当次的 CSP。
 - `/assets/*` 从共享目录服务,`public,max-age=31536000,immutable`,缺文件 404 绝不回文档;release 自己的公共文件(图标)从 pinned release 目录服务,`Cache-Control: no-cache`。其余请求由随镜像放在 `server-dist` 的渲染器绘制([ADR 0012](../adr/0012-rsc-data-mode.md)):每个文档一个 nonce,CSP 用冻结后的插件贡献加这个 nonce 组合,并带 X-Frame-Options / COOP / Reporting-Endpoints;文档自身是 `private, no-store`。启动时 `server-dist` 写明的 release 必须等于 pinned release。两套文件服务都逐请求查盘(sirv `dev: true`),asset 在运行期被 GC 后是 404 而不是进程崩溃;隐藏路径(`/.`)一律 404,React Router 的 `/.manifest` 除外。
 - `GET /__qualy/release`:pinned release 的 `ReleaseProbe`(`{schema: 2, releaseId}`,只有身份),`no-store`,不鉴权,在 `/api` 之外。开发态由 `qualyRelease()` 的 Vite 中间件答同一端点,后端不实现。**探针不再答 `mode` 与 `serverProtocol` 窗口**(2026-09-15,最小披露,见 docs/architecture/browser-surface.md):页面在这里只问「服务端换 release 了吗」,能不能继续通话由 API 在第一个真实请求上回答。因此探针文档有自己的代次(`RELEASE_PROBE_SCHEMA = 2`),私有三份文档仍是 `RELEASE_SCHEMA = 1`。
 
 ## 浏览器
 
-- `main.tsx` 从 `virtual:qualy/release` 取 `webRelease`,创建一个 `ReleaseCoordinator`(`@qualy/web-runtime/release`)并 `start()`;`<html data-release>` 标记当前 release(公开诊断)。
+- 浏览器入口(`apps/web/src/rsc/entry.browser.tsx`)从 `virtual:qualy/release` 取 `webRelease`,创建一个 `ReleaseCoordinator`(`@qualy/web-runtime/release`)并 `start()`;`<html data-release>` 标记当前 release(公开诊断)。
 - 探测时机:回到可见且距上次 ≥ 5 分钟、`pageshow.persisted`(bfcache)、`online`、`vite:preloadError`、其他 tab 的 `BroadcastChannel('qualy:release')` 广播。只以 `releaseId` 相等与否判断;探测失败静默,绝不误报「已更新」。
 - 状态:`current` / `update-available`(右下角通知:稍后 / 刷新,「稍后」记住该 release)/ `reload-required`(整屏接管,原因 `release-skew` / `asset-load-failed` / `client-protocol`,阻断态不被后续探测降级)。**永不自动 reload**。
 - API 传输:`RuntimeProvider clientIdentity={webRelease}` → `clientFor()` 在每个请求加 `X-Qualy-Web-Release` / `X-Qualy-Client-Protocol`;原始响应为 409 且带 `X-Qualy-Client-Unsupported: 1` 时通知 coordinator(`client-protocol`),原请求照常失败。
-- `index.html` 的 boot 脚本:20 秒 watchdog 与「入口 script / stylesheet 加载失败」立即恢复共用一个幂等的 `showRecovery(kind)`;文案来自构建注入的 `#qualy-boot-copy` 数据块(`bootstrapMessages` 裁出的三行),脚本静态、CSP hash 不随文案变。
+- 文档由服务端绘制,没有启动帧,也没有 SPA 时代 `index.html` 里的 watchdog(2026-11-08 随 SPA 入口删除)。文档 `no-store`,引用的资源在保留期内都在 store 里;应用起来之后的资源失败仍归 `ReleaseCoordinator`。
 
 ## 服务端兼容检查(`apps/server/src/client-compatibility.ts`)
 

@@ -127,7 +127,7 @@
 
 **验证：** 本地生产构建经 `pnpm build` 装入 store 并通过 `check-staged-web`、chunk、CSP 和公开面门禁；真实的 `run.ts production` 在临时库上启动，登录、批次列表、参评名单、我的申报和审核工作台由宿主直接渲染，水合前后版式一致（只剩计时文字在走）。RSC 验收脚本仍使用自己的宿主挂载同一构建。
 
-**未完成：** 删除 SPA 的 `index.html`、`main.tsx`、`vite.config.ts` 及其启动帧、shell 样式与首屏预算门禁（预算需要先有针对 RSC 入口的替代）；双版本安装与回滚验收；同条件性能对照。
+**未完成：** 双版本安装与回滚验收；同条件性能对照。（SPA 入口的删除见下文。）
 
 ## 阶段 3：HTML 不再等最慢的读取（2026-11-08）
 
@@ -144,3 +144,13 @@
 **验证：** 把等待时间临时设为 0，让所有读取都走送达路径，在开发服务上检查参评名单、参评人详情、概览、我的申报、我的成绩和审核收件箱：没有水合错误，送来的读取没有被浏览器重复请求。新增的服务端入口逐页核对：正文在 HTML 里，加载后没有重复读取。
 
 **仍然存在：** 实时通道每次连上时会发送 `sync`，部分页面据此把自己的读取全部标记为过期，用来补上断线期间漏掉的事件，所以首次连接后这些页面仍会再读一次。这是既有设计，与服务端绘制无关，暂不改。
+
+## 阶段 3：删除 SPA 入口（2026-11-08）
+
+- **首屏预算改为针对服务端绘制的文档。** `qualyChunkGraph` 挂到 RSC 构建的客户端环境上，并新增 `hostModules`：文档自己的客户端组件（`Document.tsx`、`frames.tsx`）计入每个屏幕。屏幕只计入页面实际使用的那一个布局，而 SPA 当年要等 manifest 里列出的所有布局。分包规则搬进 `apps/web/chunk-pools.ts`，RSC 构建与原 SPA 构建采用同一套规则。实测基线（JS 请求数 / Brotli 字节）：登录 61 / 390345，批次列表 85 / 449342，批次概览 83 / 434414，我的申报 113 / 526976，组织结构 75 / 421652。请求数与 SPA 基线相差在 4 以内，字节多 7–10%，多出的是服务端绘制所需的路由和 Flight 客户端。入口 70184、启动闭包 217321（SPA 为 262370）。预算按 ADR 0011 的规则定在 `apps/web/document-budget.ts`。没有分包规则时，同样的屏幕要 81–175 个请求。
+- **删除的文件：** `index.html`、`src/main.tsx`、`src/App.tsx`、`src/shell-style.ts`、`vite.config.ts`、`performance-budget.ts`、`tools/quality/measure-web-chunks.ts`，以及构建插件 `qualyBootFrame` / `qualyShellStyle` 和只为它们存在的测试。
+- **CSP：** `script-src` 不再含 SPA 启动脚本的 hash，只有 `'self'`，加上每个文档自己的 nonce。
+- **开发服务的文件读取范围：** 原有测试守的是已经不用的 SPA 配置。改为测 `vite.rsc.config.ts` 后发现 RSC 配置缺少 deny 列表（数据库 dump、证书、`.env`），已补上。
+- **维护页：** 测试改为让维护页的脚本在模拟浏览器里运行，核对它选出的语言与服务端 `localeOfRequest` 一致，不再与已删除的 `index.html` 逐字比较。
+- **CI：** `check-csp-build` 改读 `dist-rsc/client/assets`。`pnpm build` 只产出 RSC 构建后，它读的旧目录已经不存在。
+- `ColdStart` 组件与 `useColdStartHandoff` 仍在 `@qualy/ui`，产品里没有使用者，留待单独清理。
