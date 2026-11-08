@@ -8,7 +8,7 @@ import {
 } from 'react-router'
 import { unstable_RSCHydratedRouter as RSCHydratedRouter } from 'react-router/dom'
 import { afterEach, describe, expect, it } from 'vitest'
-import { page } from 'vitest/browser'
+import { commands, page } from 'vitest/browser'
 import { render } from 'vitest-browser-react'
 import { RuntimeProvider, emptyComponentRegistry } from '@qualy/web-runtime'
 import { UiProvider } from '@qualy/ui/provider'
@@ -341,4 +341,29 @@ describe('RSC navigation feedback', () => {
       document.removeEventListener('click', stopNative)
     }
   })
+})
+
+it('interpolates navigation weight while pending without delaying acknowledgement', async () => {
+  await commands.emulateMedia({ reducedMotion: 'no-preference' })
+  try {
+    const { requests } = await mount()
+    const second = page.getByTestId('side-nav').getByRole('link', { name: 'second' })
+    const element = second.element() as HTMLAnchorElement
+    const from = Number(getComputedStyle(element).fontWeight)
+    element.click()
+    const weights: number[] = []
+    await frames(14, () => {
+      weights.push(Number(getComputedStyle(element).fontWeight))
+      expect(element.getAttribute('aria-busy')).toBe('true')
+    })
+    const to = weights.at(-1)!
+    expect(to).toBeGreaterThan(from)
+    expect(weights.some((weight) => weight > from && weight < to)).toBe(true)
+    for (let index = 1; index < weights.length; index += 1)
+      expect(weights[index]!).toBeGreaterThanOrEqual(weights[index - 1]!)
+    requests[0]!.release()
+    await expect.element(page.getByTestId('current-page')).toHaveTextContent('/second')
+  } finally {
+    await commands.emulateMedia({ reducedMotion: 'reduce' })
+  }
 })

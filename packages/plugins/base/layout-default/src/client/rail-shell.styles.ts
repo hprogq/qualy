@@ -214,7 +214,7 @@ export const styles = stylex.create({
     flexDirection: 'column',
     gap: 20,
     transitionProperty: 'opacity',
-    transitionDuration: '150ms',
+    transitionDuration: { default: '150ms', '@media (prefers-reduced-motion: reduce)': '0ms' },
     transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
   },
   fadedOut: {
@@ -234,6 +234,7 @@ export const styles = stylex.create({
     color: tokens.mutedForeground,
   },
   entry: {
+    fontWeight: 400,
     display: 'flex',
     alignItems: 'center',
     gap: 10,
@@ -242,8 +243,8 @@ export const styles = stylex.create({
     paddingBlock: 8,
     fontSize: '0.875rem',
     lineHeight: '1.25rem',
-    transitionProperty: 'color, background-color',
-    transitionDuration: '150ms',
+    transitionProperty: 'color, background-color, font-weight',
+    transitionDuration: { default: '150ms', '@media (prefers-reduced-motion: reduce)': '0ms' },
     transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
   },
   entryActive: {
@@ -502,6 +503,7 @@ export const styles = stylex.create({
     listStyle: 'none',
   },
   personEntry: {
+    fontWeight: 400,
     display: 'flex',
     height: 34,
     minWidth: 0,
@@ -511,8 +513,8 @@ export const styles = stylex.create({
     borderRadius: 8,
     fontSize: 13.5,
     textDecoration: 'none',
-    transitionProperty: 'background-color, color',
-    transitionDuration: '150ms',
+    transitionProperty: 'background-color, color, font-weight',
+    transitionDuration: { default: '150ms', '@media (prefers-reduced-motion: reduce)': '0ms' },
   },
   personEntryIdle: {
     color: { default: tokens.surfaceMutedForeground, ':hover': tokens.foreground },
@@ -618,7 +620,7 @@ export const styles = stylex.create({
     fontSize: '0.875rem',
     lineHeight: '1.25rem',
     transitionProperty: 'color, background-color, border-color',
-    transitionDuration: '150ms',
+    transitionDuration: { default: '150ms', '@media (prefers-reduced-motion: reduce)': '0ms' },
     transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
     backgroundColor: tokens.background,
     color: tokens.foreground,

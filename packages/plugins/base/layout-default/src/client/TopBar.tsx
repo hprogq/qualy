@@ -163,8 +163,8 @@ const styles = stylex.create({
     fontSize: 14,
     lineHeight: '1.25rem',
     whiteSpace: 'nowrap',
-    transitionProperty: 'color',
-    transitionDuration: '150ms',
+    transitionProperty: 'color, font-weight',
+    transitionDuration: { default: '150ms', '@media (prefers-reduced-motion: reduce)': '0ms' },
     transitionTimingFunction: 'ease',
   },
   tabActive: {
@@ -264,8 +264,8 @@ const styles = stylex.create({
     fontSize: 13,
     lineHeight: '1.125rem',
     whiteSpace: 'nowrap',
-    transitionProperty: 'color',
-    transitionDuration: '150ms',
+    transitionProperty: 'color, font-weight',
+    transitionDuration: { default: '150ms', '@media (prefers-reduced-motion: reduce)': '0ms' },
     transitionTimingFunction: 'ease',
   },
   sectionActive: {

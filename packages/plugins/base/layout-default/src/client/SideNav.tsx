@@ -43,6 +43,7 @@ const styles = stylex.create({
     listStyle: 'none',
   },
   link: {
+    fontWeight: 400,
     display: 'flex',
     height: 34,
     minWidth: 0,
@@ -52,8 +53,8 @@ const styles = stylex.create({
     borderRadius: 6,
     fontSize: 14,
     textDecoration: 'none',
-    transitionProperty: 'background-color, color',
-    transitionDuration: '150ms',
+    transitionProperty: 'background-color, color, font-weight',
+    transitionDuration: { default: '150ms', '@media (prefers-reduced-motion: reduce)': '0ms' },
   },
   idle: {
     color: { default: tokens.mutedForeground, ':hover': tokens.foreground },
