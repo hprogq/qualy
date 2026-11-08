@@ -61,6 +61,21 @@ const open = async (
 }
 
 describe('the rounds a person is in', () => {
+  it.each([0, 1, 3])('shows a compact total, not a range, for %i rounds', async (total) => {
+    await open(
+      Array.from({ length: total }, (_, at) => membership(String(at), 'Asia/Shanghai', JOINED)),
+    )
+    const pager = page.getByTestId('person-batches-pager')
+    await expect.element(pager).toHaveTextContent(`共 ${total} 条`)
+    expect(pager.element().textContent).not.toContain('第')
+    const footer = pager.element().parentElement!
+    expect(footer.getBoundingClientRect().height).toBeLessThanOrEqual(34)
+    if (total > 0)
+      expect(footer.getBoundingClientRect().height).toBeLessThan(
+        page.getByTestId('person-batch').first().element().getBoundingClientRect().height,
+      )
+  })
+
   it('replaces memberships when jumping pages and keeps focus and controls on a narrow screen', async () => {
     await page.viewport(320, 800)
     const reads: number[] = []

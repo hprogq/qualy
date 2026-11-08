@@ -20,7 +20,7 @@ export function FormulaPager({
 
   return (
     <div ref={seat}>
-      <CardFoot>
+      <CardFoot separated={false} compact={total <= pageSize}>
         <Pager
           testId={testId}
           label={m.pagination_label()}

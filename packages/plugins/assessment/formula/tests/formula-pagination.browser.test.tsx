@@ -77,6 +77,23 @@ describe('formula numbered pages', () => {
     })
   }
 
+  it('keeps the summary below a bordered list quiet and compact', async () => {
+    await renderScreen({
+      client: fakeClient({
+        app: { getManifest: emptyManifest() },
+        assessmentFormula: {
+          listFormulaFunctions: { items: [row(1)], total: 1, page: 1, pageSize: 50 },
+        },
+      }),
+      children: <FormulaListPage />,
+    })
+    const pager = page.getByTestId('formula-pager')
+    await expect.element(pager).toBeVisible()
+    const footer = pager.element().parentElement!
+    expect(getComputedStyle(footer).borderTopWidth).toBe('0px')
+    expect(footer.getBoundingClientRect().height).toBeLessThanOrEqual(34)
+  })
+
   it('keeps the old page during loading, disables paging, and moves keyboard focus to results', async () => {
     let finish: (() => void) | undefined
     const list = ({ query }: { query: Record<string, string> }) => {

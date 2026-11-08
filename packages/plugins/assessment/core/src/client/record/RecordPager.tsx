@@ -18,7 +18,7 @@ export function RecordPager({
   const { page, pageSize, total, items } = result
   return (
     <div ref={seat}>
-      <CardFoot>
+      <CardFoot compact={total <= pageSize}>
         <Pager
           testId={`${target}-pager`}
           label={m.record_pages()}
@@ -29,11 +29,15 @@ export function RecordPager({
           total={total}
           disabled={busy}
           compactBelow={480}
-          summary={m.record_pageSummary({
-            from: total === 0 ? 0 : (page - 1) * pageSize + 1,
-            to: (page - 1) * pageSize + items.length,
-            total,
-          })}
+          summary={
+            total <= pageSize
+              ? m.record_total({ total })
+              : m.record_pageSummary({
+                  from: total === 0 ? 0 : (page - 1) * pageSize + 1,
+                  to: (page - 1) * pageSize + items.length,
+                  total,
+                })
+          }
           onPage={(next) => {
             const results = seat.current?.ownerDocument.querySelector<HTMLElement>(
               `[data-testid="${target}"]`,
