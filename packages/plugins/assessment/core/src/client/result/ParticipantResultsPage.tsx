@@ -1,9 +1,18 @@
 'use client'
-import { lazy, Suspense, useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { useLocation } from 'react-router'
 import * as stylex from '@stylexjs/stylex'
-import { usePageQueryState, usePageQueryUpdate, useScreenAsideOffered } from '@qualy/web-runtime'
+import {
+  useApiQuery,
+  usePageQueryState,
+  usePageQueryUpdate,
+  useScreenAsideOffered,
+} from '@qualy/web-runtime'
 import { Drill, type DrillMove } from '@qualy/ui/reveal'
-import { PageLoading } from '@qualy/ui/spinner'
+import { assessmentApi } from '../api.ts'
+import { useParticipantEntries } from './participant-entries.ts'
+import { ParticipantResultDetail } from './ParticipantResultDetail.tsx'
 
 import { BatchScreen } from '../batch/BatchScreen.tsx'
 import type { BatchDto } from '../phase/model.ts'
@@ -13,12 +22,6 @@ import { rosterPageAddress, useRosterView } from '../roster/roster-view.ts'
 import { useRosterWalk } from '../roster/roster-walk.ts'
 import { ParticipantResultList } from './ParticipantResultList.tsx'
 import * as m from '#messages'
-
-const ParticipantResultDetail = lazy(() =>
-  import('./ParticipantResultDetail.tsx').then((module) => ({
-    default: module.ParticipantResultDetail,
-  })),
-)
 
 // Checking one person's account: who took part, and what this round has
 // decided about them.
@@ -116,12 +119,62 @@ function Results({ batch, participantId }: { batch: BatchDto; participantId: str
     setMoved({ id: participantId, level, step })
   }
 
+  const location = useLocation()
+  const query = useApiQuery(assessmentApi)
+  const [requested, setRequested] = useState<{
+    id: string
+    page: number
+    location: string
+  } | null>(null)
+  if (requested !== null && requested.location !== location.key) setRequested(null)
+  // Keep one person's name, controls and work together while the next is read.
+  // A newer choice replaces these observers; back/forward discards the intent.
+  const opening = requested?.location === location.key ? requested : null
+  const target = opening?.id ?? participantId
+  const person = useQuery({
+    ...query.assessment.getParticipant.queryOptions({
+      params: { batchId: batch.id, participantId: target },
+    }),
+    enabled: opening !== null,
+    staleTime: 30_000,
+  })
+  const account = useQuery({
+    ...query.assessment.getParticipantResult.queryOptions({
+      params: { batchId: batch.id, participantId: target },
+    }),
+    enabled: opening !== null,
+    staleTime: 30_000,
+  })
+  const claims = useQuery({
+    ...useParticipantEntries(batch.id, target),
+    enabled: opening !== null && person.data?.claims === true,
+  })
+  const ready =
+    opening !== null &&
+    !person.isPending &&
+    !account.isPending &&
+    (person.data?.claims !== true || !claims.isPending)
+  useEffect(() => {
+    if (!ready || opening === null) return
+    address(
+      {
+        participant: opening.id,
+        entry: '',
+        ...rosterPageAddress(opening.page),
+      },
+      { history: 'push' },
+    )
+    setRequested(null)
+  }, [ready, opening, address])
+  const prepare = (id: string, page: number) => {
+    setRequested(id === participantId ? null : { id, page, location: location.key })
+  }
+
   // Walking to another person keeps the half and the question being read,
   // so one question can be read down the list; the claim open in the drawer
   // was this person's. The list's page follows whoever is open, so going
   // back lands on their row.
-  const walkTo = (id: string, page: number) =>
-    address({ participant: id, entry: '', ...rosterPageAddress(page) }, { history: 'push' })
+  const walkTo = (id: string, page: number) => prepare(id, page)
   const list = (seat: 'column' | 'sheet', picked?: () => void) => (
     <RosterWalkList
       batchId={batch.id}
@@ -134,6 +187,7 @@ function Results({ batch, participantId }: { batch: BatchDto; participantId: str
         walkTo(id, page)
       }}
       seat={seat}
+      pendingId={opening?.id}
     />
   )
 
@@ -157,42 +211,40 @@ function Results({ batch, participantId }: { batch: BatchDto; participantId: str
           }
         />
       ) : (
-        <Suspense fallback={<PageLoading />}>
-          <ParticipantResultDetail
-            batchId={batch.id}
-            manageable={batch.manageable}
-            writable={batch.status !== 'archived'}
-            mayRecord={batch.capabilities.record}
-            participantId={participantId}
-            step={step}
-            // the claims unless the address asks for the total
-            view={view === 'score' ? 'score' : 'entries'}
-            entryId={entryId}
-            // in the column the list stands under the way to either side; in
-            // a head, where this person stands opens it
-            neighbors={(seat) => (
-              <RosterNeighbors
-                walk={walk}
-                onOpen={walkTo}
-                {...(seat === 'column'
-                  ? {}
-                  : { list: (close: () => void) => list('sheet', close) })}
-              />
-            )}
-            roster={column ? list('column') : undefined}
-            listed={walk.here}
-            onListMoved={walk.refresh}
-            onView={(next) => address({ view: next === 'entries' ? '' : next })}
-            onEntry={(id) => address({ entry: id }, { history: 'push' })}
-            // a number leads to the claim behind it: the tab, its question
-            // and the claim are one move, so they are one write
-            onFollow={(id, itemId) =>
-              address({ view: '', open: itemId ?? '', entry: id }, { history: 'push' })
-            }
-            onItem={(itemId) => address({ view: '', open: itemId, entry: '' }, { history: 'push' })}
-            onBack={() => address({ participant: '', view: '', entry: '', open: '' })}
-          />
-        </Suspense>
+        <ParticipantResultDetail
+          batchId={batch.id}
+          manageable={batch.manageable}
+          writable={batch.status !== 'archived'}
+          mayRecord={batch.capabilities.record}
+          participantId={participantId}
+          pending={opening !== null}
+          step={step}
+          // the claims unless the address asks for the total
+          view={view === 'score' ? 'score' : 'entries'}
+          entryId={entryId}
+          // in the column the list stands under the way to either side; in
+          // a head, where this person stands opens it
+          neighbors={(seat) => (
+            <RosterNeighbors
+              walk={walk}
+              pendingId={opening?.id}
+              onOpen={walkTo}
+              {...(seat === 'column' ? {} : { list: (close: () => void) => list('sheet', close) })}
+            />
+          )}
+          roster={column ? list('column') : undefined}
+          listed={walk.here}
+          onListMoved={walk.refresh}
+          onView={(next) => address({ view: next === 'entries' ? '' : next })}
+          onEntry={(id) => address({ entry: id }, { history: 'push' })}
+          // a number leads to the claim behind it: the tab, its question
+          // and the claim are one move, so they are one write
+          onFollow={(id, itemId) =>
+            address({ view: '', open: itemId ?? '', entry: id }, { history: 'push' })
+          }
+          onItem={(itemId) => address({ view: '', open: itemId, entry: '' }, { history: 'push' })}
+          onBack={() => address({ participant: '', view: '', entry: '', open: '' })}
+        />
       )}
     </Drill>
   )

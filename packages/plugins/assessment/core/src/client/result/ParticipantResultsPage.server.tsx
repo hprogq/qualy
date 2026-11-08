@@ -7,6 +7,8 @@ import { queueReadOf } from '../review/inbox-reads.ts'
 import { rosterQueryOf, rosterViewOf, type RosterView } from '../roster/roster-place.ts'
 import { readParticipantEntries } from './participant-entries.server.ts'
 import ParticipantResultsPage from './ParticipantResultsPage.tsx'
+import { Suspense } from 'react'
+import { ParticipantResultsPending } from './ParticipantResultsPending.tsx'
 
 // The roster, or one person on it, as a server draws it
 // (docs/adr/0012-rsc-data-mode.md), read for a reader the batch says may see
@@ -26,6 +28,29 @@ export default async function ParticipantResults({
 }: {
   params?: Readonly<Record<string, string | undefined>>
 }) {
+  // Fast reads still draw real content in the initial HTML. Only a result
+  // beyond the existing HTML wait uses the streamed, read-only outline.
+  const prepared = prepareResults(params)
+  const first = await within(prepared)
+  if (first !== undefined) return first
+  return (
+    <Suspense
+      fallback={
+        <ParticipantResultsPending
+          detail={Boolean(renderRequest().url.searchParams.get('participant'))}
+        />
+      }
+    >
+      <PreparedResults result={prepared} />
+    </Suspense>
+  )
+}
+
+async function PreparedResults({ result }: { result: ReturnType<typeof prepareResults> }) {
+  return result
+}
+
+async function prepareResults(params: Readonly<Record<string, string | undefined>>) {
   const batchId = batchIdOf(params)
   if (batchId === undefined) return <ParticipantResultsPage />
   const search = renderRequest().url.searchParams

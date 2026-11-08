@@ -239,6 +239,7 @@ const BONES = ['62%', '48%', '70%', '55%', '66%', '44%']
 export function RosterWalkList({
   batchId,
   participantId,
+  pendingId,
   walk,
   view,
   onView,
@@ -247,6 +248,7 @@ export function RosterWalkList({
 }: {
   batchId: string
   participantId: string
+  pendingId?: string | undefined
   walk: RosterWalk
   view: RosterView
   onView: (changes: Partial<RosterView>) => void
@@ -600,6 +602,7 @@ export function RosterWalkList({
                   <WalkEntry
                     row={row}
                     current={row.id === participantId}
+                    pending={row.id === pendingId}
                     stop={row.id === stop}
                     onFocus={() => setFocused(row.id)}
                     onOpen={() => {
@@ -623,12 +626,14 @@ export function RosterWalkList({
 function WalkEntry({
   row,
   current,
+  pending,
   stop,
   onFocus,
   onOpen,
 }: {
   row: WalkRow
   current: boolean
+  pending: boolean
   /** the list's one stop on the tab order */
   stop: boolean
   onFocus: () => void
@@ -650,6 +655,7 @@ function WalkEntry({
         !waitsOnAnything(row.filings) ? 'none' : row.filings.blocked > 0 ? 'blocked' : 'some'
       }
       aria-current={current ? 'true' : undefined}
+      aria-busy={pending || undefined}
       tabIndex={stop ? 0 : -1}
       title={said.length > 0 ? said.join(' ') : undefined}
       onFocus={onFocus}
@@ -665,7 +671,11 @@ function WalkEntry({
       />
       <span {...stylex.props(styles.name, excluded && styles.nameOff)}>{row.displayName}</span>
       {excluded && <span {...stylex.props(styles.tag)}>{m.roster_excluded()}</span>}
-      {row.businessNo !== null && <span {...stylex.props(styles.number)}>{row.businessNo}</span>}
+      {pending ? (
+        <Spinner aria-label={commonMessages.state_loading()} />
+      ) : (
+        row.businessNo !== null && <span {...stylex.props(styles.number)}>{row.businessNo}</span>
+      )}
       {said.length > 0 && <VisuallyHidden>{said.join(' ')}</VisuallyHidden>}
     </button>
   )

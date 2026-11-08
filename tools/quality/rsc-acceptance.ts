@@ -26,6 +26,7 @@ import { repoRoot } from '../lib/manifest.ts'
 import { startQualyServer, type QualyServer } from '../lib/qualy-server.ts'
 import { acceptEntries } from './rsc-entries.ts'
 import { acceptRouteErrors } from './rsc-route-errors.ts'
+import { acceptParticipantLoading } from './rsc-participant-loading.ts'
 
 // The server-rendered document, accepted end to end on data of its own
 // (docs/adr/0012-rsc-data-mode.md).
@@ -233,6 +234,14 @@ const mountHandler = async () => {
         return HttpServerResponse.text('unavailable', { status: 503 })
       }
       if (url.pathname.startsWith('/api') || url.pathname.startsWith('/health')) {
+        if (
+          /\/participants\/[^/]+(?:\/|$)/.test(url.pathname) &&
+          /(?:^|;\s*)acceptance_fault=participant-slow(?:;|$)/.test(
+            String(request.headers['cookie'] ?? ''),
+          )
+        ) {
+          yield* Effect.sleep(900)
+        }
         const web = yield* HttpServerRequest.toWeb(request)
         const upstream = yield* Effect.promise((signal) =>
           fetch(`http://127.0.0.1:${apiPort}${url.pathname}${url.search}`, {
@@ -1890,6 +1899,13 @@ const checks = async () => {
       where p.batch_id = $1 and u.email = $2`,
     [started, accounts.student.email],
   )
+  await acceptParticipantLoading({
+    browser,
+    context: await signedInContext(browser, 'admin'),
+    site,
+    address: `/assessment/batches/${started}/results?participant=${person}`,
+    check,
+  })
   await pageFirstScreen(browser, {
     name: 'one person on the roster',
     who: 'admin',

@@ -315,31 +315,7 @@ export function BatchScreen({
     )
   }
 
-  if (chrome === 'bare') {
-    return (
-      <AsyncSection
-        pending={detail.isPending}
-        loadingLabel={commonMessages.state_loading()}
-        retryLabel={commonMessages.action_retry()}
-        onRetry={() => void detail.refetch()}
-        xstyle={styles.fillColumn}
-      >
-        {batch && (
-          <Arrival play={!shown} className={stylex.props(styles.bareColumn).className}>
-            {batch.status === 'draft' && (
-              <p {...stylex.props(styles.draftNote, styles.bareNote)}>{m.batch_draftBanner()}</p>
-            )}
-            <BatchZone zone={batch.timezone}>
-              <ZoneAwayNotice xstyle={styles.bareNote} />
-              {children(batch)}
-            </BatchZone>
-          </Arrival>
-        )}
-      </AsyncSection>
-    )
-  }
-
-  if (chrome === 'none') {
+  if (chrome !== 'band') {
     return (
       <AsyncSection
         pending={detail.isPending}
@@ -348,7 +324,20 @@ export function BatchScreen({
         onRetry={() => void detail.refetch()}
         xstyle={[styles.fillColumn, fill && styles.boundedColumn]}
       >
-        {batch && <BatchZone zone={batch.timezone}>{children(batch)}</BatchZone>}
+        {batch && (
+          <Arrival
+            play={chrome === 'bare' && !shown}
+            className={stylex.props(styles.bareColumn, fill && styles.boundedColumn).className}
+          >
+            {chrome === 'bare' && batch.status === 'draft' && (
+              <p {...stylex.props(styles.draftNote, styles.bareNote)}>{m.batch_draftBanner()}</p>
+            )}
+            <BatchZone zone={batch.timezone}>
+              {chrome === 'bare' && <ZoneAwayNotice xstyle={styles.bareNote} />}
+              {children(batch)}
+            </BatchZone>
+          </Arrival>
+        )}
       </AsyncSection>
     )
   }

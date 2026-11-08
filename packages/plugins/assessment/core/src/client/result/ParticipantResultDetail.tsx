@@ -29,7 +29,6 @@ import { AsyncSection, ConfirmDialog } from '@qualy/ui/admin'
 import { toast } from '@qualy/ui/toast'
 import { Button } from '@qualy/ui/button'
 import { Count } from '@qualy/ui/count'
-import { ScrollArea } from '@qualy/ui/scroll-area'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { Drill, Swap, type DrillMove } from '@qualy/ui/reveal'
 import { liveStateOf } from '@qualy/ui/live-mark'
@@ -47,6 +46,7 @@ import { useQueueRefresh } from '../review/queue.ts'
 import { StandingNotice } from '../entry/workspace/StandingNotice.tsx'
 import { ResultLedger, ResultUnavailable } from './ResultLedger.tsx'
 import { ParticipantEntries } from './ParticipantEntries.tsx'
+import { ParticipantAccountLayout } from './ParticipantAccountLayout.tsx'
 import { WorkspaceSkeleton } from '../entry/workspace/WorkspaceSkeleton.tsx'
 import { useParticipantEntries } from './participant-entries.ts'
 import { unitChainOf, unitPathOf } from '../roster/unit-path.ts'
@@ -79,41 +79,6 @@ import * as m from '#messages'
 // other - a score line leads to the filing that earned it.
 
 const styles = stylex.create({
-  root: {
-    display: 'flex',
-    minWidth: 0,
-    minHeight: 0,
-    flexGrow: 1,
-    flexShrink: 1,
-    flexBasis: '0%',
-    flexDirection: { default: 'column', [breakpoints.desktop]: 'row' },
-  },
-  // The column beside the work, as wide as the shell's own rail column is
-  // when it is lent: what stands in it is one thing described rather than a
-  // list of places, and its longest line - where somebody stands - is the
-  // one worth the room. It scrolls by itself, so the list under the facts
-  // stays where it is while the work scrolls.
-  column: {
-    display: 'flex',
-    width: 280,
-    flexShrink: 0,
-    flexDirection: 'column',
-    borderRightWidth: 1,
-    borderRightStyle: 'solid',
-    borderRightColor: tokens.border,
-  },
-  columnRoom: { minHeight: 0, flexGrow: 1, flexShrink: 1, flexBasis: '0%' },
-  // Beside the column the work scrolls inside its own room; over a head it
-  // is part of a page the shell scrolls.
-  work: {
-    display: 'flex',
-    minWidth: 0,
-    flexGrow: 1,
-    flexShrink: 1,
-    flexBasis: '0%',
-    flexDirection: 'column',
-  },
-  workBeside: { minHeight: 0 },
   // ---- beside the work, in the column ----
   // As tall as the column at least, the list under the facts taking what
   // they leave; a column too short for both scrolls whole.
@@ -451,26 +416,10 @@ const PARTICIPANT_MISSING = 'ASSESSMENT_PARTICIPANT_NOT_FOUND'
  * width, it scrolls by itself under a bar of its own drawing; anywhere else
  * it is part of the page the shell scrolls.
  */
-function WorkRoom({ beside, children }: { beside: boolean; children: ReactNode }) {
-  return beside ? (
-    <ScrollArea
-      scrollsFrom="desktop"
-      scrollbars="y"
-      xstyle={[styles.work, styles.workBeside]}
-      viewportProps={{ 'data-testid': 'participant-work' }}
-    >
-      {children}
-    </ScrollArea>
-  ) : (
-    <div data-testid="participant-work" {...stylex.props(styles.work)}>
-      {children}
-    </div>
-  )
-}
-
 export function ParticipantResultDetail({
   batchId,
   participantId,
+  pending = false,
   manageable,
   writable,
   mayRecord,
@@ -489,6 +438,7 @@ export function ParticipantResultDetail({
 }: {
   batchId: string
   participantId: string
+  pending?: boolean
   /** whether this reader may take somebody off the round or put them back */
   manageable: boolean
   /** false once the round is archived: it is kept as it closed */
@@ -614,6 +564,7 @@ export function ParticipantResultDetail({
   const who = useQuery({
     ...query.assessment.getParticipant.queryOptions({ params: { batchId, participantId } }),
     enabled: shaped,
+    staleTime: 30_000,
     // whether the claims open is the reader's standing over the person
     // before, which on one list is nearly always the same answer
     placeholderData: (before) =>
@@ -630,6 +581,7 @@ export function ParticipantResultDetail({
   const result = useQuery({
     ...query.assessment.getParticipantResult.queryOptions({ params: { batchId, participantId } }),
     enabled: shaped,
+    staleTime: 30_000,
   })
   const items = useQuery(query.assessment.listItems.queryOptions({ params: { batchId } }))
   const entries = useQuery({
@@ -1058,205 +1010,187 @@ export function ParticipantResultDetail({
   // desk's width up - gets the person standing in it
   const column = useScreenAsideOffered()
   return (
-    <div data-testid="participant-account" {...stylex.props(styles.root)}>
-      {/* Beside the work where the window has room for a column: the page's
-          own, standing where the rail of the round's sections stands, which
-          the shell puts away while it does. */}
-      {column && (
-        <AtWidth from={1024}>
-          <aside
-            data-screen-aside=""
-            data-testid="participant-column"
-            aria-label={participant?.displayName}
-            {...stylex.props(styles.column)}
-          >
-            <ScrollArea scrollbars="y" fill xstyle={styles.columnRoom}>
-              {panel}
-            </ScrollArea>
-          </aside>
-        </AtWidth>
-      )}
-      <WorkRoom beside={column}>
-        {column ? <AtWidth below={1024}>{head}</AtWidth> : head}
-        {/* Beside the column the name stands in the column, which is a
+    <ParticipantAccountLayout
+      aside={column ? panel : undefined}
+      label={participant?.displayName}
+      pending={pending}
+    >
+      {column ? <AtWidth below={1024}>{head}</AtWidth> : head}
+      {/* Beside the column the name stands in the column, which is a
             landmark of its own; the work still says whose it is, for a reader
             moving by headings through the main part of the page. */}
-        {column && participant !== undefined && absent === null && (
-          <AtWidth from={1024}>
-            <h2 {...stylex.props(a11yStyles.visuallyHidden)}>
-              {m.participantResults_accountHeading({
-                name: participant.displayName,
-                half: (view === 'score'
-                  ? m.participantResults_scoreTab
-                  : m.participantResults_entriesTab)(),
-              })}
-            </h2>
-          </AtWidth>
-        )}
-        {/* another person's work arrives from the way the list went; the
+      {column && participant !== undefined && absent === null && (
+        <AtWidth from={1024}>
+          <h2 {...stylex.props(a11yStyles.visuallyHidden)}>
+            {m.participantResults_accountHeading({
+              name: participant.displayName,
+              half: (view === 'score'
+                ? m.participantResults_scoreTab
+                : m.participantResults_entriesTab)(),
+            })}
+          </h2>
+        </AtWidth>
+      )}
+      {/* another person's work arrives from the way the list went; the
           two halves of one person's replace each other in place */}
-        <Drill
-          move={step}
-          drillKey={participantId}
-          className={
-            stylex.props(
-              styles.body,
-              filled && absent === null ? styles.bodyFilled : styles.bodyGrown,
-            ).className
-          }
-        >
-          {absent !== null ? (
-            <div data-testid="participant-absent" {...stylex.props(styles.absent)}>
-              <LoadFailure
-                failure={absent}
-                size="section"
-                // the rest of the account failed with the person, and comes back with them
-                // the claims come back with the person, where they open
-                onRetry={() => {
-                  void who.refetch()
-                  void result.refetch()
+      <Drill
+        move={step}
+        drillKey={participantId}
+        className={
+          stylex.props(
+            styles.body,
+            filled && absent === null ? styles.bodyFilled : styles.bodyGrown,
+          ).className
+        }
+      >
+        {absent !== null ? (
+          <div data-testid="participant-absent" {...stylex.props(styles.absent)}>
+            <LoadFailure
+              failure={absent}
+              size="section"
+              // the rest of the account failed with the person, and comes back with them
+              // the claims come back with the person, where they open
+              onRetry={() => {
+                void who.refetch()
+                void result.refetch()
+              }}
+              retrying={who.isFetching}
+              extra={
+                <Button variant={absent.retryable ? 'outline' : 'default'} onClick={onBack}>
+                  {m.participantResults_back()}
+                </Button>
+              }
+            />
+          </div>
+        ) : (
+          <Swap swapKey={view} className={stylex.props(filled && styles.swapFilled).className}>
+            {view === 'entries' && claimsOpen !== true ? (
+              // whether the claims open is said with the person: until then
+              // the claims are not asked for, since a reader who reads the
+              // account alone would only be refused them
+              <WorkspaceSkeleton viewer="staff" open={false} />
+            ) : view === 'entries' ? (
+              <ParticipantEntries
+                batchId={batchId}
+                participantId={participantId}
+                entryId={entryId}
+                may={{
+                  returnForRevision: writable && manageable,
+                  withdraw: writable && mayRecord,
+                  record: writable && mayRecord,
                 }}
-                retrying={who.isFetching}
-                extra={
-                  <Button variant={absent.retryable ? 'outline' : 'default'} onClick={onBack}>
-                    {m.participantResults_back()}
-                  </Button>
-                }
+                line={line}
+                closed={!writable || participant?.status === 'excluded'}
+                onEntry={onEntry}
               />
-            </div>
-          ) : (
-            <Swap swapKey={view} className={stylex.props(filled && styles.swapFilled).className}>
-              {view === 'entries' && claimsOpen !== true ? (
-                // whether the claims open is said with the person: until then
-                // the claims are not asked for, since a reader who reads the
-                // account alone would only be refused them
-                <WorkspaceSkeleton viewer="staff" open={false} />
-              ) : view === 'entries' ? (
-                <ParticipantEntries
-                  batchId={batchId}
-                  participantId={participantId}
-                  entryId={entryId}
-                  may={{
-                    returnForRevision: writable && manageable,
-                    withdraw: writable && mayRecord,
-                    record: writable && mayRecord,
-                  }}
-                  line={line}
-                  closed={!writable || participant?.status === 'excluded'}
-                  onEntry={onEntry}
-                />
-              ) : (
-                <div {...stylex.props(styles.ledger)}>
-                  {unreadable ? (
-                    <ResultUnavailable
-                      error={result.error}
-                      retrying={result.isFetching}
-                      onRetry={() => void result.refetch()}
-                    />
-                  ) : (
-                    <AsyncSection
-                      pending={
-                        result.isPending || items.isPending || claimsPending || who.isPending
-                      }
-                      // a read that failed with nothing to show; one that failed
-                      // later keeps what it showed, and the account says it may
-                      // be behind
-                      error={
-                        [result, items, entries]
-                          .map((read) =>
-                            read.data === undefined && read.error !== null
-                              ? formatError(read.error)
-                              : null,
-                          )
-                          .find((said) => said !== null) ?? null
-                      }
-                      loadingLabel={commonMessages.state_loading()}
-                      retryLabel={commonMessages.action_retry()}
-                      onRetry={() => {
-                        void result.refetch()
-                        void items.refetch()
-                        if (claimsOpen === true) void entries.refetch()
-                      }}
-                      skeleton={
-                        <div>
-                          <div {...stylex.props(styles.skBand)}>
-                            <span {...stylex.props(styles.skTotal)}>
-                              <Skeleton
-                                className={stylex.props(styles.skBone).className}
-                                width={64}
-                              />
-                              <Skeleton height={34} width={96} radius={6} />
-                            </span>
-                            <span {...stylex.props(styles.skBars)}>
-                              <Skeleton height={12} radius={9999} />
-                              <Skeleton
-                                className={stylex.props(styles.skBone).className}
-                                width="60%"
-                              />
-                            </span>
-                          </div>
-                          <div {...stylex.props(styles.skGroups)}>
-                            {['52%', '38%', '61%', '44%'].map((width, index) => (
-                              <div key={index} {...stylex.props(styles.skGroupRow)}>
-                                <Skeleton
-                                  className={stylex.props(styles.skBone).className}
-                                  width={width}
-                                />
-                                <Skeleton className={stylex.props(styles.skBone).className} />
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      }
-                    >
-                      {result.data !== undefined && (
-                        <>
-                          {result.error !== null && (
-                            <StandingNotice
-                              error={result.error}
-                              stale
-                              retrying={result.isFetching}
-                              onRetry={() => void result.refetch()}
+            ) : (
+              <div {...stylex.props(styles.ledger)}>
+                {unreadable ? (
+                  <ResultUnavailable
+                    error={result.error}
+                    retrying={result.isFetching}
+                    onRetry={() => void result.refetch()}
+                  />
+                ) : (
+                  <AsyncSection
+                    pending={result.isPending || items.isPending || claimsPending || who.isPending}
+                    // a read that failed with nothing to show; one that failed
+                    // later keeps what it showed, and the account says it may
+                    // be behind
+                    error={
+                      [result, items, entries]
+                        .map((read) =>
+                          read.data === undefined && read.error !== null
+                            ? formatError(read.error)
+                            : null,
+                        )
+                        .find((said) => said !== null) ?? null
+                    }
+                    loadingLabel={commonMessages.state_loading()}
+                    retryLabel={commonMessages.action_retry()}
+                    onRetry={() => {
+                      void result.refetch()
+                      void items.refetch()
+                      if (claimsOpen === true) void entries.refetch()
+                    }}
+                    skeleton={
+                      <div>
+                        <div {...stylex.props(styles.skBand)}>
+                          <span {...stylex.props(styles.skTotal)}>
+                            <Skeleton
+                              className={stylex.props(styles.skBone).className}
+                              width={64}
                             />
-                          )}
-                          <ResultLedger
-                            result={result.data}
-                            items={items.data?.items ?? []}
-                            entries={claims.map((one) => one.entry)}
-                            // somebody else's account, read by whoever runs the round
-                            reader="staff"
-                            // an archived round, or somebody taken off it, no longer moves
-                            closed={!writable ? 'archived' : excluded ? 'excluded' : null}
-                            // kept current while the line is open, by the rule the
-                            // claims half and the owner's own pages keep; a total
-                            // already said to be behind is not also live
-                            stream={result.error === null ? liveStateOf(line) : null}
-                            align="start"
-                            // a number leads back to the filing it came from, on
-                            // the question it was filed under; this is the reason
-                            // the two halves are one page
-                            {...(claimsOpen === true
-                              ? {
-                                  onEntryOpen: (id: string) =>
-                                    onFollow(
-                                      id,
-                                      claims.find((one) => one.entry.id === id)?.entry.itemId ??
-                                        null,
-                                    ),
-                                  onItemOpen: onItem,
-                                }
-                              : {})}
+                            <Skeleton height={34} width={96} radius={6} />
+                          </span>
+                          <span {...stylex.props(styles.skBars)}>
+                            <Skeleton height={12} radius={9999} />
+                            <Skeleton
+                              className={stylex.props(styles.skBone).className}
+                              width="60%"
+                            />
+                          </span>
+                        </div>
+                        <div {...stylex.props(styles.skGroups)}>
+                          {['52%', '38%', '61%', '44%'].map((width, index) => (
+                            <div key={index} {...stylex.props(styles.skGroupRow)}>
+                              <Skeleton
+                                className={stylex.props(styles.skBone).className}
+                                width={width}
+                              />
+                              <Skeleton className={stylex.props(styles.skBone).className} />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    }
+                  >
+                    {result.data !== undefined && (
+                      <>
+                        {result.error !== null && (
+                          <StandingNotice
+                            error={result.error}
+                            stale
+                            retrying={result.isFetching}
+                            onRetry={() => void result.refetch()}
                           />
-                        </>
-                      )}
-                    </AsyncSection>
-                  )}
-                </div>
-              )}
-            </Swap>
-          )}
-        </Drill>
-      </WorkRoom>
+                        )}
+                        <ResultLedger
+                          result={result.data}
+                          items={items.data?.items ?? []}
+                          entries={claims.map((one) => one.entry)}
+                          // somebody else's account, read by whoever runs the round
+                          reader="staff"
+                          // an archived round, or somebody taken off it, no longer moves
+                          closed={!writable ? 'archived' : excluded ? 'excluded' : null}
+                          // kept current while the line is open, by the rule the
+                          // claims half and the owner's own pages keep; a total
+                          // already said to be behind is not also live
+                          stream={result.error === null ? liveStateOf(line) : null}
+                          align="start"
+                          // a number leads back to the filing it came from, on
+                          // the question it was filed under; this is the reason
+                          // the two halves are one page
+                          {...(claimsOpen === true
+                            ? {
+                                onEntryOpen: (id: string) =>
+                                  onFollow(
+                                    id,
+                                    claims.find((one) => one.entry.id === id)?.entry.itemId ?? null,
+                                  ),
+                                onItemOpen: onItem,
+                              }
+                            : {})}
+                        />
+                      </>
+                    )}
+                  </AsyncSection>
+                )}
+              </div>
+            )}
+          </Swap>
+        )}
+      </Drill>
       <ConfirmDialog
         open={excluding !== null && excluding === participantId}
         title={m.roster_excludeTitle({ name: participant?.displayName ?? '' })}
@@ -1270,6 +1204,6 @@ export function ParticipantResultDetail({
         }}
         onCancel={() => setExcluding(null)}
       />
-    </div>
+    </ParticipantAccountLayout>
   )
 }

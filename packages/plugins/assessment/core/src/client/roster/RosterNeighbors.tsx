@@ -2,6 +2,7 @@ import { useState, type CSSProperties, type ReactNode } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
 
+import { Spinner } from '@qualy/ui/spinner'
 import { Button } from '@qualy/ui/button'
 import { Count } from '@qualy/ui/count'
 import { DetailSheet } from '@qualy/ui/screen'
@@ -75,10 +76,12 @@ const RESTING = {
 
 export function RosterNeighbors({
   walk,
+  pendingId,
   onOpen,
   list,
 }: {
   walk: RosterWalk
+  pendingId?: string | undefined
   /** open this person, and put the list on the page they stand on */
   onOpen: (participantId: string, page: number) => void
   /**
@@ -115,10 +118,15 @@ export function RosterNeighbors({
         aria-label={m.roster_previous()}
         title={m.roster_previous()}
         disabled={previous === null}
+        aria-busy={(pendingId !== undefined && pendingId === previous?.id) || undefined}
         style={RESTING}
         onClick={() => previous !== null && onOpen(previous.id, previous.page)}
       >
-        <ChevronLeftIcon aria-hidden {...stylex.props(styles.glyph)} />
+        {pendingId !== undefined && pendingId === previous?.id ? (
+          <Spinner aria-hidden />
+        ) : (
+          <ChevronLeftIcon aria-hidden {...stylex.props(styles.glyph)} />
+        )}
       </Button>
       {list === undefined ? (
         place !== '' && <span {...stylex.props(styles.place)}>{place}</span>
@@ -143,10 +151,15 @@ export function RosterNeighbors({
         aria-label={m.roster_next()}
         title={m.roster_next()}
         disabled={next === null}
+        aria-busy={(pendingId !== undefined && pendingId === next?.id) || undefined}
         style={RESTING}
         onClick={() => next !== null && onOpen(next.id, next.page)}
       >
-        <ChevronRightIcon aria-hidden {...stylex.props(styles.glyph)} />
+        {pendingId !== undefined && pendingId === next?.id ? (
+          <Spinner aria-hidden />
+        ) : (
+          <ChevronRightIcon aria-hidden {...stylex.props(styles.glyph)} />
+        )}
       </Button>
       {list !== undefined && (
         <DetailSheet

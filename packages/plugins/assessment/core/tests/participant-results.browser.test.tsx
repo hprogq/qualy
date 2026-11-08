@@ -397,19 +397,25 @@ describe('the participant results screen', () => {
     expect(addressNow()).toContain(`participant=${PARTICIPANT_ID}`)
   })
 
-  it('makes its entrance once, not again on the way back from a person', async () => {
+  it('keeps the screen entrance mounted while drilling in and back out', async () => {
     await screen()
-    const first = page.getByTestId('participant-row').first()
-    await expect.element(first).toBeVisible()
-    // the list arrives with the screen's own entrance
-    expect(document.querySelector('[data-arrival="still"]')).toBeNull()
-    await first.click()
-    await expect.poll(() => addressNow()).toContain('participant=')
-    await page.getByRole('button', { name: '返回参评名单' }).click()
-    await expect.poll(() => addressNow()).not.toContain('participant=')
     await expect.element(page.getByTestId('participant-row').first()).toBeVisible()
-    // coming back is a move inside the screen, which says so on its own
-    expect(document.querySelector('[data-arrival="still"]')).not.toBeNull()
+    const ancestors: HTMLElement[] = []
+    for (
+      let node = page.getByTestId('participant-row').first().element().parentElement;
+      node;
+      node = node.parentElement
+    ) {
+      if (node.style.opacity !== '') ancestors.push(node)
+    }
+    const entrance = ancestors.at(-1)!
+    expect(entrance).toBeDefined()
+    await page.getByTestId('participant-row').first().click()
+    await expect.element(page.getByTestId('participant-tab-score')).toBeVisible()
+    expect(entrance.isConnected).toBe(true)
+    await page.getByRole('button', { name: '返回参评名单' }).click()
+    await expect.element(page.getByTestId('participant-row').first()).toBeVisible()
+    expect(entrance.isConnected).toBe(true)
   })
 
   it('restores an open account from the address alone', async () => {
@@ -1609,6 +1615,120 @@ describe('the list beside an open account', () => {
       expect(seat.scrollHeight).toBeGreaterThan(seat.clientHeight)
     } finally {
       await page.viewport(1280, 800)
+    }
+  })
+
+  it('keeps the current account intact until the next person has their claims', async () => {
+    await page.viewport(1280, 800)
+    let release!: () => void
+    const delayed = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const readResult = vi.fn((_request: Request) => Effect.succeed(account))
+    try {
+      await shelled(at(23, '&list-page=2'), {
+        getParticipantResult: readResult,
+        listParticipantEntries: (request: Request) =>
+          Effect.promise(async () => {
+            const id = request.params?.['participantId']
+            if (id === personId(24)) await delayed
+            return { participantId: id, entries: [], nextCursor: null }
+          }),
+      }).rendered
+      await expect.element(page.getByTestId('entries-workspace')).toBeVisible()
+      const work = page.getByTestId('entries-workspace').element()
+      const next = page.getByTestId('roster-walk-row').filter({ hasText: '参评人24' })
+      await next.click()
+      await expect.element(next).toHaveAttribute('aria-busy', 'true')
+      expect(current()?.dataset['participant']).toBe(personId(23))
+      expect(page.getByTestId('entries-workspace').element()).toBe(work)
+      expect(page.getByTestId('participant-column').element().getAttribute('aria-label')).toBe(
+        '参评人23',
+      )
+      expect(addressNow()).toContain(`participant=${personId(23)}`)
+      release()
+      await expect.poll(() => current()?.dataset['participant']).toBe(personId(24))
+      await expect.element(page.getByTestId('entries-workspace')).toBeVisible()
+      expect(page.getByTestId('participant-column').element().getAttribute('aria-label')).toBe(
+        '参评人24',
+      )
+      expect(
+        readResult.mock.calls.filter(
+          ([request]) => request.params?.['participantId'] === personId(24),
+        ),
+      ).toHaveLength(1)
+    } finally {
+      release()
+    }
+  })
+
+  it('lets a newer choice win over a late previous account', async () => {
+    await page.viewport(1280, 800)
+    let release!: () => void
+    let answered = false
+    const delayed = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    try {
+      await shelled(at(23, '&list-page=2'), {
+        getParticipantResult: (request: Request) =>
+          Effect.promise(async () => {
+            if (request.params?.['participantId'] === personId(24)) {
+              await delayed
+              answered = true
+            }
+            return account
+          }),
+      }).rendered
+      await expect.element(page.getByTestId('entries-workspace')).toBeVisible()
+      const slow = page.getByTestId('roster-walk-row').filter({ hasText: '参评人24' })
+      await slow.click()
+      await expect.element(slow).toHaveAttribute('aria-busy', 'true')
+      await page.getByTestId('roster-walk-row').filter({ hasText: '参评人25' }).click()
+      await expect.poll(() => current()?.dataset['participant']).toBe(personId(25))
+      release()
+      await expect.poll(() => answered).toBe(true)
+      expect(current()?.dataset['participant']).toBe(personId(25))
+      expect(addressNow()).toContain(`participant=${personId(25)}`)
+    } finally {
+      release()
+    }
+  })
+
+  it('does not revive a cancelled selection when history returns to its original address', async () => {
+    await page.viewport(1280, 800)
+    let release!: () => void
+    let answered = false
+    const delayed = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    try {
+      await shelled(at(23, '&list-page=2'), {
+        getParticipantResult: (request: Request) =>
+          Effect.promise(async () => {
+            if (request.params?.['participantId'] === personId(25)) {
+              await delayed
+              answered = true
+            }
+            return account
+          }),
+      }).rendered
+      await expect.element(page.getByTestId('entries-workspace')).toBeVisible()
+      await page.getByTestId('roster-walk-row').filter({ hasText: '参评人24' }).click()
+      await expect.poll(() => current()?.dataset['participant']).toBe(personId(24))
+      const slow = page.getByTestId('roster-walk-row').filter({ hasText: '参评人25' })
+      await slow.click()
+      await expect.element(slow).toHaveAttribute('aria-busy', 'true')
+      travel.go(-1)
+      await expect.poll(() => current()?.dataset['participant']).toBe(personId(23))
+      travel.go(1)
+      await expect.poll(() => current()?.dataset['participant']).toBe(personId(24))
+      release()
+      await expect.poll(() => answered).toBe(true)
+      expect(current()?.dataset['participant']).toBe(personId(24))
+      expect(addressNow()).toContain(`participant=${personId(24)}`)
+    } finally {
+      release()
     }
   })
 

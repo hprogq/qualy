@@ -14,6 +14,7 @@ export function useParticipantEntries(batchId: string, participantId: string) {
   const query = useApiQuery(assessmentApi)
   const run = useRunApi()
   return queryOptions({
+    staleTime: 30_000,
     // the endpoint's own key, so a wake-up that stales it reaches this read
     queryKey: query.assessment.listParticipantEntries.key({
       params: { batchId, participantId },

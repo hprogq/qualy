@@ -176,17 +176,17 @@ const waitFor = (ms: number) => {
 }
 
 /**
- * A read, if it ends within the wait: what a server entry decides by - who
+ * A result, if it ends within the wait: what a server entry decides by - who
  * is on the page, whose claims open - only when it knows in time, and leaves
  * to the page otherwise.
  */
-export const within = async <A, E>(
-  exit: Promise<Exit.Exit<A, E>>,
+export const within = async <A>(
+  result: Promise<A>,
   ms: number = HTML_WAIT_MS,
-): Promise<Exit.Exit<A, E> | undefined> => {
+): Promise<A | undefined> => {
   const wait = waitFor(ms)
   try {
-    const first = await Promise.race([exit, wait.over])
+    const first = await Promise.race([result, wait.over])
     return first instanceof Late ? undefined : first
   } finally {
     wait.done()

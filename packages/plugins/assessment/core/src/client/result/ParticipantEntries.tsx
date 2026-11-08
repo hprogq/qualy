@@ -158,9 +158,10 @@ export function ParticipantEntries({
   const items = useQuery(query.assessment.listItems.queryOptions({ params: { batchId } }))
   const groups = useQuery(query.assessment.listScoreGroups.queryOptions({ params: { batchId } }))
   // read, not fetched twice: the detail above has it open already
-  const result = useQuery(
-    query.assessment.getParticipantResult.queryOptions({ params: { batchId, participantId } }),
-  )
+  const result = useQuery({
+    ...query.assessment.getParticipantResult.queryOptions({ params: { batchId, participantId } }),
+    staleTime: 30_000,
+  })
 
   const claims = useMemo(() => entries.data?.entries ?? [], [entries.data])
   const flat = useMemo(() => claims.map((one) => one.entry as EntryDto), [claims])
