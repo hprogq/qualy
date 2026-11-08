@@ -17,7 +17,7 @@
 
 ## 当前开发状态
 
-- `spike/bun-web-toolchain` 将 Bun 接入插件声明的 Web 开发服务，Node 继续运行监督者、API 和沙箱，pnpm 与生产构建不变；使用方式见[开发进程](docs/development/runtime.md)，证据见[Bun 运行时记录](docs/notes/bun-runtime.md)。分支未合并，生产未改变。
+- RSC 开发链路的 Web 服务已接入 Bun，Node 继续运行监督者、API 和沙箱，pnpm 与生产构建不变；真实监督者与核心混合浏览器回归已补齐。使用方式见[开发进程](docs/development/runtime.md)，证据见[Bun 运行时记录](docs/notes/bun-runtime.md)。main 与生产未因此改变。
 - RSC 迁移在 `spike/rsc-data-mode`：分支上的默认构建、开发服务和 `@qualy/plugin-web` 生产宿主已切换为服务端渲染，镜像携带渲染器，HTML 不再等待慢读取；SPA 入口已删除，首屏预算改为针对服务端绘制的文档；双版本发布、回滚和同条件性能对照待完成。范围和限制以 [ADR 0012](docs/adr/0012-rsc-data-mode.md) 为准。分支未合并，生产未因此改变。
 - 上线前的 Effect、插件装配、Web release、沙箱、审计、遥测、Mantine/StyleX 和 Paraglide 迁移均已完成并有持续门禁。
 - 语言切换在写偏好和 cookie 前确认整页重载；每个已打开文档继续使用自己的 locale，请求不会因其他标签页改 cookie 而变语言。

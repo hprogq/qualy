@@ -3,7 +3,11 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
-import { postgresAvailable } from '@qualy/plugin-database/testkit'
+import {
+  createTestContext,
+  postgresAvailable,
+  type TestContext,
+} from '@qualy/plugin-database/testkit'
 
 // The supervisor, driven by saving files.
 //
@@ -45,8 +49,8 @@ const repoRoot = path.resolve(import.meta.dirname, '../../..')
 const host = path.join(repoRoot, 'apps/server/src/dev/host.ts')
 // The manifest lives in a product package of this suite's own: a temporary
 // directory that declares what the repository root declares plus the plugin
-// below, and reaches the installed packages, the lineage and the developer's
-// `.env` through links to the root's. Resolution holds a manifest to the
+// below, and reaches the installed packages and lineage through links to the
+// root's. Its environment and database are its own. Resolution holds a manifest to the
 // dependencies of the package it sits in, so a manifest that selects one
 // plugin more than the root cannot sit beside the root's.
 let productRoot = ''
@@ -70,11 +74,14 @@ let triggerRoot = ''
 let supervisor: ChildProcess | null = null
 let detached = false
 let output = ''
+let db: TestContext | null = null
 
 /** the file whose modification time asks for a backend-only reload */
 const triggerFile = () => path.join(triggerRoot, 'src/server/marker.ts')
 
-beforeAll(() => {
+beforeAll(async () => {
+  if (!postgresAvailable) return
+  db = await createTestContext('dev-supervisor')
   webRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-supervisor-web-'))
   // the configuration the web dev service runs, and a port of this
   // suite's own so a running `pnpm dev` is neither disturbed nor in the way
@@ -136,10 +143,13 @@ export default {
   productRoot = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-supervisor-product-')))
   manifest = path.join(productRoot, 'qualy.yml')
   lock = path.join(productRoot, 'qualy.lock.json')
-  for (const shared of ['node_modules', 'db', 'pnpm-lock.yaml', '.env']) {
+  for (const shared of ['node_modules', 'db', 'pnpm-lock.yaml']) {
     const at = path.join(repoRoot, shared)
     if (fs.existsSync(at)) fs.symlinkSync(at, path.join(productRoot, shared))
   }
+  fs.writeFileSync(path.join(productRoot, '.env'), `DATABASE_URL=${db.url}\n`)
+  fs.mkdirSync(path.join(productRoot, '.qualy'), { recursive: true })
+  fs.symlinkSync(path.join(repoRoot, '.qualy/i18n'), path.join(productRoot, '.qualy/i18n'))
   const product = JSON.parse(fs.readFileSync(path.join(repoRoot, 'package.json'), 'utf8')) as {
     dependencies: Record<string, string>
   }
@@ -155,13 +165,9 @@ export default {
     .concat(`  '${triggerId}': {}\n`)
   fs.writeFileSync(manifest, manifestText)
   fs.copyFileSync(path.join(repoRoot, 'qualy.lock.json'), lock)
-})
+}, 180_000)
 
 afterEach(async () => {
-  fs.writeFileSync(manifest, manifestText)
-  // the marker says what the trigger plugin does, so a case that made it
-  // refuse has to put it back before the next case starts a backend
-  fs.writeFileSync(triggerFile(), 'export const marker = 1\n')
   if (supervisor !== null && supervisor.exitCode === null) {
     // a detached child is its own group, and killing only its leader would
     // leave the backend and the dev server behind
@@ -169,21 +175,25 @@ afterEach(async () => {
     else supervisor.kill('SIGINT')
     await new Promise((resolve) => supervisor?.once('exit', resolve))
   }
+  if (manifest !== '') fs.writeFileSync(manifest, manifestText)
+  // Restore only after the watcher stopped, without scheduling another reload.
+  if (triggerRoot !== '') fs.writeFileSync(triggerFile(), 'export const marker = 1\n')
   supervisor = null
   detached = false
   output = ''
 })
 
-afterAll(() => {
+afterAll(async () => {
   fs.rmSync(linkedAt, { force: true })
   // the links inside the product are removed as links; nothing they point at is touched
   for (const dir of [webRoot, triggerRoot, productRoot])
     if (dir !== '') fs.rmSync(dir, { recursive: true, force: true })
-})
+  await db?.dispose()
+}, 120_000)
 
 const start = (options: { ownGroup?: boolean } = {}) => {
   detached = options.ownGroup === true
-  const child = spawn('node', [host], {
+  const child = spawn(process.execPath, [host], {
     cwd: repoRoot,
     // its own process group, which is what a terminal gives a foreground job
     ...(detached ? { detached: true } : {}),
@@ -192,6 +202,9 @@ const start = (options: { ownGroup?: boolean } = {}) => {
       PORT: String(port),
       NODE_ENV: 'development',
       QUALY_CONFIG: manifest,
+      DATABASE_URL: undefined,
+      QUALY_DEV_RUNTIME: undefined,
+      QUALY_MIGRATIONS: 'off',
       // the product sends through resend; nothing is sent here, but a
       // checkout without a .env must still start
       QUALY_MAIL_RESEND_API_KEY: process.env.QUALY_MAIL_RESEND_API_KEY ?? 're_test_only',
@@ -228,6 +241,27 @@ const answers = async () => {
 const serving = () => [...output.matchAll(/backend#(\d+) is serving/g)].map((match) => match[1]!)
 
 describe.runIf(postgresAvailable)('the development supervisor', () => {
+  it('runs the web service on Bun and releases both ports when only its parent stops', async () => {
+    const child = start()
+    await until(() => output.includes('watching for changes'))
+    await until(async () => (await answers()) === 200)
+    expect(output).toMatch(/development service .* using Bun /)
+    expect((await fetch(`http://localhost:${String(webPort)}/`)).status).toBe(200)
+
+    const ended = new Promise<number | null>((resolve) => child.once('exit', resolve))
+    child.kill('SIGINT')
+    expect(await ended).toBe(0)
+    await until(async () => (await answers()) === 0)
+    await until(async () => {
+      try {
+        await fetch(`http://localhost:${String(webPort)}/`)
+        return false
+      } catch {
+        return true
+      }
+    })
+  }, 180_000)
+
   it('keeps the running world when a replacement will not compile', async () => {
     start()
     await until(() => serving().length === 1)

@@ -233,6 +233,11 @@ jobs:
           printf '%s\n' 'https://archive.ubuntu.com/ubuntu/' | sudo tee /etc/apt/apt-mirrors.txt > /dev/null
           printf '%s\n' 'Acquire::Retries "2";' 'Acquire::http::Timeout "20";' 'Acquire::https::Timeout "20";' | sudo tee /etc/apt/apt.conf.d/80qualy-ci > /dev/null
           pnpm exec playwright install --with-deps chromium
+      - name: Node API and Bun development renderer work together
+        timeout-minutes: 3
+        env:
+          QUALY_TEST_DATABASE_URL: postgres://qualy:qualy@localhost:5432/qualy
+        run: pnpm test:dev-web
       - name: the content security policy can be enforced
         env:
           DATABASE_URL: postgres://qualy:qualy@localhost:5432/qualy

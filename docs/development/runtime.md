@@ -35,6 +35,8 @@ QUALY_DEV_RUNTIME=node
 
 采用依据与混合链路验收见 [Bun 运行时记录](../notes/bun-runtime.md)。本次没有把生产构建或产品后端迁到 Bun。
 
+核心浏览器回归可运行 `pnpm test:dev-web`：它使用独立临时数据库、真实 Node API 和 Bun Vite，验证登录退出、JSON 写入及并发 SSR 的身份与语言隔离。默认预览端口为 5186；占用时直接拒绝，不另找端口。首次运行需要已有 pnpm 安装树及 Playwright Chromium。该回归不读取开发环境文件，也不修改业务源码；HMR 的手工对照仍见上述记录。
+
 ## 后端接力
 
 候选进程先构建装配和服务图，达到 prepared 栅栏后才允许接收请求。监督者把代理目标切到新候选，再终止旧候选；候选在准备阶段失败时，旧进程继续服务。协议消息和状态机实现在 `apps/server/src/dev`，测试覆盖准备、接力、服务 runner 和异常关闭。
