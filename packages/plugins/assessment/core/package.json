@@ -50,7 +50,10 @@
       "react-server": "./src/client/person/MyBatchesPage.server.tsx",
       "default": "./src/client/person/MyBatchesPage.tsx"
     },
-    "./client/person/SectionBadge": "./src/client/person/SectionBadge.tsx",
+    "./client/person/SectionBadge": {
+      "react-server": "./src/client/person/SectionBadge.server.tsx",
+      "default": "./src/client/person/SectionBadge.tsx"
+    },
     "./client/person/UserBatchesPage": "./src/client/person/UserBatchesPage.tsx",
     "./client/person/UserEntriesPage": "./src/client/person/UserEntriesPage.tsx",
     "./client/record/AdministrativeRecordsPage": "./src/client/record/AdministrativeRecordsPage.tsx",

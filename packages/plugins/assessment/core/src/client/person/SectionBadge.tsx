@@ -20,10 +20,9 @@ import { assessmentApi } from '../api.ts'
 // navigation badge and use that same authorized total.
 const PAGE = 1
 
-// The count is asked once the page is up, so on a fresh page it comes a
-// moment after the rail. It arrives rather than blinks in, as the rail's
-// administration dot does (AdminAlertBadge); one already known when the rail
-// is drawn again, moving between pages, is simply there.
+// A server-prepared count is already there with the rail. A later read that
+// supplies a previously unknown count arrives rather than blinks in, as the
+// rail's administration dot does (AdminAlertBadge).
 const arrive = stylex.keyframes({
   from: { opacity: 0, transform: 'scale(0.6)' },
   to: { opacity: 1, transform: 'scale(1)' },
