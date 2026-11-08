@@ -56,7 +56,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Spinner } from '@qualy/ui/spinner'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
-import { useIsBelow, useIsMobile } from '@qualy/ui/use-mobile'
+import { useIsBelow } from '@qualy/ui/use-mobile'
 import { AtWidth } from '@qualy/ui/at-width'
 import { UnitPath } from '@qualy/ui/unit-path'
 import { VisuallyHidden } from '@qualy/ui/visually-hidden'
@@ -68,7 +68,7 @@ import { RosterUnitTree } from '../roster/RosterUnitTree.tsx'
 import { UnreachableDialog } from '../roster/UnreachableDialog.tsx'
 import { type AdmissionOutcomeFacts } from '../roster/AdmissionOutcome.tsx'
 import { RosterFilings, RosterFilingsHead } from '../roster/RosterFilings.tsx'
-import { useKindColumns, useWaitingColumn, waitsOnAnything } from '../roster/filings.ts'
+import { KIND_COLUMNS, WAITING_COLUMN, waitsOnAnything } from '../roster/filings.ts'
 import { RosterScore } from '../roster/RosterScore.tsx'
 import { unitPathOf } from '../roster/unit-path.ts'
 import {
@@ -136,21 +136,6 @@ const TREE_MOST = 312
  */
 const numberColumn = '6.5rem'
 const tailColumns = '7.5rem 2rem'
-
-/**
- * The person keeps this much room. Their content stops at 480px in the
- * styles below; a longer unit path folds its front away.
- */
-const PERSON_LEAST = 144
-
-/**
- * What a row takes besides the person and the waiting column: its padding
- * (32), four gaps (64), the number (104), the total (120) and the menu (32).
- */
-const SPLIT_FIXED = 352
-
-/** the person's room before the kinds of waiting may take columns of their own */
-const PERSON_ROOMY = 180
 
 /** whether the reader keeps the unit tree open beside the list, remembered per browser */
 const TREE_OPEN_KEY = 'qualy:assessment-roster-tree-open'
@@ -319,12 +304,20 @@ const styles = stylex.create({
   },
   offTreeName: { minWidth: 0, overflowWrap: 'anywhere' },
   listColumn: {
+    containerType: 'inline-size',
     display: 'flex',
     minWidth: 0,
     flexDirection: 'column',
     gap: 10,
     scrollMarginTop: 12,
   },
+  kindGrid: (template: string) => ({
+    gridTemplateColumns: {
+      default: template,
+      '@container (min-width: 800px)':
+        '6.5rem minmax(180px, min(480px, 30%)) minmax(0, 1fr) 7.5rem 2rem',
+    },
+  }),
   // One row from a tablet up, however narrow the list gets beside the rail:
   // the choices and the search give a little rather than the last choice
   // dropping to a line of its own. On a phone the search takes a line and
@@ -404,7 +397,6 @@ export function ParticipantResultList({
   // the tree folds into one line at a width of its own; the rows stack only
   // on a phone, where the table has no head to line its columns up under
   const narrow = useIsBelow(TWO_COLUMNS)
-  const stacked = useIsMobile()
   const [unitsOpen, setUnitsOpen] = useState(false)
   // Beside the list the tree can be folded away, for a reader who works
   // down the whole roster and wants the room; the fold is remembered. The
@@ -456,18 +448,6 @@ export function ParticipantResultList({
     const under = (scroller && parseFloat(getComputedStyle(scroller).scrollPaddingTop)) || 0
     if (node.getBoundingClientRect().top < port + under) node.scrollIntoView({ block: 'start' })
   }, [participants.isPlaceholderData, rows])
-  const [listWidth, setListWidth] = useState(0)
-  useLayoutEffect(() => {
-    const node = listTop.current
-    if (node === null) return
-    setListWidth(Math.round(node.getBoundingClientRect().width))
-    const observer = new ResizeObserver(([entry]) => {
-      if (entry !== undefined) setListWidth(Math.round(entry.contentRect.width))
-    })
-    observer.observe(node)
-    return () => observer.disconnect()
-  }, [])
-
   // the page's totals, asked once its rows are known and never before: the
   // rows are what somebody came for, and they must not wait on arithmetic
   const ids = rows.map((row) => row.id)
@@ -776,25 +756,11 @@ export function ParticipantResultList({
   const narrowed = view.q !== '' || view.unit !== '' || view.status !== '' || view.waiting !== ''
   const unitWord = view.unit === '' ? m.roster_unitsAll() : (unitName ?? m.roster_unitChosen())
   const waitingHead = m.roster_columnWaiting()
-  const waitingColumn = useWaitingColumn(rows, waitingHead)
-  const kinds = useKindColumns()
-  // each kind in a column of its own wherever the person keeps a name's
-  // room beside them; narrower, the kinds share one column as words, and a
-  // page where nothing waits keeps one narrow column of dashes
-  const split =
-    !stacked &&
-    listWidth >= SPLIT_FIXED + PERSON_ROOMY + kinds.width &&
-    rows.some((row) => waitsOnAnything(row.filings))
-  // The kinds share the space after a bounded person column. A wide page
-  // must not collect all its spare space on either side of five tiny tracks.
-  const personWidth = Math.min(
-    480,
-    Math.max(PERSON_ROOMY, Math.floor((listWidth - SPLIT_FIXED) * 0.45)),
-    listWidth - SPLIT_FIXED - kinds.width,
+  const separateKinds = rows.some((row) => waitsOnAnything(row.filings))
+  const columns = `${numberColumn} minmax(144px, 1fr) ${WAITING_COLUMN} ${tailColumns}`
+  const filingsFor = (filings: Parameters<typeof RosterFilings>[0]['filings']) => (
+    <RosterFilings filings={filings} columns={separateKinds ? KIND_COLUMNS : undefined} />
   )
-  const columns = split
-    ? `${numberColumn} ${String(personWidth)}px minmax(${String(kinds.width)}px, 1fr) ${tailColumns}`
-    : `${numberColumn} minmax(${String(PERSON_LEAST)}px, 1fr) ${waitingColumn} ${tailColumns}`
   const notices = manageable ? (
     <RosterNotices
       placements={archived ? null : (placements.data ?? null)}
@@ -981,11 +947,19 @@ export function ParticipantResultList({
         skeleton={<ParticipantRosterRows />}
       >
         <Card ref={listCard} data-testid="roster">
-          <Table columns={columns}>
+          <Table
+            columns={columns}
+            sharedTracks
+            xstyle={separateKinds ? styles.kindGrid(columns) : undefined}
+          >
             <TableHead>
               <span>{businessNo}</span>
               <span>{m.roster_columnName()}</span>
-              {split ? <RosterFilingsHead columns={kinds.template} /> : <span>{waitingHead}</span>}
+              {separateKinds ? (
+                <RosterFilingsHead columns={KIND_COLUMNS} />
+              ) : (
+                <span>{waitingHead}</span>
+              )}
               <span {...stylex.props(styles.headEnd)}>{m.roster_columnScore()}</span>
               <span />
             </TableHead>
@@ -1086,17 +1060,9 @@ export function ParticipantResultList({
                         with no words would only leave its rule behind */}
                     <Cell unlabelled>
                       {waitsOnAnything(row.filings) ? (
-                        <RosterFilings
-                          filings={row.filings}
-                          columns={split ? kinds.template : undefined}
-                        />
+                        filingsFor(row.filings)
                       ) : (
-                        <AtWidth from={768}>
-                          <RosterFilings
-                            filings={row.filings}
-                            columns={split ? kinds.template : undefined}
-                          />
-                        </AtWidth>
+                        <AtWidth from={768}>{filingsFor(row.filings)}</AtWidth>
                       )}
                     </Cell>
                     {/* the total is what the list is scanned by, so

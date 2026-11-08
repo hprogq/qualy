@@ -27,6 +27,7 @@ import { repoRoot } from '../lib/manifest.ts'
 import { startQualyServer, type QualyServer } from '../lib/qualy-server.ts'
 import { acceptEntries } from './rsc-entries.ts'
 import { acceptRouteErrors } from './rsc-route-errors.ts'
+import { acceptAccessPaint } from './rsc-access-paint.ts'
 import { acceptParticipantLoading } from './rsc-participant-loading.ts'
 
 // The server-rendered document, accepted end to end on data of its own
@@ -242,6 +243,10 @@ const mountHandler = async () => {
             )) ||
           (/\/(?:participant-accounts|roster-units)$/.test(url.pathname) &&
             /(?:^|;\s*)acceptance_fault=roster-slow(?:;|$)/.test(
+              String(request.headers['cookie'] ?? ''),
+            )) ||
+          (url.pathname.endsWith('/participant-scores') &&
+            /(?:^|;\s*)acceptance_fault=scores-slow(?:;|$)/.test(
               String(request.headers['cookie'] ?? ''),
             ))
         ) {
@@ -1430,6 +1435,12 @@ const grantSurfaces = async (browser: Browser, batch: string) => {
     roleId,
     userIds: [userId],
     orgNodeIds: [orgNodeId],
+  })
+
+  await acceptAccessPaint({
+    context: await signedInContext(browser, 'admin'),
+    address: `${site}/assessment/batches/${batch}/access`,
+    check,
   })
 
   const address = `/organization/users/${userId}/role-grants`

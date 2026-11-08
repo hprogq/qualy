@@ -8,6 +8,7 @@ import {
   useApiQuery,
   useLoadFailure,
   useRunApi,
+  useHydrating,
 } from '@qualy/web-runtime'
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
 import * as stylex from '@stylexjs/stylex'
@@ -117,7 +118,28 @@ const ALL = '*'
 
 const styles = stylex.create({
   page: { display: 'flex', flexDirection: 'column', gap: 16 },
-  section: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 12 },
+  section: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+    gap: 12,
+    containerType: 'inline-size',
+  },
+  matrixShape: {
+    display: {
+      default: 'none',
+      '@container (min-width: 1060px)': 'contents',
+      [breakpoints.phone]: 'none',
+    },
+  },
+  listShape: {
+    display: {
+      default: 'contents',
+      '@container (min-width: 1060px)': 'none',
+      [breakpoints.phone]: 'none',
+    },
+  },
+  cardsShape: { display: { default: 'none', [breakpoints.phone]: 'contents' } },
   // One row from a tablet up; on a phone the search takes a line and the
   // three choices and the way to add somebody pair off under it, two to a
   // line, so none of them is squeezed past its own words.
@@ -513,6 +535,9 @@ export function AccessPanel({
   const width = useWidth(seat)
   const phone = useIsBelow(768)
   const shape = phone ? 'cards' : width >= MATRIX_AT ? 'matrix' : 'list'
+  // CSS picks the visible shape in server HTML. Measure only to retire
+  // hidden trees after hydration, never to replace the first visible layout.
+  const drawingAll = useHydrating() || width === 0
 
   const staff = access.data?.staff ?? []
   const total = access.data?.total ?? 0
@@ -613,15 +638,16 @@ export function AccessPanel({
     </div>
   )
 
-  const rows = staff.map((row) => (
-    <SubjectRow
-      key={row.userId}
-      subject={row}
-      shape={shape}
-      onAdjust={() => setAdjusting(row.userId)}
-      onRemove={(source) => setRemoving({ source, subject: row })}
-    />
-  ))
+  const rowsFor = (shape: 'matrix' | 'list' | 'cards') =>
+    staff.map((row) => (
+      <SubjectRow
+        key={row.userId}
+        subject={row}
+        shape={shape}
+        onAdjust={() => setAdjusting(row.userId)}
+        onRemove={(source) => setRemoving({ source, subject: row })}
+      />
+    ))
 
   const list =
     staff.length === 0 ? (
@@ -666,36 +692,46 @@ export function AccessPanel({
       )
     ) : (
       <Card data-testid="access-staff" data-shape={shape} data-total={total}>
-        {shape === 'cards' ? (
-          <div>{rows}</div>
-        ) : shape === 'matrix' ? (
-          <Table columns={MATRIX_COLUMNS}>
-            <TableHead>
-              <span>{m.access_columnPerson()}</span>
-              <span>{m.access_columnRoles()}</span>
-              {BATCH_STAFF_CODES.map((code) => (
-                <span key={code} title={permissionLabel(code)()} {...stylex.props(styles.headWord)}>
-                  {permissionShort(code)()}
-                </span>
-              ))}
-              <span />
-            </TableHead>
-            {rows}
-          </Table>
-        ) : (
-          <Table columns={LIST_COLUMNS}>
-            <TableHead>
-              <span>{m.access_columnPerson()}</span>
-              <span>{m.access_columnRoles()}</span>
-              <span>{m.access_columnPermissions()}</span>
-              <span />
-            </TableHead>
-            {rows}
-          </Table>
+        {(drawingAll || shape === 'cards') && (
+          <div {...stylex.props(styles.cardsShape)}>{rowsFor('cards')}</div>
+        )}
+        {(drawingAll || shape === 'matrix') && (
+          <div {...stylex.props(styles.matrixShape)}>
+            <Table columns={MATRIX_COLUMNS}>
+              <TableHead>
+                <span>{m.access_columnPerson()}</span>
+                <span>{m.access_columnRoles()}</span>
+                {BATCH_STAFF_CODES.map((code) => (
+                  <span
+                    key={code}
+                    title={permissionLabel(code)()}
+                    {...stylex.props(styles.headWord)}
+                  >
+                    {permissionShort(code)()}
+                  </span>
+                ))}
+                <span />
+              </TableHead>
+              {rowsFor('matrix')}
+            </Table>
+          </div>
+        )}
+        {(drawingAll || shape === 'list') && (
+          <div {...stylex.props(styles.listShape)}>
+            <Table columns={LIST_COLUMNS}>
+              <TableHead>
+                <span>{m.access_columnPerson()}</span>
+                <span>{m.access_columnRoles()}</span>
+                <span>{m.access_columnPermissions()}</span>
+                <span />
+              </TableHead>
+              {rowsFor('list')}
+            </Table>
+          </div>
         )}
         <CardFoot>
-          {shape === 'matrix' && (
-            <>
+          {(drawingAll || shape === 'matrix') && (
+            <span {...stylex.props(styles.matrixShape)}>
               {/* a mark alone says nothing to somebody who cannot hover it */}
               <ul
                 aria-label={m.access_legend()}
@@ -712,7 +748,7 @@ export function AccessPanel({
                 </li>
               </ul>
               <span aria-hidden {...stylex.props(styles.legendRule)} />
-            </>
+            </span>
           )}
           <Pager
             testId="access-pager"

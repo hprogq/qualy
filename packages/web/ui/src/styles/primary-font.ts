@@ -1,12 +1,9 @@
 import latin from '@fontsource-variable/inter/files/inter-latin-wght-normal.woff2?url'
+import faces from './primary-font.css?inline'
 
-// Where the face the interface is set in lives, for a document to ask for it
-// before its stylesheet does (docs/adr/0012-rsc-data-mode.md).
-//
-// The theme loads Inter with font-display: swap, so text first set in the
-// fallback moves when Inter arrives: a line of digits shifts sideways. A page
-// that drew itself in script hid that behind its loading screen; a page a
-// server drew is read from its first frame, so the face is asked for with
-// the html instead of after the stylesheet has been read and laid out. Only
-// the latin file: the text that is not latin is set in the system's face.
+// Declare faces in the document head and request Latin early. Optional display
+// uses Inter when it arrives before first paint, otherwise preserves the system
+// face for this document instead of moving text after it has become readable.
 export const primaryFontLatin: string = latin
+/** Declare faces once, before streamed body content or development CSS replacement. */
+export const primaryFontFaces: string = faces

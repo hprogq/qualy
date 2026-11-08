@@ -22,6 +22,7 @@ import { PROTOCOL } from '../../apps/server/src/dev/protocol.ts'
 import { devTopology } from '../../apps/server/src/dev/topology.ts'
 import { repoRoot } from '../lib/manifest.ts'
 import { startQualyServer, type QualyServer } from '../lib/qualy-server.ts'
+import { traceDevelopmentPaint } from './rsc-dev-paint.ts'
 
 // A real Node API and Bun Vite, using this product's plugin declaration and
 // rendering configuration. Only the preview port and cache are overridden.
@@ -143,6 +144,44 @@ export const acquire = (prepared, context) => web.acquire({
   })
   assert.equal(created.status(), 200, 'The proxy must preserve a JSON business write')
   const createdBatch = (await created.json()) as { batch: { id: string } }
+  await traceDevelopmentPaint(
+    context,
+    `${site}/assessment/batches/${createdBatch.batch.id}/settings`,
+    'cold-settings',
+  )
+  await traceDevelopmentPaint(
+    context,
+    `${site}/assessment/batches/${createdBatch.batch.id}/results`,
+    'cold-roster',
+  )
+
+  const planned = await context.request.put(
+    `${site}/api/assessment/batches/${createdBatch.batch.id}/phases`,
+    {
+      data: { phases: [{ phaseKey: 'paint-check', displayName: 'Paint check' }] },
+    },
+  )
+  assert.equal(planned.status(), 200)
+  const { phases } = (await planned.json()) as { phases: { id: string }[] }
+  const started = await context.request.put(
+    `${site}/api/assessment/batches/${createdBatch.batch.id}/phase`,
+    { data: { to: phases[0]!.id } },
+  )
+  assert.equal(started.status(), 200)
+  const participant = await browser.newContext({ locale: 'en-US' })
+  try {
+    const signedIn = await participant.request.post(`${site}/api/auth/local/local/login`, {
+      data: { email: 'student@example.edu', password: account.password },
+    })
+    assert.equal(signedIn.status(), 200)
+    await traceDevelopmentPaint(
+      participant,
+      `${site}/assessment/batches/${createdBatch.batch.id}/my-result`,
+      'cold-my-result',
+    )
+  } finally {
+    await participant.close()
+  }
 
   const anonymous = await browser.newContext({ locale: 'en-US' })
   try {
@@ -177,7 +216,7 @@ export const acquire = (prepared, context) => web.acquire({
   page.on('pageerror', (error) => errors.push(error.message))
   page.on('console', (message) => {
     if (
-      /one blocker|multiple renderers|Hydration failed|preloaded using link preload/.test(
+      /one blocker|multiple renderers|hydration|hydrated|preloaded using link preload/i.test(
         message.text(),
       )
     )
@@ -207,6 +246,13 @@ export const acquire = (prepared, context) => web.acquire({
     }, href)
     await page.waitForURL(`${site}${href}`)
     await page.waitForLoadState('networkidle')
+    // A router promise settles before React commits its transition. Wait
+    // for the actual destination, not an account menu in the outgoing shell.
+    if (suffix === '/results') await page.getByTestId('roster').waitFor()
+    else
+      await page
+        .getByRole('heading', { name: suffix === '/phases' ? 'Stages' : 'Overview', exact: true })
+        .waitFor()
   }
   await page.getByRole('button', { name: '系统管理员' }).click()
   const [ended] = await Promise.all([

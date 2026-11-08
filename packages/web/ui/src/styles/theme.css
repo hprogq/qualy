@@ -1,4 +1,3 @@
-@import '@fontsource-variable/inter';
 /* Core widgets share one shell sheet. Calendar and image-viewer styles
    load with their adapters. Keep Mantine's dependency closure upstream. */
 @import '@mantine/core/styles.layer.css';

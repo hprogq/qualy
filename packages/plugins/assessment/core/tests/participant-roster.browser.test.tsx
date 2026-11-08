@@ -216,6 +216,48 @@ const open = (
 const rows = () => page.getByTestId('participant-row')
 
 describe('the roster on the results page', () => {
+  it('keeps the painted roster still when totals arrive with motion enabled', async () => {
+    await commands.emulateMedia({ reducedMotion: 'no-preference' })
+    let finish!: () => void
+    const ready = new Promise<void>((resolve) => {
+      finish = resolve
+    })
+    try {
+      await open({
+        listParticipantScores: (request: Request) =>
+          Effect.promise(() => ready).pipe(
+            Effect.as({
+              scores: idsOf(request).map((participantId) => ({
+                participantId,
+                state: 'scored',
+                total: '92.00',
+                reason: null,
+              })),
+            }),
+          ),
+      })
+      await expect.element(rows().first()).toBeVisible()
+      const row = rows().first().element()
+      const card = page.getByTestId('roster').element()
+      const before = card.getBoundingClientRect()
+      finish()
+      await expect
+        .element(page.getByTestId('participant-score').first())
+        .toHaveAttribute('data-score-state', 'scored')
+      const until = performance.now() + 300
+      while (performance.now() < until) {
+        await new Promise(requestAnimationFrame)
+        expect(rows().first().element()).toBe(row)
+        expect(card.getBoundingClientRect().x).toBeCloseTo(before.x, 1)
+        for (let node: Element | null = card; node; node = node.parentElement) {
+          expect(Number(getComputedStyle(node).opacity)).toBe(1)
+        }
+      }
+    } finally {
+      finish()
+      await commands.emulateMedia({ reducedMotion: 'reduce' })
+    }
+  })
   it('walks the roster by page number and keeps the page in the address', async () => {
     const asked = vi.fn((request: Request) => pageOf(request))
     await open({ listParticipantAccounts: asked })
@@ -863,7 +905,7 @@ describe('the roster on the results page', () => {
         const filings = page.getByTestId('participant-filings').first()
         await expect.element(filings).toHaveAttribute('data-reconsidering', '12')
         const cell = filings.element().parentElement!.getBoundingClientRect()
-        const counts = Array.from(filings.element().children)
+        const counts = Array.from(filings.element().querySelectorAll('[data-filings-word]'))
         expect(counts).toHaveLength(5)
         for (const count of counts) {
           const box = count.getBoundingClientRect()
@@ -1371,7 +1413,9 @@ describe('the room the roster gives its rows', () => {
     )
     const busy = page.getByTestId('participant-filings').first()
     await expect.element(busy).toHaveAttribute('data-waiting', 'some')
-    const counts = Array.from(busy.element().children).map((one) => one.getBoundingClientRect())
+    const counts = Array.from(busy.element().querySelectorAll('[data-filings-word]')).map((one) =>
+      one.getBoundingClientRect(),
+    )
     // the counts stand on one line, inside their cell
     expect(new Set(counts.map((one) => Math.round(one.top))).size).toBe(1)
     const cell = busy.element().parentElement!.getBoundingClientRect()

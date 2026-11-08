@@ -11,9 +11,7 @@ import * as m from '#messages'
 //
 // In a column a row with nothing waiting says so with a dash, because an
 // empty cell under a heading reads as something that did not load. The
-// column is at least as wide as the page's longest answer, measured from
-// the words themselves: every row is its own grid, so a track cannot size
-// itself to the rows around it.
+// column shares its content-based track with the head and every other row.
 //
 // Where the table has the room, each kind stands in a column of its own
 // instead, and a row is read down a column rather than along its words.
@@ -24,7 +22,6 @@ const styles = stylex.create({
     minWidth: 0,
     flexWrap: 'wrap',
     alignItems: 'center',
-    // COUNT_GAP in filings.ts, which measures the column by it
     columnGap: 10,
     rowGap: 2,
     fontSize: 12,
@@ -36,12 +33,15 @@ const styles = stylex.create({
   one: { whiteSpace: 'normal', fontVariantNumeric: 'tabular-nums' },
   warn: { color: tokens.warning },
   none: { color: `color-mix(in oklab, ${tokens.mutedForeground} 55%, transparent)` },
-  kinds: (template: string) => ({
-    display: 'grid',
+  adaptive: (template: string) => ({
+    display: { default: 'flex', '@container (min-width: 800px)': 'grid' },
     gridTemplateColumns: template,
+    columnGap: { default: 10, '@container (min-width: 800px)': 0 },
     alignItems: 'center',
     justifyItems: 'center',
   }),
+  words: { display: { default: 'contents', '@container (min-width: 800px)': 'none' } },
+  tracks: { display: { default: 'none', '@container (min-width: 800px)': 'contents' } },
   head: { whiteSpace: 'nowrap' },
   // a count is a chip, so the few rows with something waiting stand out of
   // a column of quiet dashes
@@ -93,23 +93,40 @@ export function RosterFilings({
       : said.map((kind) => WORDS[kind]({ count: filings[kind] })).join(', ')
   if (columns !== undefined)
     return (
-      <span {...facts} {...stylex.props(styles.kinds(columns))}>
-        {COLUMNS.map((kind) => {
-          const count = filings[kind]
-          return (
-            <span
-              key={kind}
-              aria-hidden
-              data-kind={kind}
-              {...stylex.props(
-                count === 0 ? styles.zero : styles.count,
-                count > 0 && kind === 'blocked' && styles.warnCount,
-              )}
-            >
-              {count === 0 ? '—' : count}
-            </span>
-          )
-        })}
+      <span {...facts} {...stylex.props(styles.list, styles.adaptive(columns))}>
+        <span aria-hidden {...stylex.props(styles.words)}>
+          {said.length === 0 ? (
+            <span {...stylex.props(styles.none)}>—</span>
+          ) : (
+            said.map((kind) => (
+              <span
+                key={kind}
+                data-filings-word
+                {...stylex.props(styles.one, kind === 'blocked' && styles.warn)}
+              >
+                {WORDS[kind]({ count: filings[kind] })}
+              </span>
+            ))
+          )}
+        </span>
+        <span aria-hidden {...stylex.props(styles.tracks)}>
+          {COLUMNS.map((kind) => {
+            const count = filings[kind]
+            return (
+              <span
+                key={kind}
+                aria-hidden
+                data-kind={kind}
+                {...stylex.props(
+                  count === 0 ? styles.zero : styles.count,
+                  count > 0 && kind === 'blocked' && styles.warnCount,
+                )}
+              >
+                {count === 0 ? '—' : count}
+              </span>
+            )
+          })}
+        </span>
         <VisuallyHidden>{spoken}</VisuallyHidden>
       </span>
     )
@@ -124,7 +141,11 @@ export function RosterFilings({
         </>
       ) : (
         said.map((kind) => (
-          <span key={kind} {...stylex.props(styles.one, kind === 'blocked' && styles.warn)}>
+          <span
+            key={kind}
+            data-filings-word
+            {...stylex.props(styles.one, kind === 'blocked' && styles.warn)}
+          >
             {WORDS[kind]({ count: filings[kind] })}
           </span>
         ))
@@ -136,12 +157,15 @@ export function RosterFilings({
 /** the kinds' column heads, laid out as RosterFilings lays out their counts */
 export function RosterFilingsHead({ columns }: { columns: string }) {
   return (
-    <span {...stylex.props(styles.kinds(columns))}>
-      {COLUMNS.map((kind) => (
-        <span key={kind} {...stylex.props(styles.head)}>
-          {HEADS[kind]()}
-        </span>
-      ))}
+    <span {...stylex.props(styles.adaptive(columns))}>
+      <span {...stylex.props(styles.words)}>{m.roster_columnWaiting()}</span>
+      <span {...stylex.props(styles.tracks)}>
+        {COLUMNS.map((kind) => (
+          <span key={kind} {...stylex.props(styles.head)}>
+            {HEADS[kind]()}
+          </span>
+        ))}
+      </span>
     </span>
   )
 }

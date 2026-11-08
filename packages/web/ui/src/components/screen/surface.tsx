@@ -97,7 +97,12 @@ const styles = stylex.create({
     flexWrap: 'wrap',
   },
   cardFootInset: { backgroundColor: tokens.surfaceInset },
+  cardFootUnseparated: { borderTopWidth: 0 },
+  cardFootCompact: { minHeight: 32, paddingBlock: 6 },
+  sharedTable: { display: 'grid', minWidth: 0, columnGap: 16 },
+  sharedRow: { gridColumn: '1 / -1', gridTemplateColumns: 'subgrid' },
   cardEmpty: {
+    gridColumn: '1 / -1',
     margin: 0,
     paddingInline: 16,
     paddingBlock: 14,
@@ -570,8 +575,29 @@ export function CardEmpty({ children }: { children: ReactNode }) {
 }
 
 /** the strip a card ends on: a count and a way to more, or what is unsaved and the way to save it */
-export function CardFoot({ children, inset = false }: { children: ReactNode; inset?: boolean }) {
-  return <div {...stylex.props(styles.cardFoot, inset && styles.cardFootInset)}>{children}</div>
+export function CardFoot({
+  children,
+  inset = false,
+  separated = true,
+  compact = false,
+}: {
+  children: ReactNode
+  inset?: boolean
+  separated?: boolean
+  compact?: boolean
+}) {
+  return (
+    <div
+      {...stylex.props(
+        styles.cardFoot,
+        inset && styles.cardFootInset,
+        !separated && styles.cardFootUnseparated,
+        compact && styles.cardFootCompact,
+      )}
+    >
+      {children}
+    </div>
+  )
 }
 
 /** pushes what follows to the far end of a head or a foot */
@@ -634,11 +660,13 @@ const TableColumns = createContext<{
   openable: boolean
   labels: readonly string[]
   oneLine: boolean
+  sharedTracks: boolean
 }>({
   template: 'minmax(0, 1fr)',
   openable: false,
   labels: [],
   oneLine: false,
+  sharedTracks: false,
 })
 
 /**
@@ -710,6 +738,8 @@ export function Table({
   columns,
   openable = false,
   facts = 'wrap',
+  sharedTracks = false,
+  xstyle,
   children,
 }: {
   columns: string
@@ -724,6 +754,10 @@ export function Table({
    * half a word.
    */
   facts?: 'wrap' | 'line'
+  /** Let CSS size content-based tracks once for the head and every row. */
+  sharedTracks?: boolean
+  /** Layout rules for a shared grid, including container-based track changes. */
+  xstyle?: StyleXStyles
   children: ReactNode
 }) {
   const template = openable ? `${columns} 1.25rem` : columns
@@ -735,16 +769,28 @@ export function Table({
     return Children.toArray(head.props.children).map(wordsOf)
   }, [children])
   return (
-    <TableColumns value={{ template, openable, labels, oneLine: facts === 'line' }}>
-      {children}
+    <TableColumns value={{ template, openable, labels, oneLine: facts === 'line', sharedTracks }}>
+      {sharedTracks ? (
+        <div {...stylex.props(styles.sharedTable, styles.columns(template), xstyle)}>
+          {children}
+        </div>
+      ) : (
+        children
+      )}
     </TableColumns>
   )
 }
 
 export function TableHead({ children }: { children: ReactNode }) {
-  const { template, openable } = useContext(TableColumns)
+  const { template, openable, sharedTracks } = useContext(TableColumns)
   return (
-    <div {...stylex.props(styles.tableHead, styles.columns(template))}>
+    <div
+      {...stylex.props(
+        styles.tableHead,
+        styles.columns(template),
+        sharedTracks && styles.sharedRow,
+      )}
+    >
       {children}
       {openable && <span />}
     </div>
@@ -773,10 +819,11 @@ export function TableRow({
   children: ReactNode
   xstyle?: StyleXStyles
 } & Omit<ComponentProps<'button'>, 'className' | 'style' | 'onClick' | 'type' | 'children'>) {
-  const { template, openable, labels, oneLine } = useContext(TableColumns)
+  const { template, openable, labels, oneLine, sharedTracks } = useContext(TableColumns)
   const look = stylex.props(
     styles.row,
     styles.columns(template),
+    sharedTracks && styles.sharedRow,
     height === 'compact' && styles.rowCompact,
     height === 'tight' && styles.rowTight,
     onOpen !== undefined && styles.rowLive,

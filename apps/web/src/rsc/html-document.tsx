@@ -1,8 +1,8 @@
 'use client'
-import type { ReactNode } from 'react'
+import { useEffect, type ReactNode } from 'react'
 import type { SupportedLocale } from '@qualy/i18n-contract'
 import { UiProvider } from '@qualy/ui/provider'
-import { primaryFontLatin } from '@qualy/ui/primary-font'
+import { primaryFontFaces, primaryFontLatin } from '@qualy/ui/primary-font'
 import { DocumentLocaleContext } from '@qualy/web-i18n'
 import { ThemeProvider, useTheme } from '@qualy/web-runtime'
 import { bootstrapMessages } from '@qualy/web-i18n/bootstrap'
@@ -49,9 +49,9 @@ export function HtmlDocument({
         <title>Qualy</title>
         <link rel="icon" type="image/png" sizes="32x32" href="/favicon.png" />
         <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-        {/* Production CSS and its preloaded font have fixed asset URLs. The
-            development stylesheet loads its own font after Vite transforms;
-            a speculative preload can expire before that sheet is ready. */}
+        {/* Faces belong to the document, not the repeatedly updated dev sheet.
+            Optional display preserves the first visible face on slow downloads. */}
+        <style>{primaryFontFaces}</style>
         {import.meta.env.PROD && (
           <link
             rel="preload"
@@ -71,20 +71,12 @@ export function HtmlDocument({
           suppressHydrationWarning
           dangerouslySetInnerHTML={{ __html: EARLY_THEME }}
         />
-        {/* The development server's StyleX rules and the script that keeps
-            them current: what the StyleX plugin writes into an html file,
-            which a document React draws does not have. A build puts the rules in
-            the entry's stylesheet instead. The script disables the link once
-            it holds the rules itself, before this page hydrates. */}
+        {/* Native stylesheet updates retain the previous rules until the new
+            sheet is ready. Production puts the rules in the entry CSS. */}
         {import.meta.env.DEV && (
           <>
-            <link rel="stylesheet" href="/virtual:stylex.css" suppressHydrationWarning />
-            <script
-              type="module"
-              src="/@id/virtual:stylex:runtime"
-              nonce={nonce}
-              suppressHydrationWarning
-            />
+            <link rel="stylesheet" href="/virtual:stylex.css" />
+            <DevelopmentStyles />
           </>
         )}
       </head>
@@ -101,6 +93,15 @@ export function HtmlDocument({
       </body>
     </html>
   )
+}
+
+function DevelopmentStyles() {
+  useEffect(() => {
+    // CSS-only updates change the link's URL. Start after hydration, when
+    // React has claimed that resource, rather than changing its identity first.
+    void import('virtual:stylex:css-only')
+  }, [])
+  return null
 }
 
 function WidgetBridge({ children }: { children: ReactNode }) {
