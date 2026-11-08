@@ -678,7 +678,7 @@ const slowPage = () => {
     release = () => resolve({ default: () => <main data-testid="page-entries" /> })
   })
   const Page = lazy(() => arrived)
-  return { Page, release }
+  return { Page, release, arrived }
 }
 
 describe('the user-detail shell', () => {
@@ -890,6 +890,22 @@ describe('a record\u2019s section', () => {
   })
 })
 
+// The RSC router loads the next document before rendering its client page.
+// Hold that response as well as the client module: a lazy-only fixture has
+// no in-flight router navigation once its synchronous data has committed.
+const slowManifest = (slow: ReturnType<typeof slowPage>) => {
+  let reads = 0
+  return fakeClient({
+    app: {
+      getManifest: () =>
+        Effect.promise(async () => {
+          if (reads++ > 0) await slow.arrived
+          return manifest()
+        }),
+    },
+  })
+}
+
 describe('a press on the rail', () => {
   it('lights the entry at once and marks it busy after a beat, while the open page stays', async () => {
     await page.viewport(1280, 800)
@@ -904,7 +920,7 @@ describe('a press on the rail', () => {
       </>
     )
     await renderScreen({
-      client: fakeClient({ app: { getManifest: () => Effect.succeed(manifest()) } }),
+      client: slowManifest(slow),
       routes: [
         {
           path: '/assessment/batches/:batchId/phases',
@@ -942,7 +958,7 @@ describe('a press on the rail', () => {
   const shellWithSlow = async (slowPath: string) => {
     const slow = slowPage()
     await renderScreen({
-      client: fakeClient({ app: { getManifest: () => Effect.succeed(manifest()) } }),
+      client: slowManifest(slow),
       route: '/organization/users',
       children: (
         <Routes>

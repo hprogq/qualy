@@ -19,6 +19,7 @@ const sweep = stylex.keyframes({
 export const pending = stylex.create({
   // a chip on its way: its own ground, the light crossing it, the word in ink
   chip: {
+    fontWeight: 500,
     color: tokens.foreground,
     backgroundColor: {
       default: tokens.surfaceMuted,

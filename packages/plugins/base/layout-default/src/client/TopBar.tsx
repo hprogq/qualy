@@ -219,7 +219,6 @@ const styles = stylex.create({
       animationIterationCount: 'infinite',
     },
   },
-  linkPending: { color: tokens.foreground },
   wordIdle: {
     '::after': {
       backgroundColor: `color-mix(in oklch, ${tokens.foreground} 26%, transparent)`,
@@ -354,15 +353,13 @@ function BarLink({
     <NavLink
       to={to}
       end={end}
-      onClick={navigation.onClick}
       aria-busy={navigation.pending || undefined}
       data-pending={navigation.pending ? '' : undefined}
       {...(active === undefined ? {} : { 'aria-current': active ? 'page' : undefined })}
       className={({ isActive }) =>
         stylex.props(
           base,
-          open(isActive) ? lit : idle,
-          going(isActive) && styles.linkPending,
+          open(isActive) || navigation.pending ? lit : idle,
           stylex.defaultMarker(),
         ).className ?? ''
       }
@@ -513,7 +510,6 @@ function SectionChip({ to, label }: { to: string; label: ResolvedNavigationItem[
       to={to}
       end
       data-testid="section-chip"
-      onClick={navigation.onClick}
       aria-busy={navigation.pending || undefined}
       data-pending={navigation.pending ? '' : undefined}
       className={({ isActive }) =>

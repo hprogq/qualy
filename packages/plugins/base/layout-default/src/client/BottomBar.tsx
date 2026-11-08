@@ -403,7 +403,6 @@ function BottomLink({
     <NavLink
       to={item.to}
       end={item.exact}
-      onClick={navigation.onClick}
       aria-busy={navigation.pending || undefined}
       data-pending={navigation.pending ? '' : undefined}
       data-indicating={navigation.indicating ? '' : undefined}

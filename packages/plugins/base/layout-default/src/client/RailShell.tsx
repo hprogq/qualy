@@ -139,7 +139,6 @@ function RailEntry({
       <NavLink
         end={exact}
         to={to}
-        onClick={navigation.onClick}
         aria-busy={navigation.pending || undefined}
         data-pending={navigation.pending ? '' : undefined}
         data-indicating={navigation.indicating ? '' : undefined}
@@ -191,7 +190,6 @@ function PersonChip({
       end={exact}
       to={to}
       data-testid="person-chip"
-      onClick={navigation.onClick}
       aria-busy={navigation.pending || undefined}
       data-pending={navigation.pending ? '' : undefined}
       className={({ isActive }) =>
@@ -224,7 +222,6 @@ function PersonEntry({
       <NavLink
         end={exact}
         to={to}
-        onClick={navigation.onClick}
         aria-busy={navigation.pending || undefined}
         className={({ isActive }) =>
           stylex.props(
@@ -260,7 +257,6 @@ function DrawerEntry({
     <NavLink
       end={exact}
       to={to}
-      onClick={navigation.onClick}
       aria-busy={navigation.pending || undefined}
       data-pending={navigation.pending ? '' : undefined}
       className={({ isActive }) =>

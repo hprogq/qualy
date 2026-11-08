@@ -83,7 +83,6 @@ function SideLink({
     <NavLink
       to={to}
       end={exact}
-      onClick={navigation.onClick}
       aria-busy={navigation.pending || undefined}
       className={({ isActive }) =>
         stylex.props(styles.link, isActive || navigation.pending ? styles.lit : styles.idle)
