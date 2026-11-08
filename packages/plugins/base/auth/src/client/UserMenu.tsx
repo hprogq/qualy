@@ -26,6 +26,8 @@ import { authApi } from './api.ts'
 import { useIdentity } from './identity.ts'
 import { LocaleChoicePicker, ThemeChoicePicker } from './identity-bits.tsx'
 import { initialsOf } from './initials.ts'
+import { UserRoundIcon } from 'lucide-react'
+import * as commonMessages from '@qualy/web-i18n/messages'
 import * as m from '#messages'
 
 // The account at the end of the top bar: an avatar and a name, opening a menu
@@ -43,11 +45,19 @@ const styles = stylex.create({
     gap: 4,
   },
   statusNote: {
-    display: 'block',
-    paddingInline: 8,
-    fontSize: '0.75rem',
-    lineHeight: '1rem',
-    color: tokens.mutedForeground,
+    position: 'relative',
+    display: 'inline-flex',
+    flexShrink: 0,
+  },
+  connection: {
+    position: 'absolute',
+    right: 0,
+    bottom: 0,
+    width: 8,
+    height: 8,
+    borderRadius: 9999,
+    backgroundColor: tokens.danger,
+    boxShadow: `0 0 0 2px ${tokens.background}`,
   },
   trigger: {
     display: 'flex',
@@ -224,7 +234,7 @@ export default function UserMenu() {
   const me = useIdentity()
 
   if (me.isPending) return null
-  if (me.isError) {
+  if (me.isError && (me.data === undefined || isAuthenticationError(me.error))) {
     // only an authentication failure means "not signed in"; a network or
     // server fault must not be dressed up as a sign-in prompt
     if (isAuthenticationError(me.error)) {
@@ -235,9 +245,22 @@ export default function UserMenu() {
       )
     }
     return (
-      <span {...stylex.props(styles.statusNote)} role="status">
-        {formatError(me.error)}
-      </span>
+      <button
+        type="button"
+        {...stylex.props(styles.trigger)}
+        title={formatError(me.error)}
+        aria-label={commonMessages.action_retry()}
+        onClick={() => void me.refetch()}
+      >
+        <span {...stylex.props(styles.statusNote)}>
+          <Avatar className={stylex.props(styles.smallFrame).className}>
+            <AvatarFallback>
+              <UserRoundIcon size={16} aria-hidden />
+            </AvatarFallback>
+          </Avatar>
+          <span aria-hidden {...stylex.props(styles.connection)} />
+        </span>
+      </button>
     )
   }
 
@@ -278,11 +301,22 @@ export default function UserMenu() {
         <DropdownMenuTrigger asChild>
           {/* the bar shows who, the menu shows everything else */}
           <button type="button" {...stylex.props(styles.trigger, menuOpen && styles.triggerOpen)}>
-            <Avatar className={stylex.props(styles.smallFrame).className}>
-              <AvatarFallback className={stylex.props(styles.smallFace).className}>
-                {initialsOf(user.displayName)}
-              </AvatarFallback>
-            </Avatar>
+            <span {...stylex.props(styles.statusNote)}>
+              <Avatar className={stylex.props(styles.smallFrame).className}>
+                <AvatarFallback className={stylex.props(styles.smallFace).className}>
+                  {initialsOf(user.displayName)}
+                </AvatarFallback>
+              </Avatar>
+              {me.isError && (
+                <span
+                  data-testid="account-disconnected"
+                  role="img"
+                  aria-label={formatError(me.error)}
+                  title={formatError(me.error)}
+                  {...stylex.props(styles.connection)}
+                />
+              )}
+            </span>
             <span {...stylex.props(styles.triggerName)}>{user.displayName}</span>
           </button>
         </DropdownMenuTrigger>

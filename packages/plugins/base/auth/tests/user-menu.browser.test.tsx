@@ -2,12 +2,56 @@ import UserMenu from '../src/client/UserMenu.tsx'
 import { describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
 import { Effect } from 'effect'
+import { useQueryClient } from '@tanstack/react-query'
 import { apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
 // The account corner's menu keeps its width however long a unit is named:
 // the name gives way at its end, the menu does not grow across the bar.
 
 const LONG = '外国语言文学与跨文化交际研究院国际中文教育与汉语国际推广联合培养中心'
+
+function RefreshIdentity() {
+  const cache = useQueryClient()
+  return <button onClick={() => void cache.refetchQueries()}>Refresh identity</button>
+}
+
+it.each([1280, 390])(
+  'keeps the last account corner on a failed connection at %ipx',
+  async (width) => {
+    await page.viewport(width, 800)
+    let unavailable = false
+    await renderScreen({
+      client: fakeClient({
+        app: { getManifest: emptyManifest() },
+        auth: {
+          getSession: () =>
+            unavailable
+              ? Effect.fail({ _tag: 'HttpClientError', reason: { _tag: 'TransportError' } })
+              : Effect.succeed(session(LONG)),
+        },
+      }),
+      children: (
+        <>
+          <UserMenu />
+          <RefreshIdentity />
+        </>
+      ),
+    })
+    const trigger = page.getByRole('button', { name: /张三/ })
+    await expect.element(trigger).toBeVisible()
+    const before = trigger.element()
+    const beforeWidth = before.getBoundingClientRect().width
+    unavailable = true
+    await page.getByRole('button', { name: 'Refresh identity' }).click()
+    await expect.element(page.getByTestId('account-disconnected')).toBeVisible()
+    expect(trigger.element()).toBe(before)
+    expect(trigger.element().getBoundingClientRect().width).toBe(beforeWidth)
+    unavailable = false
+    await page.getByRole('button', { name: 'Refresh identity' }).click()
+    await expect.poll(() => page.getByTestId('account-disconnected').elements().length).toBe(0)
+    await page.viewport(1280, 800)
+  },
+)
 
 const session = (unit: string) => ({
   user: {
