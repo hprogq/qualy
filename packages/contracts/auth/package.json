@@ -10,6 +10,7 @@
     "./email": "./src/email.ts",
     "./identity-key": "./src/identity-key.ts",
     "./device": "./src/device.ts",
+    "./recent-method": "./src/recent-method.ts",
     "./login": "./src/login.ts",
     "./login-icons": "./src/login-icons.ts",
     "./outbound": "./src/outbound.ts",

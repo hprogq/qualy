@@ -1,6 +1,6 @@
 import LoginPage from '../src/client/LoginPage.tsx'
 import { lazy } from 'react'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { page, userEvent } from 'vitest/browser'
 import { Effect } from 'effect'
 import { TooManyAttempts } from '@qualy/auth-contract/session'
@@ -8,6 +8,10 @@ import { CaptchaRequired } from '@qualy/plugin-captcha/contract'
 import { InvalidCredentials } from '@qualy/plugin-auth-local/api'
 import { registerCaptchaProvider, type CaptchaClientState } from '@qualy/plugin-captcha/client'
 import { addressNow, apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
+
+beforeEach(() => {
+  document.cookie = 'qualy_login_method=; Path=/; Max-Age=0'
+})
 
 // The sign-in screen finds a driver's renderer by the driver's TYPE.
 //
@@ -457,29 +461,33 @@ describe('the ways in, as the page lays them out', () => {
   })
 
   it('marks the way this browser last signed in by', async () => {
-    await renderScreen({
-      client: fakeClient({
-        app: { getManifest: emptyManifest() },
-        auth: {
-          ...anonymous,
-          listLoginMethods: context([
-            password,
-            away('cas', '统一身份认证', { prominence: 'primary' }),
-            away('github', 'GitHub'),
-          ]),
-        },
-      }),
-      route: '/login',
-      storage: { 'qualy:sign-in-method': 'github' },
-      children: <LoginPage />,
-    })
-    await expect.element(page.getByTestId('sign-in-tile')).toHaveAttribute('data-last', 'true')
-    expect(
-      page
-        .getByTestId('sign-in-primary')
-        .elements()
-        .map((key) => key.getAttribute('data-last')),
-    ).toEqual(['false', 'false'])
+    document.cookie = 'qualy_login_method=github; Path=/; SameSite=Lax'
+    try {
+      await renderScreen({
+        client: fakeClient({
+          app: { getManifest: emptyManifest() },
+          auth: {
+            ...anonymous,
+            listLoginMethods: context([
+              password,
+              away('cas', '统一身份认证', { prominence: 'primary' }),
+              away('github', 'GitHub'),
+            ]),
+          },
+        }),
+        route: '/login',
+        children: <LoginPage />,
+      })
+      await expect.element(page.getByTestId('sign-in-tile')).toHaveAttribute('data-last', 'true')
+      expect(
+        page
+          .getByTestId('sign-in-primary')
+          .elements()
+          .map((key) => key.getAttribute('data-last')),
+      ).toEqual(['false', 'false'])
+    } finally {
+      document.cookie = 'qualy_login_method=; Path=/; Max-Age=0'
+    }
   })
 
   it('draws the recommended way by the version for its filled ground', async () => {

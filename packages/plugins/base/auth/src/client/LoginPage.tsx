@@ -37,12 +37,18 @@ import {
   useManifest,
   useRunApi,
   useSessionTransition,
+  useHydrating,
   type SessionDestination,
 } from '@qualy/web-runtime'
 
 import { Skeleton } from '@qualy/ui/skeleton'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { type LoginMethod } from '@qualy/auth-contract/login'
+import {
+  RECENT_LOGIN_METHOD_COOKIE,
+  RECENT_LOGIN_METHOD_MAX_AGE,
+  recentLoginMethod,
+} from '@qualy/auth-contract/recent-method'
 
 import type { Effect } from 'effect'
 import type { ClientOf } from '@qualy/web-runtime/api'
@@ -445,12 +451,9 @@ const styles = stylex.create({
   },
 })
 
-/** where this browser keeps the way in it last took; a convenience, nothing more */
-const LAST = 'qualy:sign-in-method'
-
 const lastUsed = (): string | null => {
   try {
-    return window.localStorage.getItem(LAST)
+    return recentLoginMethod(document.cookie)
   } catch {
     return null
   }
@@ -458,7 +461,7 @@ const lastUsed = (): string | null => {
 
 const markUsed = (code: string) => {
   try {
-    window.localStorage.setItem(LAST, code)
+    document.cookie = `${RECENT_LOGIN_METHOD_COOKIE}=${encodeURIComponent(code)}; Path=/; SameSite=Lax; Max-Age=${RECENT_LOGIN_METHOD_MAX_AGE}${location.protocol === 'https:' ? '; Secure' : ''}`
   } catch {
     // a browser that keeps nothing simply marks nothing
   }
@@ -498,9 +501,11 @@ export interface RenderedSignIn {
   readonly signedIn: boolean | undefined
   /** whether this browser said it is a computer others use, as its cookie says */
   readonly sharedDevice?: boolean
+  readonly recentMethod?: string | null
 }
 
 export default function LoginPage({ rendered }: { rendered?: RenderedSignIn } = {}) {
+  const hydrating = useHydrating()
   const api = useApi(authApi)
   const query = useApiQuery(authApi)
   // whether anybody is signed in is this page's question, and a refusal is
@@ -612,7 +617,7 @@ export default function LoginPage({ rendered }: { rendered?: RenderedSignIn } = 
   const failed = failureFrom(params)
   const [leaving, setLeaving] = useState<LoginMethod | null>(null)
   // read once: the mark says where this visit came in last time, not a moment ago
-  const [lastWay] = useState(lastUsed)
+  const [lastWay] = useState(() => (hydrating ? (rendered?.recentMethod ?? null) : lastUsed()))
 
   // a page restored from the back-forward cache is not still leaving
   useEffect(() => {
