@@ -81,9 +81,11 @@ const styles = stylex.create({
     minWidth: 0,
     flexGrow: 1,
     flexDirection: 'column',
-    gap: 16,
     overflowY: 'auto',
     overflowX: 'hidden',
+  },
+  insetBody: {
+    gap: 16,
     paddingInline: { default: 24, [breakpoints.phone]: 16 },
     paddingBlock: { default: 20, [breakpoints.phone]: 14 },
   },
@@ -203,6 +205,7 @@ export function FlowFrame({
   closeLabel,
   actions,
   testId,
+  bodyInset = true,
   children,
 }: {
   open: boolean
@@ -234,6 +237,8 @@ export function FlowFrame({
   closeLabel: string
   actions: readonly FlowAction[]
   testId?: string
+  /** Tables carry their own cell inset; forms need room around their fields. */
+  bodyInset?: boolean
   children: ReactNode
 }) {
   const phone = useIsBelow(PHONE)
@@ -286,7 +291,7 @@ export function FlowFrame({
               </div>
             )}
           </div>
-          <div {...stylex.props(styles.body)}>{children}</div>
+          <div {...stylex.props(styles.body, bodyInset && styles.insetBody)}>{children}</div>
           <div {...stylex.props(styles.phoneFoot)}>
             {foot}
             {pinned}
@@ -332,7 +337,7 @@ export function FlowFrame({
             <Steps steps={steps} current={step} {...(onStep ? { onSelect: onStep } : {})} />
           </div>
         )}
-        <div {...stylex.props(styles.body)}>{children}</div>
+        <div {...stylex.props(styles.body, bodyInset && styles.insetBody)}>{children}</div>
         <div {...stylex.props(styles.foot)}>
           {foot}
           {onBack !== undefined && backLabel !== undefined && (

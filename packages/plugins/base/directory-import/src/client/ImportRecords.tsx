@@ -128,6 +128,7 @@ export function ImportRecords({
       open={open}
       onClose={onClose}
       testId="import-records"
+      bodyInset={phone}
       title={m.records_title()}
       subtitle={m.records_hint()}
       cancelLabel={m.record_close()}

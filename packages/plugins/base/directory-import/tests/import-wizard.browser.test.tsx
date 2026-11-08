@@ -125,7 +125,7 @@ const open = (over: Record<string, unknown> = {}, onOpenRecord = () => undefined
     }),
     registry: {
       slots: { 'iam/org-node-picker': { 'auth/org-node-picker': CollegePicker } },
-    } as never,
+    },
     children: (
       <ImportWizard
         open
@@ -317,6 +317,52 @@ describe('importing users from a spreadsheet', () => {
 // Past imports this reader may not read: said as that, with no retry that
 // could only be refused again.
 describe('the imports made before', () => {
+  it('sets the desktop table against the panel edges and under its heading', async () => {
+    await renderScreen({
+      client: fakeClient({
+        app: { getManifest: () => Effect.succeed(emptyManifest()) },
+        directory: {
+          listUserImports: () =>
+            Effect.succeed({
+              items: [
+                {
+                  id: IMPORT_ID,
+                  filename: 'students.xlsx',
+                  createdUserCount: 2,
+                  existingUserCount: 0,
+                  createdNodeCount: 1,
+                  standing: { living: 2 },
+                  actorName: 'Fixture reader',
+                  createdAt: '2026-09-19T02:00:00Z',
+                },
+              ],
+              total: 1,
+              page: 1,
+              pageSize: 10,
+            }),
+        },
+      }),
+      children: (
+        <ImportRecords
+          open
+          onClose={() => undefined}
+          onOpen={() => undefined}
+          onImport={() => undefined}
+        />
+      ),
+    })
+    const row = page.getByTestId('import-record')
+    await expect.element(row).toBeVisible()
+    const panel = page.getByTestId('import-records').element()
+    const header = panel.querySelector('h2')!.parentElement!.parentElement!
+    const tableHead = row.element().previousElementSibling!
+    const box = panel.getBoundingClientRect()
+    const table = tableHead.getBoundingClientRect()
+    expect(Math.abs(table.top - header.getBoundingClientRect().bottom)).toBeLessThanOrEqual(1)
+    expect(Math.abs(table.left - box.left)).toBeLessThanOrEqual(1)
+    expect(Math.abs(table.right - box.right)).toBeLessThanOrEqual(1)
+  })
+
   it('says a history the reader may not read as that, with no retry', async () => {
     await renderScreen({
       client: fakeClient({
