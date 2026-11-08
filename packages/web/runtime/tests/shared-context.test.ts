@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { sharedContext } from '../src/shared-context.ts'
 
 // What this guards is a development failure that looks like a mystery: a
@@ -18,5 +18,12 @@ describe('a context that outlives its module', () => {
     expect(sharedContext<string | null>('test/two', null)).not.toBe(
       sharedContext<string | null>('test/three', null),
     )
+  })
+
+  it('does not share providers between server module graphs', async () => {
+    const first = sharedContext('test/server', null)
+    vi.resetModules()
+    const next = await import('../src/shared-context.ts')
+    expect(next.sharedContext('test/server', null)).not.toBe(first)
   })
 })

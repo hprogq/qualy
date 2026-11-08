@@ -142,6 +142,7 @@ export const acquire = (prepared, context) => web.acquire({
     },
   })
   assert.equal(created.status(), 200, 'The proxy must preserve a JSON business write')
+  const createdBatch = (await created.json()) as { batch: { id: string } }
 
   const anonymous = await browser.newContext({ locale: 'en-US' })
   try {
@@ -174,6 +175,14 @@ export const acquire = (prepared, context) => web.acquire({
   const page = await context.newPage()
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
+  page.on('console', (message) => {
+    if (
+      /one blocker|multiple renderers|Hydration failed|preloaded using link preload/.test(
+        message.text(),
+      )
+    )
+      errors.push(message.text())
+  })
   const unsupported: string[] = []
   page.on('response', (response) => {
     if (response.status() === 415) unsupported.push(new URL(response.url()).pathname)
@@ -187,6 +196,18 @@ export const acquire = (prepared, context) => web.acquire({
   await page.getByTestId('local-submit').click()
   await page.waitForURL(`${site}/assessment/batches`)
   await page.waitForLoadState('networkidle')
+  for (const suffix of ['', '/results', '/phases', '/results']) {
+    const href = `/assessment/batches/${createdBatch.batch.id}${suffix}`
+    await page.evaluate((to) => {
+      return (
+        globalThis as unknown as {
+          __reactRouterDataRouter: { navigate: (to: string) => Promise<void> }
+        }
+      ).__reactRouterDataRouter.navigate(to)
+    }, href)
+    await page.waitForURL(`${site}${href}`)
+    await page.waitForLoadState('networkidle')
+  }
   await page.getByRole('button', { name: '系统管理员' }).click()
   const [ended] = await Promise.all([
     page.waitForResponse(
@@ -198,6 +219,12 @@ export const acquire = (prepared, context) => web.acquire({
   ])
   assert.equal(ended.status(), 200)
   await page.waitForURL(`${site}/login`)
+  await page.waitForLoadState('networkidle')
+  assert.equal(
+    await page.locator('[data-last="true"]').count(),
+    1,
+    'The last login method must survive logout as a server-rendered preference',
+  )
   assert.deepEqual(unsupported, [])
   assert.deepEqual(errors, [])
   console.log('dev-web-acceptance: login, JSON writes, concurrent SSR and browser logout passed')

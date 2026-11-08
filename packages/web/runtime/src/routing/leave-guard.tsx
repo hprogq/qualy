@@ -9,7 +9,7 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from 'react'
-import { useBlocker, type BlockerFunction, type Path } from 'react-router'
+import { useBlocker, useNavigate, type BlockerFunction, type Path } from 'react-router'
 import { ConfirmDialog } from '@qualy/ui/admin'
 
 import {
@@ -26,6 +26,24 @@ const Gate = sharedContext<LeaveControls | null>('leave-gate', null)
 /** React Router owns navigation and history for the server-rendered document. */
 export function DataRouterLeaveGuard({ children }: { children: ReactNode }) {
   const [decision] = useState(createLeaveDecision)
+  const navigate = useNavigate()
+  const [binding, setBinding] = useState({ navigate, generation: 0 })
+  if (binding.navigate !== navigate) {
+    setBinding({ navigate, generation: binding.generation + 1 })
+  }
+  // RSC replaces its router facade when routes arrive. useBlocker changes
+  // its key then, but also re-registers the old key before that state update.
+  // Bind only the controller to the public navigation handle's lifetime;
+  // the decision, dialog and editor remain mounted across route updates.
+  return (
+    <LeaveQuestion gate={decision.controls}>
+      <NavigationBlocker key={binding.generation} decision={decision} />
+      {children}
+    </LeaveQuestion>
+  )
+}
+
+function NavigationBlocker({ decision }: { decision: ReturnType<typeof createLeaveDecision> }) {
   const blocking = useRef<readonly LeaveGuard[]>([])
   const shouldBlock = useCallback<BlockerFunction>(
     ({ currentLocation, nextLocation }) => {
@@ -44,7 +62,7 @@ export function DataRouterLeaveGuard({ children }: { children: ReactNode }) {
       decision.clear()
     }
   }, [blocker, decision])
-  return <LeaveQuestion gate={decision.controls}>{children}</LeaveQuestion>
+  return null
 }
 
 function LeaveQuestion({ gate, children }: { gate: LeaveControls; children: ReactNode }) {

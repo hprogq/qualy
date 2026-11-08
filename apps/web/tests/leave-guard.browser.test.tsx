@@ -3,7 +3,14 @@ import { page } from 'vitest/browser'
 import { render } from 'vitest-browser-react'
 import { flushSync } from 'react-dom'
 import { StrictMode, useState } from 'react'
-import { Link, createBrowserRouter, RouterProvider, Outlet, useNavigate } from 'react-router'
+import {
+  Link,
+  createBrowserRouter,
+  createMemoryRouter,
+  RouterProvider,
+  Outlet,
+  useNavigate,
+} from 'react-router'
 import { Effect } from 'effect'
 import { UiProvider } from '@qualy/ui/provider'
 import { DataRouterLeaveGuard, useLeaveGuard, useSessionTransition } from '@qualy/web-runtime'
@@ -16,6 +23,66 @@ import { addressNow, emptyManifest, fakeClient, renderScreen } from './support/h
 // go without the changes.
 
 const saved = vi.fn()
+
+it('keeps one blocker and the same editor when the RSC router facade changes', async () => {
+  const locale = document.documentElement.dataset['locale']
+  document.documentElement.dataset['locale'] = 'zh-CN'
+  const warnings = vi.spyOn(console, 'warn')
+  const router = createMemoryRouter(
+    [
+      {
+        Component: () => (
+          <DataRouterLeaveGuard>
+            <Outlet />
+          </DataRouterLeaveGuard>
+        ),
+        children: [
+          { path: '/editor', element: <Editor saves /> },
+          { path: '/elsewhere', element: <p data-testid="destination">Elsewhere</p> },
+        ],
+      },
+    ],
+    { initialEntries: ['/editor'] },
+  )
+  function Host() {
+    const [revision, change] = useState(0)
+    return (
+      <UiProvider scheme="light">
+        <button onClick={() => change(revision + 1)} data-testid="replace-router">
+          Replace router
+        </button>
+        <RouterProvider router={{ ...router }} />
+      </UiProvider>
+    )
+  }
+  const screen = await render(
+    <StrictMode>
+      <Host />
+    </StrictMode>,
+  )
+  try {
+    await page.getByRole('textbox', { name: 'name' }).fill('Keep this draft')
+    const editor = page.getByRole('textbox', { name: 'name' }).element()
+    for (let index = 0; index < 4; index += 1) {
+      await page.getByTestId('replace-router').click()
+      expect(page.getByRole('textbox', { name: 'name' }).element()).toBe(editor)
+    }
+    await page.getByRole('link', { name: 'elsewhere' }).click()
+    await expect.element(page.getByRole('alertdialog')).toBeVisible()
+    await page.getByRole('button', { name: '保存后离开' }).click()
+    await expect.element(page.getByTestId('destination')).toBeVisible()
+    expect(saved).toHaveBeenCalledWith('Keep this draft')
+    expect(warnings.mock.calls.flat().some((value) => String(value).includes('one blocker'))).toBe(
+      false,
+    )
+  } finally {
+    await screen.unmount()
+    router.dispose()
+    warnings.mockRestore()
+    if (locale === undefined) delete document.documentElement.dataset['locale']
+    else document.documentElement.dataset['locale'] = locale
+  }
+})
 
 function Editor({ saves, saveWorks = true }: { saves: boolean; saveWorks?: boolean }) {
   const [draft, setDraft] = useState('')

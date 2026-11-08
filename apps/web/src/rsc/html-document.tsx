@@ -49,16 +49,18 @@ export function HtmlDocument({
         <title>Qualy</title>
         <link rel="icon" type="image/png" sizes="32x32" href="/favicon.png" />
         <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-        {/* the interface's face, asked for with the html rather than once the
-            stylesheet is read: set in the fallback until it arrived, a line
-            of digits moved sideways in the first frames */}
-        <link
-          rel="preload"
-          as="font"
-          type="font/woff2"
-          href={primaryFontLatin}
-          crossOrigin="anonymous"
-        />
+        {/* Production CSS and its preloaded font have fixed asset URLs. The
+            development stylesheet loads its own font after Vite transforms;
+            a speculative preload can expire before that sheet is ready. */}
+        {import.meta.env.PROD && (
+          <link
+            rel="preload"
+            as="font"
+            type="font/woff2"
+            href={primaryFontLatin}
+            crossOrigin="anonymous"
+          />
+        )}
         <style>
           {
             '@layer theme, base, mantine, components, priority1, priority2, priority3, priority4, priority5;'
