@@ -15,6 +15,48 @@ afterEach(() => {
   delete document.documentElement.dataset['locale']
 })
 
+it('keeps a delivered chrome reference while the next route hands over its own references', async () => {
+  document.documentElement.dataset['locale'] = 'en-US'
+  const surface: SlotSurface = { kind: 'slot', slot: 'probe/context', id: 'probe/context' }
+  const manifest: Manifest = {
+    viewer: 'authenticated',
+    identity: 'probe-reader',
+    layouts: [],
+    pages: [],
+    slots: { [surface.slot]: [{ id: surface.id, order: 0 }] },
+    collections: {},
+    context: {},
+  }
+  const ContextBar = () => <a href="/batches">All assessments</a>
+  const loadSlotReference = vi.fn<LoadSlotReference>(() => new Promise(() => {}))
+  const draw = (delivered: boolean) => (
+    <UiProvider scheme="light">
+      <RuntimeProvider
+        manifest={manifest}
+        loadSlotReference={loadSlotReference}
+        registry={{
+          ...emptyComponentRegistry(),
+          slots: delivered ? { [surface.slot]: { [surface.id]: ContextBar } } : {},
+        }}
+      >
+        <PluginSurface
+          surface={surface}
+          loading={<p>Loading context</p>}
+          missing={null}
+          fallback={() => null}
+        />
+      </RuntimeProvider>
+    </UiProvider>
+  )
+  const screen = await render(draw(true))
+  const link = page.getByRole('link', { name: 'All assessments' })
+  const original = link.element()
+  await screen.rerender(draw(false))
+  expect(link.element()).toBe(original)
+  expect(page.getByText('Loading context').elements()).toHaveLength(0)
+  expect(loadSlotReference).not.toHaveBeenCalled()
+})
+
 it('drops a fetched reference when the document adopts a projection that withdraws it', async () => {
   document.documentElement.dataset['locale'] = 'en-US'
   const surface: SlotSurface = { kind: 'slot', slot: 'probe/picker', id: 'probe/picker' }

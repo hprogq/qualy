@@ -1,10 +1,11 @@
 'use client'
 import { useEffect, type ReactNode } from 'react'
+import { preload } from 'react-dom'
 import type { SupportedLocale } from '@qualy/i18n-contract'
 import { UiProvider } from '@qualy/ui/provider'
 import { primaryFontLatin } from '@qualy/ui/primary-font'
 import { DocumentLocaleContext } from '@qualy/web-i18n'
-import { ThemeProvider, useTheme } from '@qualy/web-runtime'
+import { ThemeProvider, useTheme, useHydrating } from '@qualy/web-runtime'
 import { bootstrapMessages } from '@qualy/web-i18n/bootstrap'
 import { releases } from '../release.ts'
 import { ReleaseRecoveryGate } from '../release-ui.tsx'
@@ -34,6 +35,8 @@ export function HtmlDocument({
   nonce?: string | undefined
   children: ReactNode
 }) {
+  // React owns this resource hint and deduplicates it across client navigations.
+  preload(primaryFontLatin, { as: 'font', type: 'font/woff2', crossOrigin: 'anonymous' })
   return (
     <html
       lang={locale}
@@ -50,23 +53,13 @@ export function HtmlDocument({
         <title>Qualy</title>
         <link rel="icon" type="image/png" sizes="32x32" href="/favicon.png" />
         <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-        <link
-          rel="preload"
-          as="font"
-          type="font/woff2"
-          href={primaryFontLatin}
-          crossOrigin="anonymous"
-        />
         <style>
           {
             '@layer theme, base, mantine, components, priority1, priority2, priority3, priority4, priority5;'
           }
         </style>
-        <script
-          nonce={nonce}
-          suppressHydrationWarning
-          dangerouslySetInnerHTML={{ __html: EARLY_THEME }}
-        />
+        {/* Bootstrap belongs to document creation, never a client route render. */}
+        <ThemeBootstrap nonce={nonce} />
         {/* The official runtime installs the new rules before disabling this
             first-paint sheet. Production uses the built entry stylesheet. */}
         {import.meta.env.DEV && (
@@ -89,6 +82,19 @@ export function HtmlDocument({
       </body>
     </html>
   )
+}
+
+function ThemeBootstrap({ nonce }: { nonce: string | undefined }) {
+  // Keep the hydration-only update local: updating HtmlDocument would interrupt
+  // descendants whose client modules are still arriving during hydration.
+  const hydrating = useHydrating()
+  return hydrating ? (
+    <script
+      nonce={nonce}
+      suppressHydrationWarning
+      dangerouslySetInnerHTML={{ __html: EARLY_THEME }}
+    />
+  ) : null
 }
 
 function DevelopmentStyles() {

@@ -41,6 +41,11 @@ export function SlotReferenceComponent({
   const reference = useQuery({
     queryKey: [QUERY, identityOfManifest(manifest), slot, projectionOf(manifest, slot), id],
     queryFn: ({ signal }) => load(surface, signal),
+    // Delivered references belong to this document too. A new route trims
+    // its own registry; chrome still on screen must not fetch itself again
+    // while that route replaces the outgoing layout.
+    initialData:
+      !allowed || seeded === undefined ? undefined : { kind: 'found' as const, component: seeded },
     enabled: allowed && seeded === undefined,
     staleTime: Infinity,
     retry: false,

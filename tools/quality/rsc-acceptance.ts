@@ -29,6 +29,7 @@ import { acceptEntries } from './rsc-entries.ts'
 import { acceptRouteErrors } from './rsc-route-errors.ts'
 import { acceptAccessPaint } from './rsc-access-paint.ts'
 import { acceptParticipantLoading } from './rsc-participant-loading.ts'
+import { acceptShellHandoff } from './rsc-shell-handoff.ts'
 
 // The server-rendered document, accepted end to end on data of its own
 // (docs/adr/0012-rsc-data-mode.md).
@@ -1139,9 +1140,17 @@ const pageFirstScreen = async (
   const html = await still.newPage()
   // the application's modules never arrive: what is on screen is the server's
   await html.route('**/assets/**/*.js', (route) => route.abort())
-  await html.goto(`${site}${page.address}`)
+  const documentResponse = await html.goto(`${site}${page.address}`)
   await html.waitForLoadState('load')
   const drawn = await painted(html.getByTestId(page.content))
+  if (!drawn) {
+    const folder = path.join(repoRoot, 'node_modules/.cache/rsc-first-screen')
+    fs.mkdirSync(folder, { recursive: true })
+    const name = page.name.replaceAll(/[^a-z0-9]+/gi, '-')
+    fs.writeFileSync(path.join(folder, `${name}-server.html`), await documentResponse!.text())
+    fs.writeFileSync(path.join(folder, `${name}-browser.html`), await html.content())
+    await html.screenshot({ path: path.join(folder, `${name}.png`) })
+  }
   // what was on screen instead, to say why when it was not
   const instead = drawn
     ? []
@@ -1953,6 +1962,7 @@ const checks = async () => {
       where p.batch_id = $1 and u.email = $2`,
     [started, accounts.student.email],
   )
+  await acceptShellHandoff({ context: await signedInContext(browser, 'student'), site, check })
   await acceptParticipantLoading({
     browser,
     context: await signedInContext(browser, 'admin'),
