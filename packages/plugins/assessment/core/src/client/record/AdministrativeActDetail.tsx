@@ -49,13 +49,18 @@ const RECORD_NOT_FOUND = 'ASSESSMENT_ADMINISTRATIVE_RECORD_NOT_FOUND'
 
 const styles = stylex.create({
   column: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 16 },
+  // The detail sits at the edge of the drill viewport, which clips outer shadows.
+  frame: {
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    borderRadius: tokens.radiusLg,
+    backgroundColor: tokens.surface,
+  },
   sheet: {
     display: 'flex',
     flexDirection: 'column',
     gap: 16,
-    borderRadius: tokens.radiusLg,
-    backgroundColor: tokens.surface,
-    boxShadow: tokens.elevation1,
     padding: 20,
   },
   titleRow: { display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: 12 },
@@ -81,9 +86,6 @@ const styles = stylex.create({
     minWidth: 0,
     flexDirection: 'column',
     overflow: 'hidden',
-    borderRadius: tokens.radiusLg,
-    backgroundColor: tokens.surface,
-    boxShadow: tokens.elevation1,
   },
   row: {
     display: 'grid',
@@ -254,7 +256,7 @@ export function AdministrativeActDetail({
     >
       {found !== undefined && (
         <div {...stylex.props(styles.column)} data-testid="administrative-act-detail">
-          <section {...stylex.props(styles.sheet)}>
+          <section {...stylex.props(styles.frame, styles.sheet)}>
             <div {...stylex.props(styles.titleRow)}>
               <h2 {...stylex.props(styles.title)}>{m.record_actTitle()}</h2>
               <span {...stylex.props(styles.by)}>{whenOf(found.createdAt)}</span>
@@ -327,7 +329,7 @@ export function AdministrativeActDetail({
           {found.rows.length > 0 && (
             <>
               <p {...stylex.props(styles.section)}>{m.record_actRows()}</p>
-              <div {...stylex.props(styles.card)} role="table" data-testid="act-rows">
+              <div {...stylex.props(styles.frame, styles.card)} role="table" data-testid="act-rows">
                 <div role="row" {...stylex.props(styles.row, styles.headRow)}>
                   <span role="columnheader">{businessNo}</span>
                   <span role="columnheader">{m.record_import_columnName()}</span>
