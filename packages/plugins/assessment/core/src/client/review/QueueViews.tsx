@@ -94,6 +94,7 @@ const PAGE_FOOT = 24
 
 const styles = stylex.create({
   room: { display: 'flex', minWidth: 0, flexDirection: 'column' },
+  fillRoom: { display: 'flex', flexDirection: 'column', flexGrow: 1 },
   // the gap is SPLIT_GAP, which the width of the filings is reckoned with
   split: (template: string) => ({
     display: 'grid',
@@ -101,6 +102,7 @@ const styles = stylex.create({
     gap: 16,
     gridTemplateColumns: template,
   }),
+  projectSplit: { flexGrow: 1 },
   // the list stands while its picked one's filings are read and paged; how
   // tall it may grow is measured, so its foot is never below the window's
   masterSeat: {
@@ -111,6 +113,16 @@ const styles = stylex.create({
     flexDirection: 'column',
   },
   paneSeat: { minWidth: 0 },
+  projectPaneSeat: { alignSelf: 'stretch', display: 'grid' },
+  projectEnd: {
+    margin: 0,
+    marginBlockStart: 'auto',
+    paddingBlock: 16,
+    paddingInline: 16,
+    textAlign: 'center',
+    fontSize: 12,
+    color: tokens.mutedForeground,
+  },
   master: { minHeight: 0, flexShrink: 1 },
   masterHead: {
     display: 'flex',
@@ -597,11 +609,13 @@ function QueueRoom({
   layout,
   seat,
   width,
+  fill = false,
   children,
 }: {
   layout: Layout | null
   seat: (node: HTMLDivElement | null) => void
   width: number | null
+  fill?: boolean
   children: ReactNode
 }) {
   return (
@@ -609,7 +623,7 @@ function QueueRoom({
       ref={seat}
       data-testid="queue-layout"
       data-layout={layout ?? ''}
-      {...stylex.props(styles.room)}
+      {...stylex.props(styles.room, fill && styles.fillRoom)}
     >
       {width === null ? null : children}
     </div>
@@ -688,14 +702,18 @@ function Split({
   const [seat, setSeat] = useState<HTMLDivElement | null>(null)
   useFitsTheWindow(beside ? seat : null)
   if (beside) {
+    const project = grouping === 'item'
     return (
       <div
-        {...stylex.props(styles.split(`${String(masterWidthOf(room, grouping))}px minmax(0, 1fr)`))}
+        {...stylex.props(
+          styles.split(`${String(masterWidthOf(room, grouping))}px minmax(0, 1fr)`),
+          project && styles.projectSplit,
+        )}
       >
         <div ref={setSeat} data-testid="queue-master-seat" {...stylex.props(styles.masterSeat)}>
           {master}
         </div>
-        <div {...stylex.props(styles.paneSeat)}>{pane}</div>
+        <div {...stylex.props(styles.paneSeat, project && styles.projectPaneSeat)}>{pane}</div>
       </div>
     )
   }
@@ -1260,10 +1278,10 @@ const bands = stylex.create({
 })
 
 /** the queue, in each band's shape while a server's html is taken over, else as it is */
-export function QueueBands({ children }: { children: ReactNode }) {
+export function QueueBands({ children, fill = false }: { children: ReactNode; fill?: boolean }) {
   const hydrating = useHydrating()
   return (
-    <div {...stylex.props(bands.seat)}>
+    <div {...stylex.props(bands.seat, fill && styles.fillRoom)}>
       {hydrating
         ? BANDS.map(({ band, room }) => (
             <div key={band} {...stylex.props(bands[band])}>
@@ -1519,12 +1537,15 @@ export function ItemQueue({
             onOpen={(row) => onOpen(row, run)}
           />
         )}
+        {beside && open.count === 1 && open.rows.length === 1 && (
+          <p {...stylex.props(styles.projectEnd)}>{m.review_projectEnd()}</p>
+        )}
       </Card>
     )
   }
 
   return (
-    <QueueRoom layout={layout} seat={seat} width={width}>
+    <QueueRoom layout={layout} seat={seat} width={width} fill={beside}>
       {layout === 'single' || layout === 'stack' ? (
         pane
       ) : (
@@ -2149,6 +2170,7 @@ function SpreadRows({
  */
 export function QueueSkeleton({ grouping }: { grouping?: 'item' | 'person' }) {
   const { seat, width, room, beside, stacked } = useQueueRoom()
+  const fill = beside && grouping === 'item'
   const paneBones = (strip: boolean) => (
     <Card>
       {strip && (
@@ -2186,16 +2208,19 @@ export function QueueSkeleton({ grouping }: { grouping?: 'item' | 'person' }) {
     </Card>
   )
   return (
-    <div aria-hidden>
-      <QueueRoom layout={null} seat={seat} width={width}>
+    <div aria-hidden {...stylex.props(fill && styles.fillRoom)}>
+      <QueueRoom layout={null} seat={seat} width={width} fill={fill}>
         {beside ? (
           <div
             {...stylex.props(
               styles.split(`${String(masterWidthOf(room, grouping))}px minmax(0, 1fr)`),
+              fill && styles.projectSplit,
             )}
           >
             <div {...stylex.props(styles.masterSeat)}>{masterBones}</div>
-            {paneBones(false)}
+            <div {...stylex.props(styles.paneSeat, fill && styles.projectPaneSeat)}>
+              {paneBones(false)}
+            </div>
           </div>
         ) : stacked ? (
           paneBones(true)

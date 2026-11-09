@@ -496,6 +496,14 @@ describe('a question or a person of a few, open in a longer queue', () => {
       // one filing is its own way in; a run over the question is worth a key
       // only where it holds more
       expect(pane.getByTestId('queue-run').elements()).toHaveLength(count > 1 ? 1 : 0)
+      const card = pane.element()
+      const main = card.closest('main')!
+      await expect
+        .poll(() => main.getBoundingClientRect().bottom - card.getBoundingClientRect().bottom)
+        .toBeCloseTo(24, 0)
+      expect(main.scrollHeight).toBeLessThanOrEqual(main.clientHeight + 1)
+      const index = page.getByTestId('queue-master-seat').element()
+      expect(index.getBoundingClientRect().bottom).toBeLessThan(card.getBoundingClientRect().bottom)
     })
   }
 

@@ -464,7 +464,7 @@ function QueueBody({
       retryLabel={commonMessages.action_retry()}
       onRetry={() => void queue.inbox.refetch()}
       skeleton={
-        <QueueBands>
+        <QueueBands fill={view === 'item'}>
           <QueueSkeleton grouping={view === 'item' ? 'item' : 'person'} />
         </QueueBands>
       }
@@ -599,7 +599,7 @@ function QueueBody({
             {m.review_matchesNone()}
           </p>
         ) : view === 'item' ? (
-          <QueueBands>
+          <QueueBands fill>
             <ItemQueue
               rows={rows}
               serverPage={data}

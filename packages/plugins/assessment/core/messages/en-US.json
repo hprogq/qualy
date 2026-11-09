@@ -927,6 +927,7 @@
   "review_searchPlaceholder": "Search name, ID, or submission content",
   "review_matchesNone": "No pending submissions match these filters",
   "review_groupCount": "{count} pending",
+  "review_projectEnd": "No more submissions to review for this project",
   "review_columnParticipant": "Participant",
   "review_columnSummary": "Summary",
   "review_columnState": "Status",
