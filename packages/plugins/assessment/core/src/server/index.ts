@@ -342,6 +342,7 @@ export interface TimelineStage extends TimelineEntry {
    */
   readonly reviewing: boolean
   readonly submitting: boolean
+  readonly recording: boolean
   readonly scope: {
     readonly items: readonly { readonly id: string; readonly title: string }[] | null
     readonly participantsLimited: boolean
@@ -5422,6 +5423,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
           ...stage,
           reviewing: profile.includes('assessment.review.process'),
           submitting: profile.includes('assessment.entry.submit'),
+          recording: profile.includes('assessment.entry.record'),
           scope: {
             items:
               named === undefined
@@ -7347,6 +7349,7 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
             },
             reviewing: entry.reviewing,
             submitting: entry.submitting,
+            recording: entry.recording,
             scope: entry.scope,
           })),
         }

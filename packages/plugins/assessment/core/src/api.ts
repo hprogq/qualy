@@ -500,6 +500,8 @@ const timelineEntry = Schema.Struct({
   reviewing: Schema.Boolean,
   /** Whether the stage profile opens submission, before item and participant scopes. */
   submitting: Schema.optionalKey(Schema.Boolean),
+  /** Whether the stage profile opens administrative recording, before scopes. */
+  recording: Schema.optionalKey(Schema.Boolean),
   scope: timelineScope,
 })
 

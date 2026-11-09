@@ -4,8 +4,10 @@ import { Route, Routes } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { reasonText } from '../src/client/record/import/issues.ts'
 import { page, userEvent } from 'vitest/browser'
-import { Effect } from 'effect'
+import { Effect, Stream } from 'effect'
 import { registerUploadDriver } from '@qualy/plugin-storage/client'
+import { formatDateTime } from '@qualy/web-i18n'
+import { yearOf } from '../src/client/batch/zone.ts'
 import { addressNow, apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 import * as m from '#messages'
 
@@ -899,6 +901,73 @@ describe('importing a workbook of administrative records', () => {
 // each. Across a wide screen a record, an act and an import are each one
 // line, under a head of as many columns; on a phone they stay a card.
 describe('the record book and its histories across a screen', () => {
+  it('shows the recording deadline and refreshes the dock on a phase event', async () => {
+    await page.viewport(1440, 900)
+    const at = Date.now()
+    const time = (offset: number) => new Date(at + offset * 3_600_000).toISOString()
+    let closed = false
+    let wake = () => {}
+    const phaseEvent = new Promise<void>((resolve) => (wake = resolve))
+    const stage = (
+      displayName: string,
+      recording: boolean,
+      status: 'current' | 'ended' | 'future',
+      offset: number,
+    ) => ({
+      phaseId: displayName,
+      displayName,
+      entryNote: '',
+      description: '',
+      status,
+      reviewing: !recording,
+      recording,
+      scope: { items: null, participantsLimited: false, includesReader: null },
+      entry: { kind: status === 'future' ? 'planned' : 'entered', at: time(offset) },
+    })
+    await openInShell(base, {
+      getTimeline: () =>
+        Effect.succeed({
+          timeline: [
+            stage('行政初核', true, closed ? 'ended' : 'current', -12),
+            stage('行政复核', true, closed ? 'ended' : 'future', closed ? -1 : 1),
+            stage('公示期', false, closed ? 'current' : 'future', closed ? 0 : 12),
+          ],
+        }),
+      watchBatch: () =>
+        Effect.succeed(
+          Stream.concat(
+            Stream.fromEffect(
+              Effect.promise(() => phaseEvent).pipe(Effect.as({ kind: 'phase-changed' as const })),
+            ),
+            Stream.never,
+          ),
+        ),
+    })
+    const dock = page.getByTestId('record-dock')
+    await expect.element(dock).toHaveAttribute('data-window', 'closes')
+    const date = (offset: number) => {
+      const zone = 'Asia/Shanghai'
+      const instant = Date.parse(time(offset))
+      const format =
+        yearOf(instant, zone) === yearOf(at, zone) ? 'month-day-clock' : 'year-month-day-clock'
+      return formatDateTime(new Date(instant), 'zh-CN', format, zone)
+    }
+    expect(dock.element().textContent).toContain(m.record_windowCloses({ when: date(12) }))
+    expect(dock.element().textContent).not.toContain(date(-12))
+    expect(dock.element().querySelector('[data-slot="deadline-progress"]')).not.toBeNull()
+    expect(
+      dock
+        .element()
+        .querySelector('[data-slot="deadline-countdown"] [aria-label]')
+        ?.getAttribute('aria-label'),
+    ).toMatch(/11|12/)
+    expect(dock.element().getBoundingClientRect().bottom).toBeCloseTo(window.innerHeight - 48, 0)
+    closed = true
+    wake()
+    await expect.element(dock).toHaveAttribute('data-window', 'ended')
+    expect(dock.element().querySelector('[data-slot="deadline-countdown"]')).toBeNull()
+  })
+
   const visible = (element: Element) =>
     [...element.children].filter((child) => getComputedStyle(child).display !== 'none')
   /** how far apart, top to bottom, the middles of a row's visible cells are */

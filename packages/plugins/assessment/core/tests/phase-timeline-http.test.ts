@@ -53,7 +53,11 @@ describe.runIf(postgresAvailable)('a stage kept to some people, as served', () =
                 { id: plan[0]!.id, phaseKey: plan[0]!.phaseKey, displayName: 'entry' },
                 phase({
                   phaseKey: 'supplement',
-                  permissionProfile: ['assessment.entry.create', 'assessment.entry.submit'],
+                  permissionProfile: [
+                    'assessment.entry.create',
+                    'assessment.entry.submit',
+                    'assessment.entry.record',
+                  ],
                   participantScope: [g.p1],
                 }),
                 { id: plan[1]!.id, phaseKey: plan[1]!.phaseKey, displayName: 'archive' },
@@ -128,7 +132,7 @@ describe.runIf(postgresAvailable)('a stage kept to some people, as served', () =
   })
 
   /** what each stage of the timeline says about its reader, as `token` reads it */
-  const readerOf = async (token: string) => {
+  const timelineOf = async (token: string) => {
     const response = await web.handler(
       new Request(`http://qualy.test${QUALY_API_PREFIX}/assessment/batches/${batchId}/timeline`, {
         headers: { cookie: `${COOKIE}=${token}` },
@@ -138,11 +142,21 @@ describe.runIf(postgresAvailable)('a stage kept to some people, as served', () =
     const body = (await response.json()) as {
       timeline: readonly {
         displayName: string
+        recording: boolean
         scope: { participantsLimited: boolean; includesReader: boolean | null }
       }[]
     }
-    return body.timeline.map((stage) => [stage.displayName, stage.scope.includesReader])
+    return body.timeline
   }
+  const readerOf = async (token: string) =>
+    (await timelineOf(token)).map((stage) => [stage.displayName, stage.scope.includesReader])
+
+  it('reports the recording profile of each stage without exposing its permission list', async () => {
+    const timeline = await timelineOf(tokens.office)
+    expect(timeline.find((stage) => stage.displayName === 'supplement')?.recording).toBe(true)
+    expect(timeline.find((stage) => stage.displayName === 'archive')?.recording).toBe(false)
+    expect(timeline.every((stage) => !('permissionProfile' in stage))).toBe(true)
+  })
 
   it('tells the participant the stage admits that it admits them', async () => {
     expect(await readerOf(tokens.admitted)).toEqual([

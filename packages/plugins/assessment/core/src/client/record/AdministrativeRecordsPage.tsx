@@ -33,6 +33,7 @@ import { AdministrativeActHistory } from './AdministrativeActHistory.tsx'
 import { AdministrativeEntryList } from './AdministrativeEntryList.tsx'
 import { ManualRecordView } from './ManualRecordView.tsx'
 import { AdministrativeEntrySheet } from './AdministrativeEntrySheet.tsx'
+import { RecordDock } from './RecordDock.tsx'
 import { AdministrativeImportView } from './import/AdministrativeImportView.tsx'
 import { AdministrativeImportHistory } from './import/AdministrativeImportHistory.tsx'
 import { AdministrativeImportDetail } from './import/AdministrativeImportDetail.tsx'
@@ -225,6 +226,7 @@ export default function AdministrativeRecordsPage() {
       title={m.record_tab()}
       description={m.record_hint()}
       banner={top ? 'section' : 'open'}
+      flushFoot
     >
       {(batch) => (
         <RecordsBody
@@ -446,6 +448,7 @@ function RecordsBody({
           </div>
         )}
       </Drill>
+      <RecordDock batchId={batch.id} />
       {/* An errand, opened over the book. Closing it leaves the reader on the
           tab they started from, which is the whole difference between this
           and a sub-screen: nothing to navigate back out of. */}
