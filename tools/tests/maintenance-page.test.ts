@@ -86,7 +86,8 @@ describe('the maintenance page', () => {
     const listed = /var locales = (\[[^\]]*\])/.exec(page)?.[1]
     expect(JSON.parse(listed!.replaceAll("'", '"'))).toEqual([...supportedLocales])
     // what the page's own script decides, run against a browser's answers
-    const script = /<script>([\s\S]*?)<\/script>/.exec(page)?.[1] ?? ''
+    const script = /<script(?:\s[^>]*)?>([\s\S]*?)<\/script\s*>/i.exec(page)?.[1]
+    if (script === undefined) throw new Error('The maintenance page has no bootstrap script')
     const decided = (cookie: string, languages: readonly string[]) => {
       const root = {
         lang: '',

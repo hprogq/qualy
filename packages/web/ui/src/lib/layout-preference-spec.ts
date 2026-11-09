@@ -26,56 +26,82 @@ declare global {
   }
 }
 
-// Kept as data so the parser-blocking script and the client use the same
-// fields, defaults, bounds and storage version without an extra request.
-export const earlyLayoutPreferences = `
-  root.classList.add(${JSON.stringify(stylex.props(layoutPreferenceRoot).className)})
-  var spec = ${JSON.stringify(layoutPreferenceSpec)}
-  var storageKey = ${JSON.stringify(layoutPreferenceKey)}
-  var version = ${layoutPreferenceVersion}
-  var stored = null
-  try { stored = localStorage.getItem(storageKey) } catch (error) {}
-  var source = {}
+// This function is both called by browser fixtures and inlined in the
+// document's parser-blocking script. It must not close over module bindings.
+function applyLayoutPreferences(
+  root: HTMLElement,
+  marker: string,
+  spec: typeof layoutPreferenceSpec,
+  storageKey: string,
+  version: number,
+) {
+  root.classList.add(marker)
+  let stored = null
+  try {
+    stored = localStorage.getItem(storageKey)
+  } catch {}
+  let source: Partial<Record<LayoutPreference, unknown>> = {}
   if (stored !== null) {
     try {
-      var decoded = JSON.parse(stored)
+      const decoded = JSON.parse(stored)
       if (decoded && decoded.version === version && decoded.values) source = decoded.values
-    } catch (error) {}
+    } catch {}
   }
   // One-time import of the previous release's four layout cookies.
-  var legacy = []
+  const legacy: string[] = []
   if (stored === null) {
     try {
-      document.cookie.split(';').forEach(function (part) {
-        var pair = part.trim().split('=')
-        if (pair[0].indexOf('qualy-layout-') !== 0) return
-        var key = pair[0].slice('qualy-layout-'.length)
-        if (!Object.prototype.hasOwnProperty.call(spec, key)) return
-        legacy.push(pair[0])
-        if (!/^\\d{1,4}$/.test(pair[1] || '')) return
-        source[key] = typeof spec[key].initial === 'boolean' ? pair[1] === '1' : Number(pair[1])
-      })
-    } catch (error) {}
+      for (const part of document.cookie.split(';')) {
+        const [name = '', value = ''] = part.trim().split('=')
+        if (!name.startsWith('qualy-layout-')) continue
+        const key = name.slice('qualy-layout-'.length) as LayoutPreference
+        if (!Object.prototype.hasOwnProperty.call(spec, key)) continue
+        legacy.push(name)
+        if (!/^\d{1,4}$/.test(value)) continue
+        source[key] = typeof spec[key].initial === 'boolean' ? value === '1' : Number(value)
+      }
+    } catch {}
   }
-  var values = {}
-  var folded = []
-  Object.keys(spec).forEach(function (key) {
-    var rule = spec[key]
-    var value = source[key]
+  const values: Record<string, boolean | number> = {}
+  const folded: string[] = []
+  for (const key of Object.keys(spec) as LayoutPreference[]) {
+    const rule = spec[key]
+    const value = source[key]
     if (typeof rule.initial === 'boolean') {
       values[key] = typeof value === 'boolean' ? value : rule.initial
       if (values[key]) folded.push(key)
-    } else {
-      values[key] = Number.isInteger(value) ? Math.min(rule.max, Math.max(rule.min, value)) : rule.initial
-      root.style.setProperty('--q-' + key, values[key] + 'px')
+    } else if ('min' in rule) {
+      const width =
+        typeof value === 'number' && Number.isInteger(value)
+          ? Math.min(rule.max, Math.max(rule.min, value))
+          : rule.initial
+      values[key] = width
+      root.style.setProperty('--q-' + key, width + 'px')
     }
-  })
+  }
   root.setAttribute('data-ui-folded', folded.join(' '))
-  window.__QUALY_UI_BOOTSTRAP__ = values
+  window.__QUALY_UI_BOOTSTRAP__ = values as unknown as LayoutPreferences
   if (legacy.length > 0) {
     try {
-      localStorage.setItem(storageKey, JSON.stringify({ version: version, values: values }))
-      legacy.forEach(function (name) { document.cookie = name + '=; Path=/; Max-Age=0; SameSite=Lax' })
-    } catch (error) {}
+      localStorage.setItem(storageKey, JSON.stringify({ version, values }))
+      for (const name of legacy) document.cookie = name + '=; Path=/; Max-Age=0; SameSite=Lax'
+    } catch {}
   }
-`
+}
+
+const marker = stylex.props(layoutPreferenceRoot).className ?? ''
+const bootstrapArguments = [
+  marker,
+  layoutPreferenceSpec,
+  layoutPreferenceKey,
+  layoutPreferenceVersion,
+] as const
+
+export function bootLayoutPreferences(root: HTMLElement) {
+  applyLayoutPreferences(root, ...bootstrapArguments)
+}
+
+// Only application-owned values are emitted, and none can end the HTML
+// script element. The document supplies its root as the first argument.
+const bootstrapJson = JSON.stringify(bootstrapArguments).replaceAll('<', '\\u003c')
+export const earlyLayoutPreferences = `(${applyLayoutPreferences.toString()})(root, ...${bootstrapJson})`

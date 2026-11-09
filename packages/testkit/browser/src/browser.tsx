@@ -26,7 +26,7 @@ import {
 } from '@qualy/web-runtime'
 import { UiProvider } from '@qualy/ui/provider'
 import {
-  earlyLayoutPreferences,
+  bootLayoutPreferences,
   layoutPreferenceKey,
   layoutPreferenceVersion,
   type LayoutPreferences,
@@ -176,10 +176,7 @@ export function bootTestLayoutPreferences(values: Partial<LayoutPreferences> = {
 }
 
 export function runTestLayoutBootstrap() {
-  const script = document.createElement('script')
-  script.textContent = `(() => { var root = document.documentElement; ${earlyLayoutPreferences} })()`
-  document.head.append(script)
-  script.remove()
+  bootLayoutPreferences(document.documentElement)
 }
 
 export function renderScreen({
