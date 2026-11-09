@@ -13,6 +13,7 @@ import { QUALY_API_PREFIX } from '@qualy/api-kit'
 import { qualyEnvironmentModules, qualyRelease } from '@qualy/web-build/vite'
 import { qualyChunkGraph } from '../../packages/build/web/src/chunk-graph.ts'
 import { qualyChunkIdentity } from '../../packages/build/web/src/chunk-identity.ts'
+import { opensWithClientDirective } from '../../packages/build/web/src/client-directive.ts'
 import { chunkPools } from './chunk-pools.ts'
 import {
   DOCUMENT_HOST_MODULES,
@@ -24,9 +25,6 @@ import { qualyMessages } from '@qualy/message-build/vite'
 
 const stylexUnplugin =
   stylexUnpluginModule.default as unknown as (typeof stylexUnpluginModule)['default']['default']
-
-/** whether a module opens with the client directive, past its comments */
-const CLIENT_DIRECTIVE = /^(?:\s|\/\/[^\n]*\n|\/\*[\s\S]*?\*\/)*(['"])use client\1/
 
 /**
  * A transform that, in the server component environment, leaves client
@@ -53,7 +51,7 @@ const serverModulesInServerComponents = (plugin: PluginOption): Plugin[] =>
         code: string,
         ...rest: unknown[]
       ) {
-        if (this.environment?.name === 'rsc' && CLIENT_DIRECTIVE.test(code)) return null
+        if (this.environment?.name === 'rsc' && opensWithClientDirective(code)) return null
         return (handler as (...args: unknown[]) => unknown).call(this, code, ...rest)
       }
       const clientOutput = (hook: Plugin['generateBundle'] | Plugin['writeBundle']) => {
