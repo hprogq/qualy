@@ -88,6 +88,37 @@ const assetFileNames = (info: { readonly names?: readonly string[] }) =>
 const apiOrigin =
   process.env['QUALY_RENDER_API_ORIGIN'] ?? `http://127.0.0.1:${process.env['PORT'] ?? '3000'}`
 
+/** Name slow renders even when Vite has not reached the render entry yet. */
+const slowDevelopmentRender: Plugin = {
+  name: 'qualy:slow-development-render',
+  apply: 'serve',
+  configureServer(server) {
+    server.middlewares.use((request, response, next) => {
+      const pathname = request.url?.split('?', 1)[0] ?? ''
+      const flight = pathname.endsWith('.rsc') || pathname === '/.manifest'
+      const document = request.headers.accept?.includes('text/html') === true
+      if (!flight && !document) return next()
+      const kind = flight ? 'RSC navigation' : 'HTML document'
+      const started = performance.now()
+      let reported = false
+      const timer = setTimeout(() => {
+        if (response.headersSent) return
+        reported = true
+        // Paths and search parameters may name a person or carry a ticket.
+        server.config.logger.info(`still waiting for ${kind} response headers (2.5s)`)
+      }, 2_500)
+      response.once('close', () => {
+        clearTimeout(timer)
+        if (reported)
+          server.config.logger.info(
+            `${kind} ${response.writableFinished ? `answered ${response.statusCode}` : 'cancelled'} after ${Math.round(performance.now() - started)}ms`,
+          )
+      })
+      next()
+    })
+  },
+}
+
 export default defineConfig(({ command, mode }) => ({
   envDir: false,
   cacheDir: 'node_modules/.vite-rsc',
@@ -95,6 +126,7 @@ export default defineConfig(({ command, mode }) => ({
     qualyRelease(),
     qualyEnvironmentModules(),
     qualyMessages({ documentLocaleModule: '@qualy/web-rsc/document-locale' }),
+    slowDevelopmentRender,
     // StyleX wherever components are drawn: a client component in the html
     // renderer and the page, a server component in its own environment
     ...serverModulesInServerComponents(

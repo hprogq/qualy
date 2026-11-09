@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { createHash } from 'node:crypto'
-import { normalizePath, type Plugin, type ViteDevServer } from 'vite'
+import { normalizePath, type EnvironmentModuleNode, type Plugin, type ViteDevServer } from 'vite'
 import { productRootFor, readManifest } from '@qualy/assembly'
 import { manifestPath as defaultManifestPath } from './manifest.ts'
 import {
@@ -181,6 +181,7 @@ export const qualyMessages = (options: QualyMessagesOptions = {}): Plugin => {
       server.watcher.add(watched.map(({ directory }) => directory))
       let dirty = false
       let backendDirty = false
+      let sourceDirty = false
       let running = false
       let closed = false
       let timer: ReturnType<typeof setTimeout> | undefined
@@ -189,16 +190,24 @@ export const qualyMessages = (options: QualyMessagesOptions = {}): Plugin => {
         if (closed || running || !dirty) return
         dirty = false
         running = true
+        const started = performance.now()
+        if (sourceDirty) server.config.logger.info('compiling messages')
+        sourceDirty = false
         try {
           const { compiled } = await compile('locale-modules')
           if (compiled && !closed) {
             for (const environment of Object.values(server.environments)) {
-              for (const file of environment.moduleGraph.fileToModulesMap.keys()) {
-                if (file.startsWith(`${outputDir}/`)) environment.moduleGraph.onFileChange(file)
+              const seen = new Set<EnvironmentModuleNode>()
+              for (const [file, modules] of environment.moduleGraph.fileToModulesMap) {
+                if (!file.startsWith(`${outputDir}/`)) continue
+                for (const module of modules) environment.moduleGraph.invalidateModule(module, seen)
               }
-              if (environment.name !== 'client') environment.hot.send({ type: 'full-reload' })
+              if (environment.name !== 'client' && seen.size > 0)
+                environment.hot.send({ type: 'full-reload' })
             }
-            server.config.logger.info('messages updated; reloading the page')
+            server.config.logger.info(
+              `messages updated in ${Math.round(performance.now() - started)}ms; reloading the page and server render modules`,
+            )
             server.environments.client?.hot.send({ type: 'full-reload', path: '*' })
           }
         } catch (error) {
@@ -224,7 +233,10 @@ export const qualyMessages = (options: QualyMessagesOptions = {}): Plugin => {
         if (!file.endsWith('.json')) return
         const source = watched.find(({ directory }) => file.startsWith(`${directory}${path.sep}`))
         if (!source) return
+        sourceDirty = true
         if (supervised && source.backend) {
+          if (!backendDirty)
+            server.config.logger.info('message changes are waiting for the backend')
           backendDirty = true
           return
         }

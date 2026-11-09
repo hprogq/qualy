@@ -751,7 +751,15 @@ export const acquire = (prepared, context) => web.acquire({
       await emergency
         .locator('a')
         .first()
-        .evaluate('link => getComputedStyle(link).borderTopWidth'),
+        .evaluate((link) =>
+          (
+            globalThis as unknown as {
+              getComputedStyle(element: unknown): { getPropertyValue(name: string): string }
+            }
+          )
+            .getComputedStyle(link)
+            .getPropertyValue('border-top-width'),
+        ),
       '1px',
     )
   } finally {

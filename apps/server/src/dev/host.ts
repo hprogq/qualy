@@ -383,6 +383,7 @@ const resyncWatcher = async (): Promise<void> => {
 const stageWorld = async (kind: 'backend' | 'session'): Promise<void> => {
   if (stopRequested) return
   const backend = own(forkBackend(env))
+  const preparingSince = performance.now()
   candidate = { backend, services: new Map(), committed: false }
   let prepared: Prepared
   try {
@@ -422,12 +423,17 @@ const stageWorld = async (kind: 'backend' | 'session'): Promise<void> => {
   }
 
   candidate.committed = true
+  const switchingSince = performance.now()
   if (wholeSession) await retireSession()
   else {
+    say(
+      `${backend.name} prepared in ${Math.round(switchingSince - preparingSince)}ms; handing over the API`,
+    )
     tellBackendStatus('switching')
     await retireBackend()
   }
 
+  const bootingSince = performance.now()
   send(backend, { protocol: PROTOCOL, type: 'accept' })
   active.backend = backend
   // adopted whatever comes of it: the topology and the plugin roots are what
@@ -463,9 +469,15 @@ const stageWorld = async (kind: 'backend' | 'session'): Promise<void> => {
     await acceptServices(candidate.services)
   }
   candidate = null
-  await resyncWatcher()
-  say(`${backend.name} is serving`)
+  say(
+    wholeSession
+      ? `${backend.name} is serving`
+      : `${backend.name} is serving (drain ${Math.round(bootingSince - switchingSince)}ms, boot ${Math.round(performance.now() - bootingSince)}ms)`,
+  )
+  // The port has answered and the new child is active. Warming the file
+  // watcher again is not a reason to keep rendering requests queued.
   tellBackendStatus('ready')
+  await resyncWatcher()
 }
 
 /** one development service, replaced under a backend that never stops */
