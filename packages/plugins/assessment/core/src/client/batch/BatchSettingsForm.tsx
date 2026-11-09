@@ -23,8 +23,6 @@ import { Button } from '@qualy/ui/button'
 import { DateRangePicker } from '@qualy/ui/date-range-picker'
 import { FieldGroup } from '@qualy/ui/field'
 import { Input } from '@qualy/ui/input'
-import { NativeSelect } from '@qualy/ui/native-select'
-import { useHydrating } from '@qualy/web-runtime/hydrating'
 import { Badge } from '@qualy/ui/badge'
 import { Textarea } from '@qualy/ui/textarea'
 import { toast } from '@qualy/ui/toast'
@@ -32,6 +30,7 @@ import { assessmentApi } from '../api.ts'
 import { DEFAULT_REVIEW_REASONS } from '../../review/reasons.ts'
 
 import { planRefusalWords, refusalsOf } from '../refusals.ts'
+import { BatchTimezoneField } from './BatchTimezoneField.tsx'
 import { ReopenDialog } from './ReopenDialog.tsx'
 import { type BatchDto } from '../phase/model.ts'
 import { dayAfter, lastDay } from '../entry/model.ts'
@@ -418,43 +417,6 @@ const pickedOf = (range: { start: string; end: string }) => ({
   start: range.start,
   end: lastDay(range.end),
 })
-
-function BatchTimezoneField({
-  value,
-  disabled,
-  onChange,
-}: {
-  value: string
-  disabled: boolean
-  onChange: (value: string) => void
-}) {
-  const hydrating = useHydrating()
-  // The initial options must match the server, even if the browser's IANA
-  // data has newer names. Always keep the currently selected zone available.
-  const zones = new Set(['Asia/Shanghai', 'UTC', value])
-  if (!hydrating && typeof Intl.supportedValuesOf === 'function') {
-    for (const zone of Intl.supportedValuesOf('timeZone')) zones.add(zone)
-  }
-  return (
-    <Field label={m.settings_timezone()} hint={m.settings_timezoneHint()}>
-      {(id, control) => (
-        <NativeSelect
-          id={id}
-          {...control}
-          value={value}
-          disabled={disabled}
-          onChange={(event) => onChange(event.target.value)}
-        >
-          {[...zones].map((zone) => (
-            <option key={zone} value={zone}>
-              {zone === 'Asia/Shanghai' ? m.settings_timezoneChina() : zone}
-            </option>
-          ))}
-        </NativeSelect>
-      )}
-    </Field>
-  )
-}
 
 export function BatchSettingsForm({ batch }: { batch: BatchDto }) {
   const api = useApi(assessmentApi)

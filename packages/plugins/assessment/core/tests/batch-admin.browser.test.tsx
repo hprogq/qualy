@@ -271,7 +271,11 @@ const workspace = (element: ReactNode) => (
   </>
 )
 
-const screen = (over: Stubs = {}, route = `/assessment/batches/${BATCH_ID}/phases`) =>
+const screen = (
+  over: Stubs = {},
+  route = `/assessment/batches/${BATCH_ID}/phases`,
+  locale: 'zh-CN' | 'en-US' = 'zh-CN',
+) =>
   renderScreen({
     client: fakeClient({
       app: { getManifest: () => Effect.succeed({ ...emptyManifest(), pages: PAGES }) },
@@ -289,6 +293,7 @@ const screen = (over: Stubs = {}, route = `/assessment/batches/${BATCH_ID}/phase
       { path: '/assessment/batches/:batchId/settings', element: workspace(<BatchSettingsPage />) },
     ],
     route,
+    locale,
   })
 
 // New York keeps GMT-4 in summer and GMT-5 in winter, so the offset after a
@@ -1322,7 +1327,7 @@ describe('the batch list', () => {
     await expect.element(deadline).toHaveAttribute('data-moment', '09.04 23:00')
     const hint = deadline.element().querySelector('[data-local-time]') as HTMLElement
     expect(hint.textContent).toContain('09.04 23:00')
-    expect(hint.textContent).not.toContain('GMT')
+    expect(hint.textContent).not.toContain('UTC')
     expect(getComputedStyle(hint).textDecorationStyle).toBe('dashed')
     await userEvent.hover(hint)
     await expect
@@ -1814,18 +1819,40 @@ describe('the batch lifecycle', () => {
     })
   })
 
-  it('lets an administrator save a time zone change from batch settings', async () => {
+  it('searches time zones and saves only the selected identifier', async () => {
     const updateBatch = vi.fn((_request: Request) =>
       Effect.succeed({ batch: batch({ timezone: 'Asia/Tokyo' }) }),
     )
     await screen({ updateBatch }, `/assessment/batches/${BATCH_ID}/settings`)
 
-    const zone = page.getByLabelText('批次时区')
+    const zone = page.getByRole('combobox', { name: '批次时区' })
     const save = page.getByRole('button', { name: '保存', exact: false })
-    await expect.element(zone).toHaveValue('Asia/Shanghai')
+    await expect.element(zone).toHaveValue('Asia/Shanghai (UTC+08:00)')
     await expect.element(zone).toHaveAccessibleDescription(/不会改变已安排阶段/)
     await expect.element(save).toBeDisabled()
-    await zone.selectOptions('Asia/Tokyo')
+    await expect.element(zone).toHaveAttribute('aria-expanded', 'false')
+    await zone.fill('Asia/Shang')
+    await expect.element(zone).toHaveAttribute('aria-expanded', 'true')
+    await expect
+      .element(page.getByRole('option', { name: /^Asia\/Shanghai \(UTC\+08:00\)$/ }))
+      .toBeVisible()
+
+    await zone.fill('UTC+05:45')
+    await expect
+      .element(page.getByRole('option', { name: /^Asia\/Kat(?:hmandu|mandu) \(UTC\+05:45\)$/ }))
+      .toBeVisible()
+    await userEvent.keyboard('{Escape}')
+    await expect.element(zone).toHaveValue('Asia/Shanghai (UTC+08:00)')
+    await expect.element(zone).toHaveAttribute('aria-expanded', 'false')
+    await expect.element(save).toBeDisabled()
+
+    await zone.fill('Asia/Tokyo')
+    await expect
+      .element(page.getByRole('option', { name: /^Asia\/Tokyo \(UTC\+09:00\)$/ }))
+      .toBeVisible()
+    await userEvent.keyboard('{Enter}')
+    await expect.element(zone).toHaveValue('Asia/Tokyo (UTC+09:00)')
+    expect(updateBatch).not.toHaveBeenCalled()
     await save.click()
 
     await vi.waitFor(() => expect(updateBatch).toHaveBeenCalledTimes(1))
@@ -1833,6 +1860,19 @@ describe('the batch lifecycle', () => {
       params: { batchId: BATCH_ID },
       payload: { timezone: 'Asia/Tokyo' },
     })
+  })
+
+  it('uses an English search prompt and empty state in English batch settings', async () => {
+    await screen({}, `/assessment/batches/${BATCH_ID}/settings`, 'en-US')
+    const zone = page.getByRole('combobox', { name: 'Batch time zone' })
+    await expect.element(zone).toHaveValue('Asia/Shanghai (UTC+08:00)')
+    await expect.element(zone).toHaveAttribute('placeholder', 'Search by time zone or UTC offset')
+    await zone.fill('UTC+9')
+    await expect.element(page.getByRole('option', { name: 'Asia/Tokyo (UTC+09:00)' })).toBeVisible()
+    await zone.fill('not a time zone')
+    await expect.element(page.getByText('No matching time zones')).toBeVisible()
+    await userEvent.keyboard('{Enter}{Escape}')
+    await expect.element(zone).toHaveValue('Asia/Shanghai (UTC+08:00)')
   })
 
   // The window is stored [start, end): the day named by `end` is already
@@ -2056,7 +2096,7 @@ describe('the stage plan', () => {
 
     await page.getByRole('button', { name: '取消排期' }).click()
     const dialog = page.getByRole('alertdialog')
-    await expect.element(dialog).toHaveAccessibleDescription(/2027年9月6日 00:00:00.*GMT\+8/)
+    await expect.element(dialog).toHaveAccessibleDescription(/2027年9月6日 00:00:00.*UTC\+08:00/)
     await dialog.getByRole('button', { name: '取消排期' }).click()
 
     await vi.waitFor(() => expect(schedulePhase).toHaveBeenCalledTimes(1))
@@ -2608,7 +2648,7 @@ describe('the stage plan', () => {
     expect(zoneHint.element().hasAttribute('data-offset')).toBe(false)
     await expect
       .element(dialog.getByLabelText('开始时间'))
-      .toHaveAccessibleDescription(/按批次时区填写/)
+      .toHaveAccessibleDescription(/开始时间以.*为准/)
 
     // the calendar opens on this month; the 15th is in every one of them
     const today = new Date()
@@ -2679,35 +2719,44 @@ describe('the stage plan', () => {
     await vi.waitFor(() => expect(page.getByTestId('time-skipped').elements()).toHaveLength(0))
   })
 
-  it('names the offset the batch clock keeps on the day being set', async () => {
-    const value = otherHalf()
-    await renderScreen({
-      client: fakeClient({ app: { getManifest: () => Effect.succeed(emptyManifest()) } }),
-      children: (
-        <BatchZone zone={NEW_YORK}>
-          <ScheduleDialog
-            open
-            name="审核"
-            canStartNow={false}
-            value={value}
-            pending={false}
-            onChange={() => {}}
-            onCancel={() => {}}
-            onSchedule={() => {}}
-            onStartNow={() => {}}
-          />
-        </BatchZone>
-      ),
-    })
+  it.each(['zh-CN', 'en-US'] as const)(
+    'describes the start time and its offset in %s',
+    async (locale) => {
+      const value = otherHalf()
+      await renderScreen({
+        locale,
+        client: fakeClient({ app: { getManifest: () => Effect.succeed(emptyManifest()) } }),
+        children: (
+          <BatchZone zone={NEW_YORK}>
+            <ScheduleDialog
+              open
+              name="审核"
+              canStartNow={false}
+              value={value}
+              pending={false}
+              onChange={() => {}}
+              onCancel={() => {}}
+              onSchedule={() => {}}
+              onStartNow={() => {}}
+            />
+          </BatchZone>
+        ),
+      })
 
-    const dialog = page.getByRole('dialog')
-    const note = dialog.getByTestId('batch-zone')
-    await expect.element(note).toHaveAttribute('data-zone', NEW_YORK)
-    await expect.element(note).toHaveAttribute('data-offset', offsetAt(NEW_YORK, value))
-    await expect
-      .element(dialog.getByLabelText('开始时间'))
-      .toHaveAccessibleDescription(expect.stringContaining(offsetAt(NEW_YORK, value)))
-  })
+      const dialog = page.getByRole('dialog')
+      const note = dialog.getByTestId('batch-zone')
+      await expect.element(note).toHaveAttribute('data-zone', NEW_YORK)
+      const offset = value === WINTER ? 'UTC-05:00' : 'UTC-04:00'
+      await expect.element(note).toHaveAttribute('data-offset', offset)
+      await expect
+        .element(dialog.getByLabelText(locale === 'zh-CN' ? '开始时间' : 'Start time'))
+        .toHaveAccessibleDescription(
+          locale === 'zh-CN'
+            ? /开始时间以.*UTC-0[45]:00.*为准。/
+            : /The start time is in .*UTC-0[45]:00.*\./,
+        )
+    },
+  )
 })
 
 describe('the participants tab', () => {

@@ -88,6 +88,13 @@ export const deviceEverDiffers = (
   return false
 }
 
+/** The UTC offset in effect at this instant, including fractional hours. */
+export const utcOffsetOf = (zone: string, at: number): string => {
+  const minutes = offsetMinutesAt(at, zone)
+  const magnitude = Math.abs(minutes)
+  return `UTC${minutes < 0 ? '-' : '+'}${pad(Math.floor(magnitude / 60))}:${pad(magnitude % 60)}`
+}
+
 const zonePart = (
   locale: string,
   zone: string,
@@ -100,9 +107,8 @@ const zonePart = (
 
 /**
  * A zone as a reader recognizes it: its name in their language and its
- * offset, "China Standard Time" and "GMT+8". A zone the language has no name
- * for has only its offset - "GMT+08:00" beside "GMT+8" says the same thing
- * twice.
+ * offset, for example "China Standard Time" and "UTC+08:00". If the
+ * localized name is itself an offset, only show the offset once.
  */
 export const zoneNameOf = (
   zone: string,
@@ -113,5 +119,5 @@ export const zoneNameOf = (
     (candidate) =>
       candidate !== undefined && !candidate.startsWith('GMT') && !candidate.startsWith('UTC'),
   ),
-  offset: zonePart(locale, zone, at, 'shortOffset') ?? zone,
+  offset: utcOffsetOf(zone, at),
 })

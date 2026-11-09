@@ -41,6 +41,7 @@
     "./table": "./src/components/table.tsx",
     "./tabs": "./src/components/tabs.tsx",
     "./select": "./src/components/select.tsx",
+    "./search-select": "./src/components/search-select.tsx",
     "./avatar": "./src/components/avatar.tsx",
     "./dropdown-menu": "./src/components/dropdown-menu.tsx",
     "./dialog": "./src/components/dialog.tsx",

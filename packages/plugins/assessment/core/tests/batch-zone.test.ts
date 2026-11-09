@@ -51,9 +51,12 @@ describe("a batch's clock", () => {
     const september = at('2026-09-05T00:00:00.000Z')
     expect(zoneNameOf('Asia/Shanghai', 'en', september)).toEqual({
       name: 'China Standard Time',
-      offset: 'GMT+8',
+      offset: 'UTC+08:00',
     })
-    expect(zoneNameOf('Etc/GMT-8', 'en', september)).toEqual({ name: undefined, offset: 'GMT+8' })
+    expect(zoneNameOf('Etc/GMT-8', 'en', september)).toEqual({
+      name: undefined,
+      offset: 'UTC+08:00',
+    })
   })
 })
 
@@ -70,12 +73,18 @@ describe('whether the device reads a batch time differently', () => {
     }
   }
 
+  it('keeps fractional UTC offsets', () => {
+    expect(zoneNameOf('Asia/Kathmandu', 'en', at('2030-09-04T12:00:00.000Z')).offset).toBe(
+      'UTC+05:45',
+    )
+  })
+
   it('names the offset New York keeps on the day shown, not on the day it is read', () => {
     expect(zoneNameOf('America/New_York', 'en', at('2030-12-20T04:59:00.000Z')).offset).toBe(
-      'GMT-5',
+      'UTC-05:00',
     )
     expect(zoneNameOf('America/New_York', 'en', at('2030-09-04T12:00:00.000Z')).offset).toBe(
-      'GMT-4',
+      'UTC-04:00',
     )
   })
 
