@@ -218,7 +218,7 @@ export const readApiExit = <ApiId extends string, Groups extends HttpApiGroup.Co
   const made = request.reads.get(hash)
   if (made !== undefined) return made as Read
   const making = run()
-  request.reads.set(hash, making as Promise<Exit.Exit<unknown, unknown>>)
+  request.reads.set(hash, making)
   return making
 }
 

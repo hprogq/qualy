@@ -45,4 +45,4 @@ export const SLOT_REFERENCE_PATH = '/__qualy/surfaces'
 export type SlotSurface = Extract<BrowserSurface, { readonly kind: 'slot' }>
 
 export const slotReferenceHref = ({ slot, id }: SlotSurface): string =>
-  `${SLOT_REFERENCE_PATH}?${new URLSearchParams({ slot, id })}`
+  `${SLOT_REFERENCE_PATH}?${new URLSearchParams({ slot, id }).toString()}`

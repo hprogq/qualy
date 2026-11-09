@@ -281,7 +281,7 @@ describe('the address a provider is given when no page has matched', () => {
 })
 
 describe('the seams the runtime reports at', () => {
-  const Boom = () => {
+  const Boom = (): never => {
     throw new Error('POC component exploded')
   }
 
@@ -299,7 +299,7 @@ describe('the seams the runtime reports at', () => {
         <PluginComponent
           surface={{ kind: 'page', id: 'demo/boom' }}
           registry={registryWith({
-            'demo/boom': Boom as unknown as ComponentRegistry['pages'][string],
+            'demo/boom': Boom,
           })}
           loading={null}
           fallback={() => <p>something went wrong</p>}
@@ -328,7 +328,7 @@ describe('the seams the runtime reports at', () => {
           surface={{ kind: 'login', id: 'local' }}
           registry={{
             ...emptyComponentRegistry(),
-            login: { local: Boom as unknown as ComponentRegistry['login'][string] },
+            login: { local: Boom },
           }}
           loading={null}
           fallback={() => <p>this way in is not working</p>}

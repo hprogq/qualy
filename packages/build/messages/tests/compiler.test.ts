@@ -108,7 +108,7 @@ it('publishes the whole backend catalog once, only after the replacement is read
     plugins: [messages],
     server: { middlewareMode: true, ws: false },
   })
-  const send = vi.spyOn(server.environments.client!.hot, 'send')
+  const send = vi.spyOn(server.environments.client.hot, 'send')
   const reloads = () =>
     (send.mock.calls as readonly (readonly unknown[])[]).filter(
       ([payload]) =>
