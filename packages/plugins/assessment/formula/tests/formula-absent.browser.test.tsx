@@ -256,19 +256,22 @@ describe('a formula that goes away while it is open', () => {
   })
 
   /** the editor over a formula that is there until `gone` says otherwise */
-  const openFormula = (state: { gone: boolean; published: boolean }) =>
+  const openFormula = (state: { gone: boolean; published: boolean }, onReadWhenGone?: () => void) =>
     renderScreen({
       client: fakeClient({
         app: { getManifest: () => Effect.succeed({ ...emptyManifest(), pages: PAGES }) },
         assessmentFormula: {
-          getFormulaFunction: () =>
-            state.gone
-              ? Effect.fail(apiError('ASSESSMENT_FORMULA_FUNCTION_NOT_FOUND'))
-              : Effect.succeed({
-                  function: draft(state.published),
-                  versionCount: 0,
-                  copiedFrom: null,
-                }),
+          getFormulaFunction: () => {
+            if (state.gone) {
+              onReadWhenGone?.()
+              return Effect.fail(apiError('ASSESSMENT_FORMULA_FUNCTION_NOT_FOUND'))
+            }
+            return Effect.succeed({
+              function: draft(state.published),
+              versionCount: 0,
+              copiedFrom: null,
+            })
+          },
           getFormulaVersion: () =>
             Effect.succeed({
               version: { versionNo: 1, releaseName: '秋季规则', sourceTs: SAVED, tests: [] },
@@ -362,7 +365,8 @@ describe('a formula that goes away while it is open', () => {
   it('leaves for the formulas after deleting one, without saying on the way that it is gone', async () => {
     await page.viewport(1280, 800)
     const state = { gone: false, published: false }
-    const view = await openFormula(state)
+    const readWhenGone = vi.fn()
+    const view = await openFormula(state, readWhenGone)
     const seen: string[] = []
     const watch = new MutationObserver(() => {
       for (const one of document.querySelectorAll('[data-slot="resource-state"]'))
@@ -376,6 +380,7 @@ describe('a formula that goes away while it is open', () => {
       await page.getByRole('button', { name: '删除', exact: true }).click()
       await expect.element(page.getByTestId('formula-list-page')).toBeInTheDocument()
       expect(addressNow()).toBe('/assessment/formulas')
+      expect(readWhenGone).not.toHaveBeenCalled()
       expect(seen).toEqual([])
     } finally {
       watch.disconnect()

@@ -1925,10 +1925,13 @@ function FormulaEditor() {
       // never before - clearing first would take the crash recovery away on
       // a deletion that then failed.
       await forgetFormulaLocally(functionId)
-      // away first: read again while this page still stands, the formula
-      // just deleted would answer "not found" over the page for a moment
       goto('assessment-formula/list')
-      void refresh()
+      // The editor can stay mounted until the rendered navigation finishes.
+      // Only the library changed for this visit: refreshing the editor's
+      // own read here would show "not found" over the outgoing workbench.
+      void queryClient.invalidateQueries({
+        queryKey: query.assessmentFormula.listFormulaFunctions.key(),
+      })
     },
     onError: (error) => {
       switch (error._tag) {
