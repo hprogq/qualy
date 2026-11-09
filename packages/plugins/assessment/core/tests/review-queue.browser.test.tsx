@@ -1,7 +1,10 @@
-import { reviewClient } from './support/review-client.tsx'
+import { reviewClient, reviewPage } from './support/review-client.tsx'
+import { ItemQueue, QueueBands } from '../src/client/review/QueueViews.tsx'
 import ReviewInboxPage from '../src/client/review/ReviewInboxPage.tsx'
 import WorkspaceShell from '@qualy/plugin-layout-default/client/WorkspaceShell'
 import { lazy } from 'react'
+import { hydrateRoot } from 'react-dom/client'
+import { renderToString } from 'react-dom/server'
 import { Route, Routes } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { commands, page } from 'vitest/browser'
@@ -186,6 +189,66 @@ const answerCells = () =>
     )
 
 afterEach(() => page.viewport(DEFAULT_VIEWPORT.width, DEFAULT_VIEWPORT.height))
+
+it('keeps both desktop project columns the same width when the HTML hydrates', async () => {
+  await page.viewport(1440, 900)
+  const data = reviewPage({ items: [filing(0), volunteering(1)] }, { view: 'item' })
+  const noop = () => {}
+  const content = (
+    <QueueBands fill>
+      <ItemQueue
+        rows={data.items}
+        serverPage={data}
+        fetching={false}
+        chosen=""
+        page={1}
+        onGroupPage={noop}
+        onChoose={noop}
+        onBack={noop}
+        onPage={noop}
+        onOpen={noop}
+      />
+    </QueueBands>
+  )
+  // The split band uses 1100px to choose its HTML; measure on either side of that estimate.
+  const dataset = document.documentElement.dataset
+  const locale = dataset.locale
+  dataset.locale = 'zh-CN'
+  try {
+    for (const [width, indexWidth] of [
+      [940, 208],
+      [1280, 240],
+    ] as const) {
+      const host = document.createElement('div')
+      host.style.width = `${String(width)}px`
+      host.innerHTML = renderToString(content)
+      document.body.append(host)
+      const columns = () =>
+        ['queue-master-seat', 'queue-pane'].map((id) =>
+          [...host.querySelectorAll(`[data-testid="${id}"]`)]
+            .map((node) => node.getBoundingClientRect().width)
+            .find((size) => size > 0),
+        )
+      const before = columns()
+      const errors: unknown[] = []
+      const root = hydrateRoot(host, content, { onRecoverableError: (error) => errors.push(error) })
+      try {
+        expect(before).toEqual([indexWidth, width - indexWidth - 16])
+        await expect
+          .poll(() => host.querySelectorAll('[data-testid="queue-layout"]').length)
+          .toBe(1)
+        await expect.poll(columns).toEqual(before)
+        expect(errors).toEqual([])
+      } finally {
+        root.unmount()
+        host.remove()
+      }
+    }
+  } finally {
+    if (locale === undefined) delete dataset.locale
+    else dataset.locale = locale
+  }
+})
 
 describe('the queue beside the rail', () => {
   // The line is the queue's own room: 1024 with the rail open leaves the

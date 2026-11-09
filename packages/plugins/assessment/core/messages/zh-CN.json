@@ -927,7 +927,6 @@
   "review_searchPlaceholder": "搜索姓名、学号或申报内容",
   "review_matchesNone": "没有符合筛选条件的待审核申报",
   "review_groupCount": "{count} 条待审核",
-  "review_projectEnd": "本项目暂无更多待审申报",
   "review_columnParticipant": "参评人员",
   "review_columnSummary": "摘要",
   "review_columnState": "状态",

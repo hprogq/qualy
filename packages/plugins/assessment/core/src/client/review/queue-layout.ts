@@ -29,12 +29,22 @@ export const BESIDE_MIN = 880
 export const STACK_MIN = 640
 
 /** Project titles need less room than a person's name and number together. */
-export const masterWidthOf = (room: number, grouping: 'item' | 'person' = 'person'): number =>
-  Math.round(
-    grouping === 'item'
-      ? Math.min(240, Math.max(208, room * 0.2))
-      : Math.min(288, Math.max(224, room * 0.24)),
-  )
+const masterSizes = {
+  item: { min: 208, max: 240, percent: 20 },
+  person: { min: 224, max: 288, percent: 24 },
+} as const
+
+/** CSS sizes the actual track the same way before and after hydration. */
+export const splitTracksOf = (grouping: 'item' | 'person' = 'person'): string => {
+  const { min, max, percent } = masterSizes[grouping]
+  return `clamp(${String(min)}px, ${String(percent)}%, ${String(max)}px) minmax(0, 1fr)`
+}
+
+/** JS only estimates the remaining room for choosing the detail layout. */
+const masterWidthOf = (room: number, grouping: 'item' | 'person' = 'person'): number => {
+  const { min, max, percent } = masterSizes[grouping]
+  return Math.min(max, Math.max(min, (room * percent) / 100))
+}
 
 /** the gap between the list and the filings */
 export const SPLIT_GAP = 16

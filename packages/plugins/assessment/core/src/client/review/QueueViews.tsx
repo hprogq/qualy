@@ -37,8 +37,8 @@ import {
   WHEN_WIDTH,
   WHO_MIN,
   answersFitIn,
-  masterWidthOf,
   paneWidthOf,
+  splitTracksOf,
   spreadColumnsOf,
   tableColumnsOf,
   whoWidthOf,
@@ -91,6 +91,7 @@ const TIME_PAGE = 20
 const PAGER_ROOM = 640
 /** the page's own margin under the list, which the list stops short of */
 const PAGE_FOOT = 24
+const PROJECT_TAIL_ART = '@container review-project-tail (min-width: 420px) and (min-height: 96px)'
 
 const styles = stylex.create({
   room: { display: 'flex', minWidth: 0, flexDirection: 'column' },
@@ -114,14 +115,24 @@ const styles = stylex.create({
   },
   paneSeat: { minWidth: 0 },
   projectPaneSeat: { alignSelf: 'stretch', display: 'grid' },
-  projectEnd: {
-    margin: 0,
-    marginBlockStart: 'auto',
-    paddingBlock: 16,
-    paddingInline: 16,
-    textAlign: 'center',
-    fontSize: 12,
-    color: tokens.mutedForeground,
+  projectTail: {
+    position: 'relative',
+    flexGrow: 1,
+    containerType: 'size',
+    containerName: 'review-project-tail',
+    borderTopWidth: 1,
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.divider,
+    pointerEvents: 'none',
+  },
+  projectTailPaper: {
+    display: { default: 'none', [PROJECT_TAIL_ART]: 'block' },
+    position: 'absolute',
+    inset: 0,
+    backgroundImage: `radial-gradient(circle at 1px 1px, ${tokens.border} 1px, transparent 1px)`,
+    backgroundSize: '16px 16px',
+    backgroundPosition: 'right bottom',
+    maskImage: 'radial-gradient(ellipse at right bottom, black 4%, transparent 76%)',
   },
   master: { minHeight: 0, flexShrink: 1 },
   masterHead: {
@@ -677,14 +688,12 @@ function useFitsTheWindow(node: HTMLElement | null) {
  * step in and the step back arrive from the side they came from.
  */
 function Split({
-  room,
   beside,
   grouping,
   chosen,
   master,
   pane,
 }: {
-  room: number
   beside: boolean
   grouping?: 'item' | 'person'
   /** the key of the one picked in the address, where it names one in the list */
@@ -704,12 +713,7 @@ function Split({
   if (beside) {
     const project = grouping === 'item'
     return (
-      <div
-        {...stylex.props(
-          styles.split(`${String(masterWidthOf(room, grouping))}px minmax(0, 1fr)`),
-          project && styles.projectSplit,
-        )}
-      >
+      <div {...stylex.props(styles.split(splitTracksOf(grouping)), project && styles.projectSplit)}>
         <div ref={setSeat} data-testid="queue-master-seat" {...stylex.props(styles.masterSeat)}>
           {master}
         </div>
@@ -1537,8 +1541,10 @@ export function ItemQueue({
             onOpen={(row) => onOpen(row, run)}
           />
         )}
-        {beside && open.count === 1 && open.rows.length === 1 && (
-          <p {...stylex.props(styles.projectEnd)}>{m.review_projectEnd()}</p>
+        {beside && answers === 'spread' && open.count > 0 && open.rows.length === open.count && (
+          <div aria-hidden {...stylex.props(styles.projectTail)}>
+            <span {...stylex.props(styles.projectTailPaper)} />
+          </div>
         )}
       </Card>
     )
@@ -1550,7 +1556,6 @@ export function ItemQueue({
         pane
       ) : (
         <Split
-          room={room}
           beside={beside}
           grouping="item"
           chosen={named?.itemId ?? null}
@@ -1864,13 +1869,7 @@ export function PersonQueue({
       {layout === 'single' || layout === 'stack' ? (
         pane
       ) : (
-        <Split
-          room={room}
-          beside={beside}
-          chosen={named?.key ?? null}
-          master={master}
-          pane={pane}
-        />
+        <Split beside={beside} chosen={named?.key ?? null} master={master} pane={pane} />
       )}
     </QueueRoom>
   )
@@ -2169,7 +2168,7 @@ function SpreadRows({
  * later, greyed.
  */
 export function QueueSkeleton({ grouping }: { grouping?: 'item' | 'person' }) {
-  const { seat, width, room, beside, stacked } = useQueueRoom()
+  const { seat, width, beside, stacked } = useQueueRoom()
   const fill = beside && grouping === 'item'
   const paneBones = (strip: boolean) => (
     <Card>
@@ -2212,10 +2211,7 @@ export function QueueSkeleton({ grouping }: { grouping?: 'item' | 'person' }) {
       <QueueRoom layout={null} seat={seat} width={width} fill={fill}>
         {beside ? (
           <div
-            {...stylex.props(
-              styles.split(`${String(masterWidthOf(room, grouping))}px minmax(0, 1fr)`),
-              fill && styles.projectSplit,
-            )}
+            {...stylex.props(styles.split(splitTracksOf(grouping)), fill && styles.projectSplit)}
           >
             <div {...stylex.props(styles.masterSeat)}>{masterBones}</div>
             <div {...stylex.props(styles.paneSeat, fill && styles.projectPaneSeat)}>
