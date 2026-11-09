@@ -591,22 +591,29 @@ describe('the rail beside the queue', () => {
 })
 
 describe('a queue of a few', () => {
-  // One or two filings are all there is to read, so they are laid out
-  // whole - every answer under its label - rather than as a strip of table
-  // across an empty page, and a phone does not make the reader step into
-  // a list of one to see them.
-  for (const [width, height] of [
-    [390, 844],
-    [834, 1112],
-    [1440, 900],
+  // Keep the project list at wider sizes, but still lay small groups out
+  // whole and let a phone open straight onto the filings.
+  for (const [width, height, shape] of [
+    [390, 844, 'spread'],
+    [834, 1112, 'stack'],
+    [1440, 900, 'split'],
   ] as const) {
-    it(`lays two filings out whole at ${String(width)}`, async () => {
+    it(`lays two filings from one question out whole at ${String(width)}`, async () => {
       await page.viewport(width, height)
       await shelled([filing(0), filing(1)])
-      await expect.element(layout()).toHaveAttribute('data-layout', 'spread')
+      await expect.element(layout()).toHaveAttribute('data-layout', shape)
       await expect.element(rows().first()).toBeVisible()
       expect(rows().elements()).toHaveLength(2)
-      expect(page.getByTestId('queue-master-row').elements()).toHaveLength(0)
+      const masters = page.getByTestId('queue-master-row')
+      if (shape === 'spread') {
+        expect(masters.elements()).toHaveLength(0)
+      } else {
+        expect(masters.elements()).toHaveLength(1)
+        await expect.element(masters.first()).toHaveAttribute('data-selected', 'true')
+        await expect
+          .element(page.getByTestId('queue-pane'))
+          .toHaveAttribute('data-answers', 'spread')
+      }
       // every answer the filing has, each with its own label
       for (const row of rows().elements()) {
         expect(row.getAttribute('data-answers')).toBe('4')
@@ -633,32 +640,40 @@ describe('a queue of a few', () => {
     }
   })
 
-  it('groups a few filings by question, and opens one on a press', async () => {
+  it('keeps both questions in the project list and opens the chosen filing', async () => {
     await page.viewport(1440, 900)
     await shelled([filing(0), volunteering(1)])
-    const groups = page.getByTestId('queue-spread')
-    await expect.element(groups.first()).toBeVisible()
-    expect(groups.elements().map((group) => group.getAttribute('data-key'))).toEqual([
+    const masters = page.getByTestId('queue-master-row')
+    const pane = page.getByTestId('queue-pane')
+    await expect.element(masters.first()).toBeVisible()
+    expect(masters.elements().map((group) => group.getAttribute('data-key'))).toEqual([
       ITEM_ID,
       OTHER_ITEM,
     ])
-    await rows().nth(1).click()
+    await expect.element(pane).toHaveAttribute('data-key', ITEM_ID)
+    await masters.nth(1).click()
+    await expect.element(pane).toHaveAttribute('data-key', OTHER_ITEM)
+    await expect.element(masters.nth(1)).toHaveAttribute('data-selected', 'true')
+    await expect.element(rows().first()).toHaveAttribute('data-instance', rowId(1))
+    await rows().first().click()
     await expect.poll(() => addressNow()).toContain(rowId(1))
     expect(addressNow()).toContain(`run=item%3A${OTHER_ITEM}`)
   })
 
-  // A queue of one question is that question's filings, with nothing to
-  // pick them from: full width at a desk, and no step in on a phone.
-  for (const [width, height] of [
-    [390, 844],
-    [1440, 900],
+  // One question is already selected at either width. A desk still keeps
+  // the question list, while a phone avoids the extra drill-in.
+  for (const [width, height, shape] of [
+    [390, 844, 'single'],
+    [1440, 900, 'split'],
   ] as const) {
     it(`opens the only question straight away at ${String(width)}`, async () => {
       await page.viewport(width, height)
       await shelled(Array.from({ length: 12 }, (_, n) => filing(n)))
-      await expect.element(layout()).toHaveAttribute('data-layout', 'single')
+      await expect.element(layout()).toHaveAttribute('data-layout', shape)
       await expect.element(rows().first()).toBeVisible()
-      expect(page.getByTestId('queue-master-row').elements()).toHaveLength(0)
+      expect(page.getByTestId('queue-master-row').elements()).toHaveLength(
+        shape === 'split' ? 1 : 0,
+      )
       expect(page.getByTestId('queue-pane-back').elements()).toHaveLength(0)
       expect(rows().elements()).toHaveLength(10)
     })

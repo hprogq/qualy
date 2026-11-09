@@ -1260,21 +1260,19 @@ export function QueueBands({ children }: { children: ReactNode }) {
   )
 }
 
-/** how the queue is laid out, from how much of it there is and the room it has */
+/** In a narrow queue, show small lists directly instead of requiring a drill-in. */
+const compactLayoutOf = (total: number, groups: number): 'spread' | 'single' | 'drill' =>
+  total <= SPREAD_MOST ? 'spread' : groups === 1 ? 'single' : 'drill'
+
+/** The person queue only needs a picker when there is enough work to browse. */
 const layoutOf = (
   total: number,
   groups: number,
   room: { beside: boolean; stacked: boolean },
-): Layout =>
-  total <= SPREAD_MOST
-    ? 'spread'
-    : groups === 1
-      ? 'single'
-      : room.beside
-        ? 'split'
-        : room.stacked
-          ? 'stack'
-          : 'drill'
+): Layout => {
+  const compact = compactLayoutOf(total, groups)
+  return compact !== 'drill' ? compact : room.beside ? 'split' : room.stacked ? 'stack' : 'drill'
+}
 
 /**
  * The run over one question or one person, where it is worth a key: one
@@ -1335,10 +1333,13 @@ export function ItemQueue({
     rows: rows.filter((row) => row.itemId === group.key),
     columns: (rows.find((row) => row.itemId === group.key)?.values ?? []).map((pair) => pair.label),
   }))
-  const layout = layoutOf(serverPage?.filteredTotal ?? 0, serverPage?.groupTotal ?? 0, {
-    beside,
-    stacked,
-  })
+  // Keep the question list in place on a desk, even when only one has work.
+  // The count still decides how to lay out its filings, not whether it has a list.
+  const layout = beside
+    ? 'split'
+    : stacked
+      ? 'stack'
+      : compactLayoutOf(serverPage?.filteredTotal ?? 0, serverPage?.groupTotal ?? 0)
   const named = pickedOf(
     groups,
     (group) => group.itemId,
