@@ -1854,6 +1854,24 @@ describe('the queue, a page at a time', () => {
     await expect.element(page.getByTestId('queue-pane')).toHaveAttribute('data-key', ITEM_ID)
   })
 
+  it('keeps the band in place while the start-review action is loading', async () => {
+    await page.viewport(390, 844)
+    const answer = inboxOf(both())
+    let resolve!: (value: typeof answer) => void
+    const delayed = new Promise<typeof answer>((done) => {
+      resolve = done
+    })
+    await withBench(both(), '', { listReviewInbox: () => Effect.promise(() => delayed) })
+    const start = page.getByTestId('review-start')
+    await expect.element(start).toBeInTheDocument()
+    await expect.element(start).not.toBeVisible()
+    const band = page.getByTestId('batch-band').element()
+    const before = band.getBoundingClientRect().bottom
+    resolve(answer)
+    await expect.element(start).toBeVisible()
+    expect(Math.abs(band.getBoundingClientRect().bottom - before)).toBeLessThan(1)
+  })
+
   // The band's key is for somebody who only wants to get through what is
   // waiting: the whole queue, from its oldest filing.
   it('starts the whole queue from its oldest filing from the band', async () => {

@@ -37,6 +37,7 @@ import { rememberQueuePlace } from './queue-place.ts'
 import { ItemQueue, PersonQueue, QueueBands, QueueSkeleton, TimeQueue } from './QueueViews.tsx'
 import { pageNumberOf, type InboxItemDto } from './model.ts'
 import * as commonMessages from '@qualy/web-i18n/messages'
+import { ReviewActions } from './ReviewActions.tsx'
 import * as m from '#messages'
 
 // The queue, laid out three ways: by question so one standard is applied in
@@ -311,10 +312,14 @@ export default function ReviewInboxPage() {
       actions={
         // the whole queue from its oldest filing: the way in for somebody
         // who only wants to get through what is waiting
-        reviewing && first != null ? (
-          <Button data-testid="review-start" onClick={() => open({ instanceId: first }, '')}>
-            {m.review_runStart()}
-          </Button>
+        reviewing ? (
+          <ReviewActions
+            available={first != null}
+            pending={queue.inbox.isPending}
+            onStart={() => {
+              if (first != null) open({ instanceId: first }, '')
+            }}
+          />
         ) : undefined
       }
       size="wide"
