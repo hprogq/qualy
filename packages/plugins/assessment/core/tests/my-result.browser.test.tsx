@@ -1176,8 +1176,11 @@ describe('the score page on a phone', () => {
     await page.viewport(390, 844)
     const paper = normal()
     const host = document.createElement('div')
+    const root = document.documentElement
+    const locale = root.getAttribute('data-locale')
     document.body.append(host)
     try {
+      root.setAttribute('data-locale', 'zh-CN')
       host.innerHTML = renderToString(
         <ResultLedger
           result={paper.result}
@@ -1197,6 +1200,8 @@ describe('the score page on a phone', () => {
       )
     } finally {
       host.remove()
+      if (locale === null) root.removeAttribute('data-locale')
+      else root.setAttribute('data-locale', locale)
     }
   })
 
