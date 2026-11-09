@@ -11,7 +11,13 @@ import * as m from '#messages'
  */
 export default function BatchAccessPage() {
   return (
-    <BatchScreen title={m.access_tab()} description={m.access_hint()} size="wide" requires="manage">
+    <BatchScreen
+      title={m.access_tab()}
+      description={m.access_hint()}
+      size="wide"
+      requires="manage"
+      fixedNotices
+    >
       {(batch) => <AccessPanel batchId={batch.id} archived={batch.status === 'archived'} />}
     </BatchScreen>
   )

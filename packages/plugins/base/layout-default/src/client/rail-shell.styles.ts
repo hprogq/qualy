@@ -351,17 +351,18 @@ export const styles = stylex.create({
   // - none where the open screen has taken the foot for a bar of its own,
   // which it says in its html (ScreenFoot)
   mainFoot: {
-    paddingBottom: {
+    paddingBottom: 'var(--q-shell-foot-room)',
+    '--q-shell-foot-room': {
       default: `calc(${shell.bottomBarHeight} + env(safe-area-inset-bottom))`,
-      [breakpoints.desktop]: 0,
+      [breakpoints.desktop]: '0px',
       [stylex.when.ancestor(':has([data-screen-foot="always"])', shellRoot)]: {
-        default: 0,
-        [breakpoints.desktop]: 0,
+        default: '0px',
+        [breakpoints.desktop]: '0px',
       },
       [stylex.when.ancestor(':has([data-screen-foot="phone"])', shellRoot)]: {
         default: `calc(${shell.bottomBarHeight} + env(safe-area-inset-bottom))`,
-        [breakpoints.phone]: 0,
-        [breakpoints.desktop]: 0,
+        [breakpoints.phone]: '0px',
+        [breakpoints.desktop]: '0px',
       },
     },
   },

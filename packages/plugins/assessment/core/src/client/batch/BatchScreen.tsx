@@ -179,6 +179,7 @@ export function BatchScreen({
   actions,
   size = 'default',
   chrome = 'band',
+  fixedNotices = false,
   fill = false,
   banner,
   notes,
@@ -200,6 +201,7 @@ export function BatchScreen({
    * own, with the draft notice kept above it.
    */
   chrome?: 'band' | 'none' | 'bare'
+  fixedNotices?: boolean
   /** Keep an internally scrolling workbench within the shell's available height. */
   fill?: boolean
   /**
@@ -373,7 +375,7 @@ export function BatchScreen({
                twitch each time somebody looks at another part of it.
                Mount-only, so a section that draws its own movement inside
                (a row opening, a claim stepped to) is not animated twice. */
-            <Reveal className={stylex.props(styles.sectionStack).className}>
+            <Reveal className={stylex.props(styles.sectionStack).className} lift={!fixedNotices}>
               {/* said on the section, not over a question being composed:
                   the band has handed over, and the body is the question's */}
               {batch.status === 'draft' && noting && (

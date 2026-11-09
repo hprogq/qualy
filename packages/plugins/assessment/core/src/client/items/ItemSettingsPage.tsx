@@ -416,6 +416,7 @@ export default function ItemSettingsPage() {
   return (
     <BatchScreen
       title={m.items_tab()}
+      fixedNotices
       description={m.items_hint()}
       banner={shown !== '' && questionUp ? 'open' : 'section'}
       // the round's notes belong to the structure: an address naming a

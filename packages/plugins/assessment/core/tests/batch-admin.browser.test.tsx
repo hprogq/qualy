@@ -3926,8 +3926,11 @@ describe('the notice of organization changes', () => {
       await expect.element(page.getByTestId('access-sync-notice')).toBeVisible()
       expect(page.getByTestId('access-toolbar').element().getBoundingClientRect().top).toBe(top)
       const dock = page.getByTestId('page-notices').element()
-      expect(getComputedStyle(dock).position).toBe('fixed')
+      const viewport = document.querySelector('[data-slot="batch-notice-viewport"]')!
+      expect(getComputedStyle(viewport).position).toBe('fixed')
       expect(dock.contains(page.getByTestId('access-sync-notice').element())).toBe(true)
+      expect(dock.getBoundingClientRect().bottom).toBeGreaterThan(740)
+      expect(dock.getBoundingClientRect().bottom).toBeLessThanOrEqual(900)
       expect(page.getByTestId('batch-band').element().contains(dock)).toBe(false)
       await page.viewport(1280, 800)
     },

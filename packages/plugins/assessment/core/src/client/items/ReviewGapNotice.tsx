@@ -17,6 +17,7 @@ import { UnitPath } from '@qualy/ui/unit-path'
 import { Tag } from './editor/Rows.tsx'
 import type { PageNotice } from '@qualy/ui/page-notices'
 import { BatchNotices } from '../batch/BatchNotices.tsx'
+import { BatchNoticeViewport } from '../batch/BatchNoticeViewport.tsx'
 import { UnreachableDialog } from '../roster/UnreachableDialog.tsx'
 import * as m from '#messages'
 
@@ -162,7 +163,11 @@ export function ReviewGapNotice({
     })
   return (
     <>
-      <BatchNotices notices={notices} />
+      {notices.length > 0 && (
+        <BatchNoticeViewport>
+          <BatchNotices notices={notices} />
+        </BatchNoticeViewport>
+      )}
       <UnreachableDialog
         batchId={batchId}
         open={route !== null}

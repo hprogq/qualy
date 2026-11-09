@@ -19,18 +19,21 @@ export function useEntryMotion(): boolean {
 export function Reveal({
   className,
   delay = 0,
+  lift = true,
   children,
 }: {
   className?: string
   delay?: number
+  /** Disable translation when a descendant needs viewport positioning. */
+  lift?: boolean
   children: ReactNode
 }) {
   const enter = useEntryMotion()
   return (
     <motion.div
       className={className}
-      initial={enter ? { opacity: 0, y: 8 } : false}
-      animate={{ opacity: 1, y: 0 }}
+      initial={enter ? (lift ? { opacity: 0, y: 8 } : { opacity: 0 }) : false}
+      animate={lift ? { opacity: 1, y: 0 } : { opacity: 1 }}
       transition={{ duration: 0.24, delay, ease: 'easeOut' }}
     >
       {children}
