@@ -89,10 +89,6 @@ export const deviceEverDiffers = (
   return false
 }
 
-/** Intl's options for a batch time: the zone when there is one, nothing otherwise */
-export const inZone = (zone: string | undefined): { timeZone?: string } =>
-  zone === undefined ? {} : { timeZone: zone }
-
 const zonePart = (
   locale: string,
   zone: string,

@@ -7,6 +7,7 @@ import '@mantine/dates/styles.layer.css'
 import { useState, type MouseEvent } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { DateTimePicker as MDateTimePicker } from '@mantine/dates'
+import { formatDateTime } from '@qualy/date-format'
 
 import { calendarLook } from '../lib/calendar.ts'
 import { dateWordsIn } from '../lib/date-format.ts'
@@ -133,11 +134,7 @@ export function DateTimePicker({
         const at = localToInstant(local, timeZone)
         return at === null
           ? ''
-          : new Date(at).toLocaleString(localeTag, {
-              dateStyle: 'medium',
-              timeStyle: 'medium',
-              ...(timeZone === undefined ? {} : { timeZone }),
-            })
+          : formatDateTime(new Date(at), localeTag ?? 'en-US', 'event-time', timeZone)
       }}
       {...dateWordsIn(localeTag)}
       {...(monthLabel === undefined && yearLabel === undefined

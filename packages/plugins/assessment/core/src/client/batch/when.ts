@@ -1,5 +1,5 @@
-import { useLocale } from '@qualy/web-i18n'
-import { dayKeyOf, inZone, readableZone, useBatchZone, yearOf } from './zone.ts'
+import { formatDateTime, useLocale } from '@qualy/web-i18n'
+import { dayKeyOf, readableZone, useBatchZone, yearOf } from './zone.ts'
 
 // When a stage runs, said as shortly as it can be said without becoming
 // ambiguous.
@@ -27,18 +27,13 @@ export const useWhen = (zone?: string): When => {
   const thisYear = yearOf(Date.now(), clock)
 
   const day = (at: number) =>
-    new Date(at).toLocaleDateString(
+    formatDateTime(
+      new Date(at),
       locale,
-      yearOf(at, clock) === thisYear
-        ? { month: 'short', day: 'numeric', ...inZone(clock) }
-        : { year: 'numeric', month: 'short', day: 'numeric', ...inZone(clock) },
+      yearOf(at, clock) === thisYear ? 'short-month-day' : 'short-date',
+      clock,
     )
-  const time = (at: number) =>
-    new Date(at).toLocaleTimeString(locale, {
-      hour: '2-digit',
-      minute: '2-digit',
-      ...inZone(clock),
-    })
+  const time = (at: number) => formatDateTime(new Date(at), locale, 'clock-local', clock)
   const moment = (at: number) => `${day(at)} ${time(at)}`
   const sameDay = (a: number, b: number) => dayKeyOf(a, clock) === dayKeyOf(b, clock)
 

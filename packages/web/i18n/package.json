@@ -23,7 +23,8 @@
     "react": "catalog:"
   },
   "dependencies": {
-    "@qualy/i18n-contract": "workspace:*"
+    "@qualy/i18n-contract": "workspace:*",
+    "@qualy/date-format": "workspace:*"
   },
   "devDependencies": {
     "@qualy/tsconfig": "workspace:*",

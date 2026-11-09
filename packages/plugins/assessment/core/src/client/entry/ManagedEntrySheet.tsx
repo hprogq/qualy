@@ -1,4 +1,4 @@
-import { useLocale } from '@qualy/web-i18n'
+import { formatDateTime, useLocale } from '@qualy/web-i18n'
 import { useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
@@ -10,7 +10,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@qualy
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentApi } from '../api.ts'
 
-import { inZone, useBatchZone } from '../batch/zone.ts'
+import { useBatchZone } from '../batch/zone.ts'
 import { EntryDetail } from './EntryDetail.tsx'
 import { ReasonDialog } from '../items/ReasonDialog.tsx'
 import { sourceLabelOf } from './source.ts'
@@ -403,14 +403,7 @@ function Determination({
     entry.currentRevision !== null && entry.currentRevision.id !== recognition.entryRevisionId
   // the batch's calendar and clock, to the minute: seconds and a
   // machine's default ordering were never read here
-  const when = new Intl.DateTimeFormat(locale, {
-    month: 'long',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-    ...inZone(zone),
-  }).format(new Date(recognition.createdAt))
+  const when = formatDateTime(new Date(recognition.createdAt), locale, 'month-day-long-clock', zone)
 
   return (
     <div

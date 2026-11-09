@@ -6,6 +6,9 @@ settings:
 
 catalogs:
   default:
+    '@date-fns/tz':
+      specifier: 1.5.0
+      version: 1.5.0
     '@effect/platform-node':
       specifier: 4.0.6
       version: 4.0.6
@@ -120,6 +123,9 @@ catalogs:
     cos-nodejs-sdk-v5:
       specifier: 3.0.0
       version: 3.0.0
+    date-fns:
+      specifier: 4.4.0
+      version: 4.4.0
     dayjs:
       specifier: 1.11.23
       version: 1.11.23
@@ -919,6 +925,18 @@ importers:
       yaml:
         specifier: 'catalog:'
         version: 2.9.1
+
+  packages/core/date-format:
+    dependencies:
+      '@date-fns/tz':
+        specifier: 'catalog:'
+        version: 1.5.0
+      '@qualy/i18n-contract':
+        specifier: workspace:*
+        version: link:../../contracts/i18n
+      date-fns:
+        specifier: 'catalog:'
+        version: 4.4.0
 
   packages/core/formula:
     dependencies:
@@ -2766,6 +2784,9 @@ importers:
 
   packages/web/i18n:
     dependencies:
+      '@qualy/date-format':
+        specifier: workspace:*
+        version: link:../../core/date-format
       '@qualy/i18n-contract':
         specifier: workspace:*
         version: link:../../contracts/i18n
@@ -2899,6 +2920,9 @@ importers:
       '@qualy/brand':
         specifier: workspace:*
         version: link:../brand
+      '@qualy/date-format':
+        specifier: workspace:*
+        version: link:../../core/date-format
       '@stylexjs/stylex':
         specifier: 'catalog:'
         version: 0.19.1
@@ -3145,6 +3169,9 @@ packages:
 
   '@bytecodealliance/preview3-shim@0.6.1':
     resolution: {integrity: sha512-61mEfjfgGmZhEMA0H3waawPKvYd3za9y0vJ7pmQz/9yvm4FR6Ef+cmqhnxDE7ezsM07MY1btP92ymmgsgFwxmg==}
+
+  '@date-fns/tz@1.5.0':
+    resolution: {integrity: sha512-lwYN/vDPeNRULcepoE/LO2Pgx+7/RV+S9ARfbc9lr2DtGkOD7pAiruHvbR1RX3Qyf6ja47EWJDMsNK5vK08DJg==}
 
   '@dual-bundle/import-meta-resolve@4.2.1':
     resolution: {integrity: sha512-id+7YRUgoUX6CgV0DtuhirQWodeeA7Lf4i2x71JS/vtA5pRb/hIGWlw+G6MeXvsM+MXrz0VAydTGElX1rAfgPg==}
@@ -4692,6 +4719,9 @@ packages:
   dashdash@1.14.1:
     resolution: {integrity: sha512-jRFi8UDGo6j+odZiEpjazZaWqEal3w/basFjQHQEwVtZJGDpxbH1MeYluwCS8Xq5wmLJooDlMgvVarmWfGM44g==}
     engines: {node: '>=0.10'}
+
+  date-fns@4.4.0:
+    resolution: {integrity: sha512-+1UMbeh68lH1SegH83CGWwpb6OHHbpSgr3+s5Eww5M4CAgswBpoWS0AjTOfEJ33HiYKz1hdj/KTFprzXHmq/6w==}
 
   dayjs@1.11.23:
     resolution: {integrity: sha512-QDTCU0M0MxR3hQfnlDJfwekQiaanm1ubOD231u73WBckQ/fsamwRLiE2GBz6D3a/xF1NgfiDLJjXBa1hYOYTtQ==}
@@ -6328,6 +6358,8 @@ snapshots:
       '@bytecodealliance/jco-node-fs': 0.3.2
       '@bytecodealliance/preview2-shim': 0.25.0
 
+  '@date-fns/tz@1.5.0': {}
+
   '@dual-bundle/import-meta-resolve@4.2.1': {}
 
   '@effect/platform-node-shared@4.0.6(effect@4.0.6)':
@@ -7531,6 +7563,8 @@ snapshots:
   dashdash@1.14.1:
     dependencies:
       assert-plus: 1.0.0
+
+  date-fns@4.4.0: {}
 
   dayjs@1.11.23: {}
 

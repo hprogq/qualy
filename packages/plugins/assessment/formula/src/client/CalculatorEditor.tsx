@@ -1,5 +1,5 @@
 'use client'
-import { useLocale, useList } from '@qualy/web-i18n'
+import { formatDateTime, useLocale, useList } from '@qualy/web-i18n'
 import * as stylex from '@stylexjs/stylex'
 import { useMemo, useState } from 'react'
 import { useInfiniteQuery } from '@tanstack/react-query'
@@ -397,11 +397,11 @@ export default function CalculatorEditor({ context }: { context: CalculatorEdito
     option.releaseName ?? m.binding_releaseNo({ no: option.versionNo })
   const dateWords = (iso: string) => {
     const at = new Date(iso)
-    return new Intl.DateTimeFormat(locale, {
-      ...(at.getFullYear() === new Date().getFullYear() ? {} : { year: 'numeric' }),
-      month: 'long',
-      day: 'numeric',
-    }).format(at)
+    return formatDateTime(
+      at,
+      locale,
+      at.getFullYear() === new Date().getFullYear() ? 'month-day' : 'long-date',
+    )
   }
 
   if (formula !== undefined) {

@@ -1,4 +1,4 @@
-import { useLocale } from '@qualy/web-i18n'
+import { formatDateTime, useLocale } from '@qualy/web-i18n'
 import { useEffect, useRef, useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { AtWidth } from '@qualy/ui/at-width'
@@ -9,7 +9,7 @@ import { Ticker } from '@qualy/ui/ticker'
 import { useIsMobile } from '@qualy/ui/use-mobile'
 import { useDocumentNow } from '@qualy/web-runtime'
 
-import { inZone, marked, useBatchZone, useZoneMark } from './zone.ts'
+import { marked, useBatchZone, useZoneMark } from './zone.ts'
 import {
   displayKey,
   progressOf,
@@ -269,14 +269,7 @@ export function BatchProgress({
         ? null
         : sayIn(form)
       : progress.kind === 'starts'
-        ? marked(
-            new Date(progress.at).toLocaleString(locale, {
-              dateStyle: 'medium',
-              timeStyle: 'short',
-              ...inZone(zone),
-            }),
-            mark,
-          )
+        ? marked(formatDateTime(new Date(progress.at), locale, 'date-time', zone), mark)
         : null
 
   const spanned = progress.kind === 'until' || progress.kind === 'since'

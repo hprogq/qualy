@@ -105,7 +105,8 @@
     "motion": "catalog:",
     "react-dropzone": "^20.1.4",
     "react-photo-view": "^1.2.7",
-    "sonner": "^2.0.8"
+    "sonner": "^2.0.8",
+    "@qualy/date-format": "workspace:*"
   },
   "devDependencies": {
     "@qualy/tsconfig": "workspace:*",

@@ -1,4 +1,4 @@
-import { useLocale } from '@qualy/web-i18n'
+import { formatDateTime, useLocale } from '@qualy/web-i18n'
 import { useState, type ReactNode } from 'react'
 import { CircleAlertIcon } from 'lucide-react'
 import * as stylex from '@stylexjs/stylex'
@@ -10,7 +10,7 @@ import { DateTimePicker } from '@qualy/ui/date-time-picker'
 import { NativeSelect } from '@qualy/ui/native-select'
 
 import { ZoneNote } from '../batch/BatchZone.tsx'
-import { inZone, useBatchZone } from '../batch/zone.ts'
+import { useBatchZone } from '../batch/zone.ts'
 import * as commonMessages from '@qualy/web-i18n/messages'
 import * as m from '#messages'
 
@@ -126,11 +126,7 @@ export function ScheduleDialog({
                   {...stylex.props(styles.skipped)}
                 >
                   {m.zone_skipped({
-                    time: new Date(moved).toLocaleString(locale, {
-                      dateStyle: 'medium',
-                      timeStyle: 'short',
-                      ...inZone(zone),
-                    }),
+                    time: formatDateTime(new Date(moved), locale, 'date-time', zone),
                   })}
                 </span>
               )}

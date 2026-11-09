@@ -189,6 +189,8 @@ catalog:
   # The per-product package rather than `tencentcloud-sdk-nodejs`: the whole
   # sdk unpacks to 44 MB for three calls, and this one to 220 KB.
   tencentcloud-sdk-nodejs-rum: 4.1.332
+  date-fns: 4.4.0
+  '@date-fns/tz': 1.5.0
 # Transitive versions pinned forward, with the reason each one is here.
 #
 # qs: the tencent cos sdks carry it (cos-request, qcloud-cos-sts) and both

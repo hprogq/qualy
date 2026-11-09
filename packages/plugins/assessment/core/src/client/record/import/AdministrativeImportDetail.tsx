@@ -1,6 +1,11 @@
 import { pageNumber } from '@qualy/api-kit/schema'
 import { RecordPager } from '../RecordPager.tsx'
-import { assertNever, formatPlatformFailure as formatError, useLocale } from '@qualy/web-i18n'
+import {
+  formatDateTime,
+  assertNever,
+  formatPlatformFailure as formatError,
+  useLocale,
+} from '@qualy/web-i18n'
 
 import {
   useApiMutation,
@@ -27,7 +32,7 @@ import { toast } from '@qualy/ui/toast'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentApi, assessmentUrls } from '../../api.ts'
 
-import { inZone, useBatchZone } from '../../batch/zone.ts'
+import { useBatchZone } from '../../batch/zone.ts'
 import { EntryStanding } from '../../entry/EntryStanding.tsx'
 import { ReasonDialog } from '../../items/ReasonDialog.tsx'
 import { sizeLabel } from '../../entry/model.ts'
@@ -278,12 +283,7 @@ export function AdministrativeImportDetail({
     },
   })
 
-  const when = (iso: string) =>
-    new Intl.DateTimeFormat(locale, {
-      dateStyle: 'medium',
-      timeStyle: 'short',
-      ...inZone(zone),
-    }).format(new Date(iso))
+  const when = (iso: string) => formatDateTime(new Date(iso), locale, 'date-time', zone)
 
   // What was determined, as the parts it was determined in.
   //

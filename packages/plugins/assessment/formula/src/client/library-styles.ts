@@ -204,9 +204,6 @@ export const libraryStyles = stylex.create({
   skeletonRow: { display: 'flex', flexDirection: 'column', gap: 8, paddingBlock: 16 },
 })
 
-const clock = (locale: SupportedLocale) =>
-  new Intl.DateTimeFormat(locale, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
-
 /**
  * When, as short as it can be said and still be exact enough to act on:
  * today and yesterday by the clock, this year as the day and the clock,
@@ -219,21 +216,19 @@ export function shortWhen(at: string, locale: SupportedLocale, now: Date = new D
   const startOf = (day: Date) =>
     new Date(day.getFullYear(), day.getMonth(), day.getDate()).getTime()
   const days = Math.round((startOf(now) - startOf(date)) / 86_400_000)
-  if (days === 0) return m.when_today({ time: clock(locale).format(date) })
-  if (days === 1) return m.when_yesterday({ time: clock(locale).format(date) })
+  if (days === 0) return m.when_today({ time: formatDateTime(date, locale, 'clock') })
+  if (days === 1) return m.when_yesterday({ time: formatDateTime(date, locale, 'clock') })
   return date.getFullYear() === now.getFullYear()
-    ? formatDateTime(date, locale, { month: 'short', day: 'numeric' })
-    : new Intl.DateTimeFormat(locale, { year: 'numeric', month: 'short', day: 'numeric' }).format(
-        date,
-      )
+    ? formatDateTime(date, locale, 'month-day-clock')
+    : formatDateTime(date, locale, 'short-date')
 }
 
 /** the clock alone, for something that happened while the page was open */
 export function shortTime(at: string, locale: SupportedLocale): string {
-  return clock(locale).format(new Date(at))
+  return formatDateTime(new Date(at), locale, 'clock')
 }
 
 /** the moment in full, for a page that names one thing */
 export function fullWhen(at: string, locale: SupportedLocale): string {
-  return formatDateTime(new Date(at), locale, { year: 'numeric', month: 'short', day: 'numeric' })
+  return formatDateTime(new Date(at), locale, 'year-month-day-clock')
 }

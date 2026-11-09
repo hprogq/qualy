@@ -1,8 +1,8 @@
-import { useLocale } from '@qualy/web-i18n'
+import { formatDateTime, useLocale } from '@qualy/web-i18n'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 
-import { inZone, useBatchZone } from '../batch/zone.ts'
+import { useBatchZone } from '../batch/zone.ts'
 import { type DraftKeeper } from './use-draft.ts'
 import * as m from '#messages'
 
@@ -47,14 +47,7 @@ export function DraftNote({ draft, onDiscard }: { draft: DraftKeeper; onDiscard:
   const when =
     draft.at === null
       ? ''
-      : new Intl.DateTimeFormat(locale, {
-          month: 'long',
-          day: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit',
-          hour12: false,
-          ...inZone(zone),
-        }).format(new Date(draft.at))
+      : formatDateTime(new Date(draft.at), locale, 'month-day-long-clock', zone)
   return (
     <div {...stylex.props(styles.bar)} data-testid="draft-note">
       <span {...stylex.props(styles.words)}>{m.review_draftRestored({ when })}</span>

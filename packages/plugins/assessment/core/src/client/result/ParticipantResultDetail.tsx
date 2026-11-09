@@ -1,4 +1,5 @@
 import {
+  formatDateTime,
   assertNever,
   formatPlatformFailure as formatError,
   useLocale,
@@ -40,7 +41,7 @@ import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { assessmentApi } from '../api.ts'
 
 import { ZoneAwayNotice } from '../batch/BatchZone.tsx'
-import { inZone, useBatchZone } from '../batch/zone.ts'
+import { useBatchZone } from '../batch/zone.ts'
 import { useBatchLive } from '../live.ts'
 import { useQueueRefresh } from '../review/queue.ts'
 import { StandingNotice } from '../entry/workspace/StandingNotice.tsx'
@@ -653,13 +654,7 @@ export function ParticipantResultDetail({
       ? []
       : unitChainOf(participant.anchorLineage, nameOf)
   const kind = (kinds.data?.userTypes ?? []).find((one) => one.id === participant?.userTypeId)
-  const dayOf = (iso: string) =>
-    new Intl.DateTimeFormat(locale, {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      ...inZone(zone),
-    }).format(new Date(iso))
+  const dayOf = (iso: string) => formatDateTime(new Date(iso), locale, 'short-date', zone)
 
   // Taking somebody off the round, or putting them back. It belongs to the
   // person rather than to the list: the list is how somebody is found, and

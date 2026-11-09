@@ -1,4 +1,4 @@
-import { useLocale, useList } from '@qualy/web-i18n'
+import { formatDateTime, useLocale, useList } from '@qualy/web-i18n'
 import { useId, type ReactNode } from 'react'
 import {
   ArrowDownIcon,
@@ -17,7 +17,7 @@ import { Cell, Status, Tag, TableRow } from '@qualy/ui/screen'
 
 import { type PlanRefusalLike } from '../refusals.ts'
 import { type PhaseDraft, type PhaseDto, type PlanShape } from './model.ts'
-import { inZone, useBatchZone } from '../batch/zone.ts'
+import { useBatchZone } from '../batch/zone.ts'
 import * as m from '#messages'
 
 // One phase, as a table row on a desktop and as a stacked card on a phone.
@@ -403,12 +403,7 @@ function useParts(props: PhaseRowProps) {
   const structural = index >= shape.scheduled
   const name = draft.displayName || m.plan_unnamed()
   // on the batch's clock: a stage starts at the school's midnight, not the reader's
-  const timeOf = (iso: string) =>
-    new Date(iso).toLocaleString(locale, {
-      dateStyle: 'medium',
-      timeStyle: 'short',
-      ...inZone(zone),
-    })
+  const timeOf = (iso: string) => formatDateTime(new Date(iso), locale, 'date-time', zone)
   const relative = (iso: string) => {
     const parts = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' })
     const delta = new Date(iso).getTime() - Date.now()

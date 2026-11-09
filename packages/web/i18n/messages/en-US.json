@@ -6,7 +6,6 @@
   "answer_yes": "Yes",
   "answer_no": "No",
   "list_separator": ", ",
-  "date_time": "{date}, {time}",
   "state_loading": "Loading",
   "state_stillLoading": "Taking longer than expected…",
   "release_updateAvailableTitle": "Qualy has been updated",

@@ -1,5 +1,5 @@
 'use client'
-import { assertNever, localeNames, useLocale } from '@qualy/web-i18n'
+import { formatDateTime, assertNever, localeNames, useLocale } from '@qualy/web-i18n'
 import { Effect } from 'effect'
 import {
   useApiMutation,
@@ -158,13 +158,7 @@ export default function UserProfilePage() {
       }
     },
   })
-  const when = (iso: string) =>
-    new Intl.DateTimeFormat(locale, {
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    }).format(new Date(iso))
+  const when = (iso: string) => formatDateTime(new Date(iso), locale, 'month-day-time')
 
   return (
     <div {...stylex.props(styles.page)}>

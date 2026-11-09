@@ -1,11 +1,7 @@
-// The date words, in the reader's language, from the product's own locale.
-//
-// The widget library formats through dayjs, which needs a locale module
-// imported per language before it will say anything but English. That would
-// be a second register of languages to keep in step with the product's own,
-// so instead every formatting prop is handed a function - the library
-// documents them all as accepting one - and the platform's Intl does the
-// speaking. One locale tag, from one source, and no language bundles.
+import { formatDateTime, type DateTimeStyle } from '@qualy/date-format'
+
+// Calendar captions use the same locale data as timestamps, without changing
+// the widget's Date values or introducing another calendar/selection model.
 
 const dayOf = (date: string) => new Date(`${date.slice(0, 10)}T00:00:00`)
 
@@ -32,24 +28,23 @@ export interface DateWords {
  */
 const weekdayWidthIn = (localeTag: string | undefined): 'narrow' | 'short' => {
   const week = [4, 5, 6, 7, 8, 9, 10].map((day) => new Date(2026, 0, day))
-  const narrow = new Intl.DateTimeFormat(localeTag, { weekday: 'narrow' })
-  const said = week.map((day) => narrow.format(day))
+  const said = week.map((day) => formatDateTime(day, localeTag ?? 'en-US', 'weekday-narrow'))
   return new Set(said).size === week.length ? 'narrow' : 'short'
 }
 
 export function dateWordsIn(localeTag: string | undefined): DateWords {
-  const say = (options: Intl.DateTimeFormatOptions) => (date: string) =>
-    new Intl.DateTimeFormat(localeTag, options).format(dayOf(date))
+  const say = (style: DateTimeStyle) => (date: string) =>
+    formatDateTime(dayOf(date), localeTag ?? 'en-US', style)
   return {
-    monthLabelFormat: say({ year: 'numeric', month: 'long' }),
-    yearLabelFormat: say({ year: 'numeric' }),
-    weekdayFormat: say({ weekday: weekdayWidthIn(localeTag) }),
-    monthsListFormat: say({ month: 'short' }),
-    yearsListFormat: say({ year: 'numeric' }),
-    getDayAriaLabel: say({ year: 'numeric', month: 'long', day: 'numeric' }),
+    monthLabelFormat: say('calendar-month'),
+    yearLabelFormat: say('calendar-year'),
+    weekdayFormat: say(weekdayWidthIn(localeTag) === 'narrow' ? 'weekday-narrow' : 'weekday-short'),
+    monthsListFormat: say('month-short'),
+    yearsListFormat: say('calendar-year'),
+    getDayAriaLabel: say('long-date'),
   }
 }
 
 /** one calendar date, spelled the way the reader reads dates */
 export const dayIn = (localeTag: string | undefined, date: string) =>
-  new Intl.DateTimeFormat(localeTag, { dateStyle: 'medium' }).format(dayOf(date))
+  formatDateTime(dayOf(date), localeTag ?? 'en-US', 'date')

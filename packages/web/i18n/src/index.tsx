@@ -1,7 +1,7 @@
 import { createContext, useContext } from 'react'
 import { defaultLocale, supportedLocales, type SupportedLocale } from '@qualy/i18n-contract'
 import { formatList } from './list.ts'
-export { formatDateTime } from './date-time.ts'
+export { formatDateTime } from '@qualy/date-format'
 
 export {
   formatPlatformFailure,

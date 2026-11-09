@@ -1,7 +1,7 @@
-import { useLocale } from '@qualy/web-i18n'
+import { formatDateTime, useLocale } from '@qualy/web-i18n'
 import { useCallback } from 'react'
 
-import { calendarDaysBetween, inZone, useBatchZone, yearOf } from '../batch/zone.ts'
+import { calendarDaysBetween, useBatchZone, yearOf } from '../batch/zone.ts'
 import * as m from '#messages'
 
 // When something was filed, written the way somebody checking this round's
@@ -27,20 +27,15 @@ export function useWhen() {
       const days = calendarDaysBetween(at.getTime(), now, zone)
 
       if (days <= 1) {
-        const time = new Intl.DateTimeFormat(locale, {
-          hour: '2-digit',
-          minute: '2-digit',
-          hour12: false,
-          ...inZone(zone),
-        }).format(at)
+        const time = formatDateTime(at, locale, 'clock', zone)
         return (days <= 0 ? m.record_whenToday : m.record_whenYesterday)({ time })
       }
-      return new Intl.DateTimeFormat(locale, {
-        ...(yearOf(at.getTime(), zone) === yearOf(now, zone) ? {} : { year: 'numeric' }),
-        month: 'long',
-        day: 'numeric',
-        ...inZone(zone),
-      }).format(at)
+      return formatDateTime(
+        at,
+        locale,
+        yearOf(at.getTime(), zone) === yearOf(now, zone) ? 'month-day' : 'long-date',
+        zone,
+      )
     },
     [locale, zone],
   )

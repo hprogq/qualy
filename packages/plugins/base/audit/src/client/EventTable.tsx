@@ -1,5 +1,6 @@
-import { useLocale } from '@qualy/web-i18n'
+import { formatDateTime, useLocale } from '@qualy/web-i18n'
 import { useState, type ReactNode } from 'react'
+import { useHydrating } from '@qualy/web-runtime/hydrating'
 import { CheckIcon, CopyIcon } from 'lucide-react'
 import * as stylex from '@stylexjs/stylex'
 import { CardEmpty, Status } from '@qualy/ui/screen'
@@ -226,9 +227,10 @@ export function EventTable({
   hideTarget?: boolean
 }) {
   const locale = useLocale()
+  const hydrating = useHydrating()
   const [openId, setOpenId] = useState('')
   const when = (iso: string) =>
-    new Date(iso).toLocaleString(locale, { dateStyle: 'medium', timeStyle: 'medium' })
+    formatDateTime(new Date(iso), locale, 'event-time', hydrating ? 'UTC' : undefined)
   const actorOf = (row: EventRow) =>
     row.actorLabel ??
     (row.actorKind === 'anonymous'

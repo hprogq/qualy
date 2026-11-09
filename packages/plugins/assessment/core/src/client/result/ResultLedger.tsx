@@ -1,4 +1,5 @@
 import {
+  formatDateTime,
   formatPlatformFailure as formatError,
   useLocale,
   isApiErrorCode,
@@ -27,7 +28,7 @@ import { AlignLeftIcon, BarChart3Icon, ChevronDownIcon, ChevronRightIcon } from 
 import { type LinePart } from '../entry/identity.ts'
 import { LineParts } from '../entry/workspace/LineText.tsx'
 
-import { inZone, useBatchZone } from '../batch/zone.ts'
+import { useBatchZone } from '../batch/zone.ts'
 import { EntryStanding } from '../entry/EntryStanding.tsx'
 import { type EntryDto } from '../entry/model.ts'
 import {
@@ -1203,11 +1204,7 @@ const dayOf = (at: string | null, locale: string, zone: string | undefined): str
   const moment = at === null ? Number.NaN : Date.parse(at)
   return Number.isNaN(moment)
     ? null
-    : new Date(moment).toLocaleDateString(locale, {
-        month: 'short',
-        day: 'numeric',
-        ...inZone(zone),
-      })
+    : formatDateTime(new Date(moment), locale, 'short-month-day', zone)
 }
 
 /** a group's figure as its band says it: what it came to, over its limit */

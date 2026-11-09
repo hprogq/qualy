@@ -32,6 +32,14 @@ export const chunkPools: NonNullable<Rolldown.OutputOptions['codeSplitting']> = 
       priority: 3,
       includeDependenciesRecursively: false,
     },
+    // The formatter, its two locales and zone adapter are one leaf of the
+    // graph. Keep them together without drawing the calendar widgets in.
+    {
+      name: 'date-format',
+      test: /[\\/](?:node_modules[\\/](?:date-fns|@date-fns[\\/]tz)[\\/]|packages[\\/]core[\\/]date-format[\\/]src[\\/])/,
+      priority: 3,
+      includeDependenciesRecursively: false,
+    },
     // Presentation primitives and their shared contexts are one foundation.
     // Product surfaces and the providers that use them remain outside it.
     {
@@ -42,7 +50,9 @@ export const chunkPools: NonNullable<Rolldown.OutputOptions['codeSplitting']> = 
     },
     {
       name: 'motion',
-      test: /[\\/]node_modules[\\/](?:framer-motion|motion-dom|motion-utils)[\\/]/,
+      // Include the motion/react facade rather than serving its re-export
+      // as a separate request in addition to the implementation it names.
+      test: /[\\/]node_modules[\\/](?:motion|framer-motion|motion-dom|motion-utils)[\\/]/,
       priority: 3,
       includeDependenciesRecursively: false,
     },

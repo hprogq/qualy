@@ -1,7 +1,8 @@
+import type { SupportedLocale } from '@qualy/i18n-contract'
+import { formatDateTime } from '@qualy/web-i18n'
 import type { Message } from '@qualy/i18n-contract'
 import { identityPartsOf, type LinePart } from '../identity.ts'
 
-import { inZone } from '../../batch/zone.ts'
 import { recordedOnly, unitsOf, type EntryDto, type FilingGateDto, type ItemDto } from '../model.ts'
 import { eachWorth, mayFile, roomLeft, type Standing, type StructureRow } from '../standing.ts'
 import { filingHeldOf, type RoundState, type Said } from '../refusals.ts'
@@ -215,15 +216,8 @@ export const two = (value: string | number): string => {
  * When something happened to a claim, on the batch's clock: the day as the
  * language names it and the time to the minute, never a bare "04/20".
  */
-export const momentOf = (iso: string, locale: string, zone: string | undefined): string =>
-  new Intl.DateTimeFormat(locale, {
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-    ...inZone(zone),
-  }).format(new Date(iso))
+export const momentOf = (iso: string, locale: SupportedLocale, zone: string | undefined): string =>
+  formatDateTime(new Date(iso), locale, 'month-day-short-time', zone)
 
 /** a settled claim with a round running on it is out with the reviewers again */
 export const contested = (entry: EntryDto): boolean =>

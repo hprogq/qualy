@@ -1,6 +1,6 @@
 'use client'
 import { Pager } from '@qualy/ui/pager'
-import { useLocale, useList } from '@qualy/web-i18n'
+import { formatDateTime, useLocale, useList } from '@qualy/web-i18n'
 import {
   lazy,
   Suspense,
@@ -44,7 +44,7 @@ import {
 import { type ApiResult } from '@qualy/web-runtime/api'
 import { BatchScreen } from './batch/BatchScreen.tsx'
 import { BatchFlow } from './batch/BatchFlow.tsx'
-import { calendarDaysBetween, inZone, useBatchZone, yearOf } from './batch/zone.ts'
+import { calendarDaysBetween, useBatchZone, yearOf } from './batch/zone.ts'
 
 import { UnreadDot } from './entry/workspace/unread-dot.tsx'
 import {
@@ -1597,9 +1597,7 @@ function adminRows(
 const MOST_NAMED = 3
 
 const clockOf = (iso: string, locale: string, zone: string | undefined) =>
-  new Intl.DateTimeFormat(locale, { hour: '2-digit', minute: '2-digit', ...inZone(zone) }).format(
-    new Date(iso),
-  )
+  formatDateTime(new Date(iso), locale, 'clock-local', zone)
 
 /** the feed's days are the batch's days (`zone`), not the reader's */
 function groupByDay(
@@ -1623,15 +1621,13 @@ function groupByDay(
   const dayOf = (iso: string) => {
     const at = new Date(iso)
     const diff = calendarDaysBetween(at.getTime(), now, zone)
-    const spelled = new Intl.DateTimeFormat(locale, {
-      month: 'long',
-      day: 'numeric',
-      ...(yearOf(at.getTime(), zone) === yearOf(now, zone) ? {} : { year: 'numeric' }),
-      ...inZone(zone),
-    }).format(at)
-    const weekday = new Intl.DateTimeFormat(locale, { weekday: 'short', ...inZone(zone) }).format(
+    const spelled = formatDateTime(
       at,
+      locale,
+      yearOf(at.getTime(), zone) === yearOf(now, zone) ? 'month-day' : 'long-date',
+      zone,
     )
+    const weekday = formatDateTime(at, locale, 'weekday-short', zone)
     if (diff === 0) return { key: 'today', label: m.overview_today(), aside: spelled }
     if (diff === 1) return { key: 'yesterday', label: m.overview_yesterday(), aside: spelled }
     return { key: spelled, label: spelled, aside: weekday }

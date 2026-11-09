@@ -1,11 +1,12 @@
-import { useLocale } from '@qualy/web-i18n'
+import type { SupportedLocale } from '@qualy/i18n-contract'
+import { formatDateTime, useLocale } from '@qualy/web-i18n'
 import { useQuery } from '@tanstack/react-query'
 import { useApiQuery } from '@qualy/web-runtime'
 import { type ApiResult } from '@qualy/web-runtime/api'
 import { assessmentApi } from '../api.ts'
 
 import { answerOf, displayValueOf, fieldsOf } from '../entry/model.ts'
-import { calendarDaysBetween, inZone, useBatchZone, yearOf } from '../batch/zone.ts'
+import { calendarDaysBetween, useBatchZone, yearOf } from '../batch/zone.ts'
 import * as m from '#messages'
 
 // What the review screens agree on: the queue row, the three ways it is
@@ -61,31 +62,30 @@ export const rowSummary = (row: InboxItemDto): string => summaryOf(row.values)
  * queue keeps its own coarser day-aware clock - operating surfaces read at
  * a glance, records read exactly. Both read on the batch's clock (`zone`).
  */
-export const timeLabel = (iso: string, locale: string, zone?: string): string => {
+export const timeLabel = (iso: string, locale: SupportedLocale, zone?: string): string => {
   const then = new Date(iso)
-  return then.toLocaleString(locale, {
-    ...(yearOf(then.getTime(), zone) === yearOf(Date.now(), zone) ? {} : { year: 'numeric' }),
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    ...inZone(zone),
-  })
+  return formatDateTime(
+    then,
+    locale,
+    yearOf(then.getTime(), zone) === yearOf(Date.now(), zone)
+      ? 'numeric-time'
+      : 'numeric-year-time',
+    zone,
+  )
 }
 
 /** when a moment happened, on the batch's clock, without seconds */
-export const clockLabel = (iso: string, locale: string, zone?: string): string =>
-  new Date(iso).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', ...inZone(zone) })
+export const clockLabel = (iso: string, locale: SupportedLocale, zone?: string): string =>
+  formatDateTime(new Date(iso), locale, 'clock-local', zone)
 
 /** a calendar day as a reader writes it: 9月24日, with the year only when it is not this one */
-const dayLabel = (at: Date, locale: string, zone?: string): string =>
-  at.toLocaleDateString(locale, {
-    ...(yearOf(at.getTime(), zone) === yearOf(Date.now(), zone) ? {} : { year: 'numeric' }),
-    month: 'short',
-    day: 'numeric',
-    ...inZone(zone),
-  })
+const dayLabel = (at: Date, locale: SupportedLocale, zone?: string): string =>
+  formatDateTime(
+    at,
+    locale,
+    yearOf(at.getTime(), zone) === yearOf(Date.now(), zone) ? 'short-month-day' : 'short-date',
+    zone,
+  )
 
 /**
  * A clock that admits which day it is.

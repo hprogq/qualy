@@ -119,6 +119,8 @@ Bun 的 Undici 兼容路径不能完成当前实现，实测包括 `agent.close 
 
 同一 `en-US` locale、时区和日期时间选项，在本机 Node 输出 `Sep 19, 05:30`，Bun 输出 `Sep 19 at 05:30`；Brave 的英文公式列表实际重现了这组 SSR／水合差异。ECMA-402 的 locale 格式模式有[实现相关部分](https://tc39.es/ecma402/2025/#sec-implementation-dependencies)，不能仅凭字样不同判定运行时违反规范；但它不满足 [React 水合必须匹配](https://react.dev/reference/react-dom/client/hydrateRoot#caveats)的要求。
 
-`@qualy/web-i18n` 的 `formatDateTime` 分别格式化日期与时钟，由消息 `date_time` 明确组合。公式列表、版本时间、账号安全记录和角色有效期复用它；不按 Node/Bun 分支处理，也不压制水合错误。列表首帧的“今天／昨天”使用文档渲染时间。Node／Bun 的修复后探针均为 `Sep 19, 05:30`，回归测试拒绝重新交给组合 Intl 模式决定连接文字。
+初次修复把日期与时钟拆开，由消息明确组合。它消除了公式列表的连接词差异，但审计等调用点仍能绕过入口，而且宿主依然决定两段各自的格式。2026-11-09 改用 [`@qualy/date-format`](../../packages/core/date-format/src/index.ts) 的 date-fns `format()`；同一套模板与语言数据供审计、批次、公式、账号、导入与日期控件使用。新增语言时添加 locale 和产品模板，不实现新的日期格式化算法，也不覆盖全局 `Intl`。
 
-该修复不等于所有 `Intl` 输出都获得跨版本字节一致性保证，也没有改变本轮未涉及的设备时区策略。开发 renderer 继续使用 Bun，生产与测试驱动继续使用 Node。
+用 [跨宿主探针](../../tools/quality/date-format-acceptance.ts) 比较 Node、Bun 和 Chromium：两个语言、六个时区、六个时刻和四种显示样式，共 288 组，包括纽约换钟和阿皮亚跳日。原生 `Intl` 有 108 组文本不同；date-fns 与 FormatJS 强制模式各自 288 组 UTF-16 一致。包含用例的独立构建分别为 9,873 和 120,024 字节 Brotli。FormatJS 试接入使产品启动闭包达到 353,573 字节，超过 239,616 字节上限；未采用。date-fns 接入后的启动闭包为 236,726 字节，批次列表 90 个 JS 请求，未提高预算。探针只比较固定输入的显示结果，不代表任意未来时区规则都一致。
+
+`@date-fns/tz` 仍使用宿主的时区偏移数据；同一时间的格式一致与时区数据库一致是不同承诺。审计首帧显式用 UTC，接管后仍按设备时区显示。批次继续使用自己的时区，线上的 ISO 字符串和既有排期换钟规则不变。Temporal 可以单独评估墙上时间转换，但不能直接用默认消歧替换“跳过的时间取跳变后的第一个有效时刻”。开发 renderer 继续使用 Bun，生产与测试驱动继续使用 Node。

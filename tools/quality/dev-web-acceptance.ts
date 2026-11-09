@@ -496,6 +496,26 @@ export const acquire = (prepared, context) => web.acquire({
       )
     }
   }
+  // The old audit join differed across Bun and Chromium even for the same
+  // locale and instant. Check HTML and hydration with a different device zone.
+  const auditContext = await browser.newContext({
+    locale: 'en-US',
+    timezoneId: 'America/New_York',
+    storageState: await context.storageState(),
+  })
+  try {
+    const auditUrl = `${site}/organization/audit`
+    const response = await auditContext.request.get(auditUrl)
+    assert.match(await response.text(), /<button[^>]+data-testid="audit-row"/)
+    const audit = await auditContext.newPage()
+    audit.on('pageerror', (error) => errors.push(error.message))
+    await audit.goto(auditUrl, { waitUntil: 'networkidle' })
+    await audit.getByTestId('audit-row').first().click()
+    await audit.getByTestId('audit-detail').waitFor()
+    console.log('audit: real HTML rows and English hydration in another device zone passed')
+  } finally {
+    await auditContext.close()
+  }
   await page.getByRole('button', { name: '系统管理员' }).click()
   const [ended] = await Promise.all([
     page.waitForResponse(

@@ -12,19 +12,13 @@ export const useMoment = () => {
   const thisYear = hydrating ? now.getUTCFullYear() : now.getFullYear()
   return (iso: string) => {
     const at = new Date(iso)
-    const zone = hydrating ? { timeZone: 'UTC' } : {}
     return formatDateTime(
       at,
       locale,
-      {
-        ...((hydrating ? at.getUTCFullYear() : at.getFullYear()) === thisYear
-          ? {}
-          : { year: 'numeric' }),
-        ...zone,
-        month: 'short',
-        day: 'numeric',
-      },
-      { hour: '2-digit', minute: '2-digit', ...zone },
+      (hydrating ? at.getUTCFullYear() : at.getFullYear()) === thisYear
+        ? 'month-day-short-time'
+        : 'year-month-day-short-time',
+      hydrating ? 'UTC' : undefined,
     )
   }
 }

@@ -1,3 +1,5 @@
+import type { SupportedLocale } from '@qualy/i18n-contract'
+import { formatDateTime } from '@qualy/web-i18n'
 import * as m from '#messages'
 
 // What an import problem says, in the reader's words; and when something
@@ -94,10 +96,5 @@ export const issueText = (issue: IssueLike, businessNo: string): string => {
 }
 
 /** a moment as the reader's calendar writes it: month, day, time */
-export const whenText = (locale: string, iso: string): string =>
-  new Intl.DateTimeFormat(locale, {
-    month: 'long',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(new Date(iso))
+export const whenText = (locale: SupportedLocale, iso: string): string =>
+  formatDateTime(new Date(iso), locale, 'month-day-time')

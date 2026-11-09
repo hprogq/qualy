@@ -1,4 +1,5 @@
-import { useLocale } from '@qualy/web-i18n'
+import type { SupportedLocale } from '@qualy/i18n-contract'
+import { formatDateTime, useLocale } from '@qualy/web-i18n'
 import { type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
@@ -13,7 +14,7 @@ import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { assessmentApi } from '../api.ts'
 
-import { inZone, useBatchZone, yearOf } from '../batch/zone.ts'
+import { useBatchZone, yearOf } from '../batch/zone.ts'
 import { AttachmentLink } from './AttachmentLink.tsx'
 import { answerOf, displayValueOf, fieldsOf } from './model.ts'
 import { ownReviewEventMessage, reviewEventMessage } from '../review/events.ts'
@@ -1195,15 +1196,14 @@ function FiledFields({
  * and with the year whenever it is not this one - "12/31" across a year
  * boundary reads as the wrong year with no warning. On the batch's clock.
  */
-const timeOf = (iso: string, locale: string, zone: string | undefined): string => {
+const timeOf = (iso: string, locale: SupportedLocale, zone: string | undefined): string => {
   const then = new Date(iso)
-  return then.toLocaleString(locale, {
-    ...(yearOf(then.getTime(), zone) === yearOf(Date.now(), zone) ? {} : { year: 'numeric' }),
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    ...inZone(zone),
-  })
+  return formatDateTime(
+    then,
+    locale,
+    yearOf(then.getTime(), zone) === yearOf(Date.now(), zone)
+      ? 'numeric-time'
+      : 'numeric-year-time',
+    zone,
+  )
 }

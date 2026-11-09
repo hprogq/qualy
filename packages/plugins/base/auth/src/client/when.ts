@@ -10,11 +10,6 @@ export const instantWords = (locale: SupportedLocale, iso: string) => {
   return formatDateTime(
     at,
     locale,
-    {
-      ...(at.getFullYear() === new Date().getFullYear() ? {} : { year: 'numeric' }),
-      month: 'long',
-      day: 'numeric',
-    },
-    { hour: '2-digit', minute: '2-digit' },
+    at.getFullYear() === new Date().getFullYear() ? 'month-day-time' : 'year-month-day-time',
   )
 }

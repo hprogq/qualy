@@ -1,4 +1,5 @@
 import {
+  formatDateTime,
   assertNever,
   formatPlatformFailure as formatError,
   useLocale,
@@ -34,7 +35,7 @@ import { useIsBelow } from '@qualy/ui/use-mobile'
 import { calculatorAuthoringOptions } from '../../../surfaces.ts'
 import { assessmentApi } from '../../api.ts'
 
-import { dayKeyOf, inZone, useBatchZone } from '../../batch/zone.ts'
+import { dayKeyOf, useBatchZone } from '../../batch/zone.ts'
 import { BatchBanner } from '../../batch/BatchScreen.tsx'
 import { type ItemDto } from '../../entry/model.ts'
 import { ImpactDialog, type ChangeEffects, type ChangeImpact } from '../ImpactDialog.tsx'
@@ -1418,20 +1419,10 @@ export function ItemEditor({
   const savedWhen = ((): string | null => {
     if (revision === null) return null
     const at = new Date(revision.createdAt)
-    const time = new Intl.DateTimeFormat(locale, {
-      hour: '2-digit',
-      minute: '2-digit',
-      ...inZone(zone),
-    }).format(at)
+    const time = formatDateTime(at, locale, 'clock-local', zone)
     return dayKeyOf(at.getTime(), zone) === dayKeyOf(Date.now(), zone)
       ? m.items_todayAt({ time })
-      : new Intl.DateTimeFormat(locale, {
-          month: 'long',
-          day: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit',
-          ...inZone(zone),
-        }).format(at)
+      : formatDateTime(at, locale, 'month-day-time', zone)
   })()
   const versionWords =
     revision === null ? m.items_versionNew() : m.items_versionNo({ no: revision.revisionNo })

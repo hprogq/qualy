@@ -1,4 +1,4 @@
-import { useLocale } from '@qualy/web-i18n'
+import { formatDateTime, useLocale } from '@qualy/web-i18n'
 import { useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { useApiQuery } from '@qualy/web-runtime'
@@ -61,13 +61,7 @@ export function RecycleBin({
     ...query.org.listDeletedNodes.queryOptions({}),
     enabled: open,
   })
-  const when = new Intl.DateTimeFormat(locale, {
-    month: 'long',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  })
+  const when = (at: Date) => formatDateTime(at, locale, 'month-day-long-clock')
   const nodes = binned.data?.nodes ?? []
   return (
     <DetailSheet
@@ -103,7 +97,7 @@ export function RecycleBin({
                 <span {...stylex.props(styles.note)}>
                   {m.bin_where({
                     parent: node.parentName ?? '',
-                    when: when.format(new Date(node.deletedAt)),
+                    when: when(new Date(node.deletedAt)),
                   })}
                 </span>
                 {!node.restorable && (
