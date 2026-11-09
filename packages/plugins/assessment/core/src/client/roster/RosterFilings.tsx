@@ -2,7 +2,7 @@ import * as stylex from '@stylexjs/stylex'
 import { VisuallyHidden } from '@qualy/ui/visually-hidden'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 
-import { COLUMNS, HEADS, ORDER, WORDS, type Filings } from './filings.ts'
+import { COLUMNS, HEADS, KIND_COLUMNS, ORDER, WORDS, type Filings } from './filings.ts'
 import * as m from '#messages'
 
 // What one person's claims are waiting on, as short counts: only the kinds
@@ -69,14 +69,7 @@ const styles = stylex.create({
   },
 })
 
-export function RosterFilings({
-  filings,
-  columns,
-}: {
-  filings: Filings
-  /** the kinds' own columns, where the table has the room for them */
-  columns?: string | undefined
-}) {
+export function RosterFilings({ filings }: { filings: Filings }) {
   const said = ORDER.filter((kind) => filings[kind] > 0)
   const facts = {
     'data-testid': 'participant-filings',
@@ -91,73 +84,50 @@ export function RosterFilings({
     said.length === 0
       ? m.roster_waitingNone()
       : said.map((kind) => WORDS[kind]({ count: filings[kind] })).join(', ')
-  if (columns !== undefined)
-    return (
-      <span {...facts} {...stylex.props(styles.list, styles.adaptive(columns))}>
-        <span aria-hidden {...stylex.props(styles.words)}>
-          {said.length === 0 ? (
-            <span {...stylex.props(styles.none)}>—</span>
-          ) : (
-            said.map((kind) => (
-              <span
-                key={kind}
-                data-filings-word
-                {...stylex.props(styles.one, kind === 'blocked' && styles.warn)}
-              >
-                {WORDS[kind]({ count: filings[kind] })}
-              </span>
-            ))
-          )}
-        </span>
-        <span aria-hidden {...stylex.props(styles.tracks)}>
-          {COLUMNS.map((kind) => {
-            const count = filings[kind]
-            return (
-              <span
-                key={kind}
-                aria-hidden
-                data-kind={kind}
-                {...stylex.props(
-                  count === 0 ? styles.zero : styles.count,
-                  count > 0 && kind === 'blocked' && styles.warnCount,
-                )}
-              >
-                {count === 0 ? '—' : count}
-              </span>
-            )
-          })}
-        </span>
-        <VisuallyHidden>{spoken}</VisuallyHidden>
-      </span>
-    )
   return (
-    <span {...facts} {...stylex.props(styles.list)}>
-      {said.length === 0 ? (
-        <>
-          <span aria-hidden {...stylex.props(styles.none)}>
-            —
-          </span>
-          <VisuallyHidden>{spoken}</VisuallyHidden>
-        </>
-      ) : (
-        said.map((kind) => (
-          <span
-            key={kind}
-            data-filings-word
-            {...stylex.props(styles.one, kind === 'blocked' && styles.warn)}
-          >
-            {WORDS[kind]({ count: filings[kind] })}
-          </span>
-        ))
-      )}
+    <span {...facts} {...stylex.props(styles.list, styles.adaptive(KIND_COLUMNS))}>
+      <span aria-hidden {...stylex.props(styles.words)}>
+        {said.length === 0 ? (
+          <span {...stylex.props(styles.none)}>—</span>
+        ) : (
+          said.map((kind) => (
+            <span
+              key={kind}
+              data-filings-word
+              {...stylex.props(styles.one, kind === 'blocked' && styles.warn)}
+            >
+              {WORDS[kind]({ count: filings[kind] })}
+            </span>
+          ))
+        )}
+      </span>
+      <span aria-hidden {...stylex.props(styles.tracks)}>
+        {COLUMNS.map((kind) => {
+          const count = filings[kind]
+          return (
+            <span
+              key={kind}
+              aria-hidden
+              data-kind={kind}
+              {...stylex.props(
+                count === 0 ? styles.zero : styles.count,
+                count > 0 && kind === 'blocked' && styles.warnCount,
+              )}
+            >
+              {count === 0 ? '—' : count}
+            </span>
+          )
+        })}
+      </span>
+      <VisuallyHidden>{spoken}</VisuallyHidden>
     </span>
   )
 }
 
 /** the kinds' column heads, laid out as RosterFilings lays out their counts */
-export function RosterFilingsHead({ columns }: { columns: string }) {
+export function RosterFilingsHead() {
   return (
-    <span {...stylex.props(styles.adaptive(columns))}>
+    <span {...stylex.props(styles.adaptive(KIND_COLUMNS))}>
       <span {...stylex.props(styles.words)}>{m.roster_columnWaiting()}</span>
       <span {...stylex.props(styles.tracks)}>
         {COLUMNS.map((kind) => (

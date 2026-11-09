@@ -1190,8 +1190,43 @@ describe('the room the roster gives its rows', () => {
     expect((quiet.element().textContent ?? '').replace(dash.textContent ?? '', '').trim()).not.toBe(
       '',
     )
-    // Empty statuses keep only a label-sized column, even on a wide page.
-    expect(waitingWidth()).toBeLessThanOrEqual(64)
+    // At a narrow table width the same track is used whether or not a row is busy.
+    expect(quiet.element().getBoundingClientRect().width).toBeGreaterThan(64)
+  })
+
+  it('keeps five waiting columns when turning from a quiet page to a busy one', async () => {
+    await page.viewport(1920, 1000)
+    try {
+      await open(
+        {
+          listParticipantAccounts: (request: Request) =>
+            pageOf(request, [
+              ...EVERYONE.slice(0, 20),
+              person(21, { filings: { ...NONE, inReview: 2 } }),
+            ]),
+        },
+        undefined,
+        1920 - 224,
+      )
+      const cells = () =>
+        Array.from(
+          page.getByTestId('participant-filings').first().element().querySelectorAll('[data-kind]'),
+        )
+      const positions = () =>
+        cells().map(
+          (cell) => cell.getBoundingClientRect().left + cell.getBoundingClientRect().width / 2,
+        )
+      await expect.element(rows().first()).toHaveAttribute('data-participant', id(1))
+      expect(cells().map((cell) => cell.textContent)).toEqual(['—', '—', '—', '—', '—'])
+      const before = positions()
+      expect(new Set(before).size).toBe(5)
+      await page.getByTestId('roster-pager').getByRole('button', { name: '2' }).click()
+      await expect.element(rows().first()).toHaveAttribute('data-participant', id(21))
+      expect(cells().map((cell) => cell.textContent)).toEqual(['2', '—', '—', '—', '—'])
+      expect(positions()).toEqual(before)
+    } finally {
+      await page.viewport(1280, 800)
+    }
   })
 
   it.each([0, 112])('keeps the unit card inside a scrollport starting at %i px', async (offset) => {

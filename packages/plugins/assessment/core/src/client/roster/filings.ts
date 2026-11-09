@@ -41,9 +41,6 @@ export const COLUMNS: readonly RosterWaiting[] = [
   'blocked',
 ]
 
-/** The narrow layout keeps a bounded column for waiting text. */
-export const WAITING_COLUMN = '9rem'
-
 /** Each kind sizes its own heading without a browser measurement. */
 export const KIND_COLUMNS = `repeat(${String(COLUMNS.length)}, minmax(max-content, 1fr))`
 

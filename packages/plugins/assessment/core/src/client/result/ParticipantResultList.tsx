@@ -68,7 +68,7 @@ import { RosterUnitTree } from '../roster/RosterUnitTree.tsx'
 import { UnreachableDialog } from '../roster/UnreachableDialog.tsx'
 import { type AdmissionOutcomeFacts } from '../roster/AdmissionOutcome.tsx'
 import { RosterFilings, RosterFilingsHead } from '../roster/RosterFilings.tsx'
-import { KIND_COLUMNS, WAITING_COLUMN, waitsOnAnything } from '../roster/filings.ts'
+import { waitsOnAnything } from '../roster/filings.ts'
 import { RosterScore } from '../roster/RosterScore.tsx'
 import { unitPathOf } from '../roster/unit-path.ts'
 import {
@@ -86,7 +86,7 @@ import { ROSTER_MAX_WAIT, ROSTER_SETTLE, settler, SYNC_FRESH } from '../roster/l
 import { ScoresNotice } from '../roster/ScoresNotice.tsx'
 import { type BatchLiveEvent } from '../../api.ts'
 import { ParticipantRosterRows } from './ParticipantRosterSkeleton.tsx'
-import { rosterStyles, rosterColumns, rosterWideColumns } from './roster-presentation.ts'
+import { rosterStyles } from './roster-presentation.ts'
 import * as commonMessages from '@qualy/web-i18n/messages'
 import * as m from '#messages'
 
@@ -636,12 +636,6 @@ export function ParticipantResultList({
 
   const narrowed = view.q !== '' || view.unit !== '' || view.status !== '' || view.waiting !== ''
   const unitWord = view.unit === '' ? m.roster_unitsAll() : (unitName ?? m.roster_unitChosen())
-  const waitingHead = m.roster_columnWaiting()
-  const separateKinds = rows.some((row) => waitsOnAnything(row.filings))
-  const columns = rosterColumns(separateKinds ? WAITING_COLUMN : '3rem')
-  const filingsFor = (filings: Parameters<typeof RosterFilings>[0]['filings']) => (
-    <RosterFilings filings={filings} columns={separateKinds ? KIND_COLUMNS : undefined} />
-  )
   const notices = manageable ? (
     <RosterNotices
       placements={archived ? null : (placements.data ?? null)}
@@ -828,20 +822,12 @@ export function ParticipantResultList({
         skeleton={<ParticipantRosterRows />}
       >
         <Card ref={listCard} data-testid="roster">
-          <div
-            {...stylex.props(
-              rosterStyles.table(columns, separateKinds ? rosterWideColumns : columns),
-            )}
-          >
+          <div {...stylex.props(rosterStyles.table)}>
             <Table columns="var(--q-roster-columns)">
               <TableHead>
                 <span>{businessNo}</span>
                 <span>{m.roster_columnName()}</span>
-                {separateKinds ? (
-                  <RosterFilingsHead columns={KIND_COLUMNS} />
-                ) : (
-                  <span>{waitingHead}</span>
-                )}
+                <RosterFilingsHead />
                 <span {...stylex.props(rosterStyles.headEnd)}>{m.roster_columnScore()}</span>
                 <span />
               </TableHead>
@@ -946,9 +932,11 @@ export function ParticipantResultList({
                         with no words would only leave its rule behind */}
                       <Cell unlabelled>
                         {waitsOnAnything(row.filings) ? (
-                          filingsFor(row.filings)
+                          <RosterFilings filings={row.filings} />
                         ) : (
-                          <AtWidth from={768}>{filingsFor(row.filings)}</AtWidth>
+                          <AtWidth from={768}>
+                            <RosterFilings filings={row.filings} />
+                          </AtWidth>
                         )}
                       </Cell>
                       {/* the total is what the list is scanned by, so

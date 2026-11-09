@@ -5,8 +5,6 @@ import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 // Waiting text has a bounded track beside the person; above 800px of list
 // width its five kinds share the remaining room. Score and menu keep their
 // own tracks in both layouts.
-export const rosterColumns = (waiting: string) => `6.5rem minmax(144px, 1fr) ${waiting} 7.5rem 2rem`
-export const rosterWideColumns = '6.5rem minmax(180px, min(480px, 30%)) minmax(0, 1fr) 7.5rem 2rem'
 
 export const rosterStyles = stylex.create({
   // The roster starts directly under the shell's batch context.
@@ -66,12 +64,13 @@ export const rosterStyles = stylex.create({
     gap: 10,
     scrollMarginTop: 12,
   },
-  table: (template: string, wide: string) => ({
+  table: {
     '--q-roster-columns': {
-      default: template,
-      '@container (min-width: 800px)': wide,
+      default: '6.5rem minmax(144px, 1fr) 9rem 7.5rem 2rem',
+      '@container (min-width: 800px)':
+        '6.5rem minmax(180px, min(480px, 30%)) minmax(0, 1fr) 7.5rem 2rem',
     },
-  }),
+  },
   // Only phones wrap: unit, search, then the three choices.
   toolbar: {
     display: 'flex',

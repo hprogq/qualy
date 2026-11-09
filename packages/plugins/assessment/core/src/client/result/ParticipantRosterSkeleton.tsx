@@ -4,7 +4,7 @@ import { Card, CardFoot, Table, TableHead, TableRow } from '@qualy/ui/screen'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
-import { rosterStyles, rosterColumns, rosterWideColumns } from './roster-presentation.ts'
+import { rosterStyles } from './roster-presentation.ts'
 import * as commonMessages from '@qualy/web-i18n/messages'
 import * as m from '#messages'
 
@@ -128,7 +128,7 @@ function WaitingBones() {
 export function ParticipantRosterRows({ fill = false }: { fill?: boolean }) {
   return (
     <Card data-testid="roster-skeleton" aria-hidden xstyle={[styles.frame, fill && styles.fill]}>
-      <div {...stylex.props(rosterStyles.table(rosterColumns('9rem'), rosterWideColumns))}>
+      <div {...stylex.props(rosterStyles.table)}>
         <Table columns="var(--q-roster-columns)">
           <TableHead>
             <Skeleton height={11} width={48} />
@@ -142,12 +142,7 @@ export function ParticipantRosterRows({ fill = false }: { fill?: boolean }) {
         </Table>
       </div>
       <div {...stylex.props(styles.rows)}>
-        <div
-          {...stylex.props(
-            styles.drawn,
-            rosterStyles.table(rosterColumns('9rem'), rosterWideColumns),
-          )}
-        >
+        <div {...stylex.props(styles.drawn, rosterStyles.table)}>
           <Table columns="var(--q-roster-columns)">
             {ROWS.map((key) => (
               <TableRow key={key} height="compact" data-testid="roster-skeleton-row">
