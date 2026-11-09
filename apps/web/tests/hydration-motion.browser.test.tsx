@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect, it } from 'vitest'
 import { useState } from 'react'
+import { flushSync } from 'react-dom'
 import { renderToString } from 'react-dom/server'
 import { hydrateRoot } from 'react-dom/client'
 import { Drill, Portion, Reveal, Stagger } from '@qualy/ui/reveal'
@@ -59,27 +60,13 @@ it('keeps server-rendered entrances visible and animates newly opened content', 
     expect(Math.min(...samples)).toBe(1)
     expect(errors).toEqual([])
 
-    host.querySelector('button')!.click()
-    const arrivals: number[] = []
-    const clicked = performance.now()
-    while (performance.now() - clicked < 120) {
-      await new Promise(requestAnimationFrame)
-      arrivals.push(
-        Number(
-          getComputedStyle(host.querySelector('[data-entry="reveal"]')!.parentElement!).opacity,
-        ),
-      )
-    }
+    const revealOpacity = () =>
+      Number(getComputedStyle(host.querySelector('[data-entry="reveal"]')!.parentElement!).opacity)
+    flushSync(() => host.querySelector('button')!.click())
     if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      expect(Math.min(...arrivals)).toBeLessThan(1)
+      expect(revealOpacity()).toBeLessThan(1)
     }
-    await expect
-      .poll(() =>
-        Number(
-          getComputedStyle(host.querySelector('[data-entry="reveal"]')!.parentElement!).opacity,
-        ),
-      )
-      .toBe(1)
+    await expect.poll(revealOpacity).toBe(1)
   } finally {
     root.unmount()
     host.remove()
@@ -107,20 +94,25 @@ it('keeps a horizontal drill inside its scrollport without removing the movement
   }
   try {
     await render(<Navigation />)
-    await page.getByRole('button', { name: 'Open detail' }).click()
     const scrollport = page.getByTestId('drill-scrollport').element()
-    const samples: { extra: number; travel: number }[] = []
-    const started = performance.now()
-    while (performance.now() - started < 280) {
-      await new Promise(requestAnimationFrame)
+    const open = page.getByRole('button', { name: 'Open detail' }).element() as HTMLButtonElement
+    const travel = () => {
       const animated = page.getByTestId('drill-content').element().parentElement!
-      samples.push({
-        extra: scrollport.scrollWidth - scrollport.clientWidth,
-        travel: new DOMMatrixReadOnly(getComputedStyle(animated).transform).m41,
-      })
+      return new DOMMatrixReadOnly(getComputedStyle(animated).transform).m41
     }
-    expect(samples.some((sample) => sample.travel > 0)).toBe(true)
-    expect(Math.max(...samples.map((sample) => sample.extra))).toBeLessThanOrEqual(1)
+    const overflow = () => scrollport.scrollWidth - scrollport.clientWidth
+    // Read the arrival in the same browser task as the commit. A Playwright
+    // click round trip can outlast the entire transition on a loaded runner.
+    flushSync(() => open.click())
+    expect(travel()).toBeGreaterThan(0)
+    const widths = [overflow()]
+    await expect
+      .poll(() => {
+        widths.push(overflow())
+        return travel()
+      })
+      .toBe(0)
+    expect(Math.max(...widths)).toBeLessThanOrEqual(1)
     expect(scrollport.scrollHeight).toBeGreaterThan(scrollport.clientHeight)
     scrollport.scrollTop = 120
     expect(scrollport.scrollTop).toBe(120)
