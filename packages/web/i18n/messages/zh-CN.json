@@ -78,7 +78,7 @@
   "error_apiRouteNotFound": "页面需要刷新后才能继续使用。",
   "error_clientUnsupported": "页面需要刷新后才能继续使用。",
   "error_serviceUnavailable": "Qualy 暂时无法完成该操作，请稍后重试。",
-  "error_network": "暂时无法连接 Qualy，请检查网络后重试。",
+  "error_network": "网络连接失败，请检查网络后重试。",
   "error_unexpected": "操作失败，请重试。",
   "boot_reloadLead": "加载时间较长，",
   "boot_reload": "刷新页面",

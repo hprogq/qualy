@@ -497,12 +497,18 @@ describe('the roster on the results page', () => {
     await open({ listParticipantScores: asked })
     const notice = page.getByTestId('roster-scores-failed')
     await expect.element(notice).toHaveAttribute('data-cause', 'request')
+    const retry = notice.getByRole('button', { name: '重试' })
+    const bounds = notice.element().getBoundingClientRect()
+    const button = retry.element().getBoundingClientRect()
+    expect(
+      Math.abs(button.top + button.height / 2 - (bounds.top + bounds.height / 2)),
+    ).toBeLessThan(1)
     // every row can still ask about its own person
     await expect
       .element(page.getByTestId('participant-score').first())
       .toHaveAttribute('data-score-state', 'deferred')
     down = false
-    await notice.getByRole('button', { name: '重试' }).click()
+    await retry.click()
     await expect.element(notice).not.toBeInTheDocument()
     await expect
       .element(page.getByTestId('participant-score').first())

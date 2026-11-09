@@ -809,7 +809,6 @@ export function ParticipantResultList({
         serviceDown && (
           <ScoresNotice
             cause="scoring-unavailable"
-            reason={m.roster_scoreUnavailable()}
             busy={handedScores === undefined && scores.isFetching}
             onRetry={() => void scores.refetch()}
           />

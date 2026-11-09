@@ -1882,7 +1882,7 @@
   "roster_scoreCompute": "Compute",
   "roster_scoreComputeOne": "Compute {name}'s current total",
   "roster_scoreAgainOne": "Compute {name}'s current total again",
-  "roster_scoresFailed": "This page's totals could not be computed",
+  "roster_scoresFailed": "Could not load totals",
   "roster_scoreWorking": "Computing",
   "roster_scoreUnavailable": "Scoring unavailable",
   "roster_scoreTooLarge": "Too many to compute",
