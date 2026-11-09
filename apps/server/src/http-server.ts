@@ -1,4 +1,5 @@
 import { createServer, type Server } from 'node:http'
+import type { Socket } from 'node:net'
 
 // The Node server this host listens with, and the two clocks it runs on.
 
@@ -39,3 +40,29 @@ export const createHttpServer = (): Server =>
     headersTimeout: HEADERS_TIMEOUT_MS,
     connectionsCheckingInterval: CONNECTIONS_CHECK_INTERVAL_MS,
   })
+
+/**
+ * Observe connections before listen without registering an upgrade handler.
+ * Node's HTTP connection sweeps skip sockets after a WebSocket upgrade.
+ * The framework still owns graceful close; this bounds what a peer can hold.
+ */
+export const prepareHttpDrain = (server: Server): (() => void) => {
+  const connections = new Set<Socket>()
+  server.on('connection', (socket) => {
+    connections.add(socket)
+    socket.once('close', () => connections.delete(socket))
+  })
+
+  return () => {
+    server.closeIdleConnections()
+    const sweep = setInterval(() => server.closeIdleConnections(), 250).unref()
+    const cutoff = setTimeout(() => {
+      clearInterval(sweep)
+      for (const socket of connections) socket.destroy()
+    }, 2_000).unref()
+    server.once('close', () => {
+      clearInterval(sweep)
+      clearTimeout(cutoff)
+    })
+  }
+}

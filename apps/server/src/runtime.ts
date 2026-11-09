@@ -25,7 +25,7 @@ import { platformTracerOff } from '@qualy/api-kit/request'
 import type { LoggingSettings } from './logging.ts'
 import { healthApi, healthHandlers } from './health.ts'
 import { mark } from './boot-timing.ts'
-import { createHttpServer } from './http-server.ts'
+import { createHttpServer, prepareHttpDrain } from './http-server.ts'
 import { onShutdownRequested } from './shutdown.ts'
 
 // The composition root.
@@ -106,25 +106,9 @@ const nodeServerLayer = Layer.sync(NodeServer, () => {
   // the end of the acquiring band: the port is open, which is the first
   // moment this process is of any use to anybody
   server.once('listening', () => mark('http listening'))
-  // A stopping process must not let its clients decide when the drain ends.
-  // A browser tab alone holds idle keep-alive sockets, and a live event
-  // stream is never idle at all - either pins `server.close` for the whole
-  // upstream drain cap, which read as a hung Ctrl+C. From the first stop
-  // signal idle sockets are swept as they free up, and after a short grace
-  // whatever is still open is cut: in-flight responses get the grace, and
-  // cut streams are the client runtime's reconnect case, not an error.
-  const hurry = () => {
-    server.closeIdleConnections()
-    const sweep = setInterval(() => server.closeIdleConnections(), 250)
-    sweep.unref()
-    setTimeout(() => {
-      clearInterval(sweep)
-      server.closeAllConnections()
-    }, 2_000).unref()
-  }
   // registered with this host's own stop rather than with the signals: under
   // a supervisor the stop arrives over a channel and no signal is ever sent
-  onShutdownRequested(hurry)
+  onShutdownRequested(prepareHttpDrain(server))
   return server
 })
 

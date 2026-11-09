@@ -1,9 +1,12 @@
+import { once } from 'node:events'
+import { createConnection } from 'node:net'
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_LIMITS } from '@qualy/plugin-storage/server'
 import {
   CONNECTIONS_CHECK_INTERVAL_MS,
   createHttpServer,
   HEADERS_TIMEOUT_MS,
+  prepareHttpDrain,
   REQUEST_TIMEOUT_MS,
 } from '../src/http-server.ts'
 
@@ -56,4 +59,35 @@ describe('the server this host listens with', () => {
       server.close()
     }
   })
+
+  it('lets the listener finish closing even when an upgraded peer stays connected', async () => {
+    const server = createHttpServer()
+    const drain = prepareHttpDrain(server)
+    server.on('upgrade', (_request, socket) => {
+      socket.write(
+        'HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: probe\r\n\r\n',
+      )
+    })
+    await once(server.listen(0, '127.0.0.1'), 'listening')
+    const address = server.address()
+    if (address === null || typeof address === 'string') throw new Error('expected a TCP listener')
+    const peer = createConnection(address.port, '127.0.0.1')
+    try {
+      await once(peer, 'connect')
+      const upgraded = once(peer, 'data')
+      peer.write(
+        'GET / HTTP/1.1\r\nHost: localhost\r\nConnection: Upgrade\r\nUpgrade: probe\r\n\r\n',
+      )
+      const [reply] = await upgraded
+      expect(String(reply)).toContain('101 Switching Protocols')
+      const disconnected = once(peer, 'close')
+      const closed = once(server, 'close')
+      drain()
+      server.close()
+      await Promise.all([disconnected, closed])
+    } finally {
+      peer.destroy()
+      server.close()
+    }
+  }, 8_000)
 })

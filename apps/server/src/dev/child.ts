@@ -133,13 +133,14 @@ export const send = (child: Child, message: HostMessage): void => {
 export const exited = (child: Child): Promise<number | null> => child.exit
 
 /** ask it to stop, and wait; whatever is left after the deadline is killed */
-export const stop = async (child: Child, within: number): Promise<void> => {
+export const stop = async (child: Child, within: number, onTimeout?: () => void): Promise<void> => {
   if (child.gone) return
   send(child, { protocol: PROTOCOL, type: 'shutdown' })
   const deadline = new Promise<'late'>((resolve) =>
     setTimeout(() => resolve('late'), within).unref(),
   )
   if ((await Promise.race([exited(child), deadline])) === 'late') {
+    onTimeout?.()
     child.process.kill('SIGKILL')
     await exited(child)
   }

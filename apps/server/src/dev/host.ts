@@ -269,8 +269,11 @@ const tellBackendStatus = (status: DevBackendStatus) => {
  * the next backend must not start on top of that.
  */
 const retireBackend = async () => {
-  if (active.backend === null) return
-  await stop(active.backend, 20_000)
+  const backend = active.backend
+  if (backend === null) return
+  await stop(backend, 20_000, () =>
+    say(`${backend.name} did not exit within 20s; forcing it to stop`, 'Warn'),
+  )
   active.backend = null
 }
 
