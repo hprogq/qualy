@@ -3,9 +3,11 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { commands, page, userEvent } from 'vitest/browser'
 import { render } from 'vitest-browser-react'
 import { ResizableSplit } from '@qualy/ui/screen'
+import { LayoutPreferenceProvider } from '@qualy/ui/layout-preferences'
+import { readLayoutPreferences } from '@qualy/ui/layout-preference-cookie'
 import '../src/app.css'
 
-const KEY = 'test:collapsible-split'
+const KEY = 'test-collapsible-split'
 
 function Example() {
   const [collapsed, setCollapsed] = useState(false)
@@ -15,7 +17,7 @@ function Example() {
         Toggle tree
       </button>
       <ResizableSplit
-        storageKey={KEY}
+        preference={KEY}
         initial={312}
         min={220}
         max={312}
@@ -33,7 +35,7 @@ function Example() {
 }
 
 afterEach(async () => {
-  localStorage.removeItem(KEY)
+  document.cookie = `qualy-layout-${KEY}=; Path=/; Max-Age=0`
   await commands.emulateMedia({ reducedMotion: 'reduce' })
 })
 
@@ -87,13 +89,16 @@ describe('a resizable tree that folds beside its list', () => {
 
   it('honors saved width and keeps hidden controls out of keyboard navigation with reduced motion', async () => {
     await page.viewport(1440, 900)
-    localStorage.setItem(KEY, '280')
-    await render(<Example />)
+    await render(
+      <LayoutPreferenceProvider initial={{ [KEY]: 280 }}>
+        <Example />
+      </LayoutPreferenceProvider>,
+    )
     const side = page.getByTestId('split-side').element() as HTMLElement
     expect(side.getBoundingClientRect().width).toBe(280)
     await page.getByRole('separator', { name: 'Resize tree' }).click()
     await userEvent.keyboard('{ArrowLeft}')
-    expect(localStorage.getItem(KEY)).toBe('264')
+    expect(readLayoutPreferences(document.cookie)[KEY]).toBe(264)
     await page.getByRole('button', { name: 'Toggle tree' }).click()
     expect(side.getBoundingClientRect().width).toBe(0)
     expect(side.parentElement!.getAnimations()).toHaveLength(0)

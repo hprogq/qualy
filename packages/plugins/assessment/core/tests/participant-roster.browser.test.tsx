@@ -105,12 +105,12 @@ const open = (
   width?: number,
   locale: 'zh-CN' | 'en-US' = 'zh-CN',
   /** what this browser already keeps */
-  storage: Record<string, string> = {},
+  layoutPreferences: Record<string, number> = {},
   scrolling: false | number = false,
 ) =>
   renderScreen({
     locale,
-    storage,
+    layoutPreferences,
     client: fakeClient({
       app: {
         getManifest: () =>
@@ -897,7 +897,7 @@ describe('the roster on the results page', () => {
           // system draws one; the page keeps its own margins inside it
           1280 - 224 - 17,
           locale,
-          stored === null ? {} : { 'qualy:assessment-roster-tree': stored },
+          stored === null ? {} : { 'assessment-roster-tree-width': Number(stored) },
         )
         // the tree stands beside the list at this width
         await expect
@@ -1609,7 +1609,7 @@ describe('the room the roster gives its rows', () => {
     const fold = page.getByTestId('roster-tree-toggle')
     await expect.element(fold).toHaveAttribute('data-open', 'false')
     await expect.element(fold).toHaveAttribute('aria-expanded', 'false')
-    expect(localStorage.getItem('qualy:assessment-roster-tree-open')).toBe('0')
+    expect(document.cookie).toContain('qualy-layout-assessment-roster-tree-folded=1')
   })
 
   it('comes back to a folded tree folded, with the unit said in its place', async () => {
@@ -1618,7 +1618,7 @@ describe('the room the roster gives its rows', () => {
       `/assessment/batches/${BATCH_ID}/results?list-unit=${COLLEGE}`,
       undefined,
       'zh-CN',
-      { 'qualy:assessment-roster-tree-open': '0' },
+      { 'assessment-roster-tree-folded': 1 },
     )
     await expect
       .element(page.getByTestId('roster-tree-toggle'))

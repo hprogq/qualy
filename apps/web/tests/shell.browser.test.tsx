@@ -1202,12 +1202,12 @@ describe('a screen’s own column, in the rail’s place', () => {
 describe('a folded workspace rail', () => {
   // Folded to give a wide page the room, it stays folded on the next page
   // and the next visit: the reader meant it for the work, not for one screen.
-  const mount = (storage: Record<string, string> = {}) =>
+  const mount = (layoutPreferences: Record<string, number> = {}) =>
     renderScreen({
       client: fakeClient({ app: { getManifest: () => Effect.succeed(settledManifest()) } }),
       routes: [{ path: '/assessment/batches/:batchId/phases', element: <WorkspaceShell /> }],
       route: `/assessment/batches/${BATCH_ID}/phases`,
-      storage,
+      layoutPreferences,
     })
 
   it('remembers being folded, and comes back folded', async () => {
@@ -1217,17 +1217,17 @@ describe('a folded workspace rail', () => {
     await expect.element(toggle).toHaveAttribute('aria-expanded', 'true')
     await toggle.click()
     await expect.element(toggle).toHaveAttribute('aria-expanded', 'false')
-    expect(localStorage.getItem('qualy:workspace-rail-folded')).toBe('1')
+    expect(document.cookie).toContain('qualy-layout-workspace-rail-folded=1')
   })
 
   it('opens folded for a reader who folded it before, and unfolds on a press', async () => {
     await page.viewport(1280, 800)
-    await mount({ 'qualy:workspace-rail-folded': '1' })
+    await mount({ 'workspace-rail-folded': 1 })
     const toggle = page.getByRole('button', { name: '收起或展开侧边栏' })
     await expect.element(toggle).toHaveAttribute('aria-expanded', 'false')
     await toggle.click()
     await expect.element(toggle).toHaveAttribute('aria-expanded', 'true')
-    expect(localStorage.getItem('qualy:workspace-rail-folded')).toBeNull()
+    expect(document.cookie).toContain('qualy-layout-workspace-rail-folded=0')
   })
 })
 

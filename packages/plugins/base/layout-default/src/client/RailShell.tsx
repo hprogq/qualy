@@ -1,6 +1,6 @@
 import { styles } from './rail-shell.styles.ts'
 import { pending } from './pending.ts'
-import { useLayoutEffect, useState, type ReactNode } from 'react'
+import { type ReactNode } from 'react'
 import { NavLink, Outlet, useLocation, useParams } from 'react-router'
 import { Reveal } from '@qualy/ui/reveal'
 import { PanelLeftIcon } from 'lucide-react'
@@ -37,6 +37,7 @@ import {
 import { Skeleton } from '@qualy/ui/skeleton'
 import { Sheet, SheetContent, SheetTitle } from '@qualy/ui/sheet'
 import { useIsBelow } from '@qualy/ui/use-mobile'
+import { useLayoutPreference } from '@qualy/ui/layout-preferences'
 import { TopBar } from './TopBar.tsx'
 import { AppsBar, BottomBar, MOST_CELLS } from './BottomBar.tsx'
 import { NavIcon } from './icons.tsx'
@@ -73,30 +74,6 @@ import * as m from '#messages'
 
 /** where the shell stops being two columns */
 const SHELL_BREAKPOINT = 1024
-
-/**
- * Whether the reader keeps the workspace rail folded, remembered by this
- * browser: somebody who folds it to give a wide table the room means it for
- * the next page and the next visit too, not only until they navigate away.
- */
-const RAIL_FOLDED_KEY = 'qualy:workspace-rail-folded'
-
-const railFolded = (): boolean => {
-  try {
-    return window.localStorage.getItem(RAIL_FOLDED_KEY) === '1'
-  } catch {
-    return false
-  }
-}
-
-const keepRailFolded = (folded: boolean) => {
-  try {
-    if (folded) window.localStorage.setItem(RAIL_FOLDED_KEY, '1')
-    else window.localStorage.removeItem(RAIL_FOLDED_KEY)
-  } catch {
-    // a browser that cannot remember starts with the rail open again
-  }
-}
 
 // The scroll model, stated once: the body never scrolls (the root is the
 // viewport), the main column owns the page scroll, the rail and the drawer's
@@ -367,10 +344,8 @@ function CapableRailShell({
   // the product's own bar stays as the way out, whatever the width.
   const subject = useSubjectAbsenceSeat()
   const absent = subject.absent
-  const [railOpen, setRailOpen] = useState(true)
-  useLayoutEffect(() => {
-    if (railFolded()) setRailOpen(false)
-  }, [])
+  const [railFolded, keepRailFolded] = useLayoutPreference('workspace-rail-folded', 0)
+  const railOpen = railFolded !== 1
 
   // an entry carrying a capability token waits for the open workspace to
   // publish its set, and renders only while the set holds it; a gated entry
@@ -423,10 +398,7 @@ function CapableRailShell({
       aria-label={label}
       aria-expanded={railOpen}
       {...stylex.props(styles.toggleButton)}
-      onClick={() => {
-        keepRailFolded(railOpen)
-        setRailOpen(!railOpen)
-      }}
+      onClick={() => keepRailFolded(railOpen ? 1 : 0)}
     >
       <PanelLeftIcon aria-hidden {...stylex.props(styles.toggleGlyph)} />
     </button>

@@ -1,8 +1,9 @@
-import { useCallback, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '../../theme/tokens.stylex.ts'
 import { breakpoints } from '../../theme/breakpoints.stylex.ts'
 import { useIsBelow } from '../../hooks/use-mobile.ts'
+import { useLayoutPreference } from '../layout-preferences.tsx'
 
 // Two pieces of page geometry a tree-beside-a-list screen needs and CSS alone
 // does not give: a side column the reader sets the width of, and a box in it
@@ -118,7 +119,7 @@ const styles = stylex.create({
  * window size. Below the desktop width the two stack and nothing is resizable.
  */
 export function ResizableSplit({
-  storageKey,
+  preference,
   initial = 300,
   min = 240,
   max = 520,
@@ -128,7 +129,7 @@ export function ResizableSplit({
   side,
   children,
 }: {
-  storageKey: string
+  preference: string
   initial?: number
   min?: number
   max?: number
@@ -145,8 +146,9 @@ export function ResizableSplit({
   side: ReactNode
   children: ReactNode
 }) {
-  const clamp = useCallback((width: number) => Math.min(max, Math.max(min, width)), [min, max])
-  const [width, setWidth] = useState(initial)
+  const clamp = (width: number) => Math.min(max, Math.max(min, width))
+  const [rememberedWidth, keep] = useLayoutPreference(preference, initial)
+  const [width, setWidth] = useState(() => clamp(rememberedWidth))
   const [dragging, setDragging] = useState(false)
   const [hover, setHover] = useState(false)
   const origin = useRef<{ x: number; width: number } | null>(null)
@@ -159,23 +161,6 @@ export function ResizableSplit({
       focused.blur()
     }
   }, [collapsed])
-
-  useLayoutEffect(() => {
-    try {
-      const stored = Number(window.localStorage.getItem(storageKey))
-      if (Number.isFinite(stored) && stored > 0) setWidth(clamp(stored))
-    } catch {
-      // Without storage the default width already drawn is the preference.
-    }
-  }, [clamp, storageKey])
-
-  const keep = (next: number) => {
-    try {
-      window.localStorage.setItem(storageKey, String(next))
-    } catch {
-      // a window that cannot remember simply starts from the default again
-    }
-  }
 
   return (
     <div
@@ -224,7 +209,7 @@ export function ResizableSplit({
           }}
           onPointerMove={(event) => {
             if (origin.current === null) return
-            setWidth(clamp(origin.current.width + event.clientX - origin.current.x))
+            setWidth(clamp(Math.round(origin.current.width + event.clientX - origin.current.x)))
           }}
           onPointerUp={(event) => {
             if (origin.current === null) return

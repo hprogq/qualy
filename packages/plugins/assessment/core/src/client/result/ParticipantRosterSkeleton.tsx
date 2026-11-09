@@ -4,7 +4,14 @@ import { Card, CardFoot, Table, TableHead, TableRow } from '@qualy/ui/screen'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
-import { rosterStyles } from './roster-presentation.ts'
+import {
+  rosterStyles,
+  ROSTER_TREE_WIDTH,
+  ROSTER_TREE_MIN,
+  ROSTER_TREE_MOST,
+  ROSTER_TREE_FOLDED,
+} from './roster-presentation.ts'
+import { useLayoutPreference } from '@qualy/ui/layout-preferences'
 import * as commonMessages from '@qualy/web-i18n/messages'
 import * as m from '#messages'
 
@@ -14,9 +21,12 @@ const styles = stylex.create({
     display: 'grid',
     minHeight: 0,
     flexGrow: 1,
-    gridTemplateColumns: { default: 'minmax(0, 1fr)', [breakpoints.wide]: '312px minmax(0, 1fr)' },
+    gridTemplateColumns: 'minmax(0, 1fr)',
     gap: 20,
   },
+  withTree: (width: number) => ({
+    gridTemplateColumns: { default: null, [breakpoints.wide]: `${width}px minmax(0, 1fr)` },
+  }),
   tree: { display: { default: 'none', [breakpoints.wide]: 'flex' } },
   treeHead: {
     display: 'flex',
@@ -45,6 +55,7 @@ const styles = stylex.create({
     flexShrink: 0,
     width: { default: '9rem', [breakpoints.wide]: 36, [breakpoints.phone]: '100%' },
   },
+  foldedSwitch: { width: { default: null, [breakpoints.wide]: '9rem' } },
   control: { height: 36, minWidth: 0, borderRadius: tokens.radiusMd },
   // A query-only fallback also fills the page's room. The full outline uses
   // flex instead, so it follows its own header and toolbar without offsets.
@@ -193,6 +204,9 @@ export function ParticipantRosterRows({ fill = false }: { fill?: boolean }) {
 
 /** Read-only streaming outline, sized by the shell's CSS scroll container. */
 export function ParticipantRosterSkeleton() {
+  const [folded] = useLayoutPreference(ROSTER_TREE_FOLDED, 0)
+  const [preferredWidth] = useLayoutPreference(ROSTER_TREE_WIDTH, ROSTER_TREE_MOST)
+  const treeWidth = Math.min(ROSTER_TREE_MOST, Math.max(ROSTER_TREE_MIN, preferredWidth))
   return (
     <div data-testid="roster-pending" aria-busy {...stylex.props(rosterStyles.panel, styles.page)}>
       <header {...stylex.props(rosterStyles.head)}>
@@ -203,27 +217,38 @@ export function ParticipantRosterSkeleton() {
           <Skeleton className={stylex.props(styles.actions).className} />
         </span>
       </header>
-      <div role="status" aria-label={commonMessages.state_loading()} {...stylex.props(styles.body)}>
-        <Card aria-hidden data-testid="roster-skeleton-tree" xstyle={styles.tree}>
-          <div {...stylex.props(styles.treeHead)}>
-            <Skeleton height={13} width="35%" />
-            <Skeleton height={12} width="55%" />
-          </div>
-          <div {...stylex.props(styles.treeTools)}>
-            <Skeleton height={36} radius={6} />
-          </div>
-          <div {...stylex.props(styles.branches)}>
-            {[0, 1, 2, 3, 4, 5, 6, 7].map((key) => (
-              <div key={key} {...stylex.props(styles.branch, key % 3 !== 0 && styles.child)}>
-                <Skeleton height={12} width={12} />
-                <Skeleton height={13} width={WIDTHS[key % WIDTHS.length]} />
-              </div>
-            ))}
-          </div>
-        </Card>
+      <div
+        role="status"
+        aria-label={commonMessages.state_loading()}
+        {...stylex.props(styles.body, folded !== 1 && styles.withTree(treeWidth))}
+      >
+        {folded !== 1 && (
+          <Card aria-hidden data-testid="roster-skeleton-tree" xstyle={styles.tree}>
+            <div {...stylex.props(styles.treeHead)}>
+              <Skeleton height={13} width="35%" />
+              <Skeleton height={12} width="55%" />
+            </div>
+            <div {...stylex.props(styles.treeTools)}>
+              <Skeleton height={36} radius={6} />
+            </div>
+            <div {...stylex.props(styles.branches)}>
+              {[0, 1, 2, 3, 4, 5, 6, 7].map((key) => (
+                <div key={key} {...stylex.props(styles.branch, key % 3 !== 0 && styles.child)}>
+                  <Skeleton height={12} width={12} />
+                  <Skeleton height={13} width={WIDTHS[key % WIDTHS.length]} />
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
         <div {...stylex.props(rosterStyles.listColumn, styles.list)}>
           <div aria-hidden {...stylex.props(rosterStyles.toolbar)}>
-            <Skeleton className={stylex.props(styles.control, styles.unitSwitch).className} />
+            <Skeleton
+              className={
+                stylex.props(styles.control, styles.unitSwitch, folded === 1 && styles.foldedSwitch)
+                  .className
+              }
+            />
             <Skeleton className={stylex.props(styles.control, rosterStyles.search).className} />
             {[0, 1, 2].map((key) => (
               <Skeleton

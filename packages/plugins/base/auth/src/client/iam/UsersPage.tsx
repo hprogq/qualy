@@ -44,6 +44,7 @@ import { Pager } from '@qualy/ui/pager'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@qualy/ui/select'
 import { Spinner } from '@qualy/ui/spinner'
 import { useIsBelow } from '@qualy/ui/use-mobile'
+import { AtWidth } from '@qualy/ui/at-width'
 import { ChevronRightIcon } from 'lucide-react'
 import { DetailSheet } from '@qualy/ui/screen'
 
@@ -382,73 +383,85 @@ export default function UsersPage() {
         />
       ) : (
         <ResizableSplit
-          storageKey="qualy.users.tree-width"
+          preference="users-tree-width"
           handleLabel={m.users_resizeTree()}
           side={
-            phone ? (
-              <button
-                type="button"
-                data-testid="unit-switch"
-                {...stylex.props(styles.unitSwitch)}
-                onClick={() => setPickingUnit(true)}
-              >
-                <span {...stylex.props(styles.unitSwitchWords)}>
-                  <span {...stylex.props(styles.unitSwitchName)}>{active?.name ?? ''}</span>
-                  {activeUnit !== undefined && (
-                    <span {...stylex.props(styles.unitSwitchNote)}>
+            <>
+              <AtWidth below={1280}>
+                <button
+                  type="button"
+                  data-testid="unit-switch"
+                  {...stylex.props(styles.unitSwitch)}
+                  onClick={() => setPickingUnit(true)}
+                >
+                  <span {...stylex.props(styles.unitSwitchWords)}>
+                    <span {...stylex.props(styles.unitSwitchName)}>{active?.name ?? ''}</span>
+                    {activeUnit !== undefined && (
+                      <span {...stylex.props(styles.unitSwitchNote)}>
+                        {(within === 'self'
+                          ? m.users_rosterWithinSelf
+                          : m.users_rosterWithinSubtree)({
+                          count: within === 'self' ? activeUnit.own : activeUnit.total,
+                        })}
+                      </span>
+                    )}
+                  </span>
+                  <span {...stylex.props(styles.unitSwitchGo)}>{m.users_unitChange()}</span>
+                  <ChevronRightIcon aria-hidden {...stylex.props(styles.unitLinkIcon)} />
+                </button>
+              </AtWidth>
+              <AtWidth from={1280}>
+                <UnitTree
+                  units={units}
+                  openId={active?.orgNodeId ?? null}
+                  scope={within}
+                  onOpen={asking('anchor')}
+                  onScope={asking('scope')}
+                />
+              </AtWidth>
+            </>
+          }
+        >
+          <Card data-testid="roster" xstyle={styles.bare}>
+            <CardHead
+              title={
+                <>
+                  <AtWidth as="span" below={1280}>
+                    {m.users_title()}
+                  </AtWidth>
+                  <AtWidth as="span" from={1280}>
+                    {structureHref === undefined || active === undefined ? (
+                      (active?.name ?? '')
+                    ) : (
+                      <PageLink
+                        page="org/page"
+                        search={{ node: active.orgNodeId }}
+                        title={m.users_openInStructure()}
+                        className={stylex.props(styles.unitLink).className}
+                      >
+                        {active.name}
+                        <ArrowUpRightIcon aria-hidden {...stylex.props(styles.unitLinkIcon)} />
+                      </PageLink>
+                    )}
+                  </AtWidth>
+                </>
+              }
+              sub={
+                // on a phone the line above already says which unit and how many
+                activeUnit === undefined ? undefined : (
+                  <AtWidth as="span" from={1280}>
+                    <span
+                      data-testid="roster-scope"
+                      data-scope={within}
+                      data-people={within === 'self' ? activeUnit.own : activeUnit.total}
+                    >
                       {(within === 'self' ? m.users_rosterWithinSelf : m.users_rosterWithinSubtree)(
                         {
                           count: within === 'self' ? activeUnit.own : activeUnit.total,
                         },
                       )}
                     </span>
-                  )}
-                </span>
-                <span {...stylex.props(styles.unitSwitchGo)}>{m.users_unitChange()}</span>
-                <ChevronRightIcon aria-hidden {...stylex.props(styles.unitLinkIcon)} />
-              </button>
-            ) : (
-              <UnitTree
-                units={units}
-                openId={active?.orgNodeId ?? null}
-                scope={within}
-                onOpen={asking('anchor')}
-                onScope={asking('scope')}
-              />
-            )
-          }
-        >
-          <Card data-testid="roster" xstyle={styles.bare}>
-            <CardHead
-              title={
-                phone ? (
-                  m.users_title()
-                ) : structureHref === undefined || active === undefined ? (
-                  (active?.name ?? '')
-                ) : (
-                  <PageLink
-                    page="org/page"
-                    search={{ node: active.orgNodeId }}
-                    title={m.users_openInStructure()}
-                    className={stylex.props(styles.unitLink).className}
-                  >
-                    {active.name}
-                    <ArrowUpRightIcon aria-hidden {...stylex.props(styles.unitLinkIcon)} />
-                  </PageLink>
-                )
-              }
-              sub={
-                // on a phone the line above already says which unit and how many
-                phone || activeUnit === undefined ? undefined : (
-                  <span
-                    data-testid="roster-scope"
-                    data-scope={within}
-                    data-people={within === 'self' ? activeUnit.own : activeUnit.total}
-                  >
-                    {(within === 'self' ? m.users_rosterWithinSelf : m.users_rosterWithinSubtree)({
-                      count: within === 'self' ? activeUnit.own : activeUnit.total,
-                    })}
-                  </span>
+                  </AtWidth>
                 )
               }
             >

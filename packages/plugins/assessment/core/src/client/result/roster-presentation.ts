@@ -1,6 +1,12 @@
 import * as stylex from '@stylexjs/stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 
+export const ROSTER_TREE_WIDTH = 'assessment-roster-tree-width'
+export const ROSTER_TREE_FOLDED = 'assessment-roster-tree-folded'
+export const ROSTER_TREE_MIN = 220
+// Leave room for the roster at the narrowest viewport that shows a tree.
+export const ROSTER_TREE_MOST = 312
+
 // Shared first-paint geometry, without queries, effects or viewport reads.
 // Waiting text has a bounded track beside the person; above 800px of list
 // width its five kinds share the remaining room. Score and menu keep their

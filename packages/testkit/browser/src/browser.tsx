@@ -25,6 +25,7 @@ import {
   type LiveChannelsOptions,
 } from '@qualy/web-runtime'
 import { UiProvider } from '@qualy/ui/provider'
+import { LayoutPreferenceProvider } from '@qualy/ui/layout-preferences'
 import { Effect } from 'effect'
 import type { ClientUnsupportedReason } from '@qualy/release-contract'
 import { toast } from '@qualy/ui/toast'
@@ -171,6 +172,7 @@ export function renderScreen({
   // says so through the same stored preference a user's toggle writes
   locale = 'zh-CN',
   storage = {},
+  layoutPreferences = {},
   live,
   liveTiming,
   onClientUnsupported,
@@ -209,6 +211,7 @@ export function renderScreen({
   locale?: 'zh-CN' | 'en-US'
   /** what this browser already keeps, as a visitor who has been here before */
   storage?: Record<string, string>
+  layoutPreferences?: Readonly<Record<string, number>>
   /**
    * The server's half of every live channel the screen opens. Without one,
    * every channel is refused, and the screen keeps to its polling cadence.
@@ -254,7 +257,9 @@ export function renderScreen({
         <DataRouterLeaveGuard>
           <RouteMetadata>
             <Address />
-            <Outlet />
+            <LayoutPreferenceProvider initial={layoutPreferences}>
+              <Outlet />
+            </LayoutPreferenceProvider>
           </RouteMetadata>
         </DataRouterLeaveGuard>
       </RuntimeProvider>

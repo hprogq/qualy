@@ -22,6 +22,7 @@ import {
 import { identityOfManifest } from '@qualy/web-runtime/document-identity'
 import type { Manifest } from '@qualy/web-runtime'
 import { Document } from './Document.tsx'
+import { readLayoutPreferences } from '@qualy/ui/layout-preference-cookie'
 import { HtmlDocument } from './html-document.tsx'
 import { DocumentError, LayoutError, PageError } from './route-error.tsx'
 import { sessionClearings, withCookies } from './session-clearing.ts'
@@ -135,7 +136,12 @@ const renderServer = async (request: Request, manifest: Manifest) => {
       manifest,
       frames: {
         Html: DocumentHtml,
-        Document,
+        Document: (props) => (
+          <Document
+            {...props}
+            layoutPreferences={readLayoutPreferences(request.headers.get('cookie'))}
+          />
+        ),
         DocumentError,
         LayoutError,
         PageError,

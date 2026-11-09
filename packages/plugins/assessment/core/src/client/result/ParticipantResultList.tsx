@@ -1,11 +1,5 @@
 import { Effect } from 'effect'
-import {
-  useApiMutation,
-  useApi,
-  useApiQuery,
-  useHydrating,
-  useLoadFailure,
-} from '@qualy/web-runtime'
+import { useApiMutation, useApi, useApiQuery, useLoadFailure } from '@qualy/web-runtime'
 import {
   assertNever,
   formatPlatformFailure as formatError,
@@ -58,6 +52,7 @@ import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { useIsBelow } from '@qualy/ui/use-mobile'
 import { AtWidth } from '@qualy/ui/at-width'
+import { useLayoutPreference } from '@qualy/ui/layout-preferences'
 import { UnitPath } from '@qualy/ui/unit-path'
 import { VisuallyHidden } from '@qualy/ui/visually-hidden'
 import { AddPeopleDialog } from '../roster/AddPeopleDialog.tsx'
@@ -86,7 +81,13 @@ import { ROSTER_MAX_WAIT, ROSTER_SETTLE, settler, SYNC_FRESH } from '../roster/l
 import { ScoresNotice } from '../roster/ScoresNotice.tsx'
 import { type BatchLiveEvent } from '../../api.ts'
 import { ParticipantRosterRows } from './ParticipantRosterSkeleton.tsx'
-import { rosterStyles } from './roster-presentation.ts'
+import {
+  rosterStyles,
+  ROSTER_TREE_WIDTH,
+  ROSTER_TREE_MIN,
+  ROSTER_TREE_FOLDED,
+  ROSTER_TREE_MOST,
+} from './roster-presentation.ts'
 import * as commonMessages from '@qualy/web-i18n/messages'
 import * as m from '#messages'
 
@@ -115,36 +116,6 @@ import * as m from '#messages'
  * (120) and a menu (32): 640. An inch narrower and the name is what gives.
  */
 const TWO_COLUMNS = 1280 as const
-
-/**
- * The widest the reader may drag the unit tree.
- *
- * Bounded by the table, not by the tree: at the narrowest width the tree
- * stands beside the list, 1280 less the rail (224), a scrollbar's gutter
- * (17), the page's margins (48) and the gap (20), less the table's 640,
- * leaves it 331. A width stored in a wider window is held to this too,
- * rather than squeezing the menu out of the row.
- */
-const TREE_MOST = 312
-
-/** whether the reader keeps the unit tree open beside the list, remembered per browser */
-const TREE_OPEN_KEY = 'qualy:assessment-roster-tree-open'
-
-const readTreeOpen = (): boolean => {
-  try {
-    return window.localStorage.getItem(TREE_OPEN_KEY) !== '0'
-  } catch {
-    return true
-  }
-}
-
-const keepTreeOpen = (open: boolean) => {
-  try {
-    window.localStorage.setItem(TREE_OPEN_KEY, open ? '1' : '0')
-  } catch {
-    // a window that cannot remember starts with the tree open again
-  }
-}
 
 /**
  * A select cannot hold the empty string as a value, so "no narrowing" needs
@@ -279,19 +250,9 @@ export function ParticipantResultList({
   // on a phone, where the table has no head to line its columns up under
   const narrow = useIsBelow(TWO_COLUMNS)
   const [unitsOpen, setUnitsOpen] = useState(false)
-  // Beside the list the tree can be folded away, for a reader who works
-  // down the whole roster and wants the room; the fold is remembered. The
-  // fold is this browser's: a server drawing the page draws the tree open,
-  // the page takes that over as it is, and folds it then if it was kept so.
-  const hydrating = useHydrating()
-  const [treeOpen, setTreeOpen] = useState(() => (hydrating ? true : readTreeOpen()))
-  useEffect(() => {
-    if (!readTreeOpen()) setTreeOpen(false)
-  }, [])
-  const foldTree = (open: boolean) => {
-    setTreeOpen(open)
-    keepTreeOpen(open)
-  }
+  const [treeFolded, keepTreeFolded] = useLayoutPreference(ROSTER_TREE_FOLDED, 0)
+  const treeOpen = treeFolded !== 1
+  const foldTree = (open: boolean) => keepTreeFolded(open ? 0 : 1)
 
   // the same words, asked the same way, as the list beside an open account
   const search = useRosterSearch(view.q, onView)
@@ -1061,10 +1022,10 @@ export function ParticipantResultList({
       </header>
       <Feedback message={failure} />
       <ResizableSplit
-        storageKey="qualy:assessment-roster-tree"
-        initial={TREE_MOST}
-        min={220}
-        max={TREE_MOST}
+        preference={ROSTER_TREE_WIDTH}
+        initial={ROSTER_TREE_MOST}
+        min={ROSTER_TREE_MIN}
+        max={ROSTER_TREE_MOST}
         collapsed={!treeOpen}
         besideOnly
         handleLabel={m.roster_unitsResize()}

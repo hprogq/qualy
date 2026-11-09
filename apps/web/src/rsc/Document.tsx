@@ -3,6 +3,8 @@ import { useRevalidator } from 'react-router'
 import { useEffect, useMemo, type ComponentProps, type ComponentType, type ReactNode } from 'react'
 import { QueryHydration } from '@qualy/web-runtime/query-hydration'
 import type { SupportedLocale } from '@qualy/i18n-contract'
+import { LayoutPreferenceProvider } from '@qualy/ui/layout-preferences'
+import type { LayoutPreferences } from '@qualy/ui/layout-preference-cookie'
 import {
   DataRouterLeaveGuard,
   DocumentNow,
@@ -36,6 +38,7 @@ export function Document({
   renderedAt,
   hydration,
   initialWorkspaceCapabilities,
+  layoutPreferences,
   children,
 }: {
   manifest: Manifest
@@ -46,6 +49,7 @@ export function Document({
   /** what the page read first on the server, for every surface's queries */
   hydration?: ComponentProps<typeof QueryHydration>['state'] | undefined
   initialWorkspaceCapabilities?: readonly string[] | undefined
+  layoutPreferences: LayoutPreferences
   children: ReactNode
 }) {
   const registry = useMemo<ComponentRegistry>(
@@ -68,11 +72,13 @@ export function Document({
           {import.meta.env.DEV && <DevelopmentRenderRefresh />}
           <NavigationProgress />
           <RouteMetadata>
-            {hydration === undefined ? (
-              children
-            ) : (
-              <QueryHydration state={hydration}>{children}</QueryHydration>
-            )}
+            <LayoutPreferenceProvider initial={layoutPreferences}>
+              {hydration === undefined ? (
+                children
+              ) : (
+                <QueryHydration state={hydration}>{children}</QueryHydration>
+              )}
+            </LayoutPreferenceProvider>
           </RouteMetadata>
         </DataRouterLeaveGuard>
       </RuntimeProvider>
