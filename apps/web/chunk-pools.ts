@@ -50,6 +50,15 @@ export const chunkPools: NonNullable<Rolldown.OutputOptions['codeSplitting']> = 
       priority: 4,
       includeDependenciesRecursively: false,
     },
+    // The batch workspace always needs these leaves for the timeline:
+    // labels, date ranges and the event the deadline dock uses to open it.
+    // The drawer and its action descriptions can still load separately.
+    {
+      name: 'batch-timeline',
+      test: /[\\/]assessment[\\/]core[\\/]src[\\/]client[\\/]batch[\\/](?:flow|flow-request|when)\.ts$/,
+      priority: 3,
+      includeDependenciesRecursively: false,
+    },
     {
       name: 'motion',
       // Include the motion/react facade rather than serving its re-export
