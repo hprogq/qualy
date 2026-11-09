@@ -19,7 +19,7 @@ import { repoRoot } from '../lib/manifest.ts'
 // into the deployment's release store; a server started before the seed
 // refuses; the seed runs from this checkout through compose.seed.yaml;
 // deploy/upgrade.sh brings the first color up and it reports ready, serving
-// that release; the shell, the manifest and one hashed asset are served; a
+// that release; the login document, the manifest and one hashed asset are served; a
 // server pointed at a store its release was never installed in refuses,
 // naming the job; both sandboxes answer the RPC handshake from inside the
 // server container; a second migration run finds nothing to do; the operator
@@ -200,13 +200,18 @@ const expectIn = (label: string, haystack: string, needle: string | RegExp) => {
  * `other side closed`), failing a step about the deployment for a reason
  * that is the client's.
  */
-const probe = (url: string, timeoutMs = 10_000): Promise<{ status: number; body: string }> =>
+const probe = (
+  url: string,
+  timeoutMs = 10_000,
+): Promise<{ status: number; body: string; headers: http.IncomingHttpHeaders }> =>
   new Promise((resolve, reject) => {
     const request = http.get(url, { agent: false, timeout: timeoutMs }, (response) => {
       let body = ''
       response.setEncoding('utf8')
       response.on('data', (chunk: string) => (body += chunk))
-      response.on('end', () => resolve({ status: response.statusCode ?? 0, body }))
+      response.on('end', () =>
+        resolve({ status: response.statusCode ?? 0, body, headers: response.headers }),
+      )
       response.on('error', reject)
     })
     request.on('timeout', () =>
@@ -214,6 +219,23 @@ const probe = (url: string, timeoutMs = 10_000): Promise<{ status: number; body:
     )
     request.on('error', reject)
   })
+
+/** An anonymous document navigation goes through the actual sign-in redirect. */
+const loginDocument = async (base: string, installed: string): Promise<string> => {
+  const root = await probe(`${base}/`)
+  if (root.status !== 302 || root.headers.location === undefined)
+    refuse(`GET / must redirect an anonymous visitor to sign in, got ${String(root.status)}`)
+  const target = new URL(root.headers.location, base)
+  if (target.origin !== base || target.pathname !== '/login')
+    refuse('GET / did not redirect to the login page of this deployment')
+  const login = await probe(target.href)
+  if (login.status !== 200) refuse(`GET /login status ${String(login.status)}`)
+  expectIn('login cache policy', login.headers['cache-control'] ?? '', /\bno-store\b/)
+  expectIn('login content type', login.headers['content-type'] ?? '', /^text\/html\b/i)
+  expectIn('login document', login.body, /^<!doctype html>/i)
+  expectIn('login document release', login.body, `data-release="${installed}"`)
+  return login.body
+}
 
 const waitReady = async (label: string, base = blue, timeoutMs = 120_000) => {
   const deadline = Date.now() + timeoutMs
@@ -426,7 +448,7 @@ try {
   await waitReady('first start')
   await edgeOn('first start', bluePort)
 
-  // --- what it serves: the release the job installed, the shell, one hashed asset, the manifest
+  // --- what it serves: the release the job installed, the login document, an asset, the manifest
   {
     const base = blue
     const answer = await probe(`${base}/__qualy/release`)
@@ -435,15 +457,12 @@ try {
     if (served !== installed)
       refuse(`the server serves ${String(served)}, the job installed ${installed}`)
     step(`serving web release ${installed}`)
-    const shell = await probe(`${base}/`)
-    if (shell.status !== 200) refuse(`GET / status ${String(shell.status)}`)
-    const html = shell.body
-    expectIn('shell', html, '<!doctype html')
+    const html = await loginDocument(base, installed)
     const asset = /(?:src|href)="(\/[^"]+\.(?:js|css))"/.exec(html)?.[1]
-    if (asset === undefined) refuse('the shell references no built asset')
+    if (asset === undefined) refuse('the login document references no built asset')
     const fetched = await probe(`${base}${asset}`)
     if (fetched.status !== 200) refuse(`GET ${asset} status ${String(fetched.status)}`)
-    step(`shell and ${asset} served`)
+    step(`login document and ${asset} served`)
     const manifest = await probe(`${base}/api/app/manifest`)
     if (manifest.status !== 200) refuse(`manifest status ${String(manifest.status)}`)
     const body = JSON.parse(manifest.body) as { pages?: unknown[] }
@@ -690,8 +709,7 @@ try {
   await waitReady('after restore')
   await edgeOn('after restore', bluePort)
   {
-    const shell = await probe(`${blue}/`)
-    if (shell.status !== 200) refuse(`GET / after restore: status ${String(shell.status)}`)
+    await loginDocument(blue, installed)
     const found = psql('select value from release_smoke_marker')
     expectCode('marker after restore', found, 0)
     expectIn('marker after restore', found.out, marker)
