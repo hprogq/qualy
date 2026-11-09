@@ -3,7 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { build } from 'vite'
 import { expect, it } from 'vitest'
-import { qualyChunkIdentity } from '../src/chunk-identity.ts'
+import { qualyChunkIdentity } from '../../../../apps/web/chunk-identity.ts'
 
 it('changes an importer URL when it switches between byte-identical chunks', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'qualy-chunk-identity-'))

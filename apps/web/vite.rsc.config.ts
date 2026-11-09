@@ -12,7 +12,7 @@ import { defineConfig, type Plugin, type PluginOption } from 'vite'
 import { QUALY_API_PREFIX } from '@qualy/api-kit'
 import { qualyEnvironmentModules, qualyRelease } from '@qualy/web-build/vite'
 import { qualyChunkGraph } from '../../packages/build/web/src/chunk-graph.ts'
-import { qualyChunkIdentity } from '../../packages/build/web/src/chunk-identity.ts'
+import { qualyChunkIdentity } from './chunk-identity.ts'
 import { opensWithClientDirective } from '../../packages/build/web/src/client-directive.ts'
 import { chunkPools } from './chunk-pools.ts'
 import {
