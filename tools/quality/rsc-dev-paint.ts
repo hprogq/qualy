@@ -100,7 +100,6 @@ export async function traceDevelopmentPaint(
       globalThis.__paintDiagnostics = []
       globalThis.__paintTimeOrigin = performance.timeOrigin
       globalThis.__paintStopped = false
-      let frame = 0
       const ids = new WeakMap()
       let serial = 0
       const identify = node => {
@@ -150,16 +149,35 @@ export async function traceDevelopmentPaint(
           const css = getComputedStyle(node)
           return { id: identify(node), x: r.x, y: r.y, width: r.width, height: r.height, visible: r.width > 0 && node.checkVisibility(), test: node.dataset.testid, group: node.dataset.group, layout: node.dataset.layout, classes: node.className, display: css.display, direction: css.flexDirection, maxWidth: css.maxWidth, grid: css.gridTemplateColumns, container: css.containerType, padding: css.padding, font: css.font, ancestry }
         }) })
-        if (++frame < 1200 && !globalThis.__paintStopped) requestAnimationFrame(sample)
+        if (!globalThis.__paintStopped) requestAnimationFrame(sample)
       }
       requestAnimationFrame(sample)
     })()`)
     const documentResponse = await page.goto(href, { waitUntil: 'networkidle', timeout: 90_000 })
+    assert.equal(documentResponse?.status(), 200, `${name}: the document answered successfully`)
     await fs.mkdir(directory, { recursive: true })
     await fs.writeFile(
       path.join(directory, `${artifactName}-server.html`),
       await documentResponse!.text(),
     )
+    // A lull in requests is not a frame of the route, especially when a
+    // cold client reference still has to render. Keep the pre-paint trace
+    // running and require samples of the actual content, not a later probe
+    // of the DOM in isolation.
+    const painted = await page.waitForFunction(
+      (test) => {
+        const frames = (globalThis as unknown as { __paint: Paint[] }).__paint.slice(-2)
+        return (
+          frames.length === 2 &&
+          frames.every((frame) =>
+            frame.nodes.some((node) => node.visible && (test === null || node.test === test)),
+          )
+        )
+      },
+      name === 'cold-user-batches' ? 'person-batches' : null,
+      { timeout: 10_000 },
+    )
+    await painted.dispose()
     if (options.expectLedger) {
       assert.equal(
         await page.getByTestId('result-empty').count(),
