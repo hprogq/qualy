@@ -10,24 +10,20 @@ export const LOCKFILE = path.join(repoRoot, 'pnpm-lock.yaml')
 
 export const readLockfile = (file: string = LOCKFILE): string => fs.readFileSync(file, 'utf8')
 
-/**
- * How many YAML documents the file holds. A `---` line opens a document; a
- * file without one is a single document.
- */
-export const documentCount = (text: string): number => {
-  const markers = text.split('\n').filter((line) => line.trimEnd() === '---').length
-  return text.startsWith('---') ? markers : markers + 1
-}
-
 export interface LockedPackage {
   readonly name: string
   readonly version: string
 }
 
-/** every entry of the `packages:` section, as `name@version` splits it */
+/**
+ * Application packages, as `name@version` splits them. pnpm 12 puts its
+ * toolchain in a separate document before the workspace dependency graph.
+ * The GitHub comparison measures that graph, not the pnpm executable.
+ */
 export const lockedPackages = (text: string): LockedPackage[] => {
   const lines = text.split('\n')
-  const start = lines.indexOf('packages:')
+  const document = lines.findLastIndex((line) => line.trimEnd() === '---')
+  const start = lines.findIndex((line, at) => at > document && line === 'packages:')
   if (start < 0) return []
   const found: LockedPackage[] = []
   for (const line of lines.slice(start + 1)) {

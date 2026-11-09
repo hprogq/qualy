@@ -8,9 +8,9 @@ import { fetchSbom } from '../lib/sbom.ts'
 // pnpm-lock.yaml on the default branch. When the reading goes wrong it goes
 // wrong silently: with pnpm 12's two-document lockfile the graph kept 249 of
 // 864 packages, every transitive dependency gone and no error anywhere
-// (2026-09-29). tools/tests/lockfile.test.ts stops the known cause at commit
-// time; this asks GitHub for the graph it actually built and holds it to the
-// lockfile, so a cause nobody has met yet shows up too.
+// (2026-09-29; fixed upstream 2026-11-03). The lockfile test ensures we read
+// the workspace document, while this check holds GitHub's actual output to
+// that package set. pnpm's own environment packages are not in that set.
 //
 // Needs GITHUB_TOKEN (contents: read) and GITHUB_REPOSITORY (owner/name).
 // The graph is rebuilt a few minutes after a push, so a package or two locked
