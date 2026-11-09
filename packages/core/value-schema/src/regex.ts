@@ -83,7 +83,8 @@ const runeWeight = (compiled: RE2JS): number => {
   let weight = 0
   for (const instruction of program) {
     const runes = (instruction as { readonly runes?: unknown }).runes
-    weight += Array.isArray(runes) ? Math.max(runes.length, 1) : 1
+    // Newer engines store rune tables in Int32Array rather than JS arrays.
+    weight += Array.isArray(runes) || runes instanceof Int32Array ? Math.max(runes.length, 1) : 1
   }
   return weight
 }
