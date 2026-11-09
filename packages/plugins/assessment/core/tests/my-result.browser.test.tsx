@@ -533,18 +533,16 @@ describe('the score page at a desk', () => {
     // and the reader's place moved with it, not only their eyes
     expect(document.activeElement).toBe(bandOf('g2'))
 
-    // a group too near the end to reach the top is still the one asked for
+    // A jump still moves focus to the requested group when it cannot reach
+    // the reading line, but it does not change which group is at the top.
     await page
       .getByRole('button', { name: /综合表现/ })
       .first()
       .click()
-    await expect
-      .element(page.getByTestId('outline-group').nth(3))
-      .toHaveAttribute('aria-current', 'true')
-    await new Promise((settle) => setTimeout(settle, 200))
-    expect(page.getByTestId('outline-group').nth(3).element().getAttribute('aria-current')).toBe(
-      'true',
-    )
+    await expect.poll(() => document.activeElement).toBe(bandOf('g4'))
+    const box = scroller()
+    await expect.poll(() => box.scrollHeight - box.clientHeight - box.scrollTop).toBeLessThan(2)
+    await expect.element(outline.nth(3)).not.toHaveAttribute('aria-current')
   })
 
   it('holds each top group’s band to the top while its rows pass under it', async () => {
@@ -1232,8 +1230,39 @@ describe('the score page on a phone', () => {
         Math.abs(bandOf('g2').getBoundingClientRect().top - strip.getBoundingClientRect().bottom),
       )
       .toBeLessThan(2)
-    await userEvent.click(chipOf('g4'))
-    await expect.poll(() => chipOf('g4').getAttribute('aria-current')).toBe('true')
+    await userEvent.click(chipOf('g3'))
+    await expect.poll(() => chipOf('g3').getAttribute('aria-current')).toBe('true')
+  })
+
+  it('keeps the group at the reading line highlighted at the end of the ledger', async () => {
+    await page.viewport(834, 1112)
+    await screen(normal())
+    const strip = page.getByTestId('result-strip')
+    await expect.element(strip).toBeVisible()
+    const box = scroller()
+    const row = strip.element()
+    const readingOffset = row.getBoundingClientRect().height
+    // Size the scrollport so the end is reached while the second group is
+    // still at the reading line and the last group is farther down.
+    const inSecond =
+      sectionOf('g2').getBoundingClientRect().top -
+      box.getBoundingClientRect().top +
+      box.scrollTop -
+      readingOffset +
+      16
+    box.style.height = `${box.scrollHeight - Math.round(inSecond)}px`
+    box.scrollTop = box.scrollHeight
+    await expect
+      .poll(() => row.querySelector('[aria-current="true"]')?.getAttribute('data-group'))
+      .toBe('g2')
+    expect(box.scrollTop + box.clientHeight).toBe(box.scrollHeight)
+    expect(sectionOf('g3').getBoundingClientRect().top).toBeGreaterThan(
+      row.getBoundingClientRect().bottom,
+    )
+    box.scrollTop -= 3
+    await expect
+      .poll(() => row.querySelector('[aria-current="true"]')?.getAttribute('data-group'))
+      .toBe('g2')
   })
 
   it('keeps the mark a row opens with on the line of its last words', async () => {

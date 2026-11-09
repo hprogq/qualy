@@ -350,8 +350,12 @@ const styles = stylex.create({
     minWidth: 0,
     flexDirection: 'column',
     borderRadius: tokens.radiusLg,
+    // The sticky navigation covers the full card width. Keep the hairline
+    // inside that width so it cannot peek out beside the navigation.
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
     backgroundColor: tokens.surface,
-    boxShadow: tokens.elevation1,
   },
   band: {
     position: 'sticky',
@@ -1020,15 +1024,8 @@ export function ResultLedger({
   const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set())
   const topIds = model.tops.map((top) => top.id).join(' ')
 
-  // A group the reader jumped to stays the one being read until they take
-  // the scroll back themselves: the last groups of a short page cannot come
-  // to the top, and the outline must not then name a group they did not ask
-  // for.
-  const pinned = useRef<string | null>(null)
-
   // Which top group is being read: the last one whose section has reached
-  // the line under the pinned band. At the very end of the page the last
-  // group is the one being read, however short it is.
+  // the reading line. Reaching the end doesn't change that reading position.
   useEffect(() => {
     if (!moving) return
     const box = scrollerOf(seat.current)
@@ -1036,39 +1033,22 @@ export function ResultLedger({
     let frame = 0
     const read = () => {
       frame = 0
-      if (pinned.current !== null) {
-        setActive(pinned.current)
-        return
-      }
-      const edge = (box?.getBoundingClientRect().top ?? 0) + bandTop + 8
+      const edge = (box?.getBoundingClientRect().top ?? 0) + bandTop + 1
       let current = ids[0] ?? null
       for (const id of ids) {
         const section = sections.current.get(id)
         if (section !== undefined && section.getBoundingClientRect().top <= edge) current = id
       }
-      const end =
-        box === null
-          ? window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2
-          : box.scrollTop + box.clientHeight >= box.scrollHeight - 2
-      const scrolled = box === null ? window.scrollY > 0 : box.scrollTop > 0
-      if (end && scrolled) current = ids.at(-1) ?? current
       setActive(current)
     }
     const onScroll = () => {
       if (frame === 0) frame = requestAnimationFrame(read)
     }
-    // the reader scrolling for themselves, by any hand
-    const release = () => {
-      pinned.current = null
-    }
     const target: HTMLElement | Window = box ?? window
-    const intents = ['wheel', 'touchstart', 'pointerdown', 'keydown'] as const
     read()
     target.addEventListener('scroll', onScroll, { passive: true })
-    for (const intent of intents) target.addEventListener(intent, release, { passive: true })
     return () => {
       target.removeEventListener('scroll', onScroll)
-      for (const intent of intents) target.removeEventListener(intent, release)
       if (frame !== 0) cancelAnimationFrame(frame)
     }
   }, [moving, topIds, bandTop])
@@ -1079,13 +1059,11 @@ export function ResultLedger({
     const box = scrollerOf(seat.current)
     const behavior: ScrollBehavior = stillMotion() ? 'auto' : 'smooth'
     const offset = section.getBoundingClientRect().top - (box?.getBoundingClientRect().top ?? 0)
-    pinned.current = id
     if (box === null) {
       window.scrollTo({ top: Math.max(0, window.scrollY + offset - bandTop), behavior })
     } else {
       box.scrollTo({ top: Math.max(0, box.scrollTop + offset - bandTop), behavior })
     }
-    setActive(id)
     // the reader's place moves to the group, not only their eyes
     bands.current.get(id)?.focus({ preventScroll: true })
   }
