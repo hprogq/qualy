@@ -1,5 +1,6 @@
 import MyResultPage from '../src/client/result/MyResultPage.tsx'
 import { ResultLedger } from '../src/client/result/ResultLedger.tsx'
+import { renderToString } from 'react-dom/server'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { page, userEvent } from 'vitest/browser'
 import { Effect, Stream } from 'effect'
@@ -1173,6 +1174,34 @@ describe('a question the stages keep shut', () => {
 })
 
 describe('the score page on a phone', () => {
+  it('keeps the group bands below the borderless navigation in the initial HTML', async () => {
+    await page.viewport(390, 844)
+    const paper = normal()
+    const host = document.createElement('div')
+    document.body.append(host)
+    try {
+      host.innerHTML = renderToString(
+        <ResultLedger
+          result={paper.result}
+          items={paper.items}
+          entries={paper.entries}
+          reader="owner"
+          stickyTop={24}
+        />,
+      )
+      const strip = page.getByTestId('result-strip').element()
+      const css = getComputedStyle(strip)
+      expect(css.display).toBe('flex')
+      expect(css.borderBlockStartWidth).toBe('0px')
+      expect(css.borderBlockEndWidth).toBe('0px')
+      expect(parseFloat(getComputedStyle(bandOf('g1')).top)).toBe(
+        parseFloat(css.top) + strip.getBoundingClientRect().height,
+      )
+    } finally {
+      host.remove()
+    }
+  })
+
   it('folds the outline into chips pinned over the bands, and fits the screen', async () => {
     await page.viewport(390, 844)
     await screen(normal())

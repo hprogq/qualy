@@ -119,20 +119,21 @@ const styles = stylex.create({
   measure: { width: '100%', marginInline: 'auto' },
   // inside a page that lines its own content up at the start
   measureStart: { marginInlineStart: 0 },
-  measureWide: { maxWidth: OUTLINE_WIDTH + 24 + LEDGER_WIDTH },
   measureNarrow: { maxWidth: LEDGER_WIDTH },
-  // Until the ledger has been measured - in html a server drew - it carries
-  // both the outline and the strip, and the stylesheet chooses by the
-  // ledger's own width (OUTLINE_AT), as the measured ledger would.
-  measureByRoom: { maxWidth: { default: LEDGER_WIDTH, [OUTLINE_QUERY]: 1076 } },
+  // The same rules apply before and after the browser measures the ledger.
+  measureByRoom: {
+    maxWidth: { default: LEDGER_WIDTH, [OUTLINE_QUERY]: OUTLINE_WIDTH + 24 + LEDGER_WIDTH },
+  },
   bodyByRoom: {
     display: { default: 'flex', [OUTLINE_QUERY]: 'grid' },
-    gridTemplateColumns: { default: null, [OUTLINE_QUERY]: '232px minmax(0, 1fr)' },
+    gridTemplateColumns: {
+      default: null,
+      [OUTLINE_QUERY]: `${String(OUTLINE_WIDTH)}px minmax(0, 1fr)`,
+    },
     alignItems: { default: null, [OUTLINE_QUERY]: 'start' },
     gap: { default: 16, [OUTLINE_QUERY]: 24 },
   },
-  stripByRoom: { display: { default: 'contents', [OUTLINE_QUERY]: 'none' } },
-  outlineByRoom: { display: { default: 'none', [OUTLINE_QUERY]: 'contents' } },
+  stickyInset: (top: number) => ({ '--q-ledger-sticky-top': `${top}px` }),
   head: {
     display: 'flex',
     flexWrap: 'wrap',
@@ -212,21 +213,19 @@ const styles = stylex.create({
   // narrow: the outline as a row of chips, pinned over the bands
   strip: {
     position: 'sticky',
+    top: 'var(--q-ledger-sticky-top)',
     zIndex: 6,
-    display: 'flex',
+    display: { default: 'flex', [OUTLINE_QUERY]: 'none' },
     height: STRIP_HEIGHT,
     boxSizing: 'border-box',
     alignItems: 'center',
     gap: 6,
     overflowX: 'auto',
     scrollbarWidth: 'none',
-    paddingInline: 4,
     marginBottom: 12,
-    borderBlockWidth: 1,
-    borderBlockStyle: 'solid',
-    borderBlockColor: tokens.divider,
-    backgroundColor: `color-mix(in oklab, ${tokens.surface} 94%, transparent)`,
-    backdropFilter: 'blur(6px)',
+    // Same ground as the gutters, but opaque so scrolling rows don't
+    // show through the chips.
+    backgroundColor: tokens.background,
   },
   chip: {
     display: 'inline-flex',
@@ -252,15 +251,9 @@ const styles = stylex.create({
   chipName: { maxWidth: '12em', overflow: 'hidden', textOverflow: 'ellipsis' },
   chipScore: { flexShrink: 0, color: tokens.mutedForeground },
   body: { display: 'flex', flexDirection: 'column', gap: 16 },
-  bodyWide: {
-    display: 'grid',
-    gridTemplateColumns: `${String(OUTLINE_WIDTH)}px minmax(0, 1fr)`,
-    alignItems: 'start',
-    gap: 24,
-  },
   outline: {
     position: 'sticky',
-    display: 'flex',
+    display: { default: 'none', [OUTLINE_QUERY]: 'flex' },
     flexDirection: 'column',
     gap: 2,
     overflowY: 'auto',
@@ -362,6 +355,7 @@ const styles = stylex.create({
   },
   band: {
     position: 'sticky',
+    top: 'var(--q-ledger-sticky-top)',
     zIndex: 4,
     display: 'flex',
     minHeight: 42,
@@ -373,6 +367,12 @@ const styles = stylex.create({
     borderTopColor: tokens.divider,
     backgroundColor: `color-mix(in oklab, ${tokens.surfaceMuted} 70%, ${tokens.surface})`,
     outline: 'none',
+  },
+  bandBelowNavigation: {
+    top: {
+      default: `calc(var(--q-ledger-sticky-top) + ${String(STRIP_HEIGHT)}px)`,
+      [OUTLINE_QUERY]: 'var(--q-ledger-sticky-top)',
+    },
   },
   first: {
     borderTopWidth: 0,
@@ -1010,8 +1010,8 @@ export function ResultLedger({
   const moving = model.tops.length >= 2
   const outline = wide && moving
   const strip = !wide && moving
-  // both, the stylesheet choosing, until the ledger knows its width
-  const byRoom = moving && !measured
+  // The stylesheet chooses the layout from the first paint. Once measured,
+  // only the unused navigation is removed.
   const bandTop = stickyTop + (strip ? STRIP_HEIGHT : 0)
 
   const sections = useRef(new Map<string, HTMLElement>())
@@ -1104,12 +1104,12 @@ export function ResultLedger({
       ref={seat}
       data-testid="result-ledger"
       data-layout={outline ? 'outline' : strip ? 'strip' : 'single'}
-      {...stylex.props(styles.root)}
+      {...stylex.props(styles.root, styles.stickyInset(stickyTop))}
     >
       <div
         {...stylex.props(
           styles.measure,
-          byRoom ? styles.measureByRoom : outline ? styles.measureWide : styles.measureNarrow,
+          moving ? styles.measureByRoom : styles.measureNarrow,
           align === 'start' && styles.measureStart,
         )}
       >
@@ -1123,37 +1123,27 @@ export function ResultLedger({
         />
       </div>
       {/* a direct child of the whole ledger, so it holds for all of it */}
-      {(strip || byRoom) &&
-        ((strip: ReactNode) =>
-          byRoom ? <div {...stylex.props(styles.stripByRoom)}>{strip}</div> : strip)(
-          <Strip
-            model={model}
-            active={current}
-            top={stickyTop}
-            start={align === 'start'}
-            onJump={jump}
-          />,
-        )}
+      {moving && (strip || !measured) && (
+        <Strip model={model} active={current} start={align === 'start'} onJump={jump} />
+      )}
       <div
         {...stylex.props(
           styles.measure,
-          byRoom ? styles.measureByRoom : outline ? styles.measureWide : styles.measureNarrow,
+          moving ? styles.measureByRoom : styles.measureNarrow,
           align === 'start' && styles.measureStart,
           styles.body,
-          byRoom ? styles.bodyByRoom : outline && styles.bodyWide,
+          moving && styles.bodyByRoom,
         )}
       >
-        {outline &&
-          ((outline: ReactNode) =>
-            byRoom ? <div {...stylex.props(styles.outlineByRoom)}>{outline}</div> : outline)(
-            <Outline
-              model={model}
-              active={current}
-              top={stickyTop + 16}
-              room={viewport === null ? null : viewport - stickyTop - 32}
-              onJump={jump}
-            />,
-          )}
+        {outline && (
+          <Outline
+            model={model}
+            active={current}
+            top={stickyTop + 16}
+            room={viewport === null ? null : viewport - stickyTop - 32}
+            onJump={jump}
+          />
+        )}
         {model.empty ? (
           <Nothing action={emptyAction} />
         ) : (
@@ -1164,7 +1154,7 @@ export function ResultLedger({
                 section={section}
                 first={index === 0}
                 titled={model.tops.length > 0}
-                bandTop={bandTop}
+                withNavigation={moving}
                 reader={reader}
                 closed={closed !== null}
                 // a closed account says what was filed, not what may be
@@ -1327,13 +1317,11 @@ function Head({
 function Strip({
   model,
   active,
-  top,
   start,
   onJump,
 }: {
   model: LedgerModel
   active: string | null
-  top: number
   start: boolean
   onJump: (id: string) => void
 }) {
@@ -1360,7 +1348,6 @@ function Strip({
         start && styles.measureStart,
         styles.strip,
       )}
-      style={{ top }}
     >
       {model.tops.map((group) => {
         const on = group.id === active
@@ -1486,7 +1473,7 @@ function Section({
   section,
   first,
   titled,
-  bandTop,
+  withNavigation,
   reader,
   closed,
   shut,
@@ -1504,7 +1491,7 @@ function Section({
   first: boolean
   /** whether the ledger has top groups, so questions outside them need a band of their own */
   titled: boolean
-  bandTop: number
+  withNavigation: boolean
   reader: 'owner' | 'staff'
   closed: boolean
   shut: ReadonlyMap<string, FilingShut>
@@ -1540,8 +1527,11 @@ function Section({
         <div
           ref={holdBand}
           tabIndex={-1}
-          {...stylex.props(styles.band, first && styles.first)}
-          style={{ top: bandTop }}
+          {...stylex.props(
+            styles.band,
+            withNavigation && styles.bandBelowNavigation,
+            first && styles.first,
+          )}
         >
           {group !== null && (
             <span aria-hidden {...stylex.props(styles.bandNo)}>
