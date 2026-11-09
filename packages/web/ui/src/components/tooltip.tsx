@@ -21,13 +21,12 @@ import { tokens } from '../theme/tokens.stylex.ts'
 // with paper on it, and paper with ink on it. The arrow inherits the ground.
 const surfaceStyles = stylex.create({
   tip: {
-    maxWidth: 320,
+    maxWidth: 'min(320px, calc(100vi - 24px))',
     fontSize: 12,
     '--tooltip-bg': tokens.primary,
     '--tooltip-color': tokens.primaryForeground,
   },
   multiline: {
-    maxWidth: 'min(20rem, calc(100vw - 24px))',
     textAlign: 'center',
     overflowWrap: 'anywhere',
   },
@@ -82,7 +81,7 @@ function Tooltip({
     className,
     side = 'top',
     sideOffset = 4,
-    multiline = false,
+    multiline = true,
     children: label,
   } = content as ContentProps
 

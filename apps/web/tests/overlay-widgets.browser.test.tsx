@@ -74,6 +74,41 @@ describe('the menu', () => {
 })
 
 describe('the tooltip', () => {
+  it('wraps long text and unbroken words within a narrow viewport', async () => {
+    await page.viewport(320, 640)
+    const label = '该项目的审核流程未覆盖你所在的组织，暂时无法送审，请联系批次管理员'
+    const word = 'LongUnbrokenIdentifier'.repeat(5)
+    const { unmount } = await mount(
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 150 }}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="outline">why not</Button>
+          </TooltipTrigger>
+          <TooltipContent>{label + ' ' + word}</TooltipContent>
+        </Tooltip>
+      </div>,
+    )
+    try {
+      await userEvent.hover(page.getByRole('button', { name: 'why not' }))
+      const tip = page.getByRole('tooltip')
+      await expect.element(tip).toBeVisible()
+      const element = tip.element() as HTMLElement
+      await expect
+        .poll(() => {
+          const bounds = element.getBoundingClientRect()
+          return bounds.left >= 0 && bounds.right <= innerWidth && bounds.width > 0
+        })
+        .toBe(true)
+      const words = document.createRange()
+      words.selectNodeContents(element)
+      expect(new Set([...words.getClientRects()].map((rect) => rect.top)).size).toBeGreaterThan(1)
+      expect(element.scrollWidth).toBeLessThanOrEqual(element.clientWidth + 1)
+    } finally {
+      await unmount()
+      await page.viewport(414, 896)
+    }
+  })
+
   it('shows on keyboard focus, not only on hover', async () => {
     await mount(
       <TooltipProvider>

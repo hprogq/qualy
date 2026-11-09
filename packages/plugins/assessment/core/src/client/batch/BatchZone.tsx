@@ -38,7 +38,6 @@ const styles = stylex.create({
     textUnderlineOffset: '0.22em',
   },
   range: { display: 'flex', flexDirection: 'column', gap: 2 },
-  rangeLine: { whiteSpace: 'nowrap' },
   noticeDescription: { color: tokens.foreground },
   noticeClose: {
     position: 'absolute',
@@ -178,12 +177,8 @@ export function BatchLocalTime({
           m.zone_localTime({ time: local(moment) })
         ) : (
           <span {...stylex.props(styles.range)}>
-            <span {...stylex.props(styles.rangeLine)}>
-              {m.zone_localTime({ time: local(moment) })}
-            </span>{' '}
-            <span {...stylex.props(styles.rangeLine)}>
-              {m.zone_localRangeEnd({ time: local(end) })}
-            </span>
+            <span>{m.zone_localTime({ time: local(moment) })}</span>{' '}
+            <span>{m.zone_localRangeEnd({ time: local(end) })}</span>
           </span>
         )}
       </TooltipContent>
