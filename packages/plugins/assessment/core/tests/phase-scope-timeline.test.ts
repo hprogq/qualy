@@ -119,6 +119,12 @@ describe.runIf(postgresAvailable)('a stage allowance on the timeline', () => {
     expect(result.admitted.map((stage) => stage.scope.includesReader)).toEqual([null, true, null])
     expect(result.left.map((stage) => stage.scope.includesReader)).toEqual([null, false, null])
     expect(result.outsider.map((stage) => stage.scope.includesReader)).toEqual([null, null, null])
+    expect(result.admitted[1]?.operations).toEqual([
+      'assessment.entry.create',
+      'assessment.entry.submit',
+    ])
+    expect(result.left[1]?.operations).toEqual([])
+    expect(result.outsider[1]?.operations).toEqual([])
   })
 
   // A reviewer's countdown reads which stages open reviewing from the
@@ -141,7 +147,7 @@ describe.runIf(postgresAvailable)('a stage allowance on the timeline', () => {
                 { id: plan[0]!.id, phaseKey: plan[0]!.phaseKey, displayName: 'entry' },
                 phase({
                   phaseKey: 'review',
-                  permissionProfile: ['assessment.review.process'],
+                  permissionProfile: ['assessment.review.process', 'assessment.review.escalate'],
                 }),
                 phase({
                   phaseKey: 'publicity',
@@ -152,11 +158,21 @@ describe.runIf(postgresAvailable)('a stage allowance on the timeline', () => {
             },
             admin,
           )
-          return yield* assessment.timeline(f.t, g.batch.id)
+          const reviewer = yield* assessment.timeline(f.t, g.batch.id, f.reviewer)
+          const participant = yield* assessment.timeline(f.t, g.batch.id, f.s1)
+          return { reviewer, participant }
         }),
       ),
     )
-    expect(result.slice(1, 3).map((stage) => stage.reviewing)).toEqual([true, false])
+    expect(result.reviewer.slice(1, 3).map((stage) => stage.reviewing)).toEqual([true, false])
+    expect(result.reviewer[1]?.operations).toEqual([
+      'assessment.review.process',
+      'assessment.review.escalate',
+    ])
+    expect(result.participant[1]?.operations).toEqual([])
+    expect(result.participant[2]?.operations).toEqual(['assessment.entry.create'])
+    // This fixture's reviewer is also a participant in the round.
+    expect(result.reviewer[2]?.operations).toEqual(['assessment.entry.create'])
   })
 
   // Each question's place is kept within its own section, so the rows the

@@ -10,6 +10,8 @@ import {
 } from 'lucide-react'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { Badge } from '@qualy/ui/badge'
+import { Button } from '@qualy/ui/button'
+import { Popover, PopoverContent, PopoverTitle, PopoverTrigger } from '@qualy/ui/popover'
 import {
   Timeline,
   TimelineContent,
@@ -24,6 +26,7 @@ import {
 import { stagesOf, type FlowEntry, type FlowStage } from './flow.ts'
 import { useWhen } from './when.ts'
 import { BatchLocalTime, ZoneNote } from './BatchZone.tsx'
+import { GROUP_LABELS, OPERATION_GROUPS, PERMISSION_WORDS } from '../phase/operation-words.ts'
 import * as m from '#messages'
 
 // The stages of the round, drawn twice.
@@ -34,10 +37,8 @@ import * as m from '#messages'
 // same timeline turns on its side and opens on the stage the round is
 // actually in, rather than at the beginning of a history nobody asked for.
 //
-// Everything a stage has to say is on the page: when it runs, or what it is
-// waiting for, and whatever prose was written about it. Nothing waits behind
-// a hover - a touch screen has no pointer to rest, and a detail worth writing
-// down is worth reading without asking for it.
+// The dates and description are on the page. The reader can open the
+// longer operation list with a press, including on a touch screen.
 //
 // The rail component styles itself by orientation, which a compiled style
 // cannot read from inside it - so the two layouts tell their own parts which
@@ -98,6 +99,26 @@ const ping = stylex.keyframes({
 })
 
 const styles = stylex.create({
+  operationsButton: {
+    color: tokens.mutedForeground,
+    fontSize: 12,
+    paddingInline: 6,
+  },
+  operationsPanel: {
+    maxHeight: 'min(24rem, 65dvh)',
+    overflowY: 'auto',
+    overflowWrap: 'anywhere',
+  },
+  operationGroup: { fontSize: 12, fontWeight: 600, margin: 0 },
+  operationList: {
+    display: 'grid',
+    gap: 8,
+    marginTop: 6,
+    marginBottom: 0,
+    paddingInlineStart: 18,
+  },
+  operationName: { display: 'block', fontWeight: 500 },
+  operationHint: { display: 'block', color: tokens.mutedForeground },
   pulse: {
     position: 'absolute',
     width: 10,
@@ -404,6 +425,56 @@ function ScopeItems({ names }: { names: readonly string[] }) {
   )
 }
 
+function StageOperations({ stage }: { stage: FlowStage }) {
+  if (stage.operations === undefined) return null
+  const opened = new Set(stage.operations)
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button
+          variant="ghost"
+          size="xs"
+          className={stylex.props(styles.operationsButton).className}
+          aria-label={m.flow_operationsFor({ stage: stage.name })}
+          data-testid="stage-operations"
+        >
+          {m.flow_operations()}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
+        aria-label={m.flow_operationsFor({ stage: stage.name })}
+        width="min(21rem, calc(100vw - 2rem))"
+        fitViewport
+        xstyle={styles.operationsPanel}
+      >
+        <PopoverTitle>{stage.name}</PopoverTitle>
+        {opened.size === 0 && <p>{m.flow_operationsNone()}</p>}
+        {OPERATION_GROUPS.map(({ key, codes }) => {
+          const visible = codes.filter((code) => opened.has(code))
+          if (visible.length === 0) return null
+          return (
+            <div key={key}>
+              <p {...stylex.props(styles.operationGroup)}>{GROUP_LABELS[key]()}</p>
+              <ul {...stylex.props(styles.operationList)}>
+                {visible.map((code) => (
+                  <li key={code} data-operation={code}>
+                    <span {...stylex.props(styles.operationName)}>
+                      {PERMISSION_WORDS[code].label()}
+                    </span>
+                    <span {...stylex.props(styles.operationHint)}>
+                      {PERMISSION_WORDS[code].hint()}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )
+        })}
+      </PopoverContent>
+    </Popover>
+  )
+}
+
 /** one stage, said the same way whichever direction the timeline runs */
 function Stage({ stage, upright }: { stage: FlowStage; upright: boolean }) {
   const said = useSaid()
@@ -437,6 +508,7 @@ function Stage({ stage, upright }: { stage: FlowStage; upright: boolean }) {
         >
           {STATUS[stage.status]()}
         </Badge>
+        <StageOperations stage={stage} />
       </TimelineHeader>
       {/* the whole row fades together, not only its name: a finished stage
           with a full-strength date under a pale title reads as two stages */}

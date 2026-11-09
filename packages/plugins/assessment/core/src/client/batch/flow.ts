@@ -1,9 +1,11 @@
 import type { TimelineLike } from './progress.ts'
+import type { PhaseGatedCode } from '../../permission-codes.ts'
 
 // what the flow needs of a timeline entry, beyond what the countdown reads
 export interface FlowEntry extends TimelineLike {
   readonly description: string
   readonly entryNote: string
+  readonly operations?: readonly PhaseGatedCode[]
   /** what the stage narrows filing to; a reader that has none opens everything */
   readonly scope?: {
     readonly items: readonly { readonly id: string; readonly title: string }[] | null
@@ -28,6 +30,7 @@ export interface FlowStage {
   readonly description: string
   /** what it is waiting for; the server sends it only while it has no time */
   readonly note: string
+  readonly operations: readonly PhaseGatedCode[] | undefined
   /** when it began, or is due to; absent when nothing has been fixed */
   readonly at: number | null
   /** when it gives way to the next one, which is the next one's start */
@@ -58,6 +61,7 @@ export const stagesOf = (timeline: readonly FlowEntry[]): readonly FlowStage[] =
       status: entry.status,
       description: entry.description,
       note: entry.entryNote,
+      operations: entry.operations,
       at: at !== null && Number.isNaN(at) ? null : at,
       until: until !== null && Number.isNaN(until) ? null : until,
       onlyItems: entry.scope?.items?.map((item) => item.title) ?? null,

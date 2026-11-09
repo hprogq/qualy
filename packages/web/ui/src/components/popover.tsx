@@ -73,6 +73,7 @@ const positionOf = (side: string, align: string) =>
   (align === 'center' ? side : `${side}-${align}`) as NonNullable<MPopoverProps['position']>
 
 interface ContentDecl {
+  'aria-label'?: string
   /** the formal StyleX extension seat */
   xstyle?: stylex.StyleXStyles
   className?: string
@@ -193,6 +194,7 @@ function PopoverContent({
   className,
   xstyle,
   children,
+  'aria-label': label,
 }: ContentDecl & { children?: React.ReactNode }) {
   return (
     <MPopover.Dropdown
@@ -207,6 +209,7 @@ function PopoverContent({
       // withRoles={false} on the root also dropped these two; the trap
       // needs a focusable dropdown for Escape to fire from inside it
       role="dialog"
+      aria-label={label}
       tabIndex={-1}
       {...seatOf(stylex.props(panel.material, styles.content, xstyle), className)}
     >

@@ -15,7 +15,7 @@ import {
   uuidInput,
 } from '@qualy/api-kit/schema'
 import { Authenticated, Viewer } from '@qualy/auth-contract/session'
-import { BATCH_STAFF_CODES, PHASE_GATED_CODES } from './permission-codes.ts'
+import { BATCH_STAFF_CODES, OFFERED_PHASE_CODES, PHASE_GATED_CODES } from './permission-codes.ts'
 
 /**
  * One wake-up on a batch's live channel, one text frame each.
@@ -502,6 +502,8 @@ const timelineEntry = Schema.Struct({
   submitting: Schema.optionalKey(Schema.Boolean),
   /** Whether the stage profile opens administrative recording, before scopes. */
   recording: Schema.optionalKey(Schema.Boolean),
+  /** Operations open in this stage that the reader qualifies for in the batch. */
+  operations: Schema.optionalKey(Schema.Array(Schema.Literals(OFFERED_PHASE_CODES))),
   scope: timelineScope,
 })
 

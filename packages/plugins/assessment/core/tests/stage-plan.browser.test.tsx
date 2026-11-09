@@ -6,8 +6,9 @@ import WorkspaceShell from '@qualy/plugin-layout-default/client/WorkspaceShell'
 import type { ReactNode } from 'react'
 import { Link, Route, Routes } from 'react-router'
 import { describe, expect, it, vi } from 'vitest'
-import { page } from 'vitest/browser'
+import { page, userEvent } from 'vitest/browser'
 import { Effect } from 'effect'
+import { leave_save } from '@qualy/web-i18n/messages'
 import type { ApiResult, ClientOf } from '@qualy/web-runtime/api'
 import type { assessmentApi } from '@qualy/plugin-assessment/client/api'
 import { addressNow, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
@@ -236,7 +237,10 @@ describe('the stage plan, being edited', () => {
     // nothing has moved while the question is open
     expect(addressNow()).toBe(`/assessment/batches/${BATCH_ID}/phases`)
 
-    await page.getByRole('alertdialog').getByRole('button', { name: '保存后离开' }).click()
+    await page
+      .getByRole('alertdialog')
+      .getByRole('button', { name: leave_save({}, { locale: 'zh-CN' }) })
+      .click()
     await vi.waitFor(() => expect(putPhases).toHaveBeenCalledTimes(1))
     // the same save the page's own button makes, naming the plan it began from
     const sent = putPhases.mock.calls[0]![0].payload!
@@ -373,7 +377,10 @@ describe('the stage plan, being edited', () => {
     await panel.getByRole('button', { name: '完成' }).click()
 
     await page.getByRole('link', { name: 'elsewhere' }).click()
-    await page.getByRole('alertdialog').getByRole('button', { name: '保存后离开' }).click()
+    await page
+      .getByRole('alertdialog')
+      .getByRole('button', { name: leave_save({}, { locale: 'zh-CN' }) })
+      .click()
     await vi.waitFor(() => expect(putPhases).toHaveBeenCalledTimes(1))
     await expect
       .element(page.getByTestId('phase-refusal'))
@@ -666,7 +673,10 @@ describe('the batch settings, being edited', () => {
     await expect.element(page.getByRole('alertdialog')).toBeVisible()
     expect(addressNow()).toBe(`/assessment/batches/${BATCH_ID}/settings`)
 
-    await page.getByRole('alertdialog').getByRole('button', { name: '保存后离开' }).click()
+    await page
+      .getByRole('alertdialog')
+      .getByRole('button', { name: leave_save({}, { locale: 'zh-CN' }) })
+      .click()
     await vi.waitFor(() => expect(updateBatch).toHaveBeenCalledTimes(1))
     expect(updateBatch.mock.calls[0]![0].payload).toMatchObject({ name: '2026 春季综测（修订）' })
     await expect.element(page.getByTestId('elsewhere')).toBeVisible()
@@ -683,7 +693,10 @@ describe('the batch settings, being edited', () => {
     await page.getByRole('link', { name: 'elsewhere' }).click()
     await expect.element(page.getByRole('alertdialog')).toBeVisible()
 
-    await page.getByRole('alertdialog').getByRole('button', { name: '保存后离开' }).click()
+    await page
+      .getByRole('alertdialog')
+      .getByRole('button', { name: leave_save({}, { locale: 'zh-CN' }) })
+      .click()
     await vi.waitFor(() => expect(updateBatch).toHaveBeenCalledTimes(1))
     expect(updateBatch.mock.calls[0]![0].payload).toMatchObject({
       reviewReasons: { reject: ['证明材料缺少盖章'], escalate: [] },
@@ -732,6 +745,7 @@ describe('the stage progress', () => {
       entryNote: '',
       status: 'current' as const,
       entry: { kind: 'entered' as const, at: at(-HOUR) },
+      operations: ['assessment.entry.submit'] as const,
     },
     {
       phaseId: 'supplement',
@@ -740,6 +754,7 @@ describe('the stage progress', () => {
       entryNote: '',
       status: 'future' as const,
       entry: { kind: 'pending' as const, at: null },
+      operations: [],
       scope: {
         items: names.slice(0, count).map((title, index) => ({ id: `i${index}`, title })),
         participantsLimited: people.limited,
@@ -770,6 +785,23 @@ describe('the stage progress', () => {
     await expect.element(toggle).toHaveAttribute('aria-expanded', 'true')
     // the names are the fixture's own
     expect(items.element().textContent).toContain(names.at(-1)!)
+  })
+
+  it('opens a stage’s own read-only action list, including stages with no available action', async () => {
+    await mount(3)
+    const triggers = page.getByTestId('stage-operations')
+    await triggers.nth(0).click()
+    const panel = page.getByRole('dialog')
+    await expect.element(panel).toBeVisible()
+    expect(panel.element().querySelectorAll('li[data-operation]')).toHaveLength(1)
+    expect(panel.element().querySelector('li')?.dataset['operation']).toBe(
+      'assessment.entry.submit',
+    )
+    await userEvent.keyboard('{Escape}')
+    await expect.element(panel).not.toBeInTheDocument()
+    await triggers.nth(1).click()
+    await expect.element(panel).toBeVisible()
+    expect(panel.element().querySelectorAll('li[data-operation]')).toHaveLength(0)
   })
 
   it('names every item when there are only a few', async () => {

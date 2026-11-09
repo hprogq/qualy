@@ -46,6 +46,11 @@ import {
   EXPLICIT_ONLY_STAFF_CODES,
 } from '../permissions.ts'
 import {
+  OFFERED_PHASE_CODES,
+  REVIEW_ACTION_CODES,
+  type PhaseGatedCode,
+} from '../permission-codes.ts'
+import {
   ItemTypeCatalog,
   ScoringDefinitionCatalog,
   ScoringRuntimeCatalog,
@@ -343,6 +348,7 @@ export interface TimelineStage extends TimelineEntry {
   readonly reviewing: boolean
   readonly submitting: boolean
   readonly recording: boolean
+  readonly operations: readonly PhaseGatedCode[]
   readonly scope: {
     readonly items: readonly { readonly id: string; readonly title: string }[] | null
     readonly participantsLimited: boolean
@@ -5394,12 +5400,17 @@ export const make = Effect.fn('Assessment.make')(function* () {
         (entry) => entry.itemId,
       )
       const limited = new Set(scopes.participants.map((entry) => entry.phaseId))
-      // the reader's own place on the roster, asked only when some stage
-      // admits only some of it: whether they are among those, and no more
-      const reader =
-        readerId === undefined || scopes.participants.length === 0
-          ? null
-          : yield* dieQuery(withDb(activeParticipantByUser(tenantId, batchId, readerId)))
+      // Both sources describe batch qualification independently of the
+      // current phase, so the reader can also inspect past and future ones.
+      const [reader, staff] =
+        readerId === undefined
+          ? ([null, new Set<string>()] as const)
+          : yield* Effect.all([
+              dieQuery(withDb(activeParticipantByUser(tenantId, batchId, readerId))),
+              batchAuthority(tenantId, batchId, readerId),
+            ])
+      const ownActions = new Set<string>(PARTICIPANT_ACTION_CODES)
+      const reviewActions = new Set<string>(REVIEW_ACTION_CODES)
       const admitsReader = new Set(
         reader === null
           ? []
@@ -5424,6 +5435,20 @@ export const make = Effect.fn('Assessment.make')(function* () {
           reviewing: profile.includes('assessment.review.process'),
           submitting: profile.includes('assessment.entry.submit'),
           recording: profile.includes('assessment.entry.record'),
+          operations: OFFERED_PHASE_CODES.filter((code) => {
+            if (!profile.includes(code)) return false
+            if (ownActions.has(code)) {
+              return (
+                reader !== null &&
+                // Entry actions (unlike reading review history) are subject
+                // to this stage's participant allowance.
+                (!code.startsWith('assessment.entry.') ||
+                  !limited.has(stage.phaseId) ||
+                  admitsReader.has(stage.phaseId))
+              )
+            }
+            return staff.has(reviewActions.has(code) ? 'assessment.review.process' : code)
+          }),
           scope: {
             items:
               named === undefined
@@ -7350,6 +7375,7 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
             reviewing: entry.reviewing,
             submitting: entry.submitting,
             recording: entry.recording,
+            operations: entry.operations,
             scope: entry.scope,
           })),
         }
