@@ -158,7 +158,7 @@ export async function traceDevelopmentPaint(
     await fs.mkdir(directory, { recursive: true })
     await fs.writeFile(
       path.join(directory, `${artifactName}-server.html`),
-      await documentResponse!.text(),
+      await documentResponse.text(),
     )
     // A lull in requests is not a frame of the route, especially when a
     // cold client reference still has to render. Keep the pre-paint trace
