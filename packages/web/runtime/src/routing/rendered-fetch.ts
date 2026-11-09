@@ -1,4 +1,4 @@
-import { QUALY_IDENTITY_HEADER, QUALY_LOCALE_HEADER } from '@qualy/api-kit'
+import { QUALY_IDENTITY_HEADER, QUALY_LOCALE_HEADER, QUALY_REQUEST_ID_HEADER } from '@qualy/api-kit'
 import {
   QUALY_CLIENT_PROTOCOL_HEADER,
   QUALY_CLIENT_RELEASE_HEADER,
@@ -9,7 +9,7 @@ import {
 import type { ClientIdentity } from '../data/api.ts'
 import { documentIdentity } from '../session/document-identity.ts'
 import { recovering } from '../session/session-recovery.ts'
-import { RenderNetworkError } from './render-network-error.ts'
+import { RenderNetworkError, RenderResponseError, renderRequestId } from './render-network-error.ts'
 
 // How an open page asks the server to render a navigation
 // (docs/adr/0012-rsc-data-mode.md, docs/adr/0013-document-identity.md).
@@ -76,7 +76,21 @@ export const renderedFetch =
         throw new RenderNetworkError(error)
       })
       const refusal = response.headers.get(QUALY_RENDER_REFUSED_HEADER)
-      if (!isRenderRefusal(refusal)) return response
+      if (!isRenderRefusal(refusal)) {
+        // Keep successful Flight and structured router errors on the router's
+        // own path. A proxy or renderer failure has no Flight payload to read.
+        if (
+          response.status >= 500 &&
+          !response.headers.get('content-type')?.startsWith('text/x-component')
+        ) {
+          void response.body?.cancel()
+          throw new RenderResponseError(
+            response.status,
+            renderRequestId(response.headers.get(QUALY_REQUEST_ID_HEADER)),
+          )
+        }
+        return response
+      }
       // the body says nothing the marker did not; it is let go unread
       void response.body?.cancel()
       if (refusal === 'session') throw refusalAs('SESSION_EXPIRED')

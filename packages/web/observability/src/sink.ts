@@ -36,6 +36,8 @@ export interface ExceptionContext {
   readonly surface?: BrowserSurface
   readonly pageId?: string
   readonly route?: string
+  /** Opaque, user-visible reference for this failure, not a route or a person. */
+  readonly problemId?: string
 }
 
 /**

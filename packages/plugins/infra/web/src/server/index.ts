@@ -3,10 +3,11 @@ import fs from 'node:fs'
 import type { ServerResponse } from 'node:http'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { Config, Context, Data, Effect, Layer, Schema } from 'effect'
+import { Config, Context, Data, Effect, Layer, Option, Schema } from 'effect'
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from 'effect/http'
 import sirv from 'sirv'
 import { apiRouteNotFound, insideApi } from '@qualy/api-kit/route-fallback'
+import { RequestContext } from '@qualy/api-kit/request'
 import { QUALY_RELEASE_ENDPOINT } from '@qualy/release-contract'
 import { releaseProbeOf, type InstalledWebRelease } from '@qualy/release-contract/private'
 import { Assembled, AssemblyInfo } from '@qualy/api-kit/assembled'
@@ -342,7 +343,11 @@ const production = Effect.fn('Web.production')(function* (roots: {
 /** what the server's half of a build exports: a document request in, its answer out */
 type Draw = (
   request: Request,
-  context: { readonly nonce?: string; readonly apiOrigin?: string },
+  context: {
+    readonly nonce?: string
+    readonly apiOrigin?: string
+    readonly requestId?: string | undefined
+  },
 ) => Promise<Response>
 
 /**
@@ -409,6 +414,7 @@ const drawDocument = (
     // a request the platform could not read is not one a document answers
     const web = yield* HttpServerRequest.toWeb(request).pipe(Effect.orDie)
     const nonce = randomBytes(16).toString('base64')
+    const requestId = Option.getOrUndefined(yield* Effect.serviceOption(RequestContext))?.requestId
     const controller = new AbortController()
     const response = yield* Effect.tryPromise({
       try: () =>
@@ -418,7 +424,7 @@ const drawDocument = (
             headers: web.headers,
             signal: controller.signal,
           }),
-          { nonce, apiOrigin },
+          { nonce, apiOrigin, requestId },
         ),
       catch: (cause) => new DrawFailed({ cause }),
     }).pipe(
@@ -449,6 +455,8 @@ const drawDocument = (
             },
           })
     const headers = new Headers(response.headers)
+    if (response.status >= 500)
+      yield* Effect.logError('Web render returned a server error', response.status)
     headers.set('X-Content-Type-Options', 'nosniff')
     headers.set('Referrer-Policy', 'strict-origin-when-cross-origin')
     headers.set('X-Frame-Options', 'DENY')

@@ -178,7 +178,9 @@ export const tencentRumProvider: BrowserRumProvider = {
           msg: message(error),
           ext1: context?.pageId ?? '',
           ext2: context?.surface?.kind ?? '',
-          ext3: context?.surface === undefined ? '' : surfaceLabel(context.surface),
+          ext3:
+            context?.problemId ??
+            (context?.surface === undefined ? '' : surfaceLabel(context.surface)),
         })
       },
 

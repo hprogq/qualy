@@ -184,6 +184,7 @@ export function ResourceState({
   title,
   description,
   actions = [],
+  detail,
   size = 'page',
   framed = false,
   focusOnMount = size === 'page',
@@ -203,6 +204,7 @@ export function ResourceState({
   description?: ReactNode
   /** the ways out, the one most readers want first */
   actions?: readonly ReactNode[]
+  detail?: ReactNode
   /** the whole of a screen, or one pane of it */
   size?: 'page' | 'section'
   /** a pane on the page's bare ground, rather than inside a card or a dialog */
@@ -315,6 +317,7 @@ export function ResourceState({
             ))}
           </div>
         )}
+        {detail}
       </div>
       {page && <span aria-hidden {...stylex.props(styles.below)} />}
       {speaks &&

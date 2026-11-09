@@ -3,6 +3,7 @@
 // document use the same deliberately small, scoped stylesheet.
 import type { SupportedLocale } from '@qualy/i18n-contract'
 import * as m from '@qualy/web-i18n/messages'
+import { renderRequestId } from '@qualy/web-runtime/render-network-error'
 
 export const emergencyCss = `
 [data-qualy-emergency] {
@@ -108,6 +109,32 @@ html[data-mode="dark"] [data-qualy-emergency] {
   opacity: .65;
   cursor: wait;
 }
+[data-qualy-emergency] [aria-busy="true"] svg { animation: qualy-emergency-spin .8s linear infinite; }
+[data-qualy-emergency] [data-retry-shake="0"] { animation: qualy-emergency-shake-a .32s ease-out; }
+[data-qualy-emergency] [data-retry-shake="1"] { animation: qualy-emergency-shake-b .32s ease-out; }
+@keyframes qualy-emergency-spin { to { transform: rotate(360deg); } }
+@keyframes qualy-emergency-shake-a { 25% { transform: translateX(-5px); } 55% { transform: translateX(4px); } 80% { transform: translateX(-2px); } }
+@keyframes qualy-emergency-shake-b { 25% { transform: translateX(-5px); } 55% { transform: translateX(4px); } 80% { transform: translateX(-2px); } }
+@media (prefers-reduced-motion: reduce) {
+  [data-qualy-emergency] [data-retry-shake], [data-qualy-emergency] [aria-busy="true"] svg { animation: none; }
+}
+[data-qualy-emergency] [data-problem-reference] {
+  margin-top: 8px;
+  color: var(--error-muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+[data-problem-reference] code { user-select: all; }
+[data-qualy-emergency] [data-problem-reference] button {
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  padding: 4px;
+  margin-inline-start: 4px;
+  vertical-align: middle;
+}
 @media (max-width: 479px) {
   [data-qualy-emergency] { padding-inline: 16px; }
   [data-qualy-emergency] [data-emergency-actions] { width: 100%; flex-direction: column; }
@@ -118,16 +145,25 @@ const escapeHtml = (text: string) =>
   text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
 
 /** A document response when the renderer could not produce a router payload. */
-export function unavailableDocument(locale: SupportedLocale, method: string): Response {
+export function unavailableDocument(
+  locale: SupportedLocale,
+  method: string,
+  requestId: string,
+): Response {
   const at = { locale }
   const title = escapeHtml(m.load_unavailableTitle({}, at))
   const hint = escapeHtml(m.load_unavailableHint({}, at))
   const retry = escapeHtml(m.action_retry({}, at))
   const home = escapeHtml(m.action_goHome({}, at))
+  const id = renderRequestId(requestId)
+  const reference =
+    id === undefined
+      ? ''
+      : `<p data-problem-reference>${escapeHtml(m.load_problemId({}, at))} <code>${id}</code></p>`
   return new Response(
     method === 'HEAD'
       ? null
-      : `<!doctype html><html lang="${locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><title>${title} - Qualy</title><style>body{margin:0}${emergencyCss}</style></head><body><main data-qualy-emergency><div data-slot="resource-state"><svg data-emergency-mark aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 4.5 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 4.5a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4m0 4h.01"/></svg><h1>${title}</h1><p>${hint}</p><nav data-emergency-actions><a href="" data-emergency-primary>${retry}</a><a href="/">${home}</a></nav></div></main></body></html>`,
+      : `<!doctype html><html lang="${locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><title>${title} - Qualy</title><style>body{margin:0}${emergencyCss}</style></head><body><main data-qualy-emergency><div data-slot="resource-state"><svg data-emergency-mark aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 4.5 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 4.5a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4m0 4h.01"/></svg><h1>${title}</h1><p>${hint}</p><nav data-emergency-actions><a href="" data-emergency-primary>${retry}</a><a href="/">${home}</a></nav>${reference}</div></main></body></html>`,
     {
       status: 503,
       headers: {

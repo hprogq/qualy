@@ -50,6 +50,12 @@ export const acceptRouteErrors = async ({
       .click()
     const error = page.getByTestId('route-error')
     await error.waitFor({ state: 'visible' })
+    const browserReference = error.locator('[data-problem-reference] code')
+    await browserReference.waitFor()
+    check(
+      'an offline navigation offers a browser problem reference',
+      /^W-[a-f0-9]{24}$/.test((await browserReference.textContent()) ?? ''),
+    )
     check(
       'shows the product offline state for a failed RSC navigation',
       (await error.locator('[data-slot="resource-state"]').getAttribute('data-state')) ===
@@ -74,12 +80,62 @@ export const acceptRouteErrors = async ({
     await page.emulateMedia({ colorScheme: 'dark' })
     await page.locator('html[data-mode="dark"][data-mantine-color-scheme="dark"]').waitFor()
     await page.screenshot({ path: path.join(directory, 'dark.png'), animations: 'disabled' })
-    await error.getByRole('button').click()
+    await error.locator('[data-emergency-primary]').click()
     await error.waitFor({ state: 'hidden' })
     check(
       'retries a failed RSC navigation successfully without a document reload',
       attempts >= 2 && documents === 1 && new URL(page.url()).pathname === to,
     )
+    const realDocument = await context.request.get(`${site}${to}`)
+    const requestId = realDocument.headers()['x-qualy-request-id']
+    check(
+      'the production document response carries a server request reference',
+      typeof requestId === 'string' && /^[0-9a-f-]{36}$/i.test(requestId),
+    )
+    await page.unroute(/\.rsc(?:\?|$)/)
+    await page.route(/\.rsc(?:\?|$)/, (route) =>
+      route.fulfill({
+        status: 503,
+        headers: { 'x-qualy-request-id': requestId ?? '', 'content-type': 'text/html' },
+        body: 'Unavailable',
+      }),
+    )
+    await page
+      .locator(`a[href=${JSON.stringify(from)}]`)
+      .first()
+      .click()
+    const serverReference = page.locator('[data-problem-reference] code')
+    await serverReference.waitFor()
+    check(
+      'the route failure shows the request reference from the response',
+      (await serverReference.textContent()) === requestId,
+    )
+
+    const older = await context.newPage()
+    await older.addInitScript('window.ReadableStream = undefined')
+    await older.goto(`${site}${from}`)
+    check(
+      'missing browser capabilities show a standalone upgrade notice',
+      (await older.locator('#qualy-browser-notice').isVisible()) &&
+        !(await older.locator('#root').isVisible()),
+    )
+    await older.close()
+
+    const browser = context.browser()
+    if (browser !== null) {
+      const withoutScripts = await browser.newContext({ javaScriptEnabled: false })
+      try {
+        const still = await withoutScripts.newPage()
+        await still.goto(`${site}/login`)
+        check(
+          'disabled scripting has its own notice without hiding the server HTML',
+          (await still.locator('.qualy-scripts-off').isVisible()) &&
+            (await still.locator('#root').isVisible()),
+        )
+      } finally {
+        await withoutScripts.close()
+      }
+    }
   } finally {
     await context.close()
   }

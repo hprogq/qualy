@@ -42,6 +42,7 @@ export function Failure({
   retrying = false,
   fullscreen,
   actions = [],
+  detail,
 }: {
   title: string
   description?: string
@@ -52,6 +53,7 @@ export function Failure({
   fullscreen?: boolean
   /** further ways out, after the retry */
   actions?: readonly ReactNode[]
+  detail?: ReactNode
 }) {
   // A retry either leaves - the page arrives - or comes back as this same
   // notice, freshly mounted in the same place, which looked like a press
@@ -89,6 +91,7 @@ export function Failure({
       title={title}
       {...(description === undefined ? {} : { description })}
       actions={retry === null ? actions : [retry, ...actions]}
+      detail={detail}
       {...(fullscreen === true ? { xstyle: styles.fullscreen } : {})}
     />
   )

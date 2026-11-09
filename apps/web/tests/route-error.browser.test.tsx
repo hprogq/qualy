@@ -3,7 +3,7 @@ import { page } from 'vitest/browser'
 import { render } from 'vitest-browser-react'
 import { createMemoryRouter, Outlet, RouterProvider } from 'react-router'
 import { UiProvider } from '@qualy/ui/provider'
-import { RenderNetworkError } from '@qualy/web-runtime/render-network-error'
+import { RenderNetworkError, RenderResponseError } from '@qualy/web-runtime/render-network-error'
 import { DocumentError, PageError } from '../src/rsc/route-error.tsx'
 import '../src/app.css'
 
@@ -17,6 +17,33 @@ const mount = (router: ReturnType<typeof createMemoryRouter>) => {
 }
 
 describe('the RSC route error screen', () => {
+  it('holds an instant failed retry, ignores another press, and shows the server reference', async () => {
+    const requestId = '2493330c-c85b-488c-a533-a95008204f42'
+    let attempts = 0
+    const router = createMemoryRouter([
+      {
+        path: '/',
+        ErrorBoundary: DocumentError,
+        loader: () => {
+          ++attempts
+          throw new RenderResponseError(503, requestId)
+        },
+      },
+    ])
+    try {
+      await mount(router)
+      await expect.element(page.getByText(requestId, { exact: true })).toBeVisible()
+      const button = page.getByRole('button', { name: '重试' })
+      const element = button.element() as HTMLButtonElement
+      element.click()
+      element.click()
+      await expect.element(button).toHaveAttribute('aria-busy', 'true')
+      await expect.element(button).toHaveAttribute('data-retry-shake', '1')
+      expect(attempts).toBe(2)
+    } finally {
+      router.dispose()
+    }
+  })
   it('leaves the error screen even when retry succeeds before a loading frame can paint', async () => {
     let attempts = 0
     const router = createMemoryRouter([

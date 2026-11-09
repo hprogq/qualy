@@ -1,10 +1,11 @@
+import { randomUUID } from 'node:crypto'
 import type { ComponentProps } from 'react'
 import FontStyles from './font-styles.tsx'
 import { createTemporaryReferenceSet, renderToReadableStream } from '@vitejs/plugin-rsc/rsc'
 import { unstable_matchRSCServerRequest as matchRSCServerRequest } from 'react-router'
 import { Api } from '@qualy/api-kit/local'
 import { appApiGroup } from '@qualy/app-contract'
-import { ANONYMOUS_IDENTITY, QUALY_IDENTITY_HEADER } from '@qualy/api-kit'
+import { ANONYMOUS_IDENTITY, QUALY_IDENTITY_HEADER, QUALY_REQUEST_ID_HEADER } from '@qualy/api-kit'
 import { localeOfRequest } from '@qualy/api-kit/locale'
 import { primaryNavigation, SLOT_REFERENCE_PATH } from '@qualy/ui-contract'
 import { SIGN_IN_PAGE } from '@qualy/auth-contract/sign-in-failure'
@@ -190,6 +191,7 @@ const renderSlotReference = async (scope: RenderRequest, manifest: Manifest) => 
  */
 export interface RenderContext {
   readonly nonce?: string | undefined
+  readonly requestId?: string | undefined
   /**
    * Where the api this render reads through answers: the host's own, as it
    * listens. Unsaid, the development backend beside a development server.
@@ -200,6 +202,21 @@ export interface RenderContext {
 export default async function handler(
   request: Request,
   context: RenderContext = {},
+): Promise<Response> {
+  const requestId = context.requestId ?? randomUUID()
+  const response = await handle(request, { ...context, requestId })
+  const headers = new Headers(response.headers)
+  headers.set(QUALY_REQUEST_ID_HEADER, requestId)
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  })
+}
+
+async function handle(
+  request: Request,
+  context: RenderContext & { readonly requestId: string },
 ): Promise<Response> {
   const slotReference = new URL(request.url).pathname === SLOT_REFERENCE_PATH
   if (slotReference && request.method !== 'GET') {
@@ -272,9 +289,10 @@ export default async function handler(
     // A document can still offer a way out when neither the router nor its
     // styles and scripts could be loaded. Never answer Flight with HTML.
     if (!fromPage && !asked.url.pathname.endsWith('.rsc') && asked.url.pathname !== '/.manifest') {
-      console.error('[qualy] could not create the document', error)
-      return unavailableDocument(asked.locale, request.method)
+      console.error('[qualy] could not create the document', context.requestId)
+      return unavailableDocument(asked.locale, request.method, context.requestId)
     }
-    throw error
+    console.error('[qualy] could not create the render response', context.requestId)
+    return new Response(null, { status: 503, headers: PRIVATE })
   }
 }

@@ -18,10 +18,28 @@ describe('render transport failures', () => {
       name: 'RenderNetworkError',
       cause: error,
     })
-    const response = new Response('unavailable', { status: 503 })
+    const response = new Response('Flight error', {
+      status: 503,
+      headers: { 'content-type': 'text/x-component' },
+    })
     expect(
       await transport(() => Promise.resolve(response))(new Request('http://localhost/page.rsc')),
     ).toBe(response)
+  })
+
+  it('carries an HTTP render failure reference without decoding the proxy body', async () => {
+    const request = new Request('http://localhost/page.rsc')
+    const requestId = '2493330c-c85b-488c-a533-a95008204f42'
+    const response = new Response('private proxy body', {
+      status: 503,
+      headers: { 'x-qualy-request-id': requestId, 'content-type': 'text/html' },
+    })
+    await expect(transport(() => Promise.resolve(response))(request)).rejects.toMatchObject({
+      name: 'RenderResponseError',
+      status: 503,
+      requestId,
+    })
+    expect(response.bodyUsed).toBe(true)
   })
 
   it('keeps an aborted navigation cancelled instead of presenting it as a network failure', async () => {

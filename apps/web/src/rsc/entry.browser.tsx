@@ -17,9 +17,6 @@ import { releases, webRelease } from '../release.ts'
 // halves first - and then the document the server drew is taken over where
 // it stands, rather than drawn again.
 
-releases.start()
-startBrowserPlugins(browserPlugins, { release: webRelease })
-
 // every navigation says what every api request of the page says, and a
 // refusal keeps the page as it is (rendered-fetch.ts)
 const navigate = renderedFetch({
@@ -28,17 +25,21 @@ const navigate = renderedFetch({
   onClientUnsupported: (reason) => releases.notifyClientUnsupported(reason),
 })
 
-void createFromReadableStream<RSCPayload>(getRSCStream()).then((payload) => {
-  startTransition(() => {
-    hydrateRoot(
-      document,
-      <StrictMode>
-        <RSCHydratedRouter
-          createFromReadableStream={createFromReadableStream}
-          payload={payload}
-          fetch={navigate}
-        />
-      </StrictMode>,
-    )
+if (!document.documentElement.hasAttribute('data-browser-unsupported')) {
+  releases.start()
+  startBrowserPlugins(browserPlugins, { release: webRelease })
+  void createFromReadableStream<RSCPayload>(getRSCStream()).then((payload) => {
+    startTransition(() => {
+      hydrateRoot(
+        document,
+        <StrictMode>
+          <RSCHydratedRouter
+            createFromReadableStream={createFromReadableStream}
+            payload={payload}
+            fetch={navigate}
+          />
+        </StrictMode>,
+      )
+    })
   })
-})
+}
