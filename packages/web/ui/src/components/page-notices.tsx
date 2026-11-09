@@ -34,7 +34,7 @@ const REDUCE = '@media (prefers-reduced-motion: reduce)'
 const EASE = 'cubic-bezier(0.2, 0, 0, 1)'
 
 const styles = stylex.create({
-  space: { height: 84, flexShrink: 0 },
+  space: { height: 100, flexShrink: 0 },
   dock: {
     position: 'fixed',
     zIndex: 40,
@@ -252,7 +252,7 @@ export function PageNotices({
         48,
         Math.max(24, Math.round((visibleBottom - visibleTop - foot) * 0.08)),
       )
-      const bottom = window.innerHeight - visibleBottom + foot + clearance
+      const bottom = window.innerHeight - visibleBottom + foot + clearance + 16
       const next = {
         left,
         width: Math.max(0, right - left),

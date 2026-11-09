@@ -20,8 +20,9 @@ import { countdownColors } from './countdown.stylex.ts'
 import { openBatchFlow } from './flow-request.ts'
 import * as m from '#messages'
 
-const CLEARANCE = 'clamp(24px, 8cqh, 48px)'
+const CLEARANCE = 'calc(clamp(24px, 8cqh, 48px) + 16px)'
 const REDUCE = '@media (prefers-reduced-motion: reduce)'
+const COMPACT = '@container deadline-seat (max-width: 34rem)'
 const SNAP = 24
 const RELEASE = 38
 const EDGE = 8
@@ -32,6 +33,8 @@ const enter = stylex.keyframes({
 
 const styles = stylex.create({
   seat: {
+    containerName: 'deadline-seat',
+    containerType: 'inline-size',
     position: 'sticky',
     bottom: 0,
     zIndex: 40,
@@ -60,12 +63,14 @@ const styles = stylex.create({
   },
   dock: {
     position: 'relative',
-    display: 'flex',
+    display: { default: 'flex', [COMPACT]: 'grid' },
+    gridTemplateColumns: { [COMPACT]: '16px minmax(0, 1fr) auto auto' },
     minWidth: 0,
     alignItems: 'center',
-    columnGap: 12,
+    columnGap: { default: 12, [COMPACT]: 8 },
+    rowGap: { [COMPACT]: 6 },
     minHeight: 48,
-    paddingInline: 16,
+    paddingInline: { default: 16, [COMPACT]: 12 },
     paddingBlock: 12,
     borderWidth: 1,
     borderStyle: 'solid',
@@ -83,7 +88,7 @@ const styles = stylex.create({
     cursor: 'grab',
   },
   content: {
-    display: 'flex',
+    display: { default: 'flex', [COMPACT]: 'contents' },
     alignItems: 'center',
     columnGap: 12,
     rowGap: 4,
@@ -94,10 +99,12 @@ const styles = stylex.create({
     flexShrink: 0,
     display: 'grid',
     placeItems: 'center',
-    width: 28,
-    height: 28,
-    marginBlock: -4,
-    marginInlineEnd: -6,
+    gridColumn: { [COMPACT]: '4' },
+    gridRow: { [COMPACT]: '1' },
+    width: { default: 28, [COMPACT]: 32 },
+    height: { default: 28, [COMPACT]: 32 },
+    marginBlock: { default: -4, [COMPACT]: -6 },
+    marginInlineEnd: { default: -6, [COMPACT]: -4 },
     padding: 0,
     borderWidth: 0,
     borderRadius: tokens.radiusSm,
@@ -118,6 +125,8 @@ const styles = stylex.create({
   },
   handle: {
     display: 'inline-flex',
+    gridColumn: { [COMPACT]: '1' },
+    gridRow: { [COMPACT]: '1' },
     alignItems: 'center',
     color: tokens.mutedForeground,
     backgroundColor: 'transparent',
@@ -128,16 +137,34 @@ const styles = stylex.create({
     cursor: 'inherit',
   },
   icon: { width: 16, height: 16 },
-  title: { fontWeight: 600, overflowWrap: 'anywhere' },
-  detail: { color: tokens.mutedForeground, overflowWrap: 'anywhere' },
+  title: {
+    gridColumn: { [COMPACT]: '2 / 4' },
+    gridRow: { [COMPACT]: '1' },
+    fontWeight: 600,
+    overflowWrap: 'anywhere',
+  },
+  timedTitle: {
+    gridColumn: { [COMPACT]: '2' },
+    overflow: { [COMPACT]: 'hidden' },
+    textOverflow: { [COMPACT]: 'ellipsis' },
+    whiteSpace: { [COMPACT]: 'nowrap' },
+  },
+  detail: {
+    gridColumn: { [COMPACT]: '2 / -1' },
+    color: tokens.mutedForeground,
+    overflowWrap: 'anywhere',
+  },
   figures: {
     display: 'inline-flex',
+    gridColumn: { [COMPACT]: '3' },
+    gridRow: { [COMPACT]: '1' },
     alignItems: 'center',
     gap: 12,
     whiteSpace: 'nowrap',
     fontWeight: 600,
   },
   track: {
+    display: { default: 'block', [COMPACT]: 'none' },
     width: { default: 120, [breakpoints.phone]: 52 },
     height: 4,
     overflow: 'hidden',
@@ -372,7 +399,12 @@ export function DeadlineDock({
             >
               <Icon aria-hidden className={stylex.props(styles.icon).className} />
             </button>
-            <span {...stylex.props(styles.title)}>{title}</span>
+            <span
+              title={countdown ? title : undefined}
+              {...stylex.props(styles.title, countdown && styles.timedTitle)}
+            >
+              {title}
+            </span>
             {detail && <span {...stylex.props(styles.detail)}>{detail}</span>}
             {countdown && (
               <span

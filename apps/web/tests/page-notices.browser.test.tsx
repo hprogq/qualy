@@ -123,7 +123,7 @@ describe('persistent page warnings', () => {
       const bounds = dock.getBoundingClientRect()
       expect(bounds.left).toBeGreaterThanOrEqual((phone ? 0 : 224) + 12)
       expect(bounds.right).toBeLessThanOrEqual(window.innerWidth - 12)
-      expect(bounds.bottom).toBeCloseTo(window.innerHeight - 64 - 48, 0)
+      expect(bounds.bottom).toBeCloseTo(window.innerHeight - 64 - 64, 0)
       expect(bounds.top).toBeGreaterThan(112)
       const port = page.getByTestId('notice-scrollport').element()
       port.scrollTop = port.scrollHeight
@@ -316,7 +316,7 @@ describe('persistent page warnings', () => {
     await expect.poll(() => list.getBoundingClientRect().height).toBeGreaterThan(48)
     expect(list.getBoundingClientRect().top).toBeGreaterThanOrEqual(112)
     expect(page.getByTestId('page-notices').element().getBoundingClientRect().bottom).toBeCloseTo(
-      390 - 64 - 24,
+      390 - 64 - 40,
       0,
     )
     expect(list.clientHeight).toBeGreaterThan(0)

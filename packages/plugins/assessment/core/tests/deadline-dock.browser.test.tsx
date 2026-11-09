@@ -29,7 +29,7 @@ it('keeps the server-painted dock still, drags away, and snaps back to its outli
       />
       <span
         data-testid="near"
-        style={{ position: 'absolute', width: 12, height: 12, left: 326, top: 391 }}
+        style={{ position: 'absolute', width: 12, height: 12, left: 326, top: 375 }}
       />
       <DeadlineDock
         id="deadline"
@@ -52,6 +52,7 @@ it('keeps the server-painted dock still, drags away, and snaps back to its outli
     const dock = page.getByTestId('deadline')
     const card = dock.element()
     const origin = card.getBoundingClientRect()
+    expect(card.closest('main')!.getBoundingClientRect().bottom - origin.bottom).toBeCloseTo(64, 0)
     const style = getComputedStyle(card)
     const paint = [style.backgroundColor, style.borderTopColor]
     const progress = card.querySelector<HTMLElement>('[data-slot="deadline-progress"]')!
@@ -112,5 +113,54 @@ it('keeps the server-painted dock still, drags away, and snaps back to its outli
     if (locale === null) document.documentElement.removeAttribute('data-locale')
     else document.documentElement.setAttribute('data-locale', locale)
     await commands.emulateMedia({ reducedMotion: 'reduce' })
+  }
+})
+
+it('keeps the countdown and timeline action together when a long deadline wraps', async () => {
+  const host = document.createElement('div')
+  document.body.append(host)
+  const locale = document.documentElement.getAttribute('data-locale')
+  document.documentElement.setAttribute('data-locale', 'en-US')
+  const title = 'Supplementary review of the long-running assessment round'
+  const detail = 'Reviewing closes on November 10 at 02:00 China Standard Time'
+  try {
+    host.innerHTML = renderToString(
+      <main style={{ maxWidth: 460, paddingInline: 12 }}>
+        <DeadlineDock
+          id="compact-deadline"
+          batchId="deadline-fixture"
+          title={title}
+          detail={detail}
+          countdown={{ text: '31 minutes left', remaining: 31 * 60_000, progress: 0.9 }}
+        />
+      </main>,
+    )
+    // Also exercise a narrow pane inside a wide viewport.
+    for (const width of [320, 390, 920]) {
+      await page.viewport(width, 680)
+      const card = page.getByTestId('compact-deadline').element()
+      const heading = card.querySelector<HTMLElement>('[title="' + title + '"]')!
+      const date = page.getByText(detail, { exact: true }).element()
+      const countdown = card.querySelector<HTMLElement>('[data-slot="deadline-countdown"]')!
+      const action = card.querySelector<HTMLElement>('button[aria-haspopup="dialog"]')!
+      const bounds = card.getBoundingClientRect()
+      const line = heading.getBoundingClientRect()
+      const numbers = countdown.getBoundingClientRect()
+      const button = action.getBoundingClientRect()
+      const centerY = (rect: DOMRect) => rect.top + rect.height / 2
+      expect(Math.abs(centerY(line) - centerY(numbers))).toBeLessThan(1)
+      expect(Math.abs(centerY(line) - centerY(button))).toBeLessThan(1)
+      expect(line.right).toBeLessThan(numbers.left)
+      expect(numbers.right).toBeLessThan(button.left)
+      expect(date.getBoundingClientRect().top).toBeGreaterThan(line.bottom)
+      expect(date.scrollWidth).toBe(date.clientWidth)
+      expect(bounds.left).toBeGreaterThan(0)
+      expect(bounds.right).toBeLessThan(width)
+      expect(getComputedStyle(heading).textOverflow).toBe('ellipsis')
+    }
+  } finally {
+    host.remove()
+    if (locale === null) document.documentElement.removeAttribute('data-locale')
+    else document.documentElement.setAttribute('data-locale', locale)
   }
 })
