@@ -8,7 +8,3 @@ const order = document.createElement('style')
 order.textContent =
   '@layer theme, base, mantine, components, priority1, priority2, priority3, priority4, priority5;'
 document.head.prepend(order)
-
-// Mantine reads the document's resolved scheme; the widget provider never
-// writes it over a document's pre-paint value. The test document owns it too.
-document.documentElement.dataset['mantineColorScheme'] = 'light'

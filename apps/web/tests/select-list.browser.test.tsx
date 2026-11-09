@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { page, userEvent } from 'vitest/browser'
 import { render } from 'vitest-browser-react'
 import * as stylex from '@stylexjs/stylex'
@@ -10,6 +10,11 @@ import '../src/app.css'
 // A select away from a form: the quiet key it can stand as in a toolbar,
 // where its open list lands, and what that list says about the choice in
 // force. Asserted on geometry, computed style and the options' own state.
+
+// These standalone widgets use the same scheme marker as a rendered document.
+beforeEach(() => {
+  document.documentElement.dataset['mantineColorScheme'] = 'light'
+})
 
 afterEach(() => page.viewport(1280, 800))
 

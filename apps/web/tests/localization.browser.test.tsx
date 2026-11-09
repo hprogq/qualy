@@ -366,7 +366,7 @@ describe('a thing that is not there', () => {
     // English has no subject to leave out, so it speaks of the link alone:
     // true under a person's heading and a thing's alike
     for (const [locale, sentence] of [
-      ['zh-CN', '可能已被删除，或链接有误'],
+      ['zh-CN', '内容可能已被删除，或链接有误'],
       ['en-US', 'The link may be out of date or mistyped'],
     ] as const) {
       const { unmount } = await renderScreen({
