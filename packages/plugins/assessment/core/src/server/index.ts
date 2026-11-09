@@ -336,6 +336,11 @@ export interface MaterialRange {
  * are among them, and nothing about anybody else.
  */
 export interface TimelineStage extends TimelineEntry {
+  /**
+   * Whether the stage opens reviewing: the review gate asks only the
+   * stage's profile, because review work is never scoped (phase/gate.ts).
+   */
+  readonly reviewing: boolean
   readonly scope: {
     readonly items: readonly { readonly id: string; readonly title: string }[] | null
     readonly participantsLimited: boolean
@@ -5408,10 +5413,12 @@ export const make = Effect.fn('Assessment.make')(function* () {
               yield* dieQuery(withDb(groupRowsOf(tenantId, batchId))),
               yield* dieQuery(withDb(itemRowsOf(tenantId, batchId))),
             ).filter((item) => item.status !== 'draft')
+      const profiles = new Map(plan.map((phase) => [phase.id, phase.permissionProfile]))
       return stages.map((stage): TimelineStage => {
         const named = itemsOfPhase.get(stage.phaseId)
         return {
           ...stage,
+          reviewing: (profiles.get(stage.phaseId) ?? []).includes('assessment.review.process'),
           scope: {
             items:
               named === undefined
@@ -7335,6 +7342,7 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
               kind: entry.entry.kind,
               at: 'at' in entry.entry ? isoOf(entry.entry.at) : null,
             },
+            reviewing: entry.reviewing,
             scope: entry.scope,
           })),
         }

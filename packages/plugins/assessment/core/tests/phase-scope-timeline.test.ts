@@ -119,6 +119,44 @@ describe.runIf(postgresAvailable)('a stage allowance on the timeline', () => {
     expect(result.outsider.map((stage) => stage.scope.includesReader)).toEqual([null, null, null])
   })
 
+  // A reviewer's countdown reads which stages open reviewing from the
+  // timeline: the same profile the review gate asks, and nothing else.
+  it('says which stages open reviewing', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('scope-timeline-review')
+          const assessment = yield* Assessment
+          const admin = f.principal(f.admin)
+          const g = yield* runningBatch(f)
+          const plan = yield* assessment.getPlan(f.t, g.batch.id, admin)
+          yield* assessment.replacePlan(
+            f.t,
+            g.batch.id,
+            {
+              specs: [
+                { id: plan[0]!.id, phaseKey: plan[0]!.phaseKey, displayName: 'entry' },
+                phase({
+                  phaseKey: 'review',
+                  permissionProfile: ['assessment.review.process'],
+                }),
+                phase({
+                  phaseKey: 'publicity',
+                  permissionProfile: ['assessment.entry.create'],
+                }),
+                { id: plan[1]!.id, phaseKey: plan[1]!.phaseKey, displayName: 'archive' },
+              ],
+            },
+            admin,
+          )
+          return yield* assessment.timeline(f.t, g.batch.id)
+        }),
+      ),
+    )
+    expect(result.slice(1, 3).map((stage) => stage.reviewing)).toEqual([true, false])
+  })
+
   // Each question's place is kept within its own section, so the rows the
   // server reads put every section's first question ahead of any second
   // one. The names a stage opens are read in the order the paper reads them.

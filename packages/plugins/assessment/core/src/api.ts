@@ -496,6 +496,8 @@ const timelineEntry = Schema.Struct({
     kind: Schema.Literals(['entered', 'planned', 'pending']),
     at: Schema.NullOr(Schema.String),
   }),
+  /** whether the stage opens reviewing */
+  reviewing: Schema.Boolean,
   scope: timelineScope,
 })
 
