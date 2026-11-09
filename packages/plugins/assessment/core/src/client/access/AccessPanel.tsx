@@ -238,6 +238,7 @@ const styles = stylex.create({
     display: 'flex',
     justifyContent: 'center',
     alignItems: 'center',
+    alignSelf: 'center',
     height: 20,
   },
   granted: { width: 16, height: 16, color: tokens.primary },
@@ -266,8 +267,8 @@ const styles = stylex.create({
   // floor alone would not give it
   roomy: { paddingBlock: 10 },
   // A person's roles, one line each, on the table's own columns: the role
-  // in the roles column and what it gives here in the columns after it, so
-  // a role whose name wraps keeps its own marks level with its first line.
+  // in the roles column and what it gives here in the columns after it.
+  // Each role has its own grid row, even when its scope wraps.
   perRole: {
     gridColumn: '2 / -2',
     display: 'grid',
