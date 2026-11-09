@@ -1,3 +1,5 @@
+import { useHydrating } from '@qualy/web-runtime'
+
 // Where the roster was when somebody left it for a person's own page.
 //
 // The way back from that page is a link to the roster, and a bare link lands
@@ -28,3 +30,6 @@ export const rosterSearch = (): Record<string, string> => {
     return {}
   }
 }
+
+/** Render the plain link through hydration, then adopt this tab's roster. */
+export const useRosterSearch = (): Record<string, string> => (useHydrating() ? {} : rosterSearch())

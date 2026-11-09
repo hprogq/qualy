@@ -37,7 +37,7 @@ import { Skeleton } from '@qualy/ui/skeleton'
 import { initialsOf } from '@qualy/ui/person'
 import { Status, Tag } from '@qualy/ui/screen'
 
-import { rosterSearch } from './users/roster-address.ts'
+import { rosterSearch, useRosterSearch } from './users/roster-address.ts'
 import { authApi } from '../api.ts'
 import { UserMoveDialog } from './UserMoveDialog.tsx'
 import { emailShaped, refusedField, type PersonField } from './users/field-refusals.ts'
@@ -188,6 +188,7 @@ export default function UserDetailHeader() {
   const [email, setEmail] = useState('')
   const [userTypeId, setUserTypeId] = useState('')
   const navigate = usePageNavigate()
+  const backSearch = useRosterSearch()
 
   const describe = useLoadFailure()
   // an address that cannot name anybody is known to name nobody without asking
@@ -457,7 +458,7 @@ export default function UserDetailHeader() {
             failure={absent}
             onRetry={() => void user.refetch()}
             retrying={user.isFetching}
-            back={{ page: 'auth/users', label: m.users_back(), search: rosterSearch() }}
+            back={{ page: 'auth/users', label: m.users_back(), search: backSearch }}
           />
         </div>
       </SubjectAbsence>
@@ -469,7 +470,7 @@ export default function UserDetailHeader() {
       <PageLink
         page="auth/users"
         // back to the roster as it was left: its unit, its filter, its page
-        search={rosterSearch()}
+        search={backSearch}
         className={stylex.props(styles.backLink).className}
       >
         <ArrowLeftIcon className={stylex.props(styles.backGlyph).className} aria-hidden />

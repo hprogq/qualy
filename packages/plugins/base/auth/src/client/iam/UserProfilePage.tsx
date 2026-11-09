@@ -10,7 +10,7 @@ import {
   usePageRouteParams,
 } from '@qualy/web-runtime'
 
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { useTerm } from '@qualy/plugin-settings/client/terms'
@@ -55,6 +55,12 @@ const styles = stylex.create({
     display: 'flex',
     flexDirection: 'column',
     gap: 12,
+  },
+  profileLine: {
+    // Leave room for the same compact action on every row; wrapped values
+    // may still grow naturally.
+    minHeight: 'calc(1.5rem + 19px)',
+    alignItems: 'center',
   },
   // the address and whether it was proved, on one line
   roleList: {
@@ -109,6 +115,14 @@ const styles = stylex.create({
     },
   },
 })
+
+function ProfileLine({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <DefLine label={label} xstyle={styles.profileLine}>
+      {children}
+    </DefLine>
+  )
+}
 
 export default function UserProfilePage() {
   const { userId } = usePageRouteParams('userId')
@@ -176,8 +190,8 @@ export default function UserProfilePage() {
               <SectionHead title={m.users_profile()} />
               <Card data-testid="person-profile">
                 <DefList>
-                  <DefLine label={m.field_name()}>{record.displayName}</DefLine>
-                  <DefLine label={businessNoWord}>
+                  <ProfileLine label={m.field_name()}>{record.displayName}</ProfileLine>
+                  <ProfileLine label={businessNoWord}>
                     <span
                       data-testid="profile-business-no"
                       data-state={record.businessNo === null ? 'none' : 'set'}
@@ -207,8 +221,8 @@ export default function UserProfilePage() {
                         </span>
                       )}
                     </span>
-                  </DefLine>
-                  <DefLine label={m.users_email()}>
+                  </ProfileLine>
+                  <ProfileLine label={m.users_email()}>
                     <span
                       data-testid="profile-email"
                       data-email-state={
@@ -252,26 +266,26 @@ export default function UserProfilePage() {
                         )
                       )}
                     </span>
-                  </DefLine>
-                  <DefLine label={m.field_userType()}>{record.userType.name}</DefLine>
-                  <DefLine label={m.users_columnStatus()}>
+                  </ProfileLine>
+                  <ProfileLine label={m.field_userType()}>{record.userType.name}</ProfileLine>
+                  <ProfileLine label={m.users_columnStatus()}>
                     <Status tone={record.status === 'active' ? 'ok' : 'bad'}>
                       {(record.status === 'disabled' ? m.badge_disabled : m.users_statusActive)()}
                     </Status>
-                  </DefLine>
-                  <DefLine label={m.person_placement()}>
+                  </ProfileLine>
+                  <ProfileLine label={m.person_placement()}>
                     <PlacementPath steps={path} empty={m.users_rolesNone()} />
-                  </DefLine>
-                  <DefLine label={m.users_lastSignIn()}>
+                  </ProfileLine>
+                  <ProfileLine label={m.users_lastSignIn()}>
                     {user.data?.lastSignInAt == null
                       ? m.person_neverUsed()
                       : when(user.data.lastSignInAt)}
-                  </DefLine>
-                  <DefLine label={m.preference_languagePreferred()}>
+                  </ProfileLine>
+                  <ProfileLine label={m.preference_languagePreferred()}>
                     {user.data?.preferredLocale === null
                       ? m.preference_languageNotSet()
                       : localeNames[user.data!.preferredLocale]}
-                  </DefLine>
+                  </ProfileLine>
                 </DefList>
               </Card>
             </section>

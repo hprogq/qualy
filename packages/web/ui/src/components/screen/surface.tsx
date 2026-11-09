@@ -643,9 +643,17 @@ export function DefList({ children }: { children: ReactNode }) {
 }
 
 /** a label and what it says, one per line of a card */
-export function DefLine({ label, children }: { label: string; children: ReactNode }) {
+export function DefLine({
+  label,
+  children,
+  xstyle,
+}: {
+  label: string
+  children: ReactNode
+  xstyle?: stylex.StyleXStyles
+}) {
   return (
-    <div {...stylex.props(styles.defLine)}>
+    <div {...stylex.props(styles.defLine, xstyle)}>
       <dt {...stylex.props(styles.defLabel)}>{label}</dt>
       <dd {...stylex.props(styles.defValue)}>{children}</dd>
     </div>

@@ -54,6 +54,17 @@ const open = (who: Person, stubs: Record<string, unknown> = {}) =>
 const emailLine = () => page.getByTestId('profile-email')
 
 describe("a person's profile", () => {
+  it('keeps single-line facts the same height as facts with an action', async () => {
+    await open(person())
+    const card = page.getByTestId('person-profile')
+    await expect.element(card).toBeVisible()
+    const heights = [...card.element().querySelectorAll('dl > div')].map(
+      (row) => row.getBoundingClientRect().height,
+    )
+    expect(heights).toHaveLength(8)
+    expect(Math.max(...heights) - Math.min(...heights)).toBeLessThan(1)
+  })
+
   it('sets a missing address from the line that says it is missing', async () => {
     const update = vi.fn(() => Effect.succeed({ ok: true as const }))
     await open(person(), { updateUser: update })

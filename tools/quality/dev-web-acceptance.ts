@@ -149,6 +149,31 @@ export const acquire = (prepared, context) => web.acquire({
     'select id, primary_org_node_id as org, user_type_id as type from users where email=$1',
     ['student@example.edu'],
   )
+  const detailUrl = `${site}/organization/users/${student.id}`
+  const detailHtml = await context.request.get(detailUrl)
+  assert.equal(detailHtml.status(), 200)
+  const before = (await detailHtml.text()).match(
+    /data-testid="user-detail-header"[^>]*>\s*<a[^>]*href="([^"]+)"/,
+  )
+  assert.equal(before?.[1], '/organization/users', 'The server link must not read tab storage')
+  const person = await context.newPage()
+  try {
+    const mismatches: string[] = []
+    person.on('console', (message) => {
+      if (/hydrat(?:ed|ion)/i.test(message.text())) mismatches.push(message.text())
+    })
+    person.on('pageerror', (error) => mismatches.push(error.message))
+    await person.addInitScript(
+      (id) => sessionStorage.setItem('qualy.users.roster', `?anchor=${id}`),
+      student.id,
+    )
+    await person.goto(detailUrl)
+    const href = `/organization/users?anchor=${student.id}`
+    await person.locator(`[data-testid="user-detail-header"] a[href="${href}"]`).waitFor()
+    assert.deepEqual(mismatches, [], 'Restoring the roster must not mismatch during hydration')
+  } finally {
+    await person.close()
+  }
   const batchName = 'Mixed development acceptance'
   const created = await context.request.post(`${site}/api/assessment/batches`, {
     data: {
