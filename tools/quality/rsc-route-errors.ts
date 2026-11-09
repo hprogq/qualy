@@ -24,6 +24,7 @@ export const acceptRouteErrors = async ({
     await context.addCookies([{ name: 'qualy.locale', value: 'zh-CN', url: site }])
     const projection = (await (await context.request.get(`${site}/api/app/manifest`)).json()) as {
       collections: Record<string, NavigationEntry[]>
+      pages: readonly { readonly path: string; readonly title?: string }[]
     }
     const paths = (projection.collections[primaryNavigation.key] ?? []).flatMap(({ target }) =>
       target.kind === 'page' && target.path !== undefined && !target.path.includes(':')
@@ -87,6 +88,21 @@ export const acceptRouteErrors = async ({
       attempts >= 2 && documents === 1 && new URL(page.url()).pathname === to,
     )
     const realDocument = await context.request.get(`${site}${to}`)
+    const routeTitle = projection.pages.find(({ path }) => path === to)?.title
+    if (routeTitle !== undefined) {
+      const title = `${routeTitle} - Qualy`
+      const head = (await realDocument.text()).split('</head>', 1)[0] ?? ''
+      const firstTitle = /<title>([^<]*)<\/title>/.exec(head)?.[1]
+      check(
+        'sends the authorized localized title in the original document head',
+        firstTitle === title,
+      )
+      await page.waitForFunction((expected) => {
+        const doc = (globalThis as { document?: { title: string } }).document
+        return doc?.title === expected
+      }, title)
+      check('keeps the route title in sync after client navigation', (await page.title()) === title)
+    }
     const requestId = realDocument.headers()['x-qualy-request-id']
     check(
       'the production document response carries a server request reference',

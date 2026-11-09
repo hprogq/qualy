@@ -20,7 +20,7 @@ const frames: RouteFrames = {
 const page = (id: string, path: string, layout = 'shell/v1') => ({ id, path, layout })
 const pages = [page('probe/home', '/home'), page('auth/login', '/login', 'blank/v1')]
 const manifest = (
-  entries = pages,
+  entries: Manifest['pages'] = pages,
   layouts = ['shell/v1', 'blank/v1'],
   viewer: Manifest['viewer'] = 'authenticated',
 ): Manifest => ({
@@ -168,13 +168,19 @@ describe('server-owned plugin route assembly', () => {
         loginComponents: {},
       },
     }
-    const layout = routes()[0]!.Layout!
+    const layout = routes(
+      manifest([
+        { ...page('probe/dynamic', '/:page'), title: 'Other page' },
+        { ...pages[0]!, title: 'Home screen' },
+      ]),
+    )[0]!.Layout!
     const element = withRenderRequest(scope, () => draw(layout, { children: 'failed or healthy' }))
     expect(isValidElement(element)).toBe(true)
     expect(element.type).toBe(frames.Html)
     expect(element.props).toEqual({
       locale: 'en-US',
       releaseId: 'release-a',
+      title: 'Home screen',
       nonce: 'request-nonce',
       children: 'failed or healthy',
     })

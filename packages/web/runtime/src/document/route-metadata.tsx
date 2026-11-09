@@ -1,16 +1,22 @@
 import { useEffect, type ReactNode } from 'react'
-import { matchPath, useLocation } from 'react-router'
+import { matchRoutes, useLocation } from 'react-router'
 import { setObservedPage } from '@qualy/browser-observability'
 import { useManifest, type Manifest } from '../runtime-context.tsx'
 import { DocumentTitleScope, useDocumentTitleOverride } from './document-title.tsx'
 
 /** Page identity, diagnostics and title follow the authorized server projection. */
 export function RouteMetadata({ children }: { children: ReactNode }) {
-  const { pages } = useManifest()
+  const { pages, layouts } = useManifest()
+  const { pathname } = useLocation()
+  const available = new Set(layouts.map(({ contract }) => contract))
+  const page = matchRoutes(
+    pages.filter(({ layout }) => available.has(layout)),
+    pathname,
+  )?.at(-1)?.route
   return (
     <DocumentTitleScope>
-      <DocumentTitle pages={pages} />
-      <ObservedRoute pages={pages} />
+      <DocumentTitle title={page?.title} />
+      <ObservedRoute page={page} />
       {children}
     </DocumentTitleScope>
   )
@@ -31,9 +37,7 @@ export function RouteMetadata({ children }: { children: ReactNode }) {
  * answer the same question - which page is this - and a second way of
  * deciding it would eventually disagree with the first.
  */
-function ObservedRoute({ pages }: { pages: Manifest['pages'] }) {
-  const { pathname } = useLocation()
-  const page = pages.find((candidate) => matchPath({ path: candidate.path, end: true }, pathname))
+function ObservedRoute({ page }: { page: Manifest['pages'][number] | undefined }) {
   const pageId = page?.id
   const route = page?.path
   useEffect(() => {
@@ -55,13 +59,8 @@ const PRODUCT = 'Qualy'
  * the address. A page that cannot be shown - its record is not there - is
  * named by what stands in its place (document-title.tsx).
  */
-function DocumentTitle({ pages }: { pages: Manifest['pages'] }) {
-  const { pathname } = useLocation()
+function DocumentTitle({ title }: { title: string | undefined }) {
   const instead = useDocumentTitleOverride()
-  const named = pages.find(
-    (page) => page.title !== undefined && matchPath({ path: page.path, end: true }, pathname),
-  )
-  const title = named?.title
   useEffect(() => {
     const name = instead ?? title
     document.title = name === undefined ? PRODUCT : `${name} - ${PRODUCT}`
