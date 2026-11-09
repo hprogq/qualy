@@ -452,7 +452,10 @@ describe('a session that stops working while a page is open', () => {
 // carries on with what was typed still in it. Somebody else signed in, and
 // the page can only start over.
 describe('a session lost from under a signed-in reader', () => {
-  const screen = async (whoComesBack: () => string | undefined) => {
+  const screen = async (
+    whoComesBack: () => string | undefined,
+    onRefused?: (error: unknown) => void,
+  ) => {
     let attempts = 0
     const Draft = () => {
       const run = useRunApi()
@@ -470,7 +473,10 @@ describe('a session lost from under a signed-in reader', () => {
                     ? Effect.fail(apiError('SESSION_EXPIRED'))
                     : Effect.succeed('saved')
                 }),
-              ).then(setSaved, () => setSaved('failed'))
+              ).then(setSaved, (error: unknown) => {
+                onRefused?.(error)
+                setSaved('failed')
+              })
             }
           >
             save
@@ -580,10 +586,14 @@ describe('a session lost from under a signed-in reader', () => {
   })
 
   it('fails the call as refused when the reader signs out instead', async () => {
-    const { attempts } = await screen(() => undefined)
+    const refused = vi.fn()
+    const { attempts } = await screen(() => undefined, refused)
     await expect.element(page.getByRole('dialog')).toBeVisible()
     await page.getByTestId('session-sign-out').click()
-    await expect.element(page.getByTestId('saved')).toHaveTextContent('failed')
+    // Signing out can unmount the editor before React paints its output.
+    await expect
+      .poll(() => refused.mock.calls)
+      .toEqual([[expect.objectContaining({ _tag: 'SESSION_EXPIRED' })]])
     expect(attempts()).toBe(1)
   })
 })
