@@ -4,7 +4,7 @@ import { preload } from 'react-dom'
 import type { SupportedLocale } from '@qualy/i18n-contract'
 import { earlyLayoutPreferences } from '@qualy/ui/layout-preference-spec'
 import { UiProvider } from '@qualy/ui/provider'
-import { primaryFontLatin } from '@qualy/ui/primary-font'
+import { primaryFont } from '@qualy/ui/primary-font'
 import { DocumentLocaleContext } from '@qualy/web-i18n'
 import { ThemeProvider, useTheme, useHydrating } from '@qualy/web-runtime'
 import { bootstrapMessages } from '@qualy/web-i18n/bootstrap'
@@ -37,8 +37,9 @@ export function HtmlDocument({
   nonce?: string | undefined
   children: ReactNode
 }) {
-  // React owns this resource hint and deduplicates it across client navigations.
-  preload(primaryFontLatin, { as: 'font', type: 'font/woff2', crossOrigin: 'anonymous' })
+  // The hint is for the document response, not for an already styled client route.
+  if (import.meta.env.SSR)
+    preload(primaryFont, { as: 'font', type: 'font/woff2', crossOrigin: 'anonymous' })
   return (
     <html
       lang={locale}
