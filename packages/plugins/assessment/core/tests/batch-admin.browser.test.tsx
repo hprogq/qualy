@@ -6,6 +6,9 @@ import BatchOverviewPage from '../src/client/BatchOverviewPage.tsx'
 import BatchSettingsPage from '../src/client/BatchSettingsPage.tsx'
 import WorkspaceShell from '@qualy/plugin-layout-default/client/WorkspaceShell'
 import { lazy, useState, type ReactNode } from 'react'
+import { renderToString } from 'react-dom/server'
+import { hydrateRoot } from 'react-dom/client'
+import { UiProvider } from '@qualy/ui/provider'
 import { ScheduleDialog } from '../src/client/phase/PhaseDialogs.tsx'
 import { BatchLocalTime, BatchZone } from '../src/client/batch/BatchZone.tsx'
 import { Link, Route, Routes } from 'react-router'
@@ -13,9 +16,10 @@ import { describe, expect, it, vi } from 'vitest'
 import { commands, page, userEvent } from 'vitest/browser'
 import { Effect } from 'effect'
 import type { ApiResult, ClientOf } from '@qualy/web-runtime/api'
-import { WorkspaceCapabilityScope, useWorkspaceCapabilities } from '@qualy/web-runtime'
+import { DocumentNow, WorkspaceCapabilityScope, useWorkspaceCapabilities } from '@qualy/web-runtime'
 import type { assessmentApi } from '@qualy/plugin-assessment/client/api'
 import { AccessAdjustDialog } from '../src/client/access/AccessAdjustDialog.tsx'
+import { BatchProgress } from '../src/client/batch/BatchProgress.tsx'
 import { addressNow, apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
 const OrgNodePickerView = lazy(() => import('@qualy/plugin-auth/client/iam/OrgNodePickerView'))
@@ -1510,6 +1514,82 @@ const running = (untilNext: number) => [
 ]
 
 describe('the countdown', () => {
+  it('hydrates complete clock text and adds details in width order without animating the text', async () => {
+    await commands.emulateMedia({ reducedMotion: 'no-preference' })
+    const html = document.documentElement
+    const locale = html.getAttribute('data-locale')
+    html.setAttribute('data-locale', 'zh-CN')
+    const host = document.createElement('div')
+    host.style.containerType = 'inline-size'
+    host.style.fontSize = '14px'
+    host.style.width = '82px'
+    document.body.append(host)
+    const at = Date.now()
+    const content = (
+      <UiProvider scheme="light">
+        <DocumentNow at={at}>
+          <BatchProgress context="bar" timeline={running(27 * HOUR + 30 * 60_000)} />
+        </DocumentNow>
+      </UiProvider>
+    )
+    const errors: unknown[] = []
+    let root: ReturnType<typeof hydrateRoot> | undefined
+    try {
+      host.innerHTML = renderToString(content)
+      const clock = host.querySelector<HTMLElement>('[data-testid="stage-clock"]')!
+      const text = clock.querySelector<HTMLElement>('[data-slot="context-clock-text"]')!
+      const line = clock.parentElement!
+      const initialHeight = line.getBoundingClientRect().height
+      const stage = () => line.querySelector(':scope > [data-slot="context-stage"]')
+      const label = () => stage()?.querySelector('[data-slot="current-stage-label"]') ?? null
+      const ring = () => clock.querySelector('svg')
+      const assertClock = () => {
+        const bounds = text.getBoundingClientRect()
+        const clockBounds = clock.getBoundingClientRect()
+        expect(bounds.left).toBeGreaterThanOrEqual(clockBounds.left - 1)
+        expect(bounds.right).toBeLessThanOrEqual(clockBounds.right + 1)
+        expect(text.textContent).toContain('剩余 1 天')
+        expect(line.getBoundingClientRect().height).toBe(initialHeight)
+        expect(clock.getAnimations({ subtree: true })).toHaveLength(0)
+      }
+
+      expect(text.textContent).toBe('剩余 1 天')
+      assertClock()
+      root = hydrateRoot(host, content, { onRecoverableError: (error) => errors.push(error) })
+      await expect.poll(stage).toBeNull()
+      expect(ring()).not.toBeNull()
+      assertClock()
+
+      host.style.width = '58px'
+      await expect.poll(ring).toBeNull()
+      assertClock()
+
+      host.style.width = '160px'
+      await expect.poll(() => stage()?.textContent).toBe('正式填报')
+      expect(clock.dataset['form']).toBe('single')
+      expect(label()).toBeNull()
+      assertClock()
+
+      host.style.width = '215px'
+      await expect.poll(() => clock.dataset['form']).toBe('full')
+      expect(stage()?.textContent).toBe('正式填报')
+      expect(label()).toBeNull()
+      assertClock()
+
+      host.style.width = '320px'
+      await expect.poll(() => label()?.textContent).toBe('当前阶段')
+      expect(ring()).not.toBeNull()
+      assertClock()
+      expect(errors).toEqual([])
+    } finally {
+      root?.unmount()
+      host.remove()
+      if (locale === null) html.removeAttribute('data-locale')
+      else html.setAttribute('data-locale', locale)
+      await commands.emulateMedia({ reducedMotion: 'reduce' })
+    }
+  })
+
   it.each([
     ['zh-CN', '2025–2026 学年本科生综合素质测评及年度奖学金评定批次', '复审审核期'],
     [
@@ -1534,28 +1614,33 @@ describe('the countdown', () => {
       const context = page.getByTestId('batch-context-bar')
       const clock = context.getByTestId('stage-clock')
       const title = context.getByText(name, { exact: true })
-      const stage = context.getByText(phase, { exact: true })
       try {
         await expect.element(clock).toBeVisible()
-        for (const width of [1920, 1440, 1280, 1024, 834, 768, 390, 320]) {
+        for (const width of [1920, 1440, 1280, 1024, 900, 834, 800, 768, 767, 500, 390, 320]) {
           await page.viewport(width, 900)
           await expect.element(clock).toBeVisible()
           await expect.element(title).toHaveAttribute('title', name)
+          // The viewport command can return before the new frame's resize
+          // observers have run. Inspect the geometry once that frame paints.
+          await new Promise<void>((paint) =>
+            requestAnimationFrame(() => requestAnimationFrame(() => paint())),
+          )
           const root = context.element()
           const ticker = clock.element()
           const lane = ticker.parentElement!.getBoundingClientRect()
           const time = ticker.getBoundingClientRect()
-          const phaseGroup = stage.element().closest('[data-slot="context-stage"]')!
-          const phaseBounds = phaseGroup.getBoundingClientRect()
+          const phaseGroup = ticker.parentElement!.querySelector(
+            ':scope > [data-slot="context-stage"]',
+          )
           const titleBounds = title.element().getBoundingClientRect()
           expect(root.scrollWidth).toBeLessThanOrEqual(root.clientWidth + 1)
           expect(titleBounds.width).toBeGreaterThan(60)
           expect(time.right).toBeLessThanOrEqual(lane.right + 1)
           expect(time.width, `${width}px`).toBeGreaterThan(50)
-          expect(ticker.querySelector('svg')).not.toBeNull()
-          const words = [...ticker.querySelectorAll('span')].find(
-            (span) => span.offsetWidth > 0 && span.textContent,
-          )!
+          const words = ticker.querySelector<HTMLElement>('[data-slot="context-clock-text"]')!
+          const wordBox = words.getBoundingClientRect()
+          expect(wordBox.left).toBeGreaterThanOrEqual(time.left - 1)
+          expect(wordBox.right).toBeLessThanOrEqual(time.right + 1)
           expect(
             Math.abs(
               words.getBoundingClientRect().top +
@@ -1565,19 +1650,16 @@ describe('the countdown', () => {
           ).toBeLessThan(2)
           expect(words.scrollWidth).toBeLessThanOrEqual(words.clientWidth + 1)
           if (width === 1920) {
-            expect(phaseBounds.top).toBeGreaterThanOrEqual(lane.top)
-            expect(stage.element().closest('[data-slot="badge"]')).not.toBeNull()
+            expect(phaseGroup?.getBoundingClientRect().top).toBeGreaterThanOrEqual(lane.top)
+            expect(phaseGroup?.querySelector('[data-slot="badge"]')).not.toBeNull()
+            expect(phaseGroup?.querySelector('[data-slot="current-stage-label"]')).not.toBeNull()
           }
           if (width === 320) {
-            if (locale === 'en-US') expect(phaseBounds.bottom).toBeLessThanOrEqual(lane.top)
-            else expect(phaseBounds.top).toBeGreaterThanOrEqual(lane.top)
-            await expect
-              .element(
-                context.getByText(locale === 'zh-CN' ? '当前阶段' : 'Current stage', {
-                  exact: true,
-                }),
-              )
-              .not.toBeVisible()
+            if (locale === 'en-US') expect(phaseGroup).toBeNull()
+            else expect(phaseGroup?.getBoundingClientRect().top).toBeGreaterThanOrEqual(lane.top)
+            expect(
+              phaseGroup?.querySelector('[data-slot="current-stage-label"]') ?? null,
+            ).toBeNull()
           }
           if (width >= 768) expect(titleBounds.right).toBeLessThan(time.left)
         }
@@ -1701,25 +1783,23 @@ describe('the countdown', () => {
     await expect.element(clock).toHaveAttribute('data-rest', '0')
   })
 
-  it('says one unit beside the stage it belongs to, once the band is a head', async () => {
+  it('uses the plain stage without a label in the mobile flow strip', async () => {
     await page.viewport(390, 844)
     await screen(
       {
         getBatch: () => Effect.succeed({ batch: batch({ status: 'active' }) }),
-        getTimeline: () => Effect.succeed({ timeline: running(39 * 60_000 + 13_000) }),
+        getTimeline: () => Effect.succeed({ timeline: running(39 * 60_000) }),
       },
       `/assessment/batches/${BATCH_ID}/phases`,
     )
-    // On a phone the band is the window's own head: the name and the way
-    // back take the first row, and the stage takes a strip of its own with
-    // the clock beside it. The stage is named there, so the clock says the
-    // span alone rather than carrying the stage's name into it - and one
-    // unit of it, because the strip also holds the way to the whole flow.
     const clock = page.getByTestId('stage-clock')
-    await expect.element(clock).toHaveAttribute('data-form', 'single')
     await expect.element(clock).toHaveAttribute('data-unit', 'minutes')
-    await expect.element(clock).toHaveAttribute('data-count', '39')
-    await expect.element(page.getByText('正式填报', { exact: false }).first()).toBeVisible()
+    const phase = clock
+      .element()
+      .parentElement!.querySelector(':scope > [data-slot="context-stage"]')
+    expect(phase?.textContent).toBe('正式填报')
+    expect(phase?.querySelector('[data-slot="badge"]')).toBeNull()
+    expect(phase?.querySelector('[data-slot="current-stage-label"]')).toBeNull()
     await page.viewport(1280, 800)
   })
 })

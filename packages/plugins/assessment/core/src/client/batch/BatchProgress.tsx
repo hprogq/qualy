@@ -1,5 +1,6 @@
 import { formatDateTime, useLocale } from '@qualy/web-i18n'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { flushSync } from 'react-dom'
 import * as stylex from '@stylexjs/stylex'
 import { AtWidth } from '@qualy/ui/at-width'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
@@ -18,6 +19,7 @@ import {
   tickOf,
   toneOf,
   type TimelineLike,
+  type Progress,
 } from './progress.ts'
 import { type Message } from '@qualy/i18n-contract'
 import * as m from '#messages'
@@ -42,8 +44,10 @@ import * as m from '#messages'
 const breathe = stylex.keyframes({
   '50%': { opacity: 0.5 },
 })
-const SHORT_CONTEXT_CLOCK = '@container batch-progress (max-width: 223.98px)'
 const CONTEXT_LINE_HEIGHT = 28
+const RING_SIZE = 12
+const CLOCK_GAP = 6
+const LABEL_GAP = 6
 
 const styles = stylex.create({
   root: {
@@ -57,17 +61,12 @@ const styles = stylex.create({
   },
   stageSeat: {
     display: 'inline-flex',
-    minWidth: 0,
-    flexShrink: 1,
-    alignItems: 'baseline',
-    gap: 6,
+    alignItems: 'center',
+    gap: LABEL_GAP,
   },
   stageLabel: {
-    display: {
-      default: 'inline',
-      '@media (max-width: 1023.98px)': 'none',
-    },
     flexShrink: 0,
+    whiteSpace: 'nowrap',
     fontSize: 12,
     color: tokens.mutedForeground,
   },
@@ -128,13 +127,15 @@ const styles = stylex.create({
     display: 'inline-flex',
     flexShrink: 0,
     alignItems: 'center',
-    gap: 6,
+    gap: CLOCK_GAP,
     fontWeight: 500,
   },
-  // Give the clock the first visible line. If the stage and its divider
-  // cannot fit beside it at their natural width, they wrap out together.
+  // Until the available width has been read, let the stage and separator
+  // wrap out of the painted line as a pair. The time always goes first.
   contextLine: {
+    position: 'relative',
     height: CONTEXT_LINE_HEIGHT,
+    maxWidth: '100%',
     overflow: 'clip',
     flexDirection: 'row-reverse',
     flexWrap: 'wrap-reverse',
@@ -144,16 +145,48 @@ const styles = stylex.create({
   contextStage: {
     display: 'inline-flex',
     flexShrink: 0,
-    minWidth: 0,
-    maxWidth: '100%',
     alignItems: 'center',
     gap: { default: 12, [breakpoints.phone]: 6 },
   },
-  contextClock: { minWidth: 0, maxWidth: '100%', overflow: 'hidden' },
-  contextClockFirst: { height: CONTEXT_LINE_HEIGHT, order: -1 },
-  contextTime: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-  contextFullWords: { display: { default: 'inline', [SHORT_CONTEXT_CLOCK]: 'none' } },
-  contextShortWords: { display: { default: 'none', [SHORT_CONTEXT_CLOCK]: 'inline' } },
+  contextClock: {
+    minWidth: 0,
+    maxWidth: '100%',
+    order: -1,
+    height: CONTEXT_LINE_HEIGHT,
+    flexDirection: 'row-reverse',
+    flexWrap: 'wrap-reverse',
+    alignContent: 'flex-start',
+    overflow: 'clip',
+    rowGap: 8,
+  },
+  contextWords: {
+    display: 'inline-flex',
+    order: -1,
+    height: CONTEXT_LINE_HEIGHT,
+    alignItems: 'center',
+    flexShrink: 0,
+    whiteSpace: 'nowrap',
+    fontVariantNumeric: 'tabular-nums',
+  },
+  contextBudget: {
+    position: 'absolute',
+    insetInlineStart: 0,
+    width: '100cqi',
+    height: 0,
+    visibility: 'hidden',
+    pointerEvents: 'none',
+  },
+  contextProbe: {
+    position: 'absolute',
+    insetInlineStart: 0,
+    insetBlockStart: 0,
+    visibility: 'hidden',
+    pointerEvents: 'none',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    width: 'max-content',
+  },
   toneCalm: {
     color: tokens.mutedForeground,
   },
@@ -164,17 +197,13 @@ const styles = stylex.create({
     color: tokens.danger,
   },
   ring: {
-    width: 12,
-    height: 12,
+    width: RING_SIZE,
+    height: RING_SIZE,
     flexShrink: 0,
     transform: 'rotate(-90deg)',
   },
   plannedLabel: {
     color: tokens.mutedForeground,
-  },
-  contextPlannedLabel: {
-    flexShrink: 0,
-    display: { default: 'inline', [SHORT_CONTEXT_CLOCK]: 'none' },
   },
 })
 
@@ -223,46 +252,190 @@ function Ring({ fraction }: { fraction: number }) {
   )
 }
 
+type Clock = Exclude<Progress, { kind: 'none' }>
+
+function clockFacts(progress: Clock) {
+  return {
+    'data-testid': 'stage-clock',
+    'data-span': progress.kind,
+    ...(progress.kind === 'until' || progress.kind === 'since'
+      ? {
+          'data-unit': progress.span.unit,
+          'data-count': String(progress.span.value),
+          'data-rest': String(progress.span.rest),
+        }
+      : {}),
+  }
+}
+
+function StageName({ name, plain, urgent }: { name: string; plain: boolean; urgent: boolean }) {
+  return plain ? (
+    <span title={name} {...stylex.props(styles.stagePlain)}>
+      {name}
+    </span>
+  ) : (
+    <Badge variant="secondary" className={stylex.props(styles.stageBadge).className}>
+      {urgent && <span aria-hidden {...stylex.props(styles.breath)} />}
+      <span title={name} {...stylex.props(styles.stageName)}>
+        {name}
+      </span>
+    </Badge>
+  )
+}
+
+type Fit = { form: 'single' | 'full'; stage: boolean; label: boolean; ring: boolean }
+
+function ContextProgress({
+  progress,
+  primary,
+  full,
+  stage,
+  plain,
+  xstyle,
+}: {
+  progress: Clock
+  primary: string
+  full: string | null
+  stage: string | null
+  plain: boolean
+  xstyle: stylex.StyleXStyles | undefined
+}) {
+  const budget = useRef<HTMLSpanElement>(null)
+  const probes = useRef<HTMLSpanElement>(null)
+  const [fit, setFit] = useState<Fit | null>(null)
+  const lastFit = useRef<Fit | null>(null)
+  const hasRing = progress.kind === 'until' && progress.fraction !== null
+  const label = stage !== null && !plain ? m.batch_currentStage() : null
+  const planned = progress.kind === 'starts' ? m.batch_plannedStart() : null
+
+  // Measurements cannot affect the server render or the initial hydration
+  // render. The probes have the same fonts and chrome as the visible line
+  // and never depend on the choices we make from their widths.
+  useLayoutEffect(() => {
+    const lane = budget.current
+    const probe = probes.current
+    if (!lane || !probe) return
+    const [one, two, name, prefix, start] = Array.from(probe.children)
+    const measure = (resized: boolean) => {
+      const line = lane.parentElement!
+      const control = line.parentElement
+      const padding = !plain && control ? getComputedStyle(control) : null
+      const room =
+        lane.getBoundingClientRect().width -
+        (padding ? parseFloat(padding.paddingLeft) + parseFloat(padding.paddingRight) : 0)
+      const gap = parseFloat(getComputedStyle(line).columnGap)
+      if (room <= 0 || !Number.isFinite(gap)) return
+      const width = (node: Element | undefined) => node?.getBoundingClientRect().width ?? 0
+      const stageWidth = width(name) + gap
+      const showStage = stage !== null && width(one) + stageWidth <= room
+      const stageCost = showStage ? stageWidth : 0
+      const showTwo = full !== null && width(two) + stageCost <= room
+      const used = (showTwo ? width(two) : width(one)) + stageCost
+      const labelCost = showStage ? width(prefix) + LABEL_GAP : width(start) + CLOCK_GAP
+      const showLabel = showStage
+        ? label !== null && used + labelCost <= room
+        : planned !== null && used + labelCost <= room
+      const ring = hasRing && used + (showLabel ? labelCost : 0) + RING_SIZE + CLOCK_GAP <= room
+      const next: Fit = {
+        form: showTwo ? 'full' : 'single',
+        stage: showStage,
+        label: showLabel,
+        ring,
+      }
+      const before = lastFit.current
+      if (
+        before !== null &&
+        before.form === next.form &&
+        before.stage === next.stage &&
+        before.label === next.label &&
+        before.ring === next.ring
+      )
+        return
+      lastFit.current = next
+      // A resize can invalidate a previously visible two-unit string.
+      // Commit before the observer's paint, not one frame after the clip.
+      if (resized) flushSync(() => setFit(next))
+      else setFit(next)
+    }
+    measure(false)
+    const observer = new ResizeObserver(() => measure(true))
+    observer.observe(lane)
+    for (const child of probe.children) observer.observe(child)
+    return () => observer.disconnect()
+  }, [stage, primary, full, label, planned, hasRing, plain])
+
+  const tone = toneOf(progress)
+  const stagePart = (prefix: ReactNode, urgent: boolean) =>
+    stage !== null && (
+      <span data-slot="context-stage" {...stylex.props(styles.contextStage)}>
+        <span {...stylex.props(styles.stageSeat)}>
+          {prefix}
+          <StageName name={stage} plain={plain} urgent={urgent} />
+        </span>
+        <span aria-hidden {...stylex.props(styles.rule)} />
+      </span>
+    )
+  const words = fit?.form === 'full' ? (full ?? primary) : primary
+  return (
+    <span {...stylex.props(styles.root, styles.contextLine, xstyle)}>
+      <span ref={budget} aria-hidden {...stylex.props(styles.contextBudget)} />
+      <span ref={probes} aria-hidden {...stylex.props(styles.contextProbe)}>
+        <span {...stylex.props(styles.contextWords, styles.clock)}>{primary}</span>
+        <span {...stylex.props(styles.contextWords, styles.clock)}>{full}</span>
+        <span>{stagePart(null, false)}</span>
+        <span {...stylex.props(styles.stageLabel)}>{label}</span>
+        <span {...stylex.props(styles.clock, styles.plannedLabel)}>{planned}</span>
+      </span>
+      {(fit?.stage ?? true) &&
+        stagePart(
+          fit?.label ? (
+            <span data-slot="current-stage-label" {...stylex.props(styles.stageLabel)}>
+              {label}
+            </span>
+          ) : null,
+          tone === 'urgent',
+        )}
+      <span
+        {...clockFacts(progress)}
+        data-form={fit?.form ?? 'single'}
+        {...stylex.props(styles.clock, styles.contextClock, TONES[tone])}
+      >
+        {fit?.label && planned && <span {...stylex.props(styles.plannedLabel)}>{planned}</span>}
+        {progress.kind === 'until' && progress.fraction !== null && (fit?.ring ?? true) && (
+          <Ring fraction={progress.fraction} />
+        )}
+        <span data-slot="context-clock-text" {...stylex.props(styles.contextWords)}>
+          {progress.kind === 'starts' ? (
+            <BatchLocalTime at={progress.at}>{words}</BatchLocalTime>
+          ) : (
+            words
+          )}
+        </span>
+      </span>
+    </span>
+  )
+}
+
 export function BatchProgress({
   timeline,
-  showStage = false,
   dense = false,
   single = false,
-  flat = false,
-  inContextBar = false,
+  context,
   xstyle,
 }: {
   timeline: readonly TimelineLike[]
-  /** the bar names the stage; a card has already said it on the line above */
-  showStage?: boolean
   /** one unit, whatever the window: the row it sits in is out of room */
   dense?: boolean
   /** the larger unit alone, in a sentence: "12 days left", never the hours */
   single?: boolean
-  /**
-   * Drawn as a line of text: the stage plain rather than badged. Outside
-   * the batch context bar, this also omits the ring.
-   *
-   * For a strip that already has a ground and a rule of its own, where the
-   * badge is a second ground and the ring a second mark - the line reads as
-   * "stage, then how long", which is what it says.
-   */
-  flat?: boolean
-  /** Let the available space in the batch bar decide how much time to show. */
-  inContextBar?: boolean
+  /** The flow strip uses plain stage text and omits the stage label. */
+  context?: 'bar' | 'flow-strip'
   xstyle?: stylex.StyleXStyles
 }) {
   const locale = useLocale()
   const zone = useBatchZone()
-  // One threshold: under a tablet the bar has no room for the stage, so the
-  // stage goes and the clock takes its name instead - "3 hours left in stage"
-  // rather than a number beside nothing. A caller that asks for `single` has
-  // said the stage's name itself, right beside this, so it keeps the short
-  // form at every width - the bar's own name for it would say it twice.
-  //
-  // Which side of that threshold a window is on is the stylesheet's to say,
-  // so a bar that changes its words by width carries both phrasings and
-  // shows one (AtWidth); `form` is what a running page reads.
+  // The list and phase views keep their existing phrasing. The batch bar
+  // fits its own variants independently of the viewport breakpoint.
   const tight = useIsMobile()
   const byWidth = !dense && !single
   const form = dense ? 'bare' : single ? 'single' : tight ? 'bare' : 'full'
@@ -285,125 +458,63 @@ export function BatchProgress({
     return () => clearInterval(timer)
   }, [tick, timeline])
 
-  const current = timeline.find((entry) => entry.status === 'current')
-  const stage = showStage ? (current?.displayName ?? null) : null
   const sayIn = (as: typeof form) =>
     progress.kind === 'until' || progress.kind === 'since'
       ? ((span) => (span.message as Message)(span.values))(spanMessage(progress, as))
       : null
-  const said =
-    progress.kind === 'until' || progress.kind === 'since'
-      ? // one call per form drawn: it is pure, but it is also called on
-        // every tick of every card in the list
-        byWidth
-        ? null
-        : sayIn(form)
-      : progress.kind === 'starts'
-        ? formatDateTime(new Date(progress.at), locale, 'date-time', zone)
-        : null
-
-  const spanned = progress.kind === 'until' || progress.kind === 'since'
-  const narrowSaid = spanned && byWidth ? sayIn('bare') : null
-  const wideSaid = spanned && byWidth ? sayIn('full') : null
-  if (stage === null && said === null && wideSaid === null) return null
+  const planned =
+    progress.kind === 'starts'
+      ? formatDateTime(new Date(progress.at), locale, 'date-time', zone)
+      : null
+  if (progress.kind === 'none') {
+    // The desktop control still opens the plan when a current stage has no
+    // recorded time. The flow strip already has its own explicit control.
+    return context === 'bar' ? (
+      <span aria-hidden {...stylex.props(styles.root, styles.contextWords, xstyle)}>
+        {m.flow_full()}
+      </span>
+    ) : null
+  }
+  if (context !== undefined) {
+    const stage = timeline.find((entry) => entry.status === 'current')?.displayName ?? null
+    return (
+      <ContextProgress
+        progress={progress}
+        primary={planned ?? sayIn('single') ?? ''}
+        full={progress.kind !== 'starts' && progress.span.rest > 0 ? sayIn('full') : null}
+        stage={stage}
+        plain={context === 'flow-strip'}
+        xstyle={xstyle}
+      />
+    )
+  }
 
   const tone = TONES[toneOf(progress)]
-  const filled = progress.kind === 'until' ? progress.fraction : null
-  const hasClock = said !== null || wideSaid !== null
-  const clockFirst = inContextBar && stage !== null && hasClock
-  const separator =
-    stage !== null && hasClock ? <span aria-hidden {...stylex.props(styles.rule)} /> : null
-  const stageWords =
-    stage === null ? null : (
-      <span data-slot="stage" {...stylex.props(styles.stageSeat)}>
-        <span {...stylex.props(styles.stageLabel)}>{m.batch_currentStage()}</span>
-        {flat ? (
-          <span data-slot="stage-name" title={stage} {...stylex.props(styles.stagePlain)}>
-            {stage}
-          </span>
+  const said = planned ?? (byWidth ? null : sayIn(form))
+  return (
+    <span {...stylex.props(styles.root, xstyle)}>
+      <span {...clockFacts(progress)} data-form={form} {...stylex.props(styles.clock, tone)}>
+        {progress.kind === 'until' && progress.fraction !== null && (
+          <Ring fraction={progress.fraction} />
+        )}
+        {progress.kind === 'starts' ? (
+          <>
+            <span {...stylex.props(styles.plannedLabel)}>{m.batch_plannedStart()}</span>
+            <BatchLocalTime at={progress.at}>{planned}</BatchLocalTime>
+          </>
+        ) : said !== null ? (
+          <Ticker value={said} />
         ) : (
-          <Badge variant="secondary" className={stylex.props(styles.stageBadge).className}>
-            {toneOf(progress) === 'urgent' && <span aria-hidden {...stylex.props(styles.breath)} />}
-            <span data-slot="stage-name" title={stage} {...stylex.props(styles.stageName)}>
-              {stage}
-            </span>
-          </Badge>
+          <>
+            <AtWidth as="span" below={768}>
+              <Ticker value={sayIn('bare') ?? ''} />
+            </AtWidth>
+            <AtWidth as="span" from={768}>
+              <Ticker value={sayIn('full') ?? ''} />
+            </AtWidth>
+          </>
         )}
       </span>
-    )
-
-  return (
-    <span {...stylex.props(styles.root, clockFirst && styles.contextLine, xstyle)}>
-      {clockFirst ? (
-        <span data-slot="context-stage" {...stylex.props(styles.contextStage)}>
-          {stageWords}
-          {separator}
-        </span>
-      ) : (
-        <>
-          {stageWords}
-          {separator}
-        </>
-      )}
-      {hasClock && (
-        <span
-          // What the clock says, as a fact rather than as a sentence: the
-          // kind of span and its own number, so a test about "39 minutes
-          // left" asks for 39 rather than for the phrasing around it.
-          data-testid="stage-clock"
-          data-span={progress.kind}
-          data-form={form}
-          {...(progress.kind === 'until' || progress.kind === 'since'
-            ? {
-                'data-unit': progress.span.unit,
-                'data-count': String(progress.span.value),
-                'data-rest': String(progress.span.rest),
-              }
-            : {})}
-          {...stylex.props(
-            styles.clock,
-            inContextBar && styles.contextClock,
-            clockFirst && styles.contextClockFirst,
-            tone,
-          )}
-        >
-          {filled !== null && (!flat || inContextBar) && <Ring fraction={filled} />}
-          {progress.kind === 'starts' && (
-            <span
-              {...stylex.props(styles.plannedLabel, inContextBar && styles.contextPlannedLabel)}
-            >
-              {m.batch_plannedStart()}
-            </span>
-          )}
-          {said !== null ? (
-            progress.kind === 'starts' ? (
-              <span title={said} {...stylex.props(inContextBar && styles.contextTime)}>
-                <BatchLocalTime at={progress.at}>{said}</BatchLocalTime>
-              </span>
-            ) : (
-              <Ticker value={said} />
-            )
-          ) : inContextBar ? (
-            <>
-              <span {...stylex.props(styles.contextFullWords)}>
-                <Ticker value={wideSaid ?? ''} />
-              </span>
-              <span {...stylex.props(styles.contextShortWords)}>
-                <Ticker value={sayIn('single') ?? ''} />
-              </span>
-            </>
-          ) : (
-            <>
-              <AtWidth as="span" below={768}>
-                <Ticker value={narrowSaid ?? ''} />
-              </AtWidth>
-              <AtWidth as="span" from={768}>
-                <Ticker value={wideSaid ?? ''} />
-              </AtWidth>
-            </>
-          )}
-        </span>
-      )}
     </span>
   )
 }

@@ -378,10 +378,7 @@ export default function BatchContextBar() {
               <BatchZone zone={batch.timezone}>
                 <div {...stylex.props(styles.mobileProgress)}>
                   <BatchProgress
-                    showStage
-                    single
-                    flat
-                    inContextBar
+                    context="flow-strip"
                     timeline={stages}
                     xstyle={styles.progressText}
                   />
@@ -398,12 +395,7 @@ export default function BatchContextBar() {
                 {...stylex.props(styles.stageKey)}
               >
                 <BatchZone zone={batch.timezone}>
-                  <BatchProgress
-                    showStage
-                    inContextBar
-                    timeline={stages}
-                    xstyle={styles.progressText}
-                  />
+                  <BatchProgress context="bar" timeline={stages} xstyle={styles.progressText} />
                 </BatchZone>
                 {/* heard after the stage it opens the plan of */}
                 <VisuallyHidden>{m.flow_view()}</VisuallyHidden>
