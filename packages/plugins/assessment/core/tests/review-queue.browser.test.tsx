@@ -323,7 +323,7 @@ describe('the queue in brief', () => {
     await expect.element(layout()).toHaveAttribute('data-layout', 'group')
     expect(addressNow()).toContain(`item=${ITEM_ID}`)
     await expect.element(index().nth(1)).toHaveAttribute('aria-current', 'true')
-    expect(rows().elements()).toHaveLength(12)
+    await expect.poll(() => rows().elements().length).toBe(12)
 
     // the whole queue is the index's first entry
     await index().first().click()
@@ -332,7 +332,7 @@ describe('the queue in brief', () => {
 
     await page.getByTestId('queue-group-more').click()
     await expect.element(layout()).toHaveAttribute('data-layout', 'group')
-    expect(rows().elements()).toHaveLength(12)
+    await expect.poll(() => rows().elements().length).toBe(12)
   })
 
   it.each([390, 1440])(
