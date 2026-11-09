@@ -13,7 +13,7 @@ function Example() {
   const [view, setView] = useState(0)
   return (
     <div>
-      <style>{'.portion { display: block; height: 4px }'}</style>
+      <style>{'[data-portion-test] > span { display: block; height: 4px }'}</style>
       <button type="button" onClick={() => setView(view + 1)}>
         Open next view
       </button>
@@ -26,8 +26,8 @@ function Example() {
       <Drill move="in" drillKey="first">
         <span data-entry="drill">Details</span>
       </Drill>
-      <div style={{ width: 200 }}>
-        <Portion share={60} className="portion" />
+      <div data-portion-test="" style={{ width: 200 }}>
+        <Portion share={60} />
       </div>
     </div>
   )
@@ -39,7 +39,7 @@ it('keeps server-rendered entrances visible and animates newly opened content', 
   document.body.append(host)
   host.innerHTML = renderToString(content)
   const entries = [...host.querySelectorAll('[data-entry]')].map((node) => node.parentElement!)
-  const widths = host.querySelector('.portion')!.getBoundingClientRect().width
+  const widths = host.querySelector('[data-portion-test] > span')!.getBoundingClientRect().width
   const errors: unknown[] = []
   const root = hydrateRoot(host, content, { onRecoverableError: (error) => errors.push(error) })
   try {
@@ -51,7 +51,9 @@ it('keeps server-rendered entrances visible and animates newly opened content', 
         samples.push(Number(getComputedStyle(element).opacity))
         expect(new DOMMatrixReadOnly(getComputedStyle(element).transform).m42).toBe(0)
       }
-      expect(host.querySelector('.portion')!.getBoundingClientRect().width).toBe(widths)
+      expect(host.querySelector('[data-portion-test] > span')!.getBoundingClientRect().width).toBe(
+        widths,
+      )
     }
     expect(samples.length).toBeGreaterThan(0)
     expect(Math.min(...samples)).toBe(1)
