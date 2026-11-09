@@ -842,8 +842,29 @@ export interface InboxRow {
   formConfig: unknown
   displayConfig: unknown
   attachmentCount: number
+  /** whether the person who filed answered an ask for more from this round */
+  supplemented: boolean
   submittedAt: number
   submittedAtIso: string
+}
+
+/**
+ * A round in the queue whose reviewer asked for more and was answered: it is
+ * back in the queue, and the answer is what to read first.
+ */
+export const answeredAsk = (r: {
+  readonly tenantId: Expression<string>
+  readonly instanceId: Expression<string>
+}) => {
+  const eb = expressionBuilder<Schema>()
+  return eb.exists(
+    eb
+      .selectFrom('ReviewSupplementRequest as ask')
+      .select('ask.id')
+      .where('ask.tenantId', '=', r.tenantId)
+      .where('ask.reviewInstanceId', '=', r.instanceId)
+      .where('ask.status', '=', 'answered'),
+  )
 }
 
 /** the batches that currently hold work in this tenant, for the gate to sort */
@@ -971,6 +992,9 @@ export const inboxQuery = (
     .select((eb) => [
       epoch('ri.created_at').as('submittedMs'),
       eb.cast<string>('ri.createdAt', 'text').as('submittedIso'),
+      answeredAsk({ tenantId: eb.ref('ri.tenantId'), instanceId: eb.ref('ri.id') }).as(
+        'supplemented',
+      ),
       eb
         .selectFrom('EntryRevisionAttachment as era')
         .select((count) => count.fn.countAll<string>().as('n'))

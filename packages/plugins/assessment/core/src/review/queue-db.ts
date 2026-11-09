@@ -1,7 +1,7 @@
 import { sql } from 'kysely'
 import { likeContains, pageWindow } from '@qualy/api-kit/schema'
 import { db } from '../server/db.ts'
-import { awaitingQuery, inboxQuery, requirementsOf, type InboxRow } from './db.ts'
+import { answeredAsk, awaitingQuery, inboxQuery, requirementsOf, type InboxRow } from './db.ts'
 
 export interface InboxQuery {
   tenantId: string
@@ -22,9 +22,18 @@ export interface InboxQuery {
    * the first group's.
    */
   overview?: boolean
+  /** by time, the calendar day picked, as YYYY-MM-DD on the batch's clock */
+  day?: string
+  /** only the rounds that are more than waiting, of one kind */
+  mark?: QueueMark
+  /** the zone a day of the queue is read in: the batch's */
+  timezone?: string
   focus?: string
   exclude?: readonly string[]
 }
+
+/** a kind of round that is more than waiting, which the queue can be narrowed to */
+export type QueueMark = 'escalated' | 'resubmitted' | 'supplemented'
 
 /** how many of each group's filings an overview carries */
 export const OVERVIEW_ROWS = 3
@@ -142,14 +151,53 @@ export const inboxNumberedPage = (input: InboxQuery) =>
       filtered = filtered.where('e.itemId', '=', input.itemId)
     if (input.view !== 'person' && input.person !== undefined)
       filtered = filtered.where('bp.id', '=', input.person)
+    // How many of each mark, under every other narrowing but the mark: the
+    // keys that narrow to one say what each would leave.
+    const counted = await filtered
+      .clearSelect()
+      .select((eb) => [
+        eb.fn.countAll<string>().as('all'),
+        eb.fn.countAll<string>().filterWhere('ri.currentRoute', '=', 'escalation').as('escalated'),
+        eb.fn.countAll<string>().filterWhere('ri.roundNo', '>', 1).as('resubmitted'),
+        eb.fn
+          .countAll<string>()
+          .filterWhere(
+            answeredAsk({ tenantId: eb.ref('ri.tenantId'), instanceId: eb.ref('ri.id') }),
+          )
+          .as('supplemented'),
+      ])
+      .executeTakeFirstOrThrow()
+    const marks = {
+      all: Number(counted.all),
+      escalated: Number(counted.escalated),
+      resubmitted: Number(counted.resubmitted),
+      supplemented: Number(counted.supplemented),
+    }
+    if (input.mark === 'escalated') filtered = filtered.where('ri.currentRoute', '=', 'escalation')
+    if (input.mark === 'resubmitted') filtered = filtered.where('ri.roundNo', '>', 1)
+    if (input.mark === 'supplemented')
+      filtered = filtered.where((eb) =>
+        answeredAsk({ tenantId: eb.ref('ri.tenantId'), instanceId: eb.ref('ri.id') }),
+      )
     const filteredTotal = await count(filtered)
-    const grouped = input.view === 'item' || input.view === 'person'
+    // By time the queue is grouped by the calendar day a filing came in, on
+    // the batch's clock - where it is read as an overview or a day is named;
+    // read otherwise (a run's neighbours) it stays one line of filings.
+    const byDay = input.view === 'time' && (input.overview === true || input.day !== undefined)
+    const grouped = input.view === 'item' || input.view === 'person' || byDay
     const person = input.view === 'person'
+    // Inlined, not bound: the same expression stands in the select, the
+    // group by, the order and the window, and postgres matches a grouped
+    // expression by its text - a bound zone is a new parameter each time,
+    // and four parameters are four different expressions to it. The zone is
+    // the batch's own, a value the server holds, never a request's.
+    const dayOf = sql<string>`to_char(ri.created_at at time zone ${sql.lit(input.timezone ?? 'UTC')}, 'YYYY-MM-DD')`
+    const groupKey = byDay ? dayOf : person ? sql`bp.id` : sql`e.item_id`
     const groupedQuery = filtered
       .clearSelect()
       .select([
-        person ? 'bp.id as key' : 'e.itemId as key',
-        person ? 'su.displayName as name' : 'i.title as name',
+        byDay ? dayOf.as('key') : person ? 'bp.id as key' : 'e.itemId as key',
+        byDay ? dayOf.as('name') : person ? 'su.displayName as name' : 'i.title as name',
         (person ? sql<string | null>`su.business_no` : sql<string | null>`null`).as('businessNo'),
         (person ? sql<string | null>`un.name` : sql<string | null>`null`).as('unitName'),
         sql<string>`count(*)`.as('count'),
@@ -159,7 +207,11 @@ export const inboxNumberedPage = (input: InboxQuery) =>
         ),
       ])
       .groupBy(
-        person ? ['bp.id', 'su.displayName', 'su.businessNo', 'un.name'] : ['e.itemId', 'i.title'],
+        byDay
+          ? [dayOf]
+          : person
+            ? ['bp.id', 'su.displayName', 'su.businessNo', 'un.name']
+            : ['e.itemId', 'i.title'],
       )
     const groupTotal = grouped
       ? Number(
@@ -174,11 +226,13 @@ export const inboxNumberedPage = (input: InboxQuery) =>
     const groupOrder =
       input.groupOrder === 'largest'
         ? sql`count(*) desc, min(ri.created_at)`
-        : person
-          ? sql`coalesce(su.business_no, su.display_name)`
-          : sql`min(ri.created_at)`
-    const groupKey = person ? sql`bp.id` : sql`e.item_id`
-    const requested = person ? input.person : input.itemId
+        : byDay
+          ? // the latest day first: by time is a look at what came in lately
+            sql`${dayOf} desc`
+          : person
+            ? sql`coalesce(su.business_no, su.display_name)`
+            : sql`min(ri.created_at)`
+    const requested = byDay ? input.day : person ? input.person : input.itemId
     const selectedPosition =
       !grouped || requested === undefined
         ? undefined
@@ -206,7 +260,7 @@ export const inboxNumberedPage = (input: InboxQuery) =>
       ? (
           await groupedQuery
             .orderBy(groupOrder)
-            .orderBy(person ? 'bp.id' : 'e.itemId')
+            .orderBy(groupKey)
             .offset(groupWindow.offset)
             .limit(20)
             .execute()
@@ -226,7 +280,7 @@ export const inboxNumberedPage = (input: InboxQuery) =>
     let scoped = filtered
     // A queue of at most three filings is shown whole; larger queues fetch only the open group.
     if (grouped && filteredTotal > 3 && selected !== undefined)
-      scoped = scoped.where(person ? 'bp.id' : 'e.itemId', '=', selected)
+      scoped = scoped.where(sql<boolean>`${groupKey} = ${selected}`)
     const total = await count(scoped)
     const anchor =
       input.focus === undefined
@@ -253,11 +307,7 @@ export const inboxNumberedPage = (input: InboxQuery) =>
         : await k
             .selectFrom(
               scoped
-                .where(
-                  person ? 'bp.id' : 'e.itemId',
-                  'in',
-                  groups.map((group) => group.key),
-                )
+                .where(sql<boolean>`${groupKey} in (${sql.join(groups.map((group) => group.key))})`)
                 .select(
                   sql<string>`row_number() over (partition by ${groupKey} order by ri.created_at, ri.id)`.as(
                     'groupRank',
@@ -326,6 +376,7 @@ export const inboxNumberedPage = (input: InboxQuery) =>
         formConfig: row.formConfig,
         displayConfig: row.displayConfig,
         attachmentCount: Number(row.attachmentCount ?? 0),
+        supplemented: row.supplemented === true,
         submittedAt: msOf(row.submittedMs),
         submittedAtIso: row.submittedIso,
       })),
@@ -334,6 +385,7 @@ export const inboxNumberedPage = (input: InboxQuery) =>
       pageSize: input.limit,
       queueTotal,
       filteredTotal,
+      marks,
       groups,
       groupTotal,
       groupPage: groupWindow.page,

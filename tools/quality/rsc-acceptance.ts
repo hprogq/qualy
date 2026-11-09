@@ -270,6 +270,25 @@ const mountHandler = async () => {
             redirect: 'manual',
           }),
         )
+        // Non-zero notices for the first-paint probe, after normal access checks.
+        if (
+          web.method === 'GET' &&
+          upstream.ok &&
+          /(?:^|;\s*)acceptance_notices=on(?:;|$)/.test(web.headers.get('cookie') ?? '') &&
+          /\/batches\/[^/]+\/(?:review-alerts|participant-placements|access\/sync)$/.test(
+            url.pathname,
+          )
+        ) {
+          const data = (yield* Effect.promise(() => upstream.json())) as Record<string, unknown>
+          const counts = url.pathname.endsWith('/review-alerts')
+            ? { unreachable: { routes: [], cannotSubmit: 2, cannotAppeal: 1 } }
+            : url.pathname.endsWith('/participant-placements')
+              ? { changedTotal: 2 }
+              : { pendingTotal: 2 }
+          return HttpServerResponse.text(JSON.stringify({ ...data, ...counts }), {
+            contentType: 'application/json',
+          })
+        }
         const copy = new Response(upstream.body, upstream)
         copy.headers.delete('content-length')
         copy.headers.delete('content-encoding')
@@ -1181,17 +1200,46 @@ const pageFirstScreen = async (
     readonly address: string
     /** the test id of the page's own content */
     readonly content: string
+    /** a persistent notice already in the first paint, with no entrance on takeover */
+    readonly staticNotice?: string
+    readonly withAdminNotices?: boolean
     /** the reads the server made for the page, by their api path and query */
     readonly reads: readonly RegExp[]
   },
 ) => {
+  const prepare = async (context: BrowserContext) => {
+    if (page.withAdminNotices) {
+      await context.addCookies([{ name: 'acceptance_notices', value: 'on', url: site }])
+    }
+  }
   const still = await signedInContext(browser, page.who)
+  await prepare(still)
   const html = await still.newPage()
   // the application's modules never arrive: what is on screen is the server's
   await html.route('**/assets/**/*.js', (route) => route.abort())
   const documentResponse = await html.goto(`${site}${page.address}`)
   await html.waitForLoadState('load')
   const drawn = await painted(html.getByTestId(page.content))
+  const staticNotice = async (tab: Page) => {
+    if (page.staticNotice === undefined) return true
+    const notice = tab.getByTestId(page.staticNotice)
+    return (
+      (await painted(notice)) &&
+      (await notice.evaluate((node) => {
+        const button = node as unknown as {
+          closest(selector: string): unknown
+          parentElement: unknown
+        }
+        const card = button.closest('[data-slot="page-notice"]') ? button.parentElement : node
+        return (
+          globalThis as unknown as {
+            getComputedStyle(element: unknown): { animationName: string }
+          }
+        ).getComputedStyle(card).animationName
+      })) === 'none'
+    )
+  }
+  const noticeDrawn = await staticNotice(html)
   if (!drawn) {
     const folder = path.join(repoRoot, 'node_modules/.cache/rsc-first-screen')
     fs.mkdirSync(folder, { recursive: true })
@@ -1222,6 +1270,7 @@ const pageFirstScreen = async (
       width,
       ...(timezoneId === undefined ? {} : { timezoneId }),
     })
+    await prepare(context)
     const tab = await context.newPage()
     const mismatches: string[] = []
     tab.on('console', (message) => {
@@ -1230,10 +1279,11 @@ const pageFirstScreen = async (
     tab.on('pageerror', (error) => mismatches.push(error.message.slice(0, 300)))
     const asked = await ownReads(tab, page.address)
     const again = asked.filter((url) => page.reads.some((read) => read.test(url)))
+    const noticeStill = await staticNotice(tab)
     check(
       `draws ${page.name} in the html and takes it over without asking again (${width}px)`,
-      drawn && again.length === 0 && mismatches.length === 0,
-      { drawn, again, mismatches, ...(drawn ? {} : { instead }) },
+      drawn && noticeDrawn && noticeStill && again.length === 0 && mismatches.length === 0,
+      { drawn, noticeDrawn, noticeStill, again, mismatches, ...(drawn ? {} : { instead }) },
     )
     await context.close()
   }
@@ -2011,7 +2061,32 @@ const checks = async () => {
     who: 'admin',
     address: `/assessment/batches/${started}/results`,
     content: 'roster',
-    reads: [/\/participant-accounts\?/, /\/roster-units\?/, /\/participant-scores\?/],
+    staticNotice: 'placement-notice',
+    withAdminNotices: true,
+    reads: [
+      /\/participant-accounts\?/,
+      /\/roster-units\?/,
+      /\/participant-scores\?/,
+      /\/participant-placements\?/,
+    ],
+  })
+  await pageFirstScreen(browser, {
+    name: 'item settings with a warning',
+    who: 'admin',
+    address: `/assessment/batches/${started}/items`,
+    content: 'page-notices',
+    staticNotice: 'items-unreachable-notice',
+    withAdminNotices: true,
+    reads: [/\/review-alerts(?:\?|$)/],
+  })
+  await pageFirstScreen(browser, {
+    name: 'staff access with a warning',
+    who: 'admin',
+    address: `/assessment/batches/${started}/access`,
+    content: 'page-notices',
+    staticNotice: 'access-sync-notice',
+    withAdminNotices: true,
+    reads: [/\/access\/sync\?/],
   })
   const { id: person } = await scratch.row<{ id: string }>(
     `select p.id from batch_participants p join users u on u.id = p.user_id
@@ -2046,7 +2121,12 @@ const checks = async () => {
     who: 'student',
     address: `/assessment/batches/${started}/reviews?view=time`,
     content: 'review-inbox-empty',
-    reads: [/^\/assessment\/review\/inbox\?/, /^\/assessment\/review\/supplement-requests\?/],
+    staticNotice: 'review-dock',
+    reads: [
+      /^\/assessment\/review\/inbox\?/,
+      /^\/assessment\/review\/supplement-requests\?/,
+      /\/timeline(?:\?|$)/,
+    ],
   })
   await pageFirstScreen(browser, {
     name: "the reader's rounds",

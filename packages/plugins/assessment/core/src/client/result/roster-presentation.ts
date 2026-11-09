@@ -65,6 +65,8 @@ export const rosterStyles = stylex.create({
     gap: 10,
     scrollMarginTop: 12,
   },
+  // Keep the rounded edge without becoming the sticky notice's scrollport.
+  noticeCard: { overflow: 'clip' },
   table: {
     '--q-roster-columns': {
       default: '6.5rem minmax(144px, 1fr) 9rem 7.5rem 2rem',

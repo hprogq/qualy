@@ -1,10 +1,7 @@
-import { reviewClient, reviewPage } from './support/review-client.tsx'
-import { ItemQueue, QueueBands } from '../src/client/review/QueueViews.tsx'
+import { reviewClient } from './support/review-client.tsx'
 import ReviewInboxPage from '../src/client/review/ReviewInboxPage.tsx'
 import WorkspaceShell from '@qualy/plugin-layout-default/client/WorkspaceShell'
 import { lazy } from 'react'
-import { hydrateRoot } from 'react-dom/client'
-import { renderToString } from 'react-dom/server'
 import { Route, Routes } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { commands, page } from 'vitest/browser'
@@ -129,7 +126,11 @@ const badges = {
   },
 }
 
-const shelled = (items: readonly Record<string, unknown>[], search = '') =>
+const shelled = (
+  items: readonly Record<string, unknown>[],
+  search = '',
+  overrides: Record<string, unknown> = {},
+) =>
   renderScreen({
     client: reviewClient({
       app: {
@@ -160,6 +161,7 @@ const shelled = (items: readonly Record<string, unknown>[], search = '') =>
               answeredAsks: [],
             },
           }),
+        ...overrides,
       },
     }),
     registry: badges.registry,
@@ -176,479 +178,562 @@ const shelled = (items: readonly Record<string, unknown>[], search = '') =>
 const layout = () => page.getByTestId('queue-layout')
 const rows = () => page.getByTestId('inbox-row')
 
-/** how wide the cells holding a row's answers are drawn, row by row */
-const answerCells = () =>
-  rows()
-    .elements()
-    .flatMap((row) =>
-      [
-        ...row.querySelectorAll(
-          '[data-testid="inbox-row-answer"], [data-testid="inbox-row-summary"]',
-        ),
-      ].map((answer) => (answer.parentElement as HTMLElement).getBoundingClientRect().width),
-    )
+const index = () => page.getByTestId('queue-index-row')
+const groups = () => page.getByTestId('queue-group')
 
 afterEach(() => page.viewport(DEFAULT_VIEWPORT.width, DEFAULT_VIEWPORT.height))
 
-it('keeps both desktop project columns the same width when the HTML hydrates', async () => {
-  await page.viewport(1440, 900)
-  const data = reviewPage({ items: [filing(0), volunteering(1)] }, { view: 'item' })
-  const noop = () => {}
-  const content = (
-    <QueueBands fill>
-      <ItemQueue
-        rows={data.items}
-        serverPage={data}
-        fetching={false}
-        chosen=""
-        page={1}
-        onGroupPage={noop}
-        onChoose={noop}
-        onBack={noop}
-        onPage={noop}
-        onOpen={noop}
-      />
-    </QueueBands>
-  )
-  // The split band uses 1100px to choose its HTML; measure on either side of that estimate.
-  const dataset = document.documentElement.dataset
-  const locale = dataset.locale
-  dataset.locale = 'zh-CN'
-  try {
-    for (const [width, indexWidth] of [
-      [940, 208],
-      [1280, 240],
-    ] as const) {
-      const host = document.createElement('div')
-      host.style.width = `${String(width)}px`
-      host.innerHTML = renderToString(content)
-      document.body.append(host)
-      const columns = () =>
-        ['queue-master-seat', 'queue-pane'].map((id) =>
-          [...host.querySelectorAll(`[data-testid="${id}"]`)]
-            .map((node) => node.getBoundingClientRect().width)
-            .find((size) => size > 0),
-        )
-      const before = columns()
-      const errors: unknown[] = []
-      const root = hydrateRoot(host, content, { onRecoverableError: (error) => errors.push(error) })
+describe('the queue in brief', () => {
+  it('keeps the queue tabs inside the full-width band when switching to awaiting material', async () => {
+    await page.viewport(1440, 900)
+    await shelled(both())
+    const band = page.getByTestId('batch-band')
+    const waiting = band.getByRole('tab', { name: '待补材料' })
+    await expect.element(waiting).toBeVisible()
+    await expect.element(rows().first()).toBeVisible()
+    const frame = band.element()
+    const tabs = frame.querySelector('[role="tablist"]')!
+    const grouping = page
+      .getByRole('tab', { name: '按项目' })
+      .element()
+      .closest('[role="tablist"]')!
+    const bounds = frame.getBoundingClientRect()
+    expect(bounds.width).toBeCloseTo(frame.closest('main')!.clientWidth, 0)
+    expect(tabs.getBoundingClientRect().bottom).toBeCloseTo(bounds.bottom - 1, 0)
+    expect(tabs.getBoundingClientRect().left).toBeCloseTo(grouping.getBoundingClientRect().left, 0)
+    await waiting.click()
+    const empty = page.getByTestId('review-inbox-empty')
+    await expect.element(empty).toHaveAttribute('data-empty', 'no-asks')
+    await expect
+      .element(empty.getByText('发出补充材料请求后，可在这里查看补充进度。'))
+      .toBeVisible()
+    expect(frame.getBoundingClientRect().bottom).toBeCloseTo(bounds.bottom, 0)
+  })
+
+  // Nothing picked, every project shows its oldest few and a way to all of
+  // them; the index beside it says how much each one holds.
+  it('lays every project out in brief beside an index of them', async () => {
+    await page.viewport(1440, 900)
+    await shelled(both())
+    await expect.element(layout()).toHaveAttribute('data-layout', 'overview')
+    await expect.element(page.getByTestId('queue-index')).toBeVisible()
+    await expect.element(page.getByTestId('queue-scope')).not.toBeVisible()
+    expect(
+      index()
+        .elements()
+        .map((row) => row.getAttribute('data-count')),
+    ).toEqual(['15', '12', '3'])
+    expect(
+      groups()
+        .elements()
+        .map((group) => group.getAttribute('data-key')),
+    ).toEqual([ITEM_ID, OTHER_ITEM])
+    expect(rows().elements()).toHaveLength(6)
+    // the way to all of a project shown in part, and none where all of it shows
+    expect(page.getByTestId('queue-group-more').elements()).toHaveLength(1)
+  })
+
+  it.each([390, 1024, 1440])(
+    'waits for the selected grouping at %ipx without reusing old groups',
+    async (width) => {
+      await page.viewport(width, 900)
+      const items = [filing(1), { ...volunteering(40), submittedAt: '2026-03-04T02:00:00.000Z' }]
+      const reply = { items, handledToday: 2, judging: true }
+      let showTime!: () => void
+      let showPerson!: () => void
+      const byTime = new Promise<typeof reply>((resolve) => {
+        showTime = () => resolve(reply)
+      })
+      const byPerson = new Promise<typeof reply>((resolve) => {
+        showPerson = () => resolve(reply)
+      })
+      const list = ({ query }: { query: { view?: string } }) => {
+        if (query.view === 'time') return Effect.promise(() => byTime)
+        if (query.view === 'person') return Effect.promise(() => byPerson)
+        return Effect.succeed(reply)
+      }
+      await shelled(items, '', { listReviewInbox: list })
+      await expect.element(layout()).toHaveAttribute('data-grouping', 'item')
+
+      const filters = page.getByTestId('review-filters').element()
+      const start = page.getByTestId('review-start').element()
+      const time = page.getByRole('tab', { name: '按时间' })
+      const person = page.getByRole('tab', { name: '按人员' })
+      const loading = page.getByRole('status', { name: '加载中' })
+      const expectLoading = async (tab: typeof time) => {
+        await expect.element(tab).toHaveAttribute('aria-selected', 'true')
+        await expect.element(loading).toBeVisible()
+        expect(groups().elements()).toHaveLength(0)
+        expect(rows().elements()).toHaveLength(0)
+        expect(index().elements()).toHaveLength(0)
+        expect(page.getByTestId('queue-scope').elements()).toHaveLength(0)
+        expect(page.getByTestId('review-filters').element()).toBe(filters)
+        expect(page.getByTestId('review-start').element()).toBe(start)
+      }
+
       try {
-        expect(before).toEqual([indexWidth, width - indexWidth - 16])
-        await expect
-          .poll(() => host.querySelectorAll('[data-testid="queue-layout"]').length)
-          .toBe(1)
-        await expect.poll(columns).toEqual(before)
-        expect(errors).toEqual([])
+        await time.click()
+        await expectLoading(time)
+        await person.click()
+        await expectLoading(person)
+        showPerson()
+        await expect.element(layout()).toHaveAttribute('data-grouping', 'person')
+
+        await time.click()
+        await expectLoading(time)
+        const skeleton = loading.element()
+        const firstCard = skeleton.querySelector('[data-slot="review-group-placeholder"]')!
+        const firstTable = firstCard.querySelector('[data-slot="review-group-table"]')!
+        const before = firstCard.getBoundingClientRect()
+        const headerHeight = firstTable.firstElementChild!.getBoundingClientRect().height
+        showTime()
+        await expect.element(layout()).toHaveAttribute('data-grouping', 'time')
+        await expect.element(loading).not.toBeInTheDocument()
+        expect(
+          groups()
+            .elements()
+            .map((group) => group.getAttribute('data-key')),
+        ).toEqual(['2026-03-04', '2026-03-03'])
+        expect(rows().elements()).toHaveLength(2)
+        const actual = groups().first().element()
+        const after = actual.getBoundingClientRect()
+        const columns = actual.querySelector('[data-slot="review-group-table"]')!.firstElementChild!
+        expect(before.x).toBeCloseTo(after.x, 0)
+        expect(before.y).toBeCloseTo(after.y, 0)
+        expect(before.width).toBeCloseTo(after.width, 0)
+        expect(headerHeight).toBeCloseTo(columns.getBoundingClientRect().height, 0)
       } finally {
-        root.unmount()
-        host.remove()
+        showPerson()
+        showTime()
+      }
+    },
+  )
+
+  it('opens a project whole from the index or from its own card', async () => {
+    await page.viewport(1440, 900)
+    await shelled(both())
+    await index().nth(1).click()
+    await expect.element(layout()).toHaveAttribute('data-layout', 'group')
+    expect(addressNow()).toContain(`item=${ITEM_ID}`)
+    await expect.element(index().nth(1)).toHaveAttribute('aria-current', 'true')
+    expect(rows().elements()).toHaveLength(12)
+
+    // the whole queue is the index's first entry
+    await index().first().click()
+    await expect.element(layout()).toHaveAttribute('data-layout', 'overview')
+    expect(addressNow()).not.toContain('item=')
+
+    await page.getByTestId('queue-group-more').click()
+    await expect.element(layout()).toHaveAttribute('data-layout', 'group')
+    expect(rows().elements()).toHaveLength(12)
+  })
+
+  it.each([390, 1440])(
+    'selects the project immediately and loads only its results at %ipx',
+    async (width) => {
+      await page.viewport(width, 900)
+      const reply = { items: both(), handledToday: 0, judging: true }
+      let showProject!: () => void
+      const pending = new Promise<typeof reply>((resolve) => {
+        showProject = () => resolve(reply)
+      })
+      try {
+        await shelled(reply.items, '', {
+          listReviewInbox: ({ query }: { query: { itemId?: string } }) =>
+            query.itemId === ITEM_ID ? Effect.promise(() => pending) : Effect.succeed(reply),
+        })
+        await expect.element(layout()).toHaveAttribute('data-layout', 'overview')
+        if (width === 390) {
+          const pick = page.getByTestId('queue-scope').getByRole('combobox', { name: '查找项目' })
+          const input = pick.element()
+          await pick.click()
+          await page.getByRole('option', { name: /学科竞赛获奖/ }).click()
+          await expect.element(pick).toHaveValue('学科竞赛获奖')
+          expect(pick.element()).toBe(input)
+        } else {
+          const pick = index().nth(1)
+          const button = pick.element()
+          await pick.click()
+          await expect.element(pick).toHaveAttribute('aria-current', 'true')
+          expect(pick.element()).toBe(button)
+        }
+        const loading = page.getByRole('status', { name: '加载中' })
+        await expect.element(loading).toBeVisible()
+        expect(rows().elements()).toHaveLength(0)
+        showProject()
+        await expect.element(layout()).toHaveAttribute('data-layout', 'group')
+        await expect.element(loading).not.toBeInTheDocument()
+        await expect.element(groups().first()).toHaveAttribute('data-key', ITEM_ID)
+      } finally {
+        showProject()
+      }
+    },
+  )
+
+  // Beside the rail of a laptop the queue has no room for a column of
+  // projects; the same choice is a select above the list.
+  it('picks from a select where the rail leaves no room for the index', async () => {
+    await page.viewport(1024, 768)
+    await shelled(both())
+    await expect.element(rows().first()).toBeVisible()
+    await expect.element(page.getByTestId('queue-scope')).toBeVisible()
+    await expect.element(page.getByTestId('queue-index')).not.toBeVisible()
+  })
+
+  it('keeps the group and status controls distinct with badge counts on a phone', async () => {
+    await page.viewport(390, 844)
+    await shelled(both())
+    const scope = page.getByTestId('queue-scope')
+    const project = scope.getByRole('combobox', { name: '查找项目' })
+    const status = page.getByRole('combobox', { name: '按审核状态筛选' })
+    await expect.element(project).toHaveValue('全部项目')
+    await expect.element(status.getByText('全部状态', { exact: true })).toBeVisible()
+    expect(scope.element().querySelector('[data-slot="count"]')?.textContent).toBe('15')
+    expect(status.element().querySelector('[data-slot="count"]')?.textContent).toBe('15')
+    const projectBox = project.element().getBoundingClientRect()
+    const statusBox = status.element().getBoundingClientRect()
+    expect(projectBox.top).toBeCloseTo(statusBox.top, 0)
+    expect(projectBox.right).toBeLessThan(statusBox.left)
+    expect(statusBox.right).toBeLessThanOrEqual(390)
+    await status.click()
+    await page.getByRole('option', { name: /重新提交/ }).click()
+    await expect.poll(() => addressNow()).toContain('mark=resubmitted')
+    await expect.element(status.getByText('重新提交', { exact: true })).toBeVisible()
+  })
+
+  it('keeps the toolbar controls in bounds on both sides of each layout break', async () => {
+    await page.viewport(1600, 900)
+    await shelled([filing(1, { unitId: 'unit-a' }), volunteering(2)])
+    const toolbar = page.getByTestId('review-filters')
+    await expect.element(toolbar).toBeVisible()
+    await expect.element(rows().first()).toBeVisible()
+    for (const width of [1600, 1480, 1210, 1130, 1024, 930, 760, 630, 598, 560, 390, 320]) {
+      await page.viewport(width, 900)
+      const region = toolbar.element()
+      const frame = region.getBoundingClientRect()
+      const groups = region.querySelector('[role="tablist"]')!.getBoundingClientRect()
+      const status = [...region.querySelectorAll('[role="group"], button[role="combobox"]')]
+        .find(
+          (node) =>
+            node.getAttribute('aria-label') === '按审核状态筛选' &&
+            node.getBoundingClientRect().width > 0,
+        )!
+        .getBoundingClientRect()
+      if (frame.width >= 880) expect(Math.abs(groups.top - status.top)).toBeLessThanOrEqual(2)
+      else expect(status.top).toBeGreaterThanOrEqual(groups.bottom)
+      const visible = [
+        ...region.querySelectorAll(
+          '[role="tablist"], [role="combobox"], [role="group"], #review-queue-search, button[aria-controls="review-queue-search"]',
+        ),
+      ]
+        .map((control) => control.getBoundingClientRect())
+        .filter((rect) => rect.width > 0 && rect.height > 0)
+      expect(visible.length).toBeGreaterThanOrEqual(4)
+      for (const [index, rect] of visible.entries()) {
+        expect(rect.left).toBeGreaterThanOrEqual(frame.left - 1)
+        expect(rect.right).toBeLessThanOrEqual(frame.right + 1)
+        for (const other of visible.slice(index + 1)) {
+          const overlaps =
+            Math.min(rect.right, other.right) - Math.max(rect.left, other.left) > 1 &&
+            Math.min(rect.bottom, other.bottom) - Math.max(rect.top, other.top) > 1
+          expect(overlaps).toBe(false)
+        }
       }
     }
-  } finally {
-    if (locale === undefined) delete dataset.locale
-    else dataset.locale = locale
-  }
+  })
+
+  it('waits for Chinese composition to finish before searching', async () => {
+    await page.viewport(1000, 850)
+    const items = both()
+    const searches: string[] = []
+    await shelled(items, '', {
+      listReviewInbox: ({ query }: { query: { search?: string } }) => {
+        if (query.search !== undefined) searches.push(query.search)
+        return Effect.succeed({ items, handledToday: 0, judging: true })
+      },
+    })
+    await expect.element(rows().first()).toBeVisible()
+    const field = page.getByRole('textbox', { name: '搜索姓名、学号或申报内容' })
+    const input = field.element() as HTMLInputElement
+    input.focus()
+    const enter = (value: string, isComposing: boolean) => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, value)
+      input.dispatchEvent(new InputEvent('input', { bubbles: true, data: value, isComposing }))
+    }
+    enter('x', false)
+    input.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }))
+    enter('xiang', true)
+    await page.viewport(390, 844)
+    await expect.element(field).toBeVisible()
+    // A pause longer than the debounce while picking a candidate must not navigate.
+    await new Promise((resolve) => setTimeout(resolve, 350))
+    expect(addressNow()).not.toContain('q=')
+    expect(searches).toEqual([])
+    expect(document.activeElement).toBe(input)
+    enter('项目', true)
+    input.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true, data: '项目' }))
+    expect(searches).toEqual([])
+    await vi.waitFor(() => expect(searches).toEqual(['项目']))
+    expect(field.element()).toBe(input)
+    expect(input.value).toBe('项目')
+  })
+
+  it('starts a run over a project from its key', async () => {
+    await page.viewport(1440, 900)
+    await shelled(both())
+    const run = groups().first().getByTestId('queue-run')
+    await expect.element(run).toBeVisible()
+    // a project of one is its own way in
+    expect(groups().nth(1).getByTestId('queue-run').elements()).toHaveLength(1)
+  })
+
+  it('forgets the picked project when the queue is grouped another way', async () => {
+    await page.viewport(1440, 900)
+    await shelled(both(), `?item=${ITEM_ID}`)
+    await expect.element(layout()).toHaveAttribute('data-layout', 'group')
+    await page.getByRole('tab', { name: '按人员' }).click()
+    await expect.poll(() => addressNow()).toContain('view=person')
+    expect(addressNow()).not.toContain('item=')
+    await expect.element(layout()).toHaveAttribute('data-layout', 'overview')
+  })
 })
 
-describe('the queue beside the rail', () => {
-  // The line is the queue's own room: 1024 with the rail open leaves the
-  // queue about as wide as a tablet, where the list and a question's table
-  // do not both fit side by side and the list is a strip over the table;
-  // from about 1280 they do.
-  for (const [width, height, shape] of [
-    [1024, 768, 'stack'],
-    [1280, 800, 'split'],
-    [1440, 900, 'split'],
-    [1920, 1080, 'split'],
+describe('a filing in a row', () => {
+  it('keeps the round badge in the narrow row header instead of under the answers', async () => {
+    await page.viewport(390, 844)
+    await shelled([filing(3)])
+    const row = rows().first()
+    const badge = row.getByTestId('inbox-row-mark')
+    await expect.element(badge).toBeVisible()
+    const answer = row.getByTestId('inbox-row-value').first().element()
+    expect(badge.element().getBoundingClientRect().bottom).toBeLessThan(
+      answer.getBoundingClientRect().top,
+    )
+  })
+
+  it('allocates only the summary tracks used by each project, even when the entry has attachments', async () => {
+    await page.viewport(1440, 900)
+    await shelled([
+      filing(3),
+      filing(2, {
+        itemId: OTHER_ITEM,
+        itemTitle: '无摘要的项目',
+        values: [{ label: '证明材料', value: '', files: 1 }],
+        attachmentCount: 1,
+      }),
+    ])
+    await expect.element(rows().nth(1)).toBeVisible()
+    // Applicant, up to three summary fields, status, time and the way in.
+    const tables = rows()
+      .elements()
+      .map((row) => row.closest('[data-slot="review-group-table"]')!)
+    const tracks = tables.map((table) => getComputedStyle(table).gridTemplateColumns.split(' '))
+    expect(tracks.map((columns) => columns.length)).toEqual([7, 4])
+    const badge = rows().first().getByTestId('inbox-row-mark').element().getBoundingClientRect()
+    expect(Number.parseFloat(tracks[0]![4]!)).toBeCloseTo(badge.width, 0)
+  })
+
+  // On a desk a row's answers are columns beside who filed it; on a phone
+  // they stand under the name, and nothing runs past the screen's edge.
+  for (const [width, height, beside] of [
+    [1440, 900, true],
+    [414, 896, false],
   ] as const) {
-    it(`gives a question's answers room at ${String(width)}, rail open`, async () => {
+    it(`lays a filing's answers ${beside ? 'beside' : 'under'} its name at ${String(width)}`, async () => {
       await page.viewport(width, height)
       await shelled(both(), `?item=${ITEM_ID}`)
-      await expect.element(page.getByTestId('workspace-rail')).toBeVisible()
       await expect.element(rows().first()).toBeVisible()
-      await expect.element(layout()).toHaveAttribute('data-layout', shape)
-      // every answer on the page has at least a few characters' room,
-      // whether each has a column or they share one
-      const widths = answerCells()
-      expect(widths.length).toBeGreaterThan(0)
-      expect(Math.min(...widths)).toBeGreaterThanOrEqual(48)
-      // and no row runs out of the card it is in
-      for (const row of rows().elements()) {
+      for (const row of rows().elements().slice(0, 3)) {
+        const name = row.querySelector<HTMLElement>('[data-testid="inbox-row-name"]')!
+        const value = row.querySelector<HTMLElement>('[data-testid="inbox-row-value"]')!
+        const nameBox = name.getBoundingClientRect()
+        const valueBox = value.getBoundingClientRect()
+        if (beside) expect(valueBox.left).toBeGreaterThan(nameBox.right)
+        else expect(valueBox.top).toBeGreaterThanOrEqual(nameBox.bottom)
         expect(row.scrollWidth).toBeLessThanOrEqual(row.clientWidth + 1)
       }
     })
   }
 
-  // Narrower than the two need side by side but still a desk, the list is
-  // a strip of keys over the question that has waited longest: the page
-  // opens on work, and another question is one press away rather than a
-  // step in and back out.
-  it('opens on the oldest question under a strip of the rest where the rail leaves too little room', async () => {
-    await page.viewport(1024, 768)
-    await shelled(both())
-    await expect.element(layout()).toHaveAttribute('data-layout', 'stack')
-    const masters = page.getByTestId('queue-master-row')
-    await expect.element(masters.first()).toBeVisible()
-    await expect.element(masters.first()).toHaveAttribute('data-selected', 'true')
-    // the filings are there without a press, under the keys
-    await expect.element(rows().first()).toBeVisible()
-    const strip = page.getByTestId('queue-master').element()
-    expect(strip.getAttribute('data-shape')).toBe('strip')
-    expect(strip.getBoundingClientRect().bottom).toBeLessThanOrEqual(
-      rows().first().element().getBoundingClientRect().top,
-    )
-    // nothing to step back out of
-    expect(page.getByTestId('queue-pane-back').elements()).toHaveLength(0)
-    await masters.nth(1).click()
-    await expect.element(page.getByTestId('queue-pane')).toHaveAttribute('data-key', OTHER_ITEM)
-    await expect.element(masters.nth(1)).toHaveAttribute('data-selected', 'true')
-    expect(addressNow()).toContain(`item=${OTHER_ITEM}`)
-  })
-
-  // The strip holds two lines of keys; past them it scrolls inside itself
-  // and its foot fades, so it does not read as all there is.
-  it('says the strip goes on past its two lines', async () => {
-    await page.viewport(1024, 768)
-    const many = Array.from({ length: 24 }, (_, n) =>
-      filing(n, {
-        itemId: `cccccccc-cccc-4ccc-8ccc-${String(n).padStart(12, '0')}`,
-        itemTitle: `第 ${String(n + 1)} 个项目`,
-      }),
-    )
-    const shown = await shelled(many)
-    const strip = page.getByRole('list', { name: '项目' })
-    await expect.element(strip).toHaveAttribute('data-more', 'true')
-    const list = strip.element() as HTMLElement
-    list.scrollTop = list.scrollHeight
-    await expect.element(strip).toHaveAttribute('data-more', 'false')
-    await shown.unmount()
-    await shelled(both())
-    await expect
-      .element(page.getByRole('list', { name: '项目' }))
-      .toHaveAttribute('data-more', 'false')
-  })
-
-  // Two people of one name are told apart on the key itself, by number.
-  it('tells two people of one name apart on their keys', async () => {
-    await page.viewport(1024, 768)
-    await shelled(
-      [
-        ...Array.from({ length: 3 }, (_, n) => filing(n, { participantName: '王芳' })),
-        filing(5, { participantName: '李雷' }),
-      ],
-      '?view=person',
-    )
-    await expect.element(layout()).toHaveAttribute('data-layout', 'stack')
-    const keys = page.getByTestId('queue-master-row').elements()
-    const said = (name: string) =>
-      keys
-        .filter((key) => key.textContent?.includes(name))
-        .map(
-          (key) =>
-            key.getAttribute('data-key') !== null &&
-            key.textContent?.includes(key.getAttribute('data-key')!),
-        )
-    expect(said('王芳')).toEqual([true, true, true])
-    expect(said('李雷')).toEqual([false])
-  })
-
-  // A table's answers take the room their longest entries need, the
-  // shortest first, so a grade and a date are whole before a competition's
-  // name is cut; and an answer the room still cuts short says the whole of
-  // itself on hover.
-  it('gives the longest answer the room there is, and the whole of it on hover', async () => {
-    for (const [width, height] of [
-      [1440, 900],
-      [1920, 1080],
-    ] as const) {
-      await page.viewport(width, height)
-      const shown = await shelled(both(), `?item=${ITEM_ID}`)
-      await expect.element(rows().first()).toBeVisible()
-      await expect
-        .element(page.getByTestId('queue-pane'))
-        .toHaveAttribute('data-answers', 'columns')
-      const cells = rows()
-        .elements()
-        .flatMap((row) => [...row.querySelectorAll('[data-testid="inbox-row-answer"]')])
-        .map((answer) => answer.parentElement as HTMLElement)
-      expect(cells.length).toBeGreaterThan(0)
-      for (const cell of cells) {
-        const cut = cell.scrollWidth > cell.clientWidth + 1
-        if (cut) expect(cell.getAttribute('title')).toBe(cell.textContent)
-      }
-      // the short ones are never what gives way
-      const firstRow = rows().first().element()
-      const [, grade, date] = [
-        ...firstRow.querySelectorAll('[data-testid="inbox-row-answer"]'),
-      ].map((answer) => answer.parentElement as HTMLElement)
-      for (const cell of [grade!, date!]) {
-        expect(cell.scrollWidth).toBeLessThanOrEqual(cell.clientWidth + 1)
-      }
-      if (width === 1920) {
-        // and with room to spare nothing is cut at all
-        expect(cells.every((cell) => cell.scrollWidth <= cell.clientWidth + 1)).toBe(true)
-      }
-      await shown.unmount()
-    }
-  })
-
-  // The name is how a row is found. The number beside it goes under it
-  // before the name loses a character, and a name longer than the cell
-  // still says its whole self on hover.
-  it('keeps a long name whole and moves the number under it', async () => {
+  it("lines one project's answers up under each other", async () => {
     await page.viewport(1440, 900)
     await shelled(both(), `?item=${ITEM_ID}`)
-    const name = page.getByTestId('inbox-row-name').first()
-    await expect.element(name).toHaveTextContent(LONG_NAME)
-    const drawn = name.element() as HTMLElement
-    expect(drawn.scrollWidth).toBeLessThanOrEqual(drawn.clientWidth + 1)
-    expect(drawn.getAttribute('title')).toBe(LONG_NAME)
-    const number = drawn.nextElementSibling as HTMLElement
-    expect(number.getBoundingClientRect().top).toBeGreaterThan(drawn.getBoundingClientRect().top)
-  })
-
-  // Where a round stands rides under when it arrived rather than taking a
-  // column that is empty on nearly every row.
-  it('marks a round under its time, with no column of its own', async () => {
-    await page.viewport(1440, 900)
-    await shelled(both(), `?item=${ITEM_ID}`)
-    const marks = page.getByTestId('inbox-row-mark')
-    await expect.element(marks.first()).toBeVisible()
-    expect(marks.elements().map((mark) => mark.getAttribute('data-mark'))).toEqual([
-      'round',
-      'escalated',
-    ])
-    // each mark stands in the time's own cell, under the time
-    for (const mark of marks.elements()) {
-      const when = mark.parentElement as HTMLElement
-      expect(when.firstElementChild?.textContent).toMatch(/\d{2}:\d{2}/)
-      expect(mark.getBoundingClientRect().top).toBeGreaterThan(
-        (when.firstElementChild as HTMLElement).getBoundingClientRect().top,
-      )
-    }
-    // who, the answers, when, and the way in: no track for the standing
-    const pane = page.getByTestId('queue-pane').element() as HTMLElement
-    const answers = pane.dataset['answers'] === 'columns' ? 4 : 1
-    const tracks = getComputedStyle(rows().first().element()).gridTemplateColumns.split(' ')
-    expect(tracks).toHaveLength(answers + 3)
-  })
-
-  // The list stands beside the filings while they are paged, and never
-  // reaches below the window: it scrolls inside itself instead of growing
-  // the page.
-  it('keeps the list beside the filings inside the window', async () => {
-    await page.viewport(1440, 900)
-    const many = Array.from({ length: 24 }, (_, n) =>
-      filing(n, {
-        itemId: `cccccccc-cccc-4ccc-8ccc-${String(n).padStart(12, '0')}`,
-        itemTitle: `第 ${String(n + 1)} 个项目`,
-      }),
-    )
-    await shelled(many)
-    const seat = page.getByTestId('queue-master-seat')
-    await expect.element(seat).toBeVisible()
-    await expect
-      .poll(() => (seat.element() as HTMLElement).getBoundingClientRect().bottom)
-      .toBeLessThanOrEqual(window.innerHeight)
-  })
-
-  // Paging moves the reader to the top of the page they asked for, with a
-  // glide; one who asked for less motion is taken there at once.
-  for (const [motion, behavior] of [
-    ['reduce', 'auto'],
-    ['no-preference', 'smooth'],
-  ] as const) {
-    it(`pages with a ${behavior} scroll where motion is ${motion}`, async () => {
-      await page.viewport(1440, 900)
-      await commands.emulateMedia({ reducedMotion: motion })
-      const glide = vi.spyOn(Element.prototype, 'scrollIntoView')
-      try {
-        await shelled(both(), `?item=${ITEM_ID}`)
-        await page.getByTestId('review-queue-pager').getByRole('button', { name: '2' }).click()
-        await expect.poll(() => addressNow()).toContain('page=2')
-        const asked = glide.mock.calls.flatMap(([how]) => {
-          const said = (how as ScrollIntoViewOptions | undefined)?.behavior
-          return said === undefined ? [] : [said]
-        })
-        expect(asked).toContain(behavior)
-        expect(asked).not.toContain(behavior === 'auto' ? 'smooth' : 'auto')
-      } finally {
-        glide.mockRestore()
-        await commands.emulateMedia({ reducedMotion: 'reduce' })
-      }
-    })
-  }
-
-  // By time, the question takes a column only where there is room for one
-  // beside the answers; narrower it rides under the name, and the answers
-  // keep the width.
-  for (const [width, height, where] of [
-    [1024, 768, 'under-name'],
-    [1440, 900, 'column'],
-  ] as const) {
-    it(`puts the question where the room allows it by time at ${String(width)}`, async () => {
-      await page.viewport(width, height)
-      await shelled(both(), '?view=time')
-      await expect.element(rows().first()).toBeVisible()
-      await expect.element(page.getByTestId('queue-pane')).toHaveAttribute('data-item', where)
-      const summary = rows().first().element().querySelector('[data-testid="inbox-row-summary"]')!
-        .parentElement as HTMLElement
-      expect(summary.getBoundingClientRect().width).toBeGreaterThanOrEqual(240)
-      const item = rows().first().element().querySelector('[data-testid="inbox-row-item"]')!
-      expect(item.textContent).toBe('学科竞赛获奖')
-      if (where === 'under-name') {
-        const name = rows().first().element().querySelector('[data-testid="inbox-row-name"]')!
-        expect(item.getBoundingClientRect().top).toBeGreaterThan(name.getBoundingClientRect().top)
-      }
-      for (const row of rows().elements()) {
-        expect(row.scrollWidth).toBeLessThanOrEqual(row.clientWidth + 1)
-      }
-    })
-  }
-})
-
-// The few filings of the one question or person open are laid out whole,
-// every answer under its label, whatever the rest of the queue holds: a
-// question of two in a queue of many was a strip of table over an empty
-// pane, and so was every person, who has one or two.
-describe('a question or a person of a few, open in a longer queue', () => {
-  /** five filings over three questions: two, two and one */
-  const sparse = () => [filing(0), filing(1), volunteering(2), volunteering(5), cadre(6)]
-  const CADRE_ITEM = '77777777-7777-4777-8777-777777777777'
-  function cadre(n: number) {
-    return filing(n, {
-      itemId: CADRE_ITEM,
-      itemTitle: '学生干部任职',
-      values: [
-        { label: '任职组织', value: '计算机学院学生会', files: null },
-        { label: '职务', value: '学习部部长', files: null },
-        { label: '任职起止', value: '2025-09-01 至 2026-06-30', files: null },
-      ],
-    })
-  }
-  /** every answer on screen says all of itself */
-  const wholly = () => {
-    for (const value of document.querySelectorAll<HTMLElement>(
-      '[data-testid="queue-pane"] [data-testid="inbox-row-value"]',
-    )) {
-      expect(value.scrollWidth).toBeLessThanOrEqual(value.clientWidth + 1)
-      expect(value.scrollHeight).toBeLessThanOrEqual(value.clientHeight + 1)
-    }
-  }
-
-  for (const [question, count, fields] of [
-    [ITEM_ID, 2, 4],
-    [CADRE_ITEM, 1, 3],
-  ] as const) {
-    it(`lays a question of ${String(count)} out whole beside the list at 1440`, async () => {
-      await page.viewport(1440, 900)
-      await shelled(sparse(), `?item=${question}`)
-      await expect.element(layout()).toHaveAttribute('data-layout', 'split')
-      const pane = page.getByTestId('queue-pane')
-      await expect.element(pane).toHaveAttribute('data-key', question)
-      await expect.element(pane).toHaveAttribute('data-answers', 'spread')
-      await expect.element(rows().first()).toBeVisible()
-      expect(rows().elements()).toHaveLength(count)
-      for (const row of rows().elements()) {
-        expect(row.getAttribute('data-answers')).toBe(String(fields))
-        // one line of answers where the pane has the room for them
-        expect(row.getAttribute('data-answers-line')).toBe('one')
-        expect(row.scrollWidth).toBeLessThanOrEqual(row.clientWidth + 1)
-      }
-      wholly()
-      // one filing is its own way in; a run over the question is worth a key
-      // only where it holds more
-      expect(pane.getByTestId('queue-run').elements()).toHaveLength(count > 1 ? 1 : 0)
-      const card = pane.element()
-      const main = card.closest('main')!
-      await expect
-        .poll(() => main.getBoundingClientRect().bottom - card.getBoundingClientRect().bottom)
-        .toBeCloseTo(24, 0)
-      expect(main.scrollHeight).toBeLessThanOrEqual(main.clientHeight + 1)
-      const index = page.getByTestId('queue-master-seat').element()
-      expect(index.getBoundingClientRect().bottom).toBeLessThan(card.getBoundingClientRect().bottom)
-    })
-  }
-
-  // A long answer wraps inside a column that takes the room the short ones
-  // beside it do not need, and says all of itself on hover.
-  it('gives a long answer the room the short ones beside it leave', async () => {
-    await page.viewport(1440, 900)
-    const long =
-      '基于多模态大模型的校园安全隐患智能识别与预警系统研发，本人负责数据标注流程设计、模型微调与评测，并撰写结题报告全文约两万字'
-    await shelled([
-      ...[0, 1].map((n) =>
-        filing(n, {
-          values: [
-            { label: '项目名称与本人承担的工作', value: long, files: null },
-            { label: '级别', value: '国家级', files: null },
-            { label: '证明材料', value: '', files: 1 },
-          ],
-        }),
-      ),
-      volunteering(2),
-      volunteering(5),
-    ])
-    // the question open beside the list, in the pane's narrower room
-    await expect.element(layout()).toHaveAttribute('data-layout', 'split')
     await expect.element(rows().first()).toBeVisible()
-    const row = rows().first().element()
-    expect(row.getAttribute('data-answers-line')).toBe('one')
-    const [first, grade] = [...row.querySelectorAll<HTMLElement>('[data-testid="inbox-row-value"]')]
-    expect(first!.getAttribute('title')).toBe(long)
-    expect(first!.getBoundingClientRect().width).toBeGreaterThan(
-      3 * grade!.getBoundingClientRect().width,
-    )
-    // on the same line as the short ones, not a row of its own
-    expect(Math.round(first!.getBoundingClientRect().top)).toBe(
-      Math.round(grade!.getBoundingClientRect().top),
-    )
-  })
-
-  it('lines the answers of one question up under each other', async () => {
-    await page.viewport(1440, 900)
-    await shelled(sparse(), `?item=${ITEM_ID}`)
-    await expect.element(rows().nth(1)).toBeVisible()
     const lefts = rows()
       .elements()
       .map((row) =>
-        [...row.querySelectorAll('[data-testid="inbox-row-value"]')].map((value) =>
-          Math.round(value.getBoundingClientRect().left),
+        Math.round(
+          row.querySelector('[data-testid="inbox-row-value"]')!.getBoundingClientRect().left,
         ),
       )
-    // every answer of both, each in the same place as the other's
-    expect(lefts[0]).toHaveLength(4)
-    expect(lefts[0]).toEqual(lefts[1])
+    expect(new Set(lefts).size).toBe(1)
   })
 
-  it('lays the one person open out whole, by the question each filing is on', async () => {
+  it('gives three answers at most, whole on hover', async () => {
     await page.viewport(1440, 900)
-    await shelled(sparse(), '?view=person')
-    const pane = page.getByTestId('queue-pane')
-    await expect.element(pane).toHaveAttribute('data-answers', 'spread')
+    await shelled(both(), `?item=${ITEM_ID}`)
     await expect.element(rows().first()).toBeVisible()
-    expect(rows().elements()).toHaveLength(1)
-    expect(rows().first().element().getAttribute('data-answers')).toBe('4')
-    wholly()
-    expect(pane.getByTestId('queue-run').elements()).toHaveLength(0)
+    const values = [
+      ...rows().first().element().querySelectorAll<HTMLElement>('[data-testid="inbox-row-value"]'),
+    ]
+    expect(values).toHaveLength(3)
+    expect(values[0]!.getAttribute('title')).toBe('第十六届全国大学生数学竞赛（非数学类）')
+    // a name too long for its cell is whole on hover
+    const name = rows().first().element().querySelector('[data-testid="inbox-row-name"]')!
+    expect(name.getAttribute('title')).toBe(LONG_NAME)
   })
 
-  it('lays a question of a few out whole a step in on a phone', async () => {
-    await page.viewport(390, 844)
-    await shelled(sparse(), `?item=${OTHER_ITEM}`)
-    await expect.element(layout()).toHaveAttribute('data-layout', 'drill')
-    await expect.element(page.getByTestId('queue-pane')).toHaveAttribute('data-answers', 'spread')
+  it('marks only the rounds that are more than waiting', async () => {
+    await page.viewport(1440, 900)
+    await shelled(both(), `?item=${ITEM_ID}`)
     await expect.element(rows().first()).toBeVisible()
-    for (const row of rows().elements()) {
-      expect(row.getAttribute('data-answers')).toBe('2')
-      expect(row.scrollWidth).toBeLessThanOrEqual(row.clientWidth + 1)
-    }
-    wholly()
+    const marks = rows()
+      .elements()
+      .slice(0, 5)
+      .map((row) => row.querySelector('[data-testid="inbox-row-mark"]')?.getAttribute('data-mark'))
+    expect(marks).toEqual([undefined, undefined, undefined, 'round', 'escalated'])
+  })
+
+  it('names the project a filing is on where the queue is grouped by person', async () => {
+    await page.viewport(1440, 900)
+    await shelled([filing(1), volunteering(1)], '?view=person')
+    await expect.element(rows().first()).toBeVisible()
+    expect(groups().elements()).toHaveLength(1)
+    expect(
+      rows()
+        .elements()
+        .map((row) => row.textContent),
+    ).toEqual([
+      expect.stringContaining('学科竞赛获奖'),
+      expect.stringContaining('志愿服务时长认定'),
+    ])
+  })
+
+  it('sections the queue by the day each filing came in', async () => {
+    await page.viewport(1440, 900)
+    await shelled(
+      [
+        filing(1),
+        filing(2, { submittedAt: new Date(Date.UTC(2026, 2, 4, 2)).toISOString() }),
+        filing(5, { submittedAt: new Date(Date.UTC(2026, 2, 4, 3)).toISOString() }),
+      ],
+      '?view=time',
+    )
+    await expect.element(layout()).toHaveAttribute('data-grouping', 'time')
+    await expect.element(groups().first()).toHaveAttribute('data-key', '2026-03-04')
+    expect(
+      groups()
+        .elements()
+        .map((group) => group.getAttribute('data-count')),
+    ).toEqual(['2', '1'])
   })
 })
 
-// The shell hands a badge its context as one prop, the entry's id inside
-// it; a badge that read the id off a prop of its own never drew at all.
+describe('when reviewing is open', () => {
+  const HOUR = 3_600_000
+  const at = (hours: number) => new Date(Date.now() + hours * HOUR).toISOString()
+  const stage = (
+    displayName: string,
+    status: 'ended' | 'current' | 'future',
+    reviewing: boolean,
+    hours: number | null,
+  ) => ({
+    phaseId: displayName,
+    displayName,
+    entryNote: '',
+    description: '',
+    status,
+    reviewing,
+    entry:
+      hours === null
+        ? { kind: 'pending', at: null }
+        : { kind: status === 'future' ? 'planned' : 'entered', at: at(hours) },
+    scope: { items: null, participantsLimited: false, includesReader: null },
+  })
+  const docked = (timeline: readonly unknown[]) =>
+    shelled(both(), '', { getTimeline: () => Effect.succeed({ timeline }) })
+
+  it('counts down to the end of the run of reviewing stages', async () => {
+    await page.viewport(1440, 900)
+    await docked([
+      stage('初审期', 'current', true, -48),
+      stage('复审期', 'future', true, 24),
+      stage('公示期', 'future', false, 24 * 5 + 2),
+    ])
+    const dock = page.getByTestId('review-dock')
+    await expect.element(dock).toHaveAttribute('data-window', 'closes')
+    await expect.element(dock).toHaveAttribute('data-tone', 'calm')
+    await expect.element(dock).toHaveAttribute('data-left', 'day:5')
+  })
+
+  it('uses the same urgent tone as the stage clock in the last hour', async () => {
+    await page.viewport(1440, 900)
+    await docked([stage('审核期', 'current', true, -48), stage('公示期', 'future', false, 0.5)])
+    await expect.element(page.getByTestId('review-dock')).toHaveAttribute('data-tone', 'urgent')
+  })
+
+  it('says when reviewing opens where this stage keeps it shut', async () => {
+    await page.viewport(1440, 900)
+    await docked([stage('申报期', 'current', false, -2), stage('审核期', 'future', true, 50)])
+    const dock = page.getByTestId('review-dock')
+    await expect.element(dock).toHaveAttribute('data-window', 'opens')
+    await expect.element(dock).toHaveAttribute('data-left', 'day:2')
+  })
+
+  it('stays open without a countdown where no stage ahead closes it', async () => {
+    await page.viewport(1440, 900)
+    await docked([stage('审核期', 'current', true, -2)])
+    const dock = page.getByTestId('review-dock')
+    await expect.element(dock).toHaveAttribute('data-window', 'stays-open')
+    await expect.element(dock).not.toHaveAttribute('data-left')
+  })
+
+  it.each([390, 1440])(
+    'keeps the deadline above the foot at %ipx without hiding the last row',
+    async (width) => {
+      await page.viewport(width, 700)
+      await shelled(both(), `?item=${ITEM_ID}`, {
+        getTimeline: () => Effect.succeed({ timeline: [stage('审核期', 'current', true, -2)] }),
+      })
+      const dock = page.getByTestId('review-dock')
+      await expect.element(dock).toBeVisible()
+      await expect.element(layout()).toHaveAttribute('data-layout', 'group')
+      const main = page.getByRole('main').element() as HTMLElement
+      const footer = parseFloat(getComputedStyle(main).paddingBottom)
+      if (width < 600) expect(footer).toBeGreaterThan(0)
+      const before = dock.element().getBoundingClientRect()
+      expect(before.bottom).toBeLessThan(main.getBoundingClientRect().bottom - footer)
+      expect(getComputedStyle(dock.element()).animationName).toBe('none')
+
+      main.scrollTop = main.scrollHeight
+      expect(main.scrollTop).toBeGreaterThan(0)
+      const after = dock.element().getBoundingClientRect()
+      expect(after.bottom).toBeGreaterThan(main.getBoundingClientRect().bottom - footer - 80)
+      expect(rows().last().element().getBoundingClientRect().bottom).toBeLessThanOrEqual(after.top)
+    },
+  )
+
+  it('animates a deadline that arrives after the page opens', async () => {
+    await commands.emulateMedia({ reducedMotion: 'no-preference' })
+    let showTimeline!: () => void
+    const pending = new Promise<{ timeline: readonly unknown[] }>((resolve) => {
+      showTimeline = () => resolve({ timeline: [stage('审核期', 'current', true, -2)] })
+    })
+    try {
+      await shelled(both(), '', { getTimeline: () => Effect.promise(() => pending) })
+      await expect.element(rows().first()).toBeVisible()
+      const dock = page.getByTestId('review-dock')
+      await expect.element(dock).not.toBeInTheDocument()
+      showTimeline()
+      await expect.element(dock).toBeVisible()
+      expect(getComputedStyle(dock.element()).animationName).not.toBe('none')
+    } finally {
+      showTimeline()
+      await commands.emulateMedia({ reducedMotion: 'reduce' })
+    }
+  })
+})
+
 describe('the rail beside the queue', () => {
   it('counts what is waiting beside the entry that opens it', async () => {
     await page.viewport(1440, 900)
@@ -659,94 +744,4 @@ describe('the rail beside the queue', () => {
       .element(entry.getByTestId('queue-badge'))
       .toHaveAttribute('data-count', String(both().length))
   })
-})
-
-describe('a queue of a few', () => {
-  // Keep the project list at wider sizes, but still lay small groups out
-  // whole and let a phone open straight onto the filings.
-  for (const [width, height, shape] of [
-    [390, 844, 'spread'],
-    [834, 1112, 'stack'],
-    [1440, 900, 'split'],
-  ] as const) {
-    it(`lays two filings from one question out whole at ${String(width)}`, async () => {
-      await page.viewport(width, height)
-      await shelled([filing(0), filing(1)])
-      await expect.element(layout()).toHaveAttribute('data-layout', shape)
-      await expect.element(rows().first()).toBeVisible()
-      expect(rows().elements()).toHaveLength(2)
-      const masters = page.getByTestId('queue-master-row')
-      if (shape === 'spread') {
-        expect(masters.elements()).toHaveLength(0)
-      } else {
-        expect(masters.elements()).toHaveLength(1)
-        await expect.element(masters.first()).toHaveAttribute('data-selected', 'true')
-        await expect
-          .element(page.getByTestId('queue-pane'))
-          .toHaveAttribute('data-answers', 'spread')
-      }
-      // every answer the filing has, each with its own label
-      for (const row of rows().elements()) {
-        expect(row.getAttribute('data-answers')).toBe('4')
-        expect(row.scrollWidth).toBeLessThanOrEqual(row.clientWidth + 1)
-      }
-    })
-  }
-
-  it('lays a few out whole whichever way the queue is read', async () => {
-    await page.viewport(1280, 800)
-    for (const [view, groups] of [
-      ['time', 1],
-      ['person', 2],
-    ] as const) {
-      const shown = await shelled([filing(0), volunteering(1)], `?view=${view}`)
-      await expect.element(layout()).toHaveAttribute('data-layout', 'spread')
-      expect(page.getByTestId('queue-spread').elements()).toHaveLength(groups)
-      expect(
-        rows()
-          .elements()
-          .map((row) => row.getAttribute('data-answers')),
-      ).toEqual(['4', '2'])
-      await shown.unmount()
-    }
-  })
-
-  it('keeps both questions in the project list and opens the chosen filing', async () => {
-    await page.viewport(1440, 900)
-    await shelled([filing(0), volunteering(1)])
-    const masters = page.getByTestId('queue-master-row')
-    const pane = page.getByTestId('queue-pane')
-    await expect.element(masters.first()).toBeVisible()
-    expect(masters.elements().map((group) => group.getAttribute('data-key'))).toEqual([
-      ITEM_ID,
-      OTHER_ITEM,
-    ])
-    await expect.element(pane).toHaveAttribute('data-key', ITEM_ID)
-    await masters.nth(1).click()
-    await expect.element(pane).toHaveAttribute('data-key', OTHER_ITEM)
-    await expect.element(masters.nth(1)).toHaveAttribute('data-selected', 'true')
-    await expect.element(rows().first()).toHaveAttribute('data-instance', rowId(1))
-    await rows().first().click()
-    await expect.poll(() => addressNow()).toContain(rowId(1))
-    expect(addressNow()).toContain(`run=item%3A${OTHER_ITEM}`)
-  })
-
-  // One question is already selected at either width. A desk still keeps
-  // the question list, while a phone avoids the extra drill-in.
-  for (const [width, height, shape] of [
-    [390, 844, 'single'],
-    [1440, 900, 'split'],
-  ] as const) {
-    it(`opens the only question straight away at ${String(width)}`, async () => {
-      await page.viewport(width, height)
-      await shelled(Array.from({ length: 12 }, (_, n) => filing(n)))
-      await expect.element(layout()).toHaveAttribute('data-layout', shape)
-      await expect.element(rows().first()).toBeVisible()
-      expect(page.getByTestId('queue-master-row').elements()).toHaveLength(
-        shape === 'split' ? 1 : 0,
-      )
-      expect(page.getByTestId('queue-pane-back').elements()).toHaveLength(0)
-      expect(rows().elements()).toHaveLength(10)
-    })
-  }
 })

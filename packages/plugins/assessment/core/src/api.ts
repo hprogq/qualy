@@ -1322,6 +1322,8 @@ const reviewInboxItem = Schema.Struct({
     }),
   ),
   attachmentCount: Schema.Number,
+  /** whether the person who filed answered an ask for more from this round */
+  supplemented: Schema.Boolean,
   submittedAt: Schema.String,
 })
 
@@ -1861,6 +1863,10 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
          * oldest few filings instead of the first group bringing all of its.
          */
         layout: Schema.optional(Schema.Literal('overview')),
+        /** by time, the calendar day picked, on the batch's clock */
+        day: Schema.optional(isoDate),
+        /** only rounds that are more than waiting: escalated, filed again, or answered an ask */
+        mark: Schema.optional(Schema.Literals(['escalated', 'resubmitted', 'supplemented'])),
         focus: Schema.optional(uuidInput),
         exclude: Schema.optional(idListUpTo(100)),
       }),
@@ -1871,6 +1877,14 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
         pageSize: Schema.Number,
         queueTotal: Schema.Number,
         filteredTotal: Schema.Number,
+        /** how many rounds of each mark the narrowed queue holds, the mark aside */
+        marks: Schema.Struct({
+          /** the narrowed queue before any mark: what the key for all of it says */
+          all: Schema.Number,
+          escalated: Schema.Number,
+          resubmitted: Schema.Number,
+          supplemented: Schema.Number,
+        }),
         groups: Schema.Array(
           Schema.Struct({
             key: Schema.String,

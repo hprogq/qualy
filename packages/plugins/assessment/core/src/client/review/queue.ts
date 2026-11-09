@@ -16,6 +16,8 @@ export type QueueRequest = {
   groupPage?: string
   groupOrder?: 'largest'
   layout?: 'overview'
+  day?: string
+  mark?: 'escalated' | 'resubmitted' | 'supplemented'
   focus?: string
   exclude?: readonly string[]
 }

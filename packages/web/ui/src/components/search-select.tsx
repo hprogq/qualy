@@ -2,14 +2,17 @@
 
 import { useMemo, useState } from 'react'
 import { CheckIcon } from 'lucide-react'
-import { Select as MSelect } from '@mantine/core'
+import { Combobox, Select as MSelect } from '@mantine/core'
 import * as stylex from '@stylexjs/stylex'
+import { Count } from './count.tsx'
 import { panel } from '../lib/panel.ts'
 import { tokens } from '../theme/tokens.stylex.ts'
 
 export interface SearchSelectOption {
   value: string
   label: string
+  /** A count beside the label, not part of the editable search text. */
+  count?: number
   /** Optional presentation for the dropdown only. The input still uses label. */
   details?: { title: string; description: string }
   /** Additional names that may find this option without becoming its label. */
@@ -38,6 +41,10 @@ const styles = stylex.create({
     overflowWrap: 'anywhere',
   },
   indicator: { width: 16, height: 16, flexShrink: 0 },
+  accessory: { display: 'flex', alignItems: 'center', gap: 6 },
+  count: { marginInlineStart: 0, flexShrink: 0 },
+  countHidden: { visibility: 'hidden' },
+  optionTail: { display: 'flex', flexShrink: 0, alignItems: 'center', gap: 6 },
 })
 
 const normalize = (text: string) =>
@@ -46,6 +53,7 @@ const normalize = (text: string) =>
 /** An editable filter over a closed set of values, never a free-text field. */
 export function SearchSelect({
   id,
+  'aria-label': label,
   'aria-describedby': describedBy,
   disabled,
   value,
@@ -56,6 +64,7 @@ export function SearchSelect({
   onValueChange,
 }: {
   id: string
+  'aria-label'?: string
   'aria-describedby'?: string
   disabled?: boolean
   value: string
@@ -81,6 +90,7 @@ export function SearchSelect({
     [options],
   )
   const selected = byValue.get(value)?.label ?? value
+  const count = byValue.get(value)?.count
   return (
     <MSelect
       id={id}
@@ -97,6 +107,17 @@ export function SearchSelect({
       nothingFoundMessage={noMatches}
       checkIconPosition="right"
       chevronColor="var(--q-muted-foreground)"
+      {...(count === undefined
+        ? {}
+        : {
+            rightSectionWidth: 36 + 8 * String(count).length,
+            rightSection: (
+              <span {...stylex.props(styles.accessory)}>
+                <Count xstyle={[styles.count, draft !== null && styles.countHidden]}>{count}</Count>
+                <Combobox.Chevron color="var(--q-muted-foreground)" />
+              </span>
+            ),
+          })}
       maxDropdownHeight={280}
       classNames={{
         dropdown: stylex.props(panel.material).className ?? '',
@@ -104,6 +125,7 @@ export function SearchSelect({
       }}
       attributes={{
         input: {
+          'aria-label': label,
           'aria-autocomplete': 'list',
           'aria-describedby': describedBy,
           'aria-expanded': opened,
@@ -143,7 +165,8 @@ export function SearchSelect({
         )
       }}
       renderOption={({ option, checked }) => {
-        const details = byValue.get(option.value)?.details
+        const presentation = byValue.get(option.value)
+        const details = presentation?.details
         return (
           <>
             {details === undefined ? (
@@ -154,8 +177,13 @@ export function SearchSelect({
                 <span {...stylex.props(styles.description)}>{details.description}</span>
               </span>
             )}
-            <span aria-hidden {...stylex.props(styles.indicator)}>
-              {checked && <CheckIcon size={16} />}
+            <span {...stylex.props(styles.optionTail)}>
+              {presentation?.count !== undefined && (
+                <Count xstyle={styles.count}>{presentation.count}</Count>
+              )}
+              <span aria-hidden {...stylex.props(styles.indicator)}>
+                {checked && <CheckIcon size={16} />}
+              </span>
             </span>
           </>
         )

@@ -21,6 +21,8 @@ export interface QueuePlace {
   readonly view: string
   readonly item: string
   readonly person: string
+  readonly day: string
+  readonly mark: string
   readonly unit: string
   readonly search: string
   readonly page: string
@@ -32,6 +34,8 @@ export const queuePlaceOf = (search: URLSearchParams): QueuePlace => ({
   view: search.get('view') ?? 'item',
   item: search.get('item') ?? '',
   person: search.get('person') ?? '',
+  day: search.get('day') ?? '',
+  mark: search.get('mark') ?? '',
   unit: search.get('unit') ?? '',
   search: search.get('q') ?? '',
   page: search.get('page') ?? '',
@@ -44,8 +48,14 @@ export const queueRequestOf = (place: QueuePlace): QueueRequest => {
   return {
     view: view === 'asked' ? 'time' : view,
     page: place.page || '1',
-    limit: view === 'time' ? '20' : '10',
+    limit: '20',
     groupPage: place.groupPage || '1',
+    // grouped, nothing picked is every group in brief
+    ...(view !== 'asked' ? { layout: 'overview' as const } : {}),
+    ...(place.day !== '' && view === 'time' ? { day: place.day } : {}),
+    ...(place.mark === 'escalated' || place.mark === 'resubmitted' || place.mark === 'supplemented'
+      ? { mark: place.mark }
+      : {}),
     ...(place.item !== '' && view !== 'person' ? { itemId: place.item } : {}),
     ...(place.person !== '' && view === 'person' ? { person: place.person } : {}),
     ...(place.unit !== '' ? { unitId: place.unit } : {}),

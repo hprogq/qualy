@@ -109,6 +109,23 @@ export function useDayClock(): (iso: string) => string {
 }
 
 /**
+ * A day as a heading over the filings that arrived on it: today and
+ * yesterday by name, any other day with its weekday, which is how a
+ * reviewer remembers a week.
+ */
+export function useDayHeading(): (iso: string) => string {
+  const locale = useLocale()
+  const zone = useBatchZone()
+  return (iso: string) => {
+    const at = new Date(iso)
+    const days = calendarDaysBetween(at.getTime(), Date.now(), zone)
+    if (days <= 0) return m.review_dayToday()
+    if (days === 1) return m.time_yesterday()
+    return `${dayLabel(at, locale, zone)} ${formatDateTime(at, locale, 'weekday-short', zone)}`
+  }
+}
+
+/**
  * When a filing arrived, as a column of the queue says it: the day and the
  * minute, never the second. Today is the minute alone and yesterday is said
  * as yesterday; a filing from another year gives its day and no minute,

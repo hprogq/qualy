@@ -13,7 +13,8 @@ import { tokens } from '@qualy/ui/theme/tokens.stylex'
 
 import { useHowLongAgo, useQueueClock, type AwaitingDto } from './model.ts'
 import { useAwaitingQuery } from './queue.ts'
-import { PagerFoot } from './QueueViews.tsx'
+import { PagerFoot } from './QueueBoard.tsx'
+import { QueueEmpty } from './QueueEmpty.tsx'
 import * as m from '#messages'
 
 // What this reviewer's step is waiting on somebody else for.
@@ -34,15 +35,7 @@ const lg = '@media (min-width: 1024px)'
 const ASKED_PAGE = 10
 
 const styles = stylex.create({
-  empty: {
-    borderRadius: 14,
-    backgroundColor: tokens.surface,
-    boxShadow: `0 0 0 1px ${tokens.border}`,
-    paddingInline: 20,
-    paddingBlock: 16,
-    fontSize: 14,
-    color: tokens.mutedForeground,
-  },
+  emptyIcon: { width: 20, height: 20 },
   head: {
     display: 'flex',
     flexWrap: 'wrap',
@@ -353,7 +346,14 @@ export function AwaitingSection({
   // its own view now, so an empty one says so instead of vanishing: a tab
   // that opens onto nothing at all reads as broken, not as quiet
   if (rows.length === 0) {
-    return <p {...stylex.props(styles.empty)}>{m.review_awaitingEmpty()}</p>
+    return (
+      <QueueEmpty
+        state="no-asks"
+        icon={<ClockIcon aria-hidden className={stylex.props(styles.emptyIcon).className} />}
+        title={m.review_awaitingEmpty()}
+        body={m.review_awaitingHint()}
+      />
+    )
   }
   const answered = asked.data?.answered ?? 0
   const total = asked.data?.total ?? 0

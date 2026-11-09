@@ -3961,7 +3961,7 @@ describe('the notice of organization changes', () => {
     expect(notice.element().hasAttribute('title')).toBe(false)
     const dock = page.getByTestId('page-notices').element()
     expect(dock.contains(notice.element())).toBe(true)
-    expect(getComputedStyle(dock).position).toBe('fixed')
+    expect(getComputedStyle(dock.parentElement!).position).toBe('sticky')
     expect(bounds.left).toBeGreaterThanOrEqual(0)
     expect(bounds.right).toBeLessThanOrEqual(390)
     await notice.click()
@@ -4003,7 +4003,7 @@ describe('the notice of organization changes', () => {
       expect(notice.element().hasAttribute('title')).toBe(false)
       expect(page.getByTestId('batch-band').element().contains(notice.element())).toBe(false)
       const dock = page.getByTestId('page-notices').element()
-      expect(getComputedStyle(dock).position).toBe('fixed')
+      expect(getComputedStyle(dock.parentElement!).position).toBe('sticky')
       expect(dock.contains(notice.element())).toBe(true)
       expect(button.bottom).toBeLessThanOrEqual(800)
       expect(button.top).toBeGreaterThan(

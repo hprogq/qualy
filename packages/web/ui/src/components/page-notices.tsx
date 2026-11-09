@@ -1,8 +1,8 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState, type RefObject } from 'react'
-import { createPortal } from 'react-dom'
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ComponentProps } from 'react'
 import { ChevronRightIcon, ChevronUpIcon, InfoIcon, TriangleAlertIcon } from 'lucide-react'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '../theme/tokens.stylex.ts'
+import { useHydrating } from '../hooks/use-hydrating.ts'
 
 export interface PageNotice {
   readonly id: string
@@ -34,22 +34,33 @@ const REDUCE = '@media (prefers-reduced-motion: reduce)'
 const EASE = 'cubic-bezier(0.2, 0, 0, 1)'
 
 const styles = stylex.create({
-  space: { height: 100, flexShrink: 0 },
-  dock: {
-    position: 'fixed',
+  space: {
+    position: 'sticky',
+    bottom: 0,
     zIndex: 40,
-    display: 'flex',
-    justifyContent: 'center',
+    flexShrink: 0,
+    marginTop: 'auto',
+    paddingTop: 16,
+    paddingBottom: 'calc(clamp(24px, 8cqh, 48px) + 16px)',
+    paddingInline: 12,
     pointerEvents: 'none',
   },
-  port: {
+  dock: {
+    display: 'flex',
+    justifyContent: 'center',
+  },
+  stand: {
+    position: 'relative',
     width: 400,
     maxWidth: '100%',
+  },
+  port: {
     pointerEvents: 'auto',
     transitionProperty: 'height',
     transitionDuration: { default: '300ms', [REDUCE]: '0s' },
     transitionTimingFunction: EASE,
   },
+  portExpanded: { position: 'absolute', insetInline: 0, bottom: 0 },
   // more fanned-out cards than the page has room for scroll, front last
   portScrolls: {
     overflowY: 'auto',
@@ -59,7 +70,8 @@ const styles = stylex.create({
     paddingInline: 3,
     marginInline: -3,
   },
-  stack: { position: 'relative', height: '100%' },
+  stack: { position: 'relative' },
+  stackExpanded: { height: '100%' },
   slot: {
     position: 'absolute',
     insetInline: 0,
@@ -69,6 +81,7 @@ const styles = stylex.create({
     transitionDuration: { default: '300ms', [REDUCE]: '0s' },
     transitionTimingFunction: EASE,
   },
+  front: { position: 'relative' },
   card: {
     display: 'flex',
     alignItems: 'stretch',
@@ -79,6 +92,8 @@ const styles = stylex.create({
     backgroundColor: tokens.surfaceElevated,
     boxShadow: tokens.elevation2,
     color: tokens.foreground,
+  },
+  cardEnter: {
     animationName: { default: enter, [REDUCE]: 'none' },
     animationDuration: '300ms',
     animationTimingFunction: EASE,
@@ -152,22 +167,27 @@ const styles = stylex.create({
   turned: { transform: 'rotate(180deg)' },
 })
 
+// A card in the document's initial HTML is already visible. A new notice
+// mounted after takeover keeps the same entrance as an interactive visit.
+function NoticeCard(props: ComponentProps<'div'>) {
+  const hydrating = useHydrating()
+  const [animate] = useState(() => !hydrating)
+  return <div {...props} {...stylex.props(styles.card, animate && styles.cardEnter)} />
+}
+
 /** Persistent page warnings. Mount once, after the page's working content. */
 export function PageNotices({
   notices,
   label,
   expandLabel,
   collapseLabel,
-  alignRef,
 }: {
   notices: readonly PageNotice[]
   label: string
   expandLabel: string
   collapseLabel: string
-  /** Optionally center notices within a working pane while retaining the page's vertical bounds. */
-  alignRef?: RefObject<HTMLElement | null>
 }) {
-  const marker = useRef<HTMLDivElement>(null)
+  const dock = useRef<HTMLDivElement>(null)
   const stack = useRef<HTMLDivElement>(null)
   const more = useRef<HTMLButtonElement>(null)
   const cards = useRef(new Map<string, HTMLElement>())
@@ -175,22 +195,15 @@ export function PageNotices({
   const [pinned, setPinned] = useState(false)
   const [hovered, setHovered] = useState(false)
   const expanded = (pinned || hovered) && notices.length > 1
-  const [bounds, setBounds] = useState<{
-    left: number
-    width: number
-    bottom: number
-    available: number
-    clearance: number
-  } | null>(null)
+  const [available, setAvailable] = useState<number | null>(null)
   const detailsId = useId()
   const visible = notices.length > 0
-  const ready = visible && bounds !== null
   const ids = notices.map((notice) => notice.id).join('\n')
 
   // Each card's own height, as its content draws it: a card behind the
   // front one is drawn at the front one's height until the stack fans out.
   useLayoutEffect(() => {
-    if (!ready) return
+    if (!visible) return
     const measure = () => {
       const next: Record<string, number> = {}
       for (const [id, node] of cards.current) next[id] = node.offsetHeight
@@ -205,7 +218,7 @@ export function PageNotices({
     const observer = new ResizeObserver(measure)
     for (const node of cards.current.values()) observer.observe(node)
     return () => observer.disconnect()
-  }, [ready, ids, expanded])
+  }, [visible, ids, expanded])
 
   // a fanned stack too tall for the page opens scrolled to its front card
   useLayoutEffect(() => {
@@ -218,77 +231,28 @@ export function PageNotices({
     setPinned(false)
     setHovered(false)
   }, [visible])
+  // Only the expanded stack needs the amount of room above the dock.
+  // The collapsed card is positioned by CSS even before the browser hydrates.
   useLayoutEffect(() => {
-    if (!visible || marker.current === null) return
-    let boundary = marker.current.closest('main') ?? marker.current.parentElement
-    while (boundary !== null && boundary !== document.body) {
-      if (
-        boundary.tagName === 'MAIN' ||
-        /(auto|scroll|hidden)/.test(getComputedStyle(boundary).overflowY)
-      )
-        break
-      boundary = boundary.parentElement
-    }
-    const port = boundary === document.body ? null : boundary
-    let frame = 0
-    let observedAlignment: HTMLElement | null = null
+    const node = dock.current
+    if (!expanded || node === null) return
+    const scrollport = node.closest('main')
     const measure = () => {
-      const alignment = alignRef?.current ?? null
-      if (alignment !== observedAlignment) {
-        if (observedAlignment !== null && observedAlignment !== port)
-          observer.unobserve(observedAlignment)
-        if (alignment !== null) observer.observe(alignment)
-        observedAlignment = alignment
-      }
-      const rect = port?.getBoundingClientRect()
-      const horizontal = alignment?.getBoundingClientRect() ?? rect
-      const left = Math.max(0, horizontal?.left ?? 0) + 12
-      const right = Math.min(window.innerWidth, horizontal?.right ?? window.innerWidth) - 12
-      // The shell reserves bottom space for its phone navigation.
-      const foot = port === null ? 0 : parseFloat(getComputedStyle(port).paddingBottom) || 0
-      const visibleBottom = Math.min(window.innerHeight, rect?.bottom ?? window.innerHeight)
-      const visibleTop = Math.max(0, rect?.top ?? 0)
-      const clearance = Math.min(
-        48,
-        Math.max(24, Math.round((visibleBottom - visibleTop - foot) * 0.08)),
-      )
-      const bottom = window.innerHeight - visibleBottom + foot + clearance + 16
-      const next = {
-        left,
-        width: Math.max(0, right - left),
-        bottom,
-        available: Math.max(0, window.innerHeight - bottom - visibleTop),
-        clearance,
-      }
-      setBounds((old) =>
-        old !== null &&
-        old.left === next.left &&
-        old.width === next.width &&
-        old.bottom === next.bottom &&
-        old.available === next.available &&
-        old.clearance === next.clearance
-          ? old
-          : next,
-      )
+      const top = Math.max(0, scrollport?.getBoundingClientRect().top ?? 0)
+      setAvailable(Math.max(0, node.getBoundingClientRect().bottom - top - 12))
     }
-    const schedule = () => {
-      cancelAnimationFrame(frame)
-      frame = requestAnimationFrame(measure)
-    }
-    const observer = new ResizeObserver(schedule)
-    if (port !== null) observer.observe(port)
     measure()
-    // A containing host's ref can attach after this child's layout effect.
-    schedule()
-    window.addEventListener('resize', schedule)
-    window.addEventListener('scroll', schedule, true)
+    const observer = new ResizeObserver(measure)
+    observer.observe(node)
+    if (scrollport !== null) observer.observe(scrollport)
+    window.addEventListener('resize', measure)
+    window.addEventListener('scroll', measure, true)
     return () => {
       observer.disconnect()
-      cancelAnimationFrame(frame)
-      window.removeEventListener('resize', schedule)
-      window.removeEventListener('scroll', schedule, true)
+      window.removeEventListener('resize', measure)
+      window.removeEventListener('scroll', measure, true)
     }
-  }, [visible, alignRef])
+  }, [expanded])
 
   if (!visible) return null
   const front = heights[notices[0]!.id] ?? 48
@@ -296,8 +260,7 @@ export function PageNotices({
   const heightOf = (notice: PageNotice) => heights[notice.id] ?? front
   const fanned =
     notices.reduce((sum, notice) => sum + heightOf(notice), 0) + GAP * (notices.length - 1)
-  const collapsedHeight = front + PEEK * peeking
-  const room = Math.max(front, (bounds?.available ?? fanned) - 12)
+  const room = Math.max(front, available ?? fanned)
   const scrolls = expanded && fanned > room
 
   const keep = (id: string) => (node: HTMLElement | null) => {
@@ -343,19 +306,16 @@ export function PageNotices({
         data-slot="page-notice"
         data-index={index}
         aria-hidden={index > 0 && !expanded ? true : undefined}
-        {...stylex.props(styles.slot)}
+        {...stylex.props(styles.slot, index === 0 && !expanded && styles.front)}
         style={{
           zIndex: notices.length - index,
           transform,
           opacity: expanded || shown ? 1 : 0,
           // a card behind the front one is the front one's shape until fanned
-          height: index > 0 && !expanded ? front : undefined,
+          height: index > 0 && !expanded ? '100%' : undefined,
         }}
       >
-        <div
-          ref={index === 0 || expanded ? keep(notice.id) : undefined}
-          {...stylex.props(styles.card)}
-        >
+        <NoticeCard ref={index === 0 || expanded ? keep(notice.id) : undefined}>
           {(index === 0 || expanded) && action(notice)}
           {index === 0 && notices.length > 1 && (
             <button
@@ -377,65 +337,64 @@ export function PageNotices({
               />
             </button>
           )}
-        </div>
+        </NoticeCard>
       </div>
     )
   })
 
   return (
-    <>
+    <div data-slot="page-notice-space" {...stylex.props(styles.space)}>
       <div
-        ref={marker}
-        aria-hidden
-        data-slot="page-notice-space"
-        {...stylex.props(styles.space)}
-        style={{ height: collapsedHeight + (bounds?.clearance ?? 48) + 16 }}
-      />
-      {bounds !== null &&
-        createPortal(
+        ref={dock}
+        data-testid="page-notices"
+        role="region"
+        aria-label={label}
+        {...stylex.props(styles.dock)}
+        style={{ paddingBlockStart: PEEK * peeking }}
+      >
+        <div {...stylex.props(styles.stand)} style={{ minHeight: expanded ? front : undefined }}>
           <div
-            data-testid="page-notices"
-            role="region"
-            aria-label={label}
-            {...stylex.props(styles.dock)}
-            style={{ left: bounds.left, width: bounds.width, bottom: bounds.bottom }}
+            ref={stack}
+            id={detailsId}
+            data-slot="page-notices-port"
+            data-expanded={expanded}
+            {...stylex.props(
+              styles.port,
+              expanded && styles.portExpanded,
+              scrolls && styles.portScrolls,
+            )}
+            style={{ height: expanded ? Math.min(fanned, room) : undefined }}
+            onPointerEnter={(event) => {
+              if (event.pointerType === 'mouse') setHovered(true)
+            }}
+            onMouseLeave={() => {
+              if (!stack.current?.contains(document.activeElement)) setHovered(false)
+            }}
+            onBlur={(event) => {
+              if (
+                !event.currentTarget.contains(event.relatedTarget) &&
+                !event.currentTarget.matches(':hover')
+              )
+                setHovered(false)
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape' && expanded) {
+                event.stopPropagation()
+                more.current?.focus()
+                setPinned(false)
+                setHovered(false)
+              }
+            }}
           >
             <div
-              ref={stack}
-              id={detailsId}
-              data-slot="page-notices-port"
-              data-expanded={expanded}
-              {...stylex.props(styles.port, scrolls && styles.portScrolls)}
-              style={{ height: expanded ? Math.min(fanned, room) : collapsedHeight }}
-              onPointerEnter={(event) => {
-                if (event.pointerType === 'mouse') setHovered(true)
-              }}
-              onMouseLeave={() => {
-                if (!stack.current?.contains(document.activeElement)) setHovered(false)
-              }}
-              onBlur={(event) => {
-                if (
-                  !event.currentTarget.contains(event.relatedTarget) &&
-                  !event.currentTarget.matches(':hover')
-                )
-                  setHovered(false)
-              }}
-              onKeyDown={(event) => {
-                if (event.key === 'Escape' && expanded) {
-                  event.stopPropagation()
-                  more.current?.focus()
-                  setPinned(false)
-                  setHovered(false)
-                }
-              }}
+              {...stylex.props(styles.stack, expanded && styles.stackExpanded)}
+              style={scrolls ? { height: fanned } : undefined}
             >
-              <div {...stylex.props(styles.stack)} style={scrolls ? { height: fanned } : undefined}>
-                {slots}
-              </div>
+              {slots}
             </div>
-          </div>,
-          document.body,
-        )}
-    </>
+          </div>
+        </div>
+      </div>
+    </div>
   )
 }

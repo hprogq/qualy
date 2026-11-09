@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { hydrateRoot } from 'react-dom/client'
+import { renderToString } from 'react-dom/server'
 import { afterEach, describe, expect, it } from 'vitest'
 import { commands, page, userEvent } from 'vitest/browser'
 import { render } from 'vitest-browser-react'
@@ -67,6 +69,7 @@ function Example({
           overflowY: 'auto',
           paddingBottom: 64,
           boxSizing: 'border-box',
+          containerType: 'size',
         }}
       >
         <div style={{ height: 1800 }}>Page content</div>
@@ -109,6 +112,32 @@ const dock = () => page.getByTestId('page-notices').element()
 const port = () => dock().querySelector<HTMLElement>('[data-slot="page-notices-port"]')!
 
 describe('persistent page warnings', () => {
+  it('shows the collapsed stack before hydration and takes it over without replaying the entrance', async () => {
+    await page.viewport(390, 844)
+    await commands.emulateMedia({ reducedMotion: 'no-preference' })
+    const host = document.createElement('div')
+    document.body.append(host)
+    const example = <Example phone count={3} />
+    host.innerHTML = renderToString(example)
+    const card = notice(0).element().parentElement!
+    const before = card.getBoundingClientRect()
+    expect(before.bottom).toBeCloseTo(844 - 64 - 64, 0)
+    expect(getComputedStyle(card).animationName).toBe('none')
+    const errors: unknown[] = []
+    const root = hydrateRoot(host, example, { onRecoverableError: (error) => errors.push(error) })
+    try {
+      await notice(0).click()
+      await expect.element(page.getByTestId('selected-notice')).toHaveTextContent('0')
+      expect(notice(0).element().parentElement).toBe(card)
+      expect(getComputedStyle(card).animationName).toBe('none')
+      expect(card.getBoundingClientRect().bottom).toBeCloseTo(before.bottom, 0)
+      expect(errors).toEqual([])
+    } finally {
+      root.unmount()
+      host.remove()
+    }
+  })
+
   it.each([
     { phone: false, long: false },
     { phone: true, long: false },
@@ -132,7 +161,7 @@ describe('persistent page warnings', () => {
           () => page.getByTestId('last-content-action').element().getBoundingClientRect().bottom,
         )
         .toBeLessThanOrEqual(bounds.top)
-      expect(dock.getBoundingClientRect().top).toBe(bounds.top)
+      expect(dock.getBoundingClientRect().top).toBeCloseTo(bounds.top, 0)
       expect(getComputedStyle(notice(0).element().parentElement!).backgroundColor).not.toBe(
         'rgba(0, 0, 0, 0)',
       )
@@ -287,7 +316,7 @@ describe('persistent page warnings', () => {
     ).toBeLessThanOrEqual(378)
   })
 
-  it('removes its portal when the page unmounts and stays behind an open dialog', async () => {
+  it('unmounts with its page and stays behind an open dialog', async () => {
     await render(<Example dialog />)
     await notice(0).click()
     const dialog = page.getByRole('dialog', { name: 'Warning details' })
