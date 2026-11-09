@@ -535,25 +535,46 @@ export const acquire = (prepared, context) => web.acquire({
   console.log('workspace navigation: returning to all rounds kept the outgoing rail intact')
   await page.goto(rosterUrl, { waitUntil: 'networkidle' })
   await checkLayoutPreferences(page, rosterUrl, `${site}/organization/users`)
-  // The old audit join differed across Bun and Chromium even for the same
-  // locale and instant. Check HTML and hydration with a different device zone.
+  // A normal post-hydration render can change a time without warning. Read
+  // the same document before and after its browser entry runs.
   const auditContext = await browser.newContext({
     locale: 'en-US',
-    timezoneId: 'America/New_York',
+    timezoneId: 'Asia/Shanghai',
     viewport: { width: 390, height: 844 },
     reducedMotion: 'reduce',
     storageState: await context.storageState(),
   })
   try {
     const auditUrl = `${site}/organization/audit`
-    const response = await auditContext.request.get(auditUrl)
-    assert.match(await response.text(), /<button[^>]+data-testid="audit-row"/)
     const audit = await auditContext.newPage()
     audit.on('pageerror', (error) => errors.push(error.message))
-    await audit.goto(auditUrl, { waitUntil: 'networkidle' })
-    await audit.getByTestId('audit-row').first().click()
+    let resumeAudit!: () => void
+    const scripts = new Promise<void>((resolve) => {
+      resumeAudit = resolve
+    })
+    const entry = (target: URL) => target.pathname.includes('virtual:vite-rsc/entry-browser')
+    const row = audit.getByTestId('audit-row').first()
+    const stamp = row.locator('time')
+    let before: string
+    try {
+      await audit.route(entry, async (route) => {
+        await scripts
+        await route.continue()
+      })
+      const response = await audit.goto(auditUrl, { waitUntil: 'commit' })
+      assert.match(await response!.text(), /<button[^>]+data-testid="audit-row"/)
+      await stamp.waitFor()
+      before = await stamp.innerText()
+      assert.match(before, / UTC$/)
+    } finally {
+      resumeAudit()
+    }
+    await audit.waitForLoadState('networkidle')
+    await row.click()
     await audit.getByTestId('audit-detail').waitFor()
-    console.log('audit: real HTML rows and English hydration in another device zone passed')
+    assert.equal(await stamp.innerText(), before, 'Audit time must not change after hydration')
+    await audit.unroute(entry)
+    console.log('audit: the same UTC timestamp before and after hydration in UTC+08:00')
     let releasePeople!: () => void
     const people = new Promise<void>((resolve) => {
       releasePeople = resolve

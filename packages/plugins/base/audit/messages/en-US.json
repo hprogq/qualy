@@ -14,7 +14,7 @@
   "events_hint": "Administrative operations, newest first.",
   "events_anyAction": "Every action",
   "events_anyOutcome": "Every outcome",
-  "events_columnTime": "Time",
+  "events_columnTime": "Time ({zone})",
   "events_columnActor": "Operator",
   "events_columnAction": "Action",
   "events_columnTarget": "Object",
