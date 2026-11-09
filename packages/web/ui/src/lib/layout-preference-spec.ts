@@ -104,4 +104,4 @@ export function bootLayoutPreferences(root: HTMLElement) {
 // Only application-owned values are emitted, and none can end the HTML
 // script element. The document supplies its root as the first argument.
 const bootstrapJson = JSON.stringify(bootstrapArguments).replaceAll('<', '\\u003c')
-export const earlyLayoutPreferences = `(${applyLayoutPreferences.toString()})(root, ...${bootstrapJson})`
+export const earlyLayoutPreferences = `;(${applyLayoutPreferences.toString()})(root, ...${bootstrapJson})`
