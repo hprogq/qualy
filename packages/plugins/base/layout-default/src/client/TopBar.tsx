@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useContext, type ReactNode } from 'react'
 import { NavLink, useNavigation } from 'react-router'
 import * as stylex from '@stylexjs/stylex'
 import { Wordmark } from '@qualy/brand/wordmark'
@@ -6,10 +6,10 @@ import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { layout } from '@qualy/ui/theme/layout.stylex'
 import { shell, shellRoot } from './shell.stylex.ts'
-import { pending } from './pending.ts'
+import { SectionNavigation, useSectionNavigation } from './section-navigation.ts'
 import { chipRowFades, chips, useChipRow } from './chip-row.ts'
 import { headerActions, sidebarUser, type ResolvedNavigationItem } from '@qualy/ui-contract'
-import { UiSlot, usePendingNavigation } from '@qualy/web-runtime'
+import { UiSlot, useNavigationProgress, usePendingNavigation } from '@qualy/web-runtime'
 import { applicationAt } from './useAppNavigation.ts'
 import { hasEntriesBelow } from './rail.ts'
 
@@ -36,10 +36,9 @@ import { hasEntriesBelow } from './rail.ts'
 const INK_EASE = 'cubic-bezier(0.2, 0.8, 0.2, 1)'
 const REDUCE = '@media (prefers-reduced-motion: reduce)'
 
-/** the light that runs along a pressed entry's line; the chips' twin is in pending.ts */
-const sweep = stylex.keyframes({
-  from: { backgroundPosition: '150% 0' },
-  to: { backgroundPosition: '-50% 0' },
+const loadingInk = stylex.keyframes({
+  '0%, 100%': { opacity: 0.72 },
+  '50%': { opacity: 0.32 },
 })
 
 const styles = stylex.create({
@@ -194,8 +193,8 @@ const styles = stylex.create({
       height: 2,
       backgroundColor: tokens.foreground,
       transformOrigin: 'center',
-      transitionProperty: 'transform',
-      transitionDuration: '180ms',
+      transitionProperty: 'transform, opacity',
+      transitionDuration: { default: '180ms', [REDUCE]: '0ms' },
       transitionTimingFunction: INK_EASE,
     },
   },
@@ -207,23 +206,28 @@ const styles = stylex.create({
       transform: 'scaleX(1)',
     },
   },
-  // pressed, the page not here yet: the word in ink, and a light running
-  // along the line the ink will stand on
   wordPending: {
     '::after': {
       transform: 'scaleX(1)',
       backgroundColor: `color-mix(in oklch, ${tokens.foreground} 16%, transparent)`,
-      backgroundImage: {
-        default: `linear-gradient(90deg, transparent 15%, ${tokens.foreground} 50%, transparent 85%)`,
-        [REDUCE]: 'none',
-      },
-      backgroundSize: '220% 100%',
-      backgroundRepeat: 'no-repeat',
-      animationName: { default: sweep, [REDUCE]: 'none' },
-      animationDuration: '1s',
-      animationTimingFunction: 'ease-in-out',
-      animationIterationCount: 'infinite',
     },
+  },
+  pulse: {
+    position: 'absolute',
+    insetInline: 0,
+    bottom: -6,
+    height: 2,
+    backgroundColor: tokens.foreground,
+    animationName: { default: loadingInk, [REDUCE]: 'none' },
+    animationDuration: '1250ms',
+    animationIterationCount: 'infinite',
+    animationTimingFunction: 'ease-in-out',
+  },
+  // Fade in solid ink over the still-pulsing line. Ending its animation
+  // first would snap to full ink regardless of where the cycle was.
+  pulseRunning: { '::after': { opacity: 0 } },
+  pulseComplete: {
+    '::after': { opacity: 1, transitionDuration: { default: '220ms', [REDUCE]: '0ms' } },
   },
   wordIdle: {
     '::after': {
@@ -337,6 +341,7 @@ function BarLink({
   to,
   active,
   selected,
+  arrival,
   end,
   idle,
   lit,
@@ -349,6 +354,7 @@ function BarLink({
   /** the bar's own notion of which entry is open, when it has one */
   active?: boolean
   selected?: boolean
+  arrival?: 'running' | 'complete' | undefined
   end?: boolean
   idle: stylex.StyleXStyles
   lit: stylex.StyleXStyles
@@ -357,7 +363,7 @@ function BarLink({
   measure: stylex.StyleXStyles
   children: ReactNode
 }) {
-  const navigation = usePendingNavigation(to, end ?? false)
+  const navigation = usePendingNavigation(to, end ?? false, useContext(SectionNavigation))
   const open = (isActive: boolean) => active ?? isActive
   const highlighted = (isActive: boolean) => selected ?? navigation.selected(open(isActive))
   return (
@@ -381,9 +387,12 @@ function BarLink({
                 ? styles.wordActive
                 : styles.wordPending
               : styles.wordIdle,
+            arrival === 'running' && styles.pulseRunning,
+            arrival === 'complete' && styles.pulseComplete,
             word,
           )}
         >
+          {arrival !== undefined && <span aria-hidden {...stylex.props(styles.pulse)} />}
           <span {...stylex.props(styles.wordText)}>{children}</span>
           <span aria-hidden {...stylex.props(styles.wordMeasure, measure)}>
             {children}
@@ -427,8 +436,16 @@ export function TopBar({
   titleShown?: boolean
 }) {
   const navigation = useNavigation()
+  const progress = useNavigationProgress()
+  const targetApp = progress === null ? undefined : applicationAt(apps, progress.pathname)?.id
+  const enteringApp =
+    progress !== null && targetApp !== applicationAt(apps, progress.from)?.id
+      ? targetApp
+      : undefined
   const selectedApp =
-    navigation.state === 'idle' ? activeApp : applicationAt(apps, navigation.location.pathname)?.id
+    navigation.location === undefined
+      ? activeApp
+      : (applicationAt(apps, navigation.location.pathname)?.id ?? activeApp)
   return (
     // glass last: once the page is under the bar, that state owns the line
     <div
@@ -460,6 +477,7 @@ export function TopBar({
                 to={app.path}
                 active={app.id === activeApp}
                 selected={app.id === selectedApp}
+                arrival={app.id === enteringApp ? progress?.phase : undefined}
                 base={styles.tab}
                 lit={styles.tabActive}
                 idle={styles.tabIdle}
@@ -493,34 +511,37 @@ export function SectionChips({ items }: { items: readonly ResolvedNavigationItem
   // one row per application, remembered across its pages
   const { seat, fade, onScroll } = useChipRow('sections')
   if (items.length < 2) return null
+  const paths = items.flatMap((item) => (item.target.kind === 'page' ? [item.target.path] : []))
   return (
-    <div
-      ref={seat}
-      data-testid="section-chips"
-      data-fade={fade ?? undefined}
-      onScroll={onScroll}
-      {...stylex.props(styles.chipRow, fade !== null && chipRowFades[fade])}
-    >
-      {items.map((item) =>
-        item.target.kind === 'page' ? (
-          <SectionChip key={item.id} to={item.target.path} label={item.label} />
-        ) : (
-          <a
-            key={item.id}
-            {...stylex.props(chips.chip)}
-            href={item.target.href}
-            {...(item.target.newWindow ? { target: '_blank', rel: 'noreferrer noopener' } : {})}
-          >
-            {item.label}
-          </a>
-        ),
-      )}
-    </div>
+    <SectionNavigation value={paths}>
+      <div
+        ref={seat}
+        data-testid="section-chips"
+        data-fade={fade ?? undefined}
+        onScroll={onScroll}
+        {...stylex.props(styles.chipRow, fade !== null && chipRowFades[fade])}
+      >
+        {items.map((item) =>
+          item.target.kind === 'page' ? (
+            <SectionChip key={item.id} to={item.target.path} label={item.label} />
+          ) : (
+            <a
+              key={item.id}
+              {...stylex.props(chips.chip)}
+              href={item.target.href}
+              {...(item.target.newWindow ? { target: '_blank', rel: 'noreferrer noopener' } : {})}
+            >
+              {item.label}
+            </a>
+          ),
+        )}
+      </div>
+    </SectionNavigation>
   )
 }
 
 function SectionChip({ to, label }: { to: string; label: ResolvedNavigationItem['label'] }) {
-  const navigation = usePendingNavigation(to)
+  const navigation = useSectionNavigation(to, true)
   return (
     <NavLink
       to={to}
@@ -529,8 +550,7 @@ function SectionChip({ to, label }: { to: string; label: ResolvedNavigationItem[
       aria-busy={navigation.pending || undefined}
       data-pending={navigation.pending ? '' : undefined}
       className={({ isActive }) =>
-        stylex.props(chips.chip, isActive ? chips.open : navigation.pending && pending.chip)
-          .className ?? ''
+        stylex.props(chips.chip, navigation.selected(isActive) && chips.open).className ?? ''
       }
     >
       {label}
@@ -543,38 +563,40 @@ export function SectionBar({ items }: { items: readonly ResolvedNavigationItem[]
   if (items.length < 2) return null
   const paths = items.flatMap((item) => (item.target.kind === 'page' ? [item.target.path] : []))
   return (
-    <div {...stylex.props(styles.sectionBar)}>
-      <nav {...stylex.props(styles.tabsNav, styles.sectionScroller)}>
-        <ul {...stylex.props(styles.tabsList, styles.sectionList)}>
-          {items.map((item) => (
-            <li key={item.id}>
-              {item.target.kind === 'page' ? (
-                <BarLink
-                  to={item.target.path}
-                  end={hasEntriesBelow(item.target.path, paths)}
-                  base={styles.sectionLink}
-                  lit={styles.sectionActive}
-                  idle={styles.sectionIdle}
-                  measure={styles.sectionMeasure}
-                  word={styles.sectionWord}
-                >
-                  {item.label}
-                </BarLink>
-              ) : (
-                <a
-                  {...stylex.props(styles.sectionLink, styles.sectionIdle)}
-                  href={item.target.href}
-                  {...(item.target.newWindow
-                    ? { target: '_blank', rel: 'noreferrer noopener' }
-                    : {})}
-                >
-                  {item.label}
-                </a>
-              )}
-            </li>
-          ))}
-        </ul>
-      </nav>
-    </div>
+    <SectionNavigation value={paths}>
+      <div {...stylex.props(styles.sectionBar)}>
+        <nav {...stylex.props(styles.tabsNav, styles.sectionScroller)}>
+          <ul {...stylex.props(styles.tabsList, styles.sectionList)}>
+            {items.map((item) => (
+              <li key={item.id}>
+                {item.target.kind === 'page' ? (
+                  <BarLink
+                    to={item.target.path}
+                    end={hasEntriesBelow(item.target.path, paths)}
+                    base={styles.sectionLink}
+                    lit={styles.sectionActive}
+                    idle={styles.sectionIdle}
+                    measure={styles.sectionMeasure}
+                    word={styles.sectionWord}
+                  >
+                    {item.label}
+                  </BarLink>
+                ) : (
+                  <a
+                    {...stylex.props(styles.sectionLink, styles.sectionIdle)}
+                    href={item.target.href}
+                    {...(item.target.newWindow
+                      ? { target: '_blank', rel: 'noreferrer noopener' }
+                      : {})}
+                  >
+                    {item.label}
+                  </a>
+                )}
+              </li>
+            ))}
+          </ul>
+        </nav>
+      </div>
+    </SectionNavigation>
   )
 }

@@ -42,11 +42,8 @@ export {
 } from './live/live-channel.ts'
 export { useLiveChannel } from './live/live-channel-context.tsx'
 export { PageLink } from './routing/links.tsx'
-export {
-  PENDING_INDICATOR_AFTER,
-  usePendingNavigation,
-  type PendingNavigation,
-} from './routing/navigation.tsx'
+export { usePendingNavigation, type PendingNavigation } from './routing/navigation.tsx'
+export { NavigationProgressScope, useNavigationProgress } from './routing/navigation-progress.tsx'
 export { ThemeProvider, useTheme, type ThemeChoice } from './theme.tsx'
 export { useHydrating } from './document/hydrating.ts'
 export { DocumentNow, useDocumentNow } from './document/document-now.tsx'

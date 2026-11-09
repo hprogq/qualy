@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import { NavLink } from 'react-router'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { usePendingNavigation } from '@qualy/web-runtime'
+import { SectionNavigation, useSectionNavigation } from './section-navigation.ts'
 import { NavIcon } from './icons.tsx'
 import { hasEntriesBelow } from './rail.ts'
 import type { SectionGroup } from './useAppNavigation.ts'
@@ -80,7 +80,7 @@ function SideLink({
   exact: boolean
   children: ReactNode
 }) {
-  const navigation = usePendingNavigation(to, exact)
+  const navigation = useSectionNavigation(to, exact)
   return (
     <NavLink
       to={to}
@@ -102,38 +102,40 @@ export function SideNav({ groups, label }: { groups: readonly SectionGroup[]; la
     group.items.flatMap((item) => (item.target.kind === 'page' ? [item.target.path] : [])),
   )
   return (
-    <nav aria-label={label} data-testid="side-nav" {...stylex.props(styles.nav)}>
-      {groups.map((group) => (
-        <section key={group.id} data-nav-group={group.id} {...stylex.props(styles.group)}>
-          {group.label !== undefined && <p {...stylex.props(styles.heading)}>{group.label}</p>}
-          <ul {...stylex.props(styles.list)}>
-            {group.items.map((item) => (
-              <li key={item.id}>
-                {item.target.kind === 'page' ? (
-                  <SideLink
-                    to={item.target.path}
-                    icon={item.icon}
-                    exact={hasEntriesBelow(item.target.path, paths)}
-                  >
-                    {item.label}
-                  </SideLink>
-                ) : (
-                  <a
-                    {...stylex.props(styles.link, styles.idle)}
-                    href={item.target.href}
-                    {...(item.target.newWindow
-                      ? { target: '_blank', rel: 'noreferrer noopener' }
-                      : {})}
-                  >
-                    <NavIcon name={item.icon} className={stylex.props(styles.icon).className} />
-                    <span {...stylex.props(styles.word)}>{item.label}</span>
-                  </a>
-                )}
-              </li>
-            ))}
-          </ul>
-        </section>
-      ))}
-    </nav>
+    <SectionNavigation value={paths}>
+      <nav aria-label={label} data-testid="side-nav" {...stylex.props(styles.nav)}>
+        {groups.map((group) => (
+          <section key={group.id} data-nav-group={group.id} {...stylex.props(styles.group)}>
+            {group.label !== undefined && <p {...stylex.props(styles.heading)}>{group.label}</p>}
+            <ul {...stylex.props(styles.list)}>
+              {group.items.map((item) => (
+                <li key={item.id}>
+                  {item.target.kind === 'page' ? (
+                    <SideLink
+                      to={item.target.path}
+                      icon={item.icon}
+                      exact={hasEntriesBelow(item.target.path, paths)}
+                    >
+                      {item.label}
+                    </SideLink>
+                  ) : (
+                    <a
+                      {...stylex.props(styles.link, styles.idle)}
+                      href={item.target.href}
+                      {...(item.target.newWindow
+                        ? { target: '_blank', rel: 'noreferrer noopener' }
+                        : {})}
+                    >
+                      <NavIcon name={item.icon} className={stylex.props(styles.icon).className} />
+                      <span {...stylex.props(styles.word)}>{item.label}</span>
+                    </a>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </section>
+        ))}
+      </nav>
+    </SectionNavigation>
   )
 }

@@ -3,7 +3,9 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react'
@@ -36,23 +38,55 @@ const Scope = sharedContext<CapabilityScope | null>('workspace-capabilities', nu
 export function WorkspaceCapabilityScope({
   children,
   pathname,
+  navigating = false,
 }: {
   children: ReactNode
   pathname?: string
+  navigating?: boolean
 }) {
-  const initial = useContext(RuntimeContext)?.initialWorkspaceCapabilities
+  const runtime = useContext(RuntimeContext)
+  const initial = runtime?.initialWorkspaceCapabilities
+  const identity = runtime?.manifest.identity
+  const projected = useMemo<WorkspaceCapabilities>(
+    () =>
+      initial === undefined ? { status: 'loading' } : { status: 'ready', values: new Set(initial) },
+    [initial],
+  )
   const [published, setPublished] = useState<{
     pathname: string | undefined
     initial: readonly string[] | undefined
     state: WorkspaceCapabilities
   }>()
-  const state = useMemo<WorkspaceCapabilities>(() => {
-    if (published !== undefined && published.pathname === pathname && published.initial === initial)
-      return published.state
-    return initial === undefined
-      ? { status: 'loading' }
-      : { status: 'ready', values: new Set(initial) }
-  }, [initial, pathname, published])
+  const current =
+    published?.pathname === pathname && published?.initial === initial ? published : undefined
+  const received = current?.state ?? projected
+  const last = useRef<{
+    pathname: typeof pathname
+    identity: typeof identity
+    state: Extract<WorkspaceCapabilities, { status: 'ready' }>
+  } | null>(null)
+  useLayoutEffect(() => {
+    if (received.status === 'ready') last.current = { pathname, identity, state: received }
+    else if (
+      !navigating ||
+      last.current?.pathname !== pathname ||
+      last.current?.identity !== identity
+    )
+      last.current = null
+  }, [received, pathname, identity, navigating])
+  // The next RSC document can replace the slot registry before the outgoing
+  // rail unmounts. An absent projection during that hand-off is not an empty
+  // grant. Keep the committed rail, never a different address or identity.
+  const held = last.current
+  const state =
+    received.status === 'loading' &&
+    initial === undefined &&
+    navigating &&
+    held !== null &&
+    held.pathname === pathname &&
+    held.identity === identity
+      ? held.state
+      : received
   // A live publication belongs to the address and server projection it was
   // read under. A new server projection replaces it immediately, even while
   // the replacement context component is still loading.
@@ -64,9 +98,17 @@ export function WorkspaceCapabilityScope({
         state:
           values === null ? { status: 'loading' as const } : { status: 'ready' as const, values },
       }
+      // An equivalent live read must not invalidate the context of children
+      // still hydrating. Only a different authorization result changes it.
+      const repeatsProjection =
+        projected.status === 'loading'
+          ? values === null
+          : values !== null &&
+            values.size === projected.values.size &&
+            [...values].every((value) => projected.values.has(value))
       // Publishing background reads must not discard visible server content
       // whose client module is still loading in a nested Suspense boundary.
-      startTransition(() => setPublished(publication))
+      startTransition(() => setPublished(repeatsProjection ? undefined : publication))
       // Unmounting a context slot is not an authorization result. Let the
       // server projection stand until a live publisher takes over again;
       // an old publisher must not withdraw its replacement's publication.
@@ -76,7 +118,7 @@ export function WorkspaceCapabilityScope({
         )
       }
     },
-    [pathname, initial],
+    [pathname, initial, projected],
   )
   const value = useMemo<CapabilityScope>(() => ({ state, publish }), [state, publish])
   return <Scope.Provider value={value}>{children}</Scope.Provider>

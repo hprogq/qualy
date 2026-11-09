@@ -1,13 +1,14 @@
 import { lazy, Suspense, useLayoutEffect, useState, type ReactNode } from 'react'
 import { Link, Outlet, Route, Routes } from 'react-router'
 import { describe, expect, it, vi } from 'vitest'
-import { page } from 'vitest/browser'
+import { commands, page } from 'vitest/browser'
 import { Effect } from 'effect'
 import { layoutComponents, slotComponents } from 'virtual:qualy/plugins'
 import { useQuery } from '@tanstack/react-query'
 import {
   isRecordId,
   LoadFailure,
+  NavigationProgressScope,
   ScreenFill,
   SubjectAbsence,
   ScreenFoot,
@@ -910,7 +911,7 @@ const slowManifest = (
 }
 
 describe('a press on the rail', () => {
-  it('lights the entry at once and marks it busy after a beat, while the open page stays', async () => {
+  it('lights the entry at once and keeps its icon while the open page stays', async () => {
     await page.viewport(1280, 800)
     const slow = slowPage()
     // the same tree at both addresses, so the boundary the next page
@@ -942,19 +943,14 @@ describe('a press on the rail', () => {
     await expect.element(entry).toHaveAttribute('aria-busy', 'true')
     await expect.element(page.getByTestId('page-phases')).toBeInTheDocument()
     expect(page.getByTestId('page-fallback').elements()).toHaveLength(0)
-    // and after a beat, busy: the loader stands in the icon's seat
-    await expect.element(entry).toHaveAttribute('data-indicating', '')
-    expect(entry.element().querySelector('[data-seg]')).not.toBeNull()
+    expect(entry.element().querySelector('svg')).not.toBeNull()
+    expect(entry.element().querySelector('[data-seg]')).toBeNull()
 
     slow.release()
     await expect.element(page.getByTestId('page-entries')).toBeInTheDocument()
     await expect.element(entry).toHaveAttribute('aria-current', 'page')
     await expect.element(entry).not.toHaveAttribute('data-pending')
     await expect.element(entry).not.toHaveAttribute('aria-busy')
-    // the loader leaves one commit later than the attributes: `indicating` is
-    // cleared by the effect that observes `pending` falling, not by the render
-    // that dropped it. So this waits, as its siblings do.
-    await expect.poll(() => entry.element().querySelector('[data-seg]')).toBeNull()
   })
 
   it('lights only the latest destination when another rail link supersedes a pending one', async () => {
@@ -1023,26 +1019,28 @@ describe('a press on the rail', () => {
       client: slowManifest(slow),
       route: '/organization/users',
       children: (
-        <Routes>
-          <Route element={<AppShell />}>
-            <Route
-              element={
-                <Suspense fallback={<div data-testid="page-fallback" />}>
-                  <Outlet />
-                </Suspense>
-              }
-            >
-              <Route path="/organization/users" element={<main data-testid="page-users" />} />
-              <Route path={slowPath} element={<slow.Page />} />
+        <NavigationProgressScope>
+          <Routes>
+            <Route element={<AppShell />}>
+              <Route
+                element={
+                  <Suspense fallback={<div data-testid="page-fallback" />}>
+                    <Outlet />
+                  </Suspense>
+                }
+              >
+                <Route path="/organization/users" element={<main data-testid="page-users" />} />
+                <Route path={slowPath} element={<slow.Page />} />
+              </Route>
             </Route>
-          </Route>
-        </Routes>
+          </Routes>
+        </NavigationProgressScope>
       ),
     })
     return slow
   }
 
-  it('keeps the open section lit and runs a light over the pressed one until it arrives', async () => {
+  it('marks the requested section while the open section remains the current page', async () => {
     await page.viewport(390, 844)
     const slow = await shellWithSlow('/organization/roles')
     await expect.element(page.getByTestId('page-users')).toBeInTheDocument()
@@ -1050,7 +1048,7 @@ describe('a press on the rail', () => {
     const pressed = page.getByTestId('section-chip').filter({ hasText: '角色管理' })
     await pressed.click()
     await expect.element(pressed).toHaveAttribute('data-pending', '')
-    // one page is open, and the row says so: the pressed chip is not filled in
+    // Visual selection follows the destination, but aria-current still identifies the visible page.
     await expect.element(open).toHaveAttribute('aria-current', 'page')
     await expect.element(pressed).not.toHaveAttribute('aria-current')
     const ground = (chip: typeof open) => getComputedStyle(chip.element()).backgroundColor
@@ -1062,7 +1060,7 @@ describe('a press on the rail', () => {
     await page.viewport(1280, 800)
   })
 
-  it('answers a press at the foot at once, and puts the loader in its mark after a beat', async () => {
+  it('answers a press at the foot at once without replacing the icon', async () => {
     await page.viewport(390, 844)
     const slow = await shellWithSlow('/assessment/batches')
     await expect.element(page.getByTestId('page-users')).toBeInTheDocument()
@@ -1070,13 +1068,70 @@ describe('a press on the rail', () => {
     await cell.click()
     await expect.element(cell).toHaveAttribute('data-pending', '')
     await expect.element(page.getByTestId('page-users')).toBeInTheDocument()
-    await expect.element(cell).toHaveAttribute('data-indicating', '')
-    expect(cell.element().querySelector('[data-seg]')).not.toBeNull()
+    expect(cell.element().querySelector('svg')).not.toBeNull()
+    expect(cell.element().querySelector('[data-seg]')).toBeNull()
     slow.release()
     await expect.element(page.getByTestId('page-entries')).toBeInTheDocument()
     await expect.element(cell).toHaveAttribute('aria-current', 'page')
-    await expect.poll(() => cell.element().querySelector('[data-seg]')).toBeNull()
     await page.viewport(1280, 800)
+  })
+
+  const pulses = (link: Element) =>
+    link.getAnimations({ subtree: true }).some((animation) => animation instanceof CSSAnimation)
+
+  it('only pulses the destination application on a cross-application navigation', async () => {
+    await page.viewport(1280, 800)
+    await commands.emulateMedia({ reducedMotion: 'no-preference' })
+    const slow = await shellWithSlow('/assessment/batches')
+    const tab = page.getByTestId('top-bar-apps').getByRole('link', { name: '测评' })
+    try {
+      await tab.click()
+      await expect.element(page.getByRole('progressbar')).toBeVisible()
+      await expect.poll(() => pulses(tab.element())).toBe(true)
+      await expect.element(tab).not.toHaveAttribute('aria-current', 'page')
+      slow.release()
+      await expect.element(tab).toHaveAttribute('aria-current', 'page')
+      await expect.poll(() => pulses(tab.element())).toBe(false)
+    } finally {
+      slow.release()
+      await commands.emulateMedia({ reducedMotion: 'reduce' })
+    }
+  })
+
+  it('does not animate the application underline when changing its section', async () => {
+    await page.viewport(1280, 800)
+    await commands.emulateMedia({ reducedMotion: 'no-preference' })
+    const slow = await shellWithSlow('/organization/roles')
+    const tab = page.getByTestId('top-bar-apps').getByRole('link', { name: '组织与权限' })
+    try {
+      await page.getByTestId('side-nav').getByRole('link', { name: '角色管理' }).click()
+      await expect.element(page.getByRole('progressbar')).toBeVisible()
+      expect(pulses(tab.element())).toBe(false)
+      await expect.element(tab).toHaveAttribute('aria-current', 'page')
+    } finally {
+      slow.release()
+      await commands.emulateMedia({ reducedMotion: 'reduce' })
+    }
+  })
+
+  it('keeps the outgoing application section selected while another application loads', async () => {
+    await page.viewport(1280, 800)
+    const slow = await shellWithSlow('/assessment/batches')
+    const side = page.getByTestId('side-nav')
+    const open = side.getByRole('link', { name: '用户管理' })
+    await expect.element(open).toHaveAttribute('aria-current', 'page')
+    const selected = getComputedStyle(open.element()).backgroundColor
+    expect(selected).not.toBe(BLANK)
+    try {
+      const app = page.getByTestId('top-bar-apps').getByRole('link', { name: '测评' })
+      await app.click()
+      await expect.element(app).toHaveAttribute('data-pending', '')
+      expect(getComputedStyle(open.element()).backgroundColor).toBe(selected)
+      await expect.element(page.getByTestId('page-users')).toBeInTheDocument()
+    } finally {
+      slow.release()
+    }
+    await expect.element(page.getByTestId('page-entries')).toBeInTheDocument()
   })
 
   it('keeps the top links in place while selection moves to the next application', async () => {

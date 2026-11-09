@@ -97,10 +97,15 @@ describe('the workspace capability scope', () => {
     publisher: ReactNode,
     initialWorkspaceCapabilities: readonly string[] | undefined,
     pathname = '/batch/a/results',
+    navigating = false,
+    identity = manifest.identity,
   ) => (
     <UiProvider scheme="light">
-      <RuntimeProvider {...{ registry, manifest, initialWorkspaceCapabilities }}>
-        <WorkspaceCapabilityScope pathname={pathname}>
+      <RuntimeProvider
+        {...{ registry, initialWorkspaceCapabilities }}
+        manifest={{ ...manifest, identity }}
+      >
+        <WorkspaceCapabilityScope pathname={pathname} navigating={navigating}>
           {publisher}
           <Rail />
         </WorkspaceCapabilityScope>
@@ -140,6 +145,24 @@ describe('the workspace capability scope', () => {
     await expect.element(page.getByText('审核')).toBeVisible()
     await screen.rerender(draw(null, undefined, '/batch/b/results'))
     await expect.element(page.getByText('审核')).not.toBeInTheDocument()
+  })
+
+  it('holds a departing rail only for its own address and viewer, and never overrides empty grants', async () => {
+    const address = '/batch/a/results'
+    const screen = await render(draw(null, serverTokens, address))
+    const review = page.getByText('审核')
+    const original = review.element()
+    await screen.rerender(draw(null, undefined, address, true))
+    expect(review.element()).toBe(original)
+
+    await screen.rerender(draw(null, [], address, true))
+    await expect.element(review).not.toBeInTheDocument()
+    await screen.rerender(draw(null, serverTokens, address))
+    await screen.rerender(draw(null, undefined, '/batch/b/results', true))
+    await expect.element(review).not.toBeInTheDocument()
+    await screen.rerender(draw(null, serverTokens, address))
+    await screen.rerender(draw(null, undefined, address, true, 'another-reader'))
+    await expect.element(review).not.toBeInTheDocument()
   })
 
   it('does not let an outgoing publisher withdraw its replacement', async () => {

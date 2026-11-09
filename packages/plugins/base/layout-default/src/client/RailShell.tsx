@@ -1,11 +1,10 @@
 import { styles } from './rail-shell.styles.ts'
-import { pending } from './pending.ts'
+import { SectionNavigation, useSectionNavigation } from './section-navigation.ts'
 import { type ReactNode } from 'react'
-import { NavLink, Outlet, useLocation, useParams } from 'react-router'
+import { NavLink, Outlet, useLocation, useNavigation, useParams } from 'react-router'
 import { Reveal } from '@qualy/ui/reveal'
 import { PanelLeftIcon } from 'lucide-react'
 import * as stylex from '@stylexjs/stylex'
-import { Loader } from '@qualy/brand/loader'
 import { a11yStyles } from '@qualy/ui/visually-hidden'
 import { shellRoot } from './shell.stylex.ts'
 import { chipRowFades, chips, useChipRow } from './chip-row.ts'
@@ -28,7 +27,6 @@ import {
   SubjectScope,
   UiSlot,
   useHydrating,
-  usePendingNavigation,
   useUiCollection,
   useScreenFootClaimed,
   useSubjectAbsenceSeat,
@@ -105,13 +103,7 @@ function RailEntry({
    */
   exact: boolean
 }) {
-  // The press answers at once, before the address has moved: the entry
-  // lights, and after a beat its icon gives way to the loader for as long
-  // as the page's code is on its way. An entry drawn without an icon keeps
-  // its shape and only lights. Pointing at it or reaching it with the
-  // keyboard fetches the code already, so the press usually waits for
-  // nothing at all.
-  const navigation = usePendingNavigation(to, exact)
+  const navigation = useSectionNavigation(to, exact)
   return (
     <li>
       <NavLink
@@ -119,7 +111,6 @@ function RailEntry({
         to={to}
         aria-busy={navigation.pending || undefined}
         data-pending={navigation.pending ? '' : undefined}
-        data-indicating={navigation.indicating ? '' : undefined}
         className={({ isActive }) =>
           stylex.props(
             styles.entry,
@@ -127,11 +118,7 @@ function RailEntry({
           ).className ?? ''
         }
       >
-        {icon !== undefined && navigation.indicating ? (
-          <Loader size={16} xstyle={styles.entryIcon} />
-        ) : (
-          <NavIcon name={icon} className={stylex.props(styles.entryIcon).className} />
-        )}
+        <NavIcon name={icon} className={stylex.props(styles.entryIcon).className} />
         <span {...stylex.props(styles.entryLabel)}>{label}</span>
         {/* a live number the manifest cannot carry: whoever owns the page
             answers for it, and an entry nobody answers for shows nothing */}
@@ -162,7 +149,7 @@ function PersonChip({
   exact: boolean
   badge?: ReactNode
 }) {
-  const navigation = usePendingNavigation(to, exact)
+  const navigation = useSectionNavigation(to, exact)
   return (
     <NavLink
       end={exact}
@@ -171,8 +158,7 @@ function PersonChip({
       aria-busy={navigation.pending || undefined}
       data-pending={navigation.pending ? '' : undefined}
       className={({ isActive }) =>
-        stylex.props(chips.chip, isActive ? chips.open : navigation.pending && pending.chip)
-          .className ?? ''
+        stylex.props(chips.chip, navigation.selected(isActive) && chips.open).className ?? ''
       }
     >
       {label}
@@ -194,7 +180,7 @@ function PersonEntry({
   exact: boolean
   badge: UiSlotToken | undefined
 }) {
-  const navigation = usePendingNavigation(to, exact)
+  const navigation = useSectionNavigation(to, exact)
   return (
     <li>
       <NavLink
@@ -230,7 +216,7 @@ function DrawerEntry({
   exact: boolean
   badge: UiSlotToken | undefined
 }) {
-  const navigation = usePendingNavigation(to, exact)
+  const navigation = useSectionNavigation(to, exact)
   return (
     <NavLink
       end={exact}
@@ -301,8 +287,12 @@ export interface RailShellProps {
 
 export function RailShell(props: RailShellProps) {
   const { pathname } = useLocation()
+  const destination = useNavigation().location?.pathname
   return (
-    <WorkspaceCapabilityScope pathname={pathname}>
+    <WorkspaceCapabilityScope
+      pathname={pathname}
+      navigating={destination !== undefined && destination !== pathname}
+    >
       <SubjectScope>
         <ScreenFillScope>
           <ScreenFootScope>
@@ -476,7 +466,7 @@ function CapableRailShell({
     </nav>
   )
 
-  return (
+  const shell = (
     <div {...stylex.props(styles.root, shellRoot)}>
       {/* Above a record the bar stays whatever the width: it carries the
           product's own mark, and a record opened from somewhere else with
@@ -812,4 +802,5 @@ function CapableRailShell({
       </Sheet>
     </div>
   )
+  return <SectionNavigation value={paths}>{shell}</SectionNavigation>
 }

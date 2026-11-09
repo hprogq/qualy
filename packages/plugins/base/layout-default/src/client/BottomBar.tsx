@@ -1,3 +1,4 @@
+import { useContext } from 'react'
 import type { ReactNode } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { NavLink } from 'react-router'
@@ -7,7 +8,7 @@ import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import type { ResolvedNavigationItem } from '@qualy/ui-contract'
 import { shell, shellRoot } from './shell.stylex.ts'
 import { Skeleton } from '@qualy/ui/skeleton'
-import { Loader } from '@qualy/brand/loader'
+import { SectionNavigation } from './section-navigation.ts'
 import { usePendingNavigation } from '@qualy/web-runtime'
 import { NavIcon } from './icons.tsx'
 
@@ -381,15 +382,6 @@ export function BottomBar({
   )
 }
 
-/**
- * One cell of the bar.
- *
- * The press answers at once, as the rail's entries do: the cell lights
- * before the address has moved, and after a beat its mark gives way to the
- * loader for as long as the page's code is on its way. Without it a press
- * on a page not fetched yet did nothing visible until the page appeared,
- * which reads as a press that missed.
- */
 function BottomLink({
   item,
   xstyle = null,
@@ -398,14 +390,18 @@ function BottomLink({
   /** the bands of a folded bar it shows in */
   xstyle?: stylex.StyleXStyles | null
 }) {
-  const navigation = usePendingNavigation(item.to, item.exact ?? false)
+  const sections = useContext(SectionNavigation)
+  const navigation = usePendingNavigation(
+    item.to,
+    item.exact ?? false,
+    item.active === undefined ? sections : undefined,
+  )
   return (
     <NavLink
       to={item.to}
       end={item.exact}
       aria-busy={navigation.pending || undefined}
       data-pending={navigation.pending ? '' : undefined}
-      data-indicating={navigation.indicating ? '' : undefined}
       {...(item.active === undefined ? {} : { 'aria-current': item.active ? 'page' : undefined })}
       className={({ isActive }) =>
         stylex.props(
@@ -421,11 +417,7 @@ function BottomLink({
         ).className ?? ''
       }
     >
-      {navigation.indicating ? (
-        <Loader size={22} xstyle={styles.glyph} />
-      ) : (
-        <NavIcon name={item.icon} className={stylex.props(styles.glyph).className} />
-      )}
+      <NavIcon name={item.icon} className={stylex.props(styles.glyph).className} />
       <span {...stylex.props(styles.word)}>{item.label}</span>
       {item.badge !== undefined && <span {...stylex.props(styles.count)}>{item.badge}</span>}
     </NavLink>

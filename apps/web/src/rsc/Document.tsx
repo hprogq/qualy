@@ -8,6 +8,7 @@ import {
   DocumentNow,
   RuntimeProvider,
   RouteMetadata,
+  NavigationProgressScope,
   emptyComponentRegistry,
   type ComponentRegistry,
   type Manifest,
@@ -15,7 +16,6 @@ import {
 import { SIGN_IN_PAGE } from '@qualy/auth-contract/sign-in-failure'
 import { releases, webRelease } from '../release.ts'
 import { browserSlotLoader } from './slot-reference.ts'
-import { NavigationProgress } from './navigation-progress.tsx'
 
 function DevelopmentRenderRefresh() {
   const { revalidate } = useRevalidator()
@@ -66,14 +66,15 @@ export function Document({
       >
         <DataRouterLeaveGuard>
           {import.meta.env.DEV && <DevelopmentRenderRefresh />}
-          <NavigationProgress />
-          <RouteMetadata>
-            {hydration === undefined ? (
-              children
-            ) : (
-              <QueryHydration state={hydration}>{children}</QueryHydration>
-            )}
-          </RouteMetadata>
+          <NavigationProgressScope>
+            <RouteMetadata>
+              {hydration === undefined ? (
+                children
+              ) : (
+                <QueryHydration state={hydration}>{children}</QueryHydration>
+              )}
+            </RouteMetadata>
+          </NavigationProgressScope>
         </DataRouterLeaveGuard>
       </RuntimeProvider>
     </DocumentNow>
