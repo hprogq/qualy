@@ -1,11 +1,11 @@
 import { NodeHttpServer } from '@effect/platform-node'
-import { Effect, Layer } from 'effect'
-import { HttpRouter } from 'effect/http'
+import { Config, Context, Effect, Layer, Scope } from 'effect'
+import { HttpEffect, HttpRouter, HttpServer } from 'effect/http'
 import { HttpApiBuilder } from 'effect/http-api'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { QUALY_API_PREFIX } from '@qualy/api-kit'
 import { Api, type ApiDocumentation } from '@qualy/api-kit/plugin'
-import { NodeServer } from '@qualy/api-kit/node'
+import { LocalRenderApi, NodeServer } from '@qualy/api-kit/node'
 import { AssemblyInfo, assembledBarrier, assembledLayer } from '@qualy/api-kit/assembled'
 import { clientAssemblyLayer } from '@qualy/api-kit/client-assembly'
 import { readinessLayer } from '@qualy/api-kit/readiness'
@@ -17,7 +17,7 @@ import { browserContractOf } from '@qualy/web-build/browser-contract'
 import { lockFromResolution, type Resolution } from '@qualy/assembly'
 import { loadAssembly } from '@qualy/assembly/runtime'
 import { ServerConfig, apiReferenceEnabled } from './config.ts'
-import { apiRouteFallback } from '@qualy/api-kit/route-fallback'
+import { apiRouteFallback, insideApi } from '@qualy/api-kit/route-fallback'
 import { schemaRefusals } from '@qualy/api-kit/schema-refusal'
 import { unavailableDependencies } from '@qualy/api-kit/unavailable'
 import { serveMiddleware } from './serve-middleware.ts'
@@ -178,30 +178,66 @@ export async function makeApplication(
     Effect.gen(function* () {
       const config = yield* ServerConfig
       const instance = yield* NodeServer
-      // the services are provided inside the serve composition: the router
-      // discharges request-time requirements only for layers inside its
-      // argument, and requests find their services in the built context
-      return HttpRouter.serve(
-        // every plugin's routes, the mount's own not-found under them, the
-        // one answer a request its schema would not read gets, and the one a
-        // request gets when a dependency it needed is unavailable
-        Layer.mergeAll(routes, apiRouteFallback, schemaRefusals, unavailableDependencies).pipe(
-          Layer.provide(runtimeGraph),
-          Layer.provide(services),
-          Layer.provide(prepared),
-        ),
-        {
-          // the upstream logger prints every response at Info and every failed
-          // exit's cause - interrupted requests included; ours speaks in levels
-          disableLogger: true,
-          // the one chain in front of the router, ordered in its own module
-          middleware: serveMiddleware({
-            trustedProxies: config.trustedProxies,
-            access: logging.access,
-            warnUntrustedProxy: config.production,
-          }),
-        },
-      ).pipe(
+      const transport = config.production
+        ? yield* Config.Literals(['in-process', 'loopback'], 'QUALY_RENDER_API_TRANSPORT').pipe(
+            Config.withDefault('loopback' as const),
+          )
+        : 'loopback'
+      const graph = Layer.mergeAll(
+        routes,
+        apiRouteFallback,
+        schemaRefusals,
+        unavailableDependencies,
+      ).pipe(Layer.provide(runtimeGraph), Layer.provide(services), Layer.provide(prepared))
+      const middleware = serveMiddleware({
+        trustedProxies: config.trustedProxies,
+        access: logging.access,
+        warnUntrustedProxy: config.production,
+      })
+      const serving =
+        transport === 'loopback'
+          ? HttpRouter.serve(graph, { disableLogger: true, middleware })
+          : Layer.unwrap(
+              Effect.gen(function* () {
+                // Like HttpRouter.serve, fork the host's memo map so the
+                // barrier's live services are reused, then build one router.
+                const scope = yield* Scope.Scope
+                const parent = yield* Effect.context<never>()
+                const context = yield* Layer.buildWithMemoMap(
+                  Layer.provideMerge(graph, HttpRouter.layer),
+                  Layer.CurrentMemoMap.forkOrCreate(parent),
+                  scope,
+                )
+                const app = Context.get(context, HttpRouter.HttpRouter).asHttpEffect()
+                const provided = Context.merge(parent, context)
+                const handle = HttpEffect.toWebHandlerWith<never, Effect.Services<typeof app>>(
+                  provided,
+                )(app, middleware)
+                const origin = `http://127.0.0.1:${String(config.port)}`
+                const read: Context.Service.Shape<typeof LocalRenderApi> = (request) => {
+                  const url = new URL(request.url)
+                  if (url.origin !== origin || !insideApi(url.pathname))
+                    return Promise.resolve(new Response(null, { status: 404 }))
+                  if (
+                    (request.method !== 'GET' && request.method !== 'HEAD') ||
+                    request.headers.has('upgrade')
+                  )
+                    return Promise.resolve(new Response(null, { status: 405 }))
+                  // Fetch normally supplies Host on the wire. Preserve the
+                  // logical origin, without inventing a socket peer or IP.
+                  const headers = new Headers(request.headers)
+                  headers.set('host', url.host)
+                  return handle(new Request(request, { headers }))
+                }
+                return Layer.merge(
+                  HttpServer.serve(app, (effect) =>
+                    Effect.provideService(middleware(effect), LocalRenderApi, read),
+                  ),
+                  Layer.succeedContext(context),
+                )
+              }),
+            ).pipe(HttpServer.withLogAddress)
+      return serving.pipe(
         // the serve chain opens the server span itself, without the query
         Layer.provide(platformTracerOff),
         Layer.provide(

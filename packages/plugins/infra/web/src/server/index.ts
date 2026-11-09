@@ -13,7 +13,7 @@ import { releaseProbeOf, type InstalledWebRelease } from '@qualy/release-contrac
 import { Assembled, AssemblyInfo } from '@qualy/api-kit/assembled'
 import { ClientAssembly, type ReleaseStanding } from '@qualy/api-kit/client-assembly'
 import type { ShellPolicy } from '@qualy/api-kit/shell-policy'
-import { fromConnect, type ConnectMiddleware } from '@qualy/api-kit/node'
+import { fromConnect, LocalRenderApi, type ConnectMiddleware } from '@qualy/api-kit/node'
 import {
   SERVER_BUILD_METADATA,
   SHARED_ASSETS,
@@ -346,6 +346,7 @@ type Draw = (
   context: {
     readonly nonce?: string
     readonly apiOrigin?: string
+    readonly dispatchApi?: ((request: Request) => Promise<Response>) | undefined
     readonly requestId?: string | undefined
   },
 ) => Promise<Response>
@@ -415,6 +416,7 @@ const drawDocument = (
     const web = yield* HttpServerRequest.toWeb(request).pipe(Effect.orDie)
     const nonce = randomBytes(16).toString('base64')
     const requestId = Option.getOrUndefined(yield* Effect.serviceOption(RequestContext))?.requestId
+    const dispatchApi = Option.getOrUndefined(yield* Effect.serviceOption(LocalRenderApi))
     const controller = new AbortController()
     const response = yield* Effect.tryPromise({
       try: () =>
@@ -424,7 +426,7 @@ const drawDocument = (
             headers: web.headers,
             signal: controller.signal,
           }),
-          { nonce, apiOrigin, requestId },
+          { nonce, apiOrigin, dispatchApi, requestId },
         ),
       catch: (cause) => new DrawFailed({ cause }),
     }).pipe(
@@ -586,7 +588,7 @@ export const routes: Layer.Layer<
     // built after the barrier, so the frozen policy is there to read
     const policy = yield* ShellPolicyHeader
     const { current, draw, files, standingOf } = yield* production(config)
-    // the api a render reads through: this process's own, over loopback
+    // The address of the API, also used when the host dispatches it locally.
     const port = yield* Config.Port('PORT').pipe(Config.withDefault(3000), Effect.orDie)
     const document = drawDocument(
       draw,

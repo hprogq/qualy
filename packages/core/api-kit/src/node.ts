@@ -25,6 +25,12 @@ export class NodeServer extends Context.Service<NodeServer, Http.Server>()(
   '@qualy/api-kit/NodeServer',
 ) {}
 
+/** Read-only access to the host's assembled API from its document renderer. */
+export class LocalRenderApi extends Context.Service<
+  LocalRenderApi,
+  (request: Request) => Promise<Response>
+>()('@qualy/api-kit/LocalRenderApi') {}
+
 /** a connect-style handler: writes the response itself, or calls next */
 export type ConnectMiddleware = (
   request: Http.IncomingMessage,

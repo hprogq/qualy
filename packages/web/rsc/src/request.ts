@@ -72,6 +72,8 @@ export interface RenderRequest {
   readonly release: { readonly releaseId: string; readonly clientProtocol: number }
   /** where the api answers */
   readonly apiOrigin: string
+  /** The production host can dispatch the same request without a socket. */
+  readonly dispatchApi?: ((request: Request) => Promise<Response>) | undefined
   /** the viewer's own credentials, exactly as they arrived */
   readonly cookie: string | undefined
   /**
@@ -136,11 +138,16 @@ const asTheViewer = (request: RenderRequest) =>
 /** the network, telling the request's listener what cookies each response set */
 const listened = (request: RenderRequest): typeof globalThis.fetch => {
   const heard = request.onSetCookie
-  if (heard === undefined) return globalThis.fetch
+  const dispatch = request.dispatchApi
+  if (heard === undefined && dispatch === undefined) return globalThis.fetch
   return async (input, init) => {
-    const response = await globalThis.fetch(input, init)
-    const lines = response.headers.getSetCookie()
-    if (lines.length > 0) heard(lines)
+    const response = await (dispatch === undefined
+      ? globalThis.fetch(input, init)
+      : dispatch(new Request(input, init)))
+    if (heard !== undefined) {
+      const lines = response.headers.getSetCookie()
+      if (lines.length > 0) heard(lines)
+    }
     return response
   }
 }

@@ -121,7 +121,7 @@
 
 - **构建产物分两半。** 浏览器一半照旧装进 release store：资源共享、按保留策略回收，release 自己的目录只剩公共文件和元数据，不再有 shell。服务端一半是 RSC 与 SSR 两个环境的产物，由 staging 放到 `@qualy/plugin-web` 的 `server-dist`，随镜像固定，不从 store 读取；它带 `.qualy-server-build.json` 写明自己绘制哪个 release。两个服务端环境在构建时打包全部依赖，产物在没有 `node_modules` 的目录里能独立加载，镜像只需拷贝这个目录。
 - **浏览器契约。** RSC 构建的客户端环境写出与原 SPA 相同格式的 surface map，store 据此计算 `browserContractHash`；旧标签页判定规则不变。只做 re-export 的模块（四个 shell 的聚合模块）按它导出的模块定位所在 chunk。
-- **宿主。** 启动时核对 pinned release 与 `server-dist` 的 release 一致，否则拒启。`/assets/*` 和 release 的公共文件仍由文件服务处理；其余请求交给渲染器，每个响应生成独立 nonce，CSP 由 `ShellPolicyHeader.forDocument(nonce)` 用冻结后的插件贡献组合，并附加 frame、COOP、Reporting 等文档头。渲染器读取 API 的地址由宿主按请求传入（本进程端口的 loopback），不再依赖环境变量。隐藏路径仍然 404，唯一例外是 React Router 的路由清单请求 `/.manifest`。
+- **宿主。** 启动时核对 pinned release 与 `server-dist` 的 release 一致，否则拒启。`/assets/*` 和 release 的公共文件仍由文件服务处理；其余请求交给渲染器，每个响应生成独立 nonce，CSP 由 `ShellPolicyHeader.forDocument(nonce)` 用冻结后的插件贡献组合，并附加 frame、COOP、Reporting 等文档头。渲染器默认通过本机 HTTP 读取 API；生产可用 `QUALY_RENDER_API_TRANSPORT=in-process` 为 `GET/HEAD /api` 启用进程内 `Request → Response` 调用。宿主仍只装配一份路由，和 Node 监听器共用 API 中间件。内部调用没有 TCP 对端地址，不接受外部 URL 或协议升级。独立的 Bun/Vite 开发服务仍走 HTTP。隐藏路径仍然 404，唯一例外是 React Router 的路由清单请求 `/.manifest`。
 - **资源命名。** 服务端两个环境与客户端使用同一套 `a-[hash]` 资源命名，文档预加载的字体名称因此就是 store 里同一字节的文件名。
 - **开发服务** 运行 `vite.rsc.config.ts`（`appType: 'custom'`），并把开发后端的地址交给渲染器；监视器在该配置变化时重启 Web 服务。
 

@@ -56,7 +56,7 @@ const cookiesOf = (header: string | null): Record<string, string> =>
       }),
   )
 
-const renderRequestOf = (request: Request, apiOrigin: string): RenderRequest => {
+const renderRequestOf = (request: Request, context: RenderContext): RenderRequest => {
   const headers = Object.fromEntries(request.headers)
   return {
     url: new URL(request.url),
@@ -64,7 +64,8 @@ const renderRequestOf = (request: Request, apiOrigin: string): RenderRequest => 
     renderedAt: Date.now(),
     locale: localeOfRequest({ headers, cookies: cookiesOf(request.headers.get('cookie')) }),
     release: { releaseId: webRelease.releaseId, clientProtocol: webRelease.clientProtocol },
-    apiOrigin,
+    apiOrigin: context.apiOrigin ?? defaultApiOrigin,
+    dispatchApi: context.dispatchApi,
     cookie: request.headers.get('cookie') ?? undefined,
     signal: request.signal,
     surfaces,
@@ -197,6 +198,7 @@ export interface RenderContext {
    * listens. Unsaid, the development backend beside a development server.
    */
   readonly apiOrigin?: string | undefined
+  readonly dispatchApi?: RenderRequest['dispatchApi']
 }
 
 export default async function handler(
@@ -234,7 +236,7 @@ async function handle(
     if (declared.protocol !== String(webRelease.clientProtocol)) return refused('protocol')
     if (declared.release !== webRelease.releaseId) return refused('release')
   }
-  const asked = renderRequestOf(request, context.apiOrigin ?? defaultApiOrigin)
+  const asked = renderRequestOf(request, context)
   // the cookies the manifest's answer set, the one read finished before
   // anything goes out: a session it found lapsed is cleared there
   const heard: string[] = []
