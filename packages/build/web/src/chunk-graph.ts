@@ -125,12 +125,14 @@ export const qualyChunkGraph = (options: {
     const imports = new Map<string, readonly string[]>()
     const modules = new Map<string, readonly string[]>()
     const bytes = new Map<string, number>()
+    const code = new Map<string, string>()
     const entries: string[] = []
     for (const output of Object.values(bundle)) {
       if (output.type !== 'chunk') continue
       imports.set(output.fileName, output.imports)
       modules.set(output.fileName, Object.keys(output.modules))
       bytes.set(output.fileName, Buffer.byteLength(output.code))
+      code.set(output.fileName, output.code)
       if (output.isEntry) entries.push(output.fileName)
     }
     // Named by the modules in them: the file names are content hashes, and
@@ -156,11 +158,21 @@ export const qualyChunkGraph = (options: {
       options.screens !== undefined
     ) {
       const compressed = new Map<string, number>()
+      // Only measure chunks reached by a budget, once even when shared by
+      // several screens. Lazy tools outside those closures cost nothing here.
+      const brotliSize = (file: string) => {
+        const cached = compressed.get(file)
+        if (cached !== undefined) return cached
+        const source = code.get(file)
+        if (source === undefined) this.error(`Missing budget chunk: ${file}`)
+        const size = brotliCompressSync(source).length
+        compressed.set(file, size)
+        return size
+      }
       for (const output of Object.values(bundle)) {
-        if (output.type !== 'chunk') continue
-        compressed.set(output.fileName, brotliCompressSync(output.code).length)
-        if (!output.isEntry || options.entryBrotliBudget === undefined) continue
-        const size = compressed.get(output.fileName)!
+        if (output.type !== 'chunk' || !output.isEntry || options.entryBrotliBudget === undefined)
+          continue
+        const size = brotliSize(output.fileName)
         const contributors = Object.entries(output.modules)
           .sort((a, b) => b[1].renderedLength - a[1].renderedLength)
           .slice(0, 10)
@@ -179,13 +191,14 @@ export const qualyChunkGraph = (options: {
       }
       const brotliOf = (files: Iterable<string>) => {
         let sum = 0
-        for (const file of files) sum += compressed.get(file)!
+        for (const file of files) sum += brotliSize(file)
         return sum
       }
       const booted = staticClosure(imports, entries)
-      console.info(`boot: ${booted.size} JS requests, ${brotliOf(booted)} Brotli bytes`)
-      if (options.bootBrotliBudget !== undefined && brotliOf(booted) > options.bootBrotliBudget)
-        refusals.push(`boot has ${brotliOf(booted)} Brotli bytes, over ${options.bootBrotliBudget}`)
+      const bootBrotli = brotliOf(booted)
+      console.info(`boot: ${booted.size} JS requests, ${bootBrotli} Brotli bytes`)
+      if (options.bootBrotliBudget !== undefined && bootBrotli > options.bootBrotliBudget)
+        refusals.push(`boot has ${bootBrotli} Brotli bytes, over ${options.bootBrotliBudget}`)
       if (options.screens?.length) {
         const asset = bundle['.qualy-browser-surfaces.json']
         if (!asset || asset.type !== 'asset')
