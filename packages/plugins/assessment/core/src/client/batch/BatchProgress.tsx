@@ -23,6 +23,7 @@ import {
 } from './progress.ts'
 import { type Message } from '@qualy/i18n-contract'
 import * as m from '#messages'
+import { countdownColors } from './countdown.stylex.ts'
 
 // Where a batch is right now, in one line: the stage it is in, and how long
 // until the next one - or, when nothing follows it yet, how long it has been
@@ -187,15 +188,6 @@ const styles = stylex.create({
     alignItems: 'flex-start',
     width: 'max-content',
   },
-  toneCalm: {
-    color: tokens.mutedForeground,
-  },
-  toneSoon: {
-    color: tokens.warningForeground,
-  },
-  toneUrgent: {
-    color: tokens.danger,
-  },
   ring: {
     width: RING_SIZE,
     height: RING_SIZE,
@@ -206,15 +198,6 @@ const styles = stylex.create({
     color: tokens.mutedForeground,
   },
 })
-
-// Only the clock takes a colour. The stage name is a fact that does not
-// change when the time runs short, and a name that turns red says the stage
-// itself is wrong.
-const TONES = {
-  calm: styles.toneCalm,
-  soon: styles.toneSoon,
-  urgent: styles.toneUrgent,
-} as const
 
 /**
  * How far through, as a ring rather than a bar.
@@ -398,7 +381,7 @@ function ContextProgress({
       <span
         {...clockFacts(progress)}
         data-form={fit?.form ?? 'single'}
-        {...stylex.props(styles.clock, styles.contextClock, TONES[tone])}
+        {...stylex.props(styles.clock, styles.contextClock, countdownColors[tone])}
       >
         {fit?.label && planned && <span {...stylex.props(styles.plannedLabel)}>{planned}</span>}
         {progress.kind === 'until' && progress.fraction !== null && (fit?.ring ?? true) && (
@@ -489,7 +472,7 @@ export function BatchProgress({
     )
   }
 
-  const tone = TONES[toneOf(progress)]
+  const tone = countdownColors[toneOf(progress)]
   const said = planned ?? (byWidth ? null : sayIn(form))
   return (
     <span {...stylex.props(styles.root, xstyle)}>

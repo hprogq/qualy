@@ -98,6 +98,8 @@ describe.runIf(postgresAvailable)('a stage allowance on the timeline', () => {
         }),
       ),
     )
+    expect(result.timeline[1]?.submitting).toBe(true)
+    expect(result.timeline[2]?.submitting).toBe(false)
     const scopes = result.timeline.map((stage) => stage.scope)
     expect(result.timeline.map((stage) => stage.displayName)).toEqual([
       'entry',

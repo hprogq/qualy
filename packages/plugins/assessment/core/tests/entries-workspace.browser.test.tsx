@@ -2401,6 +2401,61 @@ describe('what a question’s row says at a glance', () => {
   })
 })
 
+it.each([390, 1440])(
+  'shows the submission deadline in My Entries at %ipx only for allowed submissions',
+  async (width) => {
+    await page.viewport(width, 800)
+    const scope = { items: null, participantsLimited: false, includesReader: null }
+    const stage = (submitting: boolean, at: string) => ({
+      phaseId: submitting ? 'filing' : 'review',
+      displayName: submitting ? '正式填报' : '审核',
+      entryNote: '',
+      description: '',
+      status: submitting ? 'current' : 'future',
+      entry: { kind: submitting ? 'entered' : 'planned', at },
+      reviewing: !submitting,
+      submitting,
+      scope,
+    })
+    const timeline = [
+      stage(true, new Date(Date.now() - 86_400_000).toISOString()),
+      stage(false, new Date(Date.now() + 2_220_000).toISOString()),
+    ]
+    const { unmount } = await workspace({
+      route: base,
+      stubs: {
+        getTimeline: () => Effect.succeed({ timeline }),
+        listMyEntries: () =>
+          Effect.succeed({
+            participantId: PARTICIPANT_ID,
+            entries: [],
+            nextCursor: null,
+            attention: { unreadEntryIds: [] },
+            filing: [
+              {
+                itemId: itemId(1),
+                create: { state: 'available', reason: null },
+                submit: { state: 'available', reason: null },
+              },
+            ],
+          }),
+      },
+    })
+    const dock = page.getByTestId('submission-dock')
+    await expect.element(dock).toBeVisible()
+    await expect.element(dock).toHaveAttribute('data-tone', 'urgent')
+    const rect = dock.element().getBoundingClientRect()
+    expect(rect.left).toBeGreaterThanOrEqual(0)
+    expect(rect.right).toBeLessThanOrEqual(width + 1)
+    expect(rect.top).toBeGreaterThanOrEqual(0)
+    expect(rect.bottom).toBeLessThanOrEqual(800)
+    await unmount()
+    await workspace({ route: base, stubs: { getTimeline: () => Effect.succeed({ timeline }) } })
+    await expect.element(page.getByTestId('entries-workspace')).toBeVisible()
+    await expect.element(dock).not.toBeInTheDocument()
+  },
+)
+
 describe('where filing is shut', () => {
   const shut = (reason: string) => ({ state: 'blocked' as const, reason })
   const filing = (reason: string) => ({

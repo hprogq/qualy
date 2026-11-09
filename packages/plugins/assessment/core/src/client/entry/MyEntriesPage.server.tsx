@@ -19,6 +19,7 @@ export default async function MyEntries({
   if (batchId === undefined) return <MyEntriesPage />
   const batch = { params: { batchId } }
   const handed = await answersOf([
+    keyed('getTimeline', batch, (client) => client.assessment.getTimeline(batch)),
     keyed('listItems', batch, (client) => client.assessment.listItems(batch)),
     keyed('listScoreGroups', batch, (client) => client.assessment.listScoreGroups(batch)),
     keyed('getMyResult', batch, (client) => client.assessment.getMyResult(batch)),

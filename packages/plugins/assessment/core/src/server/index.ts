@@ -341,6 +341,7 @@ export interface TimelineStage extends TimelineEntry {
    * stage's profile, because review work is never scoped (phase/gate.ts).
    */
   readonly reviewing: boolean
+  readonly submitting: boolean
   readonly scope: {
     readonly items: readonly { readonly id: string; readonly title: string }[] | null
     readonly participantsLimited: boolean
@@ -5416,9 +5417,11 @@ export const make = Effect.fn('Assessment.make')(function* () {
       const profiles = new Map(plan.map((phase) => [phase.id, phase.permissionProfile]))
       return stages.map((stage): TimelineStage => {
         const named = itemsOfPhase.get(stage.phaseId)
+        const profile = profiles.get(stage.phaseId) ?? []
         return {
           ...stage,
-          reviewing: (profiles.get(stage.phaseId) ?? []).includes('assessment.review.process'),
+          reviewing: profile.includes('assessment.review.process'),
+          submitting: profile.includes('assessment.entry.submit'),
           scope: {
             items:
               named === undefined
@@ -7343,6 +7346,7 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
               at: 'at' in entry.entry ? isoOf(entry.entry.at) : null,
             },
             reviewing: entry.reviewing,
+            submitting: entry.submitting,
             scope: entry.scope,
           })),
         }

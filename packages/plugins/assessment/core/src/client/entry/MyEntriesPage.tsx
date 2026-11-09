@@ -23,6 +23,7 @@ import { useLingering } from '@qualy/ui/use-lingering'
 import { assessmentApi } from '../api.ts'
 import { useBatchLive } from '../live.ts'
 import { useMyEntriesQuery } from './my-entries.ts'
+import { SubmissionDock } from './SubmissionDock.tsx'
 
 import { BatchScreen } from '../batch/BatchScreen.tsx'
 import { AppealDialog } from './AppealDialog.tsx'
@@ -32,7 +33,7 @@ import { EntrySheet } from './EntrySheet.tsx'
 import { MissingClaimSheet } from './MissingClaimSheet.tsx'
 import { useMarkEntryRead, useOwnClaimActs, useOwnFailure } from './own-acts.ts'
 import { standingRows } from './standing.ts'
-import { type EntryDto, type FilingGateDto, type ItemDto } from './model.ts'
+import { opensTo, type EntryDto, type FilingGateDto, type ItemDto } from './model.ts'
 import { EntriesWorkspace } from './workspace/EntriesWorkspace.tsx'
 import { WorkspaceSkeleton } from './workspace/WorkspaceSkeleton.tsx'
 import { StandingNotice } from './workspace/StandingNotice.tsx'
@@ -55,6 +56,7 @@ const NAMED = 3
 
 const styles = stylex.create({
   fill: {
+    position: 'relative',
     display: 'flex',
     minHeight: 0,
     flexGrow: 1,
@@ -242,6 +244,15 @@ function Body({
   // the owner's acts from the list and the drawer, said the way every page
   // with the drawer says them
   const questions = useMemo(() => (items.data?.items ?? []) as readonly ItemDto[], [items.data])
+  const submitItems = questions
+    .filter(
+      (item) =>
+        item.status === 'active' &&
+        item.itemType !== 'constant' &&
+        opensTo(item, 'participant') &&
+        gates.get(item.id)?.submit.state === 'available',
+    )
+    .map((item) => item.id)
   const acts = useOwnClaimActs({ items: questions, entries, materialRange })
   const sayFailure = useOwnFailure({ items: questions, entries, materialRange })
 
@@ -321,6 +332,7 @@ function Body({
     () => new Map(rows.flatMap((row) => (row.item === undefined ? [] : [[row.id, row] as const]))),
     [rows],
   )
+  const focusedSubmission = itemById.get(open)?.item
   const written =
     filing === '' || filing === 'new' ? null : (entries.find((one) => one.id === filing) ?? null)
   const writingRow =
@@ -464,6 +476,15 @@ function Body({
           }
           unreadEntries={unreadEntries}
           fit="parent"
+        />
+      )}
+
+      {!closed && plan.data !== undefined && (
+        <SubmissionDock
+          key={batchId}
+          stages={plan.data.timeline}
+          itemIds={focusedSubmission ? (submitItems.includes(open) ? [open] : []) : submitItems}
+          itemTitle={focusedSubmission?.title}
         />
       )}
 

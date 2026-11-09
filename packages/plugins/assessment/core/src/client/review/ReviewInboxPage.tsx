@@ -29,6 +29,7 @@ import { useBatchLive } from '../live.ts'
 
 import { BatchScreen } from '../batch/BatchScreen.tsx'
 import { AwaitingSection } from './AwaitingSection.tsx'
+import { ReviewDock } from './ReviewDock.tsx'
 import { useAwaitingQuery, useQueueRefresh, useReviewQueueQuery } from './queue.ts'
 import { queueRequestOf, viewOf, type View } from './inbox-reads.ts'
 import { useDraftSweep } from './use-draft.ts'
@@ -641,6 +642,7 @@ function QueueBody({
           </QueueBands>
         )}
       </div>
+      <ReviewDock batchId={batchId} />
     </AsyncSection>
   )
 }

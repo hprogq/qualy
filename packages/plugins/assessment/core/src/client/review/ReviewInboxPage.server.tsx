@@ -24,7 +24,9 @@ export default async function ReviewInbox({
   }
   const queue = queueReadOf(batchId, queueRequestOf(queuePlaceOf(renderRequest().url.searchParams)))
   const awaiting = awaitingReadOf(batchId)
+  const plan = { params: { batchId } }
   const handed = await answersOf([
+    keyed('getTimeline', plan, (client) => client.assessment.getTimeline(plan)),
     keyed('listReviewInbox', queue, (client) => client.assessment.listReviewInbox(queue)),
     keyed('listAwaitingSupplements', awaiting, (client) =>
       client.assessment.listAwaitingSupplements(awaiting),

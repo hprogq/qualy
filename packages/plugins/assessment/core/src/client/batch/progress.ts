@@ -121,14 +121,11 @@ export function progressOf(timeline: readonly TimelineLike[], now: number): Prog
  * inside the last one. A countdown that wears the same colour at four weeks
  * and at four minutes is a countdown nobody reads twice.
  */
+export const countdownTone = (remaining: number): 'calm' | 'soon' | 'urgent' =>
+  remaining < HOUR ? 'urgent' : remaining < 3 * HOUR ? 'soon' : 'calm'
+
 export const toneOf = (progress: Progress): 'calm' | 'soon' | 'urgent' =>
-  progress.kind !== 'until'
-    ? 'calm'
-    : progress.remaining < HOUR
-      ? 'urgent'
-      : progress.remaining < 3 * HOUR
-        ? 'soon'
-        : 'calm'
+  progress.kind === 'until' ? countdownTone(progress.remaining) : 'calm'
 
 /**
  * Everything a reader could see of a progress, as one string.
