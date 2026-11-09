@@ -1848,6 +1848,11 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
         search: Schema.optional(boundedText(200)),
         groupPage: Schema.optional(Schema.String),
         groupOrder: Schema.optional(Schema.Literal('largest')),
+        /**
+         * With no item or person named, each group on the page brings its
+         * oldest few filings instead of the first group bringing all of its.
+         */
+        layout: Schema.optional(Schema.Literal('overview')),
         focus: Schema.optional(uuidInput),
         exclude: Schema.optional(idListUpTo(100)),
       }),

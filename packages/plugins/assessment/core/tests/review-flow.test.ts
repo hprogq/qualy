@@ -793,6 +793,53 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
     })
   })
 
+  it('reads a grouped queue as an overview of each group\u2019s oldest filings', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('rv-overview')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f, { profile: REVIEW_OPEN })
+          yield* runSql(
+            sql`update assessment_items set max_entries = 30 where tenant_id = ${f.t} and id = ${g.item.id}`,
+          )
+          const many: { instanceId: string }[] = []
+          for (let index = 0; index < 5; index += 1) many.push(yield* submitted(f, g, g.p1, f.s1))
+          const other = yield* submitted(f, g, g.p2, f.s2)
+          const reviewer = f.principal(f.reviewer)
+          const overview = yield* assessment.listReviewInbox(
+            f.t,
+            { batchId: g.batch.id, view: 'person', layout: 'overview', limit: '10' },
+            reviewer,
+          )
+          const named = yield* assessment.listReviewInbox(
+            f.t,
+            {
+              batchId: g.batch.id,
+              view: 'person',
+              layout: 'overview',
+              person: g.p1,
+              limit: '10',
+            },
+            reviewer,
+          )
+          return { many, other, overview, named, p1: g.p1 }
+        }),
+      ),
+    )
+    // nothing named: no group is open, and every group brings its oldest three
+    expect(result.overview).toMatchObject({ selected: null, filteredTotal: 6, groupTotal: 2 })
+    expect(result.overview.items.map((item) => item.instanceId).sort()).toEqual(
+      [...result.many.slice(0, 3), result.other].map((item) => item.instanceId).sort(),
+    )
+    // a group named is read whole, as without the overview
+    expect(result.named.selected).toBe(result.p1)
+    expect(result.named.items.map((item) => item.instanceId)).toEqual(
+      result.many.map((item) => item.instanceId),
+    )
+  })
+
   it('carries a middle rung\u2019s objection up the ladder, with the opinion on record', async () => {
     const result = ok(
       await run(

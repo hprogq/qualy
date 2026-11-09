@@ -16,9 +16,18 @@ export interface InboxQuery {
   search?: string
   groupPage: number
   groupOrder?: 'largest'
+  /**
+   * With no group named, read a grouped queue as an overview: the oldest
+   * OVERVIEW_ROWS filings of every group on the page, rather than all of
+   * the first group's.
+   */
+  overview?: boolean
   focus?: string
   exclude?: readonly string[]
 }
+
+/** how many of each group's filings an overview carries */
+export const OVERVIEW_ROWS = 3
 
 export interface QueueGroup {
   key: string
@@ -207,11 +216,13 @@ export const inboxNumberedPage = (input: InboxQuery) =>
           oldest: new Date(row.oldest).toISOString(),
         }))
       : []
-    const selected = grouped
-      ? selectedPosition === undefined
-        ? groups[0]?.key
-        : requested
-      : undefined
+    const overview = grouped && input.overview === true && requested === undefined
+    const selected =
+      grouped && !overview
+        ? selectedPosition === undefined
+          ? groups[0]?.key
+          : requested
+        : undefined
     let scoped = filtered
     // A queue of at most three filings is shown whole; larger queues fetch only the open group.
     if (grouped && filteredTotal > 3 && selected !== undefined)
@@ -236,12 +247,35 @@ export const inboxNumberedPage = (input: InboxQuery) =>
       input.limit,
       total,
     )
-    const rows = await scoped
-      .orderBy('ri.createdAt')
-      .orderBy('ri.id')
-      .offset(window.offset)
-      .limit(input.limit)
-      .execute()
+    const rows = overview
+      ? groups.length === 0
+        ? []
+        : await k
+            .selectFrom(
+              scoped
+                .where(
+                  person ? 'bp.id' : 'e.itemId',
+                  'in',
+                  groups.map((group) => group.key),
+                )
+                .select(
+                  sql<string>`row_number() over (partition by ${groupKey} order by ri.created_at, ri.id)`.as(
+                    'groupRank',
+                  ),
+                )
+                .as('ranked'),
+            )
+            .selectAll()
+            .where(sql<boolean>`"groupRank" <= ${OVERVIEW_ROWS}`)
+            .orderBy('submittedMs')
+            .orderBy('instanceId')
+            .execute()
+      : await scoped
+          .orderBy('ri.createdAt')
+          .orderBy('ri.id')
+          .offset(window.offset)
+          .limit(input.limit)
+          .execute()
     const previous =
       before === undefined
         ? undefined

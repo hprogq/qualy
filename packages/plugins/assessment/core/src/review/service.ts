@@ -532,6 +532,7 @@ export interface ReviewMethods {
       search?: string
       groupPage?: string
       groupOrder?: 'largest'
+      layout?: 'overview'
       focus?: string
       exclude?: readonly string[]
     },
@@ -1100,6 +1101,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
               batchIds: open,
               page: pageNumber(page.page),
               groupPage: pageNumber(page.groupPage),
+              overview: page.layout === 'overview',
               limit,
             } satisfies InboxQuery),
             { isolation: 'repeatable read', readOnly: true },

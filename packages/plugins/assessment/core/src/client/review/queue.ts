@@ -15,6 +15,7 @@ export type QueueRequest = {
   search?: string
   groupPage?: string
   groupOrder?: 'largest'
+  layout?: 'overview'
   focus?: string
   exclude?: readonly string[]
 }
