@@ -25,6 +25,7 @@ import { assessmentApi } from '../api.ts'
 import { BatchFlow } from './BatchFlow.tsx'
 import { BatchZone, useBatchZoneNotice } from './BatchZone.tsx'
 import { BatchProgress } from './BatchProgress.tsx'
+import { batchProgressControl } from './countdown.stylex.ts'
 import { BatchSwitcher } from './BatchSwitcher.tsx'
 import { useBatchAbsence } from './absence.ts'
 import { batchWorkspaceCapabilities } from './capabilities.ts'
@@ -209,7 +210,7 @@ const styles = stylex.create({
     borderWidth: 0,
     borderRadius: tokens.radiusMd,
     backgroundColor: {
-      default: 'transparent',
+      default: tokens.background,
       ':hover': tokens.surfaceMuted,
       ':focus-visible': tokens.surfaceMuted,
     },
@@ -392,7 +393,7 @@ export default function BatchContextBar() {
                 aria-haspopup="dialog"
                 title={m.flow_view()}
                 onClick={() => setFlowOpen(true)}
-                {...stylex.props(styles.stageKey)}
+                {...stylex.props(styles.stageKey, batchProgressControl)}
               >
                 <BatchZone zone={batch.timezone}>
                   <BatchProgress context="bar" timeline={stages} xstyle={styles.progressText} />

@@ -1,6 +1,5 @@
 import { formatDateTime, useLocale } from '@qualy/web-i18n'
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
-import { flushSync } from 'react-dom'
+import { useEffect, useRef, useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { AtWidth } from '@qualy/ui/at-width'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
@@ -8,6 +7,7 @@ import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { Badge } from '@qualy/ui/badge'
 import { Ticker } from '@qualy/ui/ticker'
 import { useIsMobile } from '@qualy/ui/use-mobile'
+import { VisuallyHidden } from '@qualy/ui/visually-hidden'
 import { useDocumentNow } from '@qualy/web-runtime'
 
 import { useBatchZone } from './zone.ts'
@@ -23,7 +23,7 @@ import {
 } from './progress.ts'
 import { type Message } from '@qualy/i18n-contract'
 import * as m from '#messages'
-import { countdownColors } from './countdown.stylex.ts'
+import { batchProgressControl, countdownColors } from './countdown.stylex.ts'
 
 // Where a batch is right now, in one line: the stage it is in, and how long
 // until the next one - or, when nothing follows it yet, how long it has been
@@ -40,11 +40,6 @@ import { countdownColors } from './countdown.stylex.ts'
 // only says where it has got to, so it is sized and coloured to be read after
 // everything else - the colour arrives when the time does, not before.
 
-// it breathes only once the time is short: an animation that never stops is
-// decoration, and decoration is what people stop seeing
-const breathe = stylex.keyframes({
-  '50%': { opacity: 0.5 },
-})
 const CONTEXT_LINE_HEIGHT = 28
 const RING_SIZE = 12
 const CLOCK_GAP = 6
@@ -96,20 +91,6 @@ const styles = stylex.create({
     fontWeight: 500,
     color: tokens.foreground,
   },
-  breath: {
-    position: 'absolute',
-    inset: 0,
-    display: {
-      default: 'block',
-      '@media (prefers-reduced-motion: reduce)': 'none',
-    },
-    borderRadius: '9999px',
-    backgroundColor: `color-mix(in oklab, ${tokens.foreground} 10%, transparent)`,
-    animationName: breathe,
-    animationDuration: '2.8s',
-    animationTimingFunction: 'cubic-bezier(0.4, 0, 0.6, 1)',
-    animationIterationCount: 'infinite',
-  },
   stageName: {
     position: 'relative',
     display: 'block',
@@ -131,62 +112,69 @@ const styles = stylex.create({
     gap: CLOCK_GAP,
     fontWeight: 500,
   },
-  // Until the available width has been read, let the stage and separator
-  // wrap out of the painted line as a pair. The time always goes first.
+  // Each candidate is laid out by CSS, including in the server HTML.
+  // The zero-width strut owns the first line. A candidate too wide to fit
+  // starts below that line and is clipped in its entirety. A fitting row
+  // covers the simpler rows under it, on the same ground as the control.
   contextLine: {
-    position: 'relative',
+    display: 'inline-grid',
+    gridTemplateColumns: 'minmax(0, 1fr)',
     height: CONTEXT_LINE_HEIGHT,
+    minWidth: 0,
     maxWidth: '100%',
-    overflow: 'clip',
-    flexDirection: 'row-reverse',
-    flexWrap: 'wrap-reverse',
-    alignContent: 'flex-start',
-    rowGap: 8,
+    isolation: 'isolate',
   },
+  contextLayer: {
+    gridArea: '1 / 1',
+    minWidth: 0,
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignContent: 'start',
+    overflow: 'clip',
+    height: CONTEXT_LINE_HEIGHT,
+  },
+  contextStrut: { flexBasis: 0, flexShrink: 0, height: CONTEXT_LINE_HEIGHT },
+  contextPaint: {
+    display: 'flex',
+    flexGrow: 1,
+    flexShrink: 0,
+    minWidth: 'max-content',
+    height: CONTEXT_LINE_HEIGHT,
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: { default: 12, [breakpoints.phone]: 6 },
+    whiteSpace: 'nowrap',
+    backgroundColor: {
+      default: tokens.background,
+      [stylex.when.ancestor(':is(:hover, :focus-visible)', batchProgressControl)]:
+        tokens.surfaceMuted,
+    },
+    transitionProperty: 'background-color',
+    transitionDuration: '120ms',
+  },
+  contextPaintPlain: { justifyContent: 'flex-start' },
   contextStage: {
     display: 'inline-flex',
     flexShrink: 0,
     alignItems: 'center',
     gap: { default: 12, [breakpoints.phone]: 6 },
   },
-  contextClock: {
+  contextWords: { whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' },
+  contextStart: {
     minWidth: 0,
-    maxWidth: '100%',
-    order: -1,
     height: CONTEXT_LINE_HEIGHT,
-    flexDirection: 'row-reverse',
-    flexWrap: 'wrap-reverse',
-    alignContent: 'flex-start',
     overflow: 'clip',
+    flexWrap: 'wrap-reverse',
+    flexDirection: 'row-reverse',
+    alignContent: 'flex-start',
     rowGap: 8,
   },
-  contextWords: {
+  startTime: {
     display: 'inline-flex',
-    order: -1,
     height: CONTEXT_LINE_HEIGHT,
     alignItems: 'center',
-    flexShrink: 0,
+    order: -1,
     whiteSpace: 'nowrap',
-    fontVariantNumeric: 'tabular-nums',
-  },
-  contextBudget: {
-    position: 'absolute',
-    insetInlineStart: 0,
-    width: '100cqi',
-    height: 0,
-    visibility: 'hidden',
-    pointerEvents: 'none',
-  },
-  contextProbe: {
-    position: 'absolute',
-    insetInlineStart: 0,
-    insetBlockStart: 0,
-    visibility: 'hidden',
-    pointerEvents: 'none',
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'flex-start',
-    width: 'max-content',
   },
   ring: {
     width: RING_SIZE,
@@ -251,22 +239,19 @@ function clockFacts(progress: Clock) {
   }
 }
 
-function StageName({ name, plain, urgent }: { name: string; plain: boolean; urgent: boolean }) {
+function StageName({ name, plain }: { name: string; plain: boolean }) {
   return plain ? (
     <span title={name} {...stylex.props(styles.stagePlain)}>
       {name}
     </span>
   ) : (
     <Badge variant="secondary" className={stylex.props(styles.stageBadge).className}>
-      {urgent && <span aria-hidden {...stylex.props(styles.breath)} />}
       <span title={name} {...stylex.props(styles.stageName)}>
         {name}
       </span>
     </Badge>
   )
 }
-
-type Fit = { form: 'single' | 'full'; stage: boolean; label: boolean; ring: boolean }
 
 function ContextProgress({
   progress,
@@ -283,118 +268,87 @@ function ContextProgress({
   plain: boolean
   xstyle: stylex.StyleXStyles | undefined
 }) {
-  const budget = useRef<HTMLSpanElement>(null)
-  const probes = useRef<HTMLSpanElement>(null)
-  const [fit, setFit] = useState<Fit | null>(null)
-  const lastFit = useRef<Fit | null>(null)
-  const hasRing = progress.kind === 'until' && progress.fraction !== null
-  const label = stage !== null && !plain ? m.batch_currentStage() : null
-  const planned = progress.kind === 'starts' ? m.batch_plannedStart() : null
-
-  // Measurements cannot affect the server render or the initial hydration
-  // render. The probes have the same fonts and chrome as the visible line
-  // and never depend on the choices we make from their widths.
-  useLayoutEffect(() => {
-    const lane = budget.current
-    const probe = probes.current
-    if (!lane || !probe) return
-    const [one, two, name, prefix, start] = Array.from(probe.children)
-    const measure = (resized: boolean) => {
-      const line = lane.parentElement!
-      const control = line.parentElement
-      const padding = !plain && control ? getComputedStyle(control) : null
-      const room =
-        lane.getBoundingClientRect().width -
-        (padding ? parseFloat(padding.paddingLeft) + parseFloat(padding.paddingRight) : 0)
-      const gap = parseFloat(getComputedStyle(line).columnGap)
-      if (room <= 0 || !Number.isFinite(gap)) return
-      const width = (node: Element | undefined) => node?.getBoundingClientRect().width ?? 0
-      const stageWidth = width(name) + gap
-      const showStage = stage !== null && width(one) + stageWidth <= room
-      const stageCost = showStage ? stageWidth : 0
-      const showTwo = full !== null && width(two) + stageCost <= room
-      const used = (showTwo ? width(two) : width(one)) + stageCost
-      const labelCost = showStage ? width(prefix) + LABEL_GAP : width(start) + CLOCK_GAP
-      const showLabel = showStage
-        ? label !== null && used + labelCost <= room
-        : planned !== null && used + labelCost <= room
-      const ring = hasRing && used + (showLabel ? labelCost : 0) + RING_SIZE + CLOCK_GAP <= room
-      const next: Fit = {
-        form: showTwo ? 'full' : 'single',
-        stage: showStage,
-        label: showLabel,
-        ring,
-      }
-      const before = lastFit.current
-      if (
-        before !== null &&
-        before.form === next.form &&
-        before.stage === next.stage &&
-        before.label === next.label &&
-        before.ring === next.ring
-      )
-        return
-      lastFit.current = next
-      // A resize can invalidate a previously visible two-unit string.
-      // Commit before the observer's paint, not one frame after the clip.
-      if (resized) flushSync(() => setFit(next))
-      else setFit(next)
-    }
-    measure(false)
-    const observer = new ResizeObserver(() => measure(true))
-    observer.observe(lane)
-    for (const child of probe.children) observer.observe(child)
-    return () => observer.disconnect()
-  }, [stage, primary, full, label, planned, hasRing, plain])
-
-  const tone = toneOf(progress)
-  const stagePart = (prefix: ReactNode, urgent: boolean) =>
-    stage !== null && (
-      <span data-slot="context-stage" {...stylex.props(styles.contextStage)}>
-        <span {...stylex.props(styles.stageSeat)}>
-          {prefix}
-          <StageName name={stage} plain={plain} urgent={urgent} />
-        </span>
-        <span aria-hidden {...stylex.props(styles.rule)} />
-      </span>
-    )
-  const words = fit?.form === 'full' ? (full ?? primary) : primary
-  return (
-    <span {...stylex.props(styles.root, styles.contextLine, xstyle)}>
-      <span ref={budget} aria-hidden {...stylex.props(styles.contextBudget)} />
-      <span ref={probes} aria-hidden {...stylex.props(styles.contextProbe)}>
-        <span {...stylex.props(styles.contextWords, styles.clock)}>{primary}</span>
-        <span {...stylex.props(styles.contextWords, styles.clock)}>{full}</span>
-        <span>{stagePart(null, false)}</span>
-        <span {...stylex.props(styles.stageLabel)}>{label}</span>
-        <span {...stylex.props(styles.clock, styles.plannedLabel)}>{planned}</span>
-      </span>
-      {(fit?.stage ?? true) &&
-        stagePart(
-          fit?.label ? (
-            <span data-slot="current-stage-label" {...stylex.props(styles.stageLabel)}>
-              {label}
-            </span>
-          ) : null,
-          tone === 'urgent',
-        )}
+  if (progress.kind === 'starts') {
+    return (
       <span
         {...clockFacts(progress)}
-        data-form={fit?.form ?? 'single'}
-        {...stylex.props(styles.clock, styles.contextClock, countdownColors[tone])}
-      >
-        {fit?.label && planned && <span {...stylex.props(styles.plannedLabel)}>{planned}</span>}
-        {progress.kind === 'until' && progress.fraction !== null && (fit?.ring ?? true) && (
-          <Ring fraction={progress.fraction} />
+        {...stylex.props(
+          styles.root,
+          styles.clock,
+          styles.contextStart,
+          countdownColors.calm,
+          xstyle,
         )}
-        <span data-slot="context-clock-text" {...stylex.props(styles.contextWords)}>
-          {progress.kind === 'starts' ? (
-            <BatchLocalTime at={progress.at}>{words}</BatchLocalTime>
-          ) : (
-            words
-          )}
+      >
+        <span {...stylex.props(styles.plannedLabel)}>{m.batch_plannedStart()}</span>
+        <span {...stylex.props(styles.startTime)}>
+          <BatchLocalTime at={progress.at}>{primary}</BatchLocalTime>
         </span>
       </span>
+    )
+  }
+
+  const label = stage !== null && !plain ? m.batch_currentStage() : null
+  const fraction = progress.kind === 'until' ? progress.fraction : null
+  const options = [
+    { words: primary, stage: null, label: null, form: 'single' },
+    ...(full === null ? [] : [{ words: full, stage: null, label: null, form: 'full' }]),
+    ...(stage === null
+      ? []
+      : [
+          { words: primary, stage, label: null, form: 'single' },
+          ...(label === null ? [] : [{ words: primary, stage, label, form: 'single' }]),
+          ...(full === null ? [] : [{ words: full, stage, label: null, form: 'full' }]),
+          ...(full === null || label === null ? [] : [{ words: full, stage, label, form: 'full' }]),
+        ]),
+  ]
+  const rows = options.flatMap((option) =>
+    fraction === null
+      ? [{ ...option, ring: false }]
+      : [
+          { ...option, ring: false },
+          { ...option, ring: true },
+        ],
+  )
+  return (
+    <span {...clockFacts(progress)} {...stylex.props(styles.contextLine, xstyle)}>
+      <VisuallyHidden>
+        {stage === null ? (full ?? primary) : `${stage} · ${full ?? primary}`}
+      </VisuallyHidden>
+      {rows.map((row) => (
+        <span
+          key={`${row.form}:${String(row.stage !== null)}:${String(row.label !== null)}:${String(row.ring)}`}
+          aria-hidden
+          {...stylex.props(styles.contextLayer)}
+        >
+          <span {...stylex.props(styles.contextStrut)} />
+          <span
+            data-slot="context-clock-row"
+            data-form={row.form}
+            {...stylex.props(styles.contextPaint, plain && styles.contextPaintPlain)}
+          >
+            {row.stage !== null && (
+              <span data-slot="context-stage" {...stylex.props(styles.contextStage)}>
+                <span {...stylex.props(styles.stageSeat)}>
+                  {row.label !== null && (
+                    <span data-slot="current-stage-label" {...stylex.props(styles.stageLabel)}>
+                      {row.label}
+                    </span>
+                  )}
+                  <StageName name={row.stage} plain={plain} />
+                </span>
+                <span {...stylex.props(styles.rule)} />
+              </span>
+            )}
+            <span {...stylex.props(styles.clock, countdownColors[toneOf(progress)])}>
+              {row.ring && fraction !== null && <Ring fraction={fraction} />}
+              <span data-slot="context-clock-text" {...stylex.props(styles.contextWords)}>
+                {row.words}
+              </span>
+            </span>
+          </span>
+        </span>
+      ))}
     </span>
   )
 }

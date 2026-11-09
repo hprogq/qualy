@@ -1513,73 +1513,68 @@ const running = (untilNext: number) => [
   },
 ]
 
+/** Rows below the clipping line do not paint. The last fitting row wins. */
+function paintedClock(clock: Element): HTMLElement {
+  const top = clock.getBoundingClientRect().top
+  return [...clock.querySelectorAll<HTMLElement>('[data-slot="context-clock-row"]')].findLast(
+    (row) => Math.abs(row.getBoundingClientRect().top - top) < 1,
+  )!
+}
+
 describe('the countdown', () => {
-  it('hydrates complete clock text and adds details in width order without animating the text', async () => {
+  it('paints the same complete clock at wide and narrow widths before and after hydration', async () => {
     await commands.emulateMedia({ reducedMotion: 'no-preference' })
     const html = document.documentElement
     const locale = html.getAttribute('data-locale')
     html.setAttribute('data-locale', 'zh-CN')
     const host = document.createElement('div')
-    host.style.containerType = 'inline-size'
     host.style.fontSize = '14px'
-    host.style.width = '82px'
     document.body.append(host)
-    const at = Date.now()
-    const content = (
-      <UiProvider scheme="light">
-        <DocumentNow at={at}>
-          <BatchProgress context="bar" timeline={running(27 * HOUR + 30 * 60_000)} />
-        </DocumentNow>
-      </UiProvider>
-    )
     const errors: unknown[] = []
     let root: ReturnType<typeof hydrateRoot> | undefined
     try {
+      const now = Date.now()
+      const content = (
+        <UiProvider scheme="light">
+          <DocumentNow at={now}>
+            <BatchProgress context="bar" timeline={running(27 * HOUR + 30 * 60_000)} />
+          </DocumentNow>
+        </UiProvider>
+      )
       host.innerHTML = renderToString(content)
       const clock = host.querySelector<HTMLElement>('[data-testid="stage-clock"]')!
-      const text = clock.querySelector<HTMLElement>('[data-slot="context-clock-text"]')!
-      const line = clock.parentElement!
-      const initialHeight = line.getBoundingClientRect().height
-      const stage = () => line.querySelector(':scope > [data-slot="context-stage"]')
-      const label = () => stage()?.querySelector('[data-slot="current-stage-label"]') ?? null
-      const ring = () => clock.querySelector('svg')
-      const assertClock = () => {
+      const sample = (width: number) => {
+        host.style.width = `${width}px`
+        const row = paintedClock(clock)
+        const text = row.querySelector<HTMLElement>('[data-slot="context-clock-text"]')!
         const bounds = text.getBoundingClientRect()
-        const clockBounds = clock.getBoundingClientRect()
-        expect(bounds.left).toBeGreaterThanOrEqual(clockBounds.left - 1)
-        expect(bounds.right).toBeLessThanOrEqual(clockBounds.right + 1)
-        expect(text.textContent).toContain('剩余 1 天')
-        expect(line.getBoundingClientRect().height).toBe(initialHeight)
+        const lane = clock.getBoundingClientRect()
+        expect(bounds.left).toBeGreaterThanOrEqual(lane.left - 1)
+        expect(bounds.right).toBeLessThanOrEqual(lane.right + 1)
         expect(clock.getAnimations({ subtree: true })).toHaveLength(0)
+        return [
+          row.dataset['form'],
+          row.querySelector('[data-slot="context-stage"]') !== null,
+          row.querySelector('[data-slot="current-stage-label"]') !== null,
+          row.querySelector('svg') !== null,
+          text.textContent,
+        ]
       }
-
-      expect(text.textContent).toBe('剩余 1 天')
-      assertClock()
+      const widths = [58, 82, 160, 215, 320]
+      const before = widths.map(sample)
+      expect(before).toEqual([
+        ['single', false, false, false, '剩余 1 天'],
+        ['single', false, false, true, '剩余 1 天'],
+        ['single', true, false, false, '剩余 1 天'],
+        ['full', true, false, false, '剩余 1 天 3 小时'],
+        ['full', true, true, true, '剩余 1 天 3 小时'],
+      ])
       root = hydrateRoot(host, content, { onRecoverableError: (error) => errors.push(error) })
-      await expect.poll(stage).toBeNull()
-      expect(ring()).not.toBeNull()
-      assertClock()
-
-      host.style.width = '58px'
-      await expect.poll(ring).toBeNull()
-      assertClock()
-
-      host.style.width = '160px'
-      await expect.poll(() => stage()?.textContent).toBe('正式填报')
-      expect(clock.dataset['form']).toBe('single')
-      expect(label()).toBeNull()
-      assertClock()
-
-      host.style.width = '215px'
-      await expect.poll(() => clock.dataset['form']).toBe('full')
-      expect(stage()?.textContent).toBe('正式填报')
-      expect(label()).toBeNull()
-      assertClock()
-
-      host.style.width = '320px'
-      await expect.poll(() => label()?.textContent).toBe('当前阶段')
-      expect(ring()).not.toBeNull()
-      assertClock()
+      await new Promise<void>((paint) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => paint())),
+      )
+      expect(widths.map(sample)).toEqual(before)
+      expect(host.querySelector('[data-testid="stage-clock"]')).toBe(clock)
       expect(errors).toEqual([])
     } finally {
       root?.unmount()
@@ -1627,17 +1622,16 @@ describe('the countdown', () => {
           )
           const root = context.element()
           const ticker = clock.element()
-          const lane = ticker.parentElement!.getBoundingClientRect()
-          const time = ticker.getBoundingClientRect()
-          const phaseGroup = ticker.parentElement!.querySelector(
-            ':scope > [data-slot="context-stage"]',
-          )
+          const lane = ticker.getBoundingClientRect()
+          const row = paintedClock(ticker)
+          const time = row.getBoundingClientRect()
+          const phaseGroup = row.querySelector('[data-slot="context-stage"]')
           const titleBounds = title.element().getBoundingClientRect()
           expect(root.scrollWidth).toBeLessThanOrEqual(root.clientWidth + 1)
           expect(titleBounds.width).toBeGreaterThan(60)
           expect(time.right).toBeLessThanOrEqual(lane.right + 1)
           expect(time.width, `${width}px`).toBeGreaterThan(50)
-          const words = ticker.querySelector<HTMLElement>('[data-slot="context-clock-text"]')!
+          const words = row.querySelector<HTMLElement>('[data-slot="context-clock-text"]')!
           const wordBox = words.getBoundingClientRect()
           expect(wordBox.left).toBeGreaterThanOrEqual(time.left - 1)
           expect(wordBox.right).toBeLessThanOrEqual(time.right + 1)
@@ -1794,9 +1788,7 @@ describe('the countdown', () => {
     )
     const clock = page.getByTestId('stage-clock')
     await expect.element(clock).toHaveAttribute('data-unit', 'minutes')
-    const phase = clock
-      .element()
-      .parentElement!.querySelector(':scope > [data-slot="context-stage"]')
+    const phase = paintedClock(clock.element()).querySelector('[data-slot="context-stage"]')
     expect(phase?.textContent).toBe('正式填报')
     expect(phase?.querySelector('[data-slot="badge"]')).toBeNull()
     expect(phase?.querySelector('[data-slot="current-stage-label"]')).toBeNull()
