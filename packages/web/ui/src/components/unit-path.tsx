@@ -21,8 +21,8 @@ import { Button } from './button.tsx'
 // The steps are laid out in reverse and allowed to wrap onto lines that are
 // clipped away, which is how "as many whole steps as fit, counted from the
 // end" is said without measuring every name: whatever does not fit the first
-// line is simply not on it. Whether anything wrapped is the one thing read
-// back from the layout, to decide whether the mark is shown. The reverse is
+// line is simply not on it. The layout is read back to decide whether the
+// mark is needed, without counting the mark against itself. The reverse is
 // the layout's alone: the steps stand in the document root first, so a
 // screen reader and the tab key go down the chain the way the eye reads it.
 //
@@ -37,13 +37,14 @@ import { Button } from './button.tsx'
 // the layout it was measured from.
 
 const LINE = 20
+const PATH_GAP = 4
 
 const styles = stylex.create({
   seat: {
     display: 'flex',
     minWidth: 0,
     alignItems: 'center',
-    gap: 4,
+    gap: PATH_GAP,
     fontSize: 12.5,
     lineHeight: `${String(LINE)}px`,
   },
@@ -55,7 +56,7 @@ const styles = stylex.create({
     flexDirection: 'row-reverse',
     flexWrap: 'wrap',
     justifyContent: 'flex-end',
-    columnGap: 4,
+    columnGap: PATH_GAP,
     overflow: 'hidden',
   },
   step: {
@@ -207,6 +208,8 @@ export interface UnitPathProps {
    * said, beside facts said just as quietly.
    */
   emphasis?: 'last' | 'none'
+  /** Mark the last step as the current page when the path is a breadcrumb. */
+  currentPage?: boolean
   /**
    * The whole chain, a press away. The path becomes one control that opens
    * every level on a line of its own, the unit itself marked. `label` names
@@ -229,6 +232,7 @@ export function UnitPath({
   onPick,
   pickLabel,
   emphasis,
+  currentPage,
   chain,
   xstyle,
 }: UnitPathProps) {
@@ -243,6 +247,7 @@ export function UnitPath({
       onPick={onPick}
       pickLabel={pickLabel}
       emphasis={emphasis ?? (onPick === undefined ? 'none' : 'last')}
+      currentPage={currentPage}
       xstyle={xstyle}
     />
   )
@@ -254,6 +259,7 @@ function PathLine({
   onPick,
   pickLabel,
   emphasis,
+  currentPage,
   trail,
   xstyle,
 }: {
@@ -262,28 +268,53 @@ function PathLine({
   onPick: ((index: number) => void) | undefined
   pickLabel: string | undefined
   emphasis: 'last' | 'none'
+  currentPage?: boolean | undefined
   /** what follows the words, kept against the last of them */
   trail?: ReactNode
   xstyle: stylex.StyleXStyles | undefined
 }) {
   const seat = useRef<HTMLSpanElement>(null)
+  const more = useRef<HTMLSpanElement>(null)
   const [clipped, setClipped] = useState(false)
   // how much of a wrapped line is left over past the steps that stay on it
   const [slack, setSlack] = useState(0)
   const whole = steps.join(SEPARATOR)
+  const hasTrail = trail !== undefined
 
   useLayoutEffect(() => {
     const node = seat.current
     if (node === null) return
     const read = () => {
       const wrapped = node.scrollHeight > node.clientHeight + 1
-      setClipped(wrapped)
       if (!wrapped) {
+        setClipped(false)
         setSlack(0)
         return
       }
       const line = node.getBoundingClientRect()
-      const kept = [...node.children]
+      const steps = [...node.children]
+      // After widening, the path may fit only once the omission mark is
+      // gone. Count the whole line against the room it would then have.
+      const mark = more.current
+      if (mark !== null) {
+        const full = steps.reduce(
+          (width, step) => {
+            const label = step.lastElementChild!
+            return (
+              width + step.getBoundingClientRect().width + label.scrollWidth - label.clientWidth
+            )
+          },
+          Math.max(0, steps.length - 1) * PATH_GAP,
+        )
+        if (full <= line.width + mark.getBoundingClientRect().width + PATH_GAP) {
+          setClipped(false)
+          setSlack(0)
+          return
+        }
+      }
+      setClipped(true)
+      if (!hasTrail) return
+      const kept = steps
         .map((step) => step.getBoundingClientRect())
         .filter((box) => box.top < line.bottom - 1)
       const end = Math.max(line.left, ...kept.map((box) => box.right))
@@ -300,7 +331,7 @@ function PathLine({
       watch.disconnect()
       fonts.removeEventListener('loadingdone', read)
     }
-  }, [whole])
+  }, [whole, hasTrail])
 
   const last = steps.length - 1
   return (
@@ -312,7 +343,7 @@ function PathLine({
       data-steps={steps.length}
     >
       {clipped && (
-        <span aria-hidden {...stylex.props(styles.more)}>
+        <span ref={more} aria-hidden {...stylex.props(styles.more)}>
           …
         </span>
       )}
@@ -332,6 +363,7 @@ function PathLine({
             )}
             {onPick === undefined ? (
               <span
+                aria-current={currentPage && index === last ? 'page' : undefined}
                 {...stylex.props(styles.name, emphasis === 'last' && index === last && styles.last)}
               >
                 {name}

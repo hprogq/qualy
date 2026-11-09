@@ -6,7 +6,7 @@ import { AlertCircleIcon, XIcon } from 'lucide-react'
 import { useApiQuery } from '@qualy/web-runtime'
 
 import { Badge } from '@qualy/ui/badge'
-import { Breadcrumb } from '@qualy/ui/breadcrumb'
+import { UnitPath } from '@qualy/ui/unit-path'
 import { Button } from '@qualy/ui/button'
 import { Swap } from '@qualy/ui/reveal'
 import { ScrollArea } from '@qualy/ui/scroll-area'
@@ -122,9 +122,7 @@ const styles = stylex.create({
     fontVariantNumeric: 'tabular-nums',
   },
   headAmountValue: { fontSize: 22, lineHeight: 1.15, fontWeight: 600, letterSpacing: '-0.02em' },
-  crumbHere: {
-    color: tokens.foreground,
-  },
+  breadcrumb: { fontSize: 12 },
   head: {
     display: 'flex',
     flexShrink: 0,
@@ -546,14 +544,12 @@ export function EntryDetail({
         {phone && <span aria-hidden data-sheet-grab="" {...stylex.props(styles.grab)} />}
         <div {...stylex.props(styles.head)}>
           <div {...stylex.props(styles.headWords)}>
-            <Breadcrumb>
-              {trail.map((name, index) => (
-                <span key={index}>{name}</span>
-              ))}
-              <span aria-current="page" {...stylex.props(styles.crumbHere)}>
-                {item.title}
-              </span>
-            </Breadcrumb>
+            <UnitPath
+              steps={[...trail, item.title]}
+              emphasis="last"
+              currentPage
+              xstyle={styles.breadcrumb}
+            />
             {/* the claim by its own identity line, field names set apart as
                 its row in the list sets them */}
             <SheetTitle className={stylex.props(styles.sheetTitle).className}>

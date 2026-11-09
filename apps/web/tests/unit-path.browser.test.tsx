@@ -84,6 +84,22 @@ describe('a unit path', () => {
     for (const index of STEPS.keys()) expect(shown(index)).toBe(true)
   })
 
+  it('unfolds the whole path as soon as it fits again', async () => {
+    await mount(<UnitPath steps={STEPS} />, 900)
+    const path = page.getByTestId('unit-path')
+    await expect.element(path).toHaveAttribute('data-clipped', 'false')
+    const steps = path.element().querySelectorAll('[data-path-step]')
+    const full =
+      steps[steps.length - 1]!.getBoundingClientRect().right -
+      steps[0]!.getBoundingClientRect().left
+    const frame = path.element().parentElement!
+    frame.style.width = '200px'
+    await expect.element(path).toHaveAttribute('data-clipped', 'true')
+    frame.style.width = `${Math.ceil(full + 1)}px`
+    await expect.element(path).toHaveAttribute('data-clipped', 'false')
+    for (const index of STEPS.keys()) expect(shown(index)).toBe(true)
+  })
+
   it('offers each step as a way in, by its place on the path', async () => {
     const picked = vi.fn()
     await mount(<UnitPath steps={STEPS} onPick={picked} pickLabel="查看" />, 900)

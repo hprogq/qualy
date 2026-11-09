@@ -1354,6 +1354,31 @@ describe('an address naming a claim', () => {
     expect(missing()).toBeNull()
   })
 
+  it('keeps the end of a long drawer breadcrumb on one line', async () => {
+    await page.viewport(390, 844)
+    await workspace({
+      route: `${base}?open=${TAIL}&detail=${entryId(1)}`,
+      entries: [claim(1, TAIL, 'approved')],
+      groups: [
+        group(ROOT, null, '综合素质测评', 0),
+        group(BAND_B, ROOT, '大学生学业发展与综合能力评价', 0),
+        group(SUB_B, BAND_B, '竞赛申报与核验', 0),
+        group(DEEP_B, SUB_B, '学院认定', 0),
+      ],
+    })
+    const path = page.getByRole('dialog').getByTestId('unit-path')
+    await expect.element(path).toHaveAttribute('data-clipped', 'true')
+    const line = path.element().getBoundingClientRect()
+    const visible = [...path.element().querySelectorAll('[data-path-step]')].filter(
+      (step) => step.getBoundingClientRect().top < line.bottom,
+    )
+    expect(visible.length).toBeGreaterThan(1)
+    expect(visible.length).toBeLessThan(path.element().querySelectorAll('[data-path-step]').length)
+    expect(new Set(visible.map((step) => step.getBoundingClientRect().top)).size).toBe(1)
+    expect(visible.at(-1)?.querySelector('[aria-current="page"]')?.textContent).toBe('学科竞赛获奖')
+    expect(path.element().textContent?.startsWith('…')).toBe(true)
+  })
+
   // A claim of the reader's is theirs to open whatever question the address
   // names beside it, or none: its form opens, and the question behind it
   // becomes the one it was filed under.
