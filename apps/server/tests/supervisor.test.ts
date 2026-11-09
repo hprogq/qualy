@@ -264,7 +264,7 @@ describe.runIf(postgresAvailable)('the development supervisor', () => {
 
   it('keeps the running world when a replacement will not compile', async () => {
     start()
-    await until(() => serving().length === 1)
+    await until(() => output.includes('watching for changes'))
     await until(async () => (await answers()) === 200)
     const first = serving()[0]!
 
