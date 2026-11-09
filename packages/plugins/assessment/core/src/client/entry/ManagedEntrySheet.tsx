@@ -77,6 +77,8 @@ export interface RecognitionDto {
   readonly byPanel: boolean
 }
 
+type Intervention = 'return-for-revision' | 'void'
+
 export function ManagedEntrySheet({
   open,
   entry,
@@ -122,13 +124,22 @@ export function ManagedEntrySheet({
   may: { readonly returnForRevision: boolean; readonly withdraw: boolean }
   onClose: () => void
   /** both acts take a reason, and the api refuses an empty one */
-  onIntervene: (kind: 'return-for-revision' | 'void', reason: string) => void
+  onIntervene: (kind: Intervention, reason: string) => void
   /** where the claim came from, as a way to go there: the import it arrived in */
   provenance?: ReactNode
   /** how the claim reads in its list, heading the drawer */
   summary?: EntryLine
 }) {
-  const [asking, setAsking] = useState<'return-for-revision' | 'void' | null>(null)
+  const [intervention, setIntervention] = useState<{
+    kind: Intervention
+    open: boolean
+    session: number
+  }>({ kind: 'void', open: false, session: 0 })
+  const ask = (kind: Intervention) =>
+    setIntervention((current) => ({ kind, open: true, session: current.session + 1 }))
+  // Close the panel without changing its copy or clearing the reason during its exit.
+  const closeIntervention = () => setIntervention((current) => ({ ...current, open: false }))
+  const withdrawing = intervention.kind === 'void'
   const [correcting, setCorrecting] = useState<'reopen' | 'redetermine' | null>(null)
   // a correction offered but not open now carries the server's reason; the
   // same code reads differently on this desk for a question without a route,
@@ -215,7 +226,7 @@ export function ManagedEntrySheet({
                   size="sm"
                   disabled={busy}
                   className={stylex.props(styles.ghostInk).className}
-                  onClick={() => setAsking('void')}
+                  onClick={() => ask('void')}
                 >
                   {m.staff_voidEntry()}
                 </Button>
@@ -227,7 +238,7 @@ export function ManagedEntrySheet({
                   label={m.staff_returnEntry()}
                   blocked={returnBlocked}
                   busy={busy}
-                  onPress={() => setAsking('return-for-revision')}
+                  onPress={() => ask('return-for-revision')}
                 />
               )}
             </>
@@ -238,17 +249,18 @@ export function ManagedEntrySheet({
       {/* the reason is required by the contract, not decorated here: both
           acts are things somebody will have to account for later */}
       <ReasonDialog
-        open={asking !== null}
-        title={(asking === 'void' ? m.staff_voidTitle : m.staff_returnTitle)()}
-        description={(asking === 'void' ? m.staff_voidHint : m.staff_returnHint)()}
-        confirmLabel={(asking === 'void' ? m.staff_voidEntry : m.staff_returnEntry)()}
+        key={intervention.session}
+        open={intervention.open}
+        title={(withdrawing ? m.staff_voidTitle : m.staff_returnTitle)()}
+        description={(withdrawing ? m.staff_voidHint : m.staff_returnHint)()}
+        confirmLabel={(withdrawing ? m.staff_voidEntry : m.staff_returnEntry)()}
         busy={busy}
         onConfirm={(reason) => {
-          const act = asking
-          setAsking(null)
-          if (act !== null) onIntervene(act, reason)
+          if (!intervention.open) return
+          closeIntervention()
+          onIntervene(intervention.kind, reason)
         }}
-        onClose={() => setAsking(null)}
+        onClose={closeIntervention}
       />
       <ReasonDialog
         open={correcting === 'reopen'}

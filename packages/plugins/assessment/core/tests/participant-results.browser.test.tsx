@@ -3,7 +3,7 @@ import WorkspaceShell from '@qualy/plugin-layout-default/client/WorkspaceShell'
 import { useEffect } from 'react'
 import { Route, Routes, useNavigate } from 'react-router'
 import { describe, expect, it, vi } from 'vitest'
-import { page, userEvent } from 'vitest/browser'
+import { commands, page, userEvent } from 'vitest/browser'
 import { Effect, Queue, Stream } from 'effect'
 import zhCN from '../messages/zh-CN.json' with { type: 'json' }
 import { addressNow, apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
@@ -794,7 +794,7 @@ describe('the participant results screen', () => {
     expect(page.getByRole('button', { name: '退回修改' }).elements()).toHaveLength(0)
   })
 
-  it('offers to withdraw a record to a reader who holds the record power', async () => {
+  it('keeps the withdrawal question and reason through its exit', async () => {
     await screen(
       {
         ...recorded,
@@ -805,7 +805,38 @@ describe('the participant results screen', () => {
       },
       `/assessment/batches/${BATCH_ID}/results?participant=${PARTICIPANT_ID}&view=entries&entry=${ENTRY_ID}`,
     )
-    await expect.element(page.getByRole('button', { name: '撤销认定' })).toBeVisible()
+    const withdraw = page.getByRole('button', { name: '撤销认定' })
+    await commands.emulateMedia({ reducedMotion: 'no-preference' })
+    try {
+      await withdraw.click()
+      const dialog = page.getByRole('dialog', { name: zhCN.staff_voidTitle })
+      const field = dialog.getByRole('textbox')
+      await field.fill('认定依据有误')
+      const panel = dialog.element()
+      const copy = () => ({
+        title: panel.querySelector('[data-slot="dialog-title"]')?.textContent,
+        description: panel.querySelector('[data-slot="dialog-description"]')?.textContent,
+        reason: panel.querySelector('textarea')?.value,
+      })
+      const opened = copy()
+      expect(opened.title).toBe(zhCN.staff_voidTitle)
+      const closing: ReturnType<typeof copy>[] = []
+      const watch = new MutationObserver(() => {
+        if (panel.hasAttribute('data-closing')) closing.push(copy())
+      })
+      watch.observe(panel, { attributeFilter: ['data-closing'] })
+      try {
+        await dialog.getByRole('button', { name: 'Close' }).click()
+        await expect.poll(() => panel.isConnected).toBe(false)
+        expect(closing).toEqual([opened])
+      } finally {
+        watch.disconnect()
+      }
+      await withdraw.click()
+      await expect.element(field).toHaveValue('')
+    } finally {
+      await commands.emulateMedia({ reducedMotion: 'reduce' })
+    }
   })
 
   it('writes when a claim came back in the language the page is read in', async () => {
