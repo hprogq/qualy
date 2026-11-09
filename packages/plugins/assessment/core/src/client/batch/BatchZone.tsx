@@ -1,21 +1,12 @@
 import { formatDateTime, useLocale } from '@qualy/web-i18n'
-import { useEffect, useRef, type ReactNode } from 'react'
-import { XIcon } from 'lucide-react'
+import type { ReactNode } from 'react'
 import * as stylex from '@stylexjs/stylex'
-import { toast } from '@qualy/ui/toast'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@qualy/ui/tooltip'
-import * as commonMessages from '@qualy/web-i18n/messages'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 
-import {
-  BatchZoneContext,
-  deviceDiffers,
-  deviceEverDiffers,
-  readableZone,
-  useBatchZone,
-  zoneNameOf,
-} from './zone.ts'
+import { BatchZoneContext, deviceDiffers, readableZone, useBatchZone } from './zone.ts'
 import { useHydrating } from '@qualy/web-runtime'
+import { useZoneLabel } from './zone-label.ts'
 import * as m from '#messages'
 
 // The batch's clock, handed down and said out loud.
@@ -38,41 +29,7 @@ const styles = stylex.create({
     textUnderlineOffset: '0.22em',
   },
   range: { display: 'flex', flexDirection: 'column', gap: 2 },
-  noticeDescription: { color: tokens.foreground },
-  noticeClose: {
-    position: 'absolute',
-    insetBlockStart: 6,
-    insetInlineEnd: 6,
-    display: 'grid',
-    placeItems: 'center',
-    width: 28,
-    height: 28,
-    borderRadius: tokens.radiusMd,
-    color: { default: tokens.mutedForeground, ':hover': tokens.foreground },
-    backgroundColor: { default: 'transparent', ':hover': tokens.hoverSurface },
-    outline: { default: 'none', ':focus-visible': `2px solid ${tokens.focusRing}` },
-    outlineOffset: -2,
-  },
 })
-
-/**
- * The zone said the way its reader names it, with its offset at `at` (now
- * when no moment is named), or nothing outside a batch.
- */
-export function useZoneLabel(
-  zone: string | undefined,
-  at?: number,
-  showOffset = true,
-): { readonly label: string; readonly offset?: string } | null {
-  const locale = useLocale()
-  return zone === undefined ? null : zoneLabelOf(zone, locale, at, showOffset)
-}
-
-function zoneLabelOf(zone: string, locale: string, at?: number, showOffset = true) {
-  const { name, offset } = zoneNameOf(zone, locale, at)
-  if (!showOffset) return { label: name ?? zone }
-  return { label: name === undefined ? offset : m.zone_named({ name, offset }), offset }
-}
 
 /** a moment as a number, or undefined when there is none or it does not parse */
 const momentOf = (at: number | string | null | undefined): number | undefined => {
@@ -184,50 +141,4 @@ export function BatchLocalTime({
       </TooltipContent>
     </Tooltip>
   )
-}
-
-/** A workspace entry, not a section change, can announce a different clock. */
-export function useBatchZoneNotice(batchId: string, storedZone: string | undefined) {
-  const locale = useLocale()
-  const visit = useRef({ batchId, announced: false })
-
-  useEffect(() => {
-    if (visit.current.batchId !== batchId) visit.current = { batchId, announced: false }
-    if (visit.current.announced || storedZone === undefined) return
-
-    let toastId: string | number | undefined
-    // The document mounts the shared toaster in a portal after hydration.
-    // Defer the notice briefly so the portal is ready and quick exits stay quiet.
-    const timer = window.setTimeout(() => {
-      visit.current.announced = true
-      const zone = readableZone(storedZone)
-      const now = Date.now()
-      if (zone === undefined || !deviceEverDiffers(zone, now)) return
-      const { label } = zoneLabelOf(zone, locale, now)
-      toastId = toast.info(m.settings_timezone(), {
-        description: (
-          <span {...stylex.props(styles.noticeDescription)}>{m.zone_away({ zone: label })}</span>
-        ),
-        position: 'bottom-right',
-        duration: 6500,
-        cancel: (
-          <button
-            type="button"
-            aria-label={commonMessages.action_close()}
-            onClick={() => {
-              if (toastId !== undefined) toast.dismiss(toastId)
-            }}
-            {...stylex.props(styles.noticeClose)}
-          >
-            <XIcon size={14} aria-hidden />
-          </button>
-        ),
-        testId: 'batch-zone-notice',
-      })
-    }, 180)
-    return () => {
-      window.clearTimeout(timer)
-      if (toastId !== undefined) toast.dismiss(toastId)
-    }
-  }, [batchId, locale, storedZone])
 }

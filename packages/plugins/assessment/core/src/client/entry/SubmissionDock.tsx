@@ -1,6 +1,7 @@
 import { formatDateTime, useLocale } from '@qualy/web-i18n'
 import { useMemo } from 'react'
-import { DeadlineDock, deadlineWords, useDeadlineNow } from '../batch/DeadlineDock.tsx'
+import { DeadlineDock } from '../batch/DeadlineDock.tsx'
+import { deadlineWords, useDeadlineNow } from '../batch/deadline-clock.ts'
 import { useBatchZone, yearOf } from '../batch/zone.ts'
 import { submissionWindowOf, type SubmissionStage } from './submission-window.ts'
 import * as m from '#messages'
