@@ -138,7 +138,7 @@ function RouteError({ fullscreen = false }: { fullscreen?: boolean }) {
     const Mark = shown.kind === 'offline' ? WifiOffIcon : TriangleAlertIcon
     return (
       <main data-testid="route-error" data-qualy-emergency="">
-        <title>{shown.title} - Qualy</title>
+        <title>{`${shown.title} - Qualy`}</title>
         <style>{emergencyCss}</style>
         <div data-slot="resource-state" data-state={shown.kind}>
           <Mark aria-hidden data-emergency-mark="" width={36} height={36} strokeWidth={1.5} />
@@ -168,14 +168,14 @@ function RouteError({ fullscreen = false }: { fullscreen?: boolean }) {
               {messages.action_goHome()}
             </Link>
           </div>
-          {reference !== undefined && <ProblemReference id={reference} />}
         </div>
+        {reference !== undefined && <ProblemReference id={reference} />}
       </main>
     )
   }
   return (
     <div data-testid="route-error" {...stylex.props(styles.container)}>
-      <title>{shown.title} - Qualy</title>
+      <title>{`${shown.title} - Qualy`}</title>
       <Failure
         {...shown}
         retrying={retrying}

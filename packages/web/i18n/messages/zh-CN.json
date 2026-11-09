@@ -52,7 +52,7 @@
   "browser_unsupportedHint": "请使用新版 Chrome、Edge、Firefox 或 Safari 打开 Qualy。",
   "browser_scriptsOffTitle": "Qualy 需要启用 JavaScript",
   "browser_scriptsOffHint": "请允许此网站运行 JavaScript，然后重新加载页面。",
-  "load_problemId": "问题编号",
+  "load_problemId": "问题编号：",
   "load_copyProblemId": "复制问题编号",
   "load_problemIdCopied": "已复制",
   "load_failedHint": "请重试，问题持续时请联系管理员",

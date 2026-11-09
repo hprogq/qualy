@@ -13,10 +13,9 @@ export const emergencyCss = `
   --error-mark: #969593;
   --error-border: #deddda;
   box-sizing: border-box;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto minmax(min-content, 2fr);
+  justify-items: center;
   width: 100%;
   min-height: 100vh;
   min-height: 100dvh;
@@ -26,8 +25,6 @@ export const emergencyCss = `
   font: 14px/1.5 system-ui, sans-serif;
   text-align: center;
 }
-[data-qualy-emergency]::before, [data-qualy-emergency]::after { content: ""; flex: 1 0 0; }
-[data-qualy-emergency]::after { flex-grow: 2; }
 html[data-mode="dark"] [data-qualy-emergency] {
   --error-foreground: #e9e8e6;
   --error-background: #10100e;
@@ -45,6 +42,7 @@ html[data-mode="dark"] [data-qualy-emergency] {
   }
 }
 [data-qualy-emergency] [data-slot="resource-state"] {
+  grid-row: 2;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -118,8 +116,11 @@ html[data-mode="dark"] [data-qualy-emergency] {
 @media (prefers-reduced-motion: reduce) {
   [data-qualy-emergency] [data-retry-shake], [data-qualy-emergency] [aria-busy="true"] svg { animation: none; }
 }
-[data-qualy-emergency] [data-problem-reference] {
-  margin-top: 8px;
+[data-qualy-emergency] > [data-problem-reference] {
+  grid-row: 3;
+  align-self: end;
+  margin: 24px 0 0;
+  max-width: 100%;
   color: var(--error-muted);
   font-size: 12px;
   overflow-wrap: anywhere;
@@ -138,6 +139,9 @@ html[data-mode="dark"] [data-qualy-emergency] {
 @media (max-width: 479px) {
   [data-qualy-emergency] { padding-inline: 16px; }
   [data-qualy-emergency] [data-emergency-actions] { width: 100%; flex-direction: column; }
+}
+@media (max-height: 420px) {
+  [data-qualy-emergency] { padding-block: 24px; }
 }
 `
 
@@ -163,7 +167,7 @@ export function unavailableDocument(
   return new Response(
     method === 'HEAD'
       ? null
-      : `<!doctype html><html lang="${locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><title>${title} - Qualy</title><style>body{margin:0}${emergencyCss}</style></head><body><main data-qualy-emergency><div data-slot="resource-state"><svg data-emergency-mark aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 4.5 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 4.5a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4m0 4h.01"/></svg><h1>${title}</h1><p>${hint}</p><nav data-emergency-actions><a href="" data-emergency-primary>${retry}</a><a href="/">${home}</a></nav>${reference}</div></main></body></html>`,
+      : `<!doctype html><html lang="${locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><title>${title} - Qualy</title><style>body{margin:0}${emergencyCss}</style></head><body><main data-qualy-emergency><div data-slot="resource-state"><svg data-emergency-mark aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 4.5 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 4.5a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4m0 4h.01"/></svg><h1>${title}</h1><p>${hint}</p><nav data-emergency-actions><a href="" data-emergency-primary>${retry}</a><a href="/">${home}</a></nav></div>${reference}</main></body></html>`,
     {
       status: 503,
       headers: {

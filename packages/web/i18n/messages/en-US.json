@@ -52,7 +52,7 @@
   "browser_unsupportedHint": "Open Qualy in an up-to-date version of Chrome, Edge, Firefox, or Safari.",
   "browser_scriptsOffTitle": "Qualy needs JavaScript",
   "browser_scriptsOffHint": "Enable JavaScript for this site, then reload the page.",
-  "load_problemId": "Problem reference",
+  "load_problemId": "Problem reference:",
   "load_copyProblemId": "Copy problem reference",
   "load_problemIdCopied": "Copied",
   "load_failedHint": "Try again, or contact an administrator if it keeps happening",
