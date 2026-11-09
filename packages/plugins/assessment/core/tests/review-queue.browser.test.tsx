@@ -191,6 +191,9 @@ describe('the queue in brief', () => {
     const waiting = band.getByRole('tab', { name: '待补材料' })
     await expect.element(waiting).toBeVisible()
     await expect.element(rows().first()).toBeVisible()
+    // The band measures its text once its real font is ready. Do not compare
+    // the loading frame against the settled band after the click.
+    await document.fonts.ready
     const frame = band.element()
     const tabs = frame.querySelector('[role="tablist"]')!
     const grouping = page
@@ -207,7 +210,11 @@ describe('the queue in brief', () => {
     await expect
       .element(empty.getByText('发出补充材料请求后，可在这里查看补充进度。'))
       .toBeVisible()
-    expect(frame.getBoundingClientRect().bottom).toBeCloseTo(bounds.bottom, 0)
+    const after = frame.getBoundingClientRect()
+    expect({ top: after.top, height: after.height }).toEqual({
+      top: bounds.top,
+      height: bounds.height,
+    })
   })
 
   // Nothing picked, every project shows its oldest few and a way to all of
