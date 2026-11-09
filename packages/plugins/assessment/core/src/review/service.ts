@@ -1114,7 +1114,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
               page: pageNumber(page.page),
               groupPage: pageNumber(page.groupPage),
               overview: page.layout === 'overview',
-              timezone: asking?.timezone ?? 'UTC',
+              batchClock: page.batchId !== undefined,
               limit,
             } satisfies InboxQuery),
             { isolation: 'repeatable read', readOnly: true },

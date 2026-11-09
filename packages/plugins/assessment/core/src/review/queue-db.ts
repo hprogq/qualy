@@ -26,8 +26,8 @@ export interface InboxQuery {
   day?: string
   /** only the rounds that are more than waiting, of one kind */
   mark?: QueueMark
-  /** the zone a day of the queue is read in: the batch's */
-  timezone?: string
+  /** One batch reads its own calendar; an all-batch queue uses UTC. */
+  batchClock?: boolean
   focus?: string
   exclude?: readonly string[]
 }
@@ -186,12 +186,11 @@ export const inboxNumberedPage = (input: InboxQuery) =>
     const byDay = input.view === 'time' && (input.overview === true || input.day !== undefined)
     const grouped = input.view === 'item' || input.view === 'person' || byDay
     const person = input.view === 'person'
-    // Inlined, not bound: the same expression stands in the select, the
-    // group by, the order and the window, and postgres matches a grouped
-    // expression by its text - a bound zone is a new parameter each time,
-    // and four parameters are four different expressions to it. The zone is
-    // the batch's own, a value the server holds, never a request's.
-    const dayOf = sql<string>`to_char(ri.created_at at time zone ${sql.lit(input.timezone ?? 'UTC')}, 'YYYY-MM-DD')`
+    // All statements use the same expression, backed by the tenant-scoped
+    // batch already joined by inboxQuery. Repeating separately bound
+    // placeholders in the select and group by would not match in PostgreSQL.
+    const clock = input.batchClock === true ? sql`b.timezone` : sql`'UTC'`
+    const dayOf = sql<string>`to_char(ri.created_at at time zone ${clock}, 'YYYY-MM-DD')`
     const groupKey = byDay ? dayOf : person ? sql`bp.id` : sql`e.item_id`
     const groupedQuery = filtered
       .clearSelect()

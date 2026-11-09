@@ -840,6 +840,57 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
     )
   })
 
+  it('groups review filings on the batch calendar without changing cross-batch dates', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('rv-calendar')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f, { profile: REVIEW_OPEN })
+          yield* runSql(
+            sql`update assessment_batches set timezone = ${'America/New_York'} where tenant_id = ${f.t} and id = ${g.batch.id}`,
+          )
+          yield* runSql(
+            sql`update assessment_items set max_entries = 30 where tenant_id = ${f.t} and id = ${g.item.id}`,
+          )
+          const ids: string[] = []
+          for (const time of ['04:50', '04:52', '05:10', '05:20', '05:30']) {
+            const { instanceId } = yield* submitted(f, g, g.p1, f.s1)
+            ids.push(instanceId)
+            yield* runSql(
+              sql`update review_instances set created_at = ${`2026-03-04T${time}:00Z`}::timestamptz
+                where tenant_id = ${f.t} and id = ${instanceId}`,
+            )
+          }
+          const reviewer = f.principal(f.reviewer)
+          const calendar = { view: 'time', layout: 'overview', limit: '10' } as const
+          const local = yield* assessment.listReviewInbox(
+            f.t,
+            { ...calendar, batchId: g.batch.id },
+            reviewer,
+          )
+          const day = yield* assessment.listReviewInbox(
+            f.t,
+            { ...calendar, batchId: g.batch.id, day: '2026-03-03' },
+            reviewer,
+          )
+          const acrossBatches = yield* assessment.listReviewInbox(f.t, calendar, reviewer)
+          return { ids, local, day, acrossBatches }
+        }),
+      ),
+    )
+    expect(result.local.groups.map(({ key, count }) => [key, count])).toEqual([
+      ['2026-03-04', 3],
+      ['2026-03-03', 2],
+    ])
+    expect(result.day.selected).toBe('2026-03-03')
+    expect(result.day.items.map(({ instanceId }) => instanceId)).toEqual(result.ids.slice(0, 2))
+    expect(result.acrossBatches.groups.map(({ key, count }) => [key, count])).toEqual([
+      ['2026-03-04', 5],
+    ])
+  })
+
   it('carries a middle rung\u2019s objection up the ladder, with the opinion on record', async () => {
     const result = ok(
       await run(
