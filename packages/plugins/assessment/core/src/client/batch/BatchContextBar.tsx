@@ -23,7 +23,7 @@ import { useIsBelow } from '@qualy/ui/use-mobile'
 import { assessmentApi } from '../api.ts'
 
 import { BatchFlow } from './BatchFlow.tsx'
-import { BatchZone } from './BatchZone.tsx'
+import { BatchZone, useBatchZoneNotice } from './BatchZone.tsx'
 import { BatchProgress } from './BatchProgress.tsx'
 import { BatchSwitcher } from './BatchSwitcher.tsx'
 import { useBatchAbsence } from './absence.ts'
@@ -273,6 +273,7 @@ export default function BatchContextBar() {
   })
   const batch = detail.data?.batch
   const absent = useBatchAbsence(batchId, detail)
+  useBatchZoneNotice(batchId, absent === null && batch?.id === batchId ? batch.timezone : undefined)
   // the workspace speaks for itself: who this reader is in the open batch,
   // straight from the server's projection, withdrawn while a batch loads so
   // gated rail entries never flash before the answer arrives

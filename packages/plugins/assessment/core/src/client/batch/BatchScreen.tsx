@@ -12,7 +12,7 @@ import { Resizing, Reveal } from '@qualy/ui/reveal'
 import { assessmentApi } from '../api.ts'
 
 import type { BatchDto } from '../phase/model.ts'
-import { BatchZone, ZoneAwayNotice } from './BatchZone.tsx'
+import { BatchZone } from './BatchZone.tsx'
 import { useBatchAbsence } from './absence.ts'
 import { holdsStanding, type BatchStanding } from './capabilities.ts'
 import * as commonMessages from '@qualy/web-i18n/messages'
@@ -197,8 +197,7 @@ export function BatchScreen({
    * content area and draws its own edges. For a workbench that fills the
    * screen, where a heading band would only push the work down. `bare` is
    * the same room for a section that says its own name in a line of its
-   * own, with what the band's body says about the round - a draft, another
-   * clock - kept above it.
+   * own, with the draft notice kept above it.
    */
   chrome?: 'band' | 'none' | 'bare'
   /** Keep an internally scrolling workbench within the shell's available height. */
@@ -210,8 +209,8 @@ export function BatchScreen({
    */
   banner?: 'section' | 'open'
   /**
-   * Whether what the band's body says about the round - a draft, another
-   * clock - stands above the section. By default it follows the band. A
+   * Whether the draft notice stands above the section. By default it
+   * follows the band. A
    * section whose address already names something inside it says so here,
    * so the notes are not drawn over its outline and then taken away from
    * under the thing when it arrives.
@@ -301,10 +300,7 @@ export function BatchScreen({
             {chrome === 'bare' && batch.status === 'draft' && (
               <p {...stylex.props(styles.draftNote, styles.bareNote)}>{m.batch_draftBanner()}</p>
             )}
-            <BatchZone zone={batch.timezone}>
-              {chrome === 'bare' && <ZoneAwayNotice xstyle={styles.bareNote} />}
-              {children(batch)}
-            </BatchZone>
+            <BatchZone zone={batch.timezone}>{children(batch)}</BatchZone>
           </div>
         )}
       </AsyncSection>
@@ -383,12 +379,7 @@ export function BatchScreen({
               {batch.status === 'draft' && noting && (
                 <p {...stylex.props(styles.draftNote)}>{m.batch_draftBanner()}</p>
               )}
-              <BatchZone zone={batch.timezone}>
-                {/* only to a reader whose device keeps another zone: every
-                    time below is read on the batch's clock, not theirs */}
-                {noting && <ZoneAwayNotice />}
-                {children(batch)}
-              </BatchZone>
+              <BatchZone zone={batch.timezone}>{children(batch)}</BatchZone>
             </Reveal>
           )}
         </AsyncSection>

@@ -3,7 +3,7 @@ import BatchSettingsPage from '../src/client/BatchSettingsPage.tsx'
 import MyEntriesPage from '../src/client/entry/MyEntriesPage.tsx'
 import WorkspaceShell from '@qualy/plugin-layout-default/client/WorkspaceShell'
 import { lazy, type ReactNode } from 'react'
-import { Route, Routes, useNavigate } from 'react-router'
+import { Link, Route, Routes, useNavigate } from 'react-router'
 import { describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
 import { Effect } from 'effect'
@@ -232,6 +232,67 @@ const shelled = (
 const absence = () => page.getByTestId('subject-absence')
 const stateIn = (seat: Element | null) =>
   seat?.querySelector('[data-slot="resource-state"]')?.getAttribute('data-state')
+
+it('shows the clock notice outside the layout once per batch visit', async () => {
+  const other = '22222222-2222-4222-8222-222222222222'
+  const home = `/assessment/batches/${BATCH_ID}`
+  await renderScreen({
+    client: fakeClient({
+      app: { getManifest: () => Effect.succeed(manifest()) },
+      assessment: stubs({
+        getBatch: ({ params }: { params: { batchId: string } }) =>
+          Effect.succeed({
+            batch:
+              params.batchId === BATCH_ID
+                ? batch({ timezone: 'UTC' })
+                : batch({ id: other, name: '同一时区的批次' }),
+          }),
+      }),
+    }),
+    registry,
+    route: `${home}/settings`,
+    children: (
+      <>
+        <Link to={home}>First batch overview</Link>
+        <Link to={`/assessment/batches/${other}`}>Second batch overview</Link>
+        <Routes>
+          <Route element={<WorkspaceShell />}>
+            <Route path="/assessment/batches/:batchId" element={<BatchOverviewPage />} />
+            <Route path="/assessment/batches/:batchId/settings" element={<BatchSettingsPage />} />
+          </Route>
+        </Routes>
+      </>
+    ),
+  })
+
+  const field = page.getByLabelText('批次时区')
+  await expect.element(field).toBeVisible()
+  const top = field.element().getBoundingClientRect().top
+  const notice = page.getByText(
+    '本批次的时间按协调世界时（UTC+00:00）显示，可能与你的本地时间不同。',
+  )
+  await expect.element(notice).toBeVisible()
+  expect(notice.element().closest('[data-slot="toaster"]')).not.toBeNull()
+  expect(field.element().getBoundingClientRect().top).toBe(top)
+  await expect.element(notice).not.toBeInTheDocument()
+  expect(field.element().getBoundingClientRect().top).toBe(top)
+
+  await page.getByRole('link', { name: 'First batch overview' }).click()
+  await expect.element(page.getByTestId('overview-clear')).toBeVisible()
+  // Observe past the short opening delay to catch a duplicate on a lateral move.
+  await new Promise((resolve) => setTimeout(resolve, 300))
+  expect(notice.elements()).toHaveLength(0)
+
+  await page.getByRole('link', { name: 'Second batch overview' }).click()
+  await expect
+    .element(page.getByTestId('batch-context-bar').getByText('同一时区的批次'))
+    .toBeVisible()
+  await new Promise((resolve) => setTimeout(resolve, 300))
+  expect(notice.elements()).toHaveLength(0)
+
+  await page.getByRole('link', { name: 'First batch overview' }).click()
+  await expect.element(notice).toBeVisible()
+})
 
 describe('a batch that is not there for the reader', () => {
   it('folds the workspace away and says so where the page would be', async () => {

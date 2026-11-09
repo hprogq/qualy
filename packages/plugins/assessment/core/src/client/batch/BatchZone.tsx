@@ -1,6 +1,7 @@
 import { formatDateTime, useLocale } from '@qualy/web-i18n'
-import { type ReactNode } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
 import * as stylex from '@stylexjs/stylex'
+import { toast } from '@qualy/ui/toast'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@qualy/ui/tooltip'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 
@@ -18,10 +19,9 @@ import * as m from '#messages'
 // The batch's clock, handed down and said out loud.
 //
 // `BatchZone` is placed by whatever loaded the batch, so every time drawn
-// under it is read on the batch's wall (see zone.ts). The two notes say
-// which wall that is: one quietly, beside a plan or a time being set, and
-// one only for a reader whose device keeps another zone, because for them
-// every time on the screen would otherwise be off by the difference.
+// under it is read on the batch's wall (see zone.ts). Plan and schedule
+// notes name the clock; a local-time tooltip can show the same instant on
+// the device's clock.
 
 const styles = stylex.create({
   note: {
@@ -35,15 +35,6 @@ const styles = stylex.create({
     textDecorationColor: tokens.mutedForeground,
     textUnderlineOffset: '0.22em',
   },
-  away: {
-    borderRadius: tokens.radiusMd,
-    backgroundColor: `color-mix(in oklab, ${tokens.surfaceMuted} 60%, transparent)`,
-    paddingInline: 12,
-    paddingBlock: 8,
-    fontSize: '0.875rem',
-    lineHeight: '1.25rem',
-    color: tokens.mutedForeground,
-  },
 })
 
 /**
@@ -56,7 +47,10 @@ export function useZoneLabel(
   showOffset = true,
 ): { readonly label: string; readonly offset?: string } | null {
   const locale = useLocale()
-  if (zone === undefined) return null
+  return zone === undefined ? null : zoneLabelOf(zone, locale, at, showOffset)
+}
+
+function zoneLabelOf(zone: string, locale: string, at?: number, showOffset = true) {
   const { name, offset } = zoneNameOf(zone, locale, at)
   if (!showOffset) return { label: name ?? zone }
   return { label: name === undefined ? offset : m.zone_named({ name, offset }), offset }
@@ -169,21 +163,29 @@ export function BatchLocalTime({
   )
 }
 
-/**
- * Said once at the head of a batch screen, and only to a reader elsewhere:
- * one whose device reads the batch's times differently at any time of the
- * year, not only today, since the screen shows times from both halves of it.
- */
-export function ZoneAwayNotice({ xstyle }: { xstyle?: stylex.StyleXStyles }) {
-  const zone = useBatchZone()
-  const said = useZoneLabel(zone)
-  // said by the browser, which knows where its device is; a server drawing
-  // the page does not, and the notice arrives as the page is taken over
-  const hydrating = useHydrating()
-  if (hydrating || !deviceEverDiffers(zone) || said === null) return null
-  return (
-    <p data-testid="batch-zone-away" data-zone={zone} {...stylex.props(styles.away, xstyle)}>
-      {m.zone_away({ zone: said.label })}
-    </p>
-  )
+/** A workspace entry, not a section change, can announce a different clock. */
+export function useBatchZoneNotice(batchId: string, storedZone: string | undefined) {
+  const locale = useLocale()
+  const visit = useRef({ batchId, announced: false })
+
+  useEffect(() => {
+    if (visit.current.batchId !== batchId) visit.current = { batchId, announced: false }
+    if (visit.current.announced || storedZone === undefined) return
+
+    let toastId: string | number | undefined
+    // The document mounts the shared toaster in a portal after hydration.
+    // Defer the notice briefly so the portal is ready and quick exits stay quiet.
+    const timer = window.setTimeout(() => {
+      visit.current.announced = true
+      const zone = readableZone(storedZone)
+      const now = Date.now()
+      if (zone === undefined || !deviceEverDiffers(zone, now)) return
+      const { label } = zoneLabelOf(zone, locale, now)
+      toastId = toast.info(m.zone_away({ zone: label }))
+    }, 180)
+    return () => {
+      window.clearTimeout(timer)
+      if (toastId !== undefined) toast.dismiss(toastId)
+    }
+  }, [batchId, locale, storedZone])
 }

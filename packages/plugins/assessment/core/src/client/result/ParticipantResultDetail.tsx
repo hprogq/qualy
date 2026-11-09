@@ -40,7 +40,6 @@ import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { assessmentApi } from '../api.ts'
 
-import { ZoneAwayNotice } from '../batch/BatchZone.tsx'
 import { useBatchZone } from '../batch/zone.ts'
 import { useBatchLive } from '../live.ts'
 import { useQueueRefresh } from '../review/queue.ts'
@@ -366,7 +365,6 @@ const styles = stylex.create({
     paddingTop: { default: 24, [breakpoints.phone]: 16 },
     paddingBottom: 32,
   },
-  zone: { margin: 0 },
   // with nobody to name, the head keeps only its ways out
   headAbsent: { paddingBottom: 8 },
   // the state stands where the work would, a little in from the column
@@ -893,7 +891,6 @@ export function ParticipantResultDetail({
           </div>
         </dl>
       )}
-      {absent === null && <ZoneAwayNotice xstyle={styles.zone} />}
       {absent === null && halvesNav}
       {roster}
     </div>
@@ -964,7 +961,6 @@ export function ParticipantResultDetail({
           </div>
         </div>
       )}
-      <ZoneAwayNotice xstyle={styles.zone} />
       <nav aria-label={m.participantResults_views()} {...stylex.props(styles.tabs)}>
         {halves.map(({ key, label, count }) => (
           <button

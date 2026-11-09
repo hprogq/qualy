@@ -2601,10 +2601,10 @@ describe('the stage plan', () => {
     })
     await expect.element(page.getByTestId('batch-zone')).toHaveAttribute('data-zone', ZONE)
     await expect.element(page.getByTestId('batch-zone')).toHaveAttribute('data-device', 'different')
-    // and once, at the head of the section, for a reader whose device is elsewhere
-    const notice = page.getByTestId('batch-zone-away')
+    // The page keeps the clock beside the plan; the entry notice is in the toaster.
+    const notice = page.getByText(/^本批次的时间按.+显示，可能与你的本地时间不同。$/)
     await expect.element(notice).toBeVisible()
-    expect(notice.element().textContent).toMatch(/^本批次的时间按.+显示，可能与你的本地时间不同。$/)
+    expect(notice.element().closest('[data-slot="toaster"]')).not.toBeNull()
   })
 
   it('offers local time for a planned batch start in the context bar', async () => {
@@ -2643,7 +2643,6 @@ describe('the stage plan', () => {
     })
 
     await expect.element(page.getByTestId('batch-zone')).toHaveAttribute('data-device', 'same')
-    expect(page.getByTestId('batch-zone-away').elements()).toHaveLength(0)
   })
 
   it("takes a stage's time as typed on the batch's clock", async () => {
