@@ -93,7 +93,7 @@
   "zone_note": "Times are shown in {zone}",
   "zone_enter": "The start time is in {zone}.",
   "zone_localTime": "Local time: {time}",
-  "zone_localRange": "Local time: {start} – {end}",
+  "zone_localRangeEnd": "to {time}",
   "zone_away": "Times in this batch are shown in {zone} and may differ from your device’s local time.",
   "zone_skipped": "That time is skipped by a daylight-saving change and will be saved as {time}",
   "batch_stageUntil": "This stage until {date}",

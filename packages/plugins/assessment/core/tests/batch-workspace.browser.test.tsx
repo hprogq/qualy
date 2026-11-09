@@ -272,7 +272,11 @@ it('shows the clock notice outside the layout once per batch visit', async () =>
     '本批次的时间按协调世界时（UTC+00:00）显示，可能与你的本地时间不同。',
   )
   await expect.element(notice).toBeVisible()
-  expect(notice.element().closest('[data-slot="toaster"]')).not.toBeNull()
+  const popup = page.getByTestId('batch-zone-notice')
+  await expect.element(popup.getByText('批次时区', { exact: true })).toBeVisible()
+  const seat = popup.element().closest('[data-sonner-toaster]')
+  expect(seat?.getAttribute('data-x-position')).toBe('right')
+  expect(seat?.getAttribute('data-y-position')).toBe('bottom')
   expect(field.element().getBoundingClientRect().top).toBe(top)
   await expect.element(notice).not.toBeInTheDocument()
   expect(field.element().getBoundingClientRect().top).toBe(top)
@@ -292,6 +296,15 @@ it('shows the clock notice outside the layout once per batch visit', async () =>
 
   await page.getByRole('link', { name: 'First batch overview' }).click()
   await expect.element(notice).toBeVisible()
+  const close = popup.getByRole('button', { name: '关闭', exact: true })
+  await expect.element(close).toBeVisible()
+  expect(close.element().textContent).toBe('')
+  const button = close.element().getBoundingClientRect()
+  const card = popup.element().getBoundingClientRect()
+  expect(button.top - card.top).toBeLessThan(12)
+  expect(card.right - button.right).toBeLessThan(12)
+  await close.click()
+  await expect.element(notice).not.toBeInTheDocument()
 })
 
 describe('a batch that is not there for the reader', () => {

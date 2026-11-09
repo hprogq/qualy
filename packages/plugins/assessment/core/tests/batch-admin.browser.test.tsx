@@ -7,7 +7,7 @@ import BatchSettingsPage from '../src/client/BatchSettingsPage.tsx'
 import WorkspaceShell from '@qualy/plugin-layout-default/client/WorkspaceShell'
 import { lazy, useState, type ReactNode } from 'react'
 import { ScheduleDialog } from '../src/client/phase/PhaseDialogs.tsx'
-import { BatchZone } from '../src/client/batch/BatchZone.tsx'
+import { BatchLocalTime, BatchZone } from '../src/client/batch/BatchZone.tsx'
 import { Link, Route, Routes } from 'react-router'
 import { describe, expect, it, vi } from 'vitest'
 import { commands, page, userEvent } from 'vitest/browser'
@@ -2605,6 +2605,49 @@ describe('the stage plan', () => {
     const notice = page.getByText(/^本批次的时间按.+显示，可能与你的本地时间不同。$/)
     await expect.element(notice).toBeVisible()
     expect(notice.element().closest('[data-slot="toaster"]')).not.toBeNull()
+  })
+
+  it('keeps each local time endpoint on its own line with balanced padding', async () => {
+    await page.viewport(320, 800)
+    try {
+      await renderScreen({
+        client: fakeClient({ app: { getManifest: () => Effect.succeed(emptyManifest()) } }),
+        children: (
+          <BatchLocalTime
+            zone="UTC"
+            at="2026-09-09T16:00:00.000Z"
+            until={Date.parse('2026-09-30T16:00:00.000Z')}
+          >
+            9月9日 16:00 – 9月30日 16:00
+          </BatchLocalTime>
+        ),
+      })
+      await page.getByText('9月9日 16:00 – 9月30日 16:00').hover()
+      const tip = page.getByRole('tooltip')
+      await expect
+        .element(tip)
+        .toHaveTextContent('本地时间：2026年9月10日 00:00 至 2026年10月1日 00:00')
+      const box = tip.element()
+      const endpoint = (label: string) => {
+        const range = document.createRange()
+        range.selectNodeContents(tip.getByText(label, { exact: true }).element())
+        expect(range.getClientRects().length).toBe(1)
+        return range.getBoundingClientRect()
+      }
+      const start = endpoint('本地时间：2026年9月10日 00:00')
+      const end = endpoint('至 2026年10月1日 00:00')
+      expect(start.bottom).toBeLessThanOrEqual(end.top)
+      expect(box.scrollWidth).toBeLessThanOrEqual(box.clientWidth + 1)
+      const bounds = box.getBoundingClientRect()
+      for (const words of [start, end]) {
+        const left = words.left - bounds.left
+        const right = bounds.right - words.right
+        expect(Math.min(left, right)).toBeGreaterThan(0)
+        expect(Math.abs(left - right)).toBeLessThan(2)
+      }
+    } finally {
+      await page.viewport(1280, 800)
+    }
   })
 
   it('offers local time for a planned batch start in the context bar', async () => {

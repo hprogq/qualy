@@ -26,6 +26,11 @@ const surfaceStyles = stylex.create({
     '--tooltip-bg': tokens.primary,
     '--tooltip-color': tokens.primaryForeground,
   },
+  multiline: {
+    maxWidth: 'min(20rem, calc(100vw - 24px))',
+    textAlign: 'center',
+    overflowWrap: 'anywhere',
+  },
 })
 const DelayContext = React.createContext(0)
 
@@ -47,6 +52,7 @@ interface TriggerProps {
 interface ContentProps {
   className?: string
   sideOffset?: number
+  multiline?: boolean
   side?: 'top' | 'right' | 'bottom' | 'left'
   children?: React.ReactNode
 }
@@ -72,7 +78,13 @@ function Tooltip({
   })
   if (trigger === null || content === null) return null
   const { asChild = false, children: triggerChildren } = trigger as TriggerProps
-  const { className, side = 'top', sideOffset = 4, children: label } = content as ContentProps
+  const {
+    className,
+    side = 'top',
+    sideOffset = 4,
+    multiline = false,
+    children: label,
+  } = content as ContentProps
 
   // the library needs one element that takes a ref; a text trigger gets the
   // same native button the previous substrate rendered
@@ -90,6 +102,7 @@ function Tooltip({
       // quickly - a tooltip that pops on every hover makes the page restless
       transitionProps={{ transition: 'fade', duration: 90 }}
       label={label}
+      multiline={multiline}
       position={side}
       offset={sideOffset}
       openDelay={delay}
@@ -100,7 +113,12 @@ function Tooltip({
       {...(defaultOpen === undefined ? {} : { defaultOpened: defaultOpen })}
       {...(open === undefined ? {} : { opened: open })}
       {...(onOpenChange === undefined ? {} : { onDismiss: () => onOpenChange(false) })}
-      classNames={{ tooltip: clsx(stylex.props(surfaceStyles.tip).className, className) }}
+      classNames={{
+        tooltip: clsx(
+          stylex.props(surfaceStyles.tip, multiline && surfaceStyles.multiline).className,
+          className,
+        ),
+      }}
     >
       {target}
     </MTooltip>

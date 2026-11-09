@@ -93,7 +93,7 @@
   "zone_note": "时间按{zone}显示",
   "zone_enter": "开始时间以{zone}为准。",
   "zone_localTime": "本地时间：{time}",
-  "zone_localRange": "本地时间：{start} 至 {end}",
+  "zone_localRangeEnd": "至 {time}",
   "zone_away": "本批次的时间按{zone}显示，可能与你的本地时间不同。",
   "zone_skipped": "该时刻因夏令时调整并不存在，将按{time}保存",
   "batch_stageUntil": "本阶段至 {date}",

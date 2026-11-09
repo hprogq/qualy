@@ -1,8 +1,10 @@
 import { formatDateTime, useLocale } from '@qualy/web-i18n'
 import { useEffect, useRef, type ReactNode } from 'react'
+import { XIcon } from 'lucide-react'
 import * as stylex from '@stylexjs/stylex'
 import { toast } from '@qualy/ui/toast'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@qualy/ui/tooltip'
+import * as commonMessages from '@qualy/web-i18n/messages'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 
 import {
@@ -34,6 +36,23 @@ const styles = stylex.create({
     textDecorationStyle: 'dashed',
     textDecorationColor: tokens.mutedForeground,
     textUnderlineOffset: '0.22em',
+  },
+  range: { display: 'flex', flexDirection: 'column', gap: 2 },
+  rangeLine: { whiteSpace: 'nowrap' },
+  noticeDescription: { color: tokens.foreground },
+  noticeClose: {
+    position: 'absolute',
+    insetBlockStart: 6,
+    insetInlineEnd: 6,
+    display: 'grid',
+    placeItems: 'center',
+    width: 28,
+    height: 28,
+    borderRadius: tokens.radiusMd,
+    color: { default: tokens.mutedForeground, ':hover': tokens.foreground },
+    backgroundColor: { default: 'transparent', ':hover': tokens.hoverSurface },
+    outline: { default: 'none', ':focus-visible': `2px solid ${tokens.focusRing}` },
+    outlineOffset: -2,
   },
 })
 
@@ -154,10 +173,19 @@ export function BatchLocalTime({
   return (
     <Tooltip>
       <TooltipTrigger asChild>{trigger}</TooltipTrigger>
-      <TooltipContent>
-        {end === undefined
-          ? m.zone_localTime({ time: local(moment) })
-          : m.zone_localRange({ start: local(moment), end: local(end) })}
+      <TooltipContent multiline>
+        {end === undefined ? (
+          m.zone_localTime({ time: local(moment) })
+        ) : (
+          <span {...stylex.props(styles.range)}>
+            <span {...stylex.props(styles.rangeLine)}>
+              {m.zone_localTime({ time: local(moment) })}
+            </span>{' '}
+            <span {...stylex.props(styles.rangeLine)}>
+              {m.zone_localRangeEnd({ time: local(end) })}
+            </span>
+          </span>
+        )}
       </TooltipContent>
     </Tooltip>
   )
@@ -181,7 +209,26 @@ export function useBatchZoneNotice(batchId: string, storedZone: string | undefin
       const now = Date.now()
       if (zone === undefined || !deviceEverDiffers(zone, now)) return
       const { label } = zoneLabelOf(zone, locale, now)
-      toastId = toast.info(m.zone_away({ zone: label }))
+      toastId = toast.info(m.settings_timezone(), {
+        description: (
+          <span {...stylex.props(styles.noticeDescription)}>{m.zone_away({ zone: label })}</span>
+        ),
+        position: 'bottom-right',
+        duration: 6500,
+        cancel: (
+          <button
+            type="button"
+            aria-label={commonMessages.action_close()}
+            onClick={() => {
+              if (toastId !== undefined) toast.dismiss(toastId)
+            }}
+            {...stylex.props(styles.noticeClose)}
+          >
+            <XIcon size={14} aria-hidden />
+          </button>
+        ),
+        testId: 'batch-zone-notice',
+      })
     }, 180)
     return () => {
       window.clearTimeout(timer)
