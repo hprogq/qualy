@@ -343,24 +343,28 @@ describe('RSC navigation feedback', () => {
   })
 })
 
-it('interpolates navigation weight while pending without delaying acknowledgement', async () => {
+it('fades in navigation ink without changing text width or delaying acknowledgement', async () => {
   await commands.emulateMedia({ reducedMotion: 'no-preference' })
   try {
     const { requests } = await mount()
     const second = page.getByTestId('side-nav').getByRole('link', { name: 'second' })
     const element = second.element() as HTMLAnchorElement
-    const from = Number(getComputedStyle(element).fontWeight)
+    const label = second.getByText('second', { exact: true }).element()
+    const ink = () => getComputedStyle(label).getPropertyValue('-webkit-text-stroke-color')
+    const width = label.getBoundingClientRect().width
+    const weight = getComputedStyle(label).fontWeight
+    const from = ink()
     element.click()
-    const weights: number[] = []
-    await frames(14, () => {
-      weights.push(Number(getComputedStyle(element).fontWeight))
+    const colors: string[] = []
+    await frames(16, () => {
+      colors.push(ink())
       expect(element.getAttribute('aria-busy')).toBe('true')
+      expect(label.getBoundingClientRect().width).toBe(width)
+      expect(getComputedStyle(label).fontWeight).toBe(weight)
     })
-    const to = weights.at(-1)!
-    expect(to).toBeGreaterThan(from)
-    expect(weights.some((weight) => weight > from && weight < to)).toBe(true)
-    for (let index = 1; index < weights.length; index += 1)
-      expect(weights[index]!).toBeGreaterThanOrEqual(weights[index - 1]!)
+    const to = ink()
+    expect(to).not.toBe(from)
+    expect(colors.some((color) => color !== from && color !== to)).toBe(true)
     requests[0]!.release()
     await expect.element(page.getByTestId('current-page')).toHaveTextContent('/second')
   } finally {

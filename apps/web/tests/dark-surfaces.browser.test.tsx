@@ -34,6 +34,7 @@ const setScheme = (mode: 'light' | 'dark') => {
   const root = document.documentElement
   root.classList.toggle('dark', mode === 'dark')
   root.setAttribute('data-mode', mode)
+  root.dataset['mantineColorScheme'] = mode
 }
 
 beforeEach(() => setScheme('dark'))
