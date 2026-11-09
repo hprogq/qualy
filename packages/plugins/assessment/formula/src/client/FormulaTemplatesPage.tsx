@@ -83,7 +83,12 @@ export default function FormulaTemplatesPage() {
   const items = templates.data?.items ?? []
 
   return (
-    <Screen title={m.templates_title()} description={m.templates_hint()} titleRef={titleRef}>
+    <Screen
+      title={m.templates_title()}
+      description={m.templates_hint()}
+      titleRef={titleRef}
+      animateBody={false}
+    >
       <div {...stylex.props(l.page)}>
         <section
           data-formula-results

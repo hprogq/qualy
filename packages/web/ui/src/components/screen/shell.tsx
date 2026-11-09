@@ -225,6 +225,7 @@ export function Screen({
   back,
   actions,
   size = 'default',
+  animateBody = true,
   children,
 }: {
   title: ReactNode
@@ -244,6 +245,8 @@ export function Screen({
   /** what this page offers as a whole: a view switch, an import, a create */
   actions?: ReactNode
   size?: 'default' | 'broad' | 'wide' | 'full'
+  /** Keep headings, controls and their results together on first paint. */
+  animateBody?: boolean
   children: ReactNode
 }) {
   const sub = back !== undefined
@@ -289,9 +292,13 @@ export function Screen({
         )}
       </div>
       <PageContainer size={size} xstyle={styles.stack}>
-        <Reveal delay={0.05} className={stylex.props(styles.arrival).className}>
-          {children}
-        </Reveal>
+        {animateBody ? (
+          <Reveal delay={0.05} className={stylex.props(styles.arrival).className}>
+            {children}
+          </Reveal>
+        ) : (
+          <div {...stylex.props(styles.arrival)}>{children}</div>
+        )}
       </PageContainer>
     </>
   )

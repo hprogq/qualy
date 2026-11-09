@@ -230,6 +230,7 @@ export default function FormulaListPage() {
       description={m.list_hint()}
       titleRef={titleRef}
       actions={newButton}
+      animateBody={false}
     >
       <div {...stylex.props(l.page)}>
         <section

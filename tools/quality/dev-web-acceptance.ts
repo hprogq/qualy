@@ -145,6 +145,39 @@ export const acquire = (prepared, context) => web.acquire({
   const context = await browser.newContext({ locale: 'en-US', colorScheme: 'dark' })
   const login = await context.request.post(`${site}/api/auth/local/local/login`, { data: account })
   assert.equal(login.status(), 200, 'Login POST must survive the Bun Vite proxy')
+  const library = await context.newPage()
+  try {
+    await library.goto(`${site}/account`, { waitUntil: 'networkidle' })
+    for (const route of ['/library/formulas', '/library/formula-templates']) {
+      const firstFrame = library.evaluate<{ opacity: string; transform: string }>(`(async () => {
+        const old = document.querySelector('[data-formula-results]')
+        const next = await new Promise((resolve) => {
+          const observer = new MutationObserver(() => {
+            const node = document.querySelector('[data-formula-results]')
+            if (node === null || node === old) return
+            observer.disconnect()
+            resolve(node)
+          })
+          observer.observe(document.body, { subtree: true, childList: true })
+        })
+        return new Promise((resolve) => {
+          requestAnimationFrame(() => {
+            const css = getComputedStyle(next.parentElement.parentElement)
+            resolve({ opacity: css.opacity, transform: css.transform })
+          })
+        })
+      })()`)
+      await library.locator(`a[href="${route}"]`).first().click()
+      await library.waitForURL(`${site}${route}`)
+      assert.deepEqual(
+        await firstFrame,
+        { opacity: '1', transform: 'none' },
+        `${route}: the first results frame must not fade or move separately from the heading`,
+      )
+    }
+  } finally {
+    await library.close()
+  }
   const student = await scratch.row<{ id: string; org: string; type: string }>(
     'select id, primary_org_node_id as org, user_type_id as type from users where email=$1',
     ['student@example.edu'],
