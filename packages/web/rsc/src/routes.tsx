@@ -1,7 +1,6 @@
 import type { ComponentType, ReactNode } from 'react'
 import {
   Outlet,
-  matchRoutes,
   redirect,
   type unstable_RSCRouteConfig as RSCRouteConfig,
   type unstable_RSCRouteConfigEntry as RSCRouteConfigEntry,
@@ -244,15 +243,12 @@ export const serverRoutes = ({
       path: '',
       shouldRevalidate: pageRevalidation,
       Layout: function DocumentLayout({ children }: { children: ReactNode }) {
-        const { locale, release, nonce, url } = renderRequest()
-        // Use the same path ranking as the router, among the routes this
-        // document is allowed to expose.
-        const title = matchRoutes(routable, url.pathname)?.at(-1)?.route.title
+        const { locale, release, nonce, routeTitle } = renderRequest()
         return (
           <frames.Html
             locale={locale}
             releaseId={release.releaseId}
-            {...(title === undefined ? {} : { title })}
+            title={routeTitle}
             nonce={nonce}
           >
             {children}

@@ -7,10 +7,16 @@ import { Api } from '@qualy/api-kit/local'
 import { appApiGroup } from '@qualy/app-contract'
 import { ANONYMOUS_IDENTITY, QUALY_IDENTITY_HEADER, QUALY_REQUEST_ID_HEADER } from '@qualy/api-kit'
 import { localeOfRequest } from '@qualy/api-kit/locale'
-import { primaryNavigation, SLOT_REFERENCE_PATH } from '@qualy/ui-contract'
+import { primaryNavigation, SLOT_REFERENCE_PATH, surfaceLabel } from '@qualy/ui-contract'
 import { SIGN_IN_PAGE } from '@qualy/auth-contract/sign-in-failure'
 import { withDocumentLocale } from '@qualy/web-rsc/document-locale'
-import { loadSurface, readApi, withRenderRequest, type RenderRequest } from '@qualy/web-rsc/request'
+import {
+  loadSurface,
+  readApi,
+  renderRequest,
+  withRenderRequest,
+  type RenderRequest,
+} from '@qualy/web-rsc/request'
 import { serverRoutes } from '@qualy/web-rsc/routes'
 import * as surfaces from 'virtual:qualy/surfaces'
 import { webRelease } from 'virtual:qualy/release'
@@ -157,7 +163,17 @@ const renderServer = async (request: Request, manifest: Manifest) => {
     generateResponse(match, options) {
       const headers = new Headers(match.headers)
       headers.set('cache-control', PRIVATE['cache-control'])
-      return new Response(renderToReadableStream(match.payload, options), {
+      // Flight URLs name the transport, not the route. Use the router's
+      // authorized match for both a new document and a client navigation.
+      const leaf = match.payload.type === 'render' ? match.payload.matches.at(-1) : undefined
+      const routeTitle =
+        leaf === undefined
+          ? undefined
+          : manifest.pages.find(({ id }) => surfaceLabel({ kind: 'page', id }) === leaf.id)?.title
+      const stream = withRenderRequest({ ...renderRequest(), routeTitle }, () =>
+        renderToReadableStream(match.payload, options),
+      )
+      return new Response(stream, {
         status: match.statusCode,
         headers,
       })

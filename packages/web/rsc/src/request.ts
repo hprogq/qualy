@@ -94,6 +94,8 @@ export interface RenderRequest {
    * scripts run by, made fresh for each document; none where no policy asks.
    */
   readonly nonce?: string | undefined
+  /** The title of the authorized page matched by the router for this render. */
+  readonly routeTitle?: string | undefined
   /**
    * The reads this request has made under a query key, each made once
    * however many parts of the document ask: the bar over a batch's pages and

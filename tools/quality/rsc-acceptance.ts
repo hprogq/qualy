@@ -32,6 +32,7 @@ import { repoRoot } from '../lib/manifest.ts'
 import { startQualyServer, type QualyServer } from '../lib/qualy-server.ts'
 import { acceptEntries } from './rsc-entries.ts'
 import { acceptRouteErrors } from './rsc-route-errors.ts'
+import { acceptTitleNavigation } from './rsc-title-navigation.ts'
 import { acceptAccessPaint } from './rsc-access-paint.ts'
 import { acceptParticipantLoading } from './rsc-participant-loading.ts'
 import { acceptShellHandoff } from './rsc-shell-handoff.ts'
@@ -1978,6 +1979,13 @@ const checks = async () => {
   await batchListFirstScreen(browser, batch)
   await overviewFirstScreen(browser, batch)
   const started = await startedBatchFor(scratch)
+  await acceptTitleNavigation({
+    context: await signedInContext(browser, 'student'),
+    site,
+    batchId: started,
+    hydrated,
+    check,
+  })
   await pageFirstScreen(browser, {
     name: "the participant's account",
     who: 'student',

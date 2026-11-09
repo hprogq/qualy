@@ -152,11 +152,12 @@ describe('server-owned plugin route assembly', () => {
 
   it('uses the same request-local HTML layout for success and failure', () => {
     const scope: RenderRequest = {
-      url: new URL('http://localhost/home'),
+      url: new URL('http://localhost/home.rsc'),
       locale: 'en-US',
       renderedAt: 123,
       release: { releaseId: 'release-a', clientProtocol: 5 },
       nonce: 'request-nonce',
+      routeTitle: 'Home screen',
       cookie: undefined,
       apiOrigin: 'http://localhost',
       signal: new AbortController().signal,
@@ -168,12 +169,7 @@ describe('server-owned plugin route assembly', () => {
         loginComponents: {},
       },
     }
-    const layout = routes(
-      manifest([
-        { ...page('probe/dynamic', '/:page'), title: 'Other page' },
-        { ...pages[0]!, title: 'Home screen' },
-      ]),
-    )[0]!.Layout!
+    const layout = routes()[0]!.Layout!
     const element = withRenderRequest(scope, () => draw(layout, { children: 'failed or healthy' }))
     expect(isValidElement(element)).toBe(true)
     expect(element.type).toBe(frames.Html)
