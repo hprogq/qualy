@@ -465,7 +465,7 @@ function QueueBody({
       onRetry={() => void queue.inbox.refetch()}
       skeleton={
         <QueueBands>
-          <QueueSkeleton />
+          <QueueSkeleton grouping={view === 'item' ? 'item' : 'person'} />
         </QueueBands>
       }
       xstyle={styles.fill}

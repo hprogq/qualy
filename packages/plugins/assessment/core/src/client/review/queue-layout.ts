@@ -28,16 +28,20 @@ export const BESIDE_MIN = 880
  */
 export const STACK_MIN = 640
 
-/** the column the list takes beside the filings: a quarter of the room, within bounds */
-export const masterWidthOf = (room: number): number =>
-  Math.round(Math.min(288, Math.max(224, room * 0.24)))
+/** Project titles need less room than a person's name and number together. */
+export const masterWidthOf = (room: number, grouping: 'item' | 'person' = 'person'): number =>
+  Math.round(
+    grouping === 'item'
+      ? Math.min(240, Math.max(208, room * 0.2))
+      : Math.min(288, Math.max(224, room * 0.24)),
+  )
 
 /** the gap between the list and the filings */
 export const SPLIT_GAP = 16
 
 /** how wide the filings are, given the queue's room and whether the list stands beside them */
-export const paneWidthOf = (room: number, beside: boolean): number =>
-  beside ? room - masterWidthOf(room) - SPLIT_GAP : room
+export const paneWidthOf = (room: number, beside: boolean, grouping?: 'item' | 'person'): number =>
+  beside ? room - masterWidthOf(room, grouping) - SPLIT_GAP : room
 
 // what a table row spends before its answers get anything: the padding at
 // its edges and the gaps between its tracks are the table's own (surface.tsx)
@@ -236,6 +240,7 @@ const SPREAD_FLOOR = 160
 export const spreadColumnsOf = (
   filings: readonly (readonly SpreadAnswer[])[],
   room: number,
+  pack = false,
 ): string | null => {
   const count = Math.max(0, ...filings.map((answers) => answers.length))
   if (count === 0) return null
@@ -257,6 +262,14 @@ export const spreadColumnsOf = (
   )
   const inner = room - 2 * SPREAD_INSET
   const gaps = ANSWER_GAP * (count - 1)
+  // In a wide project pane, keep short fields together rather than using
+  // the full row to distribute three or four small values.
+  if (pack) {
+    const packed = needs.map((need) => Math.max(112, need))
+    if (packed.reduce((sum, width) => sum + width, 0) + gaps <= inner) {
+      return packed.map((width) => `${String(width)}px`).join(' ')
+    }
+  }
   const floors =
     needs.reduce((sum, need) => sum + need, 0) + gaps <= inner
       ? needs

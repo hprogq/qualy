@@ -138,11 +138,13 @@ const styles = stylex.create({
     overscrollBehavior: 'contain',
     listStyleType: 'none',
   },
+  projectIndex: { padding: 4 },
   masterItem: {
     borderBottomWidth: { default: 1, ':last-child': 0 },
     borderBottomStyle: 'solid',
     borderBottomColor: tokens.divider,
   },
+  projectIndexItem: { borderBottomWidth: 0 },
   masterRow: {
     display: 'flex',
     width: '100%',
@@ -167,6 +169,8 @@ const styles = stylex.create({
     backgroundColor: { default: tokens.surfaceMuted, ':hover': tokens.surfaceMuted },
     boxShadow: `inset 2px 0 0 ${tokens.foreground}`,
   },
+  projectIndexRow: { paddingBlock: 8, paddingInline: 12, borderRadius: 8 },
+  projectIndexRowOn: { boxShadow: 'none' },
   masterWords: {
     display: 'flex',
     minWidth: 0,
@@ -661,12 +665,14 @@ function useFitsTheWindow(node: HTMLElement | null) {
 function Split({
   room,
   beside,
+  grouping,
   chosen,
   master,
   pane,
 }: {
   room: number
   beside: boolean
+  grouping?: 'item' | 'person'
   /** the key of the one picked in the address, where it names one in the list */
   chosen: string | null
   master: ReactNode
@@ -683,7 +689,9 @@ function Split({
   useFitsTheWindow(beside ? seat : null)
   if (beside) {
     return (
-      <div {...stylex.props(styles.split(`${String(masterWidthOf(room))}px minmax(0, 1fr)`))}>
+      <div
+        {...stylex.props(styles.split(`${String(masterWidthOf(room, grouping))}px minmax(0, 1fr)`))}
+      >
         <div ref={setSeat} data-testid="queue-master-seat" {...stylex.props(styles.masterSeat)}>
           {master}
         </div>
@@ -705,6 +713,7 @@ function MasterCard({
   selected,
   children,
   footer,
+  projectIndex = false,
 }: {
   title: string
   count: number
@@ -712,6 +721,7 @@ function MasterCard({
   selected: string | null
   children: ReactNode
   footer?: ReactNode
+  projectIndex?: boolean
 }) {
   const list = useRef<HTMLUListElement>(null)
   useEffect(() => {
@@ -726,7 +736,7 @@ function MasterCard({
         <h2 {...stylex.props(styles.masterTitle)}>{title}</h2>
         <span {...stylex.props(styles.masterTally)}>{count}</span>
       </div>
-      <ul ref={list} {...stylex.props(styles.masterList)}>
+      <ul ref={list} {...stylex.props(styles.masterList, projectIndex && styles.projectIndex)}>
         {children}
       </ul>
       {footer}
@@ -744,6 +754,7 @@ function MasterRow({
   selected,
   drills,
   onChoose,
+  projectIndex = false,
 }: {
   id: string
   name: string
@@ -756,9 +767,10 @@ function MasterRow({
   /** narrow, a row is a step into its own screen, and says so */
   drills: boolean
   onChoose: () => void
+  projectIndex?: boolean
 }) {
   return (
-    <li {...stylex.props(styles.masterItem)}>
+    <li {...stylex.props(styles.masterItem, projectIndex && styles.projectIndexItem)}>
       <button
         type="button"
         data-testid="queue-master-row"
@@ -767,7 +779,12 @@ function MasterRow({
         data-selected={selected}
         aria-current={selected || undefined}
         onClick={onChoose}
-        {...stylex.props(styles.masterRow, selected && styles.masterRowOn)}
+        {...stylex.props(
+          styles.masterRow,
+          selected && styles.masterRowOn,
+          projectIndex && styles.projectIndexRow,
+          projectIndex && selected && styles.projectIndexRowOn,
+        )}
       >
         {face}
         <span {...stylex.props(styles.masterWords)}>
@@ -1350,7 +1367,7 @@ export function ItemQueue({
   const open =
     named ??
     (layout === 'split' || layout === 'stack' || layout === 'single' ? groups[0] : undefined)
-  const paneWidth = paneWidthOf(room, layout === 'split')
+  const paneWidth = paneWidthOf(room, layout === 'split', 'item')
 
   if (layout === 'spread') {
     return (
@@ -1420,6 +1437,7 @@ export function ItemQueue({
     ) : (
       <MasterCard
         title={m.review_masterItems()}
+        projectIndex={beside}
         count={serverPage?.groupTotal ?? 0}
         selected={open?.itemId ?? null}
         footer={<GroupPager data={serverPage} disabled={fetching} onPage={onGroupPage} />}
@@ -1431,6 +1449,7 @@ export function ItemQueue({
             name={group.itemTitle}
             meta={m.review_oldest({ when: since(group.oldest) })}
             count={group.count}
+            projectIndex={beside}
             selected={beside && open?.itemId === group.itemId}
             drills={!beside}
             onChoose={() => onChoose(group.itemId, !beside)}
@@ -1484,6 +1503,7 @@ export function ItemQueue({
             rows={open.rows}
             lead="who"
             room={paneWidth}
+            pack={beside}
             onOpen={(row) => onOpen(row, run)}
           />
         ) : (
@@ -1511,6 +1531,7 @@ export function ItemQueue({
         <Split
           room={room}
           beside={beside}
+          grouping="item"
           chosen={named?.itemId ?? null}
           master={master}
           pane={pane}
@@ -2012,6 +2033,7 @@ function SpreadRows({
   rows,
   lead,
   room,
+  pack = false,
   onOpen,
 }: {
   rows: readonly InboxItemDto[]
@@ -2022,6 +2044,7 @@ function SpreadRows({
   lead: 'who' | 'item' | 'both'
   /** how wide the card the filings stand in is */
   room: number
+  pack?: boolean
   onOpen: (row: InboxItemDto) => void
 }) {
   const clock = useQueueClock()
@@ -2034,7 +2057,7 @@ function SpreadRows({
     aligned ? row.values : row.values.filter((pair) => pair.files !== null || pair.value !== ''),
   )
   // a phone gives each answer a line of its own, its label beside it
-  const together = phone || !aligned ? null : spreadColumnsOf(shown, room)
+  const together = phone || !aligned ? null : spreadColumnsOf(shown, room, pack)
   return (
     <ul {...stylex.props(styles.spreadList)}>
       {rows.map((row, at) => {
@@ -2124,7 +2147,7 @@ function SpreadRows({
  * over them, narrower still the list alone - the screens that land a moment
  * later, greyed.
  */
-export function QueueSkeleton() {
+export function QueueSkeleton({ grouping }: { grouping?: 'item' | 'person' }) {
   const { seat, width, room, beside, stacked } = useQueueRoom()
   const paneBones = (strip: boolean) => (
     <Card>
@@ -2166,7 +2189,11 @@ export function QueueSkeleton() {
     <div aria-hidden>
       <QueueRoom layout={null} seat={seat} width={width}>
         {beside ? (
-          <div {...stylex.props(styles.split(`${String(masterWidthOf(room))}px minmax(0, 1fr)`))}>
+          <div
+            {...stylex.props(
+              styles.split(`${String(masterWidthOf(room, grouping))}px minmax(0, 1fr)`),
+            )}
+          >
             <div {...stylex.props(styles.masterSeat)}>{masterBones}</div>
             {paneBones(false)}
           </div>
