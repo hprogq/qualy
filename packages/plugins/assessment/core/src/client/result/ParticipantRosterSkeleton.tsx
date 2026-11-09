@@ -1,33 +1,16 @@
 'use client'
 import * as stylex from '@stylexjs/stylex'
-import { Card, CardFoot, Table, TableHead, TableRow } from '@qualy/ui/screen'
+import { Card, CardFoot, SplitFrame, Table, TableHead, TableRow } from '@qualy/ui/screen'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
-import {
-  rosterStyles,
-  ROSTER_TREE_WIDTH,
-  ROSTER_TREE_MIN,
-  ROSTER_TREE_MOST,
-  ROSTER_TREE_FOLDED,
-} from './roster-presentation.ts'
-import { useLayoutPreference } from '@qualy/ui/layout-preferences'
+import { rosterStyles } from './roster-presentation.ts'
 import * as commonMessages from '@qualy/web-i18n/messages'
 import * as m from '#messages'
 
 const styles = stylex.create({
   page: { minHeight: '100cqh' },
-  body: {
-    display: 'grid',
-    minHeight: 0,
-    flexGrow: 1,
-    gridTemplateColumns: 'minmax(0, 1fr)',
-    gap: 20,
-  },
-  withTree: (width: number) => ({
-    gridTemplateColumns: { default: null, [breakpoints.wide]: `${width}px minmax(0, 1fr)` },
-  }),
-  tree: { display: { default: 'none', [breakpoints.wide]: 'flex' } },
+  tree: { height: '100%' },
   treeHead: {
     display: 'flex',
     flexDirection: 'column',
@@ -49,13 +32,9 @@ const styles = stylex.create({
   branches: { padding: 6 },
   branch: { display: 'flex', alignItems: 'center', gap: 8, height: 34, paddingInline: 12 },
   child: { paddingInlineStart: 34 },
+  status: { display: 'flex', flexDirection: 'column', flexGrow: 1, minHeight: 0 },
   list: { flexGrow: 1, minHeight: 0 },
   actions: { height: 32, width: 88 },
-  unitSwitch: {
-    flexShrink: 0,
-    width: { default: '9rem', [breakpoints.wide]: 36, [breakpoints.phone]: '100%' },
-  },
-  foldedSwitch: { width: { default: null, [breakpoints.wide]: '9rem' } },
   control: { height: 36, minWidth: 0, borderRadius: tokens.radiusMd },
   // A query-only fallback also fills the page's room. The full outline uses
   // flex instead, so it follows its own header and toolbar without offsets.
@@ -204,9 +183,6 @@ export function ParticipantRosterRows({ fill = false }: { fill?: boolean }) {
 
 /** Read-only streaming outline, sized by the shell's CSS scroll container. */
 export function ParticipantRosterSkeleton() {
-  const [folded] = useLayoutPreference(ROSTER_TREE_FOLDED, 0)
-  const [preferredWidth] = useLayoutPreference(ROSTER_TREE_WIDTH, ROSTER_TREE_MOST)
-  const treeWidth = Math.min(ROSTER_TREE_MOST, Math.max(ROSTER_TREE_MIN, preferredWidth))
   return (
     <div data-testid="roster-pending" aria-busy {...stylex.props(rosterStyles.panel, styles.page)}>
       <header {...stylex.props(rosterStyles.head)}>
@@ -220,45 +196,47 @@ export function ParticipantRosterSkeleton() {
       <div
         role="status"
         aria-label={commonMessages.state_loading()}
-        {...stylex.props(styles.body, folded !== 1 && styles.withTree(treeWidth))}
+        {...stylex.props(styles.status)}
       >
-        {folded !== 1 && (
-          <Card aria-hidden data-testid="roster-skeleton-tree" xstyle={styles.tree}>
-            <div {...stylex.props(styles.treeHead)}>
-              <Skeleton height={13} width="35%" />
-              <Skeleton height={12} width="55%" />
-            </div>
-            <div {...stylex.props(styles.treeTools)}>
-              <Skeleton height={36} radius={6} />
-            </div>
-            <div {...stylex.props(styles.branches)}>
-              {[0, 1, 2, 3, 4, 5, 6, 7].map((key) => (
-                <div key={key} {...stylex.props(styles.branch, key % 3 !== 0 && styles.child)}>
-                  <Skeleton height={12} width={12} />
-                  <Skeleton height={13} width={WIDTHS[key % WIDTHS.length]} />
-                </div>
+        <SplitFrame
+          preference="assessment-roster-tree-width"
+          grow
+          side={
+            <Card aria-hidden data-testid="roster-skeleton-tree" xstyle={styles.tree}>
+              <div {...stylex.props(styles.treeHead)}>
+                <Skeleton height={13} width="35%" />
+                <Skeleton height={12} width="55%" />
+              </div>
+              <div {...stylex.props(styles.treeTools)}>
+                <Skeleton height={36} radius={6} />
+              </div>
+              <div {...stylex.props(styles.branches)}>
+                {[0, 1, 2, 3, 4, 5, 6, 7].map((key) => (
+                  <div key={key} {...stylex.props(styles.branch, key % 3 !== 0 && styles.child)}>
+                    <Skeleton height={12} width={12} />
+                    <Skeleton height={13} width={WIDTHS[key % WIDTHS.length]} />
+                  </div>
+                ))}
+              </div>
+            </Card>
+          }
+        >
+          <div {...stylex.props(rosterStyles.listColumn, styles.list)}>
+            <div aria-hidden {...stylex.props(rosterStyles.toolbar)}>
+              <Skeleton
+                className={stylex.props(styles.control, rosterStyles.unitControlWidth).className}
+              />
+              <Skeleton className={stylex.props(styles.control, rosterStyles.search).className} />
+              {[0, 1, 2].map((key) => (
+                <Skeleton
+                  key={key}
+                  className={stylex.props(styles.control, rosterStyles.choice).className}
+                />
               ))}
             </div>
-          </Card>
-        )}
-        <div {...stylex.props(rosterStyles.listColumn, styles.list)}>
-          <div aria-hidden {...stylex.props(rosterStyles.toolbar)}>
-            <Skeleton
-              className={
-                stylex.props(styles.control, styles.unitSwitch, folded === 1 && styles.foldedSwitch)
-                  .className
-              }
-            />
-            <Skeleton className={stylex.props(styles.control, rosterStyles.search).className} />
-            {[0, 1, 2].map((key) => (
-              <Skeleton
-                key={key}
-                className={stylex.props(styles.control, rosterStyles.choice).className}
-              />
-            ))}
+            <ParticipantRosterRows fill />
           </div>
-          <ParticipantRosterRows fill />
-        </div>
+        </SplitFrame>
       </div>
     </div>
   )

@@ -2,6 +2,7 @@
 import { useEffect, type ReactNode } from 'react'
 import { preload } from 'react-dom'
 import type { SupportedLocale } from '@qualy/i18n-contract'
+import { earlyLayoutPreferences } from '@qualy/ui/layout-preference-spec'
 import { UiProvider } from '@qualy/ui/provider'
 import { primaryFontLatin } from '@qualy/ui/primary-font'
 import { DocumentLocaleContext } from '@qualy/web-i18n'
@@ -12,7 +13,7 @@ import { ReleaseRecoveryGate } from '../release-ui.tsx'
 import '../app.css'
 
 /** the scheme the page starts in, decided before any script of ours ran */
-const EARLY_THEME = `(function () {
+const EARLY_DOCUMENT = `(function () {
   var choice = null
   try { choice = localStorage.getItem('qualy.theme') } catch (error) {}
   var dark = choice === 'dark' || (choice !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches)
@@ -21,6 +22,7 @@ const EARLY_THEME = `(function () {
   root.setAttribute('data-mantine-color-scheme', dark ? 'dark' : 'light')
   if (dark) root.classList.add('dark')
   root.style.colorScheme = dark ? 'dark' : 'light'
+  ${earlyLayoutPreferences}
 })()`
 
 /** Shared by a healthy document and its route error boundary. */
@@ -59,7 +61,7 @@ export function HtmlDocument({
           }
         </style>
         {/* Bootstrap belongs to document creation, never a client route render. */}
-        <ThemeBootstrap nonce={nonce} />
+        <DocumentBootstrap nonce={nonce} />
         {/* The official runtime installs the new rules before disabling this
             first-paint sheet. Production uses the built entry stylesheet. */}
         {import.meta.env.DEV && (
@@ -84,7 +86,7 @@ export function HtmlDocument({
   )
 }
 
-function ThemeBootstrap({ nonce }: { nonce: string | undefined }) {
+function DocumentBootstrap({ nonce }: { nonce: string | undefined }) {
   // Keep the hydration-only update local: updating HtmlDocument would interrupt
   // descendants whose client modules are still arriving during hydration.
   const hydrating = useHydrating()
@@ -92,7 +94,7 @@ function ThemeBootstrap({ nonce }: { nonce: string | undefined }) {
     <script
       nonce={nonce}
       suppressHydrationWarning
-      dangerouslySetInnerHTML={{ __html: EARLY_THEME }}
+      dangerouslySetInnerHTML={{ __html: EARLY_DOCUMENT }}
     />
   ) : null
 }

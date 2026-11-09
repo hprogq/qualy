@@ -1,9 +1,16 @@
-import { useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { useLayoutEffect, useRef, useState, type ReactNode, type Ref } from 'react'
 import * as stylex from '@stylexjs/stylex'
+import { layoutPreferenceRoot } from '../../theme/layout-preference.stylex.ts'
 import { tokens } from '../../theme/tokens.stylex.ts'
 import { breakpoints } from '../../theme/breakpoints.stylex.ts'
 import { useIsBelow } from '../../hooks/use-mobile.ts'
-import { useLayoutPreference } from '../layout-preferences.tsx'
+import { useHydrating } from '../../hooks/use-hydrating.ts'
+import {
+  layoutPreferenceSpec,
+  setLayoutPreference,
+  useLayoutPreference,
+  type LayoutWidth,
+} from '../layout-preferences.tsx'
 
 // Two pieces of page geometry a tree-beside-a-list screen needs and CSS alone
 // does not give: a side column the reader sets the width of, and a box in it
@@ -15,6 +22,7 @@ const FOOT = 16
 // how far under the top of its scroller a stuck box stands
 const UNDER = 12
 const CLIP_ROOM = 4
+const splitWidth = 'var(--q-split-drag-width, var(--q-split-width))'
 
 const styles = stylex.create({
   split: {
@@ -29,10 +37,39 @@ const styles = stylex.create({
     transitionTimingFunction: 'ease-in-out',
   },
   splitDragging: { transitionDuration: '0ms' },
-  columns: (width: number, gap: number) => ({
-    gridTemplateColumns: { default: null, [breakpoints.wide]: `${width}px minmax(0, 1fr)` },
-    columnGap: { default: null, [breakpoints.wide]: gap },
-  }),
+  grow: { flexGrow: 1, minHeight: 0 },
+  defaultWidth: (width: number) => ({ '--q-split-width-fallback': `${width}px` }),
+  roster: {
+    '--q-split-width': 'var(--q-assessment-roster-tree-width, var(--q-split-width-fallback))',
+    gridTemplateColumns: {
+      default: 'minmax(0, 1fr)',
+      [breakpoints.wide]: `${splitWidth} minmax(0, 1fr)`,
+      [stylex.when.ancestor(
+        '[data-ui-folded~="assessment-roster-tree-folded"]',
+        layoutPreferenceRoot,
+      )]: {
+        default: null,
+        [breakpoints.wide]: '0px minmax(0, 1fr)',
+      },
+    },
+    columnGap: {
+      default: GAP,
+      [stylex.when.ancestor(
+        '[data-ui-folded~="assessment-roster-tree-folded"]',
+        layoutPreferenceRoot,
+      )]: {
+        default: null,
+        [breakpoints.wide]: 0,
+      },
+    },
+  },
+  users: {
+    '--q-split-width': 'var(--q-users-tree-width, var(--q-split-width-fallback))',
+    gridTemplateColumns: {
+      default: 'minmax(0, 1fr)',
+      [breakpoints.wide]: `${splitWidth} minmax(0, 1fr)`,
+    },
+  },
   side: {
     minWidth: 0,
     // clipped a little outside its box, so a card's ring drawn outside the
@@ -45,14 +82,26 @@ const styles = stylex.create({
   },
   // a side that stands only beside the main part, never stacked over it
   sideBesideOnly: { display: { default: 'none', [breakpoints.wide]: 'block' } },
-  sideClosed: {
-    display: { default: 'none', [breakpoints.wide]: 'block' },
-    opacity: 0,
-    visibility: 'hidden',
+  rosterSide: {
+    opacity: {
+      default: null,
+      [stylex.when.ancestor(
+        '[data-ui-folded~="assessment-roster-tree-folded"]',
+        layoutPreferenceRoot,
+      )]: 0,
+    },
+    visibility: {
+      default: null,
+      [stylex.when.ancestor(
+        '[data-ui-folded~="assessment-roster-tree-folded"]',
+        layoutPreferenceRoot,
+      )]: 'hidden',
+    },
   },
   sideContent: { height: '100%' },
-  sideWidth: (width: number) => ({ width: { default: null, [breakpoints.wide]: width } }),
+  sideWidth: { width: { default: null, [breakpoints.wide]: splitWidth } },
   main: { minWidth: 0 },
+  fillMain: { minHeight: 0, display: 'flex', flexDirection: 'column' },
   // the strip between the two, wide enough to catch and drawn only on hover
   handle: {
     position: 'absolute',
@@ -69,7 +118,16 @@ const styles = stylex.create({
     cursor: 'col-resize',
     touchAction: 'none',
   },
-  handleAt: (width: number) => ({ left: width + GAP / 2 - 6 }),
+  handleAt: { left: `calc(${splitWidth} + ${GAP / 2 - 6}px)` },
+  rosterHandle: {
+    visibility: {
+      default: null,
+      [stylex.when.ancestor(
+        '[data-ui-folded~="assessment-roster-tree-folded"]',
+        layoutPreferenceRoot,
+      )]: 'hidden',
+    },
+  },
   // A pill standing in the middle of the boundary, always drawn: a boundary
   // that shows itself only under the pointer is one nobody knows can move.
   // The line the full height of it is the hover's, to say how far it reaches.
@@ -109,6 +167,60 @@ const styles = stylex.create({
   },
 })
 
+/** Shared geometry for the streamed outline and the interactive split. */
+export function SplitFrame({
+  preference,
+  side,
+  children,
+  frameRef,
+  handle,
+  dragging = false,
+  grow = false,
+  folded = false,
+}: {
+  preference: LayoutWidth
+  side: ReactNode
+  children: ReactNode
+  frameRef?: Ref<HTMLDivElement>
+  handle?: ReactNode
+  dragging?: boolean
+  grow?: boolean
+  /** Interaction semantics only. CSS independently owns track size and visibility. */
+  folded?: boolean
+}) {
+  const roster = preference === 'assessment-roster-tree-width'
+  const hasSide = side !== null && side !== false && side !== undefined
+  return (
+    <div
+      ref={frameRef}
+      data-split={preference}
+      {...stylex.props(
+        styles.split,
+        hasSide && styles.defaultWidth(layoutPreferenceSpec[preference].initial),
+        hasSide && (roster ? styles.roster : styles.users),
+        dragging && styles.splitDragging,
+        grow && styles.grow,
+      )}
+    >
+      {hasSide && (
+        <div
+          inert={folded}
+          {...stylex.props(
+            styles.side,
+            roster && styles.sideBesideOnly,
+            roster && styles.rosterSide,
+          )}
+          data-testid="split-side"
+        >
+          <div {...stylex.props(styles.sideContent, styles.sideWidth)}>{side}</div>
+        </div>
+      )}
+      {hasSide && handle}
+      <div {...stylex.props(styles.main, grow && styles.fillMain)}>{children}</div>
+    </div>
+  )
+}
+
 /**
  * A side column and what it opens, with the boundary between them the
  * reader's to move.
@@ -120,76 +232,43 @@ const styles = stylex.create({
  */
 export function ResizableSplit({
   preference,
-  initial = 300,
-  min = 240,
-  max = 520,
   handleLabel,
-  collapsed = false,
-  besideOnly = false,
   side,
   children,
 }: {
-  preference: string
-  initial?: number
-  min?: number
-  max?: number
+  preference: LayoutWidth
   /** spoken name of the boundary */
   handleLabel: string
-  /** Keep the main content mounted while the side folds out of view. */
-  collapsed?: boolean
-  /**
-   * The side stands only where it can stand beside the main part, and is
-   * not drawn at all where the two would stack - the stylesheet's to say,
-   * so html a server drew is right at any width.
-   */
-  besideOnly?: boolean
   side: ReactNode
   children: ReactNode
 }) {
+  const { min, max } = layoutPreferenceSpec[preference]
   const clamp = (width: number) => Math.min(max, Math.max(min, width))
-  const [rememberedWidth, keep] = useLayoutPreference(preference, initial)
-  const [width, setWidth] = useState(() => clamp(rememberedWidth))
+  const width = useLayoutPreference(preference)
+  const hydrating = useHydrating()
+  const roster = preference === 'assessment-roster-tree-width'
+  const folded = useLayoutPreference('assessment-roster-tree-folded') && roster
   const [dragging, setDragging] = useState(false)
   const [hover, setHover] = useState(false)
-  const origin = useRef<{ x: number; width: number } | null>(null)
-  const sideRef = useRef<HTMLDivElement>(null)
-  const hasSide = side !== null && side !== false && side !== undefined
-
-  useLayoutEffect(() => {
-    const focused = document.activeElement
-    if (collapsed && focused instanceof HTMLElement && sideRef.current?.contains(focused)) {
-      focused.blur()
-    }
-  }, [collapsed])
+  const origin = useRef<{ x: number; width: number; draft: number } | null>(null)
+  const frame = useRef<HTMLDivElement>(null)
+  const stopDrag = (commit: boolean) => {
+    const drag = origin.current
+    if (drag === null) return
+    origin.current = null
+    if (commit) setLayoutPreference(preference, drag.draft)
+    frame.current?.style.removeProperty('--q-split-drag-width')
+    setDragging(false)
+  }
 
   return (
-    <div
-      {...stylex.props(
-        styles.split,
-        hasSide && styles.columns(collapsed ? 0 : width, collapsed ? 0 : GAP),
-        dragging && styles.splitDragging,
-      )}
-      data-split-width={width}
-      data-split-collapsed={collapsed}
-    >
-      {/* A side that is not there keeps no row: the grid's own row gap then
-          stood above the first thing in the other column, which reads as the
-          page starting an inch down. */}
-      {hasSide && (
-        <div
-          ref={sideRef}
-          inert={collapsed}
-          {...stylex.props(
-            styles.side,
-            besideOnly && styles.sideBesideOnly,
-            collapsed && styles.sideClosed,
-          )}
-          data-testid="split-side"
-        >
-          <div {...stylex.props(styles.sideContent, styles.sideWidth(width))}>{side}</div>
-        </div>
-      )}
-      {hasSide && !collapsed && (
+    <SplitFrame
+      preference={preference}
+      side={side}
+      frameRef={frame}
+      dragging={dragging}
+      folded={folded}
+      handle={
         <button
           type="button"
           role="separator"
@@ -197,42 +276,40 @@ export function ResizableSplit({
           aria-label={handleLabel}
           aria-valuemin={min}
           aria-valuemax={max}
-          aria-valuenow={width}
+          aria-valuenow={hydrating ? undefined : width}
+          disabled={hydrating}
           data-testid="split-handle"
-          {...stylex.props(styles.handle, styles.handleAt(width))}
+          {...stylex.props(styles.handle, styles.handleAt, roster && styles.rosterHandle)}
           onPointerEnter={() => setHover(true)}
           onPointerLeave={() => setHover(false)}
           onPointerDown={(event) => {
-            origin.current = { x: event.clientX, width }
+            origin.current = { x: event.clientX, width, draft: width }
             setDragging(true)
             event.currentTarget.setPointerCapture(event.pointerId)
           }}
           onPointerMove={(event) => {
-            if (origin.current === null) return
-            setWidth(clamp(Math.round(origin.current.width + event.clientX - origin.current.x)))
+            const drag = origin.current
+            if (drag === null) return
+            drag.draft = clamp(Math.round(drag.width + event.clientX - drag.x))
+            frame.current?.style.setProperty('--q-split-drag-width', `${drag.draft}px`)
           }}
-          onPointerUp={(event) => {
-            if (origin.current === null) return
-            origin.current = null
-            setDragging(false)
-            event.currentTarget.releasePointerCapture(event.pointerId)
-            keep(width)
-          }}
+          onPointerUp={() => stopDrag(true)}
+          onPointerCancel={() => stopDrag(false)}
+          onLostPointerCapture={() => stopDrag(false)}
           onKeyDown={(event) => {
             const step = event.key === 'ArrowLeft' ? -16 : event.key === 'ArrowRight' ? 16 : 0
             if (step === 0) return
             event.preventDefault()
-            const next = clamp(width + step)
-            setWidth(next)
-            keep(next)
+            setLayoutPreference(preference, clamp(width + step))
           }}
         >
           <span aria-hidden {...stylex.props(styles.rule, (hover || dragging) && styles.ruleLit)} />
           <span aria-hidden {...stylex.props(styles.grip, (hover || dragging) && styles.gripLit)} />
         </button>
-      )}
-      <div {...stylex.props(styles.main)}>{children}</div>
-    </div>
+      }
+    >
+      {children}
+    </SplitFrame>
   )
 }
 

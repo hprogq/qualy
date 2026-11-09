@@ -23,6 +23,7 @@ import { devTopology } from '../../apps/server/src/dev/topology.ts'
 import { repoRoot } from '../lib/manifest.ts'
 import { startQualyServer, type QualyServer } from '../lib/qualy-server.ts'
 import { traceDevelopmentPaint } from './rsc-dev-paint.ts'
+import { checkLayoutPreferences } from './rsc-layout-preferences.ts'
 
 // A real Node API and Bun Vite, using this product's plugin declaration and
 // rendering configuration. Only the preview port and cache are overridden.
@@ -101,12 +102,10 @@ try {
     module,
     `import * as web from ${JSON.stringify(spec.moduleUrl)}
 const ask = globalThis.fetch
-let delayed = false
-// Force the first roster read beyond the server HTML wait, without changing production code.
+// Force roster reads beyond the server HTML wait, including persisted-layout reloads.
 globalThis.fetch = async (request, options) => {
-  if (!delayed && String(request instanceof Request ? request.url : request).includes('/participant-accounts')) {
-    delayed = true
-    await new Promise(resolve => setTimeout(resolve, 180))
+  if (String(request instanceof Request ? request.url : request).includes('/participant-accounts')) {
+    await new Promise(resolve => setTimeout(resolve, 400))
   }
   return ask(request, options)
 }
@@ -496,59 +495,7 @@ export const acquire = (prepared, context) => web.acquire({
       )
     }
   }
-  // Persist through the real controls, then inspect a new document with JS
-  // disabled. A client effect cannot make any of these assertions pass.
-  await page.setViewportSize({ width: 1600, height: 1000 })
-  const rosterUrl = page.url()
-  const railToggle = page
-    .getByTestId('workspace-rail')
-    .getByRole('button', { name: 'Toggle sidebar' })
-  const treeToggle = page.getByTestId('roster-tree-toggle')
-  await railToggle.click()
-  await treeToggle.click()
-  await page.locator('[data-testid="roster-tree-toggle"][aria-expanded="false"]').waitFor()
-  const usersUrl = `${site}/organization/users`
-  await page.goto(usersUrl)
-  await page.waitForLoadState('networkidle')
-  const handle = page.getByRole('separator', { name: 'Resize the unit list' })
-  const widthBefore = Number(await handle.getAttribute('aria-valuenow'))
-  await handle.press('ArrowRight')
-  const widthAfter = String(widthBefore + 16)
-  await page.locator(`[data-split-width="${widthAfter}"]`).waitFor()
-
-  const withoutJs = await browser.newContext({
-    locale: 'en-US',
-    viewport: { width: 1600, height: 1000 },
-    javaScriptEnabled: false,
-    storageState: await context.storageState(),
-  })
-  try {
-    const first = await withoutJs.newPage()
-    await first.goto(rosterUrl)
-    const rail = first.getByTestId('workspace-rail')
-    assert.equal(
-      await rail.getByRole('button', { name: 'Toggle sidebar' }).getAttribute('aria-expanded'),
-      'false',
-    )
-    assert.equal(
-      await first.getByTestId('roster-tree-toggle').getAttribute('aria-expanded'),
-      'false',
-    )
-    assert.equal(await first.getByTestId('roster-unit-tree').isVisible(), false)
-    await first.goto(usersUrl)
-    await first.getByTestId('unit-tree').waitFor()
-    assert.equal(await first.getByTestId('split-handle').getAttribute('aria-valuenow'), widthAfter)
-    await first.setViewportSize({ width: 1100, height: 900 })
-    await first.reload()
-    await first.getByTestId('unit-switch').waitFor()
-    assert.equal(await first.getByTestId('unit-tree').isVisible(), false)
-    assert.equal(await first.getByTestId('split-handle').isVisible(), false)
-    console.log(
-      'layout preferences: folded rails, saved width and compact unit switch in HTML passed',
-    )
-  } finally {
-    await withoutJs.close()
-  }
+  await checkLayoutPreferences(page, page.url(), `${site}/organization/users`)
   // The old audit join differed across Bun and Chromium even for the same
   // locale and instant. Check HTML and hydration with a different device zone.
   const auditContext = await browser.newContext({

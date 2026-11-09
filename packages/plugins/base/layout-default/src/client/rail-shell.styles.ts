@@ -1,4 +1,5 @@
 import * as stylex from '@stylexjs/stylex'
+import { layoutPreferenceRoot } from '@qualy/ui/theme/layout-preference.stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { shell, shellRoot } from './shell.stylex.ts'
@@ -156,21 +157,16 @@ export const styles = stylex.create({
     height: '100%',
     flexShrink: 0,
     overflow: 'hidden',
+    width: {
+      default: 224,
+      [stylex.when.ancestor('[data-ui-folded~="workspace-rail-folded"]', layoutPreferenceRoot)]: 52,
+    },
+    borderRightWidth: 1,
+    borderRightStyle: 'solid',
+    borderRightColor: tokens.border,
     transitionProperty: 'width',
-    transitionDuration: '200ms',
+    transitionDuration: { default: '200ms', '@media (prefers-reduced-motion: reduce)': '0ms' },
     transitionTimingFunction: 'linear',
-  },
-  asideOpen: {
-    width: 224,
-    borderRightWidth: 1,
-    borderRightStyle: 'solid',
-    borderRightColor: tokens.border,
-  },
-  asideClosed: {
-    width: 52,
-    borderRightWidth: 1,
-    borderRightStyle: 'solid',
-    borderRightColor: tokens.border,
   },
   // the rail is always its full width; the column around it is what narrows
   railNav: {
@@ -213,12 +209,18 @@ export const styles = stylex.create({
     display: 'flex',
     flexDirection: 'column',
     gap: 20,
-    transitionProperty: 'opacity',
+    opacity: {
+      default: 1,
+      [stylex.when.ancestor('[data-ui-folded~="workspace-rail-folded"]', layoutPreferenceRoot)]: 0,
+    },
+    visibility: {
+      default: 'visible',
+      [stylex.when.ancestor('[data-ui-folded~="workspace-rail-folded"]', layoutPreferenceRoot)]:
+        'hidden',
+    },
+    transitionProperty: 'opacity, visibility',
     transitionDuration: { default: '150ms', '@media (prefers-reduced-motion: reduce)': '0ms' },
     transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
-  },
-  fadedOut: {
-    opacity: 0,
   },
   entryList: {
     display: 'flex',

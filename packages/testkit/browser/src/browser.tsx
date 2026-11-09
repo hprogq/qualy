@@ -25,7 +25,12 @@ import {
   type LiveChannelsOptions,
 } from '@qualy/web-runtime'
 import { UiProvider } from '@qualy/ui/provider'
-import { LayoutPreferenceProvider } from '@qualy/ui/layout-preferences'
+import {
+  earlyLayoutPreferences,
+  layoutPreferenceKey,
+  layoutPreferenceVersion,
+  type LayoutPreferences,
+} from '@qualy/ui/layout-preference-spec'
 import { Effect } from 'effect'
 import type { ClientUnsupportedReason } from '@qualy/release-contract'
 import { toast } from '@qualy/ui/toast'
@@ -161,6 +166,22 @@ export function apiError(code: string, data?: Record<string, unknown>) {
   return Object.assign(new Error(code), { _tag: code }, data ?? {})
 }
 
+/** Run the document's actual pre-paint script before a component fixture mounts. */
+export function bootTestLayoutPreferences(values: Partial<LayoutPreferences> = {}) {
+  localStorage.setItem(
+    layoutPreferenceKey,
+    JSON.stringify({ version: layoutPreferenceVersion, values }),
+  )
+  runTestLayoutBootstrap()
+}
+
+export function runTestLayoutBootstrap() {
+  const script = document.createElement('script')
+  script.textContent = `(() => { var root = document.documentElement; ${earlyLayoutPreferences} })()`
+  document.head.append(script)
+  script.remove()
+}
+
 export function renderScreen({
   client,
   registry,
@@ -211,7 +232,7 @@ export function renderScreen({
   locale?: 'zh-CN' | 'en-US'
   /** what this browser already keeps, as a visitor who has been here before */
   storage?: Record<string, string>
-  layoutPreferences?: Readonly<Record<string, number>>
+  layoutPreferences?: Partial<LayoutPreferences>
   /**
    * The server's half of every live channel the screen opens. Without one,
    * every channel is refused, and the screen keeps to its polling cadence.
@@ -226,6 +247,7 @@ export function renderScreen({
   // product persists must not leak from one test into the next (styled
   // layouts genuinely hide things in a remembered mode)
   localStorage.clear()
+  bootTestLayoutPreferences(layoutPreferences)
   for (const [key, value] of Object.entries(storage)) localStorage.setItem(key, value)
   // the shell's boot script marks the root with the locale it resolved and
   // every message reads the mark; here the harness stands in for the script
@@ -257,9 +279,7 @@ export function renderScreen({
         <DataRouterLeaveGuard>
           <RouteMetadata>
             <Address />
-            <LayoutPreferenceProvider initial={layoutPreferences}>
-              <Outlet />
-            </LayoutPreferenceProvider>
+            <Outlet />
           </RouteMetadata>
         </DataRouterLeaveGuard>
       </RuntimeProvider>

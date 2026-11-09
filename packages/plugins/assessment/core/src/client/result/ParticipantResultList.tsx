@@ -1,5 +1,11 @@
 import { Effect } from 'effect'
-import { useApiMutation, useApi, useApiQuery, useLoadFailure } from '@qualy/web-runtime'
+import {
+  useApiMutation,
+  useApi,
+  useApiQuery,
+  useHydrating,
+  useLoadFailure,
+} from '@qualy/web-runtime'
 import {
   assertNever,
   formatPlatformFailure as formatError,
@@ -9,6 +15,7 @@ import {
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { keepPreviousData, useQuery, useQueryClient, type QueryKey } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
+import { layoutPreferenceRoot } from '@qualy/ui/theme/layout-preference.stylex'
 import {
   ChevronRightIcon,
   EllipsisIcon,
@@ -52,7 +59,7 @@ import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { useIsBelow } from '@qualy/ui/use-mobile'
 import { AtWidth } from '@qualy/ui/at-width'
-import { useLayoutPreference } from '@qualy/ui/layout-preferences'
+import { setLayoutPreference, useLayoutPreference } from '@qualy/ui/layout-preferences'
 import { UnitPath } from '@qualy/ui/unit-path'
 import { VisuallyHidden } from '@qualy/ui/visually-hidden'
 import { AddPeopleDialog } from '../roster/AddPeopleDialog.tsx'
@@ -81,13 +88,7 @@ import { ROSTER_MAX_WAIT, ROSTER_SETTLE, settler, SYNC_FRESH } from '../roster/l
 import { ScoresNotice } from '../roster/ScoresNotice.tsx'
 import { type BatchLiveEvent } from '../../api.ts'
 import { ParticipantRosterRows } from './ParticipantRosterSkeleton.tsx'
-import {
-  rosterStyles,
-  ROSTER_TREE_WIDTH,
-  ROSTER_TREE_MIN,
-  ROSTER_TREE_FOLDED,
-  ROSTER_TREE_MOST,
-} from './roster-presentation.ts'
+import { rosterStyles } from './roster-presentation.ts'
 import * as commonMessages from '@qualy/web-i18n/messages'
 import * as m from '#messages'
 
@@ -195,7 +196,40 @@ const styles = stylex.create({
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
   },
-  unitSwitchCompact: { width: 36, maxWidth: 36, paddingInline: 0, justifyContent: 'center' },
+  treeToggle: {
+    paddingInline: {
+      default: 0,
+      [stylex.when.ancestor(
+        '[data-ui-folded~="assessment-roster-tree-folded"]',
+        layoutPreferenceRoot,
+      )]: 12,
+    },
+    justifyContent: {
+      default: 'center',
+      [stylex.when.ancestor(
+        '[data-ui-folded~="assessment-roster-tree-folded"]',
+        layoutPreferenceRoot,
+      )]: 'flex-start',
+    },
+  },
+  treeOpenMark: {
+    display: {
+      default: 'block',
+      [stylex.when.ancestor(
+        '[data-ui-folded~="assessment-roster-tree-folded"]',
+        layoutPreferenceRoot,
+      )]: 'none',
+    },
+  },
+  treeFoldedMark: {
+    display: {
+      default: 'none',
+      [stylex.when.ancestor(
+        '[data-ui-folded~="assessment-roster-tree-folded"]',
+        layoutPreferenceRoot,
+      )]: 'block',
+    },
+  },
   unitSwitchIcon: { width: 15, height: 15, flexShrink: 0, color: tokens.mutedForeground },
   // the unit the list is narrowed to, where the tree no longer holds it
   offTree: {
@@ -250,9 +284,8 @@ export function ParticipantResultList({
   // on a phone, where the table has no head to line its columns up under
   const narrow = useIsBelow(TWO_COLUMNS)
   const [unitsOpen, setUnitsOpen] = useState(false)
-  const [treeFolded, keepTreeFolded] = useLayoutPreference(ROSTER_TREE_FOLDED, 0)
-  const treeOpen = treeFolded !== 1
-  const foldTree = (open: boolean) => keepTreeFolded(open ? 0 : 1)
+  const treeOpen = !useLayoutPreference('assessment-roster-tree-folded')
+  const hydrating = useHydrating()
 
   // the same words, asked the same way, as the list beside an open account
   const search = useRosterSearch(view.q, onView)
@@ -636,21 +669,29 @@ export function ParticipantResultList({
           <button
             type="button"
             data-testid="roster-tree-toggle"
-            data-open={treeOpen}
+            data-open={hydrating ? undefined : treeOpen}
             data-unit={view.unit}
-            aria-expanded={treeOpen}
-            aria-label={treeOpen ? m.roster_treeHide() : `${m.roster_treeShow()} ${unitWord}`}
-            {...stylex.props(styles.unitSwitch, treeOpen && styles.unitSwitchCompact)}
-            onClick={() => foldTree(!treeOpen)}
+            aria-expanded={hydrating ? undefined : treeOpen}
+            disabled={hydrating}
+            aria-label={
+              hydrating
+                ? m.roster_unitsFold()
+                : treeOpen
+                  ? m.roster_treeHide()
+                  : `${m.roster_treeShow()} ${unitWord}`
+            }
+            {...stylex.props(styles.unitSwitch, styles.treeToggle, rosterStyles.unitControlWidth)}
+            onClick={() => setLayoutPreference('assessment-roster-tree-folded', treeOpen)}
           >
-            {treeOpen ? (
-              <PanelLeftCloseIcon aria-hidden {...stylex.props(styles.unitSwitchIcon)} />
-            ) : (
-              <>
-                <PanelLeftOpenIcon aria-hidden {...stylex.props(styles.unitSwitchIcon)} />
-                <span {...stylex.props(styles.unitSwitchName)}>{unitWord}</span>
-              </>
-            )}
+            <PanelLeftCloseIcon
+              aria-hidden
+              {...stylex.props(styles.unitSwitchIcon, styles.treeOpenMark)}
+            />
+            <PanelLeftOpenIcon
+              aria-hidden
+              {...stylex.props(styles.unitSwitchIcon, styles.treeFoldedMark)}
+            />
+            <span {...stylex.props(styles.unitSwitchName, styles.treeFoldedMark)}>{unitWord}</span>
           </button>
         </AtWidth>
         <SearchField
@@ -1022,12 +1063,7 @@ export function ParticipantResultList({
       </header>
       <Feedback message={failure} />
       <ResizableSplit
-        preference={ROSTER_TREE_WIDTH}
-        initial={ROSTER_TREE_MOST}
-        min={ROSTER_TREE_MIN}
-        max={ROSTER_TREE_MOST}
-        collapsed={!treeOpen}
-        besideOnly
+        preference="assessment-roster-tree-width"
         handleLabel={m.roster_unitsResize()}
         // Keep the list mounted as the tree folds, retaining its focus and scroll.
         side={<StickyFill>{treeIn(false)}</StickyFill>}

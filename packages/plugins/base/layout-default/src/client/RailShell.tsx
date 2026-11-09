@@ -27,6 +27,7 @@ import {
   ScreenAsideScope,
   SubjectScope,
   UiSlot,
+  useHydrating,
   usePendingNavigation,
   useUiCollection,
   useScreenFootClaimed,
@@ -37,7 +38,7 @@ import {
 import { Skeleton } from '@qualy/ui/skeleton'
 import { Sheet, SheetContent, SheetTitle } from '@qualy/ui/sheet'
 import { useIsBelow } from '@qualy/ui/use-mobile'
-import { useLayoutPreference } from '@qualy/ui/layout-preferences'
+import { setLayoutPreference, useLayoutPreference } from '@qualy/ui/layout-preferences'
 import { TopBar } from './TopBar.tsx'
 import { AppsBar, BottomBar, MOST_CELLS } from './BottomBar.tsx'
 import { NavIcon } from './icons.tsx'
@@ -344,8 +345,8 @@ function CapableRailShell({
   // the product's own bar stays as the way out, whatever the width.
   const subject = useSubjectAbsenceSeat()
   const absent = subject.absent
-  const [railFolded, keepRailFolded] = useLayoutPreference('workspace-rail-folded', 0)
-  const railOpen = railFolded !== 1
+  const railFolded = useLayoutPreference('workspace-rail-folded')
+  const hydrating = useHydrating()
 
   // an entry carrying a capability token waits for the open workspace to
   // publish its set, and renders only while the set holds it; a gated entry
@@ -396,9 +397,10 @@ function CapableRailShell({
     <button
       type="button"
       aria-label={label}
-      aria-expanded={railOpen}
+      aria-expanded={hydrating ? undefined : !railFolded}
+      disabled={hydrating}
       {...stylex.props(styles.toggleButton)}
-      onClick={() => keepRailFolded(railOpen ? 1 : 0)}
+      onClick={() => setLayoutPreference('workspace-rail-folded', !railFolded)}
     >
       <PanelLeftIcon aria-hidden {...stylex.props(styles.toggleGlyph)} />
     </button>
@@ -417,8 +419,9 @@ function CapableRailShell({
       <div
         // out of reach as well as out of sight: a link nobody can see is
         // still a link the keyboard walks into and the screen reader reads
-        {...(!railOpen ? { inert: true, 'aria-hidden': true } : {})}
-        {...stylex.props(styles.fadeGroup, !railOpen && styles.fadedOut)}
+        inert={railFolded}
+        aria-hidden={railFolded || undefined}
+        {...stylex.props(styles.fadeGroup)}
       >
         {loose.length > 0 && (
           <ul {...stylex.props(styles.entryList)}>
@@ -639,10 +642,7 @@ function CapableRailShell({
             brings it back stays where it was taken from; on a narrow screen
             collapsed all the way, because the drawer has taken over. */}
           {!absent && (
-            <aside
-              data-testid="workspace-rail"
-              {...stylex.props(styles.aside, railOpen ? styles.asideOpen : styles.asideClosed)}
-            >
+            <aside data-testid="workspace-rail" {...stylex.props(styles.aside)}>
               {rail}
             </aside>
           )}

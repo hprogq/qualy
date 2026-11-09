@@ -1,11 +1,6 @@
 import * as stylex from '@stylexjs/stylex'
+import { layoutPreferenceRoot } from '@qualy/ui/theme/layout-preference.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
-
-export const ROSTER_TREE_WIDTH = 'assessment-roster-tree-width'
-export const ROSTER_TREE_FOLDED = 'assessment-roster-tree-folded'
-export const ROSTER_TREE_MIN = 220
-// Leave room for the roster at the narrowest viewport that shows a tree.
-export const ROSTER_TREE_MOST = 312
 
 // Shared first-paint geometry, without queries, effects or viewport reads.
 // Waiting text has a bounded track beside the person; above 800px of list
@@ -83,6 +78,21 @@ export const rosterStyles = stylex.create({
     flexWrap: { default: 'nowrap', [breakpoints.phone]: 'wrap' },
     alignItems: 'center',
     gap: 8,
+  },
+  unitControlWidth: {
+    flexShrink: 0,
+    width: {
+      default: '9rem',
+      [breakpoints.wide]: 36,
+      [breakpoints.phone]: '100%',
+      [stylex.when.ancestor(
+        '[data-ui-folded~="assessment-roster-tree-folded"]',
+        layoutPreferenceRoot,
+      )]: {
+        default: null,
+        [breakpoints.wide]: '9rem',
+      },
+    },
   },
   search: {
     minWidth: { default: '8rem', [breakpoints.phone]: 0 },

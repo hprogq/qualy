@@ -47,4 +47,4 @@ export {
 export { DetailSheet, FootNote, UnsavedMark } from './panel.tsx'
 export { TreeRow } from './tree.tsx'
 export { SearchField } from './field.tsx'
-export { ResizableSplit, StickyFill } from './layout.tsx'
+export { ResizableSplit, SplitFrame, StickyFill } from './layout.tsx'
