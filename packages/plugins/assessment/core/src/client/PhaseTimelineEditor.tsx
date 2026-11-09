@@ -459,8 +459,8 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
         payload: { plannedEntryAt: input.at },
       }),
     onMutate: clear,
-    onSuccess: async () => {
-      toast.success(m.toast_phaseScheduled())
+    onSuccess: async (_, { at }) => {
+      toast.success(at === null ? m.toast_phaseUnscheduled() : m.toast_phaseScheduled())
       await settle()
       setScheduling(null)
       setUnscheduling(null)

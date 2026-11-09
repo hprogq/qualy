@@ -1810,6 +1810,7 @@
   "toast_planSaved": "Stage plan saved",
   "toast_templateAdded": "Stages added from the template",
   "toast_phaseScheduled": "Start time saved",
+  "toast_phaseUnscheduled": "Stage schedule cleared",
   "toast_phaseAdvanced": "Advanced to the next stage",
   "toast_lapsedCleared": "Expired records cleared",
   "toast_staffAdded": "Staff member added",
