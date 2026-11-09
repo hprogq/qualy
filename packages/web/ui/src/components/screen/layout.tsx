@@ -48,7 +48,7 @@ const styles = stylex.create({
         '[data-ui-folded~="assessment-roster-tree-folded"]',
         layoutPreferenceRoot,
       )]: {
-        default: null,
+        default: 'minmax(0, 1fr)',
         [breakpoints.wide]: '0px minmax(0, 1fr)',
       },
     },
@@ -58,7 +58,7 @@ const styles = stylex.create({
         '[data-ui-folded~="assessment-roster-tree-folded"]',
         layoutPreferenceRoot,
       )]: {
-        default: null,
+        default: GAP,
         [breakpoints.wide]: 0,
       },
     },
@@ -84,14 +84,14 @@ const styles = stylex.create({
   sideBesideOnly: { display: { default: 'none', [breakpoints.wide]: 'block' } },
   rosterSide: {
     opacity: {
-      default: null,
+      default: 1,
       [stylex.when.ancestor(
         '[data-ui-folded~="assessment-roster-tree-folded"]',
         layoutPreferenceRoot,
       )]: 0,
     },
     visibility: {
-      default: null,
+      default: 'visible',
       [stylex.when.ancestor(
         '[data-ui-folded~="assessment-roster-tree-folded"]',
         layoutPreferenceRoot,
