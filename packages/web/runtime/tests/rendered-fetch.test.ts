@@ -53,3 +53,83 @@ describe('render transport failures', () => {
     expect(error).not.toBeInstanceOf(RenderNetworkError)
   })
 })
+
+describe('navigation after rollback to a host without Flight', () => {
+  const identity = { releaseId: 'rendered', clientProtocol: 5 }
+  const old = { schema: 2 as const, releaseId: 'page-rendered' }
+  const request = 'http://localhost/settings.rsc'
+
+  it('requests a manual reload and keeps the current screen until navigation is cancelled', async () => {
+    const controller = new AbortController()
+    const response = new Response('Not found', { status: 404 })
+    let notify!: (notice: unknown) => void
+    const held = new Promise((resolve) => {
+      notify = resolve
+    })
+    const send = renderedFetch({
+      identity,
+      locale: 'en-US',
+      fetch: async () => response,
+      onClientUnsupported: () => {
+        throw new Error('The old server did not send an explicit refusal')
+      },
+      release: {
+        async check(options) {
+          expect(options?.force).toBe(true)
+          return old
+        },
+        requireReload(reason, latest) {
+          notify({ reason, latest })
+        },
+      },
+    })
+    const navigation = send(new Request(request, { signal: controller.signal }))
+    await expect(Promise.race([held, navigation])).resolves.toEqual({
+      reason: 'release-skew',
+      latest: old,
+    })
+    expect(response.bodyUsed).toBe(true)
+    controller.abort()
+    await expect(navigation).rejects.toMatchObject({ name: 'AbortError' })
+  })
+
+  it.each([undefined, { schema: 2 as const, releaseId: identity.releaseId }])(
+    'leaves a normal 404 alone without proof of a release change (%j)',
+    async (probe) => {
+      const response = new Response(null, { status: 404 })
+      const send = renderedFetch({
+        identity,
+        locale: 'en-US',
+        fetch: async () => response,
+        onClientUnsupported: () => {},
+        release: {
+          check: async () => probe,
+          requireReload: () => {
+            throw new Error('No release change was verified')
+          },
+        },
+      })
+      await expect(send(new Request(request))).resolves.toBe(response)
+    },
+  )
+
+  it('does not probe a structured router error', async () => {
+    const response = new Response('Flight not found', {
+      status: 404,
+      headers: { 'content-type': 'text/x-component; charset=utf-8' },
+    })
+    const send = renderedFetch({
+      identity,
+      locale: 'en-US',
+      fetch: async () => response,
+      onClientUnsupported: () => {},
+      release: {
+        check: () => {
+          throw new Error('A real Flight response must go straight to the router')
+        },
+        requireReload: () => {},
+      },
+    })
+    await expect(send(new Request(request))).resolves.toBe(response)
+  })
+})

@@ -21,6 +21,7 @@ import { releases, webRelease } from '../release.ts'
 // refusal keeps the page as it is (rendered-fetch.ts)
 const navigate = renderedFetch({
   identity: webRelease,
+  release: releases,
   locale: document.documentElement.dataset['locale'] ?? '',
   onClientUnsupported: (reason) => releases.notifyClientUnsupported(reason),
 })

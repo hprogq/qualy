@@ -173,10 +173,13 @@ export function createReleaseCoordinator(options: ReleaseCoordinatorOptions): Re
   }
 
   const probe = async (): Promise<ReleaseProbe | undefined> => {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 2_000)
     try {
       const response = await doFetch(QUALY_RELEASE_ENDPOINT, {
         cache: 'no-store',
         credentials: 'same-origin',
+        signal: controller.signal,
         headers: { accept: 'application/json' },
       })
       if (!response.ok) return undefined
@@ -184,6 +187,8 @@ export function createReleaseCoordinator(options: ReleaseCoordinatorOptions): Re
       return isReleaseProbe(body) ? body : undefined
     } catch {
       return undefined
+    } finally {
+      clearTimeout(timeout)
     }
   }
 

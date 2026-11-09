@@ -7,6 +7,7 @@ import {
   type ClientUnsupportedReason,
 } from '@qualy/release-contract'
 import type { ClientIdentity } from '../data/api.ts'
+import type { ReleaseCoordinator } from '../release.ts'
 import { documentIdentity } from '../session/document-identity.ts'
 import { recovering } from '../session/session-recovery.ts'
 import { RenderNetworkError, RenderResponseError, renderRequestId } from './render-network-error.ts'
@@ -57,6 +58,8 @@ export const renderedFetch =
     readonly locale: string
     /** the release protocol's: this page has to reload */
     readonly onClientUnsupported: (reason: ClientUnsupportedReason) => void
+    /** The navigation coordinator can identify an older host without Flight. */
+    readonly release?: Pick<ReleaseCoordinator, 'check' | 'requireReload'>
     /** the network; the page's own unless a harness brings one */
     readonly fetch?: typeof globalThis.fetch
     /** only a router navigation needs to remain pending behind recovery */
@@ -77,12 +80,35 @@ export const renderedFetch =
       })
       const refusal = response.headers.get(QUALY_RENDER_REFUSED_HEADER)
       if (!isRenderRefusal(refusal)) {
+        const type = response.headers.get('content-type')
+        const flight = type?.startsWith('text/x-component') === true
+        const release = options.release
+        if (
+          release !== undefined &&
+          !flight &&
+          (response.status === 404 || (response.ok && type?.startsWith('text/html'))) &&
+          request.method === 'GET'
+        ) {
+          const path = new URL(request.url).pathname
+          if (path.endsWith('.rsc') || path === '/.manifest') {
+            // A rollback to a page-rendered release may not know either
+            // endpoint. Only a verified release change turns its 404 or
+            // HTML fallback into a refusal; an ordinary 404 stays a 404.
+            const latest = await release.check({ force: true })
+            if (request.signal.aborted) {
+              void response.body?.cancel()
+              throw request.signal.reason ?? new DOMException('navigation cancelled', 'AbortError')
+            }
+            if (latest !== undefined && latest.releaseId !== options.identity.releaseId) {
+              void response.body?.cancel()
+              release.requireReload('release-skew', latest)
+              return heldUntilCancelled(request.signal)
+            }
+          }
+        }
         // Keep successful Flight and structured router errors on the router's
         // own path. A proxy or renderer failure has no Flight payload to read.
-        if (
-          response.status >= 500 &&
-          !response.headers.get('content-type')?.startsWith('text/x-component')
-        ) {
+        if (response.status >= 500 && !flight) {
           void response.body?.cancel()
           throw new RenderResponseError(
             response.status,
