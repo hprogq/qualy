@@ -1,4 +1,5 @@
 import { formatDateTime, useLocale } from '@qualy/web-i18n'
+import { useHydrating } from '@qualy/web-runtime/hydrating'
 import { useState, type ReactNode } from 'react'
 import { CheckIcon, CopyIcon } from 'lucide-react'
 import * as stylex from '@stylexjs/stylex'
@@ -13,12 +14,12 @@ import * as m from '#messages'
 // or the part of it about one person.
 
 const MONO = "'SFMono-Regular', ui-monospace, Menlo, Consolas, monospace"
-const AUDIT_TIME_ZONE = 'UTC'
+const TIME_COLUMN = '11rem'
 
 /** the six columns, stated once so the head and every row agree */
-const COLUMNS = '11rem minmax(0, 0.9fr) minmax(0, 1.3fr) minmax(0, 1.1fr) 4.5rem 8rem'
+const COLUMNS = `${TIME_COLUMN} minmax(0, 0.9fr) minmax(0, 1.3fr) minmax(0, 1.1fr) 4.5rem 8rem`
 /** the same without the object, for a reading that is all about one object */
-const COLUMNS_WITHOUT_TARGET = '11rem minmax(0, 0.9fr) minmax(0, 1.6fr) 4.5rem 8rem'
+const COLUMNS_WITHOUT_TARGET = `${TIME_COLUMN} minmax(0, 0.9fr) minmax(0, 1.6fr) 4.5rem 8rem`
 
 const styles = stylex.create({
   ellipsis: {
@@ -83,11 +84,20 @@ const styles = stylex.create({
   rowOpen: { backgroundColor: tokens.surfaceMuted },
   when: {
     fontSize: 12,
+    lineHeight: '1.125rem',
+    minHeight: '1.125rem',
+    width: { default: null, [breakpoints.phone]: TIME_COLUMN },
     fontVariantNumeric: 'tabular-nums',
     color: tokens.mutedForeground,
   },
-  // On a phone there is no column header to name the time zone.
-  timeZone: { display: { default: 'none', [breakpoints.phone]: 'inline' } },
+  timePlaceholder: {
+    display: 'inline-block',
+    verticalAlign: 'middle',
+    width: '7rem',
+    height: '0.5rem',
+    borderRadius: tokens.radiusSm,
+    backgroundColor: tokens.surfaceMuted,
+  },
   actor: { fontSize: 13 },
   // Stacked, the head strip is gone and "李思思 王五" is two names with no
   // stated relation. Each fact takes its column's word with it.
@@ -230,7 +240,7 @@ export function EventTable({
 }) {
   const locale = useLocale()
   const [openId, setOpenId] = useState('')
-  const when = (iso: string) => formatDateTime(new Date(iso), locale, 'event-time', AUDIT_TIME_ZONE)
+  const hydrating = useHydrating()
   const actorOf = (row: EventRow) =>
     row.actorLabel ??
     (row.actorKind === 'anonymous'
@@ -253,7 +263,7 @@ export function EventTable({
           data-columns={hideTarget ? 5 : 6}
           {...stylex.props(styles.head, hideTarget && styles.withoutTarget)}
         >
-          <span>{m.events_columnTime({ zone: AUDIT_TIME_ZONE })}</span>
+          <span>{m.events_columnTime()}</span>
           <span>{m.events_columnActor()}</span>
           <span>{m.events_columnAction()}</span>
           {!hideTarget && <span>{m.events_columnTarget()}</span>}
@@ -278,9 +288,16 @@ export function EventTable({
                   row.id === openId && styles.rowOpen,
                 )}
               >
-                <time dateTime={row.occurredAt} {...stylex.props(styles.ellipsis, styles.when)}>
-                  {when(row.occurredAt)}
-                  <span {...stylex.props(styles.timeZone)}> {AUDIT_TIME_ZONE}</span>
+                <time
+                  dateTime={row.occurredAt}
+                  aria-busy={hydrating || undefined}
+                  {...stylex.props(styles.ellipsis, styles.when)}
+                >
+                  {hydrating ? (
+                    <span aria-hidden {...stylex.props(styles.timePlaceholder)} />
+                  ) : (
+                    formatDateTime(new Date(row.occurredAt), locale, 'event-time')
+                  )}
                 </time>
                 <span {...stylex.props(styles.ellipsis, styles.actor)}>
                   <span aria-hidden {...stylex.props(styles.said)}>
@@ -306,6 +323,9 @@ export function EventTable({
               </button>
               {row.id === openId && (
                 <dl {...stylex.props(styles.detail)} data-testid="audit-detail">
+                  <Detail label={m.events_detailUtc()} copy={row.occurredAt} mono>
+                    {row.occurredAt}
+                  </Detail>
                   <Detail label={m.events_columnActor()} copy={row.actorUserId ?? undefined}>
                     {actorOf(row)}
                     {row.actorUserId !== null && onlyActor !== undefined && (

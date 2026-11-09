@@ -535,8 +535,8 @@ export const acquire = (prepared, context) => web.acquire({
   console.log('workspace navigation: returning to all rounds kept the outgoing rail intact')
   await page.goto(rosterUrl, { waitUntil: 'networkidle' })
   await checkLayoutPreferences(page, rosterUrl, `${site}/organization/users`)
-  // A normal post-hydration render can change a time without warning. Read
-  // the same document before and after its browser entry runs.
+  // Before the browser can read its device zone, an audit cell must not
+  // show a timestamp on the server's clock that it later replaces.
   const auditContext = await browser.newContext({
     locale: 'en-US',
     timezoneId: 'Asia/Shanghai',
@@ -555,7 +555,7 @@ export const acquire = (prepared, context) => web.acquire({
     const entry = (target: URL) => target.pathname.includes('virtual:vite-rsc/entry-browser')
     const row = audit.getByTestId('audit-row').first()
     const stamp = row.locator('time')
-    let before: string
+    let instant: string
     try {
       await audit.route(entry, async (route) => {
         await scripts
@@ -564,17 +564,34 @@ export const acquire = (prepared, context) => web.acquire({
       const response = await audit.goto(auditUrl, { waitUntil: 'commit' })
       assert.match(await response!.text(), /<button[^>]+data-testid="audit-row"/)
       await stamp.waitFor()
-      before = await stamp.innerText()
-      assert.match(before, / UTC$/)
+      const iso = await stamp.getAttribute('datetime')
+      assert.ok(iso)
+      instant = iso
+      assert.equal(await stamp.innerText(), '')
+      assert.equal(await stamp.getAttribute('aria-busy'), 'true')
     } finally {
       resumeAudit()
     }
     await audit.waitForLoadState('networkidle')
     await row.click()
     await audit.getByTestId('audit-detail').waitFor()
-    assert.equal(await stamp.innerText(), before, 'Audit time must not change after hydration')
+    const localClock = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Asia/Shanghai',
+      hour: 'numeric',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: true,
+    }).format(new Date(instant))
+    assert.equal(await stamp.getAttribute('datetime'), instant)
+    assert.equal(await stamp.getAttribute('aria-busy'), null)
+    assert.ok(
+      (await stamp.innerText()).replace(/\s+/g, ' ').includes(localClock.replace(/\s+/g, ' ')),
+    )
+    await audit.getByTestId('audit-detail').getByText(instant, { exact: true }).waitFor()
     await audit.unroute(entry)
-    console.log('audit: the same UTC timestamp before and after hydration in UTC+08:00')
+    console.log(
+      'audit: no pre-hydration clock; device time after hydration and the original UTC instant in details',
+    )
     let releasePeople!: () => void
     const people = new Promise<void>((resolve) => {
       releasePeople = resolve
