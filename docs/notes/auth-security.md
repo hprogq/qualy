@@ -275,7 +275,7 @@ default-src 'self'; script-src 'self' 'sha256-pKAg+of2SxxrkLJX27pRnCgcyN5Ud1dmuO
   当前实现是单租户(`QUALY_DEFAULT_TENANT`,停用或过期即 `TenantUnavailable`);将来按域名区分租户时只换这一层,驱动与 sign-in 都不碰租户概念。
   按域名的实现读请求上下文里**已解析**的 host,不读原始 Host 头——代理层没算进去之前,Host 不是证据。
 - **公开地址也是解析器**(`PublicOriginResolver`,`QUALY_PUBLIC_URL`):**必须是纯 origin**(绝对 http(s),无路径/查询/片段/凭据;生产必须 https),
-  格式错即拒启。开发缺省 `http://localhost:5173`(浏览器就是从那儿来的)。**生产必填,缺失即拒启**(2026-09-25 裁决 #15):
+  格式错即拒启。开发环境使用[本地前端的默认地址](../deployment.md)。**生产必填,缺失即拒启**(2026-09-25 裁决 #15):
   找回密码、验证邮箱、改邮箱的邮件链接与第三方登录(CAS / GitHub / OIDC)的回跳都用它,所以不设或为空时生产进程在配置阶段就拒绝启动
   (`PUBLIC_URL_REQUIRED`),不再「启动后只告警」。`deploy/.env.example` 把它写成必填项;冒烟与镜像检查给一个不解析的
   `https://qualy.invalid`。**回调地址绝不从请求推导**:

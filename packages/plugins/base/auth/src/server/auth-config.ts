@@ -113,7 +113,7 @@ export const PUBLIC_URL_REQUIRED =
   'QUALY_PUBLIC_URL must be set in production: every link the product mails (setting a forgotten password, proving or changing an address) and every sign-in sent back from another server is addressed with it'
 
 /** where a development machine is reached, which is where the browser is served */
-export const DEVELOPMENT_PUBLIC_URL = 'http://localhost:5173'
+export const DEVELOPMENT_PUBLIC_URL = 'http://localhost:5180'
 
 /**
  * An origin and nothing else: no path, no query, no fragment, no credentials.

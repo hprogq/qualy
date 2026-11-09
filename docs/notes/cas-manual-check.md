@@ -5,7 +5,7 @@
 
 ## 准备
 
-1. `.env` 里不设 `QUALY_PUBLIC_URL`(开发缺省 `http://localhost:5173`),`pnpm dev` 起开发环境;学校 CAS 在内网时
+1. `.env` 里不设 `QUALY_PUBLIC_URL`（使用[开发默认地址](../deployment.md)），用 `pnpm dev` 启动；学校 CAS 在内网时
    把它的主机名或网段写进 `QUALY_AUTH_PRIVATE_PROVIDER_ALLOWLIST`。
 2. 目录里要有一个人员编号与自己 CAS 账号对应的人(`目录导入` 或手工建),其身份类型在该入口的受众里。
 3. 管理端「登录方式」新增一个 CAS 入口,地址标识随意(如 `campus`),记下详情页给出的回调地址。

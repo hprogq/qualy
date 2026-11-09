@@ -110,7 +110,7 @@ const foundEmails = execFileSync(
 assertPresenterAccounts(accounts, foundEmails === '' ? [] : foundEmails.split('\n'))
 
 // Sign in privately with the credentials used to generate the baseline.
-console.log('\nsign in at http://localhost:5173 with one of:')
+console.log('\nsign in at http://localhost:5180 with one of:')
 for (const account of accounts.personas) {
   console.log(`  ${account.label}: ${account.email}`)
 }
