@@ -312,6 +312,102 @@ const otherHalf = () =>
   offsetAt(NEW_YORK, Date.now()) === offsetAt(NEW_YORK, WINTER) ? SUMMER : WINTER
 
 describe('numbered batch activity', () => {
+  it.each([1280, 390])('aligns the pending feed with its rows at %ipx', async (width) => {
+    type ActivityPage = ApiResult<typeof assessmentApi, 'assessment', 'listMyActivity'>
+    const row = (id: string, at: string, withIdentity: boolean): ActivityPage['items'][number] => ({
+      id,
+      at,
+      perspective: 'participant',
+      kind: 'review-approved',
+      entryId: 'entry',
+      itemId: 'item',
+      itemTitle: '竞赛与科研',
+      subjectName: null,
+      instanceId: null,
+      actorName: '审核员',
+      reason: null,
+      comment: null,
+      summary: withIdentity
+        ? [
+            { label: '组别', value: '校级' },
+            { label: '等级', value: '二等奖' },
+          ]
+        : [],
+    })
+    const activity: ActivityPage = {
+      total: 3,
+      page: 1,
+      pageSize: 50,
+      items: [
+        row('one', '2026-03-03T10:00:00.000Z', true),
+        row('two', '2026-03-03T09:00:00.000Z', false),
+        row('three', '2026-03-02T09:00:00.000Z', true),
+      ],
+    }
+    let finish!: (answer: ActivityPage) => void
+    const pending = new Promise<ActivityPage>((resolve) => {
+      finish = resolve
+    })
+
+    const shape = (card: Element) => {
+      const day = card.firstElementChild!
+      const header = day.firstElementChild!
+      const first = day.children[1]!
+      const words = first.children[1]!
+      const clock =
+        width >= 1024 ? first.firstElementChild! : words.firstElementChild!.lastElementChild!
+      const bounds = card.getBoundingClientRect()
+      return {
+        column: words.getBoundingClientRect().left - bounds.left,
+        clock: clock.getBoundingClientRect().right - bounds.left,
+        header: header.getBoundingClientRect().height,
+        row: first.getBoundingClientRect().height,
+        foot: card.lastElementChild!.getBoundingClientRect().height,
+        height: bounds.height,
+      }
+    }
+
+    await page.viewport(width, 800)
+    try {
+      await screen(
+        {
+          getMyOverview: () =>
+            Effect.succeed({
+              participant: { unreadEntryIds: [], actions: [] },
+              reviewer: { pendingCount: 0, answeredAskCount: 0, queueGroups: [], answeredAsks: [] },
+            }),
+          listMyActivity: () => Effect.promise(() => pending),
+        },
+        `/assessment/batches/${BATCH_ID}`,
+      )
+
+      const skeleton = page.getByTestId('activity-bones')
+      const region = page.getByRole('region', { name: '最近动态' })
+      await expect.element(region).toHaveAttribute('aria-busy', 'true')
+      await expect.element(skeleton).toBeVisible()
+      expect(skeleton.element().querySelector('button')).toBeNull()
+      const before = shape(skeleton.element())
+
+      finish(activity)
+      const feed = page.getByTestId('overview-activity')
+      await expect.element(feed).toBeVisible()
+      await expect.element(region).toHaveAttribute('aria-busy', 'false')
+      await expect.element(skeleton).not.toBeInTheDocument()
+      const after = shape(feed.element())
+      expect(before.column).toBeCloseTo(after.column, 0)
+      // The narrow clock's placeholder can be wider than the real digits,
+      // but their right edges and the row/footer positions should agree.
+      expect(before.clock).toBeCloseTo(after.clock, 0)
+      expect(Math.abs(before.header - after.header)).toBeLessThanOrEqual(2)
+      expect(Math.abs(before.row - after.row)).toBeLessThanOrEqual(3)
+      expect(Math.abs(before.foot - after.foot)).toBeLessThanOrEqual(2)
+      expect(Math.abs(before.height - after.height)).toBeLessThanOrEqual(6)
+    } finally {
+      finish(activity)
+      await page.viewport(1280, 800)
+    }
+  })
+
   it('jumps without accumulating rows and resets the page with its perspective', async () => {
     await page.viewport(320, 800)
     try {

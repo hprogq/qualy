@@ -483,20 +483,14 @@ const styles = stylex.create({
     color: { default: tokens.mutedForeground, ':hover': tokens.foreground },
     transitionProperty: 'color, background-color',
   },
-  // the rows it becomes, not a rectangle the size of them: what a reader is
-  // waiting for here is a day's heading and a few lines under it, and a
-  // hundred-pixel slab says nothing about what is coming
-  activityBones: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 14,
-    paddingBlock: 2,
+  // A skeleton bar sits in a line box of the same font and height as its text.
+  activityBoneSeat: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    minHeight: '1lh',
+    maxWidth: '100%',
+    verticalAlign: 'top',
   },
-  activityBoneDay: { height: 11, width: '4.5rem', borderRadius: 3 },
-  activityBoneRow: { display: 'flex', alignItems: 'center', gap: 12 },
-  activityBoneMark: { width: 22, height: 22, borderRadius: 7, flexShrink: 0 },
-  activityBoneWords: { display: 'flex', minWidth: 0, flexGrow: 1, flexDirection: 'column', gap: 5 },
-  activityBoneLine: { height: 12, borderRadius: 3 },
   day: {
     display: 'flex',
     minWidth: 0,
@@ -1289,24 +1283,7 @@ function Desk({
           </div>
 
           {activity.isPending ? (
-            <div {...stylex.props(styles.activityBones)} aria-hidden data-testid="activity-bones">
-              <Skeleton className={stylex.props(styles.activityBoneDay).className} />
-              {['64%', '48%', '71%'].map((width, index) => (
-                <div key={index} {...stylex.props(styles.activityBoneRow)}>
-                  <Skeleton className={stylex.props(styles.activityBoneMark).className} />
-                  <div {...stylex.props(styles.activityBoneWords)}>
-                    <Skeleton
-                      className={stylex.props(styles.activityBoneLine).className}
-                      width={width}
-                    />
-                    <Skeleton
-                      className={stylex.props(styles.activityBoneLine).className}
-                      width="30%"
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
+            <ActivitySkeleton mixed={mixed} />
           ) : activity.isError && rows.length === 0 ? (
             <AsyncSection
               pending={false}
@@ -1373,30 +1350,19 @@ function Desk({
                         }}
                         {...stylex.props(styles.feedRow, openable && styles.feedRowOpenable)}
                       >
-                        <span {...stylex.props(styles.feedClockWide)}>
-                          {clockOf(row.at, locale, zone)}
-                        </span>
-                        <span {...stylex.props(styles.feedBody)}>
-                          <span {...stylex.props(styles.feedTitleLine)}>
-                            <span {...stylex.props(styles.feedTitleSeat)}>
-                              {/* the same mark of news as on the claim's own row */}
-                              {freshRowIds.has(row.id + row.kind) && (
-                                <>
-                                  <UnreadDot />
-                                  <VisuallyHidden>{m.entry_claimUnread()}</VisuallyHidden>
-                                </>
-                              )}
-                              <span {...stylex.props(styles.feedTitle)}>{row.itemTitle}</span>
-                            </span>
-                            {mixed && (
-                              <span {...stylex.props(styles.feedLaneWord)}>
-                                {laneWord(row.perspective)}
-                              </span>
-                            )}
-                            <span {...stylex.props(styles.feedClockNarrow)}>
-                              {clockOf(row.at, locale, zone)}
-                            </span>
-                          </span>
+                        <FeedRowContents
+                          clock={clockOf(row.at, locale, zone)}
+                          title={row.itemTitle}
+                          leading={
+                            freshRowIds.has(row.id + row.kind) && (
+                              <>
+                                <UnreadDot />
+                                <VisuallyHidden>{m.entry_claimUnread()}</VisuallyHidden>
+                              </>
+                            )
+                          }
+                          lane={mixed ? laneWord(row.perspective) : undefined}
+                        >
                           {identity.length > 0 && (
                             <span {...stylex.props(styles.feedIdentity)}>
                               {identity.map((part, at) => (
@@ -1420,7 +1386,7 @@ function Desk({
                               )}
                             </span>
                           )}
-                        </span>
+                        </FeedRowContents>
                       </button>
                     )
                   })}
@@ -1459,6 +1425,102 @@ function Desk({
         </section>
       )}
     </>
+  )
+}
+
+function FeedRowContents({
+  clock,
+  title,
+  leading,
+  lane,
+  children,
+  skeleton = false,
+}: {
+  clock: ReactNode
+  title: ReactNode
+  leading?: ReactNode
+  lane?: ReactNode
+  children: ReactNode
+  skeleton?: boolean
+}) {
+  // Rows are buttons; placeholders are not interactive and hold block skeletons.
+  const Seat = skeleton ? 'div' : 'span'
+  return (
+    <>
+      <Seat {...stylex.props(styles.feedClockWide)}>{clock}</Seat>
+      <Seat {...stylex.props(styles.feedBody)}>
+        <Seat {...stylex.props(styles.feedTitleLine)}>
+          <Seat {...stylex.props(styles.feedTitleSeat)}>
+            {leading}
+            <Seat {...stylex.props(styles.feedTitle)}>{title}</Seat>
+          </Seat>
+          {lane !== undefined && <Seat {...stylex.props(styles.feedLaneWord)}>{lane}</Seat>}
+          <Seat {...stylex.props(styles.feedClockNarrow)}>{clock}</Seat>
+        </Seat>
+        {children}
+      </Seat>
+    </>
+  )
+}
+
+function ActivityBone({ width, height = 10 }: { width: string; height?: number }) {
+  return (
+    <div {...stylex.props(styles.activityBoneSeat)}>
+      <Skeleton width={width} height={height} radius={3} />
+    </div>
+  )
+}
+
+// The number of days and rows is not known yet. Preview a short feed without
+// suggesting it already has a known page count or interactive controls.
+const ACTIVITY_PREVIEW = [
+  [
+    { title: '8rem', identity: true, sentence: '9.5rem' },
+    { title: '6.5rem', identity: false, sentence: '8rem' },
+  ],
+  [{ title: '9rem', identity: true, sentence: '10rem' }],
+] as const
+
+function ActivitySkeleton({ mixed }: { mixed: boolean }) {
+  return (
+    <div {...stylex.props(styles.card)} aria-hidden data-testid="activity-bones">
+      {ACTIVITY_PREVIEW.map((rows, day) => (
+        <div key={day} {...stylex.props(styles.day)}>
+          <div {...stylex.props(styles.strip)}>
+            <div {...stylex.props(styles.stripWord)}>
+              <ActivityBone width={day === 0 ? '2rem' : '4rem'} />
+            </div>
+            <div {...stylex.props(styles.stripAside)}>
+              <ActivityBone width={day === 0 ? '3.25rem' : '2rem'} />
+            </div>
+          </div>
+          {rows.map(({ title, identity, sentence }) => (
+            <div key={title} {...stylex.props(styles.feedRow)}>
+              <FeedRowContents
+                skeleton
+                title={<ActivityBone width={title} height={12} />}
+                clock={<ActivityBone width="2.25rem" />}
+                lane={mixed ? <ActivityBone width="2rem" /> : undefined}
+              >
+                {identity && (
+                  <div {...stylex.props(styles.feedIdentity)}>
+                    <ActivityBone width="3.25rem" />
+                    <span {...stylex.props(styles.crumbRule)} />
+                    <ActivityBone width="2.75rem" />
+                  </div>
+                )}
+                <div {...stylex.props(styles.feedSentence)}>
+                  <ActivityBone width={sentence} />
+                </div>
+              </FeedRowContents>
+            </div>
+          ))}
+        </div>
+      ))}
+      <div {...stylex.props(styles.feedFoot)}>
+        <ActivityBone width="6.5rem" />
+      </div>
+    </div>
   )
 }
 
