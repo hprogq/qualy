@@ -227,6 +227,10 @@ const assessmentStubs = (over: Stubs = {}): Stubs => {
     // the results page's own roster: its page, its totals, its units, and the
     // people its add dialog offers
     listParticipantAccounts: () => Effect.succeed({ items: [], total: 0, page: 1, pageSize: 20 }),
+    // The drilldown builds its disabled observers even without a selected person.
+    getParticipant: () => Effect.die('No participant selected'),
+    getParticipantResult: () => Effect.die('No participant selected'),
+    listParticipantEntries: () => Effect.die('No participant selected'),
     listParticipantScores: () => Effect.succeed({ scores: [] }),
     listRosterUnits: () => Effect.succeed({ units: [] }),
     listParticipantCandidates: () => Effect.succeed({ items: [], total: 0, page: 1, pageSize: 20 }),
