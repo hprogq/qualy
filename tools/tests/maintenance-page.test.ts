@@ -85,9 +85,11 @@ describe('the maintenance page', () => {
   it('picks the language the server would have drawn the page in', () => {
     const listed = /var locales = (\[[^\]]*\])/.exec(page)?.[1]
     expect(JSON.parse(listed!.replaceAll("'", '"'))).toEqual([...supportedLocales])
-    // what the page's own script decides, run against a browser's answers
-    const script = /<script(?:\s[^>]*)?>([\s\S]*?)<\/script\s*>/i.exec(page)?.[1]
-    if (script === undefined) throw new Error('The maintenance page has no bootstrap script')
+    // Execute the marked source of this checked-in fixture, not arbitrary HTML.
+    const [, afterStart, ...starts] = page.split('// maintenance-bootstrap:start')
+    const [script, afterEnd, ...ends] = (afterStart ?? '').split('// maintenance-bootstrap:end')
+    if (script === undefined || afterEnd === undefined || starts.length + ends.length !== 0)
+      throw new Error('Expected exactly one marked maintenance bootstrap')
     const decided = (cookie: string, languages: readonly string[]) => {
       const root = {
         lang: '',
