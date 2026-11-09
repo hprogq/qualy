@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import { CheckIcon } from 'lucide-react'
 import { Select as MSelect } from '@mantine/core'
 import * as stylex from '@stylexjs/stylex'
 import { panel } from '../lib/panel.ts'
@@ -9,6 +10,8 @@ import { tokens } from '../theme/tokens.stylex.ts'
 export interface SearchSelectOption {
   value: string
   label: string
+  /** Optional presentation for the dropdown only. The input still uses label. */
+  details?: { title: string; description: string }
   /** Additional names that may find this option without becoming its label. */
   keywords?: readonly string[]
 }
@@ -26,6 +29,15 @@ const styles = stylex.create({
     },
     color: tokens.foreground,
   },
+  words: { display: 'grid', gap: 2, minWidth: 0 },
+  title: { overflowWrap: 'anywhere' },
+  description: {
+    color: tokens.mutedForeground,
+    fontSize: 12,
+    lineHeight: '1rem',
+    overflowWrap: 'anywhere',
+  },
+  indicator: { width: 16, height: 16, flexShrink: 0 },
 })
 
 const normalize = (text: string) =>
@@ -128,6 +140,24 @@ export function SearchSelect({
           (candidate) =>
             'value' in candidate &&
             terms.every((term) => searchIndex.get(candidate.value)?.includes(term)),
+        )
+      }}
+      renderOption={({ option, checked }) => {
+        const details = byValue.get(option.value)?.details
+        return (
+          <>
+            {details === undefined ? (
+              <span>{option.label}</span>
+            ) : (
+              <span {...stylex.props(styles.words)}>
+                <span {...stylex.props(styles.title)}>{details.title}</span>
+                <span {...stylex.props(styles.description)}>{details.description}</span>
+              </span>
+            )}
+            <span aria-hidden {...stylex.props(styles.indicator)}>
+              {checked && <CheckIcon size={16} />}
+            </span>
+          </>
         )
       }}
     />

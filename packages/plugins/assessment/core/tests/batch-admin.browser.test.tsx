@@ -1833,13 +1833,19 @@ describe('the batch lifecycle', () => {
     await expect.element(zone).toHaveAttribute('aria-expanded', 'false')
     await zone.fill('Asia/Shang')
     await expect.element(zone).toHaveAttribute('aria-expanded', 'true')
-    await expect
-      .element(page.getByRole('option', { name: /^Asia\/Shanghai \(UTC\+08:00\)$/ }))
-      .toBeVisible()
+    const shanghai = page.getByRole('option', { name: 'Asia/Shanghai 上海（UTC+08:00）' })
+    await expect.element(shanghai).toBeVisible()
+    const idLine = shanghai.getByText('Asia/Shanghai', { exact: true }).element()
+    const detailLine = shanghai.getByText('上海（UTC+08:00）', { exact: true }).element()
+    expect(idLine.getBoundingClientRect().bottom).toBeLessThanOrEqual(
+      detailLine.getBoundingClientRect().top,
+    )
 
     await zone.fill('UTC+05:45')
     await expect
-      .element(page.getByRole('option', { name: /^Asia\/Kat(?:hmandu|mandu) \(UTC\+05:45\)$/ }))
+      .element(
+        page.getByRole('option', { name: /^Asia\/Kat(?:hmandu|mandu) 加德满都（UTC\+05:45）$/ }),
+      )
       .toBeVisible()
     await userEvent.keyboard('{Escape}')
     await expect.element(zone).toHaveValue('Asia/Shanghai (UTC+08:00)')
@@ -1848,7 +1854,7 @@ describe('the batch lifecycle', () => {
 
     await zone.fill('Asia/Tokyo')
     await expect
-      .element(page.getByRole('option', { name: /^Asia\/Tokyo \(UTC\+09:00\)$/ }))
+      .element(page.getByRole('option', { name: 'Asia/Tokyo 东京（UTC+09:00）' }))
       .toBeVisible()
     await userEvent.keyboard('{Enter}')
     await expect.element(zone).toHaveValue('Asia/Tokyo (UTC+09:00)')
@@ -1868,7 +1874,9 @@ describe('the batch lifecycle', () => {
     await expect.element(zone).toHaveValue('Asia/Shanghai (UTC+08:00)')
     await expect.element(zone).toHaveAttribute('placeholder', 'Search by time zone or UTC offset')
     await zone.fill('UTC+9')
-    await expect.element(page.getByRole('option', { name: 'Asia/Tokyo (UTC+09:00)' })).toBeVisible()
+    await expect
+      .element(page.getByRole('option', { name: 'Asia/Tokyo Tokyo (UTC+09:00)' }))
+      .toBeVisible()
     await zone.fill('not a time zone')
     await expect.element(page.getByText('No matching time zones')).toBeVisible()
     await userEvent.keyboard('{Enter}{Escape}')
@@ -2594,7 +2602,9 @@ describe('the stage plan', () => {
     await expect.element(page.getByTestId('batch-zone')).toHaveAttribute('data-zone', ZONE)
     await expect.element(page.getByTestId('batch-zone')).toHaveAttribute('data-device', 'different')
     // and once, at the head of the section, for a reader whose device is elsewhere
-    await expect.element(page.getByTestId('batch-zone-away')).toBeVisible()
+    const notice = page.getByTestId('batch-zone-away')
+    await expect.element(notice).toBeVisible()
+    expect(notice.element().textContent).toMatch(/^本批次的时间按.+显示，可能与你的本地时间不同。$/)
   })
 
   it('offers local time for a planned batch start in the context bar', async () => {
