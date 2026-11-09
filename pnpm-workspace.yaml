@@ -215,7 +215,8 @@ catalog:
 overrides:
   # CVE-2026-116689: strip custom sensitive headers on cross-origin redirects.
   axios>follow-redirects: 1.16.2
-  qs: ^6.16.0
+  # GHSA-6pq8-jhm2-2vcw / GHSA-w4cr-vjpx-p82q: safe query serialization.
+  qs: ^6.16.2
   monaco-editor>dompurify: 3.4.17
 
 patchedDependencies:
