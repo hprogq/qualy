@@ -1510,6 +1510,67 @@ const running = (untilNext: number) => [
 ]
 
 describe('the countdown', () => {
+  it.each([
+    ['zh-CN', '2025–2026 学年本科生综合素质测评及年度奖学金评定批次', '复审审核期', true],
+    [
+      'en-US',
+      '2025–2026 Annual Undergraduate Assessment and Scholarships',
+      'Departmental Re-review and Independent Verification',
+      false,
+    ],
+  ] as const)(
+    'keeps the batch and stage legible at different widths in %s',
+    async (locale, name, phase, short) => {
+      const timeline = [
+        {
+          ...running(0)[0]!,
+          displayName: phase,
+          entry: { kind: 'entered' as const, at: at(-(39 * 24 + 21) * HOUR - 60_000) },
+        },
+      ]
+      await page.viewport(1440, 900)
+      await screen(
+        {
+          getBatch: () => Effect.succeed({ batch: batch({ name, status: 'active' }) }),
+          getTimeline: () => Effect.succeed({ timeline }),
+        },
+        `/assessment/batches/${BATCH_ID}/phases`,
+        locale,
+      )
+      const context = page.getByTestId('batch-context-bar')
+      const clock = context.getByTestId('stage-clock')
+      const title = context.getByText(name, { exact: true })
+      const stage = context.getByText(phase, { exact: true })
+      try {
+        await expect.element(clock).toBeVisible()
+        for (const width of [1440, 1280, 1024, 834, 768, 390, 320]) {
+          await page.viewport(width, 900)
+          await expect.element(stage).toBeVisible()
+          await expect.element(title).toHaveAttribute('title', name)
+          const root = context.element()
+          const shown = stage.element()
+          const edge = root.getBoundingClientRect()
+          const phaseBounds = shown.getBoundingClientRect()
+          const titleBounds = title.element().getBoundingClientRect()
+          expect(root.scrollWidth).toBeLessThanOrEqual(root.clientWidth + 1)
+          expect(phaseBounds.right).toBeLessThanOrEqual(edge.right)
+          expect(titleBounds.width).toBeGreaterThan(60)
+          expect(phaseBounds.width).toBeGreaterThan(40)
+          expect(shown.getAttribute('title')).toBe(phase)
+          if (short) expect(shown.scrollWidth).toBeLessThanOrEqual(shown.clientWidth + 1)
+          else if (width === 320) {
+            expect(shown.scrollWidth).toBeGreaterThan(shown.clientWidth)
+            expect(getComputedStyle(shown).textOverflow).toBe('ellipsis')
+          }
+          if (width >= 768) expect(titleBounds.right).toBeLessThan(phaseBounds.left)
+          if (width === 834) await expect.element(clock).not.toBeVisible()
+        }
+      } finally {
+        await page.viewport(1280, 800)
+      }
+    },
+  )
+
   it('reserves the mobile flow height before the context module loads', async () => {
     await page.viewport(390, 844)
     let load!: (value: { default: typeof BatchContextBar }) => void

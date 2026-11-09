@@ -42,6 +42,10 @@ import * as m from '#messages'
 const breathe = stylex.keyframes({
   '50%': { opacity: 0.5 },
 })
+const COMPACT_CONTEXT = '@container batch-progress (max-width: 335.98px)'
+const SHORT_CONTEXT_CLOCK = '@container batch-progress (max-width: 287.98px)'
+const NO_ELAPSED = '@container batch-progress (max-width: 255.98px)'
+const STAGE_ONLY = '@container batch-progress (max-width: 171.98px)'
 
 const styles = stylex.create({
   root: {
@@ -69,6 +73,7 @@ const styles = stylex.create({
     fontSize: 12,
     color: tokens.mutedForeground,
   },
+  contextLabel: { display: { default: 'inline', [COMPACT_CONTEXT]: 'none' } },
   // the stage as a line of text rather than as chrome: where the strip has
   // a ground of its own, a badge inside it is a second ground and the name
   // stops reading as the first thing on the line
@@ -128,6 +133,14 @@ const styles = stylex.create({
     gap: 6,
     fontWeight: 500,
   },
+  // Leave room for a recognisable stage name even with a long clock.
+  contextClock: { minWidth: 0, maxWidth: '62%', overflow: 'hidden' },
+  contextClockOnly: { minWidth: 0, maxWidth: '100%', overflow: 'hidden' },
+  contextTime: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  hideElapsed: { display: { default: null, [NO_ELAPSED]: 'none' } },
+  hideClock: { display: { default: null, [STAGE_ONLY]: 'none' } },
+  contextFullWords: { display: { default: 'inline', [SHORT_CONTEXT_CLOCK]: 'none' } },
+  contextShortWords: { display: { default: 'none', [SHORT_CONTEXT_CLOCK]: 'inline' } },
   toneCalm: {
     color: tokens.mutedForeground,
   },
@@ -146,6 +159,7 @@ const styles = stylex.create({
   plannedLabel: {
     color: tokens.mutedForeground,
   },
+  contextPlannedLabel: { flexShrink: 0, display: { default: 'inline', [STAGE_ONLY]: 'none' } },
 })
 
 // Only the clock takes a colour. The stage name is a fact that does not
@@ -199,6 +213,7 @@ export function BatchProgress({
   dense = false,
   single = false,
   flat = false,
+  inContextBar = false,
   xstyle,
 }: {
   timeline: readonly TimelineLike[]
@@ -216,6 +231,8 @@ export function BatchProgress({
    * "stage, then how long", which is what it says.
    */
   flat?: boolean
+  /** Let the available space in the batch bar decide how much time to show. */
+  inContextBar?: boolean
   xstyle?: stylex.StyleXStyles
 }) {
   const locale = useLocale()
@@ -275,6 +292,10 @@ export function BatchProgress({
 
   const tone = TONES[toneOf(progress)]
   const filled = progress.kind === 'until' ? progress.fraction : null
+  const foldClock =
+    inContextBar &&
+    stage !== null &&
+    (progress.kind === 'since' ? styles.hideElapsed : styles.hideClock)
 
   return (
     <span {...stylex.props(styles.root, xstyle)}>
@@ -284,9 +305,13 @@ export function BatchProgress({
         // is in. The label is narrower than the name it introduces, so it is
         // the first thing dropped when the bar runs out of room.
         <span data-slot="stage" {...stylex.props(styles.stageSeat)}>
-          <span {...stylex.props(styles.stageLabel)}>{m.batch_currentStage()}</span>
+          <span {...stylex.props(styles.stageLabel, inContextBar && styles.contextLabel)}>
+            {m.batch_currentStage()}
+          </span>
           {flat ? (
-            <span {...stylex.props(styles.stagePlain)}>{stage}</span>
+            <span data-slot="stage-name" title={stage} {...stylex.props(styles.stagePlain)}>
+              {stage}
+            </span>
           ) : (
             <Badge variant="secondary" className={stylex.props(styles.stageBadge).className}>
               {toneOf(progress) === 'urgent' && (
@@ -300,7 +325,7 @@ export function BatchProgress({
       {stage !== null && (said !== null || wideSaid !== null) && (
         // a rule rather than more space: the two halves answer different
         // questions, and at a glance the gap alone read as one long phrase
-        <span aria-hidden {...stylex.props(styles.rule)} />
+        <span aria-hidden {...stylex.props(styles.rule, foldClock)} />
       )}
       {(said !== null || wideSaid !== null) && (
         <span
@@ -317,18 +342,38 @@ export function BatchProgress({
                 'data-rest': String(progress.span.rest),
               }
             : {})}
-          {...stylex.props(styles.clock, tone)}
+          {...stylex.props(
+            styles.clock,
+            inContextBar && (stage === null ? styles.contextClockOnly : styles.contextClock),
+            foldClock,
+            tone,
+          )}
         >
           {filled !== null && !flat && <Ring fraction={filled} />}
           {progress.kind === 'starts' && (
-            <span {...stylex.props(styles.plannedLabel)}>{m.batch_plannedStart()}</span>
+            <span
+              {...stylex.props(styles.plannedLabel, inContextBar && styles.contextPlannedLabel)}
+            >
+              {m.batch_plannedStart()}
+            </span>
           )}
           {said !== null ? (
             progress.kind === 'starts' ? (
-              <BatchLocalTime at={progress.at}>{said}</BatchLocalTime>
+              <span title={said} {...stylex.props(inContextBar && styles.contextTime)}>
+                <BatchLocalTime at={progress.at}>{said}</BatchLocalTime>
+              </span>
             ) : (
               <Ticker value={said} />
             )
+          ) : inContextBar ? (
+            <>
+              <span {...stylex.props(styles.contextFullWords)}>
+                <Ticker value={wideSaid ?? ''} />
+              </span>
+              <span {...stylex.props(styles.contextShortWords)}>
+                <Ticker value={sayIn('single') ?? ''} />
+              </span>
+            </>
           ) : (
             <>
               <AtWidth as="span" below={768}>

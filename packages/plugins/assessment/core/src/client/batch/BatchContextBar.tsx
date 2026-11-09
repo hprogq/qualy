@@ -34,7 +34,7 @@ import * as m from '#messages'
 const HEAD_BREAKPOINT = 768 as const
 
 const styles = stylex.create({
-  // Three measured columns from a tablet up; on a phone two rows, because
+  // Three bounded columns from a tablet up; on a phone two rows, because
   // there the band is the window's own head and has the head's work to do -
   // the way back, what is open and the account across the top, where the
   // stage and its clock cannot also fit without one of them being cut.
@@ -49,8 +49,8 @@ const styles = stylex.create({
     },
     gridTemplateColumns: {
       default: null,
-      [breakpoints.tablet]: '1fr auto 1fr',
-      [breakpoints.desktop]: '1fr auto 1fr',
+      [breakpoints.tablet]: 'minmax(7rem, 1fr) minmax(0, 2fr) minmax(0, 1fr)',
+      [breakpoints.desktop]: 'minmax(7rem, 1fr) minmax(0, 2fr) minmax(0, 1fr)',
     },
     minWidth: 0,
     alignItems: {
@@ -125,13 +125,8 @@ const styles = stylex.create({
       [breakpoints.phone]: 'none',
     },
   },
-  // The switch: centred between the two doors on a desk, and hard left on a
-  // phone where the left door is gone. Its ceiling is generous - these are
-  // names somebody chose, and cutting one early to protect space nothing
-  // else is using was the wrong trade - and short of the width where the bar
-  // becomes a title bar. The sides keep their own content whatever happens,
-  // so a longer name is cut here rather than pushing the countdown off the
-  // end.
+  // The batch is the subject, so its name gets the largest track. Long
+  // names truncate within the switch and cannot push into the stage.
   middle: {
     display: 'flex',
     minWidth: 0,
@@ -139,7 +134,7 @@ const styles = stylex.create({
     // it, so the ceiling only has to keep the account's corner clear - which
     // the row's own end already does.
     maxWidth: {
-      default: 'min(70vw, 40rem)',
+      default: 'min(100%, 40rem)',
       [breakpoints.phone]: '100%',
     },
     flexGrow: {
@@ -163,16 +158,24 @@ const styles = stylex.create({
   },
   // the strip's own outline: it has a rule and a ground of its own, so an
   // empty one is a band of nothing rather than a strip on its way
-  emptyStrip: { fontSize: { default: 14, [breakpoints.phone]: 13 }, color: tokens.mutedForeground },
+  emptyStrip: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: { default: 14, [breakpoints.phone]: 13 },
+    color: tokens.mutedForeground,
+  },
   stripBone: { height: { default: 12, [breakpoints.phone]: 32 }, width: '7rem' },
   stripBoneEnd: { height: { default: 12, [breakpoints.phone]: 32 }, width: '4.5rem' },
-  // never shrunk and never clipped: the clock is short by design, and a
-  // column that gave way would hand its own text to the name beside it.
-  // On a phone it is the second row, ruled off from the head above it and
-  // reading from the same margin as every other line of the page.
+  // On a phone the plan button gets its own seat; the stage and clock
+  // respond to the space left over, not to the full window width.
   tail: {
     display: 'flex',
+    minWidth: 0,
     flexShrink: 0,
+    containerType: 'inline-size',
+    containerName: 'batch-progress',
     alignItems: 'center',
     justifyContent: {
       default: 'flex-end',
@@ -189,13 +192,19 @@ const styles = stylex.create({
     paddingBlock: { default: null, [breakpoints.phone]: 7 },
     height: { default: null, [breakpoints.phone]: 47 },
   },
+  mobileProgress: {
+    minWidth: 0,
+    flex: '1 1 0%',
+    containerType: 'inline-size',
+    containerName: 'batch-progress',
+  },
   // At a desk the stage and its clock are themselves the way to the whole
   // plan: pointed at, they answer like a control; pressed, the plan opens
-  // at the side. The inset is given back so the words keep the margin every
-  // other line on the strip keeps.
+  // at the side. Keep the entire hit target inside its column.
   stageKey: {
     display: 'flex',
     minWidth: 0,
+    maxWidth: '100%',
     alignItems: 'center',
     borderWidth: 0,
     borderRadius: tokens.radiusMd,
@@ -206,7 +215,6 @@ const styles = stylex.create({
     },
     paddingInline: 8,
     paddingBlock: 4,
-    marginInline: -8,
     color: 'inherit',
     font: 'inherit',
     textAlign: 'start',
@@ -222,6 +230,7 @@ const styles = stylex.create({
     // a name a pixel larger than the time beside it reads as a heading
     fontSize: { default: 14, [breakpoints.phone]: 13 },
     minWidth: 0,
+    maxWidth: '100%',
     flexShrink: 1,
   },
   // the label's own end, not the control's: a ghost button's inset would
@@ -367,13 +376,16 @@ export default function BatchContextBar() {
           <>
             <AtWidth below={HEAD_BREAKPOINT}>
               <BatchZone zone={batch.timezone}>
-                <BatchProgress
-                  showStage
-                  single
-                  flat
-                  timeline={stages}
-                  xstyle={styles.progressText}
-                />
+                <div {...stylex.props(styles.mobileProgress)}>
+                  <BatchProgress
+                    showStage
+                    single
+                    flat
+                    inContextBar
+                    timeline={stages}
+                    xstyle={styles.progressText}
+                  />
+                </div>
               </BatchZone>
             </AtWidth>
             <AtWidth from={HEAD_BREAKPOINT}>
@@ -386,7 +398,13 @@ export default function BatchContextBar() {
                 {...stylex.props(styles.stageKey)}
               >
                 <BatchZone zone={batch.timezone}>
-                  <BatchProgress showStage timeline={stages} xstyle={styles.progressText} />
+                  <BatchProgress
+                    showStage
+                    flat
+                    inContextBar
+                    timeline={stages}
+                    xstyle={styles.progressText}
+                  />
                 </BatchZone>
                 {/* heard after the stage it opens the plan of */}
                 <VisuallyHidden>{m.flow_view()}</VisuallyHidden>

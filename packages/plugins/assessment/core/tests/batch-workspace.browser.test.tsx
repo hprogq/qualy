@@ -647,12 +647,13 @@ describe('the administration lane of the overview', () => {
     // says there is nothing to do
     await expect.element(page.getByTestId('overview-clear')).toBeVisible()
     await expect.element(page.getByTestId('workspace-rail')).toBeInTheDocument()
+    // The access badge is a lazy rail slot, independent of the overview.
+    await vi.waitFor(() => expect(previewAccessSync).toHaveBeenCalled())
     expect(lane()).toHaveLength(0)
     expect(page.getByTestId('overview-actions').elements()).toHaveLength(0)
     expect(shown('[data-testid="rail-alert"]')).toHaveLength(0)
     expect(reviewAlerts).not.toHaveBeenCalled()
     expect(listParticipantPlacements).not.toHaveBeenCalled()
-    expect(previewAccessSync).toHaveBeenCalled()
   })
 
   it('says what stands behind each administration entry of the rail with a dot', async () => {
