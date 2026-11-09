@@ -14,6 +14,7 @@ import {
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { keepPreviousData, useQuery, useQueryClient, type QueryKey } from '@tanstack/react-query'
+import { useHandedQueryState } from '@qualy/web-runtime/query-hydration'
 import * as stylex from '@stylexjs/stylex'
 import { layoutPreferenceRoot } from '@qualy/ui/theme/layout-preference.stylex'
 import {
@@ -330,14 +331,21 @@ export function ParticipantResultList({
     params: { batchId },
     query: { participantIds: ids },
   })
-  const scores = useQuery({
-    ...pageScores,
-    enabled: ids.length > 0 && !participants.isPlaceholderData,
-  })
-  const scored = new Map((scores.data?.scores ?? []).map((one) => [one.participantId, one]))
+  const scoreEnabled = ids.length > 0 && !participants.isPlaceholderData
+  const scores = useQuery({ ...pageScores, enabled: scoreEnabled })
+  const handedScores = useHandedQueryState<typeof scores.data>(pageScores.queryKey)
+  const scoreData = handedScores === undefined ? scores.data : handedScores?.data
+  const scoreError = handedScores === undefined ? scores.error : handedScores?.error
+  const scoreTime =
+    handedScores === undefined ? scores.dataUpdatedAt : (handedScores?.dataUpdatedAt ?? 0)
+  const scoreWaiting =
+    handedScores === undefined
+      ? scores.isPending && scores.fetchStatus !== 'idle'
+      : handedScores === null && scoreEnabled
+  const scored = new Map((scoreData?.scores ?? []).map((one) => [one.participantId, one]))
   // the scoring service down answers as one row saying so and the rest
   // deferred, which is a page without totals as surely as a failed question
-  const serviceDown = (scores.data?.scores ?? []).some(
+  const serviceDown = (scoreData?.scores ?? []).some(
     (one) => one.state === 'unavailable' && one.reason === 'scoring-unavailable',
   )
 
@@ -790,11 +798,11 @@ export function ParticipantResultList({
       )}
       {/* the rows stand without their totals; why, and the way to ask
           for them again, said once above them rather than on each row */}
-      {scores.isError ? (
+      {scoreError != null ? (
         <ScoresNotice
           cause="request"
-          reason={formatError(scores.error)}
-          busy={scores.isFetching}
+          reason={formatError(scoreError)}
+          busy={handedScores === undefined && scores.isFetching}
           onRetry={() => void scores.refetch()}
         />
       ) : (
@@ -802,7 +810,7 @@ export function ParticipantResultList({
           <ScoresNotice
             cause="scoring-unavailable"
             reason={m.roster_scoreUnavailable()}
-            busy={scores.isFetching}
+            busy={handedScores === undefined && scores.isFetching}
             onRetry={() => void scores.refetch()}
           />
         )
@@ -950,8 +958,8 @@ export function ParticipantResultList({
                             participantId={row.id}
                             name={row.displayName}
                             answer={scored.get(row.id)}
-                            answeredAt={scores.dataUpdatedAt}
-                            waiting={scores.isPending && scores.fetchStatus !== 'idle'}
+                            answeredAt={scoreTime}
+                            waiting={scoreWaiting}
                             movedAt={movedAt}
                           />
                         </span>

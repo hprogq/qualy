@@ -1,4 +1,3 @@
-import { QueryHydration } from '@qualy/web-runtime/query-hydration'
 import { renderRequest } from '@qualy/web-rsc/request'
 import { answersOf, settle, within } from '@qualy/web-rsc/queries'
 import { batchIdOf, keyed, namesRecord, readBatch } from '../batch/batch-reads.server.ts'
@@ -6,9 +5,7 @@ import { holdsStanding } from '../batch/capabilities.ts'
 import { queueReadOf } from '../review/inbox-reads.ts'
 import { rosterQueryOf, rosterViewOf, type RosterView } from '../roster/roster-place.ts'
 import { readParticipantEntries } from './participant-entries.server.ts'
-import ParticipantResultsPage from './ParticipantResultsPage.tsx'
-import { Suspense } from 'react'
-import { ParticipantResultsPending } from './ParticipantResultsPending.tsx'
+import { ParticipantResultsReady, ParticipantResultsStream } from './ParticipantResultsPage.tsx'
 
 // The roster, or one person on it, as a server draws it
 // (docs/adr/0012-rsc-data-mode.md), read for a reader the batch says may see
@@ -32,43 +29,28 @@ export default async function ParticipantResults({
   // beyond the existing HTML wait uses the streamed, read-only outline.
   const prepared = prepareResults(params)
   const first = await within(prepared)
-  if (first !== undefined) return first
+  if (first !== undefined) return <ParticipantResultsReady handed={first} />
   return (
-    <Suspense
-      fallback={
-        <ParticipantResultsPending
-          detail={Boolean(renderRequest().url.searchParams.get('participant'))}
-        />
-      }
-    >
-      <PreparedResults result={prepared} />
-    </Suspense>
+    <ParticipantResultsStream
+      response={prepared}
+      detail={Boolean(renderRequest().url.searchParams.get('participant'))}
+    />
   )
-}
-
-async function PreparedResults({ result }: { result: ReturnType<typeof prepareResults> }) {
-  return result
 }
 
 async function prepareResults(params: Readonly<Record<string, string | undefined>>) {
   const batchId = batchIdOf(params)
-  if (batchId === undefined) return <ParticipantResultsPage />
+  if (batchId === undefined) return null
   const search = renderRequest().url.searchParams
   const subject = settle(await readBatch(batchId).exit)
   if (subject.kind !== 'answer' || !holdsStanding(subject.value.batch.capabilities, 'results')) {
-    return <ParticipantResultsPage />
+    return null
   }
   const view = rosterViewOf((key) => search.get(key) ?? '')
   const participantId = search.get('participant') ?? ''
-  const handed =
-    participantId === ''
-      ? await rosterReads(batchId, view)
-      : await accountReads(batchId, participantId, view, subject.value.batch.capabilities.review)
-  return (
-    <QueryHydration {...handed}>
-      <ParticipantResultsPage />
-    </QueryHydration>
-  )
+  return participantId === ''
+    ? rosterReads(batchId, view)
+    : accountReads(batchId, participantId, view, subject.value.batch.capabilities.review)
 }
 
 /** the page of the roster the address names, as the list reads it */

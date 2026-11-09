@@ -1,13 +1,17 @@
 'use client'
-import { useEffect, useState, type ReactNode } from 'react'
+import { useContext, useEffect, useState, type ReactNode } from 'react'
 import {
   HydrationBoundary,
+  hashKey,
   useQueryClient,
   type DehydratedState,
   type Query,
   type QueryClient,
+  type QueryKey,
 } from '@tanstack/react-query'
 import { useLocation } from 'react-router'
+import { useHydrating } from '../document/hydrating.ts'
+import { sharedContext } from '../shared-context.ts'
 import type { Coming } from './query-handoff.ts'
 
 export type { Arrival, Coming } from './query-handoff.ts'
@@ -51,12 +55,27 @@ export type { Arrival, Coming } from './query-handoff.ts'
 /** how long an answer a server handed over stands before a reader asks again */
 const HANDED_FRESH_MS = 30_000
 
+const HandedState = sharedContext<DehydratedState | null>('handed-query-state', null)
+
 /**
- * Opened once the browser has taken the document over, and never on the
- * server. A read that lands before then waits for it: whether it had landed
- * when a part of the page rendered would otherwise depend on timing - a part
- * resumed after its code loaded, on either side - and the html and the
- * first frame would disagree. Both draw it on its way; it lands after.
+ * The response that drew this subtree, not the live cache. A streamed query
+ * can land while a descendant is still hydrating. That descendant must draw
+ * the response's snapshot once, then subscribe to the already current cache.
+ * Null means this response did not hold an answer; undefined means live.
+ */
+export function useHandedQueryState<T>(key: QueryKey) {
+  const hydrating = useHydrating()
+  const response = useContext(HandedState)
+  if (!hydrating || response === null) return undefined
+  const hash = hashKey(key)
+  const snapshot = response.queries.find((query) => query.queryHash === hash)?.state
+  return snapshot === undefined ? null : { ...snapshot, data: snapshot.data as T | undefined }
+}
+
+/**
+ * Keep the browser's cache stable until a handoff has committed. This is
+ * not a hydration fence for suspended descendants; their first render
+ * reads the response snapshot, not the live cache.
  */
 let takeOver: () => void = () => {}
 const takenOver = new Promise<void>((resolve) => {
@@ -117,7 +136,9 @@ export function QueryHydration({
       return [query.queryKey]
     }),
     ...coming.map((read) => {
-      follow(client, read)
+      // The HTML renderer only draws the pending state. It must not retain
+      // a request's cache in a promise that only a browser can resolve.
+      if (typeof window !== 'undefined') follow(client, read)
       client.setQueryDefaults(read.queryKey, { staleTime: HANDED_FRESH_MS })
       return read.queryKey
     }),
@@ -129,5 +150,9 @@ export function QueryHydration({
     if (here === drawnAt) return
     for (const key of held) client.setQueryDefaults(key, {})
   }, [client, held, here, drawnAt])
-  return <HydrationBoundary state={state}>{children}</HydrationBoundary>
+  return (
+    <HandedState value={state}>
+      <HydrationBoundary state={state}>{children}</HydrationBoundary>
+    </HandedState>
+  )
 }

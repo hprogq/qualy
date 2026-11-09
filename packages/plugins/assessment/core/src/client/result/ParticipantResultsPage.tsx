@@ -1,5 +1,6 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { Suspense, use, useEffect, useState, type ComponentProps } from 'react'
+import { QueryHydration } from '@qualy/web-runtime/query-hydration'
 import { useQuery } from '@tanstack/react-query'
 import { useLocation } from 'react-router'
 import * as stylex from '@stylexjs/stylex'
@@ -21,6 +22,7 @@ import { RosterWalkList } from '../roster/RosterWalkList.tsx'
 import { rosterPageAddress, useRosterView } from '../roster/roster-view.ts'
 import { useRosterWalk } from '../roster/roster-walk.ts'
 import { ParticipantResultList } from './ParticipantResultList.tsx'
+import { ParticipantResultsPending } from './ParticipantResultsPending.tsx'
 import * as m from '#messages'
 
 // Checking one person's account: who took part, and what this round has
@@ -60,6 +62,34 @@ const styles = stylex.create({
   // behind it. The list stays a page that scrolls as a whole.
   bounded: { minHeight: 0 },
 })
+
+type ResultsHandoff = Pick<ComponentProps<typeof QueryHydration>, 'state' | 'coming'> | null
+
+export function ParticipantResultsReady({ handed }: { handed: ResultsHandoff }) {
+  const page = <ParticipantResultsPage />
+  return handed === null ? page : <QueryHydration {...handed}>{page}</QueryHydration>
+}
+
+// Both the outline and the resolved page are in this client module. Once
+// the boundary has HTML to hydrate, it cannot suspend again just to load a
+// different client reference for the page whose HTML is already visible.
+export function ParticipantResultsStream({
+  response,
+  detail,
+}: {
+  response: Promise<ResultsHandoff>
+  detail: boolean
+}) {
+  return (
+    <Suspense fallback={<ParticipantResultsPending detail={detail} />}>
+      <StreamedResults response={response} />
+    </Suspense>
+  )
+}
+
+function StreamedResults({ response }: { response: Promise<ResultsHandoff> }) {
+  return <ParticipantResultsReady handed={use(response)} />
+}
 
 export default function ParticipantResultsPage() {
   const [participantId] = usePageQueryState('participant', '', { history: 'push' })
