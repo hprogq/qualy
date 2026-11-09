@@ -96,6 +96,13 @@ const styles = stylex.create({
     flexDirection: 'column',
     gap: 20,
   },
+  flushFoot: {
+    paddingBlock: {
+      default: '24px 0',
+      [breakpoints.tablet]: '32px 0',
+      [breakpoints.phone]: '16px 0',
+    },
+  },
   fillFlex: {
     display: 'flex',
     flexGrow: 1,
@@ -180,6 +187,7 @@ export function BatchScreen({
   size = 'default',
   chrome = 'band',
   fixedNotices = false,
+  flushFoot = false,
   fill = false,
   banner,
   notes,
@@ -202,6 +210,8 @@ export function BatchScreen({
    */
   chrome?: 'band' | 'none' | 'bare'
   fixedNotices?: boolean
+  /** The screen's bottom dock provides its own clearance. */
+  flushFoot?: boolean
   /** Keep an internally scrolling workbench within the shell's available height. */
   fill?: boolean
   /**
@@ -359,7 +369,7 @@ export function BatchScreen({
           </Resizing>
         </PageContainer>
       </div>
-      <PageContainer size={size} xstyle={styles.bodyColumn}>
+      <PageContainer size={size} xstyle={[styles.bodyColumn, flushFoot && styles.flushFoot]}>
         <AsyncSection
           pending={detail.isPending}
           loadingLabel={commonMessages.state_loading()}

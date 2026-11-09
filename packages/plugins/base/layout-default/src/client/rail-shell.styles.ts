@@ -4,6 +4,8 @@ import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { shell, shellRoot } from './shell.stylex.ts'
 
+const FOOT_ROOM = `calc(${shell.bottomBarHeight} + env(safe-area-inset-bottom))`
+
 export const styles = stylex.create({
   root: {
     display: 'flex',
@@ -351,18 +353,19 @@ export const styles = stylex.create({
   // - none where the open screen has taken the foot for a bar of its own,
   // which it says in its html (ScreenFoot)
   mainFoot: {
-    paddingBottom: 'var(--q-shell-foot-room)',
+    paddingBottom: 'var(--q-shell-foot-room, 0px)',
+    // Match only widths where the shell really draws a bottom bar. In
+    // particular there is no unconditional custom-property rule to win
+    // over the media rule in the generated stylesheet.
     '--q-shell-foot-room': {
-      default: `calc(${shell.bottomBarHeight} + env(safe-area-inset-bottom))`,
-      [breakpoints.desktop]: '0px',
-      [stylex.when.ancestor(':has([data-screen-foot="always"])', shellRoot)]: {
-        default: '0px',
-        [breakpoints.desktop]: '0px',
+      default: null,
+      [stylex.when.ancestor(':not(:has([data-screen-foot="always"]))', shellRoot)]: {
+        default: null,
+        [breakpoints.tablet]: FOOT_ROOM,
       },
-      [stylex.when.ancestor(':has([data-screen-foot="phone"])', shellRoot)]: {
-        default: `calc(${shell.bottomBarHeight} + env(safe-area-inset-bottom))`,
-        [breakpoints.phone]: '0px',
-        [breakpoints.desktop]: '0px',
+      [stylex.when.ancestor(':not(:has([data-screen-foot]))', shellRoot)]: {
+        default: null,
+        [breakpoints.phone]: FOOT_ROOM,
       },
     },
   },

@@ -3409,7 +3409,7 @@ describe('review waiting for a reviewer', () => {
       const viewport = document.querySelector('[data-slot="batch-notice-viewport"]')!
       expect(getComputedStyle(viewport).position).toBe('fixed')
       expect(dock.contains(page.getByTestId('review-gap-notice').element())).toBe(true)
-      expect(dock.getBoundingClientRect().bottom).toBeGreaterThan(700)
+      expect(dock.getBoundingClientRect().bottom).toBeCloseTo(window.innerHeight - 56 - 48, 0)
       expect(page.getByTestId('batch-band').element().contains(dock)).toBe(false)
       await page.viewport(1280, 800)
     })

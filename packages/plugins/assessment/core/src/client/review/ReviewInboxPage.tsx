@@ -318,6 +318,7 @@ export default function ReviewInboxPage() {
         ) : undefined
       }
       size="wide"
+      flushFoot={reviewing}
     >
       {(batch) =>
         batch.capabilities.review ? (

@@ -1551,6 +1551,18 @@ describe('the countdown', () => {
         const lane = clock.getBoundingClientRect()
         expect(bounds.left).toBeGreaterThanOrEqual(lane.left - 1)
         expect(bounds.right).toBeLessThanOrEqual(lane.right + 1)
+        // A row can fit geometrically yet leak positioned badges over the
+        // winning row. Check which row is actually on top at those points.
+        const stageNames = clock.querySelectorAll('[data-slot="context-stage"]')
+        for (const stageName of stageNames) {
+          const at = stageName.getBoundingClientRect()
+          const x = at.left + at.width / 2
+          const y = at.top + at.height / 2
+          if (x < lane.left || x >= lane.right || y < lane.top || y >= lane.bottom) continue
+          expect(document.elementFromPoint(x, y)?.closest('[data-slot="context-clock-row"]')).toBe(
+            row,
+          )
+        }
         expect(clock.getAnimations({ subtree: true })).toHaveLength(0)
         return [
           row.dataset['form'],
@@ -3929,8 +3941,7 @@ describe('the notice of organization changes', () => {
       const viewport = document.querySelector('[data-slot="batch-notice-viewport"]')!
       expect(getComputedStyle(viewport).position).toBe('fixed')
       expect(dock.contains(page.getByTestId('access-sync-notice').element())).toBe(true)
-      expect(dock.getBoundingClientRect().bottom).toBeGreaterThan(740)
-      expect(dock.getBoundingClientRect().bottom).toBeLessThanOrEqual(900)
+      expect(dock.getBoundingClientRect().bottom).toBeCloseTo(window.innerHeight - 48, 0)
       expect(page.getByTestId('batch-band').element().contains(dock)).toBe(false)
       await page.viewport(1280, 800)
     },

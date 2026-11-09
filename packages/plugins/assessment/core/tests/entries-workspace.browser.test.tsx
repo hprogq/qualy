@@ -1,5 +1,6 @@
 import MyEntriesPage from '../src/client/entry/MyEntriesPage.tsx'
 import { WorkspaceSkeleton } from '../src/client/entry/workspace/WorkspaceSkeleton.tsx'
+import WorkspaceShell from '@qualy/plugin-layout-default/client/WorkspaceShell'
 import type { ReactNode } from 'react'
 import { useNavigate } from 'react-router'
 import { ScreenFillScope, useScreenFillClaimed } from '@qualy/web-runtime'
@@ -19,6 +20,7 @@ import zhCN from '../messages/zh-CN.json' with { type: 'json' }
 afterEach(() => page.viewport(1280, 800))
 
 const BATCH_ID = '11111111-1111-4111-8111-111111111111'
+const ENTRIES_PATH = '/assessment/batches/:batchId/my-entries'
 const PARTICIPANT_ID = '44444444-4444-4444-8444-444444444444'
 const ROOT = '70000000-7777-4777-8777-777777777770'
 const BAND_A = '70000000-7777-4777-8777-777777777771'
@@ -184,6 +186,7 @@ const workspace = ({
   locale = 'zh-CN',
   storage = {},
   around = (screen) => screen,
+  inShell = false,
 }: {
   route: string
   items?: readonly unknown[]
@@ -198,6 +201,7 @@ const workspace = ({
   storage?: Record<string, string>
   /** what the shell puts around the page, where a case is about the two */
   around?: (screen: ReactNode) => ReactNode
+  inShell?: boolean
 }) =>
   renderScreen({
     client: fakeClient({
@@ -208,10 +212,24 @@ const workspace = ({
             pages: [
               {
                 id: 'assessment/batch-my-entries',
-                path: '/assessment/batches/:batchId/my-entries',
+                path: ENTRIES_PATH,
                 layout: 'admin',
               },
             ],
+            collections: {
+              'workspace-shell/navigation': [
+                {
+                  id: 'assessment/batch-my-entries/rail',
+                  label: '我的申报',
+                  target: {
+                    kind: 'page',
+                    pageId: 'assessment/batch-my-entries',
+                    path: ENTRIES_PATH,
+                  },
+                  order: 10,
+                },
+              ],
+            },
           }),
       },
       assessment: {
@@ -262,35 +280,40 @@ const workspace = ({
     locale,
     storage,
     routes: [
-      {
-        path: '/assessment/batches/:batchId/my-entries',
-        // the shell the page is built for: a window-high frame whose main
-        // column scrolls, not a document that grows
-        element: (
-          <div
-            style={{
-              display: 'flex',
-              height: '100dvh',
-              flexDirection: 'column',
-              overflow: 'hidden',
-            }}
-          >
-            <main
-              data-testid="page-scroller"
-              style={{
-                display: 'flex',
-                minHeight: 0,
-                flex: '1 1 0%',
-                flexDirection: 'column',
-                overflowY: 'auto',
-              }}
-            >
-              {around(<MyEntriesPage />)}
-            </main>
-            <BackKey />
-          </div>
-        ),
-      },
+      inShell
+        ? {
+            element: <WorkspaceShell />,
+            children: [{ path: ENTRIES_PATH, element: around(<MyEntriesPage />) }],
+          }
+        : {
+            path: ENTRIES_PATH,
+            // the shell the page is built for: a window-high frame whose main
+            // column scrolls, not a document that grows
+            element: (
+              <div
+                style={{
+                  display: 'flex',
+                  height: '100dvh',
+                  flexDirection: 'column',
+                  overflow: 'hidden',
+                }}
+              >
+                <main
+                  data-testid="page-scroller"
+                  style={{
+                    display: 'flex',
+                    minHeight: 0,
+                    flex: '1 1 0%',
+                    flexDirection: 'column',
+                    overflowY: 'auto',
+                  }}
+                >
+                  {around(<MyEntriesPage />)}
+                </main>
+                <BackKey />
+              </div>
+            ),
+          },
       { path: '/elsewhere', element: <Elsewhere /> },
     ] as never,
   })
@@ -2423,6 +2446,7 @@ it.each([390, 1440])(
     ]
     const { unmount } = await workspace({
       route: base,
+      inShell: width >= 1024,
       stubs: {
         getTimeline: () => Effect.succeed({ timeline }),
         listMyEntries: () =>
@@ -2449,6 +2473,11 @@ it.each([390, 1440])(
     expect(rect.right).toBeLessThanOrEqual(width + 1)
     expect(rect.top).toBeGreaterThanOrEqual(0)
     expect(rect.bottom).toBeLessThanOrEqual(800)
+    if (width >= 1024) {
+      const workbench = page.getByTestId('entries-workspace').element().getBoundingClientRect()
+      expect(workbench.bottom).toBeCloseTo(window.innerHeight, 0)
+      expect(rect.bottom).toBeCloseTo(window.innerHeight - 48, 0)
+    }
     await unmount()
     await workspace({ route: base, stubs: { getTimeline: () => Effect.succeed({ timeline }) } })
     await expect.element(page.getByTestId('entries-workspace')).toBeVisible()

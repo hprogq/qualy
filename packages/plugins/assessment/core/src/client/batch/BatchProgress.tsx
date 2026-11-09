@@ -126,12 +126,16 @@ const styles = stylex.create({
   },
   contextLayer: {
     gridArea: '1 / 1',
+    // Positioned descendants (notably the stage badge) must stay below
+    // the next fitting row, including its opaque background.
+    isolation: 'isolate',
     minWidth: 0,
     display: 'flex',
     flexWrap: 'wrap',
     alignContent: 'start',
     overflow: 'clip',
     height: CONTEXT_LINE_HEIGHT,
+    pointerEvents: 'none',
   },
   contextStrut: { flexBasis: 0, flexShrink: 0, height: CONTEXT_LINE_HEIGHT },
   contextPaint: {
@@ -144,6 +148,7 @@ const styles = stylex.create({
     justifyContent: 'flex-end',
     gap: { default: 12, [breakpoints.phone]: 6 },
     whiteSpace: 'nowrap',
+    pointerEvents: 'auto',
     backgroundColor: {
       default: tokens.background,
       [stylex.when.ancestor(':is(:hover, :focus-visible)', batchProgressControl)]:
