@@ -82,10 +82,11 @@ const styles = stylex.create({
   card: {
     containerType: 'inline-size',
     borderRadius: { default: 14, [breakpoints.phone]: 0 },
-    boxShadow: {
-      default: `0 0 0 1px ${tokens.border}, 0 1px 2px rgb(0 0 0 / 0.04)`,
-      [breakpoints.phone]: `0 -1px 0 0 ${tokens.border}, 0 1px 0 0 ${tokens.border}`,
-    },
+    borderWidth: 1,
+    borderInlineWidth: { default: 1, [breakpoints.phone]: 0 },
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    boxShadow: { default: '0 1px 2px rgb(0 0 0 / 0.04)', [breakpoints.phone]: 'none' },
     marginInline: { default: null, [breakpoints.phone]: -16 },
   },
   head: {
