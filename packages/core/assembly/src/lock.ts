@@ -120,7 +120,11 @@ export const lockSelfHash = (lock: AssemblyLock) =>
  * the lock remembers. So an older lock is discarded when every plugin in it is
  * still one the manifest could describe, and refused when it is not.
  */
-function superseded(file: string, lock: Partial<AssemblyLock> | null): void {
+function superseded(
+  file: string,
+  lock: Partial<AssemblyLock> | null,
+  warn: (message: string) => void,
+): void {
   const found = Number(lock?.lockfileVersion)
   if (!Number.isInteger(found)) {
     throw new Error(`${file}: lockfileVersion is missing; this file is not a qualy lock`)
@@ -139,12 +143,13 @@ function superseded(file: string, lock: Partial<AssemblyLock> | null): void {
         'Put them back in the manifest, resolve, then remove them again so the new lock records why they are kept.',
     )
   }
-  console.warn(
-    `${file}: lockfileVersion ${found} has been superseded by ${LOCKFILE_VERSION}; it will be rewritten`,
-  )
+  warn(`${file}: lockfileVersion ${found} has been superseded by ${LOCKFILE_VERSION}`)
 }
 
-export function readLock(file: string): AssemblyLock | undefined {
+export function readLock(
+  file: string,
+  warn: (message: string) => void = console.warn,
+): AssemblyLock | undefined {
   if (!fs.existsSync(file)) return undefined
   let parsed: unknown
   try {
@@ -154,7 +159,7 @@ export function readLock(file: string): AssemblyLock | undefined {
   }
   const lock = parsed as AssemblyLock
   if (lock?.lockfileVersion !== LOCKFILE_VERSION) {
-    superseded(file, lock)
+    superseded(file, lock, warn)
     return undefined
   }
   if (!lock.plugins || typeof lock.plugins !== 'object') {

@@ -25,9 +25,10 @@ export async function verifyAssembly(
   manifestPath: string,
   warn: (message: string) => void,
 ): Promise<Resolution> {
-  const previousLock = readLock(lockPathFor(manifestPath))
+  const lockWarnings: string[] = []
+  const previousLock = readLock(lockPathFor(manifestPath), (message) => lockWarnings.push(message))
   const resolution = await resolveAssembly({ manifestPath, previousLock })
-  const problems = lockDrift(previousLock, resolution)
+  const problems = [...lockWarnings, ...lockDrift(previousLock, resolution)]
   if (problems.length === 0) return resolution
 
   const summary = `assembly is out of date:\n  ${problems.join('\n  ')}`
