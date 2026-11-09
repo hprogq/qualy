@@ -12,7 +12,7 @@ import { RpcClient, RpcSerialization } from 'effect/rpc'
 import { NodeHttpServer, NodeSocket } from '@effect/platform-node'
 import { sql } from 'kysely'
 import WebSocket from 'ws'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import {
   createTestContext,
   databaseFor,
@@ -429,6 +429,14 @@ afterAll(async () => {
 })
 
 describe.runIf(postgresAvailable)('the formula language bridge', { concurrent: false }, () => {
+  afterEach(async () => {
+    // The browser's close event does not wait for the sandbox's finalizer.
+    // Check that it releases the session before the next case counts seats.
+    await expect
+      .poll(async () => (await authoringCapabilities()).activeLspSessions, { timeout: 10_000 })
+      .toBe(0)
+  }, 15_000)
+
   it('refuses the handshake without a same-origin page behind it', async () => {
     expect(await refusalOf(handshake({ origin: null }))).toBe(403)
     expect(await refusalOf(handshake({ origin: 'https://evil.example' }))).toBe(403)
