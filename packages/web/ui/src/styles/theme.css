@@ -143,7 +143,8 @@
      comes to differ from the frame after it */
   html {
     background-color: var(--q-background);
-    font-family: 'Inter Variable', sans-serif;
+    --q-font-sans: 'Inter', sans-serif;
+    font-family: var(--q-font-sans);
     line-height: 1.5;
     tab-size: 4;
     /* a phone browser's own flourishes, declined: the grey tap flash reads

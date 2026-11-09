@@ -128,7 +128,7 @@ export const qualyMantineTheme = createTheme({
   cursorType: 'pointer',
 
   // --- product baseline ---
-  fontFamily: "'Inter Variable', sans-serif",
+  fontFamily: 'var(--q-font-sans)',
   // The widget library moved `medium` to 600 in its ninth version, which on
   // a screen of badges, buttons and labels reads heavier than this product
   // speaks. 500 is the product's medium.
