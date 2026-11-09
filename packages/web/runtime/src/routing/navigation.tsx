@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
-import { useLocation, useNavigation, useResolvedPath } from 'react-router'
+import { matchPath, useLocation, useNavigation, useResolvedPath } from 'react-router'
 
 /** how long a navigation may take before its destination says so */
 export const PENDING_INDICATOR_AFTER = 150
 
 export interface PendingNavigation {
+  /** While moving, selection follows this destination instead of the old location. */
+  readonly selected: (current: boolean) => boolean
   /** the router is loading this destination, not another state of the open page */
   readonly pending: boolean
   /** pending for longer than a beat: time to show it */
@@ -15,14 +17,18 @@ export interface PendingNavigation {
 // move's eventual continuation. A click-local React transition can finish
 // before the server answers, or outlive a navigation that was superseded.
 // Leave click handling to Link/NavLink and observe the router's destination.
-export function usePendingNavigation(to: string): PendingNavigation {
+export function usePendingNavigation(to: string, end = true): PendingNavigation {
   const navigation = useNavigation()
   const location = useLocation()
   const target = useResolvedPath(to)
-  const pending =
-    navigation.state !== 'idle' &&
-    navigation.location.pathname === target.pathname &&
-    navigation.location.pathname !== location.pathname
+  const destination =
+    navigation.state !== 'idle' && navigation.location.pathname !== location.pathname
+      ? navigation.location.pathname
+      : undefined
+  const matches = (pathname: string) =>
+    matchPath({ path: target.pathname, end: end || target.pathname === '/' }, pathname) !== null
+  const next = destination !== undefined && matches(destination)
+  const pending = next && !matches(location.pathname)
   const [indicating, setIndicating] = useState(false)
 
   useEffect(() => {
@@ -34,5 +40,9 @@ export function usePendingNavigation(to: string): PendingNavigation {
     return () => clearTimeout(timer)
   }, [pending])
 
-  return { pending, indicating: pending && indicating }
+  return {
+    selected: (current) => (destination === undefined ? current : next),
+    pending,
+    indicating: pending && indicating,
+  }
 }

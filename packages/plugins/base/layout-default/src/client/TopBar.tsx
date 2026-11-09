@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { NavLink } from 'react-router'
+import { NavLink, useNavigation } from 'react-router'
 import * as stylex from '@stylexjs/stylex'
 import { Wordmark } from '@qualy/brand/wordmark'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
@@ -10,6 +10,8 @@ import { pending } from './pending.ts'
 import { chipRowFades, chips, useChipRow } from './chip-row.ts'
 import { headerActions, sidebarUser, type ResolvedNavigationItem } from '@qualy/ui-contract'
 import { UiSlot, usePendingNavigation } from '@qualy/web-runtime'
+import { applicationAt } from './useAppNavigation.ts'
+import { hasEntriesBelow } from './rail.ts'
 
 // The one bar that never changes: which applications there are, which one is
 // open, and the account. Everything below it belongs to the application.
@@ -178,6 +180,7 @@ const styles = stylex.create({
       ':hover': tokens.foreground,
     },
   },
+  tabMeasure: { fontWeight: 600 },
   // the word itself carries the ink, so the ink is exactly as wide as the word
   word: {
     position: 'relative',
@@ -196,6 +199,9 @@ const styles = stylex.create({
       transitionTimingFunction: INK_EASE,
     },
   },
+  // Only the reference weight participates in layout, not the animated text.
+  wordText: { position: 'absolute', inset: 0 },
+  wordMeasure: { visibility: 'hidden', userSelect: 'none' },
   wordActive: {
     '::after': {
       transform: 'scaleX(1)',
@@ -279,6 +285,7 @@ const styles = stylex.create({
       ':hover': tokens.foreground,
     },
   },
+  sectionMeasure: { fontWeight: 550 },
   sectionWord: {
     '::after': {
       bottom: -4,
@@ -329,26 +336,30 @@ function Brand({ to }: { to?: string }) {
 function BarLink({
   to,
   active,
+  selected,
   end,
   idle,
   lit,
   base,
   word,
+  measure,
   children,
 }: {
   to: string
   /** the bar's own notion of which entry is open, when it has one */
   active?: boolean
+  selected?: boolean
   end?: boolean
   idle: stylex.StyleXStyles
   lit: stylex.StyleXStyles
   base: stylex.StyleXStyles
   word?: stylex.StyleXStyles
+  measure: stylex.StyleXStyles
   children: ReactNode
 }) {
-  const navigation = usePendingNavigation(to)
+  const navigation = usePendingNavigation(to, end ?? false)
   const open = (isActive: boolean) => active ?? isActive
-  const going = (isActive: boolean) => navigation.pending && !open(isActive)
+  const highlighted = (isActive: boolean) => selected ?? navigation.selected(open(isActive))
   return (
     <NavLink
       to={to}
@@ -357,26 +368,26 @@ function BarLink({
       data-pending={navigation.pending ? '' : undefined}
       {...(active === undefined ? {} : { 'aria-current': active ? 'page' : undefined })}
       className={({ isActive }) =>
-        stylex.props(
-          base,
-          open(isActive) || navigation.pending ? lit : idle,
-          stylex.defaultMarker(),
-        ).className ?? ''
+        stylex.props(base, highlighted(isActive) ? lit : idle, stylex.defaultMarker()).className ??
+        ''
       }
     >
       {({ isActive }) => (
         <span
           {...stylex.props(
             styles.word,
-            open(isActive)
-              ? styles.wordActive
-              : going(isActive)
-                ? styles.wordPending
-                : styles.wordIdle,
+            highlighted(isActive)
+              ? open(isActive)
+                ? styles.wordActive
+                : styles.wordPending
+              : styles.wordIdle,
             word,
           )}
         >
-          {children}
+          <span {...stylex.props(styles.wordText)}>{children}</span>
+          <span aria-hidden {...stylex.props(styles.wordMeasure, measure)}>
+            {children}
+          </span>
         </span>
       )}
     </NavLink>
@@ -415,6 +426,9 @@ export function TopBar({
   title?: string | null
   titleShown?: boolean
 }) {
+  const navigation = useNavigation()
+  const selectedApp =
+    navigation.state === 'idle' ? activeApp : applicationAt(apps, navigation.location.pathname)?.id
   return (
     // glass last: once the page is under the bar, that state owns the line
     <div
@@ -445,9 +459,11 @@ export function TopBar({
               <BarLink
                 to={app.path}
                 active={app.id === activeApp}
+                selected={app.id === selectedApp}
                 base={styles.tab}
                 lit={styles.tabActive}
                 idle={styles.tabIdle}
+                measure={styles.tabMeasure}
               >
                 {app.label}
               </BarLink>
@@ -525,6 +541,7 @@ function SectionChip({ to, label }: { to: string; label: ResolvedNavigationItem[
 /** the sections of the open application, when it has more than one */
 export function SectionBar({ items }: { items: readonly ResolvedNavigationItem[] }) {
   if (items.length < 2) return null
+  const paths = items.flatMap((item) => (item.target.kind === 'page' ? [item.target.path] : []))
   return (
     <div {...stylex.props(styles.sectionBar)}>
       <nav {...stylex.props(styles.tabsNav, styles.sectionScroller)}>
@@ -534,9 +551,11 @@ export function SectionBar({ items }: { items: readonly ResolvedNavigationItem[]
               {item.target.kind === 'page' ? (
                 <BarLink
                   to={item.target.path}
+                  end={hasEntriesBelow(item.target.path, paths)}
                   base={styles.sectionLink}
                   lit={styles.sectionActive}
                   idle={styles.sectionIdle}
+                  measure={styles.sectionMeasure}
                   word={styles.sectionWord}
                 >
                   {item.label}

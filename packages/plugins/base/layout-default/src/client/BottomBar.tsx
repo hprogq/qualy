@@ -398,7 +398,7 @@ function BottomLink({
   /** the bands of a folded bar it shows in */
   xstyle?: stylex.StyleXStyles | null
 }) {
-  const navigation = usePendingNavigation(item.to)
+  const navigation = usePendingNavigation(item.to, item.exact ?? false)
   return (
     <NavLink
       to={item.to}
@@ -410,7 +410,13 @@ function BottomLink({
       className={({ isActive }) =>
         stylex.props(
           styles.item,
-          (item.active ?? isActive) || navigation.pending ? styles.itemActive : styles.itemIdle,
+          (
+            item.active === undefined
+              ? navigation.selected(isActive)
+              : item.active || navigation.pending
+          )
+            ? styles.itemActive
+            : styles.itemIdle,
           xstyle,
         ).className ?? ''
       }

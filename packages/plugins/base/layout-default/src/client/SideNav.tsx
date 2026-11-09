@@ -53,10 +53,11 @@ const styles = stylex.create({
     borderRadius: 6,
     fontSize: 14,
     textDecoration: 'none',
-    transitionProperty: 'background-color, color, font-weight',
+    transitionProperty: 'color, font-weight',
     transitionDuration: { default: '150ms', '@media (prefers-reduced-motion: reduce)': '0ms' },
   },
   idle: {
+    transitionDuration: '0ms',
     color: { default: tokens.mutedForeground, ':hover': tokens.foreground },
     backgroundColor: {
       default: 'transparent',
@@ -79,14 +80,14 @@ function SideLink({
   exact: boolean
   children: ReactNode
 }) {
-  const navigation = usePendingNavigation(to)
+  const navigation = usePendingNavigation(to, exact)
   return (
     <NavLink
       to={to}
       end={exact}
       aria-busy={navigation.pending || undefined}
       className={({ isActive }) =>
-        stylex.props(styles.link, isActive || navigation.pending ? styles.lit : styles.idle)
+        stylex.props(styles.link, navigation.selected(isActive) ? styles.lit : styles.idle)
           .className ?? ''
       }
     >

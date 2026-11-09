@@ -133,7 +133,7 @@ function RailEntry({
   // its shape and only lights. Pointing at it or reaching it with the
   // keyboard fetches the code already, so the press usually waits for
   // nothing at all.
-  const navigation = usePendingNavigation(to)
+  const navigation = usePendingNavigation(to, exact)
   return (
     <li>
       <NavLink
@@ -145,7 +145,7 @@ function RailEntry({
         className={({ isActive }) =>
           stylex.props(
             styles.entry,
-            isActive || navigation.pending ? styles.entryActive : styles.entryIdle,
+            navigation.selected(isActive) ? styles.entryActive : styles.entryIdle,
           ).className ?? ''
         }
       >
@@ -184,7 +184,7 @@ function PersonChip({
   exact: boolean
   badge?: ReactNode
 }) {
-  const navigation = usePendingNavigation(to)
+  const navigation = usePendingNavigation(to, exact)
   return (
     <NavLink
       end={exact}
@@ -216,7 +216,7 @@ function PersonEntry({
   exact: boolean
   badge: UiSlotToken | undefined
 }) {
-  const navigation = usePendingNavigation(to)
+  const navigation = usePendingNavigation(to, exact)
   return (
     <li>
       <NavLink
@@ -226,7 +226,7 @@ function PersonEntry({
         className={({ isActive }) =>
           stylex.props(
             styles.personEntry,
-            isActive || navigation.pending ? styles.personEntryActive : styles.personEntryIdle,
+            navigation.selected(isActive) ? styles.personEntryActive : styles.personEntryIdle,
           ).className ?? ''
         }
       >
@@ -252,7 +252,7 @@ function DrawerEntry({
   exact: boolean
   badge: UiSlotToken | undefined
 }) {
-  const navigation = usePendingNavigation(to)
+  const navigation = usePendingNavigation(to, exact)
   return (
     <NavLink
       end={exact}
@@ -260,10 +260,8 @@ function DrawerEntry({
       aria-busy={navigation.pending || undefined}
       data-pending={navigation.pending ? '' : undefined}
       className={({ isActive }) =>
-        stylex.props(
-          styles.drawerEntry,
-          (isActive || navigation.pending) && styles.drawerEntryActive,
-        ).className ?? ''
+        stylex.props(styles.drawerEntry, navigation.selected(isActive) && styles.drawerEntryActive)
+          .className ?? ''
       }
     >
       <span {...stylex.props(styles.entryLabel)}>{label}</span>

@@ -243,7 +243,7 @@ export const styles = stylex.create({
     paddingBlock: 8,
     fontSize: '0.875rem',
     lineHeight: '1.25rem',
-    transitionProperty: 'color, background-color, font-weight',
+    transitionProperty: 'color, font-weight',
     transitionDuration: { default: '150ms', '@media (prefers-reduced-motion: reduce)': '0ms' },
     transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
   },
@@ -253,6 +253,7 @@ export const styles = stylex.create({
     color: tokens.foreground,
   },
   entryIdle: {
+    transitionDuration: '0ms',
     color: {
       default: tokens.mutedForeground,
       ':hover': tokens.foreground,
@@ -513,10 +514,11 @@ export const styles = stylex.create({
     borderRadius: 8,
     fontSize: 13.5,
     textDecoration: 'none',
-    transitionProperty: 'background-color, color, font-weight',
+    transitionProperty: 'color, font-weight',
     transitionDuration: { default: '150ms', '@media (prefers-reduced-motion: reduce)': '0ms' },
   },
   personEntryIdle: {
+    transitionDuration: '0ms',
     color: { default: tokens.surfaceMutedForeground, ':hover': tokens.foreground },
     backgroundColor: {
       default: 'transparent',

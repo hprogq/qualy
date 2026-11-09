@@ -22,6 +22,18 @@ const byOrder = (a: { order?: number }, b: { order?: number }) => (a.order ?? 0)
 const pathOf = (item: ResolvedNavigationItem): string | undefined =>
   item.target.kind === 'page' ? item.target.path : item.target.href
 
+/** The most specific page or parent path owns the application tab. */
+export function applicationAt(apps: readonly AppEntry[], pathname: string) {
+  const inside = (path: string) => pathname === path || pathname.startsWith(`${path}/`)
+  return apps
+    .flatMap((app) => {
+      const paths = [app.path, ...app.items.flatMap((item) => pathOf(item) ?? [])]
+      const match = paths.filter(inside).sort((a, b) => b.length - a.length)[0]
+      return match === undefined ? [] : [{ app, length: match.length }]
+    })
+    .sort((a, b) => b.length - a.length)[0]?.app
+}
+
 /** one heading of the open application's side navigation, and what is filed under it */
 export interface SectionGroup {
   id: string
@@ -87,14 +99,7 @@ export function useAppNavigation(): AppNavigation {
   const all = [...apps, ...loose]
   // the open application is the one owning the longest path this location is
   // inside: `/organization/users` beats `/organization`
-  const inside = (path: string) => pathname === path || pathname.startsWith(`${path}/`)
-  const active = all
-    .flatMap((app) => {
-      const paths = [app.path, ...app.items.flatMap((item) => pathOf(item) ?? [])]
-      const match = paths.filter(inside).sort((a, b) => b.length - a.length)[0]
-      return match === undefined ? [] : [{ app, length: match.length }]
-    })
-    .sort((a, b) => b.length - a.length)[0]?.app
+  const active = applicationAt(all, pathname)
 
   // The open application's entries under their headings: what is filed under
   // the application itself first, then each group nested in it. The flat

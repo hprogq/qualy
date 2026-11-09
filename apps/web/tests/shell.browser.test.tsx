@@ -893,14 +893,17 @@ describe('a record\u2019s section', () => {
 // The RSC router loads the next document before rendering its client page.
 // Hold that response as well as the client module: a lazy-only fixture has
 // no in-flight router navigation once its synchronous data has committed.
-const slowManifest = (slow: ReturnType<typeof slowPage>) => {
+const slowManifest = (
+  slow: ReturnType<typeof slowPage>,
+  view: ReturnType<typeof emptyManifest> = manifest(),
+) => {
   let reads = 0
   return fakeClient({
     app: {
       getManifest: () =>
         Effect.promise(async () => {
           if (reads++ > 0) await slow.arrived
-          return manifest()
+          return view
         }),
     },
   })
@@ -952,6 +955,65 @@ describe('a press on the rail', () => {
     // cleared by the effect that observes `pending` falling, not by the render
     // that dropped it. So this waits, as its siblings do.
     await expect.poll(() => entry.element().querySelector('[data-seg]')).toBeNull()
+  })
+
+  it('lights only the latest destination when another rail link supersedes a pending one', async () => {
+    await page.viewport(1280, 800)
+    const slow = slowPage()
+    const base = settledManifest()
+    const view = {
+      ...base,
+      collections: {
+        ...base.collections,
+        'workspace-shell/navigation': [
+          ...base.collections['workspace-shell/navigation'],
+          {
+            id: 'rail/settings',
+            label: '批次设置',
+            target: {
+              kind: 'page',
+              pageId: 'assessment/batch-settings',
+              path: '/assessment/batches/:batchId/settings',
+            },
+          },
+        ],
+      },
+    }
+    const phases = '/assessment/batches/:batchId/phases'
+    const route = (path: string) => ({ path, element: <WorkspaceShell /> })
+    await renderScreen({
+      client: slowManifest(slow, view),
+      routes: [
+        route(phases),
+        route(phases.replace('phases', 'entries')),
+        route(phases.replace('phases', 'settings')),
+      ],
+      route: phases.replace(':batchId', BATCH_ID),
+    })
+    const rail = page.getByTestId('workspace-rail')
+    const previous = rail.getByRole('link', { name: '阶段安排' })
+    const first = rail.getByRole('link', { name: '参评名单' })
+    const last = rail.getByRole('link', { name: '批次设置' })
+    await expect.element(previous).toHaveAttribute('aria-current', 'page')
+    const ground = (link: typeof previous) => getComputedStyle(link.element()).backgroundColor
+    const selected = ground(previous)
+    expect(selected).not.toBe(BLANK)
+    try {
+      await first.click()
+      await expect.element(first).toHaveAttribute('data-pending', '')
+      expect(ground(previous)).toBe(BLANK)
+      expect(ground(first)).toBe(selected)
+      await last.click()
+      await expect.element(last).toHaveAttribute('data-pending', '')
+      await expect.element(first).not.toHaveAttribute('data-pending')
+      expect(ground(previous)).toBe(BLANK)
+      expect(ground(first)).toBe(BLANK)
+      expect(ground(last)).toBe(selected)
+      await expect.element(previous).toHaveAttribute('aria-current', 'page')
+    } finally {
+      slow.release()
+    }
+    await expect.element(last).toHaveAttribute('aria-current', 'page')
   })
 
   /** the application shell over the users page, with one more page whose code is slow */
@@ -1017,14 +1079,25 @@ describe('a press on the rail', () => {
     await page.viewport(1280, 800)
   })
 
-  it('keeps the open application lit at the top while the pressed one is on its way', async () => {
+  it('keeps the top links in place while selection moves to the next application', async () => {
     await page.viewport(1280, 800)
     const slow = await shellWithSlow('/assessment/batches')
     await expect.element(page.getByTestId('page-users')).toBeInTheDocument()
     const bar = page.getByTestId('top-bar-apps')
     const pressed = bar.getByRole('link', { name: '测评' })
+    const positions = () =>
+      bar
+        .getByRole('link')
+        .elements()
+        .map((link) => {
+          const { left, width } = link.getBoundingClientRect()
+          return [left, width]
+        })
+    await document.fonts.ready
+    const before = positions()
     await pressed.click()
     await expect.element(pressed).toHaveAttribute('data-pending', '')
+    expect(positions()).toEqual(before)
     await expect
       .element(bar.getByRole('link', { name: '组织与权限' }))
       .toHaveAttribute('aria-current', 'page')
@@ -1032,6 +1105,7 @@ describe('a press on the rail', () => {
     slow.release()
     await expect.element(page.getByTestId('page-entries')).toBeInTheDocument()
     await expect.element(pressed).toHaveAttribute('aria-current', 'page')
+    expect(positions()).toEqual(before)
   })
 
   it('does not fetch client page implementations from the server-owned registry', async () => {
