@@ -96,11 +96,11 @@ describe('the RSC route error screen', () => {
       expect(document.body.textContent).not.toContain('Unexpected Application Error')
       // The emergency surface must not need the application's style pipeline.
       const main = page.getByTestId('route-error').element()
+      await expect.element(page.getByText(/^W-[a-f0-9]{24}$/)).toBeVisible()
       const css = main.querySelector('style')?.sheet
       const sheets = [...document.styleSheets].filter((sheet) => sheet !== css && !sheet.disabled)
       try {
         sheets.forEach((sheet) => (sheet.disabled = true))
-        expect(getComputedStyle(main).justifyContent).toBe('center')
         const button = page.getByRole('button', { name: '重试' }).element()
         const home = page.getByRole('link', { name: '返回首页' }).element()
         expect(getComputedStyle(button).borderTopWidth).toBe('1px')
@@ -109,7 +109,12 @@ describe('the RSC route error screen', () => {
         expect(getComputedStyle(home).borderTopColor).toBe('rgb(222, 221, 218)')
         const mark = main.querySelector('[data-emergency-mark]')!.getBoundingClientRect()
         const body = main.querySelector('[data-slot="resource-state"]')!.getBoundingClientRect()
+        const reference = main.querySelector('[data-problem-reference]')!.getBoundingClientRect()
+        const frame = main.getBoundingClientRect()
         expect(Math.abs(mark.x + mark.width / 2 - (body.x + body.width / 2))).toBeLessThan(1)
+        expect(Math.abs(body.x + body.width / 2 - (frame.x + frame.width / 2))).toBeLessThan(1)
+        expect(reference.top - body.bottom).toBeGreaterThanOrEqual(24)
+        expect(frame.bottom - reference.bottom).toBeGreaterThanOrEqual(24)
       } finally {
         sheets.forEach((sheet) => (sheet.disabled = false))
       }
