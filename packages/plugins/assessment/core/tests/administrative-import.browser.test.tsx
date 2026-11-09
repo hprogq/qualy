@@ -961,7 +961,7 @@ describe('the record book and its histories across a screen', () => {
         .querySelector('[data-slot="deadline-countdown"] [aria-label]')
         ?.getAttribute('aria-label'),
     ).toMatch(/11|12/)
-    expect(dock.element().getBoundingClientRect().bottom).toBeCloseTo(window.innerHeight - 48, 0)
+    expect(dock.element().getBoundingClientRect().bottom).toBeCloseTo(window.innerHeight - 64, 0)
     closed = true
     wake()
     await expect.element(dock).toHaveAttribute('data-window', 'ended')

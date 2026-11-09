@@ -2523,7 +2523,7 @@ it.each([390, 1440])(
     if (width >= 1024) {
       const workbench = page.getByTestId('entries-workspace').element().getBoundingClientRect()
       expect(workbench.bottom).toBeCloseTo(window.innerHeight, 0)
-      expect(rect.bottom).toBeCloseTo(window.innerHeight - 48, 0)
+      expect(rect.bottom).toBeCloseTo(window.innerHeight - 64, 0)
     }
     await unmount()
     await workspace({ route: base, stubs: { getTimeline: () => Effect.succeed({ timeline }) } })
