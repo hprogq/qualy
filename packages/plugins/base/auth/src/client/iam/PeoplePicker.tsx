@@ -103,9 +103,9 @@ export default function PeoplePicker({ context }: { context: PeoplePickerContext
         ...(context.disabled === undefined
           ? {}
           : { disabled: context.disabled, disabledLabel: m.picker_alreadyIn() }),
-        pending: people.isPending && here !== null,
+        pending: options.isPending || (people.isPending && here !== null),
         ...(waiting === undefined ? {} : { waiting }),
-        failure: people.isError ? people.error : null,
+        failure: options.error ?? people.error,
         hasPrevious: current > 1,
         hasNext: current < pages,
         paging: { page: current, pageSize: PAGE, total, onPage: goTo },
@@ -127,7 +127,7 @@ export default function PeoplePicker({ context }: { context: PeoplePickerContext
         onChange: (userIds) => context.onChange(userIds.filter((id) => !blocked.has(id))),
         onPrevious: () => goTo(current - 1),
         onNext: () => goTo(current + 1),
-        onRetry: () => void people.refetch(),
+        onRetry: () => void (options.isError ? options.refetch() : people.refetch()),
       }}
     />
   )

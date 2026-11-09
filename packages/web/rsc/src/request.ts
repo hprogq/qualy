@@ -29,7 +29,7 @@ import { hashKey, type DehydratedState, type QueryKey } from '@tanstack/query-co
  * nothing to hand over.
  */
 export interface PrefetchedSurface {
-  readonly hydration: DehydratedState
+  readonly hydration?: DehydratedState
   readonly workspaceCapabilities?: readonly string[]
   readonly slotReferences?: readonly SlotSurface[]
 }

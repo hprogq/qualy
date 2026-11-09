@@ -1,10 +1,21 @@
 import { queryKeyOf } from '@qualy/web-runtime/query-key'
 import { QueryHydration } from '@qualy/web-runtime/query-hydration'
-import { readApiExit, renderRequest } from '@qualy/web-rsc/request'
+import { readApiExit, renderRequest, type SurfacePrefetch } from '@qualy/web-rsc/request'
 import { answersOf } from '@qualy/web-rsc/queries'
+import { peoplePicker } from '@qualy/ui-contract'
 import { auditApi } from './api.ts'
 import { eventsQueryOf } from './events-place.ts'
 import AuditEventsPage from './AuditEventsPage.tsx'
+
+// Deliver the authorized picker reference with the page, not after the
+// modal has opened and a second RSC response has started loading its CSS.
+export const prefetch: SurfacePrefetch = async ({ manifest }) => {
+  const pickers = manifest.slots[peoplePicker.key] ?? []
+  if (pickers.length === 0) return undefined
+  return {
+    slotReferences: pickers.map(({ id }) => ({ kind: 'slot', slot: peoplePicker.key, id })),
+  }
+}
 
 // The audit log as a server draws it (docs/adr/0012-rsc-data-mode.md): what
 // the log may be narrowed by, and the page of events the address names, read

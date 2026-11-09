@@ -29,6 +29,7 @@
     "./at-width": "./src/components/at-width.tsx",
     "./layout-preferences": "./src/components/layout-preferences.tsx",
     "./theme/layout-preference.stylex": "./src/theme/layout-preference.stylex.ts",
+    "./theme/people-picker.stylex": "./src/theme/people-picker.stylex.ts",
     "./layout-preference-spec": "./src/lib/layout-preference-spec.ts",
     "./timeline": "./src/components/timeline.tsx",
     "./alert": "./src/components/alert.tsx",

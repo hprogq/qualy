@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState, type MouseEvent } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
+import { peoplePickerLayout } from '@qualy/ui/theme/people-picker.stylex'
 import { ChevronsUpDownIcon } from 'lucide-react'
 import type { PeoplePickerViewContext } from '@qualy/ui-contract'
 import { useLoadFailure } from '@qualy/web-runtime'
@@ -56,15 +57,12 @@ const ANY = 'any'
 const styles = stylex.create({
   // The units on one side, the people on the other once there is room.
   //
-  // A height of its own, so the tree and the list each scroll inside it and
-  // the foot under the list stays where it is - but only as a starting
-  // point: inside a box that hands out more, it grows into all of it, and
-  // inside one that hands out less it gives way down to a floor.
+  // A height of its own, so the tree and the list each scroll inside it.
   frame: {
     display: { default: 'grid', [breakpoints.phone]: 'flex' },
     flexDirection: 'column',
-    minHeight: '18rem',
-    height: 'min(62vh, 30rem)',
+    minHeight: 0,
+    height: peoplePickerLayout.height,
     flexGrow: 1,
     flexShrink: 1,
     flexBasis: 'auto',
@@ -321,13 +319,19 @@ const styles = stylex.create({
   // how many are chosen and the way through the pages stay where they were
   // put; the list above is what scrolls
   foot: {
-    display: 'flex',
+    display: 'grid',
     flexShrink: 0,
-    flexWrap: 'wrap',
+    gridTemplateColumns: {
+      default: 'minmax(0, 1fr) auto minmax(0, 1.5fr)',
+      [breakpoints.phone]: 'minmax(0, 1fr) auto',
+    },
+    gridTemplateRows: {
+      default: 'minmax(32px, auto)',
+      [breakpoints.phone]: 'minmax(24px, auto) 32px',
+    },
     alignItems: 'center',
     columnGap: 12,
     rowGap: 6,
-    minHeight: 32,
   },
   chosen: {
     display: 'flex',
@@ -340,8 +344,13 @@ const styles = stylex.create({
     fontVariantNumeric: 'tabular-nums',
   },
   chosenNone: { color: tokens.mutedForeground },
-  clear: { height: 24, paddingInline: 6, fontSize: 12.5 },
-  pages: { display: 'flex', minWidth: 0, flexGrow: 1, flexBasis: '14rem' },
+  clear: { gridColumn: 2, gridRow: 1, height: 24, paddingInline: 6, fontSize: 12.5 },
+  pages: {
+    display: 'flex',
+    minWidth: 0,
+    gridColumn: { default: 3, [breakpoints.phone]: '1 / -1' },
+    gridRow: { default: 1, [breakpoints.phone]: 2 },
+  },
 })
 
 type Row = PeoplePickerViewContext['rows'][number]

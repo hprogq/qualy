@@ -14,6 +14,7 @@ import {
 } from '@qualy/web-runtime'
 
 import { AsyncSection, FormDialog } from '@qualy/ui/admin'
+import { peoplePickerLayout } from '@qualy/ui/theme/people-picker.stylex'
 import { Blank, Card, Screen, TableSkeleton } from '@qualy/ui/screen'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { Button } from '@qualy/ui/button'
@@ -52,8 +53,14 @@ const styles = stylex.create({
     justifyContent: { default: null, [breakpoints.phone]: 'flex-start' },
   },
   actorWord: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-  pickerSeat: { display: 'flex', minHeight: 0, flexDirection: 'column' },
-  pickerWaiting: { height: '18rem', borderRadius: tokens.radiusLg },
+  pickerSeat: {
+    display: 'flex',
+    height: peoplePickerLayout.height,
+    minHeight: 0,
+    flexDirection: 'column',
+    overflow: 'hidden',
+  },
+  pickerWaiting: { height: '100%', borderRadius: tokens.radiusLg },
 })
 
 export default function AuditEventsPage() {

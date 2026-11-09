@@ -216,7 +216,7 @@ export const serverRoutes = ({
       ...slotReads,
     ])
     const states = [fromPage, ...fromSlots].flatMap((result) =>
-      result === undefined ? [] : [result.hydration],
+      result?.hydration === undefined ? [] : [result.hydration],
     )
     return {
       hydration:

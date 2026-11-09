@@ -495,12 +495,53 @@ export const acquire = (prepared, context) => web.acquire({
       )
     }
   }
-  await checkLayoutPreferences(page, page.url(), `${site}/organization/users`)
+  const rosterUrl = page.url()
+  const oldRail = page.getByTestId('workspace-rail')
+  const selection = await oldRail.locator('[aria-current="page"]').textContent()
+  const links = await oldRail.locator('a').count()
+  const visibleOutgoing = await page.evaluateHandle<
+    () => { links: number; active: string | null; bones: boolean }[]
+  >(`(() => {
+    const rail = [...document.querySelectorAll('[data-testid="workspace-rail"]')].find(node => node.checkVisibility())
+    if (!rail) throw new Error('No visible outgoing rail')
+    const samples = []
+    const record = () => {
+      if (!rail.isConnected || !rail.checkVisibility()) return
+      samples.push({
+        links: rail.querySelectorAll('a').length,
+        active: rail.querySelector('[aria-current="page"]')?.textContent ?? null,
+        bones: rail.querySelector('[data-testid="rail-bones"]') !== null,
+      })
+    }
+    const observer = new MutationObserver(record)
+    observer.observe(document.body, { childList: true, subtree: true, attributes: true })
+    record()
+    return () => {
+      observer.disconnect()
+      return samples
+    }
+  })()`)
+  await page.getByRole('link', { name: 'All rounds', exact: true }).click()
+  await page.waitForURL(`${site}/assessment/batches`)
+  await oldRail.waitFor({ state: 'hidden' })
+  const outgoing = await visibleOutgoing.evaluate((finish) => finish())
+  await visibleOutgoing.dispose()
+  assert.ok(outgoing.length > 1, 'Sample the outgoing batch rail during navigation')
+  assert.deepEqual(
+    [...new Set(outgoing.map((sample) => JSON.stringify(sample)))].map((one) => JSON.parse(one)),
+    [{ links, active: selection, bones: false }],
+    'Leaving the batch must not erase the outgoing workspace rail',
+  )
+  console.log('workspace navigation: returning to all rounds kept the outgoing rail intact')
+  await page.goto(rosterUrl, { waitUntil: 'networkidle' })
+  await checkLayoutPreferences(page, rosterUrl, `${site}/organization/users`)
   // The old audit join differed across Bun and Chromium even for the same
   // locale and instant. Check HTML and hydration with a different device zone.
   const auditContext = await browser.newContext({
     locale: 'en-US',
     timezoneId: 'America/New_York',
+    viewport: { width: 390, height: 844 },
+    reducedMotion: 'reduce',
     storageState: await context.storageState(),
   })
   try {
@@ -513,6 +554,67 @@ export const acquire = (prepared, context) => web.acquire({
     await audit.getByTestId('audit-row').first().click()
     await audit.getByTestId('audit-detail').waitFor()
     console.log('audit: real HTML rows and English hydration in another device zone passed')
+    let releasePeople!: () => void
+    const people = new Promise<void>((resolve) => {
+      releasePeople = resolve
+    })
+    await audit.route('**/api/iam/users?**', async (route) => {
+      await people
+      const response = await route.fetch()
+      const read = (await response.json()) as { items: { id: string }[] }
+      assert.ok(read.items[0])
+      // Give the test a genuinely full page and pager without mutating the directory.
+      const items = Array.from({ length: 20 }, (_, i) => ({
+        ...read.items[i % read.items.length]!,
+        id: read.items[0]!.id.slice(0, -3) + i.toString(16).padStart(3, '0'),
+      }))
+      await route.fulfill({ response, json: { ...read, items, total: 45 } })
+    })
+    const shapes = await audit.evaluateHandle<(stop?: boolean) => number[]>(`(() => {
+      const heights = new Set()
+      const sample = () => {
+        const dialog = document.querySelector('[data-slot="dialog-content"]')
+        if (dialog?.checkVisibility()) heights.add(Math.round(dialog.getBoundingClientRect().height))
+      }
+      const observer = new MutationObserver(sample)
+      observer.observe(document.body, { childList: true, subtree: true, attributes: true })
+      const frames = setInterval(sample, 16)
+      return (stop) => {
+        if (stop) {
+          observer.disconnect()
+          clearInterval(frames)
+        }
+        return [...heights]
+      }
+    })()`)
+    try {
+      await audit.getByRole('button', { name: 'Anybody', exact: true }).click()
+      const picker = audit.getByTestId('people-picker')
+      const list = audit.getByTestId('people-picker-list')
+      const dialog = audit.getByRole('dialog', { name: 'Whose operations' })
+      await list.and(audit.locator('[aria-busy="true"]')).waitFor()
+      const before = (await dialog.boundingBox())?.height
+      assert.ok(before && before > 300)
+      releasePeople()
+      await picker.getByTestId('people-picker-row').first().waitFor()
+      const pager = picker.getByTestId('people-picker-pager')
+      await pager.waitFor()
+      const after = (await dialog.boundingBox())?.height
+      assert.ok(after)
+      assert.ok(Math.abs(after - before) <= 1, 'Rows and pagination must fit the same dialog seat')
+      const frames = await shapes.evaluate((read) => read())
+      assert.ok(
+        frames.length > 0 && frames.every((height) => Math.abs(height - after) <= 1),
+        `Audit picker height must stay fixed through loading: ${frames.join(', ')}`,
+      )
+      const bottom = (await pager.boundingBox())!
+      assert.ok(bottom.y + bottom.height <= 844, 'The pager must remain inside the mobile sheet')
+      console.log('audit: cold mobile picker kept its height and pagination in view')
+    } finally {
+      releasePeople()
+      await shapes.evaluate((read) => read(true))
+      await shapes.dispose()
+    }
   } finally {
     await auditContext.close()
   }
