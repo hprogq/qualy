@@ -340,6 +340,28 @@ const inView = (element: HTMLElement, scroller: Element) => {
 }
 
 describe('finding a question', () => {
+  it('keeps the project rail scrollbar in front of pinned section headers', async () => {
+    await page.viewport(1440, 800)
+    await workspace({ route: base, items: THIRTY })
+    await expect.element(page.getByTestId('structure-rail')).toBeVisible()
+    const rail = page.getByTestId('structure-rail').element()
+    const port = rail.querySelector<HTMLElement>('[data-slot="scroll-area-viewport"]')!
+    const scrollArea = port.closest('[data-slot="scroll-area"]')!
+    const header = rail.querySelector(`[data-rail-row="${BAND_A}"]`)!.parentElement!
+    port.scrollTop = 160
+    await userEvent.hover(scrollArea)
+    await expect
+      .poll(() => {
+        const bar = scrollArea.querySelector('[data-orientation="vertical"]')
+        if (bar === null || port.scrollTop === 0) return false
+        const edge = bar.getBoundingClientRect()
+        const pinned = header.getBoundingClientRect()
+        const hit = document.elementFromPoint(edge.left + edge.width / 2, pinned.top + 8)
+        return hit !== null && bar.contains(hit)
+      })
+      .toBe(true)
+  })
+
   it('lands on the question the address names, and marks it in the structure', async () => {
     await page.viewport(1440, 900)
     await workspace({ route: `${base}?open=${TAIL}` })

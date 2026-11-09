@@ -202,7 +202,8 @@ const styles = stylex.create({
     flexShrink: 1,
     flexBasis: '0%',
   },
-  treeInScroll: { paddingBottom: 28 },
+  // Keep the pinned section heads in the tree's layer, below its overlay scrollbar.
+  treeInScroll: { paddingBottom: 28, isolation: 'isolate' },
   treeFlow: { paddingBottom: 24 },
   list: { margin: 0, padding: 0, listStyle: 'none' },
   empty: {
