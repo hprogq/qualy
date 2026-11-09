@@ -1876,7 +1876,7 @@ describe('the batch overview', () => {
     await expect.element(page.getByTestId('flow-fold')).toHaveAttribute('data-count', '3')
     await page.getByTestId('flow-fold').click()
     expect(page.getByTestId('flow-fold').elements()).toHaveLength(0)
-    await expect.element(page.getByRole('heading', { name: '预填报期' }).first()).toBeVisible()
+    await expect.element(page.getByRole('button', { name: /预填报期/ }).first()).toBeVisible()
   })
 
   it('says which items a stage alone opens, and that it admits only some people', async () => {
@@ -3941,7 +3941,7 @@ describe('the notice of organization changes', () => {
       const viewport = document.querySelector('[data-slot="batch-notice-viewport"]')!
       expect(getComputedStyle(viewport).position).toBe('fixed')
       expect(dock.contains(page.getByTestId('access-sync-notice').element())).toBe(true)
-      expect(dock.getBoundingClientRect().bottom).toBeCloseTo(window.innerHeight - 48, 0)
+      expect(dock.getBoundingClientRect().bottom).toBeCloseTo(window.innerHeight - 64, 0)
       expect(page.getByTestId('batch-band').element().contains(dock)).toBe(false)
       await page.viewport(1280, 800)
     },

@@ -69,7 +69,7 @@ it('keeps one blocker and the same editor when the RSC router facade changes', a
     }
     await page.getByRole('link', { name: 'elsewhere' }).click()
     await expect.element(page.getByRole('alertdialog')).toBeVisible()
-    await page.getByRole('button', { name: '保存后离开' }).click()
+    await page.getByRole('button', { name: '保存并离开' }).click()
     await expect.element(page.getByTestId('destination')).toBeVisible()
     expect(saved).toHaveBeenCalledWith('Keep this draft')
     expect(warnings.mock.calls.flat().some((value) => String(value).includes('one blocker'))).toBe(
@@ -184,7 +184,7 @@ describe('a page with unsaved changes', () => {
     await page.getByRole('link', { name: 'elsewhere' }).click()
     // the same question, with a way to keep the changes as well as to go
     await expect.element(page.getByRole('button', { name: '放弃修改' })).toBeVisible()
-    await page.getByRole('button', { name: '保存后离开' }).click()
+    await page.getByRole('button', { name: '保存并离开' }).click()
     await expect.element(page.getByTestId('elsewhere')).toBeVisible()
     expect(saved).toHaveBeenCalledWith('草稿')
   })
@@ -194,7 +194,7 @@ describe('a page with unsaved changes', () => {
     await mount({ saves: true, saveWorks: false })
     await edit()
     await page.getByRole('link', { name: 'elsewhere' }).click()
-    await page.getByRole('button', { name: '保存后离开' }).click()
+    await page.getByRole('button', { name: '保存并离开' }).click()
     await vi.waitFor(() => expect(saved).toHaveBeenCalledTimes(1))
     await expect.element(question()).not.toBeInTheDocument()
     expect(addressNow()).toBe('/editor')
