@@ -5,7 +5,7 @@
 # there. Two places to write one version is two versions waiting to disagree,
 # and the one that loses is whichever the reader did not check.
 [tools]
-node = "24.22.1"
+node = "24.22.2"
 bun = "1.4.4"
 
 [settings]

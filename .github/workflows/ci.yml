@@ -27,7 +27,7 @@ jobs:
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
-          node-version: 24.22.1
+          node-version: 24.22.2
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm format:check
@@ -88,7 +88,7 @@ jobs:
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
-          node-version: 24.22.1
+          node-version: 24.22.2
           cache: pnpm
       - name: read the development runtime pin
         id: dev-runtime
@@ -111,8 +111,8 @@ jobs:
       - uses: actions/cache@v6
         with:
           path: /tmp/node-compile-cache
-          key: node-compile-24.22.1-${{ hashFiles('pnpm-lock.yaml') }}
-          restore-keys: node-compile-24.22.1-
+          key: node-compile-24.22.2-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: node-compile-24.22.2-
       - run: pnpm install --frozen-lockfile
       # The same trade the compose stack makes, for the same reason: this
       # database exists for the length of one job and every test commits.
@@ -265,7 +265,7 @@ jobs:
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
-          node-version: 24.22.1
+          node-version: 24.22.2
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: resolve playwright version
@@ -312,7 +312,7 @@ jobs:
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
-          node-version: 24.22.1
+          node-version: 24.22.2
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: resolve playwright version
@@ -352,7 +352,7 @@ jobs:
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
-          node-version: 24.22.1
+          node-version: 24.22.2
           cache: pnpm
       # The images build from the repository alone, but the smoke seeds the
       # deployment from this checkout, as deploy/README.md does: that is a
