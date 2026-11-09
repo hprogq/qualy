@@ -245,13 +245,12 @@ export const styles = stylex.create({
     paddingBlock: 8,
     fontSize: '0.875rem',
     lineHeight: '1.25rem',
-    transitionProperty: 'color, font-weight',
+    transitionProperty: 'color',
     transitionDuration: { default: '150ms', '@media (prefers-reduced-motion: reduce)': '0ms' },
     transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
   },
   entryActive: {
     backgroundColor: tokens.surfaceMuted,
-    fontWeight: 500,
     color: tokens.foreground,
   },
   entryIdle: {
@@ -516,7 +515,7 @@ export const styles = stylex.create({
     borderRadius: 8,
     fontSize: 13.5,
     textDecoration: 'none',
-    transitionProperty: 'color, font-weight',
+    transitionProperty: 'color',
     transitionDuration: { default: '150ms', '@media (prefers-reduced-motion: reduce)': '0ms' },
   },
   personEntryIdle: {
@@ -528,7 +527,6 @@ export const styles = stylex.create({
     },
   },
   personEntryActive: {
-    fontWeight: 600,
     color: tokens.foreground,
     backgroundColor: tokens.surfaceMuted,
   },

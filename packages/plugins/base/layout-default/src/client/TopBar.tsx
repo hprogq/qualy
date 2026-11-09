@@ -12,6 +12,7 @@ import { headerActions, sidebarUser, type ResolvedNavigationItem } from '@qualy/
 import { UiSlot, useNavigationProgress, usePendingNavigation } from '@qualy/web-runtime'
 import { applicationAt } from './useAppNavigation.ts'
 import { hasEntriesBelow } from './rail.ts'
+import { navigationInk } from './navigation-ink.styles.ts'
 
 // The one bar that never changes: which applications there are, which one is
 // open, and the account. Everything below it belongs to the application.
@@ -37,8 +38,8 @@ const INK_EASE = 'cubic-bezier(0.2, 0.8, 0.2, 1)'
 const REDUCE = '@media (prefers-reduced-motion: reduce)'
 
 const loadingInk = stylex.keyframes({
-  '0%, 100%': { opacity: 0.72 },
-  '50%': { opacity: 0.32 },
+  '0%, 100%': { opacity: 1 },
+  '50%': { opacity: 0.64 },
 })
 
 const styles = stylex.create({
@@ -157,6 +158,7 @@ const styles = stylex.create({
     overflowX: 'auto',
   },
   tab: {
+    fontWeight: 450,
     display: 'inline-flex',
     alignItems: 'center',
     paddingInline: 0,
@@ -164,22 +166,19 @@ const styles = stylex.create({
     fontSize: 14,
     lineHeight: '1.25rem',
     whiteSpace: 'nowrap',
-    transitionProperty: 'color, font-weight',
+    transitionProperty: 'color',
     transitionDuration: { default: '150ms', '@media (prefers-reduced-motion: reduce)': '0ms' },
     transitionTimingFunction: 'ease',
   },
   tabActive: {
-    fontWeight: 600,
     color: tokens.foreground,
   },
   tabIdle: {
-    fontWeight: 450,
     color: {
       default: tokens.mutedForeground,
       ':hover': tokens.foreground,
     },
   },
-  tabMeasure: { fontWeight: 600 },
   // the word itself carries the ink, so the ink is exactly as wide as the word
   word: {
     position: 'relative',
@@ -198,18 +197,9 @@ const styles = stylex.create({
       transitionTimingFunction: INK_EASE,
     },
   },
-  // Only the reference weight participates in layout, not the animated text.
-  wordText: { position: 'absolute', inset: 0 },
-  wordMeasure: { visibility: 'hidden', userSelect: 'none' },
   wordActive: {
     '::after': {
       transform: 'scaleX(1)',
-    },
-  },
-  wordPending: {
-    '::after': {
-      transform: 'scaleX(1)',
-      backgroundColor: `color-mix(in oklch, ${tokens.foreground} 16%, transparent)`,
     },
   },
   pulse: {
@@ -225,7 +215,7 @@ const styles = stylex.create({
   },
   // Fade in solid ink over the still-pulsing line. Ending its animation
   // first would snap to full ink regardless of where the cycle was.
-  pulseRunning: { '::after': { opacity: 0 } },
+  pulseRunning: { '::after': { opacity: 0, transitionDuration: '0ms' } },
   pulseComplete: {
     '::after': { opacity: 1, transitionDuration: { default: '220ms', [REDUCE]: '0ms' } },
   },
@@ -267,6 +257,7 @@ const styles = stylex.create({
   },
   sectionList: { flexWrap: { default: null, [breakpoints.phone]: 'nowrap' } },
   sectionLink: {
+    fontWeight: 450,
     display: 'inline-flex',
     alignItems: 'center',
     paddingInline: 0,
@@ -274,22 +265,19 @@ const styles = stylex.create({
     fontSize: 13,
     lineHeight: '1.125rem',
     whiteSpace: 'nowrap',
-    transitionProperty: 'color, font-weight',
+    transitionProperty: 'color',
     transitionDuration: { default: '150ms', '@media (prefers-reduced-motion: reduce)': '0ms' },
     transitionTimingFunction: 'ease',
   },
   sectionActive: {
-    fontWeight: 550,
     color: tokens.foreground,
   },
   sectionIdle: {
-    fontWeight: 450,
     color: {
       default: tokens.mutedForeground,
       ':hover': tokens.foreground,
     },
   },
-  sectionMeasure: { fontWeight: 550 },
   sectionWord: {
     '::after': {
       bottom: -4,
@@ -347,7 +335,6 @@ function BarLink({
   lit,
   base,
   word,
-  measure,
   children,
 }: {
   to: string
@@ -360,7 +347,6 @@ function BarLink({
   lit: stylex.StyleXStyles
   base: stylex.StyleXStyles
   word?: stylex.StyleXStyles
-  measure: stylex.StyleXStyles
   children: ReactNode
 }) {
   const navigation = usePendingNavigation(to, end ?? false, useContext(SectionNavigation))
@@ -378,27 +364,25 @@ function BarLink({
         ''
       }
     >
-      {({ isActive }) => (
-        <span
-          {...stylex.props(
-            styles.word,
-            highlighted(isActive)
-              ? open(isActive)
-                ? styles.wordActive
-                : styles.wordPending
-              : styles.wordIdle,
-            arrival === 'running' && styles.pulseRunning,
-            arrival === 'complete' && styles.pulseComplete,
-            word,
-          )}
-        >
-          {arrival !== undefined && <span aria-hidden {...stylex.props(styles.pulse)} />}
-          <span {...stylex.props(styles.wordText)}>{children}</span>
-          <span aria-hidden {...stylex.props(styles.wordMeasure, measure)}>
+      {({ isActive }) => {
+        const selected = highlighted(isActive)
+        return (
+          <span
+            {...stylex.props(
+              styles.word,
+              selected ? styles.wordActive : styles.wordIdle,
+              navigationInk.label,
+              selected && navigationInk.selected,
+              arrival === 'running' && styles.pulseRunning,
+              arrival === 'complete' && styles.pulseComplete,
+              word,
+            )}
+          >
+            {arrival !== undefined && <span aria-hidden {...stylex.props(styles.pulse)} />}
             {children}
           </span>
-        </span>
-      )}
+        )
+      }}
     </NavLink>
   )
 }
@@ -481,7 +465,6 @@ export function TopBar({
                 base={styles.tab}
                 lit={styles.tabActive}
                 idle={styles.tabIdle}
-                measure={styles.tabMeasure}
               >
                 {app.label}
               </BarLink>
@@ -576,7 +559,6 @@ export function SectionBar({ items }: { items: readonly ResolvedNavigationItem[]
                     base={styles.sectionLink}
                     lit={styles.sectionActive}
                     idle={styles.sectionIdle}
-                    measure={styles.sectionMeasure}
                     word={styles.sectionWord}
                   >
                     {item.label}

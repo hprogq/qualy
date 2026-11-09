@@ -5,6 +5,7 @@ import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { SectionNavigation, useSectionNavigation } from './section-navigation.ts'
 import { NavIcon } from './icons.tsx'
 import { hasEntriesBelow } from './rail.ts'
+import { navigationInk } from './navigation-ink.styles.ts'
 import type { SectionGroup } from './useAppNavigation.ts'
 
 // The open application's sections, down the side of a window wide enough to
@@ -53,7 +54,7 @@ const styles = stylex.create({
     borderRadius: 6,
     fontSize: 14,
     textDecoration: 'none',
-    transitionProperty: 'color, font-weight',
+    transitionProperty: 'color',
     transitionDuration: { default: '150ms', '@media (prefers-reduced-motion: reduce)': '0ms' },
   },
   idle: {
@@ -64,7 +65,7 @@ const styles = stylex.create({
       ':hover': `color-mix(in oklab, ${tokens.surfaceMuted} 70%, transparent)`,
     },
   },
-  lit: { fontWeight: 500, color: tokens.foreground, backgroundColor: tokens.surfaceMuted },
+  lit: { color: tokens.foreground, backgroundColor: tokens.surfaceMuted },
   icon: { width: 16, height: 16, flexShrink: 0 },
   word: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
 })
@@ -91,8 +92,20 @@ function SideLink({
           .className ?? ''
       }
     >
-      <NavIcon name={icon} className={stylex.props(styles.icon).className} />
-      <span {...stylex.props(styles.word)}>{children}</span>
+      {({ isActive }) => (
+        <>
+          <NavIcon name={icon} className={stylex.props(styles.icon).className} />
+          <span
+            {...stylex.props(
+              styles.word,
+              navigationInk.label,
+              navigation.selected(isActive) && navigationInk.selected,
+            )}
+          >
+            {children}
+          </span>
+        </>
+      )}
     </NavLink>
   )
 }

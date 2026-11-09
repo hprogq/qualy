@@ -40,6 +40,7 @@ import { setLayoutPreference, useLayoutPreference } from '@qualy/ui/layout-prefe
 import { TopBar } from './TopBar.tsx'
 import { AppsBar, BottomBar, MOST_CELLS } from './BottomBar.tsx'
 import { NavIcon } from './icons.tsx'
+import { navigationInk } from './navigation-ink.styles.ts'
 import { useAppNavigation } from './useAppNavigation.ts'
 import { byOrder, fill, hasEntriesBelow, isHere, useNavDrawer } from './rail.ts'
 import * as m from '#messages'
@@ -118,11 +119,23 @@ function RailEntry({
           ).className ?? ''
         }
       >
-        <NavIcon name={icon} className={stylex.props(styles.entryIcon).className} />
-        <span {...stylex.props(styles.entryLabel)}>{label}</span>
-        {/* a live number the manifest cannot carry: whoever owns the page
-            answers for it, and an entry nobody answers for shows nothing */}
-        {badge !== undefined && <UiSlot token={badge} context={{ navigationId: id }} />}
+        {({ isActive }) => (
+          <>
+            <NavIcon name={icon} className={stylex.props(styles.entryIcon).className} />
+            <span
+              {...stylex.props(
+                styles.entryLabel,
+                navigationInk.label,
+                navigation.selected(isActive) && navigationInk.selected,
+              )}
+            >
+              {label}
+            </span>
+            {/* a live number the manifest cannot carry: whoever owns the page
+                answers for it, and an entry nobody answers for shows nothing */}
+            {badge !== undefined && <UiSlot token={badge} context={{ navigationId: id }} />}
+          </>
+        )}
       </NavLink>
     </li>
   )
@@ -194,9 +207,21 @@ function PersonEntry({
           ).className ?? ''
         }
       >
-        <span {...stylex.props(styles.personWord)}>{label}</span>
-        {/* the same live number the narrow row of sections carries */}
-        {badge !== undefined && <UiSlot token={badge} context={{ navigationId: id }} />}
+        {({ isActive }) => (
+          <>
+            <span
+              {...stylex.props(
+                styles.personWord,
+                navigationInk.label,
+                navigation.selected(isActive) && navigationInk.selected,
+              )}
+            >
+              {label}
+            </span>
+            {/* the same live number the narrow row of sections carries */}
+            {badge !== undefined && <UiSlot token={badge} context={{ navigationId: id }} />}
+          </>
+        )}
       </NavLink>
     </li>
   )

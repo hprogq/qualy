@@ -18,6 +18,7 @@ import {
 } from '@qualy/web-runtime'
 import { Screen } from '@qualy/ui/screen'
 import { PageLoading } from '@qualy/ui/spinner'
+import '@qualy/ui/fonts.css'
 import { apiError, emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
 
 // The two shells, against a manifest rather than against props: what the top
@@ -40,7 +41,7 @@ const BLANK = 'rgba(0, 0, 0, 0)'
 
 const text = (value: string) => value
 
-const manifest = () => ({
+const manifest = (entryLabel = '参评名单') => ({
   ...emptyManifest(),
   collections: {
     'app-shell/navigation-groups': [
@@ -110,7 +111,7 @@ const manifest = () => ({
       },
       {
         id: 'rail/entries',
-        label: text('参评名单'),
+        label: text(entryLabel),
         icon: 'users',
         target: {
           kind: 'page',
@@ -914,6 +915,7 @@ describe('a press on the rail', () => {
   it('lights the entry at once and keeps its icon while the open page stays', async () => {
     await page.viewport(1280, 800)
     const slow = slowPage()
+    const label = 'Administrative records'
     // the same tree at both addresses, so the boundary the next page
     // suspends in is the one the open page already fills: that is what
     // holds the open page up, in the product and here
@@ -924,7 +926,7 @@ describe('a press on the rail', () => {
       </>
     )
     await renderScreen({
-      client: slowManifest(slow),
+      client: slowManifest(slow, manifest(label)),
       routes: [
         {
           path: '/assessment/batches/:batchId/phases',
@@ -936,7 +938,17 @@ describe('a press on the rail', () => {
     })
     await expect.element(page.getByTestId('page-phases')).toBeInTheDocument()
 
-    const entry = page.getByRole('link', { name: '参评名单' })
+    const entry = page.getByRole('link', { name: label })
+    const word = page.getByText(label, { exact: true }).element()
+    const measured = () => {
+      const range = document.createRange()
+      range.selectNodeContents(word)
+      return range.getBoundingClientRect().width
+    }
+    expect(await document.fonts.load(getComputedStyle(word).font, label)).not.toHaveLength(0)
+    const idleWidth = measured()
+    const idleWeight = getComputedStyle(word).fontWeight
+    expect(getComputedStyle(word).webkitTextStrokeColor).toBe('rgba(0, 0, 0, 0)')
     await entry.click()
     // heard: pending before the address has moved, the open page still up
     await expect.element(entry).toHaveAttribute('data-pending', '')
@@ -945,12 +957,22 @@ describe('a press on the rail', () => {
     expect(page.getByTestId('page-fallback').elements()).toHaveLength(0)
     expect(entry.element().querySelector('svg')).not.toBeNull()
     expect(entry.element().querySelector('[data-seg]')).toBeNull()
+    await expect
+      .poll(() => {
+        const { webkitTextStrokeColor, color } = getComputedStyle(word)
+        return webkitTextStrokeColor === color
+      })
+      .toBe(true)
+    expect(getComputedStyle(word).fontWeight).toBe(idleWeight)
+    expect(measured()).toBeCloseTo(idleWidth, 1)
+    expect(word.scrollWidth).toBeLessThanOrEqual(word.clientWidth)
 
     slow.release()
     await expect.element(page.getByTestId('page-entries')).toBeInTheDocument()
     await expect.element(entry).toHaveAttribute('aria-current', 'page')
     await expect.element(entry).not.toHaveAttribute('data-pending')
     await expect.element(entry).not.toHaveAttribute('aria-busy')
+    expect(measured()).toBeCloseTo(idleWidth, 1)
   })
 
   it('lights only the latest destination when another rail link supersedes a pending one', async () => {
@@ -1013,10 +1035,10 @@ describe('a press on the rail', () => {
   })
 
   /** the application shell over the users page, with one more page whose code is slow */
-  const shellWithSlow = async (slowPath: string) => {
+  const shellWithSlow = async (slowPath: string, view = manifest()) => {
     const slow = slowPage()
     await renderScreen({
-      client: slowManifest(slow),
+      client: slowManifest(slow, view),
       route: '/organization/users',
       children: (
         <NavigationProgressScope>
@@ -1136,10 +1158,22 @@ describe('a press on the rail', () => {
 
   it('keeps the top links in place while selection moves to the next application', async () => {
     await page.viewport(1280, 800)
-    const slow = await shellWithSlow('/assessment/batches')
+    const view = manifest()
+    const groups = 'app-shell/navigation-groups'
+    view.collections[groups] = view.collections[groups].map((group) => ({
+      ...group,
+      label:
+        group.id === 'app/assessment'
+          ? 'Assessment'
+          : group.id === 'app/organization'
+            ? 'Organization & access'
+            : group.label,
+    }))
+    const slow = await shellWithSlow('/assessment/batches', view)
     await expect.element(page.getByTestId('page-users')).toBeInTheDocument()
     const bar = page.getByTestId('top-bar-apps')
-    const pressed = bar.getByRole('link', { name: '测评' })
+    const pressed = bar.getByRole('link', { name: 'Assessment' })
+    const word = bar.getByText('Assessment', { exact: true }).element()
     const positions = () =>
       bar
         .getByRole('link')
@@ -1150,11 +1184,19 @@ describe('a press on the rail', () => {
         })
     await document.fonts.ready
     const before = positions()
+    const idleWeight = getComputedStyle(word).fontWeight
     await pressed.click()
     await expect.element(pressed).toHaveAttribute('data-pending', '')
+    await expect
+      .poll(() => {
+        const { webkitTextStrokeColor, color } = getComputedStyle(word)
+        return webkitTextStrokeColor === color
+      })
+      .toBe(true)
+    expect(getComputedStyle(word).fontWeight).toBe(idleWeight)
     expect(positions()).toEqual(before)
     await expect
-      .element(bar.getByRole('link', { name: '组织与权限' }))
+      .element(bar.getByRole('link', { name: 'Organization & access' }))
       .toHaveAttribute('aria-current', 'page')
     await expect.element(pressed).not.toHaveAttribute('aria-current')
     slow.release()
