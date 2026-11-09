@@ -49,8 +49,8 @@ const styles = stylex.create({
     },
     gridTemplateColumns: {
       default: null,
-      [breakpoints.tablet]: 'minmax(7rem, 1fr) minmax(0, 2fr) minmax(0, 1fr)',
-      [breakpoints.desktop]: 'minmax(7rem, 1fr) minmax(0, 2fr) minmax(0, 1fr)',
+      [breakpoints.tablet]: 'minmax(7rem, 1fr) minmax(0, max-content) minmax(10rem, 1fr)',
+      [breakpoints.desktop]: 'minmax(7rem, 1fr) minmax(0, max-content) minmax(10rem, 1fr)',
     },
     minWidth: 0,
     alignItems: {
@@ -125,8 +125,8 @@ const styles = stylex.create({
       [breakpoints.phone]: 'none',
     },
   },
-  // The batch is the subject, so its name gets the largest track. Long
-  // names truncate within the switch and cannot push into the stage.
+  // A short title takes only the width it needs. A long one can use the
+  // middle track, but not the room the clock needs on the right.
   middle: {
     display: 'flex',
     minWidth: 0,
@@ -134,7 +134,7 @@ const styles = stylex.create({
     // it, so the ceiling only has to keep the account's corner clear - which
     // the row's own end already does.
     maxWidth: {
-      default: 'min(100%, 40rem)',
+      default: '40rem',
       [breakpoints.phone]: '100%',
     },
     flexGrow: {
@@ -400,7 +400,6 @@ export default function BatchContextBar() {
                 <BatchZone zone={batch.timezone}>
                   <BatchProgress
                     showStage
-                    flat
                     inContextBar
                     timeline={stages}
                     xstyle={styles.progressText}

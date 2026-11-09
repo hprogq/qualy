@@ -1511,24 +1511,18 @@ const running = (untilNext: number) => [
 
 describe('the countdown', () => {
   it.each([
-    ['zh-CN', '2025–2026 学年本科生综合素质测评及年度奖学金评定批次', '复审审核期', true],
+    ['zh-CN', '2025–2026 学年本科生综合素质测评及年度奖学金评定批次', '复审审核期'],
     [
       'en-US',
       '2025–2026 Annual Undergraduate Assessment and Scholarships',
       'Departmental Re-review and Independent Verification',
-      false,
     ],
   ] as const)(
-    'keeps the batch and stage legible at different widths in %s',
-    async (locale, name, phase, short) => {
-      const timeline = [
-        {
-          ...running(0)[0]!,
-          displayName: phase,
-          entry: { kind: 'entered' as const, at: at(-(39 * 24 + 21) * HOUR - 60_000) },
-        },
-      ]
-      await page.viewport(1440, 900)
+    'keeps the countdown and only shows a stage that fits in %s',
+    async (locale, name, phase) => {
+      const [current, next] = running(39 * HOUR)
+      const timeline = [{ ...current!, displayName: phase }, next!]
+      await page.viewport(1920, 900)
       await screen(
         {
           getBatch: () => Effect.succeed({ batch: batch({ name, status: 'active' }) }),
@@ -1543,27 +1537,49 @@ describe('the countdown', () => {
       const stage = context.getByText(phase, { exact: true })
       try {
         await expect.element(clock).toBeVisible()
-        for (const width of [1440, 1280, 1024, 834, 768, 390, 320]) {
+        for (const width of [1920, 1440, 1280, 1024, 834, 768, 390, 320]) {
           await page.viewport(width, 900)
-          await expect.element(stage).toBeVisible()
+          await expect.element(clock).toBeVisible()
           await expect.element(title).toHaveAttribute('title', name)
           const root = context.element()
-          const shown = stage.element()
-          const edge = root.getBoundingClientRect()
-          const phaseBounds = shown.getBoundingClientRect()
+          const ticker = clock.element()
+          const lane = ticker.parentElement!.getBoundingClientRect()
+          const time = ticker.getBoundingClientRect()
+          const phaseGroup = stage.element().closest('[data-slot="context-stage"]')!
+          const phaseBounds = phaseGroup.getBoundingClientRect()
           const titleBounds = title.element().getBoundingClientRect()
           expect(root.scrollWidth).toBeLessThanOrEqual(root.clientWidth + 1)
-          expect(phaseBounds.right).toBeLessThanOrEqual(edge.right)
           expect(titleBounds.width).toBeGreaterThan(60)
-          expect(phaseBounds.width).toBeGreaterThan(40)
-          expect(shown.getAttribute('title')).toBe(phase)
-          if (short) expect(shown.scrollWidth).toBeLessThanOrEqual(shown.clientWidth + 1)
-          else if (width === 320) {
-            expect(shown.scrollWidth).toBeGreaterThan(shown.clientWidth)
-            expect(getComputedStyle(shown).textOverflow).toBe('ellipsis')
+          expect(time.right).toBeLessThanOrEqual(lane.right + 1)
+          expect(time.width, `${width}px`).toBeGreaterThan(50)
+          expect(ticker.querySelector('svg')).not.toBeNull()
+          const words = [...ticker.querySelectorAll('span')].find(
+            (span) => span.offsetWidth > 0 && span.textContent,
+          )!
+          expect(
+            Math.abs(
+              words.getBoundingClientRect().top +
+                words.offsetHeight / 2 -
+                (lane.top + lane.height / 2),
+            ),
+          ).toBeLessThan(2)
+          expect(words.scrollWidth).toBeLessThanOrEqual(words.clientWidth + 1)
+          if (width === 1920) {
+            expect(phaseBounds.top).toBeGreaterThanOrEqual(lane.top)
+            expect(stage.element().closest('[data-slot="badge"]')).not.toBeNull()
           }
-          if (width >= 768) expect(titleBounds.right).toBeLessThan(phaseBounds.left)
-          if (width === 834) await expect.element(clock).not.toBeVisible()
+          if (width === 320) {
+            if (locale === 'en-US') expect(phaseBounds.bottom).toBeLessThanOrEqual(lane.top)
+            else expect(phaseBounds.top).toBeGreaterThanOrEqual(lane.top)
+            await expect
+              .element(
+                context.getByText(locale === 'zh-CN' ? '当前阶段' : 'Current stage', {
+                  exact: true,
+                }),
+              )
+              .not.toBeVisible()
+          }
+          if (width >= 768) expect(titleBounds.right).toBeLessThan(time.left)
         }
       } finally {
         await page.viewport(1280, 800)
