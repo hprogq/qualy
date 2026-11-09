@@ -1744,37 +1744,37 @@ describe('the queue, a page at a time', () => {
       ] as never,
       route: `/assessment/batches/${BATCH_ID}/reviews${search}`,
     })
-  const masters = () => page.getByTestId('queue-master-row')
+  const index = () => page.getByTestId('queue-index-row')
   const rows = () => page.getByTestId('inbox-row')
+  const group = () => page.getByTestId('queue-group')
 
   afterEach(() => window.sessionStorage.clear())
 
-  it('lists the questions beside one question’s filings, ten to a page', async () => {
+  it('lists every question in the index and pages one question twenty at a time', async () => {
     await page.viewport(1440, 900)
-    await queue(inboxOf(both()))
-    // every question with work, oldest first, and how much each holds
-    await expect.element(masters().first()).toHaveAttribute('data-key', ITEM_ID)
+    await queue(inboxOf(both()), `?item=${ITEM_ID}`)
+    // the whole queue and every question with work, oldest first, and how much each holds
+    await expect.element(index().nth(1)).toHaveAttribute('data-key', ITEM_ID)
     expect(
-      masters()
+      index()
         .elements()
         .map((row) => row.getAttribute('data-count')),
-    ).toEqual(['23', '2'])
-    // at a desk the question that has waited longest is open without a press
-    await expect.element(page.getByTestId('queue-pane')).toHaveAttribute('data-key', ITEM_ID)
-    await expect.element(masters().first()).toHaveAttribute('data-selected', 'true')
-    expect(rows().elements()).toHaveLength(10)
+    ).toEqual(['25', '23', '2'])
+    await expect.element(group()).toHaveAttribute('data-key', ITEM_ID)
+    await expect.element(index().nth(1)).toHaveAttribute('aria-current', 'true')
+    expect(rows().elements()).toHaveLength(20)
     const pager = page.getByTestId('review-queue-pager')
-    await expect.element(pager).toHaveAttribute('data-pages', '3')
+    await expect.element(pager).toHaveAttribute('data-pages', '2')
 
-    await pager.getByRole('button', { name: '3' }).click()
+    await pager.getByRole('button', { name: '2' }).click()
     await expect.element(rows().first()).toHaveAttribute('data-instance', rowId(20))
-    expect(document.activeElement).toBe(page.getByTestId('queue-pane').element())
+    expect(document.activeElement).toBe(group().element())
     expect(rows().elements()).toHaveLength(3)
-    expect(addressNow()).toContain('page=3')
+    expect(addressNow()).toContain('page=2')
 
     // another question starts from its own first page, and one page needs no strip
-    await masters().nth(1).click()
-    await expect.element(page.getByTestId('queue-pane')).toHaveAttribute('data-key', OTHER_ITEM)
+    await index().nth(2).click()
+    await expect.element(group()).toHaveAttribute('data-key', OTHER_ITEM)
     expect(rows().elements()).toHaveLength(2)
     expect(addressNow()).not.toContain('page=')
     expect(page.getByTestId('review-queue-pager').elements()).toHaveLength(0)
@@ -1796,12 +1796,13 @@ describe('the queue, a page at a time', () => {
     await expect
       .element(page.getByTestId('review-groups-pager'))
       .toHaveAttribute('data-total', '25')
-    expect(masters().elements()).toHaveLength(20)
+    // the whole queue, then a page of people
+    expect(index().elements()).toHaveLength(21)
     await page
       .getByTestId('review-groups-pager')
       .getByRole('button', { name: '2', exact: true })
       .click()
-    await expect.poll(() => masters().elements().length).toBe(5)
+    await expect.poll(() => index().elements().length).toBe(6)
     await expect.element(page.getByTestId('review-groups-pager')).toHaveAttribute('data-page', '2')
     expect(addressNow()).toContain('groupPage=2')
   })
@@ -1826,32 +1827,33 @@ describe('the queue, a page at a time', () => {
 
   it('walks the whole question from a page of it, and comes back to that page', async () => {
     await page.viewport(1440, 900)
-    await withBench(both(), '?page=2')
+    await withBench(both(), `?item=${ITEM_ID}&page=2`)
     await expect.element(page.getByTestId('review-queue-pager')).toHaveAttribute('data-page', '2')
 
     // a row on the second page opens the run over the whole question
     await rows().first().click()
     await expect.element(page.getByTestId('run-position')).toHaveAttribute('data-total', '23')
-    await expect.element(page.getByTestId('run-position')).toHaveAttribute('data-at', '11')
+    await expect.element(page.getByTestId('run-position')).toHaveAttribute('data-at', '21')
     // The desk place is the one visible count on the bar. The compact count
     // remains mounted only for the phone breakpoint.
     await expect.element(page.getByTestId('queue-position')).not.toBeVisible()
     await page.getByTestId('queue-key').click()
     await expect.element(page.getByTestId('queue-sheet')).toBeVisible()
-    expect(page.getByTestId('queue-row').elements()).toHaveLength(20)
+    // the rail opens on the page the filing stands on
+    expect(page.getByTestId('queue-row').elements()).toHaveLength(3)
     await expect.element(page.getByTestId('review-rail-pager')).toHaveAttribute('data-total', '23')
     await page
       .getByTestId('review-rail-pager')
-      .getByRole('button', { name: '2', exact: true })
+      .getByRole('button', { name: '1', exact: true })
       .click()
-    await expect.poll(() => page.getByTestId('queue-row').elements().length).toBe(3)
+    await expect.poll(() => page.getByTestId('queue-row').elements().length).toBe(20)
     await userEvent.keyboard('{Escape}')
     await expect.poll(() => document.querySelector('[data-testid="queue-sheet"]')).toBeNull()
 
     // and the way back finds the queue on the page it was left on
     await page.getByTestId('queue-back').click()
     await expect.element(page.getByTestId('review-queue-pager')).toHaveAttribute('data-page', '2')
-    await expect.element(page.getByTestId('queue-pane')).toHaveAttribute('data-key', ITEM_ID)
+    await expect.element(group()).toHaveAttribute('data-key', ITEM_ID)
   })
 
   it('keeps the band in place while the start-review action is loading', async () => {
@@ -1897,7 +1899,7 @@ describe('the queue, a page at a time', () => {
 
   it('walks to the next and previous filing across a server page boundary', async () => {
     await page.viewport(1440, 900)
-    await withBench(both(), '?page=2')
+    await withBench(both(), `?item=${ITEM_ID}`)
     await expect.element(rows().last()).toHaveAttribute('data-instance', rowId(19))
     await rows().last().click()
     await expect.element(page.getByTestId('run-position')).toHaveAttribute('data-at', '20')
@@ -1911,7 +1913,7 @@ describe('the queue, a page at a time', () => {
 
   it('starts a question at its first filing even when the last page holds only one', async () => {
     await page.viewport(1440, 900)
-    await withBench(filings(21, 0), '?page=3')
+    await withBench(filings(21, 0), `?item=${ITEM_ID}&page=2`)
     await expect.element(rows().first()).toHaveAttribute('data-instance', rowId(20))
     await expect.element(page.getByTestId('queue-run')).toBeVisible()
     await page.getByTestId('queue-run').click()
@@ -1951,30 +1953,29 @@ describe('the queue, a page at a time', () => {
     await expect.poll(() => page.getByTestId('queue-row').elements().length).toBe(3)
   })
 
-  // Narrower than a desk the list and a question's filings are one screen
-  // after the other: the list first, the filings a step in, and back.
-  it('steps into a question and back out on a phone', async () => {
+  // On a phone the queue opens in brief, and a question is a step in.
+  it('steps into a question on a phone', async () => {
     await page.viewport(390, 844)
     await queue(inboxOf(both()))
-    await expect.element(masters().first()).toBeVisible()
-    expect(rows().elements()).toHaveLength(0)
+    await expect.element(rows().first()).toBeVisible()
+    expect(rows().elements()).toHaveLength(5)
+    await expect.element(page.getByTestId('queue-scope')).toBeVisible()
 
-    await masters().nth(1).click()
-    await expect.element(page.getByTestId('queue-pane')).toHaveAttribute('data-key', OTHER_ITEM)
-    expect(rows().elements()).toHaveLength(2)
-
-    await page.getByTestId('queue-pane-back').click()
-    await expect.element(masters().first()).toBeVisible()
-    expect(page.getByTestId('queue-pane').elements()).toHaveLength(0)
+    await page.getByTestId('queue-group-more').click()
+    await expect.element(group()).toHaveAttribute('data-key', ITEM_ID)
+    expect(rows().elements()).toHaveLength(20)
+    expect(addressNow()).toContain(`item=${ITEM_ID}`)
   })
 
-  it('lays the whole queue out by time, twenty to a page', async () => {
+  it('shows a brief for the day, then pages through the whole day', async () => {
     await page.viewport(1440, 900)
     await queue(inboxOf(both()), '?view=time')
     await expect.element(rows().first()).toHaveAttribute('data-instance', rowId(0))
-    expect(page.getByTestId('queue-master-row').elements()).toHaveLength(0)
-    expect(rows().elements()).toHaveLength(20)
+    expect(rows().elements()).toHaveLength(3)
+    await page.getByTestId('queue-group-more').click()
+    await expect.element(group()).toHaveAttribute('data-key', '2026-03-03')
     await expect.element(page.getByTestId('review-queue-pager')).toHaveAttribute('data-total', '25')
+    expect(rows().elements()).toHaveLength(20)
   })
 })
 

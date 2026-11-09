@@ -48,6 +48,7 @@ import {
   awaitingNumberedPage,
   type InboxQuery,
   type QueueGroup,
+  type QueueMark,
 } from './queue-db.ts'
 import { pageNumber, pageSize, type BadRequest } from '@qualy/api-kit/schema'
 import type { ItemTypeDriver } from '../plugin.ts'
@@ -185,6 +186,8 @@ export interface ReviewInboxItem {
     readonly files: number | null
   }[]
   readonly attachmentCount: number
+  /** whether the person who filed answered an ask for more from this round */
+  readonly supplemented: boolean
   readonly submittedAt: number
 }
 
@@ -533,6 +536,8 @@ export interface ReviewMethods {
       groupPage?: string
       groupOrder?: 'largest'
       layout?: 'overview'
+      day?: string
+      mark?: QueueMark
       focus?: string
       exclude?: readonly string[]
     },
@@ -545,6 +550,8 @@ export interface ReviewMethods {
       pageSize: number
       queueTotal: number
       filteredTotal: number
+      /** how many rounds of each mark the narrowed queue holds, the mark aside */
+      marks: { all: number; escalated: number; resubmitted: number; supplemented: number }
       groups: readonly QueueGroup[]
       groupTotal: number
       groupPage: number
@@ -1091,6 +1098,11 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
       const asked =
         page.batchId === undefined ? withWork : withWork.filter((one) => one === page.batchId)
       const open = yield* openBatches(tenantId, asked)
+      // a day of the queue is the batch's day
+      const asking =
+        page.batchId === undefined
+          ? null
+          : yield* dieQuery(withDb(oneBatch(tenantId, page.batchId)))
       const result = yield* dieQuery(
         withDb(
           transaction(
@@ -1102,6 +1114,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
               page: pageNumber(page.page),
               groupPage: pageNumber(page.groupPage),
               overview: page.layout === 'overview',
+              timezone: asking?.timezone ?? 'UTC',
               limit,
             } satisfies InboxQuery),
             { isolation: 'repeatable read', readOnly: true },
@@ -1116,7 +1129,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
       // a batch has one, so the cross-batch queue simply does not count
       let handledToday = 0
       if (page.batchId !== undefined) {
-        const batch = yield* dieQuery(withDb(oneBatch(tenantId, page.batchId)))
+        const batch = asking
         if (batch !== null) {
           const asked = {
             tenantId,
@@ -1149,6 +1162,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
           route: row.route,
           values: summaryValues(row.formConfig, row.payload, row.displayConfig),
           attachmentCount: row.attachmentCount,
+          supplemented: row.supplemented,
           submittedAt: row.submittedAt,
         })),
         handledToday,

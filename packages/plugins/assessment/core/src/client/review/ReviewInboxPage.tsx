@@ -1,9 +1,16 @@
 'use client'
-import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { useLocation, useNavigate } from 'react-router'
-import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type CompositionEvent,
+  type ReactNode,
+} from 'react'
+import { useLocation } from 'react-router'
+import { partialMatchKey, useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
-import { FileTextIcon, SearchIcon, ShieldIcon } from 'lucide-react'
+import { CheckIcon, InboxIcon, LockIcon, SearchIcon, SearchXIcon, ShieldIcon } from 'lucide-react'
 import {
   useApiQuery,
   useLoadFailure,
@@ -16,25 +23,25 @@ import {
 import { VisuallyHidden } from '@qualy/ui/visually-hidden'
 import { AsyncSection } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
+import { Count } from '@qualy/ui/count'
 import { Input } from '@qualy/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@qualy/ui/select'
 import { Skeleton } from '@qualy/ui/skeleton'
-import { DoneMark, Stagger } from '@qualy/ui/reveal'
 import { Tabs, TabsList, TabsTrigger } from '@qualy/ui/tabs'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
-import { Count } from '@qualy/ui/count'
 import { assessmentApi } from '../api.ts'
 import { useBatchLive } from '../live.ts'
 
 import { BatchScreen } from '../batch/BatchScreen.tsx'
 import { AwaitingSection } from './AwaitingSection.tsx'
-import { ReviewDock } from './ReviewDock.tsx'
-import { useAwaitingQuery, useQueueRefresh, useReviewQueueQuery } from './queue.ts'
+import { useAwaitingQuery, useQueueRefresh, useReviewQueueQuery, type QueuePage } from './queue.ts'
 import { queueRequestOf, viewOf, type View } from './inbox-reads.ts'
 import { useDraftSweep } from './use-draft.ts'
 import { rememberQueuePlace } from './queue-place.ts'
-import { ItemQueue, PersonQueue, QueueBands, QueueSkeleton, TimeQueue } from './QueueViews.tsx'
+import { QueueBoard, QueueScope, QueueScopeSkeleton, QueueSkeleton } from './QueueBoard.tsx'
+import { QueueEmpty } from './QueueEmpty.tsx'
+import { ReviewDock } from './ReviewDock.tsx'
 import { pageNumberOf, type InboxItemDto } from './model.ts'
 import * as commonMessages from '@qualy/web-i18n/messages'
 import { ReviewActions } from './ReviewActions.tsx'
@@ -48,13 +55,15 @@ import * as m from '#messages'
 // How much is waiting, and the way to start on it, stand in the band above:
 // they are about the whole queue, whichever way it is laid out below.
 
-const md = '@media (min-width: 768px)'
+const TOOLBAR_ROOM = '@container review-board (min-width: 560px)'
+const TOOLBAR_MID = '@container review-board (min-width: 560px) and (max-width: 879.98px)'
+const TOOLBAR_WIDE = '@container review-board (min-width: 1240px)'
+const SEARCH_DELAY = 250
+/** where the board draws its index beside the list (QueueBoard.tsx) */
+const BOARD_WIDE = '@container review-board (min-width: 880px)'
 
 const styles = stylex.create({
-  // on a phone the four views share the row rather than scrolling it
-  // the views are what this row is for: the filters and the search beside
-  // them give way first, and the row wraps before the tablist narrows
-  viewsField: { flexShrink: 0 },
+  viewsField: { gridArea: 'grouping', minWidth: 0 },
   fill: {
     display: 'flex',
     flexGrow: 1,
@@ -69,46 +78,135 @@ const styles = stylex.create({
     flexBasis: '0%',
     flexDirection: 'column',
     gap: 16,
+    // the board below lays out by this room, and the controls with it, so
+    // the keys over the list start where the list does
+    containerType: 'inline-size',
+    containerName: 'review-board',
   },
-  // One register per breakpoint. On a phone the row is the segmented switch
-  // and one search key - the selects are desktop instruments, and stacked
-  // together here they were a wall of controls above three rows of work. On
-  // a desk everything stands at tab height, side by side.
-  controls: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 8,
-  },
-  controlRow: {
-    display: 'flex',
-    flexWrap: 'wrap',
+  // Give every control a seat at each width, rather than letting flex wrapping
+  // produce half rows around the project index.
+  controls: (areas: string) => ({
+    display: 'grid',
+    gridTemplateAreas: {
+      default: areas,
+      [TOOLBAR_MID]: '"grouping search" "filters filters"',
+      [BOARD_WIDE]: '"grouping filters search"',
+    },
+    gridTemplateColumns: {
+      default: 'minmax(0, 1fr) auto',
+      [TOOLBAR_MID]: 'minmax(0, 1fr) minmax(0, 15rem)',
+      [BOARD_WIDE]: '13rem minmax(0, 1fr) minmax(0, 14rem)',
+    },
+    alignItems: 'center',
+    columnGap: 8,
+    rowGap: 8,
+  }),
+  filters: {
+    gridArea: 'filters',
+    display: { default: 'grid', [TOOLBAR_ROOM]: 'flex' },
+    gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+    minWidth: 0,
     alignItems: 'center',
     gap: 8,
+    // The first filter still lines up with the cards' 28px gutter.
+    paddingInlineStart: { default: 0, [BOARD_WIDE]: 20 },
   },
   seekKey: {
+    gridArea: 'seek',
     width: 36,
     height: 36,
-    display: {
-      default: 'inline-flex',
-      [md]: 'none',
-    },
+    display: { default: 'inline-flex', [TOOLBAR_ROOM]: 'none' },
   },
   seekKeyOpen: {
     backgroundColor: tokens.surfaceMuted,
   },
-  deskOnly: {
-    display: {
-      default: 'none',
-      [md]: 'contents',
+  tabCount: {
+    marginInlineStart: 6,
+    fontSize: 13,
+    fontWeight: 400,
+    fontVariantNumeric: 'tabular-nums',
+    color: tokens.mutedForeground,
+  },
+  // the keys that narrow the queue to one kind of round: a quiet outline
+  // at rest, the product's ink where chosen
+  marks: {
+    display: { default: 'none', [TOOLBAR_WIDE]: 'flex' },
+    minWidth: 0,
+    overflowX: 'auto',
+    scrollbarWidth: 'none',
+    alignItems: 'center',
+    gap: 6,
+  },
+  markSelect: {
+    display: { default: 'block', [TOOLBAR_WIDE]: 'none' },
+    flex: '0 1 10rem',
+    minWidth: 0,
+  },
+  markTrigger: { width: '100%' },
+  markOption: {
+    display: 'flex',
+    width: '100%',
+    minWidth: 0,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 6,
+  },
+  markOptionLabel: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' },
+  filterCount: { marginInlineStart: 0, flexShrink: 0 },
+  groupingList: { height: 36, padding: 3 },
+  groupingKey: { height: 30, paddingInline: 12, fontSize: 13.5 },
+  mark: {
+    display: 'inline-flex',
+    flexShrink: 0,
+    alignItems: 'center',
+    gap: 6,
+    height: 34,
+    paddingInline: 14,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: {
+      default: tokens.border,
+      ':hover': `color-mix(in oklab, ${tokens.foreground} 22%, transparent)`,
     },
+    borderRadius: 999,
+    backgroundColor: tokens.surface,
+    color: tokens.foreground,
+    fontFamily: 'inherit',
+    fontSize: 13,
+    whiteSpace: 'nowrap',
+    cursor: 'pointer',
+    transitionProperty: 'background-color, border-color, color',
+    transitionDuration: '120ms',
   },
-  // one narrowing of the queue never wider than its longest sensible name
-  filterWidth: {
-    maxWidth: 208,
+  markOn: {
+    borderColor: { default: tokens.primary, ':hover': tokens.primary },
+    backgroundColor: tokens.primary,
+    color: tokens.primaryForeground,
+    fontWeight: 500,
   },
+  markCount: {
+    fontSize: 12,
+    fontWeight: 400,
+    fontVariantNumeric: 'tabular-nums',
+    color: tokens.mutedForeground,
+  },
+  markCountOn: { color: 'inherit', opacity: 0.72 },
+  unitFilter: {
+    display: { default: 'none', [TOOLBAR_ROOM]: 'block' },
+    gridColumn: { default: '1 / -1', [TOOLBAR_ROOM]: 'auto' },
+    flex: '0 1 9rem',
+    minWidth: 0,
+    marginInlineStart: { default: 0, [BOARD_WIDE]: 'auto' },
+  },
+  unitFilterShown: { display: 'block' },
+  filterWidth: { width: '100%' },
   searchSeat: {
+    gridArea: 'search',
     position: 'relative',
+    display: { default: 'none', [TOOLBAR_ROOM]: 'block' },
+    minWidth: 0,
   },
+  searchShown: { display: 'block' },
   searchIcon: {
     pointerEvents: 'none',
     position: 'absolute',
@@ -119,41 +217,19 @@ const styles = stylex.create({
     transform: 'translateY(-50%)',
     color: tokens.mutedForeground,
   },
-  searchInput: {
-    height: 36,
-    width: 240,
-    paddingLeft: 34,
-  },
-  searchInputWide: {
-    height: 36,
-    width: '100%',
-    paddingLeft: 34,
-  },
-  phoneSearchSeat: {
-    position: 'relative',
-    display: {
-      default: 'block',
-      [md]: 'none',
-    },
-  },
-  noMatches: {
-    borderRadius: 14,
-    backgroundColor: tokens.surface,
-    boxShadow: `0 0 0 1px ${tokens.border}`,
-    paddingInline: 20,
-    paddingBlock: 16,
-    fontSize: 14,
-    color: tokens.mutedForeground,
-  },
+  searchInput: { height: 36, width: '100%', paddingLeft: 34 },
   // ---- how much is waiting, in the band ----
+  roomTabs: { display: 'flex', width: 'fit-content', marginBlockStart: 10 },
   standing: {
     display: 'flex',
     minWidth: 0,
     flexWrap: 'wrap',
     alignItems: 'center',
-    columnGap: { default: 10, [breakpoints.phone]: 14 },
+    columnGap: 10,
     rowGap: 2,
     fontVariantNumeric: 'tabular-nums',
+    fontSize: 12.5,
+    color: tokens.mutedForeground,
   },
   standingPart: { display: 'inline-flex', alignItems: 'center', gap: 10 },
   // a phone's line wraps, and a rule carried to the start of the next line
@@ -167,59 +243,19 @@ const styles = stylex.create({
   },
   standingBones: { height: 14, width: 200, maxWidth: '100%', marginBlock: 3 },
   // ---- a quiet day, said in full ----
-  emptyScreen: {
-    display: 'flex',
-    flexGrow: 1,
-    flexShrink: 1,
-    flexBasis: '0%',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingBlock: 64,
-  },
-  emptyStack: {
-    display: 'flex',
-    maxWidth: '28rem',
-    flexDirection: 'column',
-    alignItems: 'center',
-    gap: 20,
-    textAlign: 'center',
-  },
-  emptyBadge: {
-    display: 'flex',
-    width: 52,
-    height: 52,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: '9999px',
-    borderWidth: 1,
-    borderStyle: 'solid',
-    borderColor: tokens.border,
-    color: tokens.mutedForeground,
-  },
   emptyIcon: {
     width: 20,
     height: 20,
-  },
-  emptyWords: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 8,
-  },
-  emptyTitle: {
-    fontSize: 18,
-    fontWeight: 600,
-    letterSpacing: '-0.025em',
-  },
-  emptyBody: {
-    fontSize: 14,
-    lineHeight: 1.625,
-    textWrap: 'pretty',
-    color: tokens.mutedForeground,
   },
 })
 
 /** the batch went while its queue was being read */
 const BATCH_NOT_FOUND = 'ASSESSMENT_BATCH_NOT_FOUND'
+
+type QueueSummary = Pick<
+  QueuePage,
+  'queueTotal' | 'queueFirstId' | 'handledToday' | 'marks' | 'unitOptions'
+>
 
 /**
  * Everything waiting for this reader's decision in the round, and what their
@@ -230,6 +266,8 @@ function useQueue(batchId: string, reviewing: boolean) {
   const [viewRaw] = usePageQueryState('view', 'item')
   const [item] = usePageQueryState('item')
   const [person] = usePageQueryState('person')
+  const [day] = usePageQueryState('day')
+  const [mark] = usePageQueryState('mark')
   const [unit] = usePageQueryState('unit')
   const [search] = usePageQueryState('q')
   const [page] = usePageQueryState('page')
@@ -247,25 +285,68 @@ function useQueue(batchId: string, reviewing: boolean) {
     if (!moves.some((kind) => kinds.has(kind))) return
     // the list and the rail's count, which is the desk's rather than this list's
     refreshQueue(stale)
+    // a stage that began may have opened or closed reviewing
+    if (kinds.has('phase-changed')) stale(query.assessment.getTimeline.key({ params: { batchId } }))
     stale(query.assessment.listAwaitingSupplements.key({ query: { batchId } }))
   })
+  // The place in the address, read as the server reads it (inbox-reads.ts).
+  const request = queueRequestOf({
+    view: viewRaw,
+    item,
+    person,
+    day,
+    mark,
+    unit,
+    search,
+    page,
+    groupPage,
+  })
+  const groupingKey = query.assessment.listReviewInbox.key({
+    query: { batchId, view: request.view, layout: request.layout },
+  })
   const inbox = useQuery({
-    // the place in the address, read as the server reads it (inbox-reads.ts)
-    ...useReviewQueueQuery(
-      batchId,
-      queueRequestOf({ view: viewRaw, item, person, unit, search, page, groupPage }),
-    ),
-    placeholderData: keepPreviousData,
+    ...useReviewQueueQuery(batchId, request),
+    // Pages and filters can keep their old rows while reading. A different
+    // grouping cannot interpret the old response's group keys or row order.
+    placeholderData: (previous, previousQuery) =>
+      previousQuery && partialMatchKey(previousQuery.queryKey, groupingKey) ? previous : undefined,
     enabled: reviewing,
     refetchInterval: live ? 60_000 : 30_000,
   })
+  // Keep the batch-wide controls steady while the new grouping is read.
+  const [last, setLast] = useState<{ batchId: string; summary: QueueSummary }>()
+  if (
+    inbox.data !== undefined &&
+    !inbox.isPlaceholderData &&
+    (last?.batchId !== batchId || last.summary !== inbox.data)
+  ) {
+    setLast({ batchId, summary: inbox.data })
+  }
+  const summary: QueueSummary | undefined =
+    inbox.data ?? (last?.batchId === batchId ? last.summary : undefined)
   // what is out with somebody else, counted beside what can be decided now
   const asked = useQuery({
     ...useAwaitingQuery(batchId),
     enabled: reviewing,
     refetchInterval: live ? 60_000 : 30_000,
   })
-  return { inbox, asked, all: inbox.data?.items ?? [], awaiting: asked.data?.total ?? 0 }
+  const selected =
+    (request.view === 'person'
+      ? request.person
+      : request.view === 'time'
+        ? request.day
+        : request.itemId) ?? ''
+  // A compatible placeholder still carries the index and filter options,
+  // but its rows belong to the previous selection.
+  const loadingSelection =
+    inbox.isPlaceholderData && (inbox.data?.selected ?? '') !== selected ? selected : null
+  return {
+    inbox,
+    summary,
+    scoped: selected !== '',
+    loadingSelection,
+    awaiting: asked.data?.total ?? 0,
+  }
 }
 
 type Queue = ReturnType<typeof useQueue>
@@ -287,6 +368,8 @@ export default function ReviewInboxPage() {
   const { batchId } = usePageRouteParams('batchId')
   const query = useApiQuery(assessmentApi)
   const [view] = usePageQueryState('view', 'item')
+  const update = usePageQueryUpdate()
+  const activeView = viewOf(view)
   // the batch the screen below reads, from the same cache: only somebody who
   // reviews here is asked about a queue
   const standing = useQuery({
@@ -296,43 +379,55 @@ export default function ReviewInboxPage() {
   const reviewing = standing.data?.batch.capabilities.review === true
   const queue = useQueue(batchId, reviewing)
   const open = useOpenRow(batchId)
-  const first = queue.inbox.data?.queueFirstId
+  const first = queue.summary?.queueFirstId
+  const pending = queue.summary?.queueTotal ?? 0
   return (
     <BatchScreen
+      size="wide"
+      flushFoot={reviewing}
       title={m.review_tab()}
-      summary={
-        // held open while the batch is read, so the line arriving does not
-        // push the page down under the reader
-        standing.isPending ? (
-          <Skeleton className={stylex.props(styles.standingBones).className} />
-        ) : reviewing ? (
-          <QueueStanding queue={queue} />
-        ) : undefined
-      }
+      summary={reviewing ? <QueueStanding queue={queue} /> : undefined}
       actions={
-        // the whole queue from its oldest filing: the way in for somebody
-        // who only wants to get through what is waiting
         reviewing ? (
           <ReviewActions
             available={first != null}
             pending={queue.inbox.isPending}
+            count={pending}
             onStart={() => {
               if (first != null) open({ instanceId: first }, '')
             }}
           />
         ) : undefined
       }
-      size="wide"
-      flushFoot={reviewing}
+      bannerFooter={
+        reviewing ? (
+          <Tabs
+            value={activeView === 'asked' ? 'asked' : 'queue'}
+            onValueChange={(next) =>
+              update({ view: next === 'asked' ? 'asked' : '', page: '', groupPage: '' })
+            }
+          >
+            <TabsList xstyle={styles.roomTabs}>
+              <TabsTrigger value="queue">
+                {m.review_queueTab()}
+                {pending > 0 && <span {...stylex.props(styles.tabCount)}>{pending}</span>}
+              </TabsTrigger>
+              <TabsTrigger value="asked">
+                {m.review_awaitingTab()}
+                {queue.awaiting > 0 && (
+                  <span {...stylex.props(styles.tabCount)}>{queue.awaiting}</span>
+                )}
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+        ) : undefined
+      }
     >
       {(batch) =>
         batch.capabilities.review ? (
-          <QueueBody batchId={batch.id} view={viewOf(view)} queue={queue} onOpen={open} />
+          <QueueBody batchId={batch.id} view={activeView} queue={queue} onOpen={open} />
         ) : (
-          // said as what it is: no standing here, not an empty queue -
-          // pretending otherwise makes permission problems look like quiet
-          // days
-          <EmptyScreen
+          <QueueEmpty
             state="no-standing"
             icon={<ShieldIcon aria-hidden className={stylex.props(styles.emptyIcon).className} />}
             title={m.review_noRoleTitle()}
@@ -350,13 +445,13 @@ export default function ReviewInboxPage() {
  * there is any: a zero there is a fact nobody asked for.
  */
 function QueueStanding({ queue }: { queue: Queue }) {
-  if (queue.inbox.data === undefined) {
+  if (queue.summary === undefined) {
     return queue.inbox.isPending ? (
       <Skeleton className={stylex.props(styles.standingBones).className} />
     ) : null
   }
-  const pending = queue.inbox.data.queueTotal
-  const today = queue.inbox.data.handledToday
+  const pending = queue.summary.queueTotal
+  const today = queue.summary.handledToday
   const parts: ReactNode[] = [
     m.review_groupCount({ count: pending }),
     m.review_standingToday({ count: today }),
@@ -393,12 +488,10 @@ function QueueBody({
 }) {
   const loadFailure = useLoadFailure()
   const location = useLocation()
-  const navigate = useNavigate()
   const update = usePageQueryUpdate()
   useDraftSweep()
-  const [itemKey] = usePageQueryState('item')
-  const [personKey] = usePageQueryState('person')
   const [unitFilter] = usePageQueryState('unit')
+  const [markRaw] = usePageQueryState('mark')
   const [search] = usePageQueryState('q')
   const [pageRaw] = usePageQueryState('page')
   const page = pageNumberOf(pageRaw)
@@ -415,36 +508,14 @@ function QueueBody({
   const narrow = (changes: Record<string, string>, history: 'replace' | 'push' = 'replace') =>
     update({ ...changes, page: '', groupPage: '' }, { history })
 
-  // Where the list and the filings are one screen after the other, picking
-  // a question or a person is a step into its own screen, and the back key
-  // is how anybody leaves one. The way back drawn above the list goes back
-  // over that same step where this sitting took it, so the list is not left
-  // in the history twice. Which of the two it is is the queue's to say: it
-  // is laid out by its own room, not the window's.
-  const steppedIn = useRef(false)
-  const choose = (key: 'item' | 'person', value: string, drills: boolean) => {
-    if (!drills) {
-      narrow({ [key]: value })
-      return
-    }
-    steppedIn.current = true
-    narrow({ [key]: value }, 'push')
-  }
-  const back = (key: 'item' | 'person') => {
-    if (steppedIn.current) {
-      steppedIn.current = false
-      void navigate(-1)
-      return
-    }
-    narrow({ [key]: '' })
-  }
+  // picking a group is a step the back key steps out of
+  const pick = (key: 'item' | 'person' | 'day', value: string) => narrow({ [key]: value }, 'push')
 
-  const rows = queue.all
   const data = queue.inbox.data
-  const itemOptions = (data?.itemOptions ?? []).map(({ id, name }) => [id, name] as const)
-  const unitOptions = (data?.unitOptions ?? []).map(({ id, name }) => [id, name] as const)
+  const summary = queue.summary
+  const unitOptions = (summary?.unitOptions ?? []).map(({ id, name }) => [id, name] as const)
   const onGroupPage = (next: number) =>
-    update({ groupPage: String(next), item: '', person: '', page: '' })
+    update({ groupPage: String(next), item: '', person: '', day: '', page: '' })
   useEffect(() => {
     if (data === undefined || queue.inbox.isPlaceholderData || view === 'asked') return
     const corrected: Record<string, string> = {}
@@ -452,235 +523,219 @@ function QueueBody({
     if (Object.keys(corrected).length > 0) update(corrected)
   }, [data, queue.inbox.isPlaceholderData, page, view, update])
   const onPage = (next: number) => update({ page: next === 1 ? '' : String(next) })
-  const onSearch = (value: string) => narrow({ q: value })
+  const searchInput = useRef<HTMLInputElement>(null)
+  const focusSearch = useRef(false)
+  useEffect(() => {
+    if (!seeking || !focusSearch.current) return
+    focusSearch.current = false
+    searchInput.current?.focus()
+  }, [seeking])
+  const { resetSearch, ...searchField } = useReviewSearch(search, view !== 'asked', update)
 
   return (
-    <AsyncSection
-      pending={queue.inbox.isPending}
-      // a read that failed only in the background keeps the queue it last
-      // showed: the page is somebody's place in their work
-      error={
-        queue.inbox.data === undefined && queue.inbox.error
-          ? loadFailure.of(queue.inbox.error, { missing: [BATCH_NOT_FOUND] })
-          : null
-      }
-      retrying={queue.inbox.isFetching}
-      // on the page's own ground, under its title, where the queue would stand
-      framed
-      loadingLabel={commonMessages.state_loading()}
-      retryLabel={commonMessages.action_retry()}
-      onRetry={() => void queue.inbox.refetch()}
-      skeleton={
-        <QueueBands fill={view === 'item'}>
-          <QueueSkeleton grouping={view === 'item' ? 'item' : 'person'} />
-        </QueueBands>
-      }
-      xstyle={styles.fill}
-    >
-      <div {...stylex.props(styles.queue)}>
-        <div {...stylex.props(styles.controls)}>
-          <div {...stylex.props(styles.controlRow)}>
-            <Tabs
-              variant="segmented"
-              value={view}
-              onValueChange={(next) =>
-                update({ view: next === 'item' ? '' : next, page: '', groupPage: '' })
-              }
-              xstyle={styles.viewsField}
-            >
-              <TabsList>
-                <TabsTrigger value="item">{m.review_tabByItem()}</TabsTrigger>
-                <TabsTrigger value="time">{m.review_tabByTime()}</TabsTrigger>
-                <TabsTrigger value="person">{m.review_tabByPerson()}</TabsTrigger>
-                {/* Its own room, not a section under the queue: what is out
-                    with somebody else is nothing to decide now, and stacked
-                    below the queue it shouted over every empty state. The
-                    count rides the tab so the door says whether it is worth
-                    opening. */}
-                <TabsTrigger value="asked">
-                  {m.review_awaitingTab()}
-                  {queue.awaiting > 0 && <Count>{queue.awaiting}</Count>}
-                </TabsTrigger>
-              </TabsList>
-            </Tabs>
-            {view !== 'asked' && (
-              <Button
-                variant="outline"
-                size="icon"
-                className={stylex.props(styles.seekKey, seeking && styles.seekKeyOpen).className}
-                aria-pressed={seeking}
-                onClick={() => setSeeking((open) => !open)}
-              >
-                <SearchIcon aria-hidden />
-                <VisuallyHidden>{m.review_searchPlaceholder()}</VisuallyHidden>
-              </Button>
-            )}
-            {view !== 'asked' && (
-              <div {...stylex.props(styles.deskOnly)}>
-                {/* by question the list beside the filings is the question
-                    picker; by time a question is one more narrowing */}
-                {view === 'time' && (
-                  <Filter
-                    label={m.review_filterAllItems()}
-                    value={itemKey}
-                    options={itemOptions}
-                    onChange={(next) => narrow({ item: next })}
-                  />
-                )}
-                {unitOptions.length > 0 && (
+    <div {...stylex.props(styles.queue)}>
+      {view !== 'asked' && (
+        <div
+          data-testid="review-filters"
+          {...stylex.props(
+            styles.controls(
+              seeking
+                ? '"grouping seek" "filters filters" "search search"'
+                : '"grouping seek" "filters filters"',
+            ),
+          )}
+        >
+          <Tabs
+            variant="segmented"
+            value={view}
+            onValueChange={(next) =>
+              update({
+                view: next === 'item' ? '' : next,
+                page: '',
+                groupPage: '',
+                item: '',
+                person: '',
+                day: '',
+              })
+            }
+            xstyle={styles.viewsField}
+          >
+            <TabsList xstyle={styles.groupingList}>
+              <TabsTrigger value="item" xstyle={styles.groupingKey}>
+                {m.review_tabByItem()}
+              </TabsTrigger>
+              <TabsTrigger value="person" xstyle={styles.groupingKey}>
+                {m.review_tabByPerson()}
+              </TabsTrigger>
+              <TabsTrigger value="time" xstyle={styles.groupingKey}>
+                {m.review_tabByTime()}
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+          <Button
+            variant="outline"
+            size="icon"
+            className={stylex.props(styles.seekKey, seeking && styles.seekKeyOpen).className}
+            aria-expanded={seeking}
+            aria-controls="review-queue-search"
+            onClick={() => {
+              focusSearch.current = !seeking
+              setSeeking(!seeking)
+            }}
+          >
+            <SearchIcon aria-hidden />
+            <VisuallyHidden>{m.review_searchPlaceholder()}</VisuallyHidden>
+          </Button>
+          {summary !== undefined && (
+            <div {...stylex.props(styles.filters)}>
+              {data !== undefined && data.queueTotal > 0 ? (
+                <QueueScope
+                  grouping={view}
+                  data={data}
+                  loadingSelection={queue.loadingSelection}
+                  onPick={(key) => pick(groupKey(view), key)}
+                />
+              ) : queue.inbox.isPending && summary.queueTotal > 0 ? (
+                <QueueScopeSkeleton />
+              ) : null}
+              <StatusFilter
+                value={markOf(markRaw) ?? ALL}
+                counts={summary.marks}
+                onChange={(next) => narrow({ mark: next === ALL ? '' : next })}
+              />
+              {unitOptions.length > 0 && (
+                <div
+                  {...stylex.props(
+                    styles.unitFilter,
+                    (seeking || unitFilter !== '') && styles.unitFilterShown,
+                  )}
+                >
                   <Filter
                     label={m.review_filterAllUnits()}
                     value={unitFilter}
                     options={unitOptions}
                     onChange={(next) => narrow({ unit: next })}
                   />
-                )}
-                <div {...stylex.props(styles.searchSeat)}>
-                  <SearchIcon aria-hidden className={stylex.props(styles.searchIcon).className} />
-                  <Input
-                    name="review-search"
-                    aria-label={m.review_searchPlaceholder()}
-                    className={stylex.props(styles.searchInput).className}
-                    value={search}
-                    placeholder={m.review_searchPlaceholder()}
-                    onChange={(event) => onSearch(event.target.value)}
-                  />
                 </div>
-              </div>
-            )}
-          </div>
-          {seeking && view !== 'asked' && (
-            <div {...stylex.props(styles.phoneSearchSeat)}>
-              <SearchIcon aria-hidden className={stylex.props(styles.searchIcon).className} />
-              <Input
-                autoFocus
-                name="review-search"
-                aria-label={m.review_searchPlaceholder()}
-                className={stylex.props(styles.searchInputWide).className}
-                value={search}
-                placeholder={m.review_searchPlaceholder()}
-                onChange={(event) => onSearch(event.target.value)}
-              />
+              )}
             </div>
           )}
+          <div {...stylex.props(styles.searchSeat, seeking && styles.searchShown)}>
+            <SearchIcon aria-hidden className={stylex.props(styles.searchIcon).className} />
+            <Input
+              id="review-queue-search"
+              ref={searchInput}
+              name="review-search"
+              aria-label={m.review_searchPlaceholder()}
+              className={stylex.props(styles.searchInput).className}
+              placeholder={m.review_searchPlaceholder()}
+              onFocus={() => setSeeking(true)}
+              {...searchField}
+            />
+          </div>
         </div>
+      )}
 
-        {/* the awaiting view is its own room; the queue's empty states are
+      {/* the awaiting view is its own room; the queue's empty states are
             about the queue alone, so all-done gets its whole screen back */}
-        {view === 'asked' ? (
-          <AwaitingSection batchId={batchId} page={page} onPage={onPage} />
-        ) : data?.queueTotal === 0 ? (
-          // a phase that keeps judging shut empties the queue however much
-          // is waiting, and nothing will arrive until it opens: that is not
-          // a quiet day, and promising new work would be wrong
-          queue.inbox.data?.judging === false ? (
-            <EmptyScreen
-              state="closed"
-              icon={
-                <FileTextIcon aria-hidden className={stylex.props(styles.emptyIcon).className} />
-              }
-              title={m.review_closedTitle()}
-              body={m.review_closedBody()}
-            />
-          ) : // two different quiet days: everything handled, or nothing has
-          // arrived yet. The counter is what tells them apart
-          (queue.inbox.data?.handledToday ?? 0) > 0 ? (
-            <EmptyScreen
-              state="done"
-              mark={<DoneMark />}
-              title={m.review_allDoneTitle()}
-              body={m.review_allDoneBody({ count: queue.inbox.data?.handledToday ?? 0 })}
-            />
-          ) : (
-            <EmptyScreen
-              state="nothing"
-              icon={
-                <FileTextIcon aria-hidden className={stylex.props(styles.emptyIcon).className} />
-              }
-              title={m.review_nothingTitle()}
-              body={m.review_nothingBody()}
-            />
-          )
-        ) : data?.filteredTotal === 0 ? (
-          <p data-testid="review-no-matches" {...stylex.props(styles.noMatches)}>
-            {m.review_matchesNone()}
-          </p>
-        ) : view === 'item' ? (
-          <QueueBands fill>
-            <ItemQueue
-              rows={rows}
-              serverPage={data}
+      {view === 'asked' ? (
+        <AwaitingSection batchId={batchId} page={page} onPage={onPage} />
+      ) : (
+        <AsyncSection
+          pending={queue.inbox.isPending}
+          error={
+            data === undefined && queue.inbox.error
+              ? loadFailure.of(queue.inbox.error, { missing: [BATCH_NOT_FOUND] })
+              : null
+          }
+          retrying={queue.inbox.isFetching}
+          framed
+          loadingLabel={commonMessages.state_loading()}
+          retryLabel={commonMessages.action_retry()}
+          onRetry={() => void queue.inbox.refetch()}
+          skeleton={
+            <QueueSkeleton grouping={view} scoped={queue.scoped} total={summary?.queueTotal} />
+          }
+          xstyle={styles.fill}
+        >
+          {data?.queueTotal === 0 ? (
+            // a phase that keeps judging shut empties the queue however much
+            // is waiting, and nothing will arrive until it opens: that is not
+            // a quiet day, and promising new work would be wrong
+            data.judging === false ? (
+              <QueueEmpty
+                state="closed"
+                icon={<LockIcon aria-hidden className={stylex.props(styles.emptyIcon).className} />}
+                title={m.review_closedTitle()}
+                body={m.review_closedBody()}
+              />
+            ) : // two different quiet days: everything handled, or nothing has
+            // arrived yet. The counter is what tells them apart
+            data.handledToday > 0 ? (
+              <QueueEmpty
+                state="done"
+                tone="ok"
+                icon={
+                  <CheckIcon aria-hidden className={stylex.props(styles.emptyIcon).className} />
+                }
+                title={m.review_allDoneTitle()}
+                body={
+                  queue.awaiting > 0
+                    ? m.review_allDoneAwaiting({
+                        count: data.handledToday,
+                        awaiting: queue.awaiting,
+                      })
+                    : m.review_allDoneBody({ count: data.handledToday })
+                }
+                hint={m.review_allDoneHint()}
+              />
+            ) : (
+              <QueueEmpty
+                state="nothing"
+                icon={
+                  <InboxIcon aria-hidden className={stylex.props(styles.emptyIcon).className} />
+                }
+                title={m.review_nothingTitle()}
+                body={m.review_nothingBody()}
+              />
+            )
+          ) : data !== undefined ? (
+            <QueueBoard
+              grouping={view}
+              data={data}
+              loadingSelection={queue.loadingSelection}
               fetching={queue.inbox.isFetching}
+              onPick={(key) => pick(groupKey(view), key)}
+              onPage={onPage}
               onGroupPage={onGroupPage}
-              chosen={itemKey}
-              page={page}
-              onChoose={(itemId, drills) => choose('item', itemId, drills)}
-              onBack={() => back('item')}
-              onPage={onPage}
               onOpen={onOpen}
+              empty={
+                <QueueEmpty
+                  state="no-matches"
+                  icon={
+                    <SearchXIcon aria-hidden className={stylex.props(styles.emptyIcon).className} />
+                  }
+                  title={m.review_matchesNone()}
+                  body={m.review_matchesHint()}
+                  action={
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        resetSearch()
+                        narrow({ mark: '', unit: '', q: '' })
+                      }}
+                    >
+                      {m.review_matchesClear()}
+                    </Button>
+                  }
+                />
+              }
             />
-          </QueueBands>
-        ) : view === 'time' ? (
-          <QueueBands>
-            <TimeQueue
-              rows={rows}
-              serverPage={data}
-              fetching={queue.inbox.isFetching}
-              page={page}
-              onPage={onPage}
-              onOpen={onOpen}
-            />
-          </QueueBands>
-        ) : (
-          <QueueBands>
-            <PersonQueue
-              rows={rows}
-              serverPage={data}
-              fetching={queue.inbox.isFetching}
-              onGroupPage={onGroupPage}
-              chosen={personKey}
-              page={page}
-              onChoose={(key, drills) => choose('person', key, drills)}
-              onBack={() => back('person')}
-              onPage={onPage}
-              onOpen={onOpen}
-            />
-          </QueueBands>
-        )}
-      </div>
+          ) : null}
+        </AsyncSection>
+      )}
       <ReviewDock batchId={batchId} />
-    </AsyncSection>
-  )
-}
-
-/**
- * A quiet day, said in full: the screen a reviewer lands on when there is
- * nothing to do is the screen they see most often, so it gets the room.
- */
-function EmptyScreen({
-  state,
-  icon,
-  mark,
-  title,
-  body,
-}: {
-  /** which kind of empty this is: no standing, judging closed, all handled, nothing yet */
-  state: 'no-standing' | 'closed' | 'done' | 'nothing'
-  icon?: ReactNode
-  /** a drawn mark instead of a still icon, where the emptiness was earned */
-  mark?: ReactNode
-  title: string
-  body: string
-}) {
-  return (
-    <div {...stylex.props(styles.emptyScreen)} data-testid="review-inbox-empty" data-empty={state}>
-      <Stagger className={stylex.props(styles.emptyStack).className} step={0.08}>
-        {mark ?? <span {...stylex.props(styles.emptyBadge)}>{icon}</span>}
-        <div {...stylex.props(styles.emptyWords)}>
-          <h2 {...stylex.props(styles.emptyTitle)}>{title}</h2>
-          <p {...stylex.props(styles.emptyBody)}>{body}</p>
-        </div>
-      </Stagger>
     </div>
   )
 }
@@ -724,3 +779,128 @@ function Filter({
 
 /** a select cannot carry an empty value, so "no filter" needs a name of its own */
 const ALL = 'all'
+
+const groupKey = (view: 'item' | 'person' | 'time') => (view === 'time' ? 'day' : view)
+
+/**
+ * The address records finished searches, not keystrokes. In particular a
+ * composition must not navigate, even if a user pauses to pick a candidate.
+ */
+function useReviewSearch(
+  search: string,
+  enabled: boolean,
+  update: ReturnType<typeof usePageQueryUpdate>,
+) {
+  const [draft, setDraft] = useState(search)
+  const [composing, setComposing] = useState(false)
+  const composingNow = useRef(false)
+  const sent = useRef<string | null>(null)
+  useEffect(() => {
+    if (sent.current === search) {
+      sent.current = null
+      return
+    }
+    if (!composingNow.current) setDraft(search)
+  }, [search])
+  useEffect(() => {
+    if (!enabled || composing || draft === search) return
+    const timer = setTimeout(() => {
+      if (composingNow.current) return
+      sent.current = draft
+      update({ q: draft, page: '', groupPage: '' })
+    }, SEARCH_DELAY)
+    return () => clearTimeout(timer)
+  }, [enabled, composing, draft, search, update])
+  const start = () => {
+    composingNow.current = true
+    setComposing(true)
+  }
+  return {
+    value: draft,
+    onChange: (event: ChangeEvent<HTMLInputElement>) => {
+      if (event.nativeEvent instanceof InputEvent && event.nativeEvent.isComposing) start()
+      setDraft(event.currentTarget.value)
+    },
+    onCompositionStart: start,
+    onCompositionEnd: (event: CompositionEvent<HTMLInputElement>) => {
+      setDraft(event.currentTarget.value)
+      composingNow.current = false
+      setComposing(false)
+    },
+    resetSearch: () => setDraft(''),
+  }
+}
+
+/** the kinds of round that are more than waiting, in the order their keys stand */
+const MARKS = ['escalated', 'resubmitted', 'supplemented'] as const
+type Mark = (typeof MARKS)[number]
+
+/** the address's word for a mark, where it names one */
+const markOf = (raw: string): Mark | undefined =>
+  (MARKS as readonly string[]).includes(raw) ? (raw as Mark) : undefined
+
+const markLabel = (mark: Mark) =>
+  mark === 'escalated'
+    ? m.review_markEscalated()
+    : mark === 'resubmitted'
+      ? m.review_markResubmitted()
+      : m.review_markSupplemented()
+
+function StatusFilter({
+  value,
+  counts,
+  onChange,
+}: {
+  value: Mark | typeof ALL
+  counts: QueuePage['marks']
+  onChange: (value: string) => void
+}) {
+  const options = [
+    { key: ALL, label: m.review_markAll(), count: counts.all },
+    ...MARKS.map((mark) => ({ key: mark, label: markLabel(mark), count: counts[mark] })),
+  ]
+  return (
+    <>
+      <div role="group" aria-label={m.review_markGroup()} {...stylex.props(styles.marks)}>
+        {options.map(({ key, label, count }) => (
+          <button
+            key={key}
+            type="button"
+            data-testid="review-mark"
+            data-mark={key}
+            aria-pressed={value === key}
+            onClick={() => onChange(key)}
+            {...stylex.props(styles.mark, value === key && styles.markOn)}
+          >
+            {label}
+            <span {...stylex.props(styles.markCount, value === key && styles.markCountOn)}>
+              {count}
+            </span>
+          </button>
+        ))}
+      </div>
+      <div {...stylex.props(styles.markSelect)}>
+        <Select value={value} onValueChange={onChange}>
+          <SelectTrigger aria-label={m.review_markGroup()} xstyle={styles.markTrigger}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {options.map(({ key, label, count }) => {
+              const name = key === ALL ? m.review_markAllStatuses() : label
+              return (
+                <SelectItem key={key} value={key}>
+                  <span {...stylex.props(styles.markOption)}>
+                    <span title={name} {...stylex.props(styles.markOptionLabel)}>
+                      {name}
+                    </span>
+                    <Count xstyle={styles.filterCount}>{count}</Count>
+                  </span>
+                </SelectItem>
+              )
+            })}
+          </SelectContent>
+        </Select>
+      </div>
+    </>
+  )
+}

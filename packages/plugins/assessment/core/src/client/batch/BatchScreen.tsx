@@ -75,6 +75,10 @@ const styles = stylex.create({
     position: 'relative',
     paddingBlock: 24,
   },
+  bandWithFooter: {
+    paddingBlockStart: { default: 20, [breakpoints.phone]: 16 },
+    paddingBlockEnd: 0,
+  },
   bannerSeat: {
     position: 'relative',
   },
@@ -185,6 +189,7 @@ export function BatchScreen({
   description,
   summary,
   actions,
+  bannerFooter,
   size = 'default',
   chrome = 'band',
   fixedNotices = false,
@@ -196,13 +201,15 @@ export function BatchScreen({
   children,
 }: {
   /** which of the batch's pages this is; the bar above says which batch */
-  title: string
+  title: ReactNode
   /** what the section says about itself under its name: a line of words, or a line of facts */
   description?: ReactNode
   /** A status line that sits beside the title when the band has room. */
   summary?: ReactNode
   /** what the section says about itself beside its name, at a glance */
   actions?: ReactNode
+  /** Controls such as tabs at the lower edge of the heading band. */
+  bannerFooter?: ReactNode
   size?: 'default' | 'wide' | 'full'
   /**
    * `none` drops the band and the page gutters: the section owns the whole
@@ -344,7 +351,10 @@ export function BatchScreen({
             the same breath. Taking it back, the one leaving is already gone
             - the screen it belonged to left with it - so a fade in would be
             a fade up from nothing, which is the band blinking. */}
-        <PageContainer size={size} xstyle={styles.bandInset}>
+        <PageContainer
+          size={size}
+          xstyle={[styles.bandInset, bannerFooter != null && styles.bandWithFooter]}
+        >
           <Resizing>
             {/* The heading parked out of sight is out of reach too: not a
                 second heading to a screen reader, and no key in it to tab
@@ -371,6 +381,7 @@ export function BatchScreen({
               />
             </div>
           </Resizing>
+          {bannerFooter}
         </PageContainer>
       </div>
       <PageContainer size={size} xstyle={[styles.bodyColumn, flushFoot && styles.flushFoot]}>
