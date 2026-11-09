@@ -1219,7 +1219,14 @@ const pageFirstScreen = async (
   await html.route('**/assets/**/*.js', (route) => route.abort())
   const documentResponse = await html.goto(`${site}${page.address}`)
   await html.waitForLoadState('load')
-  const drawn = await painted(html.getByTestId(page.content))
+  // The stream may have delivered its hidden segment just before the load
+  // event. React's inline script places it on a later animation frame, still
+  // without the client entry. A segment left hidden must fail this check.
+  const content = html.getByTestId(page.content).filter({ visible: true }).first()
+  const drawn = await content.waitFor({ state: 'visible', timeout: 1_000 }).then(
+    () => paintedOne(content),
+    () => false,
+  )
   const staticNotice = async (tab: Page) => {
     if (page.staticNotice === undefined) return true
     const notice = tab.getByTestId(page.staticNotice)
