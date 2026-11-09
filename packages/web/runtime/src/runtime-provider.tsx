@@ -165,12 +165,12 @@ export function RuntimeProvider({
   // provider that really goes takes its screens with it, and each channel
   // they let go of goes at the end of its grace.
   const [runtime] = useState(() => {
-    const provider =
-      provided ??
-      clientProviderFor({
-        ...(clientIdentity === undefined ? {} : { identity: clientIdentity }),
-        ...(onClientUnsupported === undefined ? {} : { onClientUnsupported }),
-      })
+    const transport: TransportOptions = {
+      ...(clientIdentity === undefined ? {} : { identity: clientIdentity }),
+      ...(onClientUnsupported === undefined ? {} : { onClientUnsupported }),
+    }
+    const provider = provided ?? clientProviderFor(transport)
+    const probe = provided ?? clientProviderFor({ ...transport, background: true })
     const utils = new WeakMap<object, unknown>()
     const utilsFor = (api: HttpApi.Constraint) => {
       const cached = utils.get(api)
@@ -193,7 +193,7 @@ export function RuntimeProvider({
       // who is signed in, asked straight: the manifest never refuses, and a
       // question about the session must not wait for the session to return
       askManifest: () =>
-        Effect.runPromise((provider(appApi) as ClientOf<typeof appApi>).app.getManifest()),
+        Effect.runPromise((probe(appApi) as ClientOf<typeof appApi>).app.getManifest()),
     }
   })
   return (

@@ -13,6 +13,15 @@ import {
 import { onSignOut } from '@qualy/web-runtime/identity'
 import { apiError, emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
 
+function focusAfterAbsence() {
+  const clock = vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 60_000)
+  try {
+    window.dispatchEvent(new Event('focus'))
+  } finally {
+    clock.mockRestore()
+  }
+}
+
 // A change of identity drops what the last one could read, and does not ask
 // for it again on the way out.
 //
@@ -755,8 +764,8 @@ describe('a signed-in page that finds somebody else signed in', () => {
   it('locks when coming back to it, and sends nothing more', async () => {
     const { signInElsewhere, counted, moves } = await screen()
     signInElsewhere()
-    // coming back to the tab: everything asked again at once
-    window.dispatchEvent(new Event('focus'))
+    // Returning after the rendered identity check has gone stale.
+    focusAfterAbsence()
     await locked()
     const before = { ...counted }
     moves.refetch?.()
@@ -779,6 +788,48 @@ describe('a signed-in page that finds somebody else signed in', () => {
 })
 
 describe('the manifest, asked again in the background', () => {
+  it('uses the hydrated manifest on fresh focus and coalesces a stale return', async () => {
+    let asks = 0
+    let release!: () => void
+    const held = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const manifest = { ...emptyManifest(), viewer: 'authenticated' as const, identity: 'reader' }
+    await renderScreen({
+      client: fakeClient({
+        app: {
+          getManifest: () =>
+            Effect.promise(async () => {
+              if (++asks > 1) await held
+              return manifest
+            }),
+        },
+      }),
+      routes: [{ path: '/standing', element: <p data-testid="standing">Open</p> }],
+      route: '/standing',
+    })
+    try {
+      await expect.element(page.getByTestId('standing')).toBeVisible()
+      const events = () => {
+        window.dispatchEvent(new Event('focus'))
+        document.dispatchEvent(new Event('visibilitychange'))
+        window.dispatchEvent(new Event('focus'))
+      }
+      events()
+      expect(asks).toBe(1)
+      const clock = vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 60_000)
+      try {
+        events()
+      } finally {
+        clock.mockRestore()
+      }
+      await expect.poll(() => asks).toBe(2)
+      expect(asks).toBe(2)
+    } finally {
+      release()
+    }
+  })
+
   it('keeps the page standing when the ask fails', async () => {
     let failing = false
     let refused = 0
@@ -790,7 +841,7 @@ describe('the manifest, asked again in the background', () => {
             onClick={() => {
               // the connection drops while the reader is away; coming back asks again
               failing = true
-              window.dispatchEvent(new Event('focus'))
+              focusAfterAbsence()
             }}
           >
             back

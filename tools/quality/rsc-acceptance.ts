@@ -13,7 +13,12 @@ import {
   CSP_HEADER,
   composeShellPolicy,
 } from '../../packages/plugins/infra/web/src/server/shell-policy.ts'
-import { QUALY_IDENTITY_HEADER, QUALY_LOCALE_COOKIE, QUALY_LOCALE_HEADER } from '@qualy/api-kit'
+import {
+  QUALY_ACTIVITY_HEADER,
+  QUALY_IDENTITY_HEADER,
+  QUALY_LOCALE_COOKIE,
+  QUALY_LOCALE_HEADER,
+} from '@qualy/api-kit'
 import { LIVE_CLOSE, LIVE_SUBPROTOCOL } from '@qualy/api-kit/live-socket'
 import { RECENT_LOGIN_METHOD_COOKIE } from '@qualy/auth-contract/recent-method'
 import { SLOT_REFERENCE_PATH, slotReferenceHref } from '@qualy/ui-contract'
@@ -1062,6 +1067,15 @@ const batchListFirstScreen = async (browser: Browser, batch: string) => {
   const otherLocale = locale === 'zh-CN' ? 'en-US' : 'zh-CN'
   await context.addCookies([{ name: QUALY_LOCALE_COOKIE, value: otherLocale, url: site }])
   let requestedLocale: string | undefined
+  let releaseProbe!: () => void
+  const pendingProbe = new Promise<void>((resolve) => {
+    releaseProbe = resolve
+  })
+  const manifestProbe = (url: URL) => url.pathname === '/api/app/manifest'
+  await page.route(manifestProbe, async (route) => {
+    await pendingProbe
+    await route.continue()
+  })
   let resume!: () => void
   const pending = new Promise<void>((resolve) => {
     resume = resolve
@@ -1077,6 +1091,19 @@ const batchListFirstScreen = async (browser: Browser, batch: string) => {
     },
   )
   try {
+    const probing = page.waitForRequest((request) => manifestProbe(new URL(request.url())))
+    await inPage(
+      page,
+      `(() => {
+      const channel = new BroadcastChannel('qualy:session')
+      channel.postMessage({ type: 'changed' })
+      channel.close()
+      document.addEventListener('click', () => performance.mark('qualy-test-click'), {
+        capture: true, once: true,
+      })
+    })()`,
+    )
+    const probe = await probing
     await page.locator(row).getByRole('link').first().click()
     const progress = page.getByRole('progressbar').filter({ visible: true })
     const indicating = await progress
@@ -1091,15 +1118,36 @@ const batchListFirstScreen = async (browser: Browser, batch: string) => {
       indicating && (await painted(page.locator(row))),
     )
     check(
+      'dispatches the RSC navigation without waiting for a background session probe',
+      requestedLocale === locale && probe.headers()[QUALY_ACTIVITY_HEADER] === undefined,
+    )
+    check(
       'takes the batch list over without asking again',
       duplicateReads.length === 0,
       duplicateReads,
     )
   } finally {
+    releaseProbe()
     resume()
   }
   await page.waitForURL(`${site}${overview}`)
   await page.getByTestId('batch-note').waitFor()
+  const timing = await inPage(
+    page,
+    `(() => {
+    const click = performance.getEntriesByName('qualy-test-click')[0]?.startTime
+    const rsc = performance.getEntriesByType('resource').find((entry) =>
+      new URL(entry.name).pathname === ${JSON.stringify(overview + '.rsc')}
+    )
+    return click === undefined ? null : {
+      clickToFetchMs: rsc && Math.round(rsc.startTime - click),
+      fetchToResponseMs: rsc?.responseStart && Math.round(rsc.responseStart - rsc.startTime),
+      clickToOverviewMs: Math.round(performance.now() - click),
+    }
+  })()`,
+  )
+  console.log('rsc-acceptance: deliberately held navigation', timing)
+
   check(
     'shows the overview in the same document after navigation',
     (await painted(page.getByTestId('batch-note'))) &&

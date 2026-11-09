@@ -64,6 +64,8 @@ export interface TransportOptions {
   readonly identity?: ClientIdentity
   /** the server has refused this page's protocol: the release coordinator's to hear */
   readonly onClientUnsupported?: (reason: ClientUnsupportedReason) => void
+  /** This client checks the session on its own, even just after an input. */
+  readonly background?: boolean
 }
 
 /**
@@ -135,14 +137,12 @@ const withIdentity = (options: TransportOptions) => {
             heard(isClientUnsupportedReason(said) ? said : 'protocol')
           }),
         )
-  return <E, R>(client: HttpClient.HttpClient.With<E, R>): HttpClient.HttpClient.With<E, R> =>
-    judged(
-      named(
-        markedIdentity(
-          markedLocale(markedActivity(withoutTracePropagation(throughCurrentFetch(client)))),
-        ),
-      ),
+  return <E, R>(client: HttpClient.HttpClient.With<E, R>): HttpClient.HttpClient.With<E, R> => {
+    const network = withoutTracePropagation(throughCurrentFetch(client))
+    return judged(
+      named(markedIdentity(markedLocale(options.background ? network : markedActivity(network)))),
     )
+  }
 }
 
 /**

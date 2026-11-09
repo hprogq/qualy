@@ -259,11 +259,11 @@ describe('the server unable to serve a request right now', () => {
 // a request made while the tab is in view, soon after an input, says it is the
 // reader's, and only that counts as use.
 describe('a request the reader made', () => {
-  const ask = async () => {
+  const ask = async (background = false) => {
     const seen: Record<string, string>[] = []
     await Effect.runPromise(
       Effect.gen(function* () {
-        const client = yield* clientFor(api, 'http://qualy.test', { identity })
+        const client = yield* clientFor(api, 'http://qualy.test', { identity, background })
         yield* client.ping.hello()
       }).pipe(Effect.provideService(FetchHttpClient.Fetch, answering(seen, pong))),
     )
@@ -277,6 +277,7 @@ describe('a request the reader made', () => {
       expect(await ask()).not.toHaveProperty(QUALY_ACTIVITY_HEADER)
       host.document = { visibilityState: 'visible' }
       expect((await ask())[QUALY_ACTIVITY_HEADER]).toBe('1')
+      expect(await ask(true)).not.toHaveProperty(QUALY_ACTIVITY_HEADER)
     } finally {
       delete host.document
     }

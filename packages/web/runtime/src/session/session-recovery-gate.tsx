@@ -43,6 +43,9 @@ import * as commonMessages from '@qualy/web-i18n/messages'
 /** how often a page waiting for its reader asks whether they are back */
 const ASK_EVERY_MS = 3_000
 
+/** A recent server answer is enough for a routine window focus. */
+const RETURN_FRESH_MS = 15_000
+
 /**
  * How long a refused call waits before the reader is asked anything.
  *
@@ -168,90 +171,96 @@ export function SessionRecoveryGate({
     }
   }, [queryClient, manifestKey, freeze])
 
-  // Probe on return and cross-tab changes without replacing the document's
-  // projection independently of its server-rendered surfaces.
+  const returnProbe = useRef<() => void>(() => {})
+  // Focus and visibility can fire together. Reuse the rendered answer when
+  // it is fresh and share one request with active recovery when it is not.
   useEffect(() => {
-    let current = 0
-    const unchanged = () => !frozen.current && !leaving.current && !identityChanging()
-    const probe = () => {
+    let stopped = false
+    let checking = false
+    let checkAgain = false
+    let verifiedAt = 0
+    const unchanged = () => !stopped && !frozen.current && !leaving.current && !identityChanging()
+    const probe = (explicit = false) => {
       if (!unchanged()) return
-      const before = queryClient.getQueryData<Manifest>(manifestKey)
-      if (before?.viewer !== 'authenticated') return
-      const request = ++current
-      void askManifest().then(
-        (after) => {
-          if (request !== current || !unchanged()) return
-          if (queryClient.getQueryData<Manifest>(manifestKey)?.identity !== before.identity) return
-          presentedManifest(before, after)
-        },
-        () => {},
+      const pending = held.current
+      const snapshot = queryClient.getQueryState<Manifest>(manifestKey)
+      if (snapshot?.data?.viewer !== 'authenticated') return
+      const before = snapshot.data
+      if (
+        !explicit &&
+        pending === undefined &&
+        Date.now() - Math.max(verifiedAt, snapshot.dataUpdatedAt) < RETURN_FRESH_MS
       )
+        return
+      if (checking) {
+        // An explicit cross-tab change can postdate the request in flight.
+        checkAgain ||= explicit
+        return
+      }
+      checking = true
+      void askManifest()
+        .then((after) => {
+          if (!unchanged() || checkAgain || pending !== held.current) return
+          if (queryClient.getQueryData<Manifest>(manifestKey)?.identity !== before.identity) return
+          if (pending === undefined) {
+            if (after.viewer === 'authenticated' && after.identity === before.identity)
+              verifiedAt = Date.now()
+            // Check identity; do not replace the rendered surface projection.
+            presentedManifest(before, after)
+            return
+          }
+          if (after.viewer !== 'authenticated') return
+          if (after.identity !== pending.identity) {
+            freeze()
+            announceOutcome('switched')
+            return
+          }
+          queryClient.setQueryData(manifestKey, after)
+          held.current = undefined
+          setStanding(undefined)
+          pending.settle(true)
+          announceOutcome('resumed')
+          toast.success(commonMessages.session_resumed())
+        })
+        .catch(() => {})
+        .finally(() => {
+          checking = false
+          if (!checkAgain) return
+          checkAgain = false
+          probe(true)
+        })
     }
     const returned = () => {
       if (document.visibilityState === 'visible') probe()
     }
-    const unhear = onSessionChangedElsewhere(probe)
+    returnProbe.current = returned
+    const unhearChange = onSessionChangedElsewhere(() => probe(true))
+    const unhearSignIn = onSignedInElsewhere(() => {
+      if (held.current !== undefined) probe(true)
+    })
     window.addEventListener('focus', returned)
     document.addEventListener('visibilitychange', returned)
     return () => {
-      current++
-      unhear()
+      stopped = true
+      unhearChange()
+      unhearSignIn()
       window.removeEventListener('focus', returned)
       document.removeEventListener('visibilitychange', returned)
+      returnProbe.current = () => {}
     }
   }, [askManifest, freeze, manifestKey, queryClient])
 
-  // every state but the last is still waiting for the same reader
   const waiting = standing !== undefined && standing !== 'switched'
   useEffect(() => {
     if (!waiting) return
-    let stopped = false
-    /** whether the reader is back; says so to the page when they are, or when somebody else is */
-    const ask = async () => {
-      const current = held.current
-      if (current === undefined || stopped) return
-      let manifest: Manifest
-      try {
-        manifest = await askManifest()
-      } catch {
-        return
-      }
-      if (stopped || held.current !== current || manifest.viewer !== 'authenticated') return
-      if (manifest.identity !== current.identity) {
-        freeze()
-        // the tab that signed in is theirs, and need not wait to hear it
-        announceOutcome('switched')
-        return
-      }
-      queryClient.setQueryData(manifestKey, manifest)
-      held.current = undefined
-      setStanding(undefined)
-      current.settle(true)
-      // the sign-in tab closes on hearing it, and the reader learns why the
-      // lock went: quietly, without anything left to dismiss
-      announceOutcome('resumed')
-      toast.success(commonMessages.session_resumed())
-    }
-    const timer = setInterval(() => {
-      if (document.visibilityState === 'visible') void ask()
-    }, ASK_EVERY_MS)
-    const returned = () => {
-      if (document.visibilityState === 'visible') void ask()
-    }
-    document.addEventListener('visibilitychange', returned)
-    window.addEventListener('focus', returned)
-    const unhear = onSignedInElsewhere(() => void ask())
-    // a sign-in tab learns there is a page to tell, rather than waiting out an answer
+    const timer = setInterval(() => returnProbe.current(), ASK_EVERY_MS)
+    // A sign-in tab learns there is a page to tell.
     const unanswer = answerAsWaiting()
     return () => {
-      stopped = true
       unanswer()
       clearInterval(timer)
-      document.removeEventListener('visibilitychange', returned)
-      window.removeEventListener('focus', returned)
-      unhear()
     }
-  }, [waiting, askManifest, queryClient, manifestKey, freeze])
+  }, [waiting])
 
   /** the sign-in page, told it is there for a recovery */
   const signInHref = (() => {
