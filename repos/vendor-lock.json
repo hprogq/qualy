@@ -19,10 +19,10 @@
       "contentSha256": "9c360f63f274b158b89066ab00f31f0c4aaf8f865d4ca1526566afa97f4384ae"
     },
     "re2js": {
-      "packageVersion": "2.8.6",
-      "tag": "2.8.6",
-      "commit": "79a85e0ffbb479be0c4d3aa83e51fd67446eee65",
-      "contentSha256": "351d89377de2d3e6bfa1dccb29448dc017213d09b761aab55d7c6a3bfbf6bb18"
+      "packageVersion": "2.8.7",
+      "tag": "2.8.7",
+      "commit": "6ba840014b192668365271d7b1c4d2d24a4b5f83",
+      "contentSha256": "98b9da6758659b4de028910cb0a10ffdf1dd8930479309c39e7f36e81e02bb56"
     }
   }
 }
