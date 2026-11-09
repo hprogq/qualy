@@ -278,7 +278,7 @@ export const qualyChunkGraph = (options: {
 
     if (refusals.length > 0) {
       this.error(
-        `${refusals.join('\n')}\n  Change how apps/web/vite.config.ts pools modules; the reasons are in packages/build/web/src/chunk-graph.ts.`,
+        `${refusals.join('\n')}\n  Inspect the client chunk pools in apps/web/chunk-pools.ts and the screen budgets in apps/web/document-budget.ts.`,
       )
     }
   },
