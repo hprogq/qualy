@@ -1,4 +1,3 @@
-import type { ReactNode } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { Button } from '@qualy/ui/button'
 import { Count } from '@qualy/ui/count'
@@ -7,14 +6,6 @@ import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import * as m from '#messages'
 
 const styles = stylex.create({
-  actions: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    gap: 12,
-    width: '26rem',
-    maxWidth: '100%',
-  },
   seat: { position: 'relative', flexShrink: 0, minHeight: '2.25rem' },
   hidden: { visibility: 'hidden' },
   bones: {
@@ -32,15 +23,13 @@ export function ReviewActions({
   pending,
   count,
   onStart,
-  children,
 }: {
   available: boolean
   pending: boolean
   count?: number
   onStart: () => void
-  children?: ReactNode
 }) {
-  const start = (
+  return (
     <div {...stylex.props(styles.seat)}>
       <Button
         data-testid="review-start"
@@ -54,14 +43,6 @@ export function ReviewActions({
       {!available && pending && (
         <Skeleton aria-hidden className={stylex.props(styles.bones).className} />
       )}
-    </div>
-  )
-  return children === undefined ? (
-    start
-  ) : (
-    <div {...stylex.props(styles.actions)}>
-      {children}
-      {start}
     </div>
   )
 }

@@ -183,6 +183,7 @@ export function BatchBanner({ children }: { children: ReactNode }) {
 export function BatchScreen({
   title,
   description,
+  summary,
   actions,
   size = 'default',
   chrome = 'band',
@@ -198,6 +199,8 @@ export function BatchScreen({
   title: string
   /** what the section says about itself under its name: a line of words, or a line of facts */
   description?: ReactNode
+  /** A status line that sits beside the title when the band has room. */
+  summary?: ReactNode
   /** what the section says about itself beside its name, at a glance */
   actions?: ReactNode
   size?: 'default' | 'wide' | 'full'
@@ -355,6 +358,7 @@ export function BatchScreen({
                 <PageHeader
                   title={title}
                   description={description}
+                  summary={summary}
                   actions={actions}
                   variant="banner"
                 />

@@ -4,6 +4,8 @@ import { ArrowLeftIcon } from 'lucide-react'
 import type { StyleXStyles } from '@stylexjs/stylex'
 import { tokens } from '../../theme/tokens.stylex.ts'
 
+const HEADER_ROOM = '@container page-heading (min-width: 28rem)'
+
 const styles = stylex.create({
   // sized to the line it sits in, not to itself: no vertical padding, no
   // border, and the same font and leading as the prose around it
@@ -42,6 +44,35 @@ const styles = stylex.create({
   headerBanner: {
     paddingBlock: 4,
   },
+  headerRoom: {
+    containerType: 'inline-size',
+    containerName: 'page-heading',
+  },
+  headerWithSummary: {
+    display: 'grid',
+    gridTemplateAreas: {
+      default: '"title actions" "summary summary"',
+      [HEADER_ROOM]: '"title summary actions"',
+    },
+    gridTemplateColumns: {
+      default: 'minmax(0, 1fr) auto',
+      [HEADER_ROOM]: 'minmax(7rem, 1fr) minmax(0, max-content) auto',
+    },
+    alignItems: 'center',
+    columnGap: { default: 8, [HEADER_ROOM]: 12 },
+    rowGap: 4,
+    paddingBlockEnd: 0,
+  },
+  summary: {
+    gridArea: 'summary',
+    display: 'flex',
+    alignItems: 'center',
+    minWidth: 0,
+    minHeight: '1.25rem',
+    justifyContent: { default: 'flex-start', [HEADER_ROOM]: 'flex-end' },
+  },
+  summaryTitle: { gridArea: 'title', overflowWrap: 'anywhere' },
+  summaryActions: { gridArea: 'actions', justifySelf: 'end' },
   headerText: {
     minWidth: 0,
     display: 'flex',
@@ -130,6 +161,7 @@ const styles = stylex.create({
 export function PageHeader({
   title,
   description,
+  summary,
   actions,
   variant = 'plain',
   xstyle,
@@ -143,6 +175,8 @@ export function PageHeader({
    */
   title: ReactNode
   description?: ReactNode
+  /** A compact status line that moves below the title and actions in narrow panes. */
+  summary?: ReactNode
   actions?: ReactNode
   /**
    * The heading of a band that spans the content area, rather than a line of
@@ -155,9 +189,17 @@ export function PageHeader({
   variant?: 'plain' | 'banner'
   xstyle?: StyleXStyles
 }) {
-  return (
-    <div {...stylex.props(styles.header, variant === 'banner' && styles.headerBanner, xstyle)}>
-      <div {...stylex.props(styles.headerText)}>
+  const hasSummary = summary != null
+  const heading = (
+    <div
+      {...stylex.props(
+        styles.header,
+        variant === 'banner' && styles.headerBanner,
+        hasSummary && styles.headerWithSummary,
+        xstyle,
+      )}
+    >
+      <div {...stylex.props(styles.headerText, hasSummary && styles.summaryTitle)}>
         <h1 {...stylex.props(styles.title)}>{title}</h1>
         {/* A div, not a paragraph: this takes a node, and pages put real
             content in it - a way back, a chip, an outline standing in for a
@@ -168,9 +210,13 @@ export function PageHeader({
           <div {...stylex.props(styles.description)}>{description}</div>
         )}
       </div>
-      {actions && <div {...stylex.props(styles.actions)}>{actions}</div>}
+      {hasSummary && <div {...stylex.props(styles.summary)}>{summary}</div>}
+      {actions && (
+        <div {...stylex.props(styles.actions, hasSummary && styles.summaryActions)}>{actions}</div>
+      )}
     </div>
   )
+  return hasSummary ? <div {...stylex.props(styles.headerRoom)}>{heading}</div> : heading
 }
 
 /**

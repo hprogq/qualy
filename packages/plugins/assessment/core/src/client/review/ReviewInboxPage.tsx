@@ -165,7 +165,7 @@ const styles = stylex.create({
     flexShrink: 0,
     backgroundColor: `color-mix(in oklab, ${tokens.foreground} 14%, transparent)`,
   },
-  standingBones: { height: 14, width: 200, marginBlock: 3 },
+  standingBones: { height: 14, width: 200, maxWidth: '100%', marginBlock: 3 },
   // ---- a quiet day, said in full ----
   emptyScreen: {
     display: 'flex',
@@ -300,7 +300,7 @@ export default function ReviewInboxPage() {
   return (
     <BatchScreen
       title={m.review_tab()}
-      description={
+      summary={
         // held open while the batch is read, so the line arriving does not
         // push the page down under the reader
         standing.isPending ? (

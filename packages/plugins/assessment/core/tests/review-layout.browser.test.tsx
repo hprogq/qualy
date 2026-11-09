@@ -1870,6 +1870,19 @@ describe('the queue, a page at a time', () => {
     resolve(answer)
     await expect.element(start).toBeVisible()
     expect(Math.abs(band.getBoundingClientRect().bottom - before)).toBeLessThan(1)
+    const title = page.getByTestId('batch-band').getByRole('heading').element()
+    const stats = page.getByTestId('review-stats').element()
+    const centerY = (node: Element) => {
+      const box = node.getBoundingClientRect()
+      return box.top + box.height / 2
+    }
+    expect(Math.abs(centerY(title) - centerY(start.element()))).toBeLessThan(1)
+    expect(stats.getBoundingClientRect().top).toBeGreaterThan(title.getBoundingClientRect().bottom)
+
+    // A mid-width window already has enough room, even without the desktop shell.
+    await page.viewport(500, 844)
+    await expect.poll(() => Math.abs(centerY(title) - centerY(stats))).toBeLessThan(1)
+    expect(Math.abs(centerY(title) - centerY(start.element()))).toBeLessThan(1)
   })
 
   // The band's key is for somebody who only wants to get through what is
