@@ -3,13 +3,21 @@ import { AsyncLocalStorage } from 'node:async_hooks'
 import type { ComponentType } from 'react'
 import { Effect, type Exit, type Schema } from 'effect'
 import { FetchHttpClient, HttpClient, HttpClientRequest, type HttpClientError } from 'effect/http'
-import { HttpApiClient, type HttpApi, type HttpApiGroup } from 'effect/http-api'
+import {
+  HttpApiClient,
+  type HttpApi,
+  type HttpApiEndpoint,
+  type HttpApiGroup,
+} from 'effect/http-api'
 import { QUALY_IDENTITY_HEADER, QUALY_LOCALE_HEADER } from '@qualy/api-kit'
+import type { appApiGroup } from '@qualy/app-contract'
 import type { SupportedLocale } from '@qualy/i18n-contract'
 import { QUALY_CLIENT_PROTOCOL_HEADER, QUALY_CLIENT_RELEASE_HEADER } from '@qualy/release-contract'
+import type { RenderCorrelation } from '@qualy/release-contract/render-diagnostics'
 import type { BrowserSurface, SlotSurface } from '@qualy/ui-contract'
-import type { Manifest } from '@qualy/web-runtime'
 import { hashKey, type DehydratedState, type QueryKey } from '@tanstack/query-core'
+
+type Manifest = HttpApiEndpoint.Success<typeof appApiGroup.endpoints.getManifest>['Type']
 
 // One document request, as everything rendering it sees it
 // (docs/adr/0012-rsc-data-mode.md).
@@ -74,6 +82,7 @@ export interface RenderRequest {
   readonly apiOrigin: string
   /** The production host can dispatch the same request without a socket. */
   readonly dispatchApi?: ((request: Request) => Promise<Response>) | undefined
+  readonly correlation?: RenderCorrelation
   /** the viewer's own credentials, exactly as they arrived */
   readonly cookie: string | undefined
   /**
@@ -108,6 +117,8 @@ export interface RenderRequest {
 }
 
 const store = new AsyncLocalStorage<RenderRequest>()
+
+export const renderCorrelation = (): RenderCorrelation | undefined => store.getStore()?.correlation
 
 /** runs `render` for `request`, including everything it starts */
 export const withRenderRequest = <A>(request: RenderRequest, render: () => A): A =>

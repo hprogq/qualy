@@ -8,6 +8,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./private": "./src/private.ts",
+    "./render-diagnostics": "./src/render-diagnostics.ts",
     "./package.json": "./package.json"
   },
   "dependencies": {

@@ -26,6 +26,11 @@ import {
   QUALY_RENDER_REFUSED_HEADER,
   type RenderRefusal,
 } from '@qualy/release-contract'
+import {
+  publishRenderDiagnostic,
+  reportRenderFailure,
+  type RenderCorrelation,
+} from '@qualy/release-contract/render-diagnostics'
 import { identityOfManifest } from '@qualy/web-runtime/document-identity'
 import type { Manifest } from '@qualy/web-runtime'
 import { Document } from './Document.tsx'
@@ -72,6 +77,7 @@ const renderRequestOf = (request: Request, context: RenderContext): RenderReques
     release: { releaseId: webRelease.releaseId, clientProtocol: webRelease.clientProtocol },
     apiOrigin: context.apiOrigin ?? defaultApiOrigin,
     dispatchApi: context.dispatchApi,
+    correlation: { requestId: context.requestId, traceId: context.traceId },
     cookie: request.headers.get('cookie') ?? undefined,
     signal: request.signal,
     surfaces,
@@ -130,6 +136,7 @@ function DocumentHtml({ children, ...props }: ComponentProps<typeof HtmlDocument
 }
 
 const renderServer = async (request: Request, manifest: Manifest) => {
+  const correlation = renderRequest().correlation
   const home = (manifest.collections[primaryNavigation.key] ?? []) as readonly {
     readonly target: { readonly kind: string; readonly path?: string }
   }[]
@@ -158,7 +165,7 @@ const renderServer = async (request: Request, manifest: Manifest) => {
     }),
     onError: (error) => {
       if (request.signal.aborted) return
-      console.error('[qualy] server component render failed', error)
+      reportRenderFailure('flight', error, correlation)
     },
     generateResponse(match, options) {
       const headers = new Headers(match.headers)
@@ -206,9 +213,8 @@ const renderSlotReference = async (scope: RenderRequest, manifest: Manifest) => 
  * nonce its content security policy for this response names, when it sends
  * one (packages/plugins/infra/web/src/server/shell-policy.ts).
  */
-export interface RenderContext {
+export interface RenderContext extends RenderCorrelation {
   readonly nonce?: string | undefined
-  readonly requestId?: string | undefined
   /**
    * Where the api this render reads through answers: the host's own, as it
    * listens. Unsaid, the development backend beside a development server.
@@ -253,6 +259,7 @@ async function handle(
     if (declared.release !== webRelease.releaseId) return refused('release')
   }
   const asked = renderRequestOf(request, context)
+  const correlation = { requestId: context.requestId, traceId: context.traceId }
   // the cookies the manifest's answer set, the one read finished before
   // anything goes out: a session it found lapsed is cleared there
   const heard: string[] = []
@@ -266,7 +273,11 @@ async function handle(
     const passed = sessionClearings(heard, asked.cookie)
     const clearings = passed.forwarded
     if (passed.dropped.length > 0) {
-      console.warn('[qualy] render dropped cookies the api set', passed.dropped)
+      publishRenderDiagnostic({
+        ...correlation,
+        level: 'warn',
+        droppedCookies: passed.dropped.length,
+      })
     }
     if (fromPage) {
       const refusal = identityRefusal(declared.identity, manifest)
@@ -297,7 +308,7 @@ async function handle(
       'index',
     )
     return withCookies(
-      await ssr.renderDocument(request, served, asked.locale, context.nonce),
+      await ssr.renderDocument(request, served, asked.locale, context.nonce, correlation),
       clearings,
     )
   } catch (error) {
@@ -307,10 +318,10 @@ async function handle(
     // A document can still offer a way out when neither the router nor its
     // styles and scripts could be loaded. Never answer Flight with HTML.
     if (!fromPage && !asked.url.pathname.endsWith('.rsc') && asked.url.pathname !== '/.manifest') {
-      console.error('[qualy] could not create the document', context.requestId)
+      reportRenderFailure('document', error, correlation)
       return unavailableDocument(asked.locale, request.method, context.requestId)
     }
-    console.error('[qualy] could not create the render response', context.requestId)
+    reportRenderFailure('response', error, correlation)
     return new Response(null, { status: 503, headers: PRIVATE })
   }
 }

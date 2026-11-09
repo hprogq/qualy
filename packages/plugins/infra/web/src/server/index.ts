@@ -24,6 +24,7 @@ import {
   type ReleaseStore,
 } from '@qualy/web-build/release-store'
 import { decodePluginConfig } from '@qualy/plugin-kit/config'
+import { renderLogging } from '../render-log.ts'
 import { RELEASE_STORE_VARIABLE, WebManifestConfig, rootsFrom, serverRoot } from '../config.ts'
 import { addReportRoute } from './csp-reports.ts'
 import {
@@ -348,6 +349,7 @@ type Draw = (
     readonly apiOrigin?: string
     readonly dispatchApi?: ((request: Request) => Promise<Response>) | undefined
     readonly requestId?: string | undefined
+    readonly traceId?: string | undefined
   },
 ) => Promise<Response>
 
@@ -415,7 +417,7 @@ const drawDocument = (
     // a request the platform could not read is not one a document answers
     const web = yield* HttpServerRequest.toWeb(request).pipe(Effect.orDie)
     const nonce = randomBytes(16).toString('base64')
-    const requestId = Option.getOrUndefined(yield* Effect.serviceOption(RequestContext))?.requestId
+    const correlation = Option.getOrUndefined(yield* Effect.serviceOption(RequestContext))
     const dispatchApi = Option.getOrUndefined(yield* Effect.serviceOption(LocalRenderApi))
     const controller = new AbortController()
     const response = yield* Effect.tryPromise({
@@ -426,7 +428,13 @@ const drawDocument = (
             headers: web.headers,
             signal: controller.signal,
           }),
-          { nonce, apiOrigin, dispatchApi, requestId },
+          {
+            nonce,
+            apiOrigin,
+            dispatchApi,
+            requestId: correlation?.requestId,
+            traceId: correlation?.traceId,
+          },
         ),
       catch: (cause) => new DrawFailed({ cause }),
     }).pipe(
@@ -588,6 +596,7 @@ export const routes: Layer.Layer<
     // built after the barrier, so the frozen policy is there to read
     const policy = yield* ShellPolicyHeader
     const { current, draw, files, standingOf } = yield* production(config)
+    yield* renderLogging
     // The address of the API, also used when the host dispatches it locally.
     const port = yield* Config.Port('PORT').pipe(Config.withDefault(3000), Effect.orDie)
     const document = drawDocument(

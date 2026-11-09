@@ -276,15 +276,22 @@ export const qualyLogger = (settings: LoggingSettings): Logger.Logger<unknown, v
     // what the speaking fiber was doing: the request it served, and the span
     // it was inside at this very line ('noop' is the disabled tracer's
     // sentinel, not an id)
-    const requestId = Option.getOrUndefined(
-      Option.map(Context.getOption(options.fiber.context, RequestContext), (c) => c.requestId),
-    )
+    const requestId =
+      Option.getOrUndefined(
+        Option.map(Context.getOption(options.fiber.context, RequestContext), (c) => c.requestId),
+      ) ?? (typeof annotations.request_id === 'string' ? annotations.request_id : undefined)
     // the fiber's span moved onto its cache; the narrowing to `Span` is
     // upstream's own (`internal/effect.ts`, `currentSpanLocal`) - a linked
     // external span is somebody else's work, not this line's
     const inside = options.fiber.cache.span
     const span = inside?._tag === 'Span' ? inside : undefined
     const traced = span !== undefined && span.traceId !== 'noop'
+    // A callback may outlive the request fiber (for example streaming HTML).
+    const traceId = traced
+      ? span.traceId
+      : typeof annotations.trace_id === 'string'
+        ? annotations.trace_id
+        : undefined
 
     console.log(
       render(settings, {
@@ -296,7 +303,8 @@ export const qualyLogger = (settings: LoggingSettings): Logger.Logger<unknown, v
         annotations: Object.fromEntries(rest),
         correlation: {
           ...(requestId === undefined ? {} : { requestId }),
-          ...(traced ? { traceId: span.traceId, spanId: span.spanId } : {}),
+          ...(traceId === undefined ? {} : { traceId }),
+          ...(traced ? { spanId: span.spanId } : {}),
         },
         fiberId: options.fiber.id,
         ...(failure === undefined ? {} : { failure }),

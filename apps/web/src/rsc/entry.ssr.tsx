@@ -6,6 +6,10 @@ import {
 } from 'react-router'
 import type { SupportedLocale } from '@qualy/i18n-contract'
 import { withDocumentLocale } from '@qualy/web-rsc/document-locale'
+import {
+  reportRenderFailure,
+  type RenderCorrelation,
+} from '@qualy/release-contract/render-diagnostics'
 
 // The html half (docs/adr/0012-rsc-data-mode.md): the server components'
 // answer, drawn once as html with the client components in it, for a reader
@@ -18,8 +22,9 @@ export const renderDocument = async (
   locale: SupportedLocale,
   /** the document's script nonce, for every inline script the html carries */
   nonce: string | undefined,
+  correlation: RenderCorrelation,
 ): Promise<Response> => {
-  const drawn = await draw(request, serverResponse, locale, nonce)
+  const drawn = await draw(request, serverResponse, locale, nonce, correlation)
   // a personalised document is the reader's alone: never kept, by anybody
   const headers = new Headers(drawn.headers)
   headers.set('cache-control', 'private, no-store')
@@ -31,6 +36,7 @@ const draw = (
   serverResponse: Response,
   locale: SupportedLocale,
   nonce: string | undefined,
+  correlation: RenderCorrelation,
 ): Promise<Response> =>
   withDocumentLocale(locale, () =>
     routeRSCServerRequest({
@@ -51,7 +57,7 @@ const draw = (
             onError(error: unknown) {
               // a reader who went away is the render ending, not failing
               if (request.signal.aborted) return
-              console.error('[qualy] html render failed', error)
+              reportRenderFailure('html', error, correlation)
             },
           }),
         )

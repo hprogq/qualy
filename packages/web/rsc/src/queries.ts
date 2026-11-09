@@ -1,6 +1,8 @@
 import { Cause, Exit, Option } from 'effect'
 import { QueryClient, dehydrate, type DehydratedState, type QueryKey } from '@tanstack/query-core'
 import type { Arrival, Coming } from '@qualy/web-runtime/query-handoff'
+import { reportRenderFailure } from '@qualy/release-contract/render-diagnostics'
+import { renderCorrelation } from './request.ts'
 
 // What a page's server entry reads on the page's behalf, and how it hands
 // that over (docs/adr/0012-rsc-data-mode.md).
@@ -199,13 +201,13 @@ export const within = async <A>(
  * time and did not answer is. Nothing is thrown down a response already on
  * its way: a bug is said in the server's log, and the page asks.
  */
-const arrivalOf = (key: QueryKey, exit: Exit.Exit<unknown, unknown>): Arrival => {
+const arrivalOf = (exit: Exit.Exit<unknown, unknown>): Arrival => {
   try {
     const read = settle(exit)
     return read.kind === 'answer' ? { kind: 'answer', value: read.value } : { kind: 'ask' }
   } catch (error) {
     if (!(Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause))) {
-      console.error('a read that followed the html failed', key, error)
+      reportRenderFailure('late-read', error, renderCorrelation())
     }
     return { kind: 'ask' }
   }
@@ -243,7 +245,7 @@ export const answersOf = async (
   const coming: Coming[] = []
   for (const { key, exit, first } of raced) {
     if (first instanceof Late) {
-      coming.push({ queryKey: key, arrival: exit.then((late) => arrivalOf(key, late)) })
+      coming.push({ queryKey: key, arrival: exit.then(arrivalOf) })
       continue
     }
     const read = settle(first)

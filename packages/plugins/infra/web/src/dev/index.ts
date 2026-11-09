@@ -7,6 +7,7 @@ import type { DevServiceContext } from '@qualy/plugin-kit/dev'
 import { proxyTable } from './proxy.ts'
 import { WebManifestConfig, rootsFrom } from '../config.ts'
 import { decodePluginConfig } from '@qualy/plugin-kit/config'
+import { renderLogging } from '../render-log.ts'
 
 // The browser's development server, in its own process
 // (docs/development/runtime.md).
@@ -218,6 +219,7 @@ export const acquire = Effect.fn('Web.acquire')(function* (
   process.env['QUALY_RENDER_API_ORIGIN'] = context.runtime.origin
   const handoff = { switching: false }
   const customLogger = yield* viteLoggerDuring(() => handoff.switching)
+  yield* renderLogging
   const server = yield* Effect.acquireRelease(
     Effect.promise(() =>
       prepared.vite.createServer({

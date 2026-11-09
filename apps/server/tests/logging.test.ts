@@ -103,6 +103,13 @@ describe('logging settings', () => {
         Effect.provide(
           Effect.gen(function* () {
             yield* Effect.log('outside any request')
+            yield* Effect.logError('from a render callback').pipe(
+              Effect.annotateLogs({
+                source: 'web:rsc',
+                request_id: 'req-from-render',
+                trace_id: '4e2c82313a694f97bf17f7d24cf1b621',
+              }),
+            )
             return yield* Effect.gen(function* () {
               const child = yield* Effect.currentSpan
               yield* Effect.log('inside the request')
@@ -133,6 +140,13 @@ describe('logging settings', () => {
     const lines = written.map((line) => JSON.parse(line) as Record<string, unknown>)
     const outside = lines.find((line) => line.message === 'outside any request')!
     expect(outside.request_id).toBeUndefined()
+    const callback = lines.find((line) => line.message === 'from a render callback')
+    expect(callback).toMatchObject({
+      source: 'web:rsc',
+      request_id: 'req-from-render',
+      trace_id: '4e2c82313a694f97bf17f7d24cf1b621',
+    })
+    expect(callback?.span_id).toBeUndefined()
     const inside = lines.find((line) => line.message === 'inside the request')!
     expect(inside.request_id).toBe('req-under-test')
     // the exact ids of the INNER span the line spoke under, at emission
