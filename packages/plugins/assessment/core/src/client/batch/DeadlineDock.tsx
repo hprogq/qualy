@@ -22,6 +22,7 @@ import * as m from '#messages'
 const CLEARANCE = 'clamp(24px, 8cqh, 48px)'
 const REDUCE = '@media (prefers-reduced-motion: reduce)'
 const SNAP = 24
+const RELEASE = 38
 const EDGE = 8
 const enter = stylex.keyframes({
   from: { opacity: 0, transform: 'translateY(16px)' },
@@ -46,13 +47,15 @@ const styles = stylex.create({
     paddingInline: { default: 0, [breakpoints.phone]: 12 },
   },
   origin: { position: 'relative', minWidth: 0, maxWidth: '100%' },
-  target: {
-    position: 'absolute',
-    inset: 0,
-    borderWidth: 1,
-    borderStyle: 'dashed',
-    borderColor: tokens.mutedForeground,
-    borderRadius: tokens.radiusLg,
+  target: { position: 'absolute', inset: 0, width: '100%', height: '100%' },
+  targetStroke: {
+    width: 'calc(100% - 2px)',
+    height: 'calc(100% - 2px)',
+    fill: 'none',
+    stroke: tokens.mutedForeground,
+    strokeWidth: 1.5,
+    strokeDasharray: '8 5',
+    strokeLinecap: 'round',
   },
   dock: {
     position: 'relative',
@@ -70,7 +73,8 @@ const styles = stylex.create({
     borderColor: tokens.border,
     borderRadius: tokens.radiusLg,
     backgroundColor: tokens.surfaceElevated,
-    boxShadow: tokens.elevation2,
+    // Elevation includes an outline; this card already has a real border.
+    boxShadow: '0 2px 4px oklch(0 0 0 / 0.04), 0 12px 24px -8px oklch(0 0 0 / 0.1)',
     fontSize: 13,
     lineHeight: '1.25rem',
     fontVariantNumeric: 'tabular-nums',
@@ -155,7 +159,7 @@ export function useDeadlineNow(at: number | null): number {
 export function deadlineWords(at: number, now: number): string {
   const remaining = at - now
   const span = spanMessage(
-    { kind: 'until', at, remaining, span: spanOf(remaining), fraction: null },
+    { kind: 'until', at, remaining, span: spanOf(Math.max(1_000, remaining)), fraction: null },
     'single',
   )
   return (span.message as Message)(span.values)
@@ -187,7 +191,7 @@ export function DeadlineDock({
   const [point, setPoint] = useState(HOME)
   const [dragging, setDragging] = useState(false)
   const [snapping, setSnapping] = useState(false)
-  const gesture = useRef<{ id: number; start: Point; before: Point } | null>(null)
+  const gesture = useRef<{ id: number; start: Point; before: Point; snapped: boolean } | null>(null)
   const moved = point.x !== 0 || point.y !== 0
 
   const move = useCallback((point: Point) => {
@@ -245,6 +249,7 @@ export function DeadlineDock({
       id: event.pointerId,
       start: { x: event.clientX, y: event.clientY },
       before: offset.current,
+      snapped: !moved,
     }
     setSnapping(false)
     setDragging(true)
@@ -252,20 +257,28 @@ export function DeadlineDock({
   const drag = (event: PointerEvent<HTMLDivElement>) => {
     const active = gesture.current
     if (!active || active.id !== event.pointerId) return
-    move(
-      bounded({
-        x: active.before.x + event.clientX - active.start.x,
-        y: active.before.y + event.clientY - active.start.y,
-      }),
-    )
+    const next = bounded({
+      x: active.before.x + event.clientX - active.start.x,
+      y: active.before.y + event.clientY - active.start.y,
+    })
+    // The pointer has to pull farther out than it did to snap in. Keep
+    // reading from its unsnapped position, so it can leave without release.
+    const near = Math.hypot(next.x, next.y) <= (active.snapped ? RELEASE : SNAP)
+    if (near !== active.snapped) {
+      active.snapped = near
+      setSnapping(near)
+    }
+    move(near ? HOME : next)
   }
   const finish = (event: PointerEvent<HTMLDivElement>, cancelled = false) => {
     const active = gesture.current
     if (!active || active.id !== event.pointerId) return
     gesture.current = null
     setDragging(false)
-    if (cancelled) move(active.before)
-    else if (Math.hypot(offset.current.x, offset.current.y) <= SNAP) home()
+    if (cancelled) {
+      setSnapping(false)
+      move(active.before)
+    }
   }
   const key = (event: KeyboardEvent<HTMLButtonElement>) => {
     const step = event.shiftKey ? 48 : 16
@@ -298,12 +311,17 @@ export function DeadlineDock({
   return (
     <div {...stylex.props(styles.seat, workbench && styles.workbench)}>
       <div ref={origin} {...stylex.props(styles.origin)}>
-        {dragging && <div aria-hidden data-slot="deadline-home" {...stylex.props(styles.target)} />}
+        {dragging && (
+          <svg aria-hidden data-slot="deadline-home" {...stylex.props(styles.target)}>
+            <rect x="1" y="1" rx="12" {...stylex.props(styles.targetStroke)} />
+          </svg>
+        )}
         <div
           {...facts}
           data-testid={id}
           data-tone={tone}
           data-dragging={dragging || undefined}
+          data-snapped={(dragging && snapping) || undefined}
           {...stylex.props(
             styles.dock,
             enterOnMount && styles.enter,

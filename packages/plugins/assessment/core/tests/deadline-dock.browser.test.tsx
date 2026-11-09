@@ -64,8 +64,9 @@ it('keeps the server-painted dock still, drags away, and snaps back to its outli
     observer = new MutationObserver((records) => {
       for (const record of records)
         for (const added of record.addedNodes)
-          if (added instanceof HTMLElement && added.dataset['slot'] === 'deadline-home')
-            outlineSeen = getComputedStyle(added).borderTopStyle === 'dashed'
+          if (added instanceof SVGElement && added.dataset['slot'] === 'deadline-home')
+            outlineSeen =
+              getComputedStyle(added.querySelector('rect')!).strokeDasharray === '8px, 5px'
     })
     observer.observe(card.parentElement!, { childList: true })
     await dock.dropTo(page.getByTestId('away'))
@@ -73,7 +74,17 @@ it('keeps the server-painted dock still, drags away, and snaps back to its outli
     expect(outlineSeen).toBe(true)
     expect(card.parentElement!.querySelector('[data-slot="deadline-home"]')).toBeNull()
 
+    let snappedBeforeRelease = false
+    card.addEventListener(
+      'pointerup',
+      () => {
+        snappedBeforeRelease =
+          card.dataset['dragging'] === 'true' && card.dataset['snapped'] === 'true'
+      },
+      { once: true },
+    )
     await dock.dropTo(page.getByTestId('near'))
+    expect(snappedBeforeRelease).toBe(true)
     await expect.poll(() => Math.abs(card.getBoundingClientRect().top - origin.top)).toBeLessThan(1)
     await expect
       .poll(() => Math.abs(card.getBoundingClientRect().left - origin.left))

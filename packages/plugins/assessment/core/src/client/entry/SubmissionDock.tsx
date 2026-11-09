@@ -18,7 +18,29 @@ export function SubmissionDock({
   const now = useDeadlineNow(window?.at ?? null)
   const locale = useLocale()
   const zone = useBatchZone()
-  if (window === null || window.at <= now) return null
+  const stage = stages.find((entry) => entry.status === 'current')
+  if (window === null || window.at <= now) {
+    const detail =
+      window !== null
+        ? m.deadline_filingEnded()
+        : itemIds.length === 0
+          ? stage?.submitting === false
+            ? m.deadline_filingShut()
+            : m.deadline_filingUnavailable()
+          : m.deadline_filingNoDate()
+    return (
+      <DeadlineDock
+        id="submission-dock"
+        workbench
+        closed={window !== null || itemIds.length === 0}
+        title={itemTitle ?? stage?.displayName ?? m.entry_tab()}
+        detail={detail}
+        facts={{
+          'data-window': window !== null ? 'ended' : itemIds.length === 0 ? 'shut' : 'unscheduled',
+        }}
+      />
+    )
+  }
   const when = formatDateTime(
     new Date(window.at),
     locale,
@@ -29,6 +51,7 @@ export function SubmissionDock({
     <DeadlineDock
       id="submission-dock"
       workbench
+      facts={{ 'data-window': 'closes' }}
       title={itemTitle ?? window.stage}
       detail={m.deadline_filingCloses({ when })}
       countdown={{

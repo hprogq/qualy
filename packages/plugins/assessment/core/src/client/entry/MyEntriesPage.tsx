@@ -132,6 +132,9 @@ function Body({
       stale(query.assessment.listMyEntries.key({ params: { batchId }, query: {} }))
       stale(query.assessment.listAwaitingSupplements.key({ query: { batchId } }))
     }
+    if (kinds.has('plan-changed')) {
+      stale(query.assessment.listMyEntries.key({ params: { batchId }, query: {} }))
+    }
     if (kinds.has('item-changed')) {
       stale(query.assessment.listItems.key({ params: { batchId } }))
       stale(query.assessment.listScoreGroups.key({ params: { batchId } }))
@@ -479,7 +482,7 @@ function Body({
         />
       )}
 
-      {!closed && plan.data !== undefined && (
+      {!closed && timed && plan.data !== undefined && (
         <SubmissionDock
           key={batchId}
           stages={plan.data.timeline}

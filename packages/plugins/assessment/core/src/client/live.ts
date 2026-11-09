@@ -65,6 +65,7 @@ export function useBatchLive(batchId: string, onWake: (wake: BatchWake) => void)
   const api = useApi(assessmentApi)
   const query = useApiQuery(assessmentApi)
   const queryClient = useQueryClient()
+  const told = typeof api.assessment.getTimeline === 'function'
   // the handler is read through a ref so a screen passing a fresh closure
   // every render neither re-subscribes the stream nor re-arms the alarm
   const handler = useRef(onWake)
@@ -82,7 +83,12 @@ export function useBatchLive(batchId: string, onWake: (wake: BatchWake) => void)
           // an edited diary is this hook's own concern before any screen's:
           // the alarm below is set from the timetable, and so is every
           // screen that shows it
-          if (gathered.includes('plan-changed')) {
+          if (
+            told &&
+            gathered.some(
+              (kind) => kind === 'plan-changed' || kind === 'phase-changed' || kind === 'sync',
+            )
+          ) {
             const timetable = query.assessment.getTimeline.key({ params: { batchId } })
             pending.set(hashKey(timetable), timetable)
           }
@@ -100,14 +106,12 @@ export function useBatchLive(batchId: string, onWake: (wake: BatchWake) => void)
           }
         },
       }),
-    [queryClient, query.assessment.getTimeline, batchId],
+    [queryClient, query.assessment.getTimeline, batchId, told],
   )
   useEffect(() => () => burst.cancel(), [burst])
 
   // absent under a stubbed harness that does not fake the timetable; the
   // alarm then stays idle
-  const told = typeof api.assessment.getTimeline === 'function'
-
   const timeline = useQuery(
     told
       ? {
@@ -148,16 +152,13 @@ export function useBatchLive(batchId: string, onWake: (wake: BatchWake) => void)
         // refreshes whatever it wired to a phase turning - and the timetable
         // itself, so the alarm re-arms on the next boundary
         burst.wake('phase-changed')
-        void queryClient.invalidateQueries({
-          queryKey: query.assessment.getTimeline.key({ params: { batchId } }),
-        })
       },
       Math.max(wait, 0),
     )
     return () => clearTimeout(timer)
     // the alarm follows the diary and the batch; the client handles are
     // stable for the page's lifetime, so naming them re-arms nothing
-  }, [nextPlannedAt, batchId, queryClient, query.assessment.getTimeline, burst])
+  }, [nextPlannedAt, burst])
 
   // an address that names no batch has no channel to hold: the builder
   // encodes through the endpoint's own schema, and refuses what it cannot name

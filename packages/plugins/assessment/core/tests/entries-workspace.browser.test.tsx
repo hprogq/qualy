@@ -2452,9 +2452,77 @@ it.each([390, 1440])(
     await unmount()
     await workspace({ route: base, stubs: { getTimeline: () => Effect.succeed({ timeline }) } })
     await expect.element(page.getByTestId('entries-workspace')).toBeVisible()
-    await expect.element(dock).not.toBeInTheDocument()
+    await expect.element(dock).toHaveAttribute('data-window', 'shut')
+    expect(dock.element().querySelector('[data-slot="deadline-countdown"]')).toBeNull()
   },
 )
+
+it('leaves no zero countdown at the deadline and accepts the following phase event', async () => {
+  await page.viewport(1440, 900)
+  let closed = false
+  let closedReads = 0
+  let announce = () => {}
+  const event = new Promise<void>((resolve) => {
+    announce = resolve
+  })
+  const scope = { items: null, participantsLimited: false, includesReader: null }
+  const at = new Date(Date.now() + 4200).toISOString()
+  const stage = (submitting: boolean, status: 'ended' | 'current' | 'future', entryAt: string) => ({
+    phaseId: submitting ? 'filing' : 'review',
+    displayName: submitting ? '正式填报' : '审核',
+    entryNote: '',
+    description: '',
+    status,
+    scope,
+    submitting,
+    reviewing: !submitting,
+    entry: { kind: status === 'future' ? 'planned' : 'entered', at: entryAt },
+  })
+  await workspace({
+    route: base,
+    stubs: {
+      getTimeline: () => {
+        if (closed) closedReads++
+        return Effect.succeed({
+          timeline: [
+            stage(true, closed ? 'ended' : 'current', '2026-03-01T00:00:00Z'),
+            stage(false, closed ? 'current' : 'future', at),
+          ],
+        })
+      },
+      listMyEntries: () => {
+        const gate = closed
+          ? { state: 'blocked', reason: 'phase-closed' }
+          : { state: 'available', reason: null }
+        return Effect.succeed({
+          participantId: PARTICIPANT_ID,
+          entries: [],
+          nextCursor: null,
+          attention: { unreadEntryIds: [] },
+          filing: [{ itemId: itemId(1), create: gate, submit: gate }],
+        })
+      },
+      watchBatch: () =>
+        Effect.succeed(
+          Stream.concat(
+            Stream.fromEffect(
+              Effect.promise(() => event).pipe(Effect.as({ kind: 'phase-changed' as const })),
+            ),
+            Stream.never,
+          ),
+        ),
+    },
+  })
+  const dock = page.getByTestId('submission-dock')
+  await expect.element(dock).toHaveAttribute('data-window', 'closes')
+  await expect.element(dock).toHaveAttribute('data-window', 'ended')
+  expect(dock.element().querySelector('[data-slot="deadline-countdown"]')).toBeNull()
+  closed = true
+  announce()
+  await expect.element(dock).toHaveAttribute('data-window', 'shut')
+  expect(closedReads).toBeGreaterThan(0)
+  expect(dock.element().querySelector('[data-slot="deadline-countdown"]')).toBeNull()
+})
 
 describe('where filing is shut', () => {
   const shut = (reason: string) => ({ state: 'blocked' as const, reason })
