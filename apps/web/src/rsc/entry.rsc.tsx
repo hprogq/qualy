@@ -24,6 +24,7 @@ import type { Manifest } from '@qualy/web-runtime'
 import { Document } from './Document.tsx'
 import { HtmlDocument } from './html-document.tsx'
 import { DocumentError, LayoutError, PageError } from './route-error.tsx'
+import { unavailableDocument } from './emergency-document.ts'
 import { sessionClearings, withCookies } from './session-clearing.ts'
 import { Empty, Missing, NotFound, Surface } from './frames.tsx'
 
@@ -268,6 +269,12 @@ export default async function handler(
     // A disconnected reader can interrupt the API reads or the HTML
     // renderer. Neither cancellation is a failed render.
     if (request.signal.aborted) return new Response(null, { status: 499 })
+    // A document can still offer a way out when neither the router nor its
+    // styles and scripts could be loaded. Never answer Flight with HTML.
+    if (!fromPage && !asked.url.pathname.endsWith('.rsc') && asked.url.pathname !== '/.manifest') {
+      console.error('[qualy] could not create the document', error)
+      return unavailableDocument(asked.locale, request.method)
+    }
     throw error
   }
 }

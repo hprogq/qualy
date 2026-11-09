@@ -1690,7 +1690,7 @@ const guardedNavigation = async (browser: Browser, batch: string) => {
     const api = site + '/api' + address
     await page.route(api, refuse)
     await navigate(address)
-    const save = question.getByRole('button', { name: /保存后离开|Save and leave/ })
+    const save = question.getByRole('button', { name: /保存(?:后|并)离开|Save and leave/ })
     await save.click()
     await question.waitFor({ state: 'hidden' })
     check(

@@ -67,6 +67,25 @@ describe('the RSC route error screen', () => {
         .toBe('offline')
       expect(document.body.textContent).not.toContain('private network detail')
       expect(document.body.textContent).not.toContain('Unexpected Application Error')
+      // The emergency surface must not need the application's style pipeline.
+      const main = page.getByTestId('route-error').element()
+      const css = main.querySelector('style')?.sheet
+      const sheets = [...document.styleSheets].filter((sheet) => sheet !== css && !sheet.disabled)
+      try {
+        sheets.forEach((sheet) => (sheet.disabled = true))
+        expect(getComputedStyle(main).justifyContent).toBe('center')
+        const button = page.getByRole('button', { name: '重试' }).element()
+        const home = page.getByRole('link', { name: '返回首页' }).element()
+        expect(getComputedStyle(button).borderTopWidth).toBe('1px')
+        expect(getComputedStyle(button).borderRadius).toBe('8px')
+        expect(getComputedStyle(button).backgroundColor).toBe('rgb(25, 24, 23)')
+        expect(getComputedStyle(home).borderTopColor).toBe('rgb(222, 221, 218)')
+        const mark = main.querySelector('[data-emergency-mark]')!.getBoundingClientRect()
+        const body = main.querySelector('[data-slot="resource-state"]')!.getBoundingClientRect()
+        expect(Math.abs(mark.x + mark.width / 2 - (body.x + body.width / 2))).toBeLessThan(1)
+      } finally {
+        sheets.forEach((sheet) => (sheet.disabled = false))
+      }
       await page.getByRole('button', { name: '重试' }).click()
       await expect.poll(() => tries).toBe(2)
       await expect

@@ -700,6 +700,30 @@ export const acquire = (prepared, context) => web.acquire({
   )
   assert.deepEqual(unsupported, [])
   assert.deepEqual(errors, [])
+  // The real renderer can fail before it has a router payload (for example
+  // when the API beside it is down). The document must still be usable.
+  const stopped = await backend.stop()
+  assert.equal(stopped.timedOut, false)
+  const rescue = await browser.newContext({ javaScriptEnabled: false, locale: 'en-US' })
+  try {
+    const offline = await rescue.newPage()
+    await offline.route('**/*', (route) =>
+      route.request().isNavigationRequest() ? route.continue() : route.abort(),
+    )
+    assert.equal((await offline.goto(`${site}/login`))?.status(), 503)
+    const emergency = offline.locator('[data-qualy-emergency]')
+    assert.ok(await emergency.isVisible())
+    assert.equal(await emergency.locator('a').count(), 2)
+    assert.equal(
+      await emergency
+        .locator('a')
+        .first()
+        .evaluate('link => getComputedStyle(link).borderTopWidth'),
+      '1px',
+    )
+  } finally {
+    await rescue.close()
+  }
   console.log('dev-web-acceptance: login, JSON writes, concurrent SSR and browser logout passed')
 } finally {
   for (const signal of ['SIGINT', 'SIGTERM'] as const) process.off(signal, interrupt)
