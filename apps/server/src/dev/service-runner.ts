@@ -1,5 +1,10 @@
 import { Deferred, Effect } from 'effect'
-import type { DevServiceContext, DevServiceModule, DevServiceSpec } from '@qualy/plugin-kit/dev'
+import type {
+  DevBackendStatus,
+  DevServiceContext,
+  DevServiceModule,
+  DevServiceSpec,
+} from '@qualy/plugin-kit/dev'
 import { loggingLayer, resolveLogging } from '../logging.ts'
 import { PROTOCOL, hostMessage, tell } from './protocol.ts'
 
@@ -30,8 +35,10 @@ const accepted = Deferred.makeUnsafe<void>()
 const stopped = Deferred.makeUnsafe<void>()
 /** whether anything has been acquired yet, which is what a stop has to unwind */
 let launched = false
-let told: { spec: DevServiceSpec; origin: string } | null = null
+type ServiceStart = { spec: DevServiceSpec; origin: string; reportsBackendStatus?: true }
+let told: ServiceStart | null = null
 let onSpec: (() => void) | null = null
+const backendListeners = new Set<(status: DevBackendStatus) => void>()
 
 /**
  * The one way this process is asked to stop, whoever is asking.
@@ -66,13 +73,16 @@ process.on('message', (raw: unknown) => {
   const message = hostMessage(raw)
   if (message === null) return
   if (message.type === 'spec') {
-    told = { spec: message.spec, origin: message.origin }
+    told = message
     onSpec?.()
     return
   }
   if (message.type === 'accept') {
     launched = true
     Deferred.doneUnsafe(accepted, Effect.void)
+  }
+  if (message.type === 'backend-status') {
+    for (const listener of backendListeners) listener(message.status)
   }
   // a refusal and a stop end the same way here, and the same way a lost
   // channel or a signal does: whatever has been taken is released, and a
@@ -93,7 +103,7 @@ process.on('disconnect', requested)
 // stopping one - and what happens every time a person stops their session.
 for (const signal of ['SIGINT', 'SIGTERM'] as const) process.on(signal, requested)
 
-const spec = await new Promise<{ spec: DevServiceSpec; origin: string }>((resolve) => {
+const spec = await new Promise<ServiceStart>((resolve) => {
   if (told !== null) return resolve(told)
   onSpec = () => resolve(told!)
 })
@@ -112,7 +122,19 @@ const context: DevServiceContext = {
     config: spec.spec.config,
     manifestDir: spec.spec.manifestDir,
   },
-  runtime: { origin: spec.origin },
+  runtime: {
+    origin: spec.origin,
+    ...(spec.reportsBackendStatus === true
+      ? {
+          onBackendStatus: (listener: (status: DevBackendStatus) => void) => {
+            backendListeners.add(listener)
+            return () => {
+              backendListeners.delete(listener)
+            }
+          },
+        }
+      : {}),
+  },
 }
 
 // the same rendering every other child of this session uses, and named by

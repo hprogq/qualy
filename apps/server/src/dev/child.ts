@@ -102,7 +102,7 @@ export const forkService = (
     throw new Error('QUALY_DEV_RUNTIME must be node or bun')
   }
   const child = start(`dev:${spec.id}`, 'service', serviceEntry, [], env, runtime)
-  send(child, { protocol: PROTOCOL, type: 'spec', spec, origin })
+  send(child, { protocol: PROTOCOL, type: 'spec', spec, origin, reportsBackendStatus: true })
   return child
 }
 

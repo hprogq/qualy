@@ -34,7 +34,7 @@ export const formulaAuthoringSurfaceLayer: Layer.Layer<
 > = Layer.effectDiscard(
   Effect.gen(function* () {
     const settings = yield* FormulaSettings
-    yield* Effect.logInfo(
+    yield* Effect.logDebug(
       `formula binding authoring ${settings.authoring ? 'enabled' : 'disabled'}`,
     )
     if (!settings.authoring) return

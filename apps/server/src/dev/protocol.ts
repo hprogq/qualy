@@ -1,4 +1,4 @@
-import type { DevServiceSpec } from '@qualy/plugin-kit/dev'
+import type { DevBackendStatus, DevServiceSpec } from '@qualy/plugin-kit/dev'
 
 /**
  * Where an active plugin's package really is.
@@ -66,8 +66,14 @@ export type HostMessage =
       readonly spec: DevServiceSpec
       /** where the backend answers, always a loopback address */
       readonly origin: string
+      readonly reportsBackendStatus?: true
     }
   | { readonly protocol: typeof PROTOCOL; readonly type: 'accept' }
+  | {
+      readonly protocol: typeof PROTOCOL
+      readonly type: 'backend-status'
+      readonly status: DevBackendStatus
+    }
   | { readonly protocol: typeof PROTOCOL; readonly type: 'reject' }
   | { readonly protocol: typeof PROTOCOL; readonly type: 'shutdown' }
 
@@ -93,6 +99,11 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 /** a message from the host, or nothing if it is not one we know */
 export const hostMessage = (value: unknown): HostMessage | null => {
   if (!isRecord(value) || value.protocol !== PROTOCOL) return null
+  if (value.type === 'backend-status') {
+    return value.status === 'switching' || value.status === 'ready' || value.status === 'failed'
+      ? { protocol: PROTOCOL, type: value.type, status: value.status }
+      : null
+  }
   const known = ['spec', 'accept', 'reject', 'shutdown']
   return typeof value.type === 'string' && known.includes(value.type)
     ? (value as HostMessage)

@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { stripVTControlCharacters } from 'node:util'
 import { Data, Effect, Queue } from 'effect'
-import type { Logger as ViteLogger } from 'vite'
+import type { Logger as ViteLogger, Plugin } from 'vite'
 import type { DevServiceContext } from '@qualy/plugin-kit/dev'
 import { proxyTable } from './proxy.ts'
 import { WebManifestConfig, rootsFrom } from '../config.ts'
@@ -47,7 +47,7 @@ class WebUnservable extends Data.TaggedError('WebUnservable')<{ readonly message
  * already coloured by level and source like every other one. Vite's own
  * timestamp is never asked for, because ours is already in front of it.
  */
-export const viteLogger = Effect.gen(function* () {
+const viteLoggerDuring = Effect.fnUntraced(function* (switching: () => boolean) {
   const lines = yield* Queue.make<Effect.Effect<void>>()
   yield* Effect.forkScoped(Effect.forever(Effect.flatten(Queue.take(lines))))
   const emit = (line: Effect.Effect<void>) => {
@@ -66,7 +66,11 @@ export const viteLogger = Effect.gen(function* () {
   // answered false invited the same error twice
   const loggedErrors = new WeakSet<Error>()
   return {
-    info: (message: string) => emit(Effect.logInfo(plain(message))),
+    info: (message: string) => {
+      const line = plain(message)
+      const routine = /^(?:hmr update |page reload |program reload$|connected\.$)/.test(line)
+      emit(routine ? Effect.logDebug(line) : Effect.logInfo(line))
+    },
     warn: (message: string) => {
       state.warned = true
       emit(Effect.logWarning(plain(message)))
@@ -82,6 +86,14 @@ export const viteLogger = Effect.gen(function* () {
       // browser hanging up and vite's proxy hitting EPIPE/ECONNRESET on the
       // way out; that is the refusal working, not a fault worth a stack
       if (message.includes('ws proxy') && /EPIPE|ECONNRESET/.test(message)) {
+        if (options?.error) loggedErrors.add(options.error)
+        emit(Effect.logDebug(plain(message.split('\n')[0] ?? message)))
+        return
+      }
+      // An upgrade bypasses the HTTP middleware. A reconnect that reaches
+      // the listener between generations is expected, but the same error
+      // outside a known handoff still deserves its full report.
+      if (switching() && /(?:ws|http) proxy error/.test(message) && /ECONNREFUSED/.test(message)) {
         if (options?.error) loggedErrors.add(options.error)
         emit(Effect.logDebug(plain(message.split('\n')[0] ?? message)))
         return
@@ -102,9 +114,60 @@ export const viteLogger = Effect.gen(function* () {
   } satisfies ViteLogger
 })
 
+export const viteLogger = viteLoggerDuring(() => false)
+
 export interface PreparedWeb {
   readonly sourceRoot: string
   readonly vite: typeof import('vite')
+}
+
+function backendHandoff(context: DevServiceContext, state: { switching: boolean }): Plugin {
+  return {
+    name: 'qualy:dev-backend-handoff',
+    configureServer(server) {
+      const subscribe = context.runtime.onBackendStatus
+      if (subscribe === undefined) return
+      const messages = server.config.plugins.find((plugin) => plugin.name === 'qualy-messages')
+        ?.api as { superviseBackend(): void; backendReady(): void } | undefined
+      messages?.superviseBackend()
+
+      let waiting: Promise<void> | undefined
+      let release: (() => void) | undefined
+      let timer: ReturnType<typeof setTimeout> | undefined
+      const resume = () => {
+        if (timer !== undefined) clearTimeout(timer)
+        timer = undefined
+        waiting = undefined
+        state.switching = false
+        release?.()
+        release = undefined
+      }
+      const unsubscribe = subscribe((status) => {
+        if (status === 'switching') {
+          if (waiting !== undefined) return
+          state.switching = true
+          waiting = new Promise<void>((resolve) => {
+            release = resolve
+          })
+          // A failed supervisor must not leave browsers waiting indefinitely.
+          timer = setTimeout(resume, 25_000)
+          return
+        }
+        resume()
+        if (status === 'ready') messages?.backendReady()
+      })
+      server.middlewares.use((request, response, next) => {
+        if (waiting === undefined || request.url?.startsWith('/health')) return next()
+        void waiting.then(() => {
+          if (!response.destroyed) next()
+        })
+      })
+      server.httpServer?.once('close', () => {
+        unsubscribe()
+        resume()
+      })
+    },
+  }
 }
 
 /**
@@ -153,7 +216,8 @@ export const acquire = Effect.fn('Web.acquire')(function* (
   // where a render reads the api it draws from: the development backend
   // this server stands in front of, read by the server's half as it loads
   process.env['QUALY_RENDER_API_ORIGIN'] = context.runtime.origin
-  const customLogger = yield* viteLogger
+  const handoff = { switching: false }
+  const customLogger = yield* viteLoggerDuring(() => handoff.switching)
   const server = yield* Effect.acquireRelease(
     Effect.promise(() =>
       prepared.vite.createServer({
@@ -164,11 +228,13 @@ export const acquire = Effect.fn('Web.acquire')(function* (
         appType: 'custom',
         clearScreen: false,
         customLogger,
+        plugins: [backendHandoff(context, handoff)],
         server: {
           // No drifting. This is the address the developer has open, and a
           // second server answering on the next port up is a page that never
           // reloads for reasons nothing explains.
           strictPort: true,
+          forwardConsole: { logLevels: ['warn', 'error'], unhandledErrors: true },
           proxy: proxyTable(context.runtime.origin),
         },
       }),

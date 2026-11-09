@@ -1,8 +1,8 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { createHash } from 'node:crypto'
-import { type Plugin, type ViteDevServer } from 'vite'
-import { productRootFor } from '@qualy/assembly'
+import { normalizePath, type Plugin, type ViteDevServer } from 'vite'
+import { productRootFor, readManifest } from '@qualy/assembly'
 import { manifestPath as defaultManifestPath } from './manifest.ts'
 import {
   compileMessages,
@@ -45,10 +45,19 @@ export interface QualyMessagesOptions {
 
 const SERVER_RUNTIME_ID = '\0qualy-messages/server-runtime.js'
 
+export interface MessageDevControl {
+  superviseBackend(): void
+  backendReady(): void
+}
+
 export const qualyMessages = (options: QualyMessagesOptions = {}): Plugin => {
   const manifest = options.manifestPath ?? defaultManifestPath()
   let sources: readonly (MessageSource & { readonly real: string })[] = []
   let outputProfile: string | undefined
+  let outputDir = ''
+  let backendOwners: ReadonlySet<string> = new Set()
+  let supervised = false
+  let publish: (() => void) | undefined
   const realOf = (file: string) => {
     try {
       return fs.realpathSync(file)
@@ -94,12 +103,39 @@ export const qualyMessages = (options: QualyMessagesOptions = {}): Plugin => {
   return {
     name: 'qualy-messages',
     enforce: 'pre',
+    api: {
+      superviseBackend: () => {
+        supervised = true
+      },
+      backendReady: () => publish?.(),
+    } satisfies MessageDevControl,
     async config(_config, env) {
       sources = [
         ...(await messageSources(manifest, options.all)),
         ...(options.extraPackages ?? []).map(messageSourceAt),
       ].map((source) => ({ ...source, real: realOf(source.packageRoot) }))
-      await compile(env.command === 'build' ? 'message-modules' : 'locale-modules')
+      const result = await compile(env.command === 'build' ? 'message-modules' : 'locale-modules')
+      if (env.command !== 'serve') return
+      outputDir = normalizePath(result.outDir)
+      backendOwners = new Set(
+        [...readManifest(manifest).plugins]
+          .filter(([, entry]) => entry.enabled)
+          .map(([name]) => name),
+      )
+      // The generated files constitute one catalog, not independent edits.
+      // Publish them after the compile, not on each atomic file write.
+      return {
+        server: {
+          watch: {
+            ignored: [
+              (file: string) => {
+                const normalized = normalizePath(file)
+                return normalized === outputDir || normalized.startsWith(`${outputDir}/`)
+              },
+            ],
+          },
+        },
+      }
     },
     resolveId: {
       // Filter before Rolldown crosses into JavaScript for every import in
@@ -138,9 +174,13 @@ export const qualyMessages = (options: QualyMessagesOptions = {}): Plugin => {
       },
     },
     configureServer(server: ViteDevServer) {
-      const watched = sources.map((source) => path.join(source.packageRoot, 'messages'))
-      server.watcher.add(watched)
+      const watched = sources.map((source) => ({
+        directory: path.join(source.packageRoot, 'messages'),
+        backend: backendOwners.has(source.owner),
+      }))
+      server.watcher.add(watched.map(({ directory }) => directory))
       let dirty = false
+      let backendDirty = false
       let running = false
       let closed = false
       let timer: ReturnType<typeof setTimeout> | undefined
@@ -150,36 +190,53 @@ export const qualyMessages = (options: QualyMessagesOptions = {}): Plugin => {
         dirty = false
         running = true
         try {
-          await compile('locale-modules')
+          const { compiled } = await compile('locale-modules')
+          if (compiled && !closed) {
+            for (const environment of Object.values(server.environments)) {
+              for (const file of environment.moduleGraph.fileToModulesMap.keys()) {
+                if (file.startsWith(`${outputDir}/`)) environment.moduleGraph.onFileChange(file)
+              }
+              if (environment.name !== 'client') environment.hot.send({ type: 'full-reload' })
+            }
+            server.config.logger.info('messages updated; reloading the page')
+            server.environments.client?.hot.send({ type: 'full-reload', path: '*' })
+          }
         } catch (error) {
           server.config.logger.error(`[messages] ${(error as Error).message}`)
           server.ws.send({ type: 'error', err: { message: (error as Error).message, stack: '' } })
         } finally {
           running = false
-          if (dirty && !closed)
-            timer = setTimeout(() => {
-              void flush()
-            }, 75)
+          if (dirty && !closed && !backendDirty) schedule()
         }
       }
-      const recompile = (file: string) => {
-        if (
-          !file.endsWith('.json') ||
-          !watched.some((directory) => file.startsWith(`${directory}${path.sep}`))
-        )
-          return
-        dirty = true
-        if (running) return
+      const schedule = () => {
         if (timer !== undefined) clearTimeout(timer)
         timer = setTimeout(() => {
-          void flush()
+          if (!backendDirty) void flush()
         }, 75)
+      }
+      publish = () => {
+        backendDirty = false
+        dirty = true
+        if (!running) schedule()
+      }
+      const recompile = (file: string) => {
+        if (!file.endsWith('.json')) return
+        const source = watched.find(({ directory }) => file.startsWith(`${directory}${path.sep}`))
+        if (!source) return
+        if (supervised && source.backend) {
+          backendDirty = true
+          return
+        }
+        dirty = true
+        if (!running && !backendDirty) schedule()
       }
       server.watcher.on('change', recompile)
       server.watcher.on('add', recompile)
       server.watcher.on('unlink', recompile)
       server.httpServer?.once('close', () => {
         closed = true
+        publish = undefined
         if (timer !== undefined) clearTimeout(timer)
         for (const event of ['change', 'add', 'unlink']) server.watcher.off(event, recompile)
       })

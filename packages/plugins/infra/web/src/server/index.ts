@@ -572,7 +572,7 @@ export const routes: Layer.Layer<
       Effect.orDie,
     )
     if (deployed !== 'production') {
-      yield* Effect.logInfo('serving the api only; the browser is served by the dev service')
+      yield* Effect.logDebug('serving the api only; the browser is served by the dev service')
       return
     }
     // built after the barrier, so the frozen policy is there to read

@@ -1,7 +1,8 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, expect, it } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
+import { createServer } from 'vite'
 import {
   compileMessages,
   messageSourceAt,
@@ -9,6 +10,7 @@ import {
   messagesOutDir,
   readMessages,
 } from '../src/compile.ts'
+import { qualyMessages, type MessageDevControl } from '../src/vite.ts'
 
 const directories: string[] = []
 const source = (en: unknown, zh: unknown, owner = '@acme/example') => {
@@ -88,6 +90,84 @@ it('compiles once, skips unchanged inputs, and repairs missing browser/server/fa
   )
   expect((await compileMessages(options)).compiled).toBe(true)
 })
+
+it('publishes the whole backend catalog once, only after the replacement is ready', async () => {
+  const plugin = source({ example: 'Hello' }, { example: '你好' })
+  const product = source({}, {}, '@acme/product')
+  const manifestPath = path.join(product.packageRoot, 'qualy.yml')
+  fs.writeFileSync(manifestPath, `version: 3\nplugins:\n  '${plugin.owner}': {}\n`)
+  const linked = path.join(product.packageRoot, 'node_modules', plugin.owner)
+  fs.mkdirSync(path.dirname(linked), { recursive: true })
+  fs.symlinkSync(plugin.packageRoot, linked, 'junction')
+  const messages = qualyMessages({ manifestPath })
+  const control = messages.api as MessageDevControl
+  control.superviseBackend()
+  const server = await createServer({
+    configFile: false,
+    root: product.packageRoot,
+    plugins: [messages],
+    server: { middlewareMode: true, ws: false },
+  })
+  const send = vi.spyOn(server.environments.client!.hot, 'send')
+  const reloads = () =>
+    (send.mock.calls as readonly (readonly unknown[])[]).filter(
+      ([payload]) =>
+        payload !== null &&
+        typeof payload === 'object' &&
+        'type' in payload &&
+        payload.type === 'full-reload',
+    )
+  try {
+    const output = path.join(messagesOutDir(product.packageRoot, undefined), '..', 'i18n-profiles')
+    const profile = path.join(output, fs.readdirSync(output)[0]!)
+    const compiled = path.join(profile, 'paraglide/messages/zh-CN.js')
+    const facade = path.join(profile, 'facades/acme-example.js')
+    const rendered = async () => {
+      const module = (await server.ssrLoadModule(facade)) as {
+        example: (input: object, options: { locale: string }) => string
+      }
+      return module.example({}, { locale: 'zh-CN' })
+    }
+    expect(await rendered()).toBe('你好')
+    const file = fs.realpathSync(path.join(plugin.packageRoot, 'messages/zh-CN.json'))
+    await vi.waitFor(() => {
+      expect(
+        Object.keys(server.watcher.getWatched()).some(
+          (directory) =>
+            directory.endsWith('/messages') &&
+            fs.existsSync(directory) &&
+            fs.realpathSync(directory) === path.dirname(file),
+        ),
+      ).toBe(true)
+    })
+    const observed = new Promise<void>((resolve) => {
+      const changed = (filename: string) => {
+        if (!fs.existsSync(filename) || fs.realpathSync(filename) !== file) return
+        server.watcher.off('change', changed)
+        resolve()
+      }
+      server.watcher.on('change', changed)
+    })
+    fs.writeFileSync(file, JSON.stringify({ example: '新的翻译' }))
+    await observed
+    // Give the ordinary (unsupervised) reload debounce and compile a turn.
+    await new Promise((resolve) => setTimeout(resolve, 1_200))
+    expect(fs.readFileSync(compiled, 'utf8')).toContain('你好')
+    expect(reloads()).toHaveLength(0)
+
+    control.backendReady()
+    await vi.waitFor(
+      () => {
+        expect(reloads()).toHaveLength(1)
+        expect(fs.readFileSync(compiled, 'utf8')).toContain('新的翻译')
+      },
+      { timeout: 10_000 },
+    )
+    await vi.waitFor(async () => expect(await rendered()).toBe('新的翻译'))
+  } finally {
+    await server.close()
+  }
+}, 30_000)
 it('serializes concurrent writers to one product output tree', async () => {
   const s = source({ example: 'Hello {name}' }, { example: '你好{name}' })
   const options = {

@@ -4,7 +4,7 @@ import {
   clientAssemblyLayer,
   type ReleaseStanding,
 } from '@qualy/api-kit/client-assembly'
-import { Cause, Context, Effect, Exit, Layer, Logger, Schema, Scope } from 'effect'
+import { Cause, Context, Effect, Exit, Layer, Logger, References, Schema, Scope } from 'effect'
 import { HttpRouter, HttpServerResponse } from 'effect/http'
 import fs from 'node:fs'
 import { createServer } from 'node:http'
@@ -526,6 +526,7 @@ describe("vite's logger, adapted", () => {
         yield* Effect.sleep(20)
       }).pipe(
         Effect.scoped,
+        Effect.provideService(References.MinimumLogLevel, 'Debug'),
         Effect.provide(
           Logger.layer([
             Logger.make(({ logLevel, message }) => lines.push(`${logLevel}:${String(message)}`)),
@@ -552,7 +553,7 @@ describe("vite's logger, adapted", () => {
     // control character through, so an escape left in arrives as `[32m` text
     const reload = '\u001b[32mpage reload \u001b[39m\u001b[2m/src/client/i18n.ts\u001b[22m'
     expect(await captured(1, (logger) => logger.info(reload))).toEqual([
-      'Info:page reload /src/client/i18n.ts',
+      'Debug:page reload /src/client/i18n.ts',
     ])
   })
 

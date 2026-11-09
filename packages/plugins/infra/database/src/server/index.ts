@@ -190,11 +190,9 @@ const prepare = Effect.fn('Database.prepare')(function* () {
     const { applied, elapsed } = yield* attempt('apply the lineage', () =>
       runMigrations(url, options),
     )
-    return yield* Effect.logInfo(
-      applied > 0
-        ? `applied ${applied} migration(s) (${elapsed}ms)`
-        : `migrations up to date (${elapsed}ms)`,
-    )
+    return yield* applied > 0
+      ? Effect.logInfo(`applied ${applied} migration(s) (${elapsed}ms)`)
+      : Effect.logDebug(`migrations up to date (${elapsed}ms)`)
   }
   // Refuse to start against a database the deployment job has not brought up
   // to date. Without this the process comes up on a stale schema and fails

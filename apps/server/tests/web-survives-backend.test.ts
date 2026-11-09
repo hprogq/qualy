@@ -153,6 +153,18 @@ const stopBackend = (child: ChildProcess) =>
   })
 
 describe.runIf(postgresAvailable)('the browser server and the backend beside it', () => {
+  it('holds an API read during a known handoff until the new backend serves', async () => {
+    const web = await startWeb()
+    const first = await startBackend()
+    web.send({ protocol: PROTOCOL, type: 'backend-status', status: 'switching' })
+    expect(await stopBackend(first)).toBe(0)
+    const response = fetch(`http://127.0.0.1:${String(webPort)}/api/app/manifest`)
+    const next = await startBackend()
+    web.send({ protocol: PROTOCOL, type: 'backend-status', status: 'ready' })
+    expect((await response).status).toBe(200)
+    await stopBackend(next)
+  }, 180_000)
+
   it('forwards a bodyless sign-out without changing its content type', async () => {
     await startWeb()
     await startBackend()

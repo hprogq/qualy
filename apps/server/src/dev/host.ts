@@ -2,7 +2,7 @@ import { createConnection } from 'node:net'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { FSWatcher } from 'chokidar'
-import type { DevServiceSpec } from '@qualy/plugin-kit/dev'
+import type { DevBackendStatus, DevServiceSpec } from '@qualy/plugin-kit/dev'
 import { lockPathFor, productRootFor, readManifest } from '@qualy/assembly'
 import { manifestPath } from '../manifest.ts'
 import { logLine, resolveLogging } from '../logging.ts'
@@ -255,6 +255,12 @@ const adopt = (prepared: Prepared) => {
   active.roots = prepared.roots
 }
 
+const tellBackendStatus = (status: DevBackendStatus) => {
+  for (const service of active.services.values()) {
+    send(service, { protocol: PROTOCOL, type: 'backend-status', status })
+  }
+}
+
 /**
  * Stop the active backend and wait for the whole child to be gone.
  *
@@ -417,7 +423,10 @@ const stageWorld = async (kind: 'backend' | 'session'): Promise<void> => {
 
   candidate.committed = true
   if (wholeSession) await retireSession()
-  else await retireBackend()
+  else {
+    tellBackendStatus('switching')
+    await retireBackend()
+  }
 
   send(backend, { protocol: PROTOCOL, type: 'accept' })
   active.backend = backend
@@ -434,6 +443,7 @@ const stageWorld = async (kind: 'backend' | 'session'): Promise<void> => {
     // services beside it were accepted against an api that was not there, and
     // the next save reloaded something that had never run.
     if (!stopRequested) say(`${backend.name} did not come up; no backend is running`, 'Error')
+    tellBackendStatus('failed')
     if (active.backend === backend) active.backend = null
     await stop(backend, 20_000)
     await Promise.all([...candidate.services.values()].map((child) => stop(child, 5_000)))
@@ -455,6 +465,7 @@ const stageWorld = async (kind: 'backend' | 'session'): Promise<void> => {
   candidate = null
   await resyncWatcher()
   say(`${backend.name} is serving`)
+  tellBackendStatus('ready')
 }
 
 /** one development service, replaced under a backend that never stops */

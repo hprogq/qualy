@@ -131,6 +131,9 @@ export function collectDevServices(
   return specs
 }
 
+/** lifecycle of the backend's local listener during a supervised replacement */
+export type DevBackendStatus = 'switching' | 'ready' | 'failed'
+
 /** what a runner is told about the plugin it belongs to, and the server beside it */
 export interface DevServiceContext {
   readonly plugin: {
@@ -148,6 +151,8 @@ export interface DevServiceContext {
      * machine and back again.
      */
     readonly origin: string
+    /** Local backend replacement, not application health or a production signal. */
+    readonly onBackendStatus?: (listener: (status: DevBackendStatus) => void) => () => void
   }
 }
 
