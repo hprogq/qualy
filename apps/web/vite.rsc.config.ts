@@ -12,6 +12,7 @@ import { defineConfig, type Plugin, type PluginOption } from 'vite'
 import { QUALY_API_PREFIX } from '@qualy/api-kit'
 import { qualyEnvironmentModules, qualyRelease } from '@qualy/web-build/vite'
 import { qualyChunkGraph } from '../../packages/build/web/src/chunk-graph.ts'
+import { qualyChunkIdentity } from '../../packages/build/web/src/chunk-identity.ts'
 import { chunkPools } from './chunk-pools.ts'
 import {
   DOCUMENT_HOST_MODULES,
@@ -36,7 +37,8 @@ const CLIENT_DIRECTIVE = /^(?:\s|\/\/[^\n]*\n|\/\*[\s\S]*?\*\/)*(['"])use client
  * well, its rules named constants nothing in this environment defines. A
  * server component's own module - one that never reaches a browser - is
  * compiled here and nowhere else, so its rules join the stylesheet every
- * document links.
+ * document links. Only the browser build writes that shared CSS. If a
+ * server build writes it too, StyleX falls back to the font stylesheet.
  */
 const serverModulesInServerComponents = (plugin: PluginOption): Plugin[] =>
   [plugin]
@@ -54,9 +56,20 @@ const serverModulesInServerComponents = (plugin: PluginOption): Plugin[] =>
         if (this.environment?.name === 'rsc' && CLIENT_DIRECTIVE.test(code)) return null
         return (handler as (...args: unknown[]) => unknown).call(this, code, ...rest)
       }
+      const clientOutput = (hook: Plugin['generateBundle'] | Plugin['writeBundle']) => {
+        if (hook === undefined) return undefined
+        const handler = typeof hook === 'function' ? hook : hook.handler
+        const run = function (this: { environment: { name: string } }, ...args: unknown[]) {
+          if (this.environment.name === 'client')
+            return (handler as (...args: unknown[]) => unknown).apply(this, args)
+        }
+        return typeof hook === 'function' ? run : { ...hook, handler: run }
+      }
       return {
         ...one,
         transform: typeof hook === 'function' ? transform : { ...hook, handler: transform },
+        generateBundle: clientOutput(one.generateBundle),
+        writeBundle: clientOutput(one.writeBundle),
       } as Plugin
     })
 
@@ -107,6 +120,7 @@ export default defineConfig(({ command, mode }) => ({
         client: './src/rsc/entry.browser.tsx',
       },
     }),
+    qualyChunkIdentity(repoRoot),
     // The browser's half fails here, rather than in a visitor's browser,
     // when its chunks import one another or a document grows past what it
     // was measured at (chunk-graph.ts).
