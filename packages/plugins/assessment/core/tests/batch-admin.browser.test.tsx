@@ -1276,17 +1276,9 @@ describe('the batch list', () => {
     await page.viewport(1280, 800)
   })
 
-  // The list is inside no batch, so no notice at the head of it says whose
-  // clock a time is on: every time on it read on a batch's clock carries that
-  // clock's offset, for a reader whose device keeps another. The suite's
-  // device keeps Shanghai's; Kathmandu runs 2:15 behind it.
   const KATHMANDU = 'Asia/Kathmandu'
-  // 23:00 in Kathmandu, 01:15 the next day on the device
+  // 23:00 in Kathmandu, 01:15 the next day on the Shanghai device
   const CLOSE = '2030-09-04T17:15:00.000Z'
-  const offsetOf = (timeZone: string) =>
-    new Intl.DateTimeFormat('zh-CN', { timeZone, timeZoneName: 'shortOffset' })
-      .formatToParts(Date.now())
-      .find((part) => part.type === 'timeZoneName')!.value
   const runningIn = (
     timezone: string,
     { start = '2026-01-01T00:00:00.000Z', close = CLOSE }: { start?: string; close?: string } = {},
@@ -1322,81 +1314,59 @@ describe('the batch list', () => {
     }
   }
 
-  it("marks a round's times with its clock where the device keeps another", async () => {
+  it("shows the batch clock inline and the reader's clock on hover", async () => {
     await page.viewport(1280, 800)
     await screen(runningIn(KATHMANDU), '/assessment/batches')
-    const mark = offsetOf(KATHMANDU)
 
-    // the card's close, on the round's clock and saying so
     const deadline = page.getByTestId('stage-deadline')
     await expect.element(deadline).toHaveAttribute('data-moment', '09.04 23:00')
-    await expect.element(deadline).toHaveAttribute('data-zone-mark', mark)
-    expect(deadline.element().textContent).toContain(`09.04 23:00 ${mark}`)
-    // the run of stages under it is on the same clock
-    await expect.element(page.getByTestId('stage-axis')).toHaveAttribute('data-zone-mark', mark)
-    // and the table's date: the round's 4 September, the device's 5th
+    const hint = deadline.element().querySelector('[data-local-time]') as HTMLElement
+    expect(hint.textContent).toContain('09.04 23:00')
+    expect(hint.textContent).not.toContain('GMT')
+    expect(getComputedStyle(hint).textDecorationStyle).toBe('dashed')
+    await userEvent.hover(hint)
+    await expect
+      .element(page.getByRole('tooltip'))
+      .toHaveTextContent('本地时间：2030年9月5日 01:15')
+    await userEvent.unhover(hint)
+    expect(
+      page.getByTestId('stage-axis').element().querySelectorAll('[data-local-time]'),
+    ).toHaveLength(2)
     const when = page.getByTestId('batch-when')
-    await expect.element(when).toHaveAttribute('data-zone-mark', mark)
-    expect(when.element().textContent).toContain(`2030.09.04 ${mark}`)
+    expect(when.element().textContent).toContain('2030.09.04')
+    expect(when.element().querySelector('[data-local-time]')).not.toBeNull()
   })
 
   it("leaves a round's times bare where the device keeps its clock", async () => {
     await page.viewport(1280, 800)
     await screen(runningIn('Asia/Shanghai'), '/assessment/batches')
 
-    const deadline = page.getByTestId('stage-deadline')
-    await expect.element(deadline).toHaveAttribute('data-moment', '09.05 01:15')
-    expect(deadline.element().hasAttribute('data-zone-mark')).toBe(false)
-    expect(page.getByTestId('stage-axis').element().hasAttribute('data-zone-mark')).toBe(false)
-    await expect.element(page.getByTestId('batch-when')).toBeVisible()
-    expect(page.getByTestId('batch-when').element().hasAttribute('data-zone-mark')).toBe(false)
-  })
-
-  it('marks a close with the offset its clock keeps on that day, not today', async () => {
-    await page.viewport(1280, 800)
-    const close = otherHalf()
-    const mark = offsetAt(NEW_YORK, close)
-    expect(mark).not.toBe(offsetAt(NEW_YORK, Date.now()))
-    await screen(runningIn(NEW_YORK, { close }), '/assessment/batches')
-
-    const deadline = page.getByTestId('stage-deadline')
     await expect
-      .element(deadline)
-      .toHaveAttribute('data-moment', close === WINTER ? '12.19 23:59' : '07.19 23:59')
-    await expect.element(deadline).toHaveAttribute('data-zone-mark', mark)
-    expect(deadline.element().textContent).toContain(
-      `${close === WINTER ? '12.19' : '07.19'} 23:59 ${mark}`,
-    )
-    await expect.element(page.getByTestId('batch-when')).toHaveAttribute('data-zone-mark', mark)
+      .element(page.getByTestId('stage-deadline'))
+      .toHaveAttribute('data-moment', '09.05 01:15')
+    await expect.element(page.getByTestId('batch-when')).toBeVisible()
+    for (const slot of ['stage-deadline', 'stage-axis', 'batch-when']) {
+      expect(page.getByTestId(slot).element().querySelector('[data-local-time]')).toBeNull()
+    }
   })
 
-  it("marks the end of a stage axis again where the batch's clocks change between its ends", async () => {
+  it('reads the endpoints of a stage axis on the batch clock across daylight saving', async () => {
     await page.viewport(1280, 800)
-    // entered in January, at GMT-5 there; closing in July, at GMT-4
+    // 12:00 in New York in January, at GMT-5; close at 23:59 in July, at GMT-4.
     await screen(
       runningIn(NEW_YORK, { start: '2026-01-10T17:00:00.000Z', close: SUMMER }),
       '/assessment/batches',
     )
-
-    const axis = page.getByTestId('stage-axis')
     await expect
-      .element(axis)
-      .toHaveAttribute('data-zone-mark', offsetAt(NEW_YORK, '2026-01-10T17:00:00.000Z'))
-    await expect.element(axis).toHaveAttribute('data-end-zone-mark', offsetAt(NEW_YORK, SUMMER))
-    expect(axis.element().textContent).toContain(`2030.07.19 ${offsetAt(NEW_YORK, SUMMER)}`)
-  })
-
-  it('says the offset of a stage axis once where both its ends keep it', async () => {
-    await page.viewport(1280, 800)
-    // January and December, both at GMT-5 in New York
-    await screen(
-      runningIn(NEW_YORK, { start: '2026-01-10T17:00:00.000Z', close: WINTER }),
-      '/assessment/batches',
-    )
-
+      .element(page.getByTestId('stage-deadline'))
+      .toHaveAttribute('data-moment', '07.19 23:59')
     const axis = page.getByTestId('stage-axis')
-    await expect.element(axis).toHaveAttribute('data-zone-mark', offsetAt(NEW_YORK, WINTER))
-    expect(axis.element().hasAttribute('data-end-zone-mark')).toBe(false)
+    const end = axis.getByText('2030.07.19', { exact: true })
+    await expect.element(end).toHaveAttribute('data-local-time', '')
+    await end.hover()
+    await expect
+      .element(page.getByRole('tooltip'))
+      .toHaveTextContent('本地时间：2030年7月20日 11:59')
   })
 
   it('opens a batch from the table and comes back', async () => {
@@ -1844,6 +1814,27 @@ describe('the batch lifecycle', () => {
     })
   })
 
+  it('lets an administrator save a time zone change from batch settings', async () => {
+    const updateBatch = vi.fn((_request: Request) =>
+      Effect.succeed({ batch: batch({ timezone: 'Asia/Tokyo' }) }),
+    )
+    await screen({ updateBatch }, `/assessment/batches/${BATCH_ID}/settings`)
+
+    const zone = page.getByLabelText('批次时区')
+    const save = page.getByRole('button', { name: '保存', exact: false })
+    await expect.element(zone).toHaveValue('Asia/Shanghai')
+    await expect.element(zone).toHaveAccessibleDescription(/不会改变已安排阶段/)
+    await expect.element(save).toBeDisabled()
+    await zone.selectOptions('Asia/Tokyo')
+    await save.click()
+
+    await vi.waitFor(() => expect(updateBatch).toHaveBeenCalledTimes(1))
+    expect(updateBatch.mock.calls[0]![0]).toMatchObject({
+      params: { batchId: BATCH_ID },
+      payload: { timezone: 'Asia/Tokyo' },
+    })
+  })
+
   // The window is stored [start, end): the day named by `end` is already
   // outside it. The settings page used to hand that day to the picker as the
   // last one, and send back whatever day was picked as the end - so the day
@@ -2064,7 +2055,9 @@ describe('the stage plan', () => {
     })
 
     await page.getByRole('button', { name: '取消排期' }).click()
-    await page.getByRole('alertdialog').getByRole('button', { name: '取消排期' }).click()
+    const dialog = page.getByRole('alertdialog')
+    await expect.element(dialog).toHaveAccessibleDescription(/2027年9月6日 00:00:00.*GMT\+8/)
+    await dialog.getByRole('button', { name: '取消排期' }).click()
 
     await vi.waitFor(() => expect(schedulePhase).toHaveBeenCalledTimes(1))
     expect(schedulePhase.mock.calls[0]![0]).toMatchObject({
@@ -2564,7 +2557,7 @@ describe('the stage plan', () => {
     await expect.element(page.getByTestId('batch-zone-away')).toBeVisible()
   })
 
-  it('marks when a round begins with its clock, in the bar above every section', async () => {
+  it('offers local time for a planned batch start in the context bar', async () => {
     await page.viewport(1280, 800)
     const opens = '2030-09-04T17:15:00.000Z'
     await screen({
@@ -2586,42 +2579,12 @@ describe('the stage plan', () => {
 
     const clock = page.getByTestId('stage-clock')
     await expect.element(clock).toHaveAttribute('data-span', 'starts')
-    const mark = new Intl.DateTimeFormat('zh-CN', { timeZone: ZONE, timeZoneName: 'shortOffset' })
-      .formatToParts(Date.now())
-      .find((part) => part.type === 'timeZoneName')!.value
-    await expect.element(clock).toHaveAttribute('data-zone-mark', mark)
-    // the moment as the reader reads it, on the round's clock
-    const spelled = new Intl.DateTimeFormat('zh-CN', {
-      dateStyle: 'medium',
-      timeStyle: 'short',
-      timeZone: ZONE,
-    }).format(new Date(opens))
-    expect(clock.element().textContent).toContain(`${spelled} ${mark}`)
-  })
-
-  it('marks when a round begins with the offset its clock keeps that day', async () => {
-    await page.viewport(1280, 800)
-    const opens = otherHalf()
-    await screen({
-      getBatch: () => Effect.succeed({ batch: batch({ status: 'active', timezone: NEW_YORK }) }),
-      getTimeline: () =>
-        Effect.succeed({
-          timeline: [
-            {
-              phaseId: ENTRY_PHASE_ID,
-              displayName: '正式填报',
-              description: '',
-              entryNote: '',
-              status: 'future' as const,
-              entry: { kind: 'planned' as const, at: opens },
-            },
-          ],
-        }),
-    })
-
-    const clock = page.getByTestId('stage-clock')
-    await expect.element(clock).toHaveAttribute('data-span', 'starts')
-    await expect.element(clock).toHaveAttribute('data-zone-mark', offsetAt(NEW_YORK, opens))
+    const planned = clock.getByText('2030年9月4日 23:00', { exact: true })
+    await expect.element(planned).toHaveAttribute('data-local-time', '')
+    await planned.hover()
+    await expect
+      .element(page.getByRole('tooltip'))
+      .toHaveTextContent('本地时间：2030年9月5日 01:15')
   })
 
   it('says nothing about the device when it keeps the batch its own clock', async () => {
@@ -2640,7 +2603,12 @@ describe('the stage plan', () => {
     await page.getByTestId('phase-schedule').click()
     const dialog = page.getByRole('dialog')
     // the field says whose clock it takes
-    await expect.element(dialog.getByTestId('batch-zone')).toHaveAttribute('data-zone', ZONE)
+    const zoneHint = dialog.getByTestId('batch-zone')
+    await expect.element(zoneHint).toHaveAttribute('data-zone', ZONE)
+    expect(zoneHint.element().hasAttribute('data-offset')).toBe(false)
+    await expect
+      .element(dialog.getByLabelText('开始时间'))
+      .toHaveAccessibleDescription(/按批次时区填写/)
 
     // the calendar opens on this month; the 15th is in every one of them
     const today = new Date()
@@ -2732,10 +2700,13 @@ describe('the stage plan', () => {
       ),
     })
 
-    const note = page.getByRole('dialog').getByTestId('batch-zone')
+    const dialog = page.getByRole('dialog')
+    const note = dialog.getByTestId('batch-zone')
     await expect.element(note).toHaveAttribute('data-zone', NEW_YORK)
     await expect.element(note).toHaveAttribute('data-offset', offsetAt(NEW_YORK, value))
-    expect(note.element().textContent).toContain(offsetAt(NEW_YORK, value))
+    await expect
+      .element(dialog.getByLabelText('开始时间'))
+      .toHaveAccessibleDescription(expect.stringContaining(offsetAt(NEW_YORK, value)))
   })
 })
 

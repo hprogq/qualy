@@ -9,7 +9,8 @@ import { Ticker } from '@qualy/ui/ticker'
 import { useIsMobile } from '@qualy/ui/use-mobile'
 import { useDocumentNow } from '@qualy/web-runtime'
 
-import { marked, useBatchZone, useZoneMark } from './zone.ts'
+import { useBatchZone } from './zone.ts'
+import { BatchLocalTime } from './BatchZone.tsx'
 import {
   displayKey,
   progressOf,
@@ -219,7 +220,6 @@ export function BatchProgress({
 }) {
   const locale = useLocale()
   const zone = useBatchZone()
-  const markOf = useZoneMark(locale)
   // One threshold: under a tablet the bar has no room for the stage, so the
   // stage goes and the clock takes its name instead - "3 hours left in stage"
   // rather than a number beside nothing. A caller that asks for `single` has
@@ -253,10 +253,6 @@ export function BatchProgress({
 
   const current = timeline.find((entry) => entry.status === 'current')
   const stage = showStage ? (current?.displayName ?? null) : null
-  // the one moment this says outright, so the one that carries the batch's
-  // offset for a reader whose device reads it on another clock
-  const mark = progress.kind === 'starts' ? markOf(progress.at) : null
-
   const sayIn = (as: typeof form) =>
     progress.kind === 'until' || progress.kind === 'since'
       ? ((span) => (span.message as Message)(span.values))(spanMessage(progress, as))
@@ -269,7 +265,7 @@ export function BatchProgress({
         ? null
         : sayIn(form)
       : progress.kind === 'starts'
-        ? marked(formatDateTime(new Date(progress.at), locale, 'date-time', zone), mark)
+        ? formatDateTime(new Date(progress.at), locale, 'date-time', zone)
         : null
 
   const spanned = progress.kind === 'until' || progress.kind === 'since'
@@ -321,7 +317,6 @@ export function BatchProgress({
                 'data-rest': String(progress.span.rest),
               }
             : {})}
-          {...(mark === null ? {} : { 'data-zone-mark': mark })}
           {...stylex.props(styles.clock, tone)}
         >
           {filled !== null && !flat && <Ring fraction={filled} />}
@@ -329,7 +324,11 @@ export function BatchProgress({
             <span {...stylex.props(styles.plannedLabel)}>{m.batch_plannedStart()}</span>
           )}
           {said !== null ? (
-            <Ticker value={said} />
+            progress.kind === 'starts' ? (
+              <BatchLocalTime at={progress.at}>{said}</BatchLocalTime>
+            ) : (
+              <Ticker value={said} />
+            )
           ) : (
             <>
               <AtWidth as="span" below={768}>

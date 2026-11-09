@@ -17,7 +17,14 @@ type NativeSelectProps = Omit<React.ComponentProps<'select'>, 'size'> & {
   xstyle?: stylex.StyleXStyles
 }
 
-function NativeSelect({ className, style, size = 'default', xstyle, ...props }: NativeSelectProps) {
+function NativeSelect({
+  className,
+  style,
+  size = 'default',
+  xstyle,
+  'aria-describedby': describedBy,
+  ...props
+}: NativeSelectProps) {
   const widgetSize = size === 'sm' ? 'xs' : 'sm'
   return (
     <MNativeSelect
@@ -26,6 +33,9 @@ function NativeSelect({ className, style, size = 'default', xstyle, ...props }: 
       size={widgetSize}
       rightSection={<Combobox.Chevron size={widgetSize} color="var(--q-muted-foreground)" />}
       {...props}
+      attributes={
+        describedBy === undefined ? undefined : { input: { 'aria-describedby': describedBy } }
+      }
       {...seatOf(stylex.props(xstyle), className, style)}
     />
   )

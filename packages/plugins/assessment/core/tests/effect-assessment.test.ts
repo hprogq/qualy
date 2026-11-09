@@ -3923,6 +3923,62 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
     expect(created.map((row) => row.name)).toEqual(['Zone Etc/GMT-8'])
   })
 
+  it('changes a running batch time zone without moving its planned or actual stage instants', async () => {
+    const exit = await run(
+      db.url,
+      Effect.gen(function* () {
+        const f = yield* seed('zone-change')
+        const assessment = yield* Assessment
+        const batch = yield* assessment.createBatch(
+          f.tenant,
+          {
+            name: 'Time zone change',
+            timezone: 'Asia/Shanghai',
+            materialRange: { start: '2026-03-01', end: '2026-09-01' },
+            import: { orgNodeIds: [f.root], userTypeIds: [f.studentType] },
+          },
+          f.principal,
+        )
+        yield* assessment.replacePlan(
+          f.tenant,
+          batch.id,
+          {
+            specs: [
+              phase({ phaseKey: 'entry', permissionProfile: ['assessment.entry.submit'] }),
+              phase({ phaseKey: 'review', permissionProfile: ['assessment.review.process'] }),
+            ],
+          },
+          f.principal,
+        )
+        const plan = yield* assessment.getPlan(f.tenant, batch.id, f.principal)
+        yield* assessment.advancePhase(f.tenant, batch.id, { to: plan[0]!.id }, f.principal)
+        yield* assessment.schedulePhase(
+          f.tenant,
+          batch.id,
+          plan[1]!.id,
+          Date.now() + 86_400_000,
+          f.principal,
+        )
+        const before = yield* assessment.getPlan(f.tenant, batch.id, f.principal)
+        const changed = yield* assessment.updateBatch(
+          f.tenant,
+          batch.id,
+          { timezone: 'America/New_York' },
+          f.principal,
+        )
+        const after = yield* assessment.getPlan(f.tenant, batch.id, f.principal)
+        return { before, changed, after }
+      }),
+    )
+    const { before, changed, after } = ok(exit)
+    expect(before[0]!.actualEntryAt).not.toBeNull()
+    expect(before[1]!.plannedEntryAt).not.toBeNull()
+    expect(changed.timezone).toBe('America/New_York')
+    const boundaries = (plan: typeof before) =>
+      plan.map(({ id, plannedEntryAt, actualEntryAt }) => ({ id, plannedEntryAt, actualEntryAt }))
+    expect(boundaries(after)).toEqual(boundaries(before))
+  })
+
   it('keeps the tenant timetable out of one unit administrator hands', async () => {
     const exit = await run(
       db.url,

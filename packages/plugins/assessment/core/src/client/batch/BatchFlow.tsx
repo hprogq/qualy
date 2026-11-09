@@ -23,7 +23,7 @@ import {
 
 import { stagesOf, type FlowEntry, type FlowStage } from './flow.ts'
 import { useWhen } from './when.ts'
-import { ZoneNote } from './BatchZone.tsx'
+import { BatchLocalTime, ZoneNote } from './BatchZone.tsx'
 import * as m from '#messages'
 
 // The stages of the round, drawn twice.
@@ -447,7 +447,13 @@ function Stage({ stage, upright }: { stage: FlowStage; upright: boolean }) {
         data-testid="stage-when"
         data-when={stage.at === null ? 'unscheduled' : 'scheduled'}
       >
-        {said(stage)}
+        {stage.at === null ? (
+          said(stage)
+        ) : (
+          <BatchLocalTime at={stage.at} until={stage.until}>
+            {said(stage)}
+          </BatchLocalTime>
+        )}
       </TimelineDate>
       {/* who and what the stage is for, when that is not everybody and
           everything: a stage that reopens one question is a different stage

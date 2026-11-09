@@ -1,6 +1,5 @@
 import { createContext, useContext } from 'react'
 import { offsetMinutesAt, wallClockOf } from '@qualy/ui/instant'
-import { useHydrating } from '@qualy/web-runtime/hydrating'
 
 // Whose clock a batch's times are read on.
 //
@@ -116,42 +115,3 @@ export const zoneNameOf = (
   ),
   offset: zonePart(locale, zone, at, 'shortOffset') ?? zone,
 })
-
-/**
- * The batch's offset at `at`, "GMT+5:45", to write after that moment read on
- * its clock - or null for a reader whose device reads the moment the same
- * way, to whom the bare time is already their own. Both are asked of the
- * moment shown, not of today: a New York deadline in December is at GMT-5
- * however early in autumn it is read, and a Lagos one is an hour off a
- * London device then though the two walls agree all summer.
- *
- * Where a whole plan is on screen, `ZoneNote` says the zone once instead;
- * this is for a time that stands alone, on a card or in a row of a list.
- */
-export const zoneMarkOf = (
-  zone: string | null | undefined,
-  locale: string,
-  at: number | string,
-): string | null => {
-  const clock = readableZone(zone)
-  if (clock === undefined) return null
-  const moment = new Date(at).getTime()
-  if (Number.isNaN(moment) || !deviceDiffers(clock, moment)) return null
-  return zonePart(locale, clock, moment, 'shortOffset') ?? clock
-}
-
-/**
- * `zoneMarkOf` for the batch this screen belongs to, said in `locale`, for
- * any moment on it. Never while a server-drawn page is taken over: the
- * server's clock is not the reader's device, and the mark follows in the
- * next frame for a reader whose device reads the batch differently.
- */
-export const useZoneMark = (locale: string): ((at: number | string) => string | null) => {
-  const zone = useBatchZone()
-  const hydrating = useHydrating()
-  return (at) => (hydrating ? null : zoneMarkOf(zone, locale, at))
-}
-
-/** a time with the batch's offset after it, when the reader needs one */
-export const marked = (time: string, mark: string | null): string =>
-  mark === null ? time : `${time} ${mark}`

@@ -9,7 +9,7 @@ import { Button } from '@qualy/ui/button'
 import { DateTimePicker } from '@qualy/ui/date-time-picker'
 import { NativeSelect } from '@qualy/ui/native-select'
 
-import { ZoneNote } from '../batch/BatchZone.tsx'
+import { useZoneLabel, ZoneNote } from '../batch/BatchZone.tsx'
 import { useBatchZone } from '../batch/zone.ts'
 import * as commonMessages from '@qualy/web-i18n/messages'
 import * as m from '#messages'
@@ -133,9 +133,10 @@ export function ScheduleDialog({
             </>
           }
         >
-          {(id) => (
+          {(id, control) => (
             <DateTimePicker
               id={id}
+              aria-describedby={control['aria-describedby']}
               value={value}
               onChange={onChange}
               onSkippedTime={setMovedTo}
@@ -159,20 +160,34 @@ export function ScheduleDialog({
 export function UnscheduleDialog({
   open,
   name,
+  plannedAt,
   pending,
   onCancel,
   onConfirm,
 }: {
   open: boolean
   name: string
+  plannedAt: string | null
   pending: boolean
   onCancel: () => void
   onConfirm: () => void
 }) {
+  const locale = useLocale()
+  const zone = useBatchZone()
+  const at = plannedAt === null ? undefined : Date.parse(plannedAt)
+  const label = useZoneLabel(at === undefined ? undefined : zone, at)
   return (
     <ConfirmDialog
       open={open}
       title={m.schedule_unscheduleTitle({ name })}
+      {...(label === null || at === undefined
+        ? {}
+        : {
+            description: m.schedule_unscheduleTime({
+              time: formatDateTime(new Date(at), locale, 'event-time', zone),
+              zone: label.label,
+            }),
+          })}
       confirmLabel={m.schedule_unschedule()}
       cancelLabel={m.action_cancel()}
       pending={pending}

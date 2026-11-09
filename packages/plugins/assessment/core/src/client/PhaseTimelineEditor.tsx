@@ -875,6 +875,7 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
       <UnscheduleDialog
         open={unscheduling !== null}
         name={unscheduling?.name ?? ''}
+        plannedAt={rows.find((row) => row.id === unscheduling?.id)?.plannedEntryAt ?? null}
         pending={schedule.isPending}
         onCancel={() => setUnscheduling(null)}
         onConfirm={() => unscheduling && schedule.mutate({ phaseId: unscheduling.id, at: null })}

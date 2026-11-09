@@ -46,6 +46,7 @@ function selectTimeField(event: MouseEvent<HTMLInputElement>) {
 
 export function DateTimePicker({
   id,
+  'aria-describedby': describedBy,
   value,
   onChange,
   placeholder,
@@ -63,6 +64,7 @@ export function DateTimePicker({
   xstyle,
 }: {
   id?: string
+  'aria-describedby'?: string
   /** an iso instant, or null when nothing is set */
   value: string | null
   onChange: (next: string | null) => void
@@ -105,6 +107,11 @@ export function DateTimePicker({
   return (
     <MDateTimePicker
       id={id}
+      // Mantine's Input sets aria-describedby from its own wrapper after
+      // spreading native props. The input slot is applied last.
+      attributes={
+        describedBy === undefined ? undefined : { input: { 'aria-describedby': describedBy } }
+      }
       data-slot="date-time-picker"
       value={held ?? instantToLocal(value, timeZone)}
       onChange={(next) => {

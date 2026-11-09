@@ -23,6 +23,8 @@ import { Button } from '@qualy/ui/button'
 import { DateRangePicker } from '@qualy/ui/date-range-picker'
 import { FieldGroup } from '@qualy/ui/field'
 import { Input } from '@qualy/ui/input'
+import { NativeSelect } from '@qualy/ui/native-select'
+import { useHydrating } from '@qualy/web-runtime/hydrating'
 import { Badge } from '@qualy/ui/badge'
 import { Textarea } from '@qualy/ui/textarea'
 import { toast } from '@qualy/ui/toast'
@@ -417,6 +419,43 @@ const pickedOf = (range: { start: string; end: string }) => ({
   end: lastDay(range.end),
 })
 
+function BatchTimezoneField({
+  value,
+  disabled,
+  onChange,
+}: {
+  value: string
+  disabled: boolean
+  onChange: (value: string) => void
+}) {
+  const hydrating = useHydrating()
+  // The initial options must match the server, even if the browser's IANA
+  // data has newer names. Always keep the currently selected zone available.
+  const zones = new Set(['Asia/Shanghai', 'UTC', value])
+  if (!hydrating && typeof Intl.supportedValuesOf === 'function') {
+    for (const zone of Intl.supportedValuesOf('timeZone')) zones.add(zone)
+  }
+  return (
+    <Field label={m.settings_timezone()} hint={m.settings_timezoneHint()}>
+      {(id, control) => (
+        <NativeSelect
+          id={id}
+          {...control}
+          value={value}
+          disabled={disabled}
+          onChange={(event) => onChange(event.target.value)}
+        >
+          {[...zones].map((zone) => (
+            <option key={zone} value={zone}>
+              {zone === 'Asia/Shanghai' ? m.settings_timezoneChina() : zone}
+            </option>
+          ))}
+        </NativeSelect>
+      )}
+    </Field>
+  )
+}
+
 export function BatchSettingsForm({ batch }: { batch: BatchDto }) {
   const api = useApi(assessmentApi)
   const query = useApiQuery(assessmentApi)
@@ -425,6 +464,7 @@ export function BatchSettingsForm({ batch }: { batch: BatchDto }) {
   const navigate = usePageNavigate()
 
   const [name, setName] = useState(batch.name)
+  const [timezone, setTimezone] = useState(batch.timezone)
   const [description, setDescription] = useState(batch.descriptionMd ?? '')
   const [range, setRange] = useState(() => pickedOf(batch.materialRange))
   const [rejectReasons, setRejectReasons] = useState<readonly string[]>(batch.reviewReasons.reject)
@@ -444,6 +484,7 @@ export function BatchSettingsForm({ batch }: { batch: BatchDto }) {
   // from the request that opened the page would silently write them back
   useEffect(() => {
     setName(batch.name)
+    setTimezone(batch.timezone)
     setDescription(batch.descriptionMd ?? '')
     setRange(pickedOf(batch.materialRange))
     setRejectReasons(batch.reviewReasons.reject)
@@ -498,6 +539,7 @@ export function BatchSettingsForm({ batch }: { batch: BatchDto }) {
         params: { batchId: batch.id },
         payload: {
           name,
+          ...(timezone === batch.timezone ? {} : { timezone }),
           descriptionMd: description.trim() === '' ? null : description,
           // the last day picked is inside the window, so the stored end
           // is the day after it
@@ -519,6 +561,7 @@ export function BatchSettingsForm({ batch }: { batch: BatchDto }) {
   const rangeIncomplete = range.start === '' || range.end === ''
   const unchanged =
     name === batch.name &&
+    timezone === batch.timezone &&
     description === (batch.descriptionMd ?? '') &&
     range.start === shownRange.start &&
     range.end === shownRange.end &&
@@ -643,6 +686,7 @@ export function BatchSettingsForm({ batch }: { batch: BatchDto }) {
                 />
               )}
             </Field>
+            <BatchTimezoneField value={timezone} disabled={!editable} onChange={setTimezone} />
             <Field label={m.settings_note()} hint={m.settings_noteHint()}>
               {(id) => (
                 <Textarea

@@ -1,3 +1,4 @@
+import { BatchLocalTime } from './BatchZone.tsx'
 import { useEffect, useRef, useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { ClockIcon, RouteIcon } from 'lucide-react'
@@ -181,7 +182,11 @@ export function PhaseContextBar({
             <span {...stylex.props(styles.deadline)}>
               <ClockIcon aria-hidden className={stylex.props(styles.clockIcon).className} />
               <span {...stylex.props(styles.hour)}>
-                {stage.until === null ? m.flow_endPending() : when.moment(stage.until)}
+                {stage.until === null ? (
+                  m.flow_endPending()
+                ) : (
+                  <BatchLocalTime at={stage.until}>{when.moment(stage.until)}</BatchLocalTime>
+                )}
               </span>
             </span>
           )}

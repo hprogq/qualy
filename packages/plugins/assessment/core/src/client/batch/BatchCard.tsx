@@ -1,4 +1,3 @@
-import { useLocale } from '@qualy/web-i18n'
 import { useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { AtWidth } from '@qualy/ui/at-width'
@@ -10,7 +9,8 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@qualy
 
 import { dotDay, dotMoment } from './dates.ts'
 import { BatchZone } from './BatchZone.tsx'
-import { marked, useBatchZone, useZoneMark } from './zone.ts'
+import { useBatchZone } from './zone.ts'
+import { BatchLocalTime } from './BatchZone.tsx'
 import { lastDay } from '../entry/model.ts'
 import { styles, phone } from './card.stylex.ts'
 import { StatusBadge } from './StatusBadge.tsx'
@@ -125,16 +125,8 @@ function useLaneFit(lanes: RefObject<HTMLDivElement | null>, count: number): Lan
 
 function StageLanes({ timeline, now }: { timeline: readonly TimelineLike[]; now: number }) {
   const zone = useBatchZone()
-  const locale = useLocale()
-  const markOf = useZoneMark(locale)
   const plan = planOf(timeline, now)
-  // Each end of the axis is marked with the batch's offset on its own day:
-  // the first date says whose clock the axis is on, and the last says it
-  // again only where that clock has moved its offset in between.
-  const startMark = plan.start === null ? null : markOf(plan.start)
   const end = plan.start !== null && plan.end !== null && plan.end > plan.start ? plan.end : null
-  const endMark = end === null ? null : markOf(end)
-  const endOwnMark = endMark === startMark ? null : endMark
   const at = (fraction: number) => `${(Math.min(1, Math.max(0, fraction)) * 100).toFixed(2)}%`
   const lanesRef = useRef<HTMLDivElement>(null)
   const fit = useLaneFit(lanesRef, timeline.length)
@@ -190,21 +182,17 @@ function StageLanes({ timeline, now }: { timeline: readonly TimelineLike[]; now:
         </div>
       </TooltipProvider>
       {plan.start !== null && (
-        <div
-          data-testid="stage-axis"
-          {...(startMark === null ? {} : { 'data-zone-mark': startMark })}
-          {...(endOwnMark === null ? {} : { 'data-end-zone-mark': endOwnMark })}
-          {...stylex.props(styles.axis)}
-        >
-          {/* the axis is one clock, so its first date says whose */}
+        <div data-testid="stage-axis" {...stylex.props(styles.axis)}>
           <span {...stylex.props(styles.axisStart)}>
-            {marked(dotDay(plan.start, zone), startMark)}
+            <BatchLocalTime at={plan.start}>{dotDay(plan.start, zone)}</BatchLocalTime>
           </span>
           {plan.today !== null && (
             <span {...stylex.props(styles.axisToday(at(plan.today)))}>{m.batch_today()}</span>
           )}
           {end !== null && (
-            <span {...stylex.props(styles.axisEnd)}>{marked(dotDay(end, zone), endOwnMark)}</span>
+            <span {...stylex.props(styles.axisEnd)}>
+              <BatchLocalTime at={end}>{dotDay(end, zone)}</BatchLocalTime>
+            </span>
           )}
         </div>
       )}
@@ -431,9 +419,7 @@ function CardBody({
   entered = null,
   now = Date.now(),
 }: BatchCardProps): ReactNode {
-  const locale = useLocale()
   const zone = useBatchZone()
-  const markOf = useZoneMark(locale)
   const at = row.timeline.findIndex((entry) => entry.status === 'current')
   // asked of the clock rather than worked out here: a stage ends when the
   // next one begins, and this card used to say so in its own words - the
@@ -443,7 +429,6 @@ function CardBody({
   // the close on the batch's clock, spelled once for the sentence and the
   // fact beside it
   const closes = where.kind === 'until' ? dotMoment(where.at, zone) : null
-  const mark = where.kind === 'until' ? markOf(where.at) : null
 
   // The phone card is a different order, not a narrower one: what the
   // reader has to do moves above the run of stages. Two orders cannot be
@@ -592,14 +577,15 @@ function CardBody({
               {/* the close and what is left to it, one unit: "03.01 23:59
                 截止 　 12 days left"; a stage with no close only says how
                 long it has run */}
-              {closes !== null && (
+              {closes !== null && where.kind === 'until' && (
                 <span
                   data-testid="stage-deadline"
                   data-moment={closes}
-                  {...(mark === null ? {} : { 'data-zone-mark': mark })}
                   {...stylex.props(styles.stageWhen)}
                 >
-                  {m.batch_stageDeadline({ when: marked(closes, mark) })}
+                  <BatchLocalTime at={where.at}>
+                    {m.batch_stageDeadline({ when: closes })}
+                  </BatchLocalTime>
                 </span>
               )}
               <BatchProgress timeline={row.timeline} single xstyle={styles.stageCountdown} />

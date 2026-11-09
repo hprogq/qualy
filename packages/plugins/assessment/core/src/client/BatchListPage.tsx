@@ -2,7 +2,6 @@
 import { pageNumber } from '@qualy/api-kit/schema'
 import { EasedHeight } from '@qualy/ui/eased-height'
 import { Pager } from '@qualy/ui/pager'
-import { useLocale } from '@qualy/web-i18n'
 import { useEffect, useState, type MouseEvent, type ReactNode } from 'react'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
@@ -17,7 +16,6 @@ import {
   usePageQueryUpdate,
 } from '@qualy/web-runtime'
 
-import { useHydrating } from '@qualy/ui/use-hydrating'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
@@ -48,7 +46,8 @@ import {
 import { NewBatchDialog } from './NewBatchForm.tsx'
 import { standingOf, type BatchStanding } from './batch/standing.ts'
 import { dotDay } from './batch/dates.ts'
-import { marked, readableZone, zoneMarkOf } from './batch/zone.ts'
+import { readableZone } from './batch/zone.ts'
+import { BatchLocalTime } from './batch/BatchZone.tsx'
 import { HeroSkeleton, ListSkeleton } from './batch/ListSkeleton.tsx'
 import { BatchCard } from './batch/BatchCard.tsx'
 import { agendaOf, type BatchCardRow, type HeroFrame } from './batch/hero.ts'
@@ -547,26 +546,15 @@ function stageOf(row: BatchCardRow) {
     : m.batch_stageIncomplete()
 }
 
-/**
- * The time column, one date per standing: when the stage under way gives
- * way, when a scheduled batch begins, when an ended one ended - and for a
- * batch nobody has scheduled, that its time is not set.
- *
- * A date is read on the row's own batch's clock, and carries that clock's
- * offset for a reader whose device keeps another one: the list is not
- * inside any one batch, so nothing else on it says whose date this is.
- */
-function timeOf(
-  row: BatchCardRow & { createdAt: string },
-  standing: BatchStanding,
-  locale: string,
-  hydrating: boolean,
-): { text: string; mark: string | null } {
+type ListTime = { text: string; at: string | null; zone: string | undefined }
+
+function timeOf(row: BatchCardRow & { createdAt: string }, standing: BatchStanding): ListTime {
   const zone = readableZone(row.timezone)
-  const dated = (say: (date: string) => string, at: string) => {
-    const mark = hydrating ? null : zoneMarkOf(zone, locale, at)
-    return { text: say(marked(dotDay(at, zone), mark)), mark }
-  }
+  const dated = (say: (date: string) => string, at: string): ListTime => ({
+    text: say(dotDay(at, zone)),
+    at,
+    zone,
+  })
   const timeline = row.timeline
   if (standing === 'archived') {
     // the last stage that was entered is the closest thing to a close the
@@ -579,19 +567,24 @@ function timeOf(
     const next = timeline[at + 1]
     return next?.entry.kind === 'planned' && next.entry.at !== null
       ? dated((date) => m.batch_stageUntil({ date }), next.entry.at)
-      : { text: m.flow_endPending(), mark: null }
+      : { text: m.flow_endPending(), at: null, zone }
   }
   const first = timeline.find((entry) => entry.entry.kind === 'planned' && entry.entry.at !== null)
   return first?.entry.at
     ? dated((date) => m.batch_startsOn({ date }), first.entry.at)
-    : { text: m.batch_timeUnset(), mark: null }
+    : { text: m.batch_timeUnset(), at: null, zone }
 }
 
-/** the time column's words, and the offset they carry as a fact */
-function RowTime({ time }: { time: { text: string; mark: string | null } }) {
+function RowTime({ time }: { time: ListTime }) {
   return (
-    <span data-testid="batch-when" {...(time.mark === null ? {} : { 'data-zone-mark': time.mark })}>
-      {time.text}
+    <span data-testid="batch-when">
+      {time.at === null ? (
+        time.text
+      ) : (
+        <BatchLocalTime at={time.at} zone={time.zone}>
+          {time.text}
+        </BatchLocalTime>
+      )}
     </span>
   )
 }
@@ -659,8 +652,6 @@ export default function BatchListPage() {
   const narrow = useIsMobile()
   const [searchOpen, setSearchOpen] = useState(false)
   const searchInRow = narrow && searchOpen
-  const locale = useLocale()
-  const hydrating = useHydrating()
   const now = useDocumentNow()
   const failure = useLoadFailure()
   // the shell repeats this once the heading itself has scrolled away
@@ -1124,7 +1115,7 @@ export default function BatchListPage() {
                                   give, and its stage has just said so */}
                                   {at !== 'draft' && (
                                     <span {...stylex.props(styles.rowWhen)}>
-                                      <RowTime time={timeOf(row, at, locale, hydrating)} />
+                                      <RowTime time={timeOf(row, at)} />
                                     </span>
                                   )}
                                 </span>
@@ -1176,7 +1167,7 @@ export default function BatchListPage() {
                                 {stageOf(row)}
                               </TableCell>
                               <TableCell xstyle={[styles.cell, styles.quiet, styles.time]}>
-                                <RowTime time={timeOf(row, at, locale, hydrating)} />
+                                <RowTime time={timeOf(row, at)} />
                               </TableCell>
                               <TableCell xstyle={[styles.cell, styles.trailing]}>
                                 <span aria-hidden {...stylex.props(styles.openGlyph)}>

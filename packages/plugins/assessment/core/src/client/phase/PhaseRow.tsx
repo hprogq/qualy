@@ -17,6 +17,7 @@ import { Cell, Status, Tag, TableRow } from '@qualy/ui/screen'
 
 import { type PlanRefusalLike } from '../refusals.ts'
 import { type PhaseDraft, type PhaseDto, type PlanShape } from './model.ts'
+import { BatchLocalTime } from '../batch/BatchZone.tsx'
 import { useBatchZone } from '../batch/zone.ts'
 import * as m from '#messages'
 
@@ -520,7 +521,7 @@ function useParts(props: PhaseRowProps) {
             {...stylex.props(styles.whenGlyph, current && styles.whenGlyphCurrent)}
           />
           <span data-slot="phase-time" {...stylex.props(styles.whenTime)}>
-            {timeOf(entered)}
+            <BatchLocalTime at={entered}>{timeOf(entered)}</BatchLocalTime>
           </span>
         </span>
         <span {...stylex.props(styles.whenRelative)}>{relative(entered)}</span>
@@ -535,7 +536,7 @@ function useParts(props: PhaseRowProps) {
         <span {...stylex.props(styles.whenLine)}>
           <CalendarClockIcon aria-hidden {...stylex.props(styles.whenGlyph)} />
           <span data-slot="phase-time" {...stylex.props(styles.whenTime)}>
-            {timeOf(planned)}
+            <BatchLocalTime at={planned}>{timeOf(planned)}</BatchLocalTime>
           </span>
         </span>
         <span {...stylex.props(styles.whenRelative, styles.whenRelativeRow)}>

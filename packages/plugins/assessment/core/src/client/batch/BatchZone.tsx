@@ -1,6 +1,7 @@
-import { useLocale } from '@qualy/web-i18n'
+import { formatDateTime, useLocale } from '@qualy/web-i18n'
 import { type ReactNode } from 'react'
 import * as stylex from '@stylexjs/stylex'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@qualy/ui/tooltip'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 
 import {
@@ -28,6 +29,12 @@ const styles = stylex.create({
     lineHeight: '1rem',
     color: tokens.mutedForeground,
   },
+  localTime: {
+    textDecorationLine: 'underline',
+    textDecorationStyle: 'dashed',
+    textDecorationColor: tokens.mutedForeground,
+    textUnderlineOffset: '0.22em',
+  },
   away: {
     borderRadius: tokens.radiusMd,
     backgroundColor: `color-mix(in oklab, ${tokens.surfaceMuted} 60%, transparent)`,
@@ -43,13 +50,15 @@ const styles = stylex.create({
  * The zone said the way its reader names it, with its offset at `at` (now
  * when no moment is named), or nothing outside a batch.
  */
-function useZoneLabel(
+export function useZoneLabel(
   zone: string | undefined,
   at?: number,
-): { readonly label: string; readonly offset: string } | null {
+  showOffset = true,
+): { readonly label: string; readonly offset?: string } | null {
   const locale = useLocale()
   if (zone === undefined) return null
   const { name, offset } = zoneNameOf(zone, locale, at)
+  if (!showOffset) return { label: name ?? zone }
   return { label: name === undefined ? offset : m.zone_named({ name, offset }), offset }
 }
 
@@ -83,14 +92,14 @@ export function ZoneNote({
   /**
    * The one moment the note stands beside, such as the time being typed: its
    * offset is the one said, since a zone that keeps summer time has two. Left
-   * out, the offset is today's.
+   * out, an input names only its zone; a plan uses today's offset.
    */
   at?: number | string | null
   xstyle?: stylex.StyleXStyles
 }) {
   const zone = useBatchZone()
   const moment = momentOf(at)
-  const said = useZoneLabel(zone, moment)
+  const said = useZoneLabel(zone, moment, purpose === 'read' || moment !== undefined)
   // the device is the browser's to say, never the server's that drew the page
   const hydrating = useHydrating()
   if (zone === undefined || said === null) return null
@@ -105,6 +114,58 @@ export function ZoneNote({
     >
       {(purpose === 'enter' ? m.zone_enter : m.zone_note)({ zone: said.label })}
     </span>
+  )
+}
+
+/**
+ * Keep the batch time in the layout. Only the decoration and its tooltip
+ * depend on the device, so they can be enabled after hydration without
+ * changing the text or the width of the cell.
+ */
+export function BatchLocalTime({
+  at,
+  until,
+  zone,
+  children,
+}: {
+  at: number | string
+  until?: number | null
+  zone?: string | null | undefined
+  children: ReactNode
+}) {
+  const batchZone = useBatchZone()
+  const locale = useLocale()
+  const hydrating = useHydrating()
+  const moment = momentOf(at)
+  const end = momentOf(until)
+  const clock = zone === undefined ? batchZone : readableZone(zone)
+  const different =
+    !hydrating &&
+    moment !== undefined &&
+    (deviceDiffers(clock, moment) || (end !== undefined && deviceDiffers(clock, end)))
+
+  // No tooltip is mounted for matching offsets, or before the device is known.
+  const trigger = (
+    <span
+      data-local-time={different ? '' : undefined}
+      tabIndex={different ? 0 : undefined}
+      {...stylex.props(different && styles.localTime)}
+    >
+      {children}
+    </span>
+  )
+  if (!different) return trigger
+
+  const local = (at: number) => formatDateTime(new Date(at), locale, 'date-time')
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{trigger}</TooltipTrigger>
+      <TooltipContent>
+        {end === undefined
+          ? m.zone_localTime({ time: local(moment) })
+          : m.zone_localRange({ start: local(moment), end: local(end) })}
+      </TooltipContent>
+    </Tooltip>
   )
 }
 

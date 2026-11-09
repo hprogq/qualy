@@ -1,13 +1,6 @@
 import { RecordPager } from '../record/RecordPager.tsx'
-import { useLocale } from '@qualy/web-i18n'
 import { useQuery } from '@tanstack/react-query'
-import {
-  useHydrating,
-  usePageQueryState,
-  useLoadFailure,
-  usePageHref,
-  usePageNavigate,
-} from '@qualy/web-runtime'
+import { usePageQueryState, useLoadFailure, usePageHref, usePageNavigate } from '@qualy/web-runtime'
 import { MEMBERSHIPS_PAGE, membershipPageKey, membershipPageOf } from './membership-reads.ts'
 
 import * as stylex from '@stylexjs/stylex'
@@ -27,7 +20,7 @@ import {
 } from '@qualy/ui/screen'
 import { StatusBadge } from '../batch/StatusBadge.tsx'
 import { useWhen } from '../batch/when.ts'
-import { zoneMarkOf } from '../batch/zone.ts'
+import { BatchLocalTime } from '../batch/BatchZone.tsx'
 import { type ApiResult } from '@qualy/web-runtime/api'
 import { type assessmentApi } from '../api.ts'
 import * as commonMessages from '@qualy/web-i18n/messages'
@@ -118,32 +111,19 @@ const styles = stylex.create({
 /** one page of a person's rounds, as the api answers */
 export type BatchMembershipPage = ApiResult<typeof assessmentApi, 'assessment', 'listUserBatches'>
 
-/**
- * A moment of one round, read on that round's own clock. The list is inside
- * no round, so nothing else on it says whose clock that is: the moment
- * carries the round's offset for a reader whose device reads it on another.
- */
-function RoundMoment({ at, zone, mark }: { at: string; zone: string; mark: string | null }) {
+/** A moment read on the clock of the batch named in this row. */
+function RoundMoment({ at, zone }: { at: string; zone: string }) {
   const moment = useWhen(zone).moment(Date.parse(at))
   return (
-    <span
-      data-testid="round-moment"
-      {...(mark === null ? {} : { 'data-zone-mark': mark })}
-      {...stylex.props(styles.moment)}
-    >
-      <span {...stylex.props(styles.momentPart)}>{moment}</span>
-      {mark !== null && (
-        <>
-          {' '}
-          <span {...stylex.props(styles.momentPart)}>{mark}</span>
-        </>
-      )}
+    <span data-testid="round-moment" {...stylex.props(styles.moment)}>
+      <BatchLocalTime at={at} zone={zone}>
+        <span {...stylex.props(styles.momentPart)}>{moment}</span>
+      </BatchLocalTime>
     </span>
   )
 }
 
-/** the moment column, wider once any row carries an offset, so most fit on one line */
-const MOMENT_COLUMN = { bare: '8.5rem', marked: '11rem' } as const
+const MOMENT_COLUMN = '8.5rem'
 
 export function BatchMemberships({
   queryKey,
@@ -154,7 +134,6 @@ export function BatchMemberships({
   /** One numbered page. */
   fetchPage: (page: number) => Promise<BatchMembershipPage>
 }) {
-  const locale = useLocale()
   const failures = useLoadFailure()
   const navigate = usePageNavigate()
   // a row is a way into the round only for a reader who may open rounds
@@ -170,12 +149,6 @@ export function BatchMemberships({
       previousQuery?.meta?.['personalPage'] === identity ? previous : undefined,
   })
   const items = rows.data?.items ?? []
-  // the device is the browser's to say, never the server's that drew the page
-  const hydrating = useHydrating()
-  const marks = items.map(({ batch, membership }) =>
-    hydrating ? null : zoneMarkOf(batch.timezone, locale, membership.includedAt),
-  )
-  const momentColumn = MOMENT_COLUMN[marks.some((mark) => mark !== null) ? 'marked' : 'bare']
 
   return (
     <div {...stylex.props(styles.page)}>
@@ -192,7 +165,7 @@ export function BatchMemberships({
           <Card>
             <TableSkeleton
               rows={3}
-              columns={`minmax(0, 1.4fr) minmax(0, 1fr) 6rem ${momentColumn}`}
+              columns={`minmax(0, 1.4fr) minmax(0, 1fr) 6rem ${MOMENT_COLUMN}`}
               openable={batchReachable}
               headers={[
                 m.person_batchColumn(),
@@ -209,7 +182,7 @@ export function BatchMemberships({
             <CardEmpty>{m.person_batchesEmpty()}</CardEmpty>
           ) : (
             <Table
-              columns={`minmax(0, 1.4fr) minmax(0, 1fr) 6rem ${momentColumn}`}
+              columns={`minmax(0, 1.4fr) minmax(0, 1fr) 6rem ${MOMENT_COLUMN}`}
               openable={batchReachable}
             >
               <TableHead>
@@ -218,7 +191,7 @@ export function BatchMemberships({
                 <span>{m.person_membershipColumn()}</span>
                 <span>{m.person_includedColumn()}</span>
               </TableHead>
-              {items.map(({ batch, membership }, index) => (
+              {items.map(({ batch, membership }) => (
                 <TableRow
                   key={batch.id}
                   data-testid="person-batch"
@@ -248,11 +221,7 @@ export function BatchMemberships({
                     </Status>
                   </Cell>
                   <Cell numeric>
-                    <RoundMoment
-                      at={membership.includedAt}
-                      zone={batch.timezone}
-                      mark={marks[index] ?? null}
-                    />
+                    <RoundMoment at={membership.includedAt} zone={batch.timezone} />
                   </Cell>
                 </TableRow>
               ))}
