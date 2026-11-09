@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { Drawer as MDrawer } from '@mantine/core'
+import { Drawer as MDrawer, FocusTrap } from '@mantine/core'
 
 import clsx from 'clsx'
 import * as stylex from '@stylexjs/stylex'
@@ -111,8 +111,20 @@ const styles = stylex.create({
     flexShrink: 0,
     flexDirection: 'column',
     gap: 6,
-    padding: 24,
+    paddingBlock: 24,
+    paddingInline: 24,
   },
+  body: {
+    minHeight: 0,
+    flexGrow: 1,
+    overflowX: 'hidden',
+    overflowY: 'auto',
+    overscrollBehaviorY: 'contain',
+    scrollbarWidth: 'thin',
+    paddingInline: 24,
+    paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom))',
+  },
+  compactInset: { paddingInline: 16 },
   footer: {
     marginTop: 'auto',
     display: 'flex',
@@ -396,10 +408,13 @@ function SheetContent({
   children,
   side = 'right',
   showCloseButton = true,
+  restfulFocus = false,
   ...props
 }: React.ComponentProps<'div'> & {
   side?: 'top' | 'right' | 'bottom' | 'left'
   showCloseButton?: boolean
+  /** Focus the panel on open without spotlighting its first control. */
+  restfulFocus?: boolean
   /** the formal StyleX extension seat */
   xstyle?: stylex.StyleXStyles
 }) {
@@ -476,6 +491,7 @@ function SheetContent({
         }}
         {...props}
       >
+        {restfulFocus && <FocusTrap.InitialFocus />}
         {/* under the sheet's own title, an h2 */}
         <SideCtx value={side}>
           <HeadingRank value={2}>{children}</HeadingRank>
@@ -515,7 +531,11 @@ const outOf = (side: 'top' | 'right' | 'bottom' | 'left') =>
         ? styles.outTop
         : styles.outBottom
 
-function SheetHeader({ className, ...props }: React.ComponentProps<'div'>) {
+function SheetHeader({
+  className,
+  compact,
+  ...props
+}: React.ComponentProps<'div'> & { compact?: boolean }) {
   const fromBottom = React.use(SideCtx) === 'bottom'
   return (
     <div
@@ -524,7 +544,25 @@ function SheetHeader({ className, ...props }: React.ComponentProps<'div'>) {
       // dismisses the panel the way a phone expects
       data-sheet-grab=""
       {...props}
-      {...seatOf(stylex.props(styles.header, fromBottom && styles.grab), className)}
+      {...seatOf(
+        stylex.props(styles.header, compact && styles.compactInset, fromBottom && styles.grab),
+        className,
+      )}
+    />
+  )
+}
+
+function SheetBody({
+  className,
+  xstyle,
+  compact,
+  ...props
+}: React.ComponentProps<'div'> & { xstyle?: stylex.StyleXStyles; compact?: boolean }) {
+  return (
+    <div
+      data-slot="sheet-body"
+      {...props}
+      {...seatOf(stylex.props(styles.body, compact && styles.compactInset, xstyle), className)}
     />
   )
 }
@@ -572,6 +610,7 @@ export {
   SheetClose,
   SheetContent,
   SheetHeader,
+  SheetBody,
   SheetFooter,
   SheetTitle,
   SheetDescription,

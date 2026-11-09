@@ -23,6 +23,7 @@ import {
 } from '../dialog.tsx'
 import {
   Sheet,
+  SheetBody,
   SheetContent,
   SheetDescription,
   SheetFooter,
@@ -55,6 +56,7 @@ const styles = stylex.create({
   panelFooter: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
+    paddingInline: 16,
   },
   // a form that takes the whole handset: its own screen, not a panel over one
   panelWhole: {
@@ -68,18 +70,7 @@ const styles = stylex.create({
   formShell: {
     maxHeight: 'calc(100dvh - 2rem)',
   },
-  panelBody: {
-    // a flex child is floored at its content unless it is told otherwise,
-    // and a body that cannot shrink hands its overflow to the panel
-    minHeight: 0,
-    minWidth: 0,
-    flexGrow: 1,
-    flexShrink: 1,
-    flexBasis: '0%',
-    overflowY: 'auto',
-    overflowX: 'hidden',
-    paddingInline: 16,
-  },
+  panelBody: { paddingBottom: 0 },
   panelStack: {
     display: 'flex',
     minWidth: 0,
@@ -212,13 +203,13 @@ export function SidePanel({
         side={phone ? 'bottom' : 'right'}
         xstyle={phone ? [styles.panel, styles.panelBelow] : styles.panel}
       >
-        <SheetHeader>
+        <SheetHeader compact>
           <SheetTitle>{title}</SheetTitle>
           {description && <SheetDescription>{description}</SheetDescription>}
         </SheetHeader>
-        <div data-slot="dialog-body" {...stylex.props(styles.panelBody)}>
+        <SheetBody compact data-slot="dialog-body" xstyle={styles.panelBody}>
           <div {...stylex.props(styles.panelStack)}>{children}</div>
-        </div>
+        </SheetBody>
         {footer && <SheetFooter xstyle={styles.panelFooter}>{footer}</SheetFooter>}
       </SheetContent>
     </Sheet>

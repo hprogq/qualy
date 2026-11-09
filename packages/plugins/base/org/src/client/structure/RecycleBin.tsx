@@ -70,6 +70,7 @@ export function RecycleBin({
       title={m.bin_title()}
       meta={<span {...stylex.props(styles.note)}>{m.bin_hint()}</span>}
       closeLabel={commonMessages.action_close()}
+      restfulFocus
       testId="org-bin"
     >
       {binned.isPending ? (

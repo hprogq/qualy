@@ -41,6 +41,7 @@ function Input({
   wrapperClassName,
   wrapperXstyle,
   lead,
+  leadWidth,
   tail,
   size,
   'aria-invalid': ariaInvalid,
@@ -52,6 +53,8 @@ function Input({
   wrapperXstyle?: StyleXStyles
   /** an ornament inside the field's leading edge */
   lead?: React.ReactNode
+  /** Space reserved for a text lead instead of an icon. */
+  leadWidth?: React.CSSProperties['width']
   /** an ornament inside the field's trailing edge - a unit, a count */
   tail?: React.ReactNode
 }) {
@@ -81,7 +84,13 @@ function Input({
         }
         style={sx.style}
         classNames={{ input: className ?? '' }}
-        {...(lead === undefined ? {} : { leftSection: lead, leftSectionPointerEvents: 'none' })}
+        {...(lead === undefined
+          ? {}
+          : {
+              leftSection: lead,
+              leftSectionPointerEvents: 'none',
+              ...(leadWidth === undefined ? {} : { leftSectionWidth: leadWidth }),
+            })}
         {...(tail === undefined ? {} : { rightSection: tail, rightSectionPointerEvents: 'none' })}
         // the native size attribute; the visual size is the theme's business
         {...(size === undefined ? {} : { inputSize: String(size) })}

@@ -113,6 +113,7 @@ export function DetailSheet({
   footer,
   width = 'regular',
   fill = false,
+  restfulFocus = false,
   closeLabel,
   testId,
   children,
@@ -133,6 +134,7 @@ export function DetailSheet({
   width?: 'regular' | 'narrow' | 'wide'
   /** the panel keeps its height whatever it holds: for a list being filtered */
   fill?: boolean
+  restfulFocus?: boolean
   closeLabel: string
   testId?: string
   children: ReactNode
@@ -143,6 +145,7 @@ export function DetailSheet({
       <SheetContent
         side={phone ? 'bottom' : 'right'}
         showCloseButton={false}
+        restfulFocus={restfulFocus}
         xstyle={
           phone
             ? [styles.below, fill && styles.belowFilled]

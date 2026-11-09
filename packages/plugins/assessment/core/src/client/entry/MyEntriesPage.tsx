@@ -485,6 +485,7 @@ function Body({
       {!closed && timed && plan.data !== undefined && (
         <SubmissionDock
           key={batchId}
+          batchId={batchId}
           stages={plan.data.timeline}
           itemIds={focusedSubmission ? (submitItems.includes(open) ? [open] : []) : submitItems}
           itemTitle={focusedSubmission?.title}

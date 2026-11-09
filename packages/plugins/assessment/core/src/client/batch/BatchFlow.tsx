@@ -1,17 +1,27 @@
 import { useEffect, useRef, useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { useList } from '@qualy/web-i18n'
+import { action_close } from '@qualy/web-i18n/messages'
 import {
   ChevronsLeftIcon,
   ChevronsRightIcon,
   FilterIcon,
   LocateFixedIcon,
   MoreVerticalIcon,
+  XIcon,
 } from 'lucide-react'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
-import { Popover, PopoverContent, PopoverTitle, PopoverTrigger } from '@qualy/ui/popover'
+import {
+  Dialog,
+  DialogBody,
+  DialogClose,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@qualy/ui/dialog'
 import {
   Timeline,
   TimelineContent,
@@ -99,15 +109,63 @@ const ping = stylex.keyframes({
 })
 
 const styles = stylex.create({
-  operationsButton: {
-    color: tokens.mutedForeground,
-    fontSize: 12,
-    paddingInline: 6,
+  stageClickable: {
+    position: 'relative',
+    borderRadius: tokens.radiusMd,
+    backgroundColor: { default: 'transparent', ':hover': tokens.surfaceMuted },
+    boxShadow: { default: 'none', ':hover': `0 0 0 6px ${tokens.surfaceMuted}` },
+  },
+  operationsTrigger: {
+    position: 'static',
+    display: 'inline',
+    maxWidth: '100%',
+    padding: 0,
+    borderWidth: 0,
+    borderRadius: 2,
+    backgroundColor: 'transparent',
+    color: 'inherit',
+    font: 'inherit',
+    textAlign: 'start',
+    overflowWrap: 'anywhere',
+    cursor: 'pointer',
+    '::after': {
+      content: '""',
+      position: 'absolute',
+      inset: 0,
+      borderRadius: tokens.radiusMd,
+    },
   },
   operationsPanel: {
-    maxHeight: 'min(24rem, 65dvh)',
-    overflowY: 'auto',
+    maxHeight: 'min(38rem, calc(100dvh - 2rem))',
+    overflow: 'hidden',
+    padding: 0,
+    gap: 0,
     overflowWrap: 'anywhere',
+  },
+  operationsHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingInlineStart: 20,
+    paddingInlineEnd: 12,
+    paddingBlock: 10,
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.divider,
+    backgroundColor: tokens.surfaceMuted,
+  },
+  operationsClose: { flexShrink: 0 },
+  operationsBody: {
+    display: 'flex',
+    minHeight: 0,
+    flexDirection: 'column',
+    gap: 14,
+    overflowY: 'auto',
+    overscrollBehaviorY: 'contain',
+    scrollbarWidth: 'thin',
+    margin: 0,
+    paddingInline: 20,
+    paddingBlock: 16,
   },
   operationGroup: { fontSize: 12, fontWeight: 600, margin: 0 },
   operationList: {
@@ -115,10 +173,22 @@ const styles = stylex.create({
     gap: 8,
     marginTop: 6,
     marginBottom: 0,
-    paddingInlineStart: 18,
+    marginInlineStart: 2,
+    borderInlineStartWidth: 1,
+    borderInlineStartStyle: 'solid',
+    borderInlineStartColor: tokens.divider,
+    paddingInlineStart: 12,
+    listStyleType: 'none',
   },
   operationName: { display: 'block', fontWeight: 500 },
   operationHint: { display: 'block', color: tokens.mutedForeground },
+  operationContext: { margin: 0, color: tokens.mutedForeground },
+  scopeAction: { position: 'relative', zIndex: 1 },
+  detailsHint: {
+    color: tokens.mutedForeground,
+    fontSize: 12,
+    marginBlock: 0,
+  },
   pulse: {
     position: 'absolute',
     width: 10,
@@ -221,7 +291,7 @@ const styles = stylex.create({
   },
   zone: {
     display: 'block',
-    marginTop: 12,
+    marginTop: 24,
   },
   foldIcon: {
     width: 14,
@@ -333,14 +403,17 @@ const styles = stylex.create({
  *
  * Every stage says something here, including the ones nobody has scheduled:
  * a blank where a date belongs reads as a screen that failed rather than as
- * a decision still to be made. What the stage is waiting for is a separate
- * sentence, and the server only sends it while there is no time to say.
+ * a decision still to be made. When available, the reason it is still
+ * waiting is more informative than the generic pending label.
  */
 const useSaid = () => {
   const when = useWhen()
 
   return (stage: FlowStage): string => {
-    if (stage.at === null) return m.flow_pending()
+    if (stage.at === null) {
+      const note = stage.note.trim()
+      return note === '' ? m.flow_pending() : m.flow_pendingWithNote({ note })
+    }
     return when.span(stage.at, stage.until) ?? m.flow_fromPending({ when: when.moment(stage.at) })
   }
 }
@@ -416,7 +489,7 @@ function ScopeItems({ names }: { names: readonly string[] }) {
           type="button"
           aria-expanded={whole}
           onClick={() => setWhole((open) => !open)}
-          {...stylex.props(styles.scopeToggle)}
+          {...stylex.props(styles.scopeToggle, styles.scopeAction)}
         >
           {(whole ? m.flow_scopeFewer : m.flow_scopeAll)()}
         </button>
@@ -425,59 +498,83 @@ function ScopeItems({ names }: { names: readonly string[] }) {
   )
 }
 
-function StageOperations({ stage }: { stage: FlowStage }) {
-  if (stage.operations === undefined) return null
+function StageName({ stage, when }: { stage: FlowStage; when: string }) {
   const opened = new Set(stage.operations)
   return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <Button
-          variant="ghost"
-          size="xs"
-          className={stylex.props(styles.operationsButton).className}
+    <Dialog>
+      <DialogTrigger asChild>
+        <button
+          type="button"
+          {...stylex.props(styles.operationsTrigger)}
           aria-label={m.flow_operationsFor({ stage: stage.name })}
+          aria-haspopup="dialog"
           data-testid="stage-operations"
         >
-          {m.flow_operations()}
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent
-        aria-label={m.flow_operationsFor({ stage: stage.name })}
-        width="min(21rem, calc(100vw - 2rem))"
-        fitViewport
+          {stage.name}
+        </button>
+      </DialogTrigger>
+      <DialogContent
+        size="28rem"
+        restfulFocus
+        showCloseButton={false}
         xstyle={styles.operationsPanel}
       >
-        <PopoverTitle>{stage.name}</PopoverTitle>
-        {opened.size === 0 && <p>{m.flow_operationsNone()}</p>}
-        {OPERATION_GROUPS.map(({ key, codes }) => {
-          const visible = codes.filter((code) => opened.has(code))
-          if (visible.length === 0) return null
-          return (
-            <div key={key}>
-              <p {...stylex.props(styles.operationGroup)}>{GROUP_LABELS[key]()}</p>
-              <ul {...stylex.props(styles.operationList)}>
-                {visible.map((code) => (
-                  <li key={code} data-operation={code}>
-                    <span {...stylex.props(styles.operationName)}>
-                      {PERMISSION_WORDS[code].label()}
-                    </span>
-                    <span {...stylex.props(styles.operationHint)}>
-                      {PERMISSION_WORDS[code].hint()}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )
-        })}
-      </PopoverContent>
-    </Popover>
+        <DialogHeader xstyle={styles.operationsHead}>
+          <DialogTitle>{stage.name}</DialogTitle>
+          <DialogClose asChild>
+            <Button
+              data-slot="dialog-close"
+              variant="ghost"
+              size="icon-sm"
+              className={stylex.props(styles.operationsClose).className}
+              aria-label={action_close()}
+            >
+              <XIcon aria-hidden />
+            </Button>
+          </DialogClose>
+        </DialogHeader>
+        <DialogBody tabIndex={0} xstyle={styles.operationsBody}>
+          <p {...stylex.props(styles.operationContext)}>{when}</p>
+          {stage.description !== '' && (
+            <p {...stylex.props(styles.operationContext)}>{stage.description}</p>
+          )}
+          {stage.operations !== undefined && (
+            <>
+              <p {...stylex.props(styles.operationGroup)}>{m.flow_operationsTitle()}</p>
+              {opened.size === 0 && <p>{m.flow_operationsNone()}</p>}
+            </>
+          )}
+          {OPERATION_GROUPS.map(({ key, codes }) => {
+            const visible = codes.filter((code) => opened.has(code))
+            if (visible.length === 0) return null
+            return (
+              <div key={key}>
+                <p {...stylex.props(styles.operationGroup)}>{GROUP_LABELS[key]()}</p>
+                <ul {...stylex.props(styles.operationList)}>
+                  {visible.map((code) => (
+                    <li key={code} data-operation={code}>
+                      <span {...stylex.props(styles.operationName)}>
+                        {PERMISSION_WORDS[code].label()}
+                      </span>
+                      <span {...stylex.props(styles.operationHint)}>
+                        {PERMISSION_WORDS[code].hint()}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )
+          })}
+        </DialogBody>
+      </DialogContent>
+    </Dialog>
   )
 }
 
 /** one stage, said the same way whichever direction the timeline runs */
 function Stage({ stage, upright }: { stage: FlowStage; upright: boolean }) {
   const said = useSaid()
+  const when = said(stage)
 
   const faded = stage.status === 'ended'
   return (
@@ -486,87 +583,83 @@ function Stage({ stage, upright }: { stage: FlowStage; upright: boolean }) {
       {/* a hairline, not a bar: at two pixels the rail read as a ruled
           margin down the page and out-shouted the words beside it */}
       <TimelineSeparator xstyle={[flow.rail, upright ? flow.railUpright : flow.railAcross]} />
-      <TimelineHeader xstyle={flow.head}>
-        <TimelineTitle
-          xstyle={[
-            stage.status === 'current' && flow.titleNow,
-            stage.status === 'future' && flow.titleLater,
-            stage.status === 'ended' && flow.titleDone,
-          ]}
-        >
-          {stage.name}
-        </TimelineTitle>
-        <Badge
-          variant={stage.status === 'current' ? 'default' : 'secondary'}
-          className={
-            stylex.props(
-              styles.stageBadge,
-              stage.status === 'ended' && styles.stageBadgeEnded,
-              stage.status === 'future' && styles.stageBadgeFuture,
-            ).className
-          }
-        >
-          {STATUS[stage.status]()}
-        </Badge>
-        <StageOperations stage={stage} />
-      </TimelineHeader>
-      {/* the whole row fades together, not only its name: a finished stage
+      <div {...stylex.props(styles.stageClickable)}>
+        <TimelineHeader xstyle={flow.head}>
+          <TimelineTitle
+            xstyle={[
+              stage.status === 'current' && flow.titleNow,
+              stage.status === 'future' && flow.titleLater,
+              stage.status === 'ended' && flow.titleDone,
+            ]}
+          >
+            <StageName stage={stage} when={when} />
+          </TimelineTitle>
+          <Badge
+            variant={stage.status === 'current' ? 'default' : 'secondary'}
+            className={
+              stylex.props(
+                styles.stageBadge,
+                stage.status === 'ended' && styles.stageBadgeEnded,
+                stage.status === 'future' && styles.stageBadgeFuture,
+              ).className
+            }
+          >
+            {STATUS[stage.status]()}
+          </Badge>
+        </TimelineHeader>
+        {/* the whole row fades together, not only its name: a finished stage
           with a full-strength date under a pale title reads as two stages */}
-      <TimelineDate
-        xstyle={[flow.date, stage.status === 'ended' && flow.faded]}
-        // whether this stage has a time at all, said as a fact: the sentence
-        // under it is copy, and "no time yet" is not
-        data-testid="stage-when"
-        data-when={stage.at === null ? 'unscheduled' : 'scheduled'}
-      >
-        {stage.at === null ? (
-          said(stage)
-        ) : (
-          <BatchLocalTime at={stage.at} until={stage.until}>
-            {said(stage)}
-          </BatchLocalTime>
-        )}
-      </TimelineDate>
-      {/* who and what the stage is for, when that is not everybody and
+        <TimelineDate
+          xstyle={[flow.date, stage.status === 'ended' && flow.faded]}
+          // whether this stage has a time at all, said as a fact: the sentence
+          // under it is copy, and "no time yet" is not
+          data-testid="stage-when"
+          data-when={stage.at === null ? 'unscheduled' : 'scheduled'}
+        >
+          {stage.at === null ? (
+            when
+          ) : (
+            <BatchLocalTime at={stage.at} until={stage.until}>
+              {when}
+            </BatchLocalTime>
+          )}
+        </TimelineDate>
+        {/* who and what the stage is for, when that is not everybody and
           everything: a stage that reopens one question is a different stage
           from one that opens the paper, and it says so before anything else */}
-      {(stage.onlyItems !== null || stage.somePeople) && (
-        <TimelineContent
-          xstyle={[flow.note, faded && flow.faded]}
-          data-testid="stage-scope"
-          data-items={stage.onlyItems === null ? 'all' : String(stage.onlyItems.length)}
-          data-people={stage.somePeople ? 'limited' : 'all'}
-          // for a reader on the roster, whether the stage admits them: the
-          // line says so in their own terms rather than about "some people"
-          data-reader={stage.forReader === null ? undefined : stage.forReader ? 'in' : 'out'}
-        >
-          <span {...stylex.props(styles.scopeLine)}>
-            <FilterIcon aria-hidden {...stylex.props(styles.scopeGlyph)} />
-            <span {...stylex.props(styles.scopeWords)}>
-              {stage.onlyItems !== null && <ScopeItems names={stage.onlyItems} />}
-              {stage.somePeople && (
-                <span>
-                  {(stage.forReader === true
-                    ? m.flow_scopeYou
-                    : stage.forReader === false
-                      ? m.flow_scopeNotYou
-                      : m.flow_scopePeople)()}
-                </span>
-              )}
+        {(stage.onlyItems !== null || stage.somePeople) && (
+          <TimelineContent
+            xstyle={[flow.note, faded && flow.faded]}
+            data-testid="stage-scope"
+            data-items={stage.onlyItems === null ? 'all' : String(stage.onlyItems.length)}
+            data-people={stage.somePeople ? 'limited' : 'all'}
+            // for a reader on the roster, whether the stage admits them: the
+            // line says so in their own terms rather than about "some people"
+            data-reader={stage.forReader === null ? undefined : stage.forReader ? 'in' : 'out'}
+          >
+            <span {...stylex.props(styles.scopeLine)}>
+              <FilterIcon aria-hidden {...stylex.props(styles.scopeGlyph)} />
+              <span {...stylex.props(styles.scopeWords)}>
+                {stage.onlyItems !== null && <ScopeItems names={stage.onlyItems} />}
+                {stage.somePeople && (
+                  <span>
+                    {(stage.forReader === true
+                      ? m.flow_scopeYou
+                      : stage.forReader === false
+                        ? m.flow_scopeNotYou
+                        : m.flow_scopePeople)()}
+                  </span>
+                )}
+              </span>
             </span>
-          </span>
-        </TimelineContent>
-      )}
-      {/* what it waits on first, then what it is for: one is about now and
-          the other is about the stage whenever it happens */}
-      {stage.note !== '' && (
-        <TimelineContent xstyle={[flow.note, faded && flow.faded]}>{stage.note}</TimelineContent>
-      )}
-      {stage.description !== '' && (
-        <TimelineContent xstyle={[flow.note, faded && flow.faded]}>
-          {stage.description}
-        </TimelineContent>
-      )}
+          </TimelineContent>
+        )}
+        {stage.description !== '' && (
+          <TimelineContent xstyle={[flow.note, faded && flow.faded]}>
+            {stage.description}
+          </TimelineContent>
+        )}
+      </div>
     </>
   )
 }
@@ -631,6 +724,7 @@ export function BatchFlow({
       </Timeline>
       {/* whose clock the dates above are on, under the last of them */}
       <ZoneNote xstyle={styles.zone} />
+      <p {...stylex.props(styles.detailsHint)}>{m.flow_detailsHint()}</p>
     </>
   )
 }

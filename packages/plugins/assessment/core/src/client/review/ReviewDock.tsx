@@ -18,10 +18,12 @@ export function ReviewDock({ batchId }: { batchId: string }) {
     timeline.data === undefined || timeline.data.timeline.length === 0
       ? null
       : reviewWindowOf(timeline.data.timeline)
-  return window === null ? null : <ReviewDockNotice key={batchId} window={window} />
+  return window === null ? null : (
+    <ReviewDockNotice key={batchId} batchId={batchId} window={window} />
+  )
 }
 
-function ReviewDockNotice({ window }: { window: ReviewWindow }) {
+function ReviewDockNotice({ batchId, window }: { batchId: string; window: ReviewWindow }) {
   const now = useDeadlineNow(turnOf(window))
   const locale = useLocale()
   const zone = useBatchZone()
@@ -71,6 +73,7 @@ function ReviewDockNotice({ window }: { window: ReviewWindow }) {
   const single = window.kind === 'ended' || window.kind === 'none'
   return (
     <DeadlineDock
+      batchId={batchId}
       id="review-dock"
       closed={!open}
       title={single ? said : stage}

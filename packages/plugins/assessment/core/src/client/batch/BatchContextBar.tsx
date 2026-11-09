@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { AtWidth } from '@qualy/ui/at-width'
@@ -18,11 +18,12 @@ import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { Button } from '@qualy/ui/button'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { VisuallyHidden } from '@qualy/ui/visually-hidden'
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@qualy/ui/sheet'
+import { Sheet, SheetBody, SheetContent, SheetHeader, SheetTitle } from '@qualy/ui/sheet'
 import { useIsBelow } from '@qualy/ui/use-mobile'
 import { assessmentApi } from '../api.ts'
 
 import { BatchFlow } from './BatchFlow.tsx'
+import { onBatchFlowRequest } from './flow-request.ts'
 import { BatchZone, useBatchZoneNotice } from './BatchZone.tsx'
 import { BatchProgress } from './BatchProgress.tsx'
 import { batchProgressControl } from './countdown.stylex.ts'
@@ -243,16 +244,6 @@ const styles = stylex.create({
     fontWeight: 400,
     color: tokens.mutedForeground,
   },
-  // the same margin the sheet's own head keeps, so the plan starts under the
-  // title rather than inset from it; the foot clears the device's gesture bar
-  // the way every other sheet's does
-  flowBody: {
-    minHeight: 0,
-    flexGrow: 1,
-    overflowY: 'auto',
-    paddingInline: 24,
-    paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom))',
-  },
 })
 
 // Which batch is open and where it stands.
@@ -283,6 +274,10 @@ export default function BatchContextBar() {
   })
   const batch = detail.data?.batch
   const absent = useBatchAbsence(batchId, detail)
+  useEffect(() => {
+    if (absent !== null || !shaped) return
+    return onBatchFlowRequest(batchId, () => setFlowOpen(true))
+  }, [absent, batchId, shaped])
   useBatchZoneNotice(batchId, absent === null && batch?.id === batchId ? batch.timezone : undefined)
   // the workspace speaks for itself: who this reader is in the open batch,
   // straight from the server's projection, withdrawn while a batch loads so
@@ -426,11 +421,11 @@ export default function BatchContextBar() {
           <SheetHeader>
             <SheetTitle>{m.flow_title()}</SheetTitle>
           </SheetHeader>
-          <div {...stylex.props(styles.flowBody)}>
+          <SheetBody>
             <BatchZone zone={batch?.timezone}>
               <BatchFlow timeline={stages} />
             </BatchZone>
-          </div>
+          </SheetBody>
         </SheetContent>
       </Sheet>
     </div>

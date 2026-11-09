@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from 'react'
 import { useDocumentNow, useHydrating } from '@qualy/web-runtime'
-import { TimerIcon, LockIcon } from 'lucide-react'
+import { ListTreeIcon, TimerIcon, LockIcon } from 'lucide-react'
 import * as stylex from '@stylexjs/stylex'
 import { Ticker } from '@qualy/ui/ticker'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
@@ -17,6 +17,7 @@ import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import type { Message } from '@qualy/i18n-contract'
 import { countdownTone, spanMessage, spanOf } from './progress.ts'
 import { countdownColors } from './countdown.stylex.ts'
+import { openBatchFlow } from './flow-request.ts'
 import * as m from '#messages'
 
 const CLEARANCE = 'clamp(24px, 8cqh, 48px)'
@@ -63,8 +64,6 @@ const styles = stylex.create({
     minWidth: 0,
     alignItems: 'center',
     columnGap: 12,
-    rowGap: 4,
-    flexWrap: 'wrap',
     minHeight: 48,
     paddingInline: 16,
     paddingBlock: 12,
@@ -82,6 +81,29 @@ const styles = stylex.create({
     touchAction: 'none',
     userSelect: 'none',
     cursor: 'grab',
+  },
+  content: {
+    display: 'flex',
+    alignItems: 'center',
+    columnGap: 12,
+    rowGap: 4,
+    flexWrap: 'wrap',
+    minWidth: 0,
+  },
+  timelineButton: {
+    flexShrink: 0,
+    display: 'grid',
+    placeItems: 'center',
+    width: 28,
+    height: 28,
+    marginBlock: -4,
+    marginInlineEnd: -6,
+    padding: 0,
+    borderWidth: 0,
+    borderRadius: tokens.radiusSm,
+    backgroundColor: { default: 'transparent', ':hover': tokens.surfaceMuted },
+    color: { default: tokens.mutedForeground, ':hover': tokens.foreground },
+    cursor: 'pointer',
   },
   held: { cursor: 'grabbing' },
   snap: {
@@ -167,6 +189,7 @@ export function deadlineWords(at: number, now: number): string {
 
 export function DeadlineDock({
   id,
+  batchId,
   title,
   detail,
   aside,
@@ -176,6 +199,7 @@ export function DeadlineDock({
   facts,
 }: {
   id: string
+  batchId: string
   title: string
   detail?: string | undefined
   aside?: ReactNode
@@ -335,40 +359,53 @@ export function DeadlineDock({
           onPointerCancel={(event) => finish(event, true)}
           onLostPointerCapture={(event) => finish(event, true)}
         >
+          <div {...stylex.props(styles.content)}>
+            <button
+              type="button"
+              aria-label={m.deadline_move()}
+              title={m.deadline_move()}
+              onKeyDown={key}
+              onClick={(event) => {
+                if (event.detail === 0) home()
+              }}
+              {...stylex.props(styles.handle)}
+            >
+              <Icon aria-hidden className={stylex.props(styles.icon).className} />
+            </button>
+            <span {...stylex.props(styles.title)}>{title}</span>
+            {detail && <span {...stylex.props(styles.detail)}>{detail}</span>}
+            {countdown && (
+              <span
+                data-slot="deadline-countdown"
+                {...stylex.props(styles.figures, countdownColors[tone])}
+              >
+                {countdown.progress != null && (
+                  <span aria-hidden {...stylex.props(styles.track)}>
+                    <span
+                      data-slot="deadline-progress"
+                      {...stylex.props(styles.fill)}
+                      style={{ width: `${Math.round(countdown.progress * 100)}%` }}
+                    />
+                  </span>
+                )}
+                <span aria-label={countdown.text}>
+                  <Ticker value={countdown.text} />
+                </span>
+              </span>
+            )}
+            {aside && <span {...stylex.props(styles.detail)}>{aside}</span>}
+          </div>
           <button
             type="button"
-            aria-label={m.deadline_move()}
-            title={m.deadline_move()}
-            onKeyDown={key}
-            onClick={(event) => {
-              if (event.detail === 0) home()
-            }}
-            {...stylex.props(styles.handle)}
+            aria-haspopup="dialog"
+            aria-label={m.flow_openTimeline()}
+            title={m.flow_openTimeline()}
+            {...stylex.props(styles.timelineButton)}
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={() => openBatchFlow(batchId)}
           >
-            <Icon aria-hidden className={stylex.props(styles.icon).className} />
+            <ListTreeIcon aria-hidden className={stylex.props(styles.icon).className} />
           </button>
-          <span {...stylex.props(styles.title)}>{title}</span>
-          {detail && <span {...stylex.props(styles.detail)}>{detail}</span>}
-          {countdown && (
-            <span
-              data-slot="deadline-countdown"
-              {...stylex.props(styles.figures, countdownColors[tone])}
-            >
-              {countdown.progress != null && (
-                <span aria-hidden {...stylex.props(styles.track)}>
-                  <span
-                    data-slot="deadline-progress"
-                    {...stylex.props(styles.fill)}
-                    style={{ width: `${Math.round(countdown.progress * 100)}%` }}
-                  />
-                </span>
-              )}
-              <span aria-label={countdown.text}>
-                <Ticker value={countdown.text} />
-              </span>
-            </span>
-          )}
-          {aside && <span {...stylex.props(styles.detail)}>{aside}</span>}
         </div>
       </div>
     </div>

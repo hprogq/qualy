@@ -5,7 +5,7 @@ import { ClockIcon, RouteIcon } from 'lucide-react'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { Button } from '@qualy/ui/button'
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@qualy/ui/sheet'
+import { Sheet, SheetBody, SheetContent, SheetHeader, SheetTitle } from '@qualy/ui/sheet'
 import { useIsBelow } from '@qualy/ui/use-mobile'
 
 import { BatchFlow } from './BatchFlow.tsx'
@@ -107,11 +107,6 @@ const styles = stylex.create({
     width: 32,
     height: 32,
     padding: 0,
-  },
-  sheetBody: {
-    overflowY: 'auto',
-    paddingInline: 16,
-    paddingBottom: 24,
   },
 })
 
@@ -217,9 +212,9 @@ export function PhaseContextBar({
           <SheetHeader>
             <SheetTitle>{m.flow_title()}</SheetTitle>
           </SheetHeader>
-          <div {...stylex.props(styles.sheetBody)}>
+          <SheetBody>
             <BatchFlow timeline={timeline} />
-          </div>
+          </SheetBody>
         </SheetContent>
       </Sheet>
     </>

@@ -33,6 +33,7 @@ it('keeps the server-painted dock still, drags away, and snaps back to its outli
       />
       <DeadlineDock
         id="deadline"
+        batchId="deadline-fixture"
         title="正式填报"
         detail="23:00"
         countdown={{

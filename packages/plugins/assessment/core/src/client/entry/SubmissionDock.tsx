@@ -6,10 +6,12 @@ import { submissionWindowOf, type SubmissionStage } from './submission-window.ts
 import * as m from '#messages'
 
 export function SubmissionDock({
+  batchId,
   stages,
   itemIds,
   itemTitle,
 }: {
+  batchId: string
   stages: readonly SubmissionStage[]
   itemIds: readonly string[]
   itemTitle: string | undefined
@@ -30,6 +32,7 @@ export function SubmissionDock({
           : m.deadline_filingNoDate()
     return (
       <DeadlineDock
+        batchId={batchId}
         id="submission-dock"
         workbench
         closed={window !== null || itemIds.length === 0}
@@ -49,6 +52,7 @@ export function SubmissionDock({
   )
   return (
     <DeadlineDock
+      batchId={batchId}
       id="submission-dock"
       workbench
       facts={{ 'data-window': 'closes' }}

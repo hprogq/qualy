@@ -1,7 +1,9 @@
 import BatchPhasesPage from '../src/client/BatchPhasesPage.tsx'
 import BatchSettingsPage from '../src/client/BatchSettingsPage.tsx'
+import BatchContextBar from '../src/client/batch/BatchContextBar.tsx'
 import { BatchFlow } from '../src/client/batch/BatchFlow.tsx'
 import { BatchZone } from '../src/client/batch/BatchZone.tsx'
+import { DeadlineDock } from '../src/client/batch/DeadlineDock.tsx'
 import WorkspaceShell from '@qualy/plugin-layout-default/client/WorkspaceShell'
 import type { ReactNode } from 'react'
 import { Link, Route, Routes } from 'react-router'
@@ -751,7 +753,7 @@ describe('the stage progress', () => {
       phaseId: 'supplement',
       displayName: '补充提交',
       description: '',
-      entryNote: '',
+      entryNote: '待复审结束后确定',
       status: 'future' as const,
       entry: { kind: 'pending' as const, at: null },
       operations: [],
@@ -790,9 +792,20 @@ describe('the stage progress', () => {
   it('opens a stage’s own read-only action list, including stages with no available action', async () => {
     await mount(3)
     const triggers = page.getByTestId('stage-operations')
-    await triggers.nth(0).click()
+    const date = page.getByTestId('stage-when').nth(0).element()
+    const box = date.getBoundingClientRect()
+    const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2)
+    expect(hit?.closest('button')).toBe(triggers.nth(0).element())
+    ;(hit as HTMLElement).click()
     const panel = page.getByRole('dialog')
     await expect.element(panel).toBeVisible()
+    const close = panel.getByRole('button', { name: '关闭' })
+    const heading = panel.getByRole('heading')
+    const center = (node: Element) => {
+      const rect = node.getBoundingClientRect()
+      return rect.y + rect.height / 2
+    }
+    expect(Math.abs(center(close.element()) - center(heading.element()))).toBeLessThan(1)
     expect(panel.element().querySelectorAll('li[data-operation]')).toHaveLength(1)
     expect(panel.element().querySelector('li')?.dataset['operation']).toBe(
       'assessment.entry.submit',
@@ -802,6 +815,47 @@ describe('the stage progress', () => {
     await triggers.nth(1).click()
     await expect.element(panel).toBeVisible()
     expect(panel.element().querySelectorAll('li[data-operation]')).toHaveLength(0)
+    expect(panel.element().textContent).toContain('开始时间待复审结束后确定')
+    await close.click()
+    await expect.element(panel).not.toBeInTheDocument()
+  })
+
+  it('opens the batch header’s timeline from the icon-only deadline action', async () => {
+    await page.viewport(1280, 800)
+    await renderScreen({
+      client: fakeClient({
+        app: { getManifest: () => Effect.succeed({ ...emptyManifest(), pages: PAGES }) },
+        assessment: stubs({
+          getTimeline: () => Effect.succeed({ timeline: flow(0) }),
+          listBatches: () => Effect.succeed({ items: [], total: 0 }),
+        }),
+      }),
+      routes: [
+        { path: '/assessment/batches', element: <p>batches</p> },
+        {
+          path: '/assessment/batches/:batchId/phases',
+          element: (
+            <>
+              <BatchContextBar />
+              <DeadlineDock id="test-deadline" batchId={BATCH_ID} title="正式填报" />
+            </>
+          ),
+        },
+      ],
+      route: `/assessment/batches/${BATCH_ID}/phases`,
+    })
+    const header = page.getByTestId('stage-key')
+    await expect.element(header).toBeVisible()
+    const icon = page.getByTestId('test-deadline').getByRole('button', { name: '查看完整时间轴' })
+    expect(icon.element().textContent).toBe('')
+    await icon.click()
+    const timeline = page.getByRole('dialog', { name: '阶段进度' })
+    await expect.element(timeline).toBeVisible()
+    await expect.element(timeline.getByTestId('stage-operations').first()).toBeVisible()
+    await userEvent.keyboard('{Escape}')
+    await expect.element(timeline).not.toBeInTheDocument()
+    await header.click()
+    await expect.element(timeline).toBeVisible()
   })
 
   it('names every item when there are only a few', async () => {

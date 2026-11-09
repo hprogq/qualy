@@ -421,9 +421,17 @@ function DialogContent({
   )
 }
 
-function DialogHeader({ className, ...props }: React.ComponentProps<'div'>) {
+function DialogHeader({
+  className,
+  xstyle,
+  ...props
+}: React.ComponentProps<'div'> & { xstyle?: stylex.StyleXStyles }) {
   return (
-    <div data-slot="dialog-header" {...props} {...seatOf(stylex.props(styles.header), className)} />
+    <div
+      data-slot="dialog-header"
+      {...props}
+      {...seatOf(stylex.props(styles.header, xstyle), className)}
+    />
   )
 }
 

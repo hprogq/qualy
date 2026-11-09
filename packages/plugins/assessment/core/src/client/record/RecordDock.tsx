@@ -23,10 +23,10 @@ function RecordSchedule({ batchId }: { batchId: string }) {
   // not a closed one; wait for data instead of saying no stage opens it.
   if (!timeline?.some((stage) => stage.recording !== undefined)) return null
   const window = stageWindowOf(timeline, (stage) => stage.recording === true)
-  return <RecordNotice window={window} />
+  return <RecordNotice batchId={batchId} window={window} />
 }
 
-function RecordNotice({ window }: { window: StageWindow }) {
+function RecordNotice({ batchId, window }: { batchId: string; window: StageWindow }) {
   const at = turnOf(window)
   const now = useDeadlineNow(at)
   const zone = useBatchZone()
@@ -60,6 +60,7 @@ function RecordNotice({ window }: { window: StageWindow }) {
       : null
   return (
     <DeadlineDock
+      batchId={batchId}
       id="record-dock"
       title={'stage' in window ? window.stage : m.record_tab()}
       detail={detail}
