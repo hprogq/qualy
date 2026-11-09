@@ -148,9 +148,9 @@ export function FormDialog({
             {description && <SheetDescription>{description}</SheetDescription>}
           </SheetHeader>
           {/* the same name as a dialog's body: it is the part that scrolls */}
-          <div data-slot="dialog-body" {...stylex.props(styles.panelBody)}>
+          <SheetBody data-slot="dialog-body" xstyle={styles.panelBody}>
             <div {...stylex.props(styles.panelStack)}>{children}</div>
-          </div>
+          </SheetBody>
           {footer && <SheetFooter xstyle={styles.panelFooter}>{footer}</SheetFooter>}
         </SheetContent>
       </Sheet>
