@@ -92,8 +92,15 @@ async function rosterReads(batchId: string, view: RosterView) {
   // the page's totals, asked once its rows are known, as the page asks them;
   // rows that miss the html are the page's to total when they land
   const known = await within(accounts.exit)
-  const rows = known === undefined ? undefined : settle(known)
-  const ids = rows?.kind === 'answer' ? rows.value.items.map((row) => row.id) : []
+  if (known === undefined) {
+    // The surrounding Suspense already draws the roster's outline. Keep it
+    // until the rows can be handed over in the same snapshot as the real
+    // table. A late cache update can otherwise race that table's hydration.
+    await accounts.exit
+    return answersOf([accounts, units])
+  }
+  const rows = settle(known)
+  const ids = rows.kind === 'answer' ? rows.value.items.map((row) => row.id) : []
   const totals = { params: { batchId }, query: { participantIds: ids } }
   return answersOf([
     accounts,
