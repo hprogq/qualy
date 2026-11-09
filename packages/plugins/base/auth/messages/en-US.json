@@ -112,7 +112,7 @@
   "person_status": "Status",
   "person_active": "Active",
   "person_disabled": "Disabled",
-  "person_placement": "Where they are",
+  "person_placement": "Organization",
   "person_roles": "Roles",
   "person_noRoles": "No roles yet.",
   "person_roleTenantWide": "everywhere",
