@@ -3270,7 +3270,7 @@ describe('review waiting for a reviewer', () => {
     expect(page.getByTestId('batch-band').element().contains(notice.element())).toBe(false)
     const dock = page.getByTestId('page-notices').element()
     expect(dock.contains(notice.element())).toBe(true)
-    expect(getComputedStyle(dock).position).toBe('fixed')
+    expect(getComputedStyle(dock.parentElement!).position).toBe('sticky')
     expect(notice.element().hasAttribute('title')).toBe(false)
     expect(notice.element().querySelector('[title]')).toBeNull()
     const bandHeight = page.getByTestId('batch-band').element().getBoundingClientRect().height
@@ -3361,7 +3361,7 @@ describe('review waiting for a reviewer', () => {
     expect(notice.element().querySelector('[title]')).toBeNull()
     expect(page.getByTestId('review-gap-notice').elements()).toHaveLength(0)
     const dock = page.getByTestId('page-notices').element()
-    expect(getComputedStyle(dock).position).toBe('fixed')
+    expect(getComputedStyle(dock.parentElement!).position).toBe('sticky')
     expect(dock.contains(notice.element())).toBe(true)
     await notice.click()
     const dialog = page.getByTestId('unreachable-dialog')

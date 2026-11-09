@@ -2,6 +2,7 @@ import { QueryHydration } from '@qualy/web-runtime/query-hydration'
 import { renderRequest } from '@qualy/web-rsc/request'
 import { answersOf, settle } from '@qualy/web-rsc/queries'
 import { accessQueryOf, accessViewOf } from './access/access-place.ts'
+import { adminAlertReads } from './batch/admin-alert-reads.ts'
 import { batchIdOf, keyed, readBatch } from './batch/batch-reads.server.ts'
 import { holdsStanding } from './batch/capabilities.ts'
 import BatchAccessPage from './BatchAccessPage.tsx'
@@ -28,7 +29,7 @@ export default async function BatchAccess({
     params: { batchId },
     query: accessQueryOf(accessViewOf((key) => search.get(key) ?? '')),
   }
-  const sync = { params: { batchId }, query: { limit: '1' } }
+  const sync = adminAlertReads(batchId).access
   const handed = await answersOf([
     keyed('listAccess', staff, (client) => client.assessment.listAccess(staff)),
     keyed('previewAccessSync', sync, (client) => client.assessment.previewAccessSync(sync)),

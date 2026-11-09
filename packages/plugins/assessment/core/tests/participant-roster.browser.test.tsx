@@ -1812,7 +1812,7 @@ describe('people the review steps find nowhere', () => {
       expect(placed.bottom).toBeLessThan(high)
       expect(placed.left).toBeGreaterThanOrEqual(0)
       expect(placed.right).toBeLessThanOrEqual(wide)
-      expect(getComputedStyle(box.element()).position).toBe('fixed')
+      expect(getComputedStyle(box.element().parentElement!).position).toBe('sticky')
       const heading = page.getByTestId('roster-heading')
       expect(heading.element().contains(box.element())).toBe(false)
       expect(box.element().querySelector('[title]')).toBeNull()

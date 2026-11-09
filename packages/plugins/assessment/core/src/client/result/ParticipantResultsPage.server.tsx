@@ -1,6 +1,7 @@
 import { renderRequest } from '@qualy/web-rsc/request'
 import { answersOf, settle, within } from '@qualy/web-rsc/queries'
 import { batchIdOf, keyed, namesRecord, readBatch } from '../batch/batch-reads.server.ts'
+import { adminAlertReads, owesAdministration } from '../batch/admin-alert-reads.ts'
 import { holdsStanding } from '../batch/capabilities.ts'
 import { queueReadOf } from '../review/inbox-reads.ts'
 import { rosterQueryOf, rosterViewOf, type RosterView } from '../roster/roster-place.ts'
@@ -49,7 +50,7 @@ async function prepareResults(params: Readonly<Record<string, string | undefined
   const view = rosterViewOf((key) => search.get(key) ?? '')
   const participantId = search.get('participant') ?? ''
   return participantId === ''
-    ? rosterReads(batchId, view)
+    ? rosterReads(batchId, view, owesAdministration(subject.value.batch))
     : accountReads(batchId, participantId, view, subject.value.batch.capabilities.review)
 }
 
@@ -61,7 +62,7 @@ const pageOfRoster = (batchId: string, view: RosterView) => {
   )
 }
 
-async function rosterReads(batchId: string, view: RosterView) {
+async function rosterReads(batchId: string, view: RosterView, canReconcile: boolean) {
   const tree = {
     params: { batchId },
     query: {
@@ -71,6 +72,14 @@ async function rosterReads(batchId: string, view: RosterView) {
   }
   const accounts = pageOfRoster(batchId, view)
   const units = keyed('listRosterUnits', tree, (client) => client.assessment.listRosterUnits(tree))
+  const placementInput = adminAlertReads(batchId).placements
+  const notices = canReconcile
+    ? [
+        keyed('listParticipantPlacements', placementInput, (client) =>
+          client.assessment.listParticipantPlacements(placementInput),
+        ),
+      ]
+    : []
   // the page's totals, asked once its rows are known, as the page asks them;
   // rows that miss the html are the page's to total when they land
   const known = await within(accounts.exit)
@@ -79,7 +88,7 @@ async function rosterReads(batchId: string, view: RosterView) {
     // until the rows can be handed over in the same snapshot as the real
     // table. A late cache update can otherwise race that table's hydration.
     await accounts.exit
-    return answersOf([accounts, units])
+    return answersOf([accounts, units, ...notices])
   }
   const rows = settle(known)
   const ids = rows.kind === 'answer' ? rows.value.items.map((row) => row.id) : []
@@ -87,6 +96,7 @@ async function rosterReads(batchId: string, view: RosterView) {
   return answersOf([
     accounts,
     units,
+    ...notices,
     ...(ids.length === 0
       ? []
       : [

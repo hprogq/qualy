@@ -84,6 +84,7 @@ import {
 } from '../roster/roster-view.ts'
 
 import { assessmentApi } from '../api.ts'
+import { ADMIN_ALERTS_FRESH_MS, adminAlertReads } from '../batch/admin-alert-reads.ts'
 import { useBatchLive } from '../live.ts'
 import { ROSTER_MAX_WAIT, ROSTER_SETTLE, settler, SYNC_FRESH } from '../roster/live-settle.ts'
 import { ScoresNotice } from '../roster/ScoresNotice.tsx'
@@ -311,7 +312,6 @@ export function ParticipantResultList({
   // started on the old page was cut short when the rows changed under it.
   const turned = useRef(false)
   const listTop = useRef<HTMLElement>(null)
-  const listCard = useRef<HTMLElement>(null)
   useLayoutEffect(() => {
     const node = listTop.current
     if (!turned.current || participants.isPlaceholderData || node === null) return
@@ -462,11 +462,14 @@ export function ParticipantResultList({
 
   // whether the organization has anybody elsewhere: the totals ride on the
   // first page, so one row is all this has to fetch to know
-  const placementsRead = query.assessment.listParticipantPlacements.queryOptions({
-    params: { batchId },
-    query: { limit: '1' },
+  const placementsRead = query.assessment.listParticipantPlacements.queryOptions(
+    adminAlertReads(batchId).placements,
+  )
+  const placements = useQuery({
+    ...placementsRead,
+    staleTime: ADMIN_ALERTS_FRESH_MS,
+    enabled: manageable && !archived,
   })
-  const placements = useQuery({ ...placementsRead, enabled: manageable && !archived })
   latestPlacements.current = placementsRead.queryKey
   // Only the details opened from an admission outcome read this endpoint.
   // Keep that open dialog fresh without fetching review alerts for the list.
@@ -642,7 +645,6 @@ export function ParticipantResultList({
     <RosterNotices
       placements={archived ? null : (placements.data ?? null)}
       onPlacements={() => setReconciling(true)}
-      alignRef={listCard}
     />
   ) : null
 
@@ -830,7 +832,7 @@ export function ParticipantResultList({
         onRetry={() => void participants.refetch()}
         skeleton={<ParticipantRosterRows />}
       >
-        <Card ref={listCard} data-testid="roster">
+        <Card xstyle={rosterStyles.noticeCard} data-testid="roster">
           <div {...stylex.props(rosterStyles.table)}>
             <Table columns="var(--q-roster-columns)">
               <TableHead>

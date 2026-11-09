@@ -50,6 +50,7 @@ import { VisuallyHidden } from '@qualy/ui/visually-hidden'
 import { personCard } from '@qualy/ui-contract'
 import { BATCH_STAFF_CODES } from '../../permission-codes.ts'
 import { assessmentApi } from '../api.ts'
+import { ADMIN_ALERTS_FRESH_MS, adminAlertReads } from '../batch/admin-alert-reads.ts'
 
 import { AccessAdjustDialog } from './AccessAdjustDialog.tsx'
 import { AccessSyncDialog } from './AccessSyncDialog.tsx'
@@ -408,12 +409,10 @@ export function AccessPanel({
   })
   // the counts only: what changed is read a page at a time inside the dialog
   // that offers it, so this page never renders the list
-  const summary = useQuery(
-    query.assessment.previewAccessSync.queryOptions({
-      params: { batchId },
-      query: { limit: '1' },
-    }),
-  )
+  const summary = useQuery({
+    ...query.assessment.previewAccessSync.queryOptions(adminAlertReads(batchId).access),
+    staleTime: ADMIN_ALERTS_FRESH_MS,
+  })
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: query.assessment.key() })
   const onError = (
