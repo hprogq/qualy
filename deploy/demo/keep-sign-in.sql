@@ -1,7 +1,7 @@
 -- The deployment's sign-in configuration, carried onto a restored baseline.
 --
 -- Runs in the restored database after it has been migrated to the running
--- release, so it has the live database's schema, and after restore.sh has
+-- release, so it has the live database's schema, and after copy-sign-in.sh has
 -- copied the live rows into the qualy_keep_* tables. What carries over is
 -- the configuration of each way in and nothing done through it: the
 -- entrances themselves (order, names, icons, audience, service settings),
@@ -13,7 +13,7 @@
 -- only under the entrance id it was written for: entrances keep their ids.
 -- Anything that does not fit - an audience naming a user type the baseline
 -- lacks, two entrances claiming one code - fails the whole transaction, and
--- restore.sh stops before the site does.
+-- restore.sh restarts the original color before swapping the database.
 
 begin;
 

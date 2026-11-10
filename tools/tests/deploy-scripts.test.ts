@@ -29,6 +29,11 @@ if [ "$1" = compose ]; then
     *'stop -t 40 server-blue '*) [ "\${FAKE_FAIL_OLD_STOP:-}" != 1 ] || exit 1 ;;
   esac
   case "$*" in
+    *'exec -T postgres sh -s'*)
+      cat > "$FAKE/copy-sign-in.sh"
+      [ "\${FAKE_FAIL_SIGN_IN_SNAPSHOT:-}" != 1 ] || exit 2
+      exit 0
+      ;;
     *'-v email_domain='*)
       cat > "$FAKE/baseline-account-query.sql"
       if [ "\${FAKE_FAIL_BASELINE_QUERY:-}" = 1 ]; then echo 'account query failed' >&2; exit 2; fi
@@ -275,25 +280,37 @@ describe('the demonstration baseline account domain', () => {
     expect(asked).not.toContain('auth set-password')
   })
 
-  it('with --keep-sign-in, migrates the scratch copy and carries the entrances over before stopping', () => {
+  it('migrates the scratch copy before stopping and captures sign-in before the swap', () => {
     const ran = restore('mail.example.test', {}, ['--keep-sign-in'])
     expect(ran.status, ran.stderr).toBe(0)
     const asked = fs.readFileSync(path.join(fake, 'docker.log'), 'utf8')
-    const stop = asked.indexOf('stop -t 40')
+    let previous = -1
     for (const step of [
       'pg_restore',
-      '_restore\\"',
-      'carry auth_providers "select * from auth_providers"',
-      'carry secrets',
-      '-d "${POSTGRES_DB}_restore" -Xq',
+      'run --rm --no-deps -T --entrypoint sh migrate -c',
+      'stop -t 40',
+      'exec -T postgres sh -s',
       'select a.storage_key from storage_attachments a',
+      'tools -s prepare /var/lib/qualy/storage',
+      '-d postgres -v ON_ERROR_STOP=1',
+      'tools -s swap /var/lib/qualy/storage',
     ]) {
-      const at = asked.indexOf(step)
-      expect(at, step).toBeGreaterThan(-1)
-      expect(at, step).toBeLessThan(stop)
+      const at = asked.indexOf(step, previous + 1)
+      expect(at, step).toBeGreaterThan(previous)
+      previous = at
     }
-    // the deploy job pointed at the scratch database, not the live one
-    expect(asked).toMatch(/run --rm --no-deps -T --entrypoint sh migrate -c/)
+  })
+
+  it('restarts the original color if the sign-in snapshot fails', () => {
+    serverRuns('blue', 'r1')
+    const ran = restore('mail.example.test', { FAKE_FAIL_SIGN_IN_SNAPSHOT: '1' }, [
+      '--keep-sign-in',
+    ])
+    expect(ran.status).not.toBe(0)
+    expect(ran.stderr).toContain('the original database is serving again')
+    const asked = fs.readFileSync(path.join(fake, 'docker.log'), 'utf8')
+    expect(asked.indexOf('up -d server-blue')).toBeGreaterThan(asked.indexOf('stop -t 40'))
+    expect(asked).not.toContain('tools -s swap')
   })
 
   it('uses the reconciled serving release for both scratch and live migrations', () => {
@@ -322,7 +339,8 @@ describe('the demonstration baseline account domain', () => {
     )
   })
 
-  it('does not stop the serving color if a kept local icon cannot be saved', () => {
+  it('restarts the original color if a kept local icon cannot be saved', () => {
+    serverRuns('blue', 'r1')
     const key =
       'attachments/0190a7a0-0000-7000-8000-000000000001/0190a7a0-0000-7000-8000-000000000002'
     const ran = restore('mail.example.test', { FAKE_KEEP_KEYS: key, FAKE_FAIL_KEEP_FILES: '1' }, [
@@ -332,16 +350,18 @@ describe('the demonstration baseline account domain', () => {
     expect(ran.stderr).toContain('kept icon missing')
     const asked = fs.readFileSync(path.join(fake, 'docker.log'), 'utf8')
     expect(asked).toContain('tools -s prepare /var/lib/qualy/storage')
-    expect(asked).not.toContain('stop -t')
+    expect(asked).toContain('up -d server-blue')
+    expect(asked).not.toContain('tools -s swap')
   })
 
-  it('refuses a kept image under an unexpected key while the site still serves', () => {
+  it('restarts the original color if a kept image has an unexpected key', () => {
+    serverRuns('blue', 'r1')
     const ran = restore('mail.example.test', { FAKE_KEEP_KEYS: '../../etc/passwd' }, [
       '--keep-sign-in',
     ])
     expect(ran.status).toBe(1)
     expect(ran.stderr).toContain('unexpected key')
-    expect(fs.readFileSync(path.join(fake, 'docker.log'), 'utf8')).not.toContain('stop -t')
+    expect(ran.stderr).toContain('the original database is serving again')
   })
 
   it('without --keep-sign-in, carries nothing over and leaves the scratch copy unmigrated', () => {

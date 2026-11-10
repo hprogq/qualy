@@ -43,7 +43,7 @@ finish() {
   rm -f "$baseline/qualy-demo.dump.next"
   release_lock
   if [ "$status" -ne 0 ]; then
-    echo "rehome failed while $step; the baseline is as it was" >&2
+    echo "rehome failed while $step; check the active dump and its saved copy" >&2
   fi
 }
 trap finish EXIT
@@ -98,9 +98,12 @@ compose exec -T postgres pg_restore --list < "$baseline/qualy-demo.dump.next" > 
 
 step="putting the new dump in place"
 kept="$baseline/qualy-demo.dump.$from.$(date -u +%Y%m%dT%H%M%SZ)"
-mv "$baseline/qualy-demo.dump" "$kept"
-mv "$baseline/qualy-demo.dump.next" "$baseline/qualy-demo.dump"
-chmod 600 "$baseline/qualy-demo.dump" "$kept"
+# Keep the old inode reachable before replacing the active name. Both names
+# are on the same filesystem, so a failed replacement leaves the original
+# dump available at its ordinary path as well as in the backup.
+ln "$baseline/qualy-demo.dump" "$kept"
+chmod 600 "$baseline/qualy-demo.dump.next" "$kept"
+mv -f "$baseline/qualy-demo.dump.next" "$baseline/qualy-demo.dump"
 
 step="done"
 echo "moved $moved account(s) from $from to $to; the old dump is $kept"

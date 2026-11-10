@@ -24,15 +24,14 @@
 #   7. the serving color starts again (the first import starts blue), and
 #      the script waits for it
 #
-# A failure before step 2 leaves the site as it was. A failure after it
-# stops with the step named; running the script again finishes the job.
+# Before the database swap, a failure restarts the previously serving color.
+# After the swap begins, the failed step is reported for a retry.
 #
 # --keep-sign-in keeps the ways in this deployment was given after the
 # baseline: its entrances (order, names, icons, audience, service settings),
-# their sealed secrets and the stored images their icons name. Before step 2
-# the scratch database is migrated to the running release and those rows are
-# copied onto it (keep-sign-in.sql), so a configuration that does not fit
-# stops the reset while the site still serves. Nothing done through those
+# their sealed secrets and the stored images their icons name. The scratch
+# database is migrated before the server stops. Once stopped, its sign-in
+# configuration is copied from one database snapshot. Nothing done through those
 # entrances carries over: identity bindings, sessions, sign-in records,
 # users added since and email verification are the baseline's.
 set -eu
@@ -112,12 +111,25 @@ done)
 # running it again.
 take_lock
 step="starting"
+active=
+restart_on_failure=false
+swap_started=false
 finish() {
   status=$?
-  release_lock
   if [ "$status" -ne 0 ]; then
-    echo "restore failed while $step; run it again to finish" >&2
+    echo "restore failed while $step" >&2
+    if [ "$restart_on_failure" = true ] && [ "$swap_started" = false ]; then
+      if compose up -d $(color_services "$active") &&
+        wait_ready "$(color_address "$active")" "$(setting QUALY_READY_TIMEOUT 180)"; then
+        echo "the original database is serving again" >&2
+      else
+        echo "the original database is intact, but $active did not return to service" >&2
+      fi
+    elif [ "$swap_started" = true ]; then
+      echo "run the restore again to finish" >&2
+    fi
   fi
+  release_lock
 }
 trap finish EXIT
 reconcile --stopped-ok
@@ -155,6 +167,15 @@ SQL
 [ "$baseline_account_count" = 5 ] ||
   refuse "baseline accounts do not match QUALY_DEMO_EMAIL_DOMAIN and QUALY_DEFAULT_TENANT; the serving color has not been stopped"
 
+stop_serving() {
+  step="stopping the serving color"
+  echo "$step"
+  if [ -n "$active" ]; then
+    if running_release "$active" > /dev/null; then restart_on_failure=true; fi
+    compose stop -t 40 $(color_services "$active")
+  fi
+}
+
 keep_local_keys=
 if [ "$keep_sign_in" = true ]; then
   step="migrating the scratch database to $release"
@@ -171,32 +192,10 @@ if [ "$keep_sign_in" = true ]; then
     export DATABASE_URL
     exec node apps/cli/src/main.ts deploy'
 
+  stop_serving
   step="carrying this deployment's sign-in configuration over"
   echo "$step"
-  in_postgres '
-    set -eu
-    on() { psql -U "$POSTGRES_USER" -d "$1" -XAtq -v ON_ERROR_STOP=1 -c "$2"; }
-    live=$POSTGRES_DB
-    restored=${POSTGRES_DB}_restore
-    for table in auth_providers auth_provider_user_types secrets storage_attachments; do
-      on "$restored" "create table qualy_keep_$table (like $table)"
-    done
-    # copied whole or not at all: this shell has no pipefail, so a copy out
-    # that failed would read on the other side as an empty table
-    carry() {
-      on "$live" "copy ($2) to stdout" | on "$restored" "copy qualy_keep_$1 from stdin"
-      [ "$(on "$live" "select count(*) from ($2) as carried")" = \
-        "$(on "$restored" "select count(*) from qualy_keep_$1")" ] || {
-        echo "$1 did not carry over whole" >&2
-        exit 1
-      }
-    }
-    carry auth_providers "select * from auth_providers"
-    carry auth_provider_user_types "select * from auth_provider_user_types"
-    carry secrets "select * from secrets where owner_kind = '\''auth-provider'\''"
-    carry storage_attachments "select * from storage_attachments where id::text in (
-      select jsonb_path_query(icon, '\''lax \$.*.attachmentId'\'') #>> '\''{}'\''
-        from auth_providers)"'
+  compose exec -T postgres sh -s < "$here/demo/copy-sign-in.sh"
   compose exec -T postgres sh -c \
     'psql -U "$POSTGRES_USER" -d "${POSTGRES_DB}_restore" -Xq -v ON_ERROR_STOP=1' \
     < "$here/demo/keep-sign-in.sql"
@@ -210,7 +209,7 @@ if [ "$keep_sign_in" = true ]; then
   for key in $keep_local_keys; do
     printf '%s' "$key" |
       grep -Eqx 'attachments/[0-9a-f-]{36}/[0-9a-f-]{36}' ||
-      refuse "a kept icon is stored under an unexpected key; the serving color has not been stopped"
+      refuse "a kept icon is stored under an unexpected key"
   done
   step="saving and checking the kept local icons"
   echo "$step"
@@ -221,12 +220,10 @@ else
   step="checking for an unfinished kept-icon restore"
   compose run --rm --no-deps -T --user 0:0 --entrypoint sh tools \
     -s check /var/lib/qualy/storage < "$here/demo/restore-storage.sh"
+  stop_serving
 fi
 
-step="stopping the serving color"
-echo "$step"
-if [ -n "$active" ]; then compose stop -t 40 $(color_services "$active"); fi
-
+swap_started=true
 step="swapping the restored database in"
 echo "$step"
 compose exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d postgres -v ON_ERROR_STOP=1 \
