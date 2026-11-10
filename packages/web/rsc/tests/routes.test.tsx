@@ -205,7 +205,7 @@ describe('server-owned plugin route assembly', () => {
     }
     const document = await withRenderRequest(scope, async () => {
       const tree = routes(shown)
-      return await (
+      return (
         tree[0]!.Component as unknown as (input: {
           matches: readonly { id: string; params: {} }[]
         }) => Promise<

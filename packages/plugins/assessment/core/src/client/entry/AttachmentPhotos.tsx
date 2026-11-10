@@ -106,10 +106,8 @@ function ImageForSource({ src, renew, initiallyFailed = false, ...props }: Recov
       <span
         role="img"
         aria-label={props.alt}
-        onClick={props.onClick as React.MouseEventHandler<HTMLSpanElement> | undefined}
-        onClickCapture={
-          props.onClickCapture as React.MouseEventHandler<HTMLSpanElement> | undefined
-        }
+        onClick={props.onClick}
+        onClickCapture={props.onClickCapture}
         {...stylex.props(styles.fallback)}
       >
         {m.entry_previewFailed()}

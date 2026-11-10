@@ -1471,7 +1471,11 @@ export const runSelection = (input: {
         ['application', {}, PAPERS['application']!.whole],
         ['conduct', {}, PAPERS['conduct']!.whole],
         ['transcript', {}, PAPERS['transcript']!.flawed],
-        ['cet4', { 'report-no': `2024${random.int(10000000000, 99999999999)}`, score: report.score }, report.asset],
+        [
+          'cet4',
+          { 'report-no': `2024${random.int(10000000000, 99999999999)}`, score: report.score },
+          report.asset,
+        ],
       ] as const
       papers.forEach(([item, payload, asset], index) =>
         scene(addMinutes(ago(15, '20:10'), index * 3), () =>

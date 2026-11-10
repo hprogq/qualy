@@ -116,7 +116,7 @@ describe.runIf(postgresAvailable)('document-bound storage HTTP delivery', () => 
           if (!req.headers['x-test-user']) return yield* new AuthRequired()
           return yield* Effect.provideService(http, CurrentUser, {
             tenantId: req.headers['x-test-tenant']!,
-            userId: req.headers['x-test-user']!,
+            userId: req.headers['x-test-user'],
             sessionId: req.headers['x-test-session']!,
           })
         }),

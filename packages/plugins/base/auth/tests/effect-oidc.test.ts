@@ -506,7 +506,7 @@ describe.runIf(postgresAvailable)('an OpenID Connect account', () => {
   it('requires recent authentication before preparing a binding', async () => {
     const response = await prepare(await signedIn(ada, false))
     expect(response.status).toBe(403)
-    expect((await response.json()) as unknown).toMatchObject({
+    expect(await response.json()).toMatchObject({
       _tag: 'AUTH_REAUTHENTICATION_REQUIRED',
     })
   })

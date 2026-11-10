@@ -2564,10 +2564,10 @@ describe('judging a submission', () => {
     ]
     await screen(
       {
-        listReviewInbox: (({ query }: { query: Record<string, unknown> }) => {
+        listReviewInbox: ({ query }: { query: Record<string, unknown> }) => {
           reads.push(query)
           return Effect.succeed({ items: rows, nextCursor: null, handledToday: 0 })
-        }) as never,
+        },
         getReviewInstance: () => Effect.succeed({ review }),
         decideReview: () =>
           Effect.succeed({
@@ -2621,10 +2621,10 @@ describe('judging a submission', () => {
     ]
     await screen(
       {
-        listReviewInbox: (({ query }: { query: Record<string, unknown> }) => {
+        listReviewInbox: ({ query }: { query: Record<string, unknown> }) => {
           reads.push(query)
           return Effect.succeed({ items: rows, nextCursor: null, handledToday: 0 })
-        }) as never,
+        },
         getReviewInstance: () => Effect.succeed({ review }),
         decideReview: decided,
       },

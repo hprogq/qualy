@@ -13,7 +13,7 @@ it('refreshes again when a server still reports the same planned phase', async (
     useBatchLive('11111111-1111-4111-8111-111111111111', wake)
     return null
   }
-  renderScreen({
+  await renderScreen({
     client: fakeClient({ app: { getManifest: emptyManifest() }, assessment: { getTimeline } }),
     children: <Screen />,
   })

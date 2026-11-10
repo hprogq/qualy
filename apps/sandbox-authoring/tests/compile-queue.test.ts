@@ -41,11 +41,11 @@ it('keeps the compiler slot until an interrupted child exits and its workspace i
     await new Promise((resolve) => setTimeout(resolve, 100))
     expect(started).toHaveBeenCalledTimes(1)
     expect((await stat(directories[0]!)).isDirectory()).toBe(true)
-    children[0]!.send!('stop')
+    children[0]!.send('stop')
     await interrupted
     await vi.waitFor(() => expect(started).toHaveBeenCalledTimes(2))
     await expect(stat(directories[0]!)).rejects.toMatchObject({ code: 'ENOENT' })
-    children[1]!.send!('stop')
+    children[1]!.send('stop')
     await Effect.runPromise(Fiber.join(second))
     await expect(stat(directories[1]!)).rejects.toMatchObject({ code: 'ENOENT' })
   } finally {

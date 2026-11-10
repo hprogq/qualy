@@ -435,7 +435,7 @@ describe.runIf(postgresAvailable)('a GitHub account', () => {
         headers: { cookie: `${cookie}; ${flow}`, 'sec-fetch-site': 'same-origin' },
       })
     const results = await Promise.all([start(), start()])
-    expect(results.map((response) => response.status).sort()).toEqual([302, 303])
+    expect(results.map((response) => response.status).sort((a, b) => a - b)).toEqual([302, 303])
     expect(landing(results.find((response) => response.status === 303)!).code).toBe(
       'AUTH_FLOW_REJECTED',
     )
@@ -599,7 +599,7 @@ describe.runIf(postgresAvailable)('a GitHub account', () => {
   it('requires recent authentication before preparing a binding', async () => {
     const response = await prepare(await signedIn(ada, false))
     expect(response.status).toBe(403)
-    expect((await response.json()) as unknown).toMatchObject({
+    expect(await response.json()).toMatchObject({
       _tag: 'AUTH_REAUTHENTICATION_REQUIRED',
     })
   })
