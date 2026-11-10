@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery } from '@qualy/web-runtime/query'
 import { useApiQuery } from '@qualy/web-runtime'
 import { authApi } from '../../api.ts'
 

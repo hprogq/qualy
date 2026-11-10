@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { keepPreviousData } from '@tanstack/react-query'
+import { useQuery } from '@qualy/web-runtime/query'
 import type { SecretChecks } from '@qualy/auth-contract/login'
 
 // What a new password is held to, worked out while it is typed: its length

@@ -1,5 +1,5 @@
 import { RecordPager } from '../record/RecordPager.tsx'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery } from '@qualy/web-runtime/query'
 import { usePageQueryState, useLoadFailure, usePageHref, usePageNavigate } from '@qualy/web-runtime'
 import { MEMBERSHIPS_PAGE, membershipPageKey, membershipPageOf } from './membership-reads.ts'
 

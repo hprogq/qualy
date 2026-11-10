@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery } from '@qualy/web-runtime/query'
 import * as stylex from '@stylexjs/stylex'
 import { AtWidth } from '@qualy/ui/at-width'
 import { ArrowLeftIcon, ChevronRightIcon } from 'lucide-react'

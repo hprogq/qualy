@@ -11,7 +11,7 @@ import {
 } from '@qualy/web-runtime'
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { Link, useLocation } from 'react-router'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery } from '@qualy/web-runtime/query'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { useEntryMotion } from '@qualy/ui/reveal'
 import { Spinner } from '@qualy/ui/spinner'

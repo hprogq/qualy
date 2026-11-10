@@ -1,5 +1,5 @@
 'use client'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery } from '@qualy/web-runtime/query'
 import { useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { useApiQuery, useDocumentNow, useLoadFailure } from '@qualy/web-runtime'

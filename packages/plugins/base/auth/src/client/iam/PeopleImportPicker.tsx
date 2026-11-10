@@ -1,7 +1,7 @@
 'use client'
 import type { PeopleImportContext } from '@qualy/ui-contract'
 import * as stylex from '@stylexjs/stylex'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery } from '@qualy/web-runtime/query'
 import { PageLink, useApiQuery, usePageHref } from '@qualy/web-runtime'
 import { CheckboxGroup } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'

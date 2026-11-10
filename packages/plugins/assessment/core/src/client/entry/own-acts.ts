@@ -7,7 +7,8 @@ import {
 } from '@qualy/web-i18n'
 
 import { useMemo } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@qualy/web-runtime/query'
 
 import { toast } from '@qualy/ui/toast'
 import { assessmentApi } from '../api.ts'

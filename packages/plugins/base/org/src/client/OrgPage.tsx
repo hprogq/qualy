@@ -1,6 +1,7 @@
 'use client'
 import { assertNever, isUseCaseApiFailure } from '@qualy/web-i18n'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@qualy/web-runtime/query'
 import { useMemo, useState } from 'react'
 import { PlusIcon, Trash2Icon } from 'lucide-react'
 import {

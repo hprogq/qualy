@@ -1,11 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import {
-  hashKey,
-  keepPreviousData,
-  useQueries,
-  useQuery,
-  useQueryClient,
-} from '@tanstack/react-query'
+import { hashKey, keepPreviousData, useQueryClient } from '@tanstack/react-query'
+import { useQueries, useQuery } from '@qualy/web-runtime/query'
 import { isRecordId, useApiQuery } from '@qualy/web-runtime'
 import type { ApiResult } from '@qualy/web-runtime/api'
 import { assessmentApi } from '../api.ts'

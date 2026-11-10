@@ -1,5 +1,5 @@
 import { useId, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery } from '@qualy/web-runtime/query'
 import * as stylex from '@stylexjs/stylex'
 import { ShieldQuestionIcon } from 'lucide-react'
 import { orgNodePickerView } from '@qualy/ui-contract'

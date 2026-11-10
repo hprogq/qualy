@@ -1,6 +1,6 @@
 import { formatPlatformFailure as formatError } from '@qualy/web-i18n'
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery } from '@qualy/web-runtime/query'
 import { ShieldQuestionIcon } from 'lucide-react'
 import { peoplePickerView } from '@qualy/ui-contract'
 import { UiSlot, useApiQuery } from '@qualy/web-runtime'

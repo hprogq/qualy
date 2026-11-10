@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery } from '@qualy/web-runtime/query'
 import { useApiQuery, useLoadFailure } from '@qualy/web-runtime'
 
 import { AsyncSection } from '@qualy/ui/admin'

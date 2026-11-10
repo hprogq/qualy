@@ -8,7 +8,8 @@ import {
   useLoadFailure,
 } from '@qualy/web-runtime'
 import { Fragment, useState } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@qualy/web-runtime/query'
 import * as stylex from '@stylexjs/stylex'
 import { ChevronRightIcon } from 'lucide-react'
 

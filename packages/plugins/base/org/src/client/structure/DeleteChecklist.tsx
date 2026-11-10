@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery } from '@qualy/web-runtime/query'
 import * as stylex from '@stylexjs/stylex'
 import { CheckIcon, XIcon } from 'lucide-react'
 import { PageLink, useApiQuery, usePageHref } from '@qualy/web-runtime'

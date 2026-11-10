@@ -1,6 +1,7 @@
 import { useApiMutation, useApi, useApiQuery } from '@qualy/web-runtime'
 import { formatPlatformFailure as formatError } from '@qualy/web-i18n'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@qualy/web-runtime/query'
 
 import { Button } from '@qualy/ui/button'
 import { toast } from '@qualy/ui/toast'

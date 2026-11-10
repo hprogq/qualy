@@ -3,7 +3,7 @@ import { assertNever, useLocale } from '@qualy/web-i18n'
 import { useApiMutation, useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
 import { useEffect, useMemo, useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery } from '@qualy/web-runtime/query'
 
 import { ValueFieldsForm } from '@qualy/web-value-form/InputValueForm'
 import { usePickerWords } from '@qualy/web-i18n/picker-words'

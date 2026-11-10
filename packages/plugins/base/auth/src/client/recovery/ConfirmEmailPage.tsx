@@ -2,7 +2,7 @@
 import { formatPlatformFailure as formatError, getApiErrorCode } from '@qualy/web-i18n'
 import { type ReactNode } from 'react'
 import { useLocation } from 'react-router'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery } from '@qualy/web-runtime/query'
 import * as stylex from '@stylexjs/stylex'
 import { PageLink, useApi, useHydrating, usePageHref, useRunApi } from '@qualy/web-runtime'
 import { motion } from 'motion/react'

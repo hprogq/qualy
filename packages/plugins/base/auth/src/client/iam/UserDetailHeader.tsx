@@ -13,7 +13,8 @@ import {
   usePageRouteParams,
 } from '@qualy/web-runtime'
 
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@qualy/web-runtime/query'
 import { useEffect, useState } from 'react'
 import { ArrowLeftIcon, EllipsisIcon } from 'lucide-react'
 

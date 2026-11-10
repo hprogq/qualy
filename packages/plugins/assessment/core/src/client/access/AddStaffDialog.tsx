@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery } from '@qualy/web-runtime/query'
 import { CircleAlertIcon, NetworkIcon, ShieldQuestionIcon, UsersIcon } from 'lucide-react'
 import { PageLink, UiSlot, useApiQuery, useManifest } from '@qualy/web-runtime'
 import {

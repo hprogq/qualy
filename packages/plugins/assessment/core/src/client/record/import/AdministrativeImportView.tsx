@@ -16,7 +16,8 @@ import {
 } from '@qualy/web-runtime'
 import { useMemo, useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@qualy/web-runtime/query'
 import { DownloadIcon, FileSpreadsheetIcon } from 'lucide-react'
 import { displayTitle, type AtomicSchema } from '@qualy/value-schema'
 

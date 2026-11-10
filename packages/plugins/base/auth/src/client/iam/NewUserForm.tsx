@@ -1,6 +1,7 @@
 import { assertNever } from '@qualy/web-i18n'
 import { useApiMutation, PageLink, UiSlot, useApi, useApiQuery } from '@qualy/web-runtime'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@qualy/web-runtime/query'
 import { useEffect, useMemo, useState } from 'react'
 import { orgNodePicker, type OrgNodePickerContext } from '@qualy/ui-contract'
 

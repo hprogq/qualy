@@ -1,7 +1,7 @@
 import { recordTable } from './table.stylex.ts'
 import { pageNumber } from '@qualy/api-kit/schema'
 import { RecordPager } from './RecordPager.tsx'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery } from '@qualy/web-runtime/query'
 import * as stylex from '@stylexjs/stylex'
 import { ChevronRightIcon } from 'lucide-react'
 import { useApiQuery, useLoadFailure, usePageQueryState } from '@qualy/web-runtime'

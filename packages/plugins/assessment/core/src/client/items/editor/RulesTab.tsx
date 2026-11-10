@@ -1,6 +1,6 @@
 import { useLocale } from '@qualy/web-i18n'
 import { type ReactNode } from 'react'
-import { useQueries } from '@tanstack/react-query'
+import { useQueries } from '@qualy/web-runtime/query'
 import * as stylex from '@stylexjs/stylex'
 import { CheckIcon, ChevronRightIcon, PlusIcon } from 'lucide-react'
 import { useApiQuery } from '@qualy/web-runtime'

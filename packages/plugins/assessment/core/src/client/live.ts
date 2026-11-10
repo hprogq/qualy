@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { Schema } from 'effect'
-import { hashKey, useQuery, useQueryClient, type QueryKey } from '@tanstack/react-query'
+import { hashKey, useQueryClient, type QueryKey } from '@tanstack/react-query'
+import { useQuery } from '@qualy/web-runtime/query'
 import { useApi, useApiQuery, useLiveChannel, type LiveChannelState } from '@qualy/web-runtime'
 import { assessmentApi, assessmentUrls } from './api.ts'
 import { batchLiveEvent, type BatchLiveEvent } from '../api.ts'

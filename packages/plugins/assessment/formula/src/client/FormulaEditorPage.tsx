@@ -1,5 +1,6 @@
 'use client'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@qualy/web-runtime/query'
 import {
   assertNever,
   isUseCaseApiFailure,

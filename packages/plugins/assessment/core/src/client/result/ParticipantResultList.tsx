@@ -13,7 +13,8 @@ import {
 } from '@qualy/web-i18n'
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { keepPreviousData, useQuery, useQueryClient, type QueryKey } from '@tanstack/react-query'
+import { keepPreviousData, useQueryClient, type QueryKey } from '@tanstack/react-query'
+import { useQuery } from '@qualy/web-runtime/query'
 import { useHandedQueryState } from '@qualy/web-runtime/query-hydration'
 import * as stylex from '@stylexjs/stylex'
 import { layoutPreferenceRoot } from '@qualy/ui/theme/layout-preference.stylex'

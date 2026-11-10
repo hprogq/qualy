@@ -1,6 +1,7 @@
 import { formatPlatformFailure as formatError } from '@qualy/web-i18n'
 import { useEffect, useState } from 'react'
-import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { keepPreviousData } from '@tanstack/react-query'
+import { useQuery } from '@qualy/web-runtime/query'
 import { type PeoplePickerViewContext } from '@qualy/ui-contract'
 import { useApiQuery } from '@qualy/web-runtime'
 import { assessmentApi } from '../api.ts'

@@ -1,5 +1,5 @@
 'use client'
-import { useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useContext, useLayoutEffect, useMemo, useRef, type ReactNode } from 'react'
 import {
   HydrationBoundary,
   hashKey,
@@ -9,10 +9,9 @@ import {
   type QueryClient,
   type QueryKey,
 } from '@tanstack/react-query'
-import { useLocation } from 'react-router'
 import { useHydrating } from '../document/hydrating.ts'
 import { sharedContext } from '../shared-context.ts'
-import type { Coming } from './query-handoff.ts'
+import type { Arrival, Coming } from './query-handoff.ts'
 
 export type { Arrival, Coming } from './query-handoff.ts'
 
@@ -57,6 +56,30 @@ const HANDED_FRESH_MS = 30_000
 
 const HandedState = sharedContext<DehydratedState | null>('handed-query-state', null)
 
+export const HandedReads = sharedContext<
+  ReadonlyMap<string, DehydratedState['queries'][number]['state'] | null>
+>('handed-query-reads', new Map())
+
+/** Observer options belong to this response, never to the shared client's defaults. */
+export function handedOptions<
+  T extends { queryKey?: QueryKey; staleTime?: unknown; retryOnMount?: unknown },
+>(options: T, reads: ReadonlyMap<string, unknown>, client: QueryClient): T {
+  if (!options.queryKey || !reads.has(hashKey(options.queryKey))) return options
+  const defaults = {
+    ...client.getDefaultOptions().queries,
+    ...client.getQueryDefaults(options.queryKey),
+  }
+  return {
+    ...options,
+    ...(options.staleTime === undefined && defaults.staleTime === undefined
+      ? { staleTime: HANDED_FRESH_MS }
+      : {}),
+    ...(options.retryOnMount === undefined && defaults.retryOnMount === undefined
+      ? { retryOnMount: false }
+      : {}),
+  }
+}
+
 /**
  * The response that drew this subtree, not the live cache. A streamed query
  * can land while a descendant is still hydrating. That descendant must draw
@@ -71,16 +94,6 @@ export function useHandedQueryState<T>(key: QueryKey) {
   const snapshot = response.queries.find((query) => query.queryHash === hash)?.state
   return snapshot === undefined ? null : { ...snapshot, data: snapshot.data as T | undefined }
 }
-
-/**
- * Keep the browser's cache stable until a handoff has committed. This is
- * not a hydration fence for suspended descendants; their first render
- * reads the response snapshot, not the live cache.
- */
-let takeOver: () => void = () => {}
-const takenOver = new Promise<void>((resolve) => {
-  takeOver = resolve
-})
 
 /** the page's own asking, for a read the server could not answer for it */
 const askedBy = (client: QueryClient, query: Query, signal: AbortSignal) => {
@@ -101,7 +114,7 @@ const askedBy = (client: QueryClient, query: Query, signal: AbortSignal) => {
  */
 const follow = (client: QueryClient, { queryKey, arrival }: Coming) => {
   const query = client.getQueryCache().build(client, client.defaultQueryOptions({ queryKey }))
-  if (query.state.data !== undefined || query.state.fetchStatus !== 'idle') return
+  if (query.state.data !== undefined || query.state.fetchStatus !== 'idle') return () => false
   // invalidateQueries joins a pending initialPromise when no data exists.
   // Remember the invalidation until that fetch settles: Query resets its
   // invalidated bit on success, otherwise losing a live event entirely.
@@ -122,7 +135,7 @@ const follow = (client: QueryClient, { queryKey, arrival }: Coming) => {
     .fetch(undefined, {
       // What crossed from the server is a thenable whose `then` hands back
       // nothing, not a promise; adopted into one first.
-      initialPromise: Promise.all([Promise.resolve(arrival), takenOver]).then(([landed]) => {
+      initialPromise: Promise.resolve(arrival).then((landed) => {
         if (!active || cache.get(query.queryHash) !== query) {
           throw new Error('handed read was cancelled')
         }
@@ -155,6 +168,14 @@ const follow = (client: QueryClient, { queryKey, arrival }: Coming) => {
       fallback.abort()
       unsubscribe()
     })
+  return () => {
+    if (!active) return false
+    active = false
+    fallback.abort()
+    unsubscribe()
+    if (cache.get(query.queryHash) === query) void query.cancel({ revert: true })
+    return true
+  }
 }
 
 export function QueryHydration({
@@ -170,6 +191,8 @@ export function QueryHydration({
   const client = useQueryClient()
   const checked = useRef(new WeakMap<object, Set<string>>())
   const warm = useRef(new WeakMap<object, Map<string, { query: Query; updates: number } | null>>())
+  const pending = coming
+  const following = useRef(new Map<Promise<Arrival>, Map<string, () => boolean>>())
   const refused = useMemo(() => {
     const cache = client.getQueryCache()
     return state.queries.flatMap((read) => {
@@ -178,27 +201,7 @@ export function QueryHydration({
       return query === undefined ? [] : [{ read, query, updates: query.state.dataUpdateCount }]
     })
   }, [client, state])
-  // set while rendering, before anything under this reads: the html and the
-  // browser's first frame are drawn from it
-  const [held] = useState(() => [
-    ...state.queries.flatMap((query) => {
-      if (query.state.status === 'error') {
-        client.setQueryDefaults(query.queryKey, { retryOnMount: false })
-      } else if (query.state.status === 'success') {
-        client.setQueryDefaults(query.queryKey, { staleTime: HANDED_FRESH_MS })
-      } else return []
-      return [query.queryKey]
-    }),
-    ...coming.map((read) => {
-      // The HTML renderer only draws the pending state. It must not retain
-      // a request's cache in a promise that only a browser can resolve.
-      if (typeof window !== 'undefined') follow(client, read)
-      client.setQueryDefaults(read.queryKey, { staleTime: HANDED_FRESH_MS })
-      return read.queryKey
-    }),
-  ])
-  useEffect(() => takeOver(), [])
-  useEffect(() => {
+  useLayoutEffect(() => {
     const cache = client.getQueryCache()
     for (const { read, query, updates } of refused) {
       if (cache.get(read.queryHash) !== query || query.state.dataUpdateCount !== updates) continue
@@ -209,10 +212,19 @@ export function QueryHydration({
       query.setState({ ...read.state, data: undefined, fetchStatus: 'idle' })
     }
   }, [client, refused])
-  useEffect(() => {
+  useLayoutEffect(() => {
     let active = true
     const cache = client.getQueryCache()
-    for (const read of coming) {
+    for (const [arrival, running] of following.current) {
+      for (const [hash, cancel] of running) {
+        if (pending.some((read) => read.arrival === arrival && hashKey(read.queryKey) === hash))
+          continue
+        if (cancel()) checked.current.get(arrival)?.delete(hash)
+        running.delete(hash)
+      }
+      if (running.size === 0) following.current.delete(arrival)
+    }
+    for (const read of pending) {
       const hash = hashKey(read.queryKey)
       let keys = warm.current.get(read.arrival)
       if (keys === undefined) {
@@ -227,7 +239,23 @@ export function QueryHydration({
         )
       }
       const observed = keys.get(hash)
-      if (observed == null) continue
+      if (observed == null) {
+        let seen = checked.current.get(read.arrival)
+        if (seen === undefined) {
+          seen = new Set()
+          checked.current.set(read.arrival, seen)
+        }
+        if (!seen.has(hash)) {
+          seen.add(hash)
+          let running = following.current.get(read.arrival)
+          if (running === undefined) {
+            running = new Map()
+            following.current.set(read.arrival, running)
+          }
+          running.set(hash, follow(client, read))
+        }
+        continue
+      }
       const { query, updates } = observed
       void Promise.resolve(read.arrival)
         .then(() => {
@@ -250,16 +278,31 @@ export function QueryHydration({
     return () => {
       active = false
     }
-  }, [client, coming])
-  const here = useLocation().key
-  const [drawnAt] = useState(here)
-  useEffect(() => {
-    if (here === drawnAt) return
-    for (const key of held) client.setQueryDefaults(key, {})
-  }, [client, held, here, drawnAt])
+  }, [client, pending])
+  useLayoutEffect(
+    () => () => {
+      for (const [arrival, running] of following.current)
+        for (const [hash, cancel] of running)
+          if (cancel()) checked.current.get(arrival)?.delete(hash)
+      following.current.clear()
+    },
+    [client],
+  )
+  const parent = useContext(HandedReads)
+  const reads = useMemo(
+    () =>
+      new Map([
+        ...parent,
+        ...state.queries.map((read) => [read.queryHash, read.state] as const),
+        ...pending.map((read) => [hashKey(read.queryKey), null] as const),
+      ]),
+    [parent, state, pending],
+  )
   return (
     <HandedState value={state}>
-      <HydrationBoundary state={state}>{children}</HydrationBoundary>
+      <HandedReads value={reads}>
+        <HydrationBoundary state={state}>{children}</HydrationBoundary>
+      </HandedReads>
     </HandedState>
   )
 }

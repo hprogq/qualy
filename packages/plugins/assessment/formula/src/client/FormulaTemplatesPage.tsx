@@ -3,7 +3,7 @@ import { LibrarySearch } from './LibrarySearch.tsx'
 import { FormulaPager } from './FormulaPager.tsx'
 import { useLocale } from '@qualy/web-i18n'
 import * as stylex from '@stylexjs/stylex'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery } from '@qualy/web-runtime/query'
 import {
   PageLink,
   useApiQuery,

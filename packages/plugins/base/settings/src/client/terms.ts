@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery } from '@qualy/web-runtime/query'
 import { useApi, useDocumentContext, useRunApi } from '@qualy/web-runtime'
 import type { TermRef } from '@qualy/settings-contract'
 import { TERMS_CONTEXT } from '../terms-context.ts'

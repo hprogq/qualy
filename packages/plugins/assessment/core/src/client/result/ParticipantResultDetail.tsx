@@ -17,7 +17,8 @@ import {
 } from '@qualy/web-runtime'
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@qualy/web-runtime/query'
 import * as stylex from '@stylexjs/stylex'
 import { ArrowLeftIcon, ChevronDownIcon } from 'lucide-react'
 

@@ -1,6 +1,7 @@
 import { assertNever, getApiErrorCode } from '@qualy/web-i18n'
 import { useApiMutation, useApi, useApiQuery, useLoadFailure } from '@qualy/web-runtime'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@qualy/web-runtime/query'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { useState } from 'react'

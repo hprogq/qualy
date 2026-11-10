@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { keepPreviousData } from '@tanstack/react-query'
+import { useQuery } from '@qualy/web-runtime/query'
 import * as stylex from '@stylexjs/stylex'
 import { ArrowLeftIcon, CheckIcon, ChevronDownIcon, SearchIcon } from 'lucide-react'
 import { useApiQuery, usePageNavigate } from '@qualy/web-runtime'

@@ -17,7 +17,8 @@ import {
   usePageRouteParams,
 } from '@qualy/web-runtime'
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@qualy/web-runtime/query'
 import { CheckIcon, CornerUpLeftIcon, InfoIcon } from 'lucide-react'
 
 import { type Message } from '@qualy/i18n-contract'

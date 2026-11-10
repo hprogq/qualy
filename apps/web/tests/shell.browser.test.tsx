@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { commands, page } from 'vitest/browser'
 import { Effect } from 'effect'
 import { layoutComponents, slotComponents } from 'virtual:qualy/plugins'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery } from '@qualy/web-runtime/query'
 import {
   isRecordId,
   LoadFailure,

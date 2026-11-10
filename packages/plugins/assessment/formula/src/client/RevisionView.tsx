@@ -2,7 +2,7 @@ import { assertNever, useLocale } from '@qualy/web-i18n'
 
 import * as stylex from '@stylexjs/stylex'
 import { Suspense, useState, type ReactNode } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery } from '@qualy/web-runtime/query'
 import {
   LoadFailure,
   useApi,

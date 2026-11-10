@@ -1,6 +1,6 @@
 'use client'
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery } from '@qualy/web-runtime/query'
 import * as stylex from '@stylexjs/stylex'
 import { isRecordId, useApiQuery, usePageRouteParams } from '@qualy/web-runtime'
 import type { NavigationBadgeContext } from '@qualy/ui-contract'

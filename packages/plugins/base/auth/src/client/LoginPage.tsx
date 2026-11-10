@@ -11,7 +11,7 @@ import {
   type ReactNode,
 } from 'react'
 import { useLocation, useNavigate, useRevalidator, useSearchParams } from 'react-router'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery } from '@qualy/web-runtime/query'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import * as stylex from '@stylexjs/stylex'
 import {

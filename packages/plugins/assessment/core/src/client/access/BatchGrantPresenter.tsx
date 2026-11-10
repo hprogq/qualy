@@ -1,6 +1,6 @@
 'use client'
 import { Skeleton } from '@qualy/ui/skeleton'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery } from '@qualy/web-runtime/query'
 import type { ResourceGrantContext } from '@qualy/ui-contract'
 import { PageLink, useApiQuery } from '@qualy/web-runtime'
 import * as stylex from '@stylexjs/stylex'

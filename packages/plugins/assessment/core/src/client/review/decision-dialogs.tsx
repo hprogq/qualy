@@ -2,7 +2,7 @@ import { useLocale, useList } from '@qualy/web-i18n'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { CircleAlertIcon } from 'lucide-react'
 import * as stylex from '@stylexjs/stylex'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery } from '@qualy/web-runtime/query'
 import { useApi, useRunApi } from '@qualy/web-runtime'
 
 import { Field, FormDialog, RequiredMark } from '@qualy/ui/admin'

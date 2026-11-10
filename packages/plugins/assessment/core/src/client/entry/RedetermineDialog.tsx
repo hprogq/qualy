@@ -1,6 +1,6 @@
 import { useLocale } from '@qualy/web-i18n'
 import { useMemo, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery } from '@qualy/web-runtime/query'
 import * as stylex from '@stylexjs/stylex'
 import { type AtomicSchema } from '@qualy/value-schema'
 import { useApiQuery } from '@qualy/web-runtime'

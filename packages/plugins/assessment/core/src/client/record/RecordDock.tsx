@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery } from '@qualy/web-runtime/query'
 import { useApi, useApiQuery } from '@qualy/web-runtime'
 import { formatDateTime, useLocale } from '@qualy/web-i18n'
 import { assessmentApi } from '../api.ts'

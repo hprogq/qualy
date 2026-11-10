@@ -8,7 +8,8 @@ import {
   type ReactNode,
 } from 'react'
 import { useLocation } from 'react-router'
-import { partialMatchKey, useQuery } from '@tanstack/react-query'
+import { partialMatchKey } from '@tanstack/react-query'
+import { useQuery } from '@qualy/web-runtime/query'
 import * as stylex from '@stylexjs/stylex'
 import { CheckIcon, InboxIcon, LockIcon, SearchIcon, SearchXIcon, ShieldIcon } from 'lucide-react'
 import {

@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { keepPreviousData } from '@tanstack/react-query'
+import { useQuery } from '@qualy/web-runtime/query'
 import {
   loadFailureKind,
   useApiQuery,

@@ -1,5 +1,5 @@
 'use client'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery } from '@qualy/web-runtime/query'
 import { useState } from 'react'
 import { UserRoundIcon, UserRoundXIcon, XIcon } from 'lucide-react'
 import { peoplePicker, type PeoplePickerContext } from '@qualy/ui-contract'

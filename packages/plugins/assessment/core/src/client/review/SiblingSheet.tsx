@@ -1,7 +1,7 @@
 import { SiblingFiles } from '../../attachment/contexts.ts'
 import { AttachmentScope } from '../entry/AttachmentScope.tsx'
 import { useLocale } from '@qualy/web-i18n'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery } from '@qualy/web-runtime/query'
 import * as stylex from '@stylexjs/stylex'
 import { useApiQuery, useLoadFailure } from '@qualy/web-runtime'
 import { AsyncSection } from '@qualy/ui/admin'

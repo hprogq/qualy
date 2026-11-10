@@ -1,6 +1,6 @@
 import type { SupportedLocale } from '@qualy/i18n-contract'
 import { formatDateTime, useLocale } from '@qualy/web-i18n'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery } from '@qualy/web-runtime/query'
 import { useApiQuery } from '@qualy/web-runtime'
 import { type ApiResult } from '@qualy/web-runtime/api'
 import { assessmentApi } from '../api.ts'

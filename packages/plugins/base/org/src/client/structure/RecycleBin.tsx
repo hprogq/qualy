@@ -1,5 +1,5 @@
 import { formatDateTime, useLocale } from '@qualy/web-i18n'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery } from '@qualy/web-runtime/query'
 import * as stylex from '@stylexjs/stylex'
 import { useApiQuery } from '@qualy/web-runtime'
 

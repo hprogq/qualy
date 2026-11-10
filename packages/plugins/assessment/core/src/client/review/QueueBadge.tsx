@@ -1,6 +1,6 @@
 'use client'
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery } from '@qualy/web-runtime/query'
 import { OVERVIEW_FRESH_MS } from '../overview-reads.ts'
 import * as stylex from '@stylexjs/stylex'
 import { useApiQuery, usePageRouteParams } from '@qualy/web-runtime'

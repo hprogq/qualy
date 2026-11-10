@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery } from '@qualy/web-runtime/query'
 import { documentIdentity } from '@qualy/web-runtime/document-identity'
 import { Api } from '@qualy/api-kit/local'
 import { sessionApiGroup } from '@qualy/plugin-auth/api'

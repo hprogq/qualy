@@ -2,7 +2,7 @@ import { assertNever } from '@qualy/web-i18n'
 import { useApiMutation, useApi, useApiQuery, useLoadFailure, UiSlot } from '@qualy/web-runtime'
 import * as stylex from '@stylexjs/stylex'
 import { useEffect, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery } from '@qualy/web-runtime/query'
 import { Share2Icon } from 'lucide-react'
 
 import { tokens } from '@qualy/ui/theme/tokens.stylex'

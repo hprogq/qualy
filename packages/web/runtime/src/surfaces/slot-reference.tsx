@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery } from '@qualy/web-runtime/query'
 import type { SlotSurface } from '@qualy/ui-contract'
 import { PluginComponent, type PluginComponentProps } from './component-boundary.tsx'
 import { identityOfManifest } from '../session/document-identity.ts'

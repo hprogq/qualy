@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery } from '@qualy/web-runtime/query'
 import { useApiQuery } from '@qualy/web-runtime'
 import { assessmentApi } from '../api.ts'
 import type { ReviewGap } from '../items/ReviewGapNotice.tsx'

@@ -1,5 +1,5 @@
 import { StagedFiles } from '../../attachment/contexts.ts'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery } from '@qualy/web-runtime/query'
 import { useCallback, useMemo, useState } from 'react'
 import { useApi, useRunApi, useManifest } from '@qualy/web-runtime'
 import type { ApiResult, ClientOf } from '@qualy/web-runtime/api'

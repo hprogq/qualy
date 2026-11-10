@@ -2,22 +2,18 @@ import {
   QueryClient,
   QueryClientProvider,
   dehydrate,
-  useQuery,
   type QueryFunction,
   type QueryKey,
 } from '@tanstack/react-query'
-import { Suspense, lazy, useLayoutEffect, useState, type ReactNode } from 'react'
+import { useQuery, useQueries } from '@qualy/web-runtime/query'
+import { StrictMode, Suspense, lazy, useLayoutEffect, useState, type ReactNode } from 'react'
 import { hydrateRoot } from 'react-dom/client'
 import { renderToString } from 'react-dom/server'
 import { createMemoryRouter, RouterProvider } from 'react-router'
 import { describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
 import { render } from 'vitest-browser-react'
-import {
-  QueryHydration,
-  useHandedQueryState,
-  type Arrival,
-} from '@qualy/web-runtime/query-hydration'
+import { QueryHydration, type Arrival } from '@qualy/web-runtime/query-hydration'
 
 // A read the server had not finished when the html went out follows it: the
 // page draws it on its way, does not ask for it again, and has it where it
@@ -67,7 +63,267 @@ const held = () => {
 }
 
 describe('a read that follows the html', () => {
-  it('shows a server refusal instead of a stale successful cache value', async () => {
+  it('keeps handoffs local and restores normal observers after the boundary unmounts', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 0 } } })
+    const server = new QueryClient()
+    server.setQueryData(KEY, 'server')
+    const ask = vi.fn(() => Promise.resolve('fresh'))
+    function Parent() {
+      const [handed, setHanded] = useState(true)
+      return (
+        <>
+          <button onClick={() => setHanded(false)}>Leave</button>
+          {handed ? (
+            <QueryHydration state={dehydrate(server)}>
+              <Reader ask={ask} />
+            </QueryHydration>
+          ) : (
+            <Reader ask={ask} />
+          )}
+        </>
+      )
+    }
+    await render(
+      <QueryClientProvider client={client}>
+        <Parent />
+      </QueryClientProvider>,
+    )
+    // An explicit global policy is respected as well as per-observer options.
+    await expect.poll(() => ask.mock.calls.length).toBe(1)
+    expect(client.getQueryDefaults(KEY)).toEqual({})
+    await page.getByRole('button', { name: 'Leave' }).click()
+    await expect.poll(() => ask.mock.calls.length).toBe(2)
+    expect(client.getQueryDefaults(KEY)).toEqual({})
+  })
+  it('does not follow an abandoned suspended render or mutate its defaults', async () => {
+    const client = new QueryClient()
+    const read = held()
+    const forever = new Promise<void>(() => {})
+    function Suspend(): never {
+      throw forever
+    }
+    await render(
+      <QueryClientProvider client={client}>
+        <Suspense fallback={<p>Suspended</p>}>
+          <QueryHydration
+            state={{ queries: [], mutations: [] }}
+            coming={[{ queryKey: KEY, arrival: read.arrival }]}
+          >
+            <Suspend />
+          </QueryHydration>
+        </Suspense>
+      </QueryClientProvider>,
+    )
+    await expect.element(page.getByText('Suspended')).toBeVisible()
+    read.land({ kind: 'answer', value: 'must not land' })
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(client.getQueryData(KEY)).toBeUndefined()
+    expect(client.getQueryDefaults(KEY)).toEqual({})
+    expect(client.getQueryState(KEY)?.fetchStatus).not.toBe('fetching')
+  })
+  it('continues a handed read through StrictMode effect replay', async () => {
+    const client = new QueryClient()
+    const read = held()
+    const ask = vi.fn(() => Promise.resolve('client'))
+    await render(
+      <StrictMode>
+        <QueryClientProvider client={client}>
+          <QueryHydration
+            state={{ queries: [], mutations: [] }}
+            coming={[{ queryKey: KEY, arrival: read.arrival }]}
+          >
+            <Reader ask={ask} />
+          </QueryHydration>
+        </QueryClientProvider>
+      </StrictMode>,
+    )
+    read.land({ kind: 'answer', value: 'server' })
+    await expect.element(page.getByTestId('read')).toHaveTextContent('server')
+    expect(ask).not.toHaveBeenCalled()
+  })
+  it('does not start a fallback after a cold boundary unmounts', async () => {
+    const client = new QueryClient()
+    const read = held()
+    const ask = vi.fn(() => Promise.resolve('client'))
+    const view = await drawn(read.arrival, ask, client)
+    await view.unmount()
+    read.land({ kind: 'ask' })
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(ask).not.toHaveBeenCalled()
+    expect(client.getQueryState(KEY)?.fetchStatus).toBe('idle')
+  })
+  it('preserves select and combined results for heterogeneous observers', async () => {
+    const server = new QueryClient()
+    server.setQueryData(KEY, { count: 3 })
+    server.setQueryData(['label'], 'ready')
+    const ask = vi.fn(() => Promise.resolve({ count: 0 }))
+    function Combined() {
+      const result = useQueries({
+        queries: [
+          { queryKey: KEY, queryFn: ask, select: (value: { count: number }) => value.count },
+          { queryKey: ['label'], queryFn: () => Promise.resolve('asked') },
+        ],
+        combine: ([count, label]) => `${count.data} ${label.data}`,
+      })
+      return <p>{result}</p>
+    }
+    const client = new QueryClient()
+    await render(
+      <QueryClientProvider client={client}>
+        <QueryHydration state={dehydrate(server)}>
+          <Combined />
+        </QueryHydration>
+      </QueryClientProvider>,
+    )
+    await expect.element(page.getByText('3 ready')).toBeVisible()
+    expect(ask).not.toHaveBeenCalled()
+  })
+  it('does not re-read fresh server data on first mount', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const server = new QueryClient()
+    server.setQueryData(KEY, 'server')
+    const ask = vi.fn(() => Promise.resolve('asked'))
+    const state = dehydrate(server)
+    const router = createMemoryRouter([
+      {
+        path: '*',
+        element: (
+          <QueryHydration state={state}>
+            <Reader ask={ask} />
+          </QueryHydration>
+        ),
+      },
+    ])
+    await render(
+      <QueryClientProvider client={client}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    )
+    await expect.element(page.getByTestId('read')).toHaveTextContent('server')
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    expect(ask).not.toHaveBeenCalled()
+  })
+  it('follows a second handoff when the boundary is reused', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const second = held()
+    const ask = vi.fn(() => Promise.resolve('client-b'))
+    function Switched() {
+      const [next, setNext] = useState(false)
+      const key = next ? ['test', 'b'] : ['test', 'a']
+      return (
+        <>
+          <button onClick={() => setNext(true)}>Next</button>
+          <QueryHydration
+            state={{ queries: [], mutations: [] }}
+            coming={next ? [{ queryKey: key, arrival: second.arrival }] : []}
+          >
+            <input aria-label="Draft" />
+            <QueryReader queryKey={key} />
+          </QueryHydration>
+        </>
+      )
+    }
+    function QueryReader({ queryKey }: { queryKey: QueryKey }) {
+      const query = useQuery({ queryKey, queryFn: ask })
+      return <p data-testid="switched">{query.data ?? 'pending'}</p>
+    }
+    const router = createMemoryRouter([{ path: '*', element: <Switched /> }])
+    await render(
+      <QueryClientProvider client={client}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    )
+    await page.getByRole('textbox', { name: 'Draft' }).fill('unfinished')
+    const original = page.getByRole('textbox', { name: 'Draft' }).element()
+    await page.getByRole('button', { name: 'Next' }).click()
+    second.land({ kind: 'answer', value: 'server-b' })
+    await expect
+      .element(page.getByTestId('switched'), { timeout: 1500 })
+      .toHaveTextContent('server-b')
+    expect(page.getByRole('textbox', { name: 'Draft' }).element()).toBe(original)
+    expect((original as HTMLInputElement).value).toBe('unfinished')
+    expect(ask).toHaveBeenCalledTimes(1)
+  })
+  it('keeps a reused boundary handoff when it settles before a child resumes', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const second = held()
+    const ask = vi.fn(() => Promise.resolve('client-b'))
+    let ready = false
+    let release!: () => void
+    const wait = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const key = ['test', 'b']
+    function Pending() {
+      if (!ready) throw wait
+      const read = useQuery({ queryKey: key, queryFn: ask })
+      return <p data-testid="switched">{read.data ?? 'pending'}</p>
+    }
+    function Parent() {
+      const [next, setNext] = useState(false)
+      return (
+        <>
+          <button onClick={() => setNext(true)}>Next</button>
+          <QueryHydration
+            state={{ queries: [], mutations: [] }}
+            coming={next ? [{ queryKey: key, arrival: second.arrival }] : []}
+          >
+            {next && (
+              <Suspense fallback={<p>Waiting</p>}>
+                <Pending />
+              </Suspense>
+            )}
+          </QueryHydration>
+        </>
+      )
+    }
+    const router = createMemoryRouter([{ path: '*', element: <Parent /> }])
+    await render(
+      <QueryClientProvider client={client}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    )
+    await page.getByRole('button', { name: 'Next' }).click()
+    await expect.element(page.getByText('Waiting')).toBeVisible()
+    second.land({ kind: 'answer', value: 'server-b' })
+    ready = true
+    release()
+    await expect
+      .element(page.getByTestId('switched'), { timeout: 1500 })
+      .toHaveTextContent('server-b')
+    expect(ask).not.toHaveBeenCalled()
+  })
+  it('does not replay a failed handoff when its parent rerenders', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const read = held()
+    const ask = vi.fn(() => Promise.reject(new Error('offline')))
+    function Parent() {
+      const [count, setCount] = useState(0)
+      return (
+        <>
+          <button onClick={() => setCount(count + 1)}>Rerender</button>
+          <QueryHydration
+            state={{ queries: [], mutations: [] }}
+            coming={[{ queryKey: KEY, arrival: read.arrival }]}
+          >
+            <Reader ask={ask} />
+          </QueryHydration>
+        </>
+      )
+    }
+    const router = createMemoryRouter([{ path: '*', element: <Parent /> }])
+    await render(
+      <QueryClientProvider client={client}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    )
+    read.land({ kind: 'ask' })
+    await expect.poll(() => client.getQueryState(KEY)?.status).toBe('error')
+    await page.getByRole('button', { name: 'Rerender' }).click()
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    expect(ask).toHaveBeenCalledTimes(1)
+  })
+  it('shows a server refusal without starting an unnecessary cache refresh', async () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     client.setQueryData(KEY, 'cached', { updatedAt: Date.now() - 10_000 })
     const server = new QueryClient()
@@ -84,17 +340,7 @@ describe('a read that follows the html', () => {
       shouldDehydrateQuery: () => true,
       shouldRedactErrors: () => false,
     })
-    let aborted = false
-    let finish!: (value: string) => void
-    const ask = vi.fn(
-      ({ signal }: { signal: AbortSignal }) =>
-        new Promise<string>((resolve) => {
-          finish = resolve
-          signal.addEventListener('abort', () => {
-            aborted = true
-          })
-        }),
-    )
+    const ask = vi.fn(() => Promise.resolve('unnecessary'))
     const router = createMemoryRouter([
       {
         path: '*',
@@ -113,12 +359,7 @@ describe('a read that follows the html', () => {
     await expect.poll(() => client.getQueryState(KEY)?.status).toBe('error')
     expect(client.getQueryData(KEY)).toBeUndefined()
     expect(client.getQueryState(KEY)?.error).toEqual({ _tag: 'REFUSED' })
-    expect(ask).toHaveBeenCalledTimes(1)
-    expect(aborted).toBe(true)
-    finish('late success')
-    await new Promise((resolve) => setTimeout(resolve, 100))
-    expect(client.getQueryState(KEY)?.status).toBe('error')
-    expect(client.getQueryData(KEY)).toBeUndefined()
+    expect(ask).not.toHaveBeenCalled()
   })
 
   it('applies a refusal over an unfinished older cache read', async () => {
@@ -660,8 +901,7 @@ describe('a read that follows the html', () => {
     const frames: (string | undefined)[] = []
     function Score() {
       const read = useQuery({ queryKey: KEY, queryFn: ask })
-      const handed = useHandedQueryState<string>(KEY)
-      const value = (handed === undefined ? read.data : handed?.data) ?? 'on its way'
+      const value = read.data ?? 'on its way'
       frames.push(value)
       return <p data-testid="selective-score">{value}</p>
     }

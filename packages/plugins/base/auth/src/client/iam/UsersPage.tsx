@@ -1,5 +1,6 @@
 'use client'
-import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { keepPreviousData } from '@tanstack/react-query'
+import { useQuery } from '@qualy/web-runtime/query'
 import { usersPageActions, type UsersPageActionsContext } from '@qualy/ui-contract'
 import { useEffect, useMemo, useState } from 'react'
 import { ArrowUpRightIcon, PlusIcon } from 'lucide-react'

@@ -3,7 +3,8 @@ import { pageNumber } from '@qualy/api-kit/schema'
 import { EasedHeight } from '@qualy/ui/eased-height'
 import { Pager } from '@qualy/ui/pager'
 import { useEffect, useState, type MouseEvent, type ReactNode } from 'react'
-import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { keepPreviousData } from '@tanstack/react-query'
+import { useQuery } from '@qualy/web-runtime/query'
 import * as stylex from '@stylexjs/stylex'
 import {
   PageLink,

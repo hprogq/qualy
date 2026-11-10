@@ -11,7 +11,8 @@ import {
 } from '@qualy/web-runtime'
 
 import { useId, useState, type FormEvent, type ReactNode } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@qualy/web-runtime/query'
 import * as stylex from '@stylexjs/stylex'
 
 import { AsyncSection, Field, FormDialog, useSettledCheck } from '@qualy/ui/admin'

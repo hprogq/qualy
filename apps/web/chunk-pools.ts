@@ -28,7 +28,7 @@ export const chunkPools: NonNullable<Rolldown.OutputOptions['codeSplitting']> = 
     // They import no product module and can share a stable vendor chunk.
     {
       name: 'query',
-      test: /[\\/]node_modules[\\/]@tanstack[\\/](?:query-core|react-query)[\\/]/,
+      test: /[\\/](?:node_modules[\\/]@tanstack[\\/](?:query-core|react-query)[\\/]|packages[\\/]web[\\/]runtime[\\/]src[\\/]data[\\/]query(?:-hydration)?\.tsx?$)/,
       priority: 3,
       includeDependenciesRecursively: false,
     },

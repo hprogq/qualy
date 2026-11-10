@@ -9,7 +9,8 @@ import {
   useLoadFailure,
 } from '@qualy/web-runtime'
 import { Fragment, useMemo, useState } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@qualy/web-runtime/query'
 import { PencilLineIcon, PlusIcon } from 'lucide-react'
 
 import { AsyncSection, ConfirmDialog, Feedback } from '@qualy/ui/admin'

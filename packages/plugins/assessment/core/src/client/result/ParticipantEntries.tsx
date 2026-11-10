@@ -10,7 +10,8 @@ import {
 } from '@qualy/web-runtime'
 import { formatPlatformFailure as formatError } from '@qualy/web-i18n'
 import { useEffect, useMemo, useState } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@qualy/web-runtime/query'
 import * as stylex from '@stylexjs/stylex'
 import { PenLineIcon } from 'lucide-react'
 

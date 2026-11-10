@@ -18,7 +18,8 @@ import {
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, type Path } from 'react-router'
-import { keepPreviousData, useQuery, useQueries } from '@tanstack/react-query'
+import { keepPreviousData } from '@tanstack/react-query'
+import { useQuery, useQueries } from '@qualy/web-runtime/query'
 import * as stylex from '@stylexjs/stylex'
 import { EllipsisVerticalIcon, EyeIcon } from 'lucide-react'
 

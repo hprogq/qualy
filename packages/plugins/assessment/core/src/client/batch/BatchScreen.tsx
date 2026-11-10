@@ -1,5 +1,5 @@
 import { createContext, Fragment, useContext, useState, type ReactNode } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery } from '@qualy/web-runtime/query'
 import { LoadFailure, isRecordId, useApiQuery, usePageRouteParams } from '@qualy/web-runtime'
 
 import * as stylex from '@stylexjs/stylex'

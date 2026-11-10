@@ -1,7 +1,7 @@
 'use client'
 import { useMemo, useState } from 'react'
 import { XIcon } from 'lucide-react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery } from '@qualy/web-runtime/query'
 import type { OrgNodePickerContext, PickedOrgNode } from '@qualy/ui-contract'
 import { useApiQuery } from '@qualy/web-runtime'
 

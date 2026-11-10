@@ -1,7 +1,7 @@
 'use client'
 import { Suspense, use, useEffect, useState, type ComponentProps } from 'react'
 import { QueryHydration } from '@qualy/web-runtime/query-hydration'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery } from '@qualy/web-runtime/query'
 import { useLocation } from 'react-router'
 import * as stylex from '@stylexjs/stylex'
 import {

@@ -1,6 +1,6 @@
 import { useList } from '@qualy/web-i18n'
 import { useEffect, useRef, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery } from '@qualy/web-runtime/query'
 import * as stylex from '@stylexjs/stylex'
 import { ArrowLeftIcon, ChevronRightIcon, CircleCheckIcon } from 'lucide-react'
 import { PageLink, useApiQuery, useLoadFailure, usePageHref } from '@qualy/web-runtime'

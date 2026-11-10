@@ -11,7 +11,8 @@ import {
 } from '@qualy/web-runtime'
 
 import { Fragment, useState, type ReactNode } from 'react'
-import { keepPreviousData, useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useInfiniteQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@qualy/web-runtime/query'
 import * as stylex from '@stylexjs/stylex'
 
 import { AsyncSection, ConfirmDialog } from '@qualy/ui/admin'
