@@ -256,7 +256,12 @@ export const localBackend = (root: string): StorageBackend => ({
         const info = await statFile(objectPath(root, key), { bigint: true })
         return {
           kind: 'stream' as const,
-          body: fs.createReadStream(objectPath(root, key)) as AsyncIterable<Uint8Array>,
+          // Do not open a file until its consumer has attached an iterator.
+          // An asynchronous open error otherwise has no listener while the
+          // caller is still finishing its transaction or preparing a response.
+          body: (async function* () {
+            yield* fs.createReadStream(objectPath(root, key))
+          })(),
           size: info.size,
         }
       },

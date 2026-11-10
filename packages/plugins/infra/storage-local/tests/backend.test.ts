@@ -1,11 +1,12 @@
 import { mkdir, mkdtemp, rm, readdir, utimes, writeFile } from 'node:fs/promises'
+import fs from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fork } from 'node:child_process'
 import { once } from 'node:events'
 import { Effect } from 'effect'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { backendContract } from '@qualy/plugin-storage/testkit/contract'
 import {
   localBackend,
@@ -57,6 +58,54 @@ describe('the local backend keeps the storage contract', () => {
 })
 
 describe('the local backend on a real filesystem', () => {
+  it('opens only when consumed and reports a file removed after metadata was read', async () => {
+    const key = `attachments/${randomUUID()}/${randomUUID()}`
+    await write(key, Buffer.from('original'))
+    const create = vi.spyOn(fs, 'createReadStream')
+    try {
+      const opened = await Effect.runPromise(
+        backend().open({ key }, { filename: 'file.txt', mime: 'text/plain' }),
+      )
+      expect(opened.kind).toBe('stream')
+      if (opened.kind !== 'stream') throw new Error('expected local stream')
+      expect(opened.size).toBe(8n)
+      expect(create).not.toHaveBeenCalled()
+      await rm(path.join(root, key))
+      const iterator = opened.body[Symbol.asyncIterator]()
+      await expect(iterator.next()).rejects.toMatchObject({ code: 'ENOENT' })
+    } finally {
+      create.mockRestore()
+    }
+  })
+
+  it('closes an interrupted read and propagates errors after its first chunk', async () => {
+    const key = `attachments/${randomUUID()}/${randomUUID()}`
+    await write(key, Buffer.alloc(256 * 1024, 7))
+    const create = vi.spyOn(fs, 'createReadStream')
+    try {
+      const opened = await Effect.runPromise(
+        backend().open({ key }, { filename: 'file.bin', mime: 'application/octet-stream' }),
+      )
+      if (opened.kind !== 'stream') throw new Error('expected local stream')
+      const iterator = opened.body[Symbol.asyncIterator]()
+      expect((await iterator.next()).done).toBe(false)
+      const file = create.mock.results[0]!.value
+      await iterator.return?.()
+      expect(file.destroyed).toBe(true)
+
+      const failed = await Effect.runPromise(
+        backend().open({ key }, { filename: 'file.bin', mime: 'application/octet-stream' }),
+      )
+      if (failed.kind !== 'stream') throw new Error('expected local stream')
+      const failing = failed.body[Symbol.asyncIterator]()
+      expect((await failing.next()).done).toBe(false)
+      const secondFile = create.mock.results[1]!.value
+      secondFile.destroy(new Error('read interrupted'))
+      await expect(failing.next()).rejects.toThrow('read interrupted')
+    } finally {
+      create.mockRestore()
+    }
+  })
   it("never installs another process's unfinished upload on the same ticket", async () => {
     const reservationId = randomUUID()
     const key = `attachments/${randomUUID()}/${randomUUID()}`
