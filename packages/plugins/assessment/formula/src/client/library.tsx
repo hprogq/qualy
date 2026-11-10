@@ -1,8 +1,8 @@
 import * as stylex from '@stylexjs/stylex'
-import type { ReactNode } from 'react'
+import type { ComponentProps, ReactNode } from 'react'
 import { Skeleton } from '@qualy/ui/skeleton'
-import { Settling } from '@qualy/ui/reveal'
-import { useBandFoot } from '@qualy/ui/screen'
+import { Reveal, Settling } from '@qualy/ui/reveal'
+import { Screen, useBandFoot } from '@qualy/ui/screen'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { libraryStyles } from './library-styles.ts'
 
@@ -16,6 +16,15 @@ const skeletonStyles = stylex.create({
 
 // The pieces of the two library lists that are components; their styles and
 // the date words they share live in ./library-styles.ts.
+
+/** Let the heading, filters and results arrive in the same entrance. */
+export function LibraryScreen(props: ComponentProps<typeof Screen>) {
+  return (
+    <Reveal lift={false} className={stylex.props(libraryStyles.screen).className}>
+      <Screen {...props} animateBody={false} />
+    </Reveal>
+  )
+}
 
 /** a formula's parameters, as the names a source file gives them */
 export function ParameterChips({ names }: { readonly names: readonly string[] }) {

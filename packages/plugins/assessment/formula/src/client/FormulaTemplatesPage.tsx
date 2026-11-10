@@ -18,12 +18,11 @@ import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@qualy/ui/empty'
 import { AsyncSection } from '@qualy/ui/admin'
-import { Screen } from '@qualy/ui/screen'
 import { ChevronRightIcon, LibraryIcon } from 'lucide-react'
 import { formulaApi } from './api.ts'
 import { libraryQueryOf } from './list-place.ts'
 
-import { LibrarySkeleton, ParameterChips } from './library.tsx'
+import { LibraryScreen, LibrarySkeleton, ParameterChips } from './library.tsx'
 import { libraryStyles as l, useShortWhen } from './library-styles.ts'
 import * as commonMessages from '@qualy/web-i18n/messages'
 import * as m from '#messages'
@@ -82,7 +81,7 @@ export default function FormulaTemplatesPage() {
   const items = templates.data?.items ?? []
 
   return (
-    <Screen title={m.templates_title()} description={m.templates_hint()} titleRef={titleRef}>
+    <LibraryScreen title={m.templates_title()} description={m.templates_hint()} titleRef={titleRef}>
       <div {...stylex.props(l.page)}>
         <section
           data-formula-results
@@ -224,6 +223,6 @@ export default function FormulaTemplatesPage() {
           )}
         </section>
       </div>
-    </Screen>
+    </LibraryScreen>
   )
 }

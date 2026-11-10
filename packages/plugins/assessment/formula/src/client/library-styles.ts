@@ -13,6 +13,7 @@ import * as m from '#messages'
 // where they left it; what differs is only which columns a row carries.
 
 export const libraryStyles = stylex.create({
+  screen: { display: 'flex', flexDirection: 'column', flexGrow: 1, minWidth: 0 },
   page: {
     display: 'flex',
     flexGrow: 1,

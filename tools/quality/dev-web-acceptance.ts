@@ -149,7 +149,10 @@ export const acquire = (prepared, context) => web.acquire({
   try {
     await library.goto(`${site}/account`, { waitUntil: 'networkidle' })
     for (const route of ['/library/formulas', '/library/formula-templates']) {
-      const firstFrame = library.evaluate<{ opacity: string; transform: string }>(`(async () => {
+      const firstFrame = library.evaluate<{
+        body: { opacity: string; transform: string }
+        screenOpacity: number
+      }>(`(async () => {
         const old = document.querySelector('[data-formula-results]')
         const next = await new Promise((resolve) => {
           const observer = new MutationObserver(() => {
@@ -162,18 +165,25 @@ export const acquire = (prepared, context) => web.acquire({
         })
         return new Promise((resolve) => {
           requestAnimationFrame(() => {
-            const css = getComputedStyle(next.parentElement.parentElement)
-            resolve({ opacity: css.opacity, transform: css.transform })
+            const body = getComputedStyle(next.parentElement.parentElement)
+            let screen = next.parentElement
+            while (screen !== null && screen.querySelector('h1') === null) screen = screen.parentElement
+            resolve({
+              body: { opacity: body.opacity, transform: body.transform },
+              screenOpacity: screen === null ? 1 : Number(getComputedStyle(screen).opacity),
+            })
           })
         })
       })()`)
       await library.locator(`a[href="${route}"]`).first().click()
       await library.waitForURL(`${site}${route}`)
+      const painted = await firstFrame
       assert.deepEqual(
-        await firstFrame,
+        painted.body,
         { opacity: '1', transform: 'none' },
         `${route}: the first results frame must not fade or move separately from the heading`,
       )
+      assert.ok(painted.screenOpacity < 1, `${route}: the screen must fade in after navigation`)
     }
   } finally {
     await library.close()

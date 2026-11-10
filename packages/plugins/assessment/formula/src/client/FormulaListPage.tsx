@@ -23,7 +23,6 @@ import { useState } from 'react'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { Button } from '@qualy/ui/button'
-import { Screen } from '@qualy/ui/screen'
 import { Input } from '@qualy/ui/input'
 import { Textarea } from '@qualy/ui/textarea'
 import {
@@ -39,7 +38,7 @@ import { ChevronRightIcon, PlusIcon, SigmaIcon } from 'lucide-react'
 import { formulaApi } from './api.ts'
 import { libraryQueryOf } from './list-place.ts'
 
-import { LibrarySkeleton } from './library.tsx'
+import { LibraryScreen, LibrarySkeleton } from './library.tsx'
 import { libraryStyles as l, useShortWhen } from './library-styles.ts'
 import * as commonMessages from '@qualy/web-i18n/messages'
 import * as m from '#messages'
@@ -226,7 +225,7 @@ export default function FormulaListPage() {
   )
 
   return (
-    <Screen
+    <LibraryScreen
       title={m.list_title()}
       description={m.list_hint()}
       titleRef={titleRef}
@@ -387,6 +386,6 @@ export default function FormulaListPage() {
           }}
         />
       </div>
-    </Screen>
+    </LibraryScreen>
   )
 }
