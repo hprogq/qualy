@@ -1,7 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { useLocale } from '@qualy/web-i18n'
 
 import { AsyncSection, Field, SidePanel } from '@qualy/ui/admin'
 import type { ResourceFailure } from '@qualy/ui/resource-state'
@@ -34,7 +33,6 @@ interface PresetPhase {
 }
 
 const styles = stylex.create({
-  timeLead: { color: tokens.mutedForeground, whiteSpace: 'nowrap' },
   presetRow: {
     display: 'flex',
     alignItems: 'flex-end',
@@ -258,7 +256,6 @@ export function PhaseDetailsPanel({
   const [presetId, setPresetId] = useState('')
   // the sheet animates out after the draft is gone; a title that changes
   // mid-flight reads as the wrong phase opening rather than this one leaving
-  const locale = useLocale()
   const [closing, setClosing] = useState<PhaseDraft | undefined>(undefined)
   if (draft !== undefined && draft !== closing) setClosing(draft)
   const shown = draft ?? closing
@@ -302,17 +299,11 @@ export function PhaseDetailsPanel({
             )}
           </Field>
 
-          <Field label={m.phase_entryNote()} hint={m.phase_entryNoteHint()} hideLabel>
+          <Field label={m.phase_entryNote()} hint={m.phase_entryNoteHint()}>
             {(id, control) => (
               <Input
                 {...control}
                 id={id}
-                lead={
-                  <span aria-hidden {...stylex.props(styles.timeLead)}>
-                    {m.phase_entryNote()}
-                  </span>
-                }
-                leadWidth={locale === 'zh-CN' ? '4.75rem' : '6rem'}
                 maxLength={200}
                 value={draft.entryNote}
                 disabled={readOnly}

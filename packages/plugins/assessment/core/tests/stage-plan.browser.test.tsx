@@ -815,7 +815,7 @@ describe('the stage progress', () => {
     await triggers.nth(1).click()
     await expect.element(panel).toBeVisible()
     expect(panel.element().querySelectorAll('li[data-operation]')).toHaveLength(0)
-    expect(panel.element().textContent).toContain('开始时间待复审结束后确定')
+    await expect.element(panel.getByText('待复审结束后确定', { exact: true })).toBeVisible()
     await close.click()
     await expect.element(panel).not.toBeInTheDocument()
   })

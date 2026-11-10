@@ -411,8 +411,7 @@ const useSaid = () => {
 
   return (stage: FlowStage): string => {
     if (stage.at === null) {
-      const note = stage.note.trim()
-      return note === '' ? m.flow_pending() : m.flow_pendingWithNote({ note })
+      return stage.note.trim() === '' ? m.flow_pending() : stage.note
     }
     return when.span(stage.at, stage.until) ?? m.flow_fromPending({ when: when.moment(stage.at) })
   }
