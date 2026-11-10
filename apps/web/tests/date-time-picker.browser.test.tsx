@@ -33,6 +33,7 @@ function Harness({ initial, timeZone }: { initial: string | null; timeZone?: str
         minuteLabel="minute"
         secondLabel="second"
         clearLabel="clear"
+        closeLabel="close calendar"
         localeTag="en-US"
         timeZone={timeZone}
       />
@@ -51,6 +52,20 @@ const secondBox = () => page.getByRole('spinbutton', { name: 'second' })
 const open = async () => userEvent.click(page.getByRole('button').first())
 
 describe('choosing an instant', () => {
+  it('keeps clear and close buttons separate and keyboard accessible', async () => {
+    await render(<Harness initial="2027-03-14T00:00:00.000Z" timeZone="UTC" />)
+    const clear = page.getByRole('button', { name: 'clear' })
+    expect(clear.element().closest('button button')).toBeNull()
+    await open()
+    const close = page.getByRole('button', { name: 'close calendar' })
+    await expect.element(close).toBeVisible()
+    ;(close.element() as HTMLButtonElement).focus()
+    await userEvent.keyboard('{Enter}')
+    await expect.element(hourBox()).not.toBeInTheDocument()
+    ;(clear.element() as HTMLButtonElement).focus()
+    await userEvent.keyboard('{Enter}')
+    expect(page.getByTestId('value').element().textContent).toBe('')
+  })
   it('opens onto the time it already holds', async () => {
     await render(<Harness initial={new Date(2026, 7, 25, 9, 30).toISOString()} />)
     await open()

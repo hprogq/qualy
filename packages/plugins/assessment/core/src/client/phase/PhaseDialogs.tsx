@@ -149,6 +149,7 @@ export function ScheduleDialog({
               disabled={zoneUnavailable}
               placeholder={m.phase_pickDatetime()}
               clearLabel={m.phase_clearTime()}
+              closeLabel={commonMessages.action_close()}
               hourLabel={commonMessages.clock_hour()}
               minuteLabel={commonMessages.clock_minute()}
               secondLabel={commonMessages.clock_second()}

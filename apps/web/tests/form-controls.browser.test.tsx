@@ -310,6 +310,7 @@ describe('the input family types at one size', () => {
             minuteLabel="minute"
             secondLabel="second"
             clearLabel="clear"
+            closeLabel="close calendar"
           />
         </>
       )

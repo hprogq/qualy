@@ -66,6 +66,7 @@ export function DateTimePicker({
   minuteLabel,
   secondLabel,
   clearLabel,
+  closeLabel,
   localeTag,
   timeZone,
   monthLabel,
@@ -87,6 +88,8 @@ export function DateTimePicker({
   minuteLabel: string
   secondLabel: string
   clearLabel: string
+  /** name for the button that closes the calendar */
+  closeLabel: string
   /** a bcp-47 tag such as zh-CN; calendar and display text follow it */
   localeTag?: string
   /**
@@ -207,7 +210,12 @@ export function DateTimePicker({
               if (day !== null && next !== '') change(`${day} ${next}`)
             }}
           />
-          <ActionIcon variant="default" size="input-sm" onClick={() => setOpened(false)}>
+          <ActionIcon
+            variant="default"
+            size="input-sm"
+            aria-label={closeLabel}
+            onClick={() => setOpened(false)}
+          >
             <CheckIcon size="30%" />
           </ActionIcon>
         </div>

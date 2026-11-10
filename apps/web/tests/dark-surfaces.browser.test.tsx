@@ -185,6 +185,7 @@ describe('a calendar in the dark', () => {
         minuteLabel="minute"
         secondLabel="second"
         clearLabel="clear"
+        closeLabel="close calendar"
         localeTag="zh-CN"
       />,
     )
