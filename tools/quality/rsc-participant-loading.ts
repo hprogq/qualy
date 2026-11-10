@@ -19,6 +19,47 @@ export async function acceptParticipantLoading({
 }) {
   let unhydrated: BrowserContext | undefined
   try {
+    // Start on a different page: a direct document load has a complete
+    // matched route, while an unvisited page first comes from discovery.
+    const interactive = await context.newPage()
+    const rosterAddress = new URL(address, site)
+    const overview = rosterAddress.pathname.replace(/\/results$/, '')
+    const renders: string[] = []
+    interactive.on('request', (request) => {
+      if (new URL(request.url()).pathname.endsWith('.rsc')) renders.push(request.url())
+    })
+    await interactive.goto(site + overview)
+    await interactive.locator(`a[href="${rosterAddress.pathname}"]`).first().click()
+    await interactive.getByTestId('roster').waitFor()
+    const entered = renders.length
+    const participant = rosterAddress.searchParams.get('participant')!
+    await interactive
+      .locator(`[data-testid="participant-row"][data-participant="${participant}"]`)
+      .click()
+    await interactive.getByTestId('participant-total').first().waitFor()
+    for (const tab of ['score', 'entries', 'score']) {
+      const button = interactive
+        .getByTestId(`participant-tab-${tab}`)
+        .filter({ visible: true })
+        .first()
+      await button.click()
+      await interactive
+        .locator(`[data-testid="participant-tab-${tab}"][aria-current="true"]`)
+        .filter({ visible: true })
+        .first()
+        .waitFor()
+    }
+    await interactive.goBack()
+    await interactive.getByTestId('roster').waitFor()
+    await interactive.goForward()
+    await interactive.getByTestId('participant-total').first().waitFor()
+    check(
+      'keeps participant selection, tabs and history local after entering from another page',
+      entered > 0 && renders.length === entered,
+      { entering: entered, after: renders.length },
+    )
+    await interactive.close()
+
     await context.addCookies([{ name: 'acceptance_fault', value: 'participant-slow', url: site }])
     const cookies = (await context.cookies())
       .map(({ name, value }) => `${name}=${value}`)
