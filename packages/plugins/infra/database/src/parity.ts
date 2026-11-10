@@ -39,10 +39,11 @@ const catalog = (tables: readonly string[]) => ({
             where schemaname = 'public' and tablename in (${list(tables)}) order by 1`,
   // A trigger belongs to its table and is dropped with it, so the generated
   // side has to declare one to keep it - through `afterCreate`, since entity
-  // metadata cannot express one. Empty for every plugin today, and the whole
-  // definition rather than the name, so an edited condition is a difference
-  // rather than a match.
+  // metadata cannot express one. A baseline can attach a trigger to another
+  // plugin's table. Compare both its declaration and its function, since a
+  // matching trigger can otherwise execute a different body.
   triggers: `select c.relname || '.' || t.tgname || ' ' || pg_get_triggerdef(t.oid)
+                    || ' ' || pg_get_functiondef(t.tgfoid)
              from pg_trigger t join pg_class c on c.oid = t.tgrelid
              where not t.tgisinternal and c.relname in (${list(tables)}) order by 1`,
 })

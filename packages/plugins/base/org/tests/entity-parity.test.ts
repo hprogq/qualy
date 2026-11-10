@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { readFileSync } from 'node:fs'
 import { postgresAvailable, schemaParity } from '@qualy/plugin-database/testkit'
 import { entities, compositeForeignKeys } from '../src/db/entities.ts'
 
@@ -22,7 +23,13 @@ describe.runIf(postgresAvailable)('a schema built from org entities', () => {
       label: 'org-parity',
       tables: TABLES,
       entities,
-      afterCreate: compositeForeignKeys,
+      afterCreate: [
+        ...compositeForeignKeys,
+        readFileSync(
+          new URL('../../auth/db/baseline/0001_tenant_session_lifecycle.sql', import.meta.url),
+          'utf8',
+        ),
+      ],
     })
 
     for (const what of ['columns', 'constraints', 'indexes'] as const) {
@@ -30,8 +37,9 @@ describe.runIf(postgresAvailable)('a schema built from org entities', () => {
       expect(parity[what].lineage.length, `no ${what} were compared`).toBeGreaterThan(0)
       expect(parity[what].entities, `${what} differ`).toEqual(parity[what].lineage)
     }
-    // no non-empty demand here: this plugin owns no trigger, and the day it
-    // does, one the entities cannot rebuild is a difference
+    // Auth's baseline also attaches a trigger to tenants, an org-owned table.
+    expect(parity.triggers.lineage).toHaveLength(1)
+    expect(parity.triggers.lineage[0]).toContain('tenants.qualy_auth_tenant_sessions_end')
     expect(parity.triggers.entities, 'triggers differ').toEqual(parity.triggers.lineage)
   }, 240_000)
 })

@@ -121,6 +121,9 @@ describe.runIf(postgresAvailable)('tenant session lifecycle upgrade', () => {
         await admin.query('begin')
         await admin.query('update tenants set enabled = false where id = $1', [tenant])
         const pending = old.query(insert, args('old-after-disable'))
+        // The database may reject immediately after commit, before this
+        // test reaches its assertion. Keep the original promise observed.
+        void pending.catch(() => {})
         await blockedBy(oldPid, adminPid)
         await admin.query('commit')
         await expect(pending).rejects.toMatchObject({ code: '23514' })
@@ -132,6 +135,7 @@ describe.runIf(postgresAvailable)('tenant session lifecycle upgrade', () => {
         await old.query(insert, args('old-before-disable'))
         await admin.query('begin')
         const disabled = admin.query('update tenants set enabled = false where id = $1', [tenant])
+        void disabled.catch(() => {})
         await blockedBy(adminPid, oldPid)
         await old.query('commit')
         await disabled

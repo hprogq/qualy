@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { readFileSync } from 'node:fs'
 import { postgresAvailable, schemaParity } from '@qualy/plugin-database/testkit'
 import { entities as orgEntities } from '@qualy/plugin-org/db'
 import { compositeForeignKeys, entities } from '../src/db/entities.ts'
@@ -26,6 +27,10 @@ const TABLES = [
 ]
 
 const ORG_TABLES = ['org_nodes', 'org_type_rules', 'org_types', 'tenants']
+const baseline = readFileSync(
+  new URL('../db/baseline/0001_tenant_session_lifecycle.sql', import.meta.url),
+  'utf8',
+)
 
 describe.runIf(postgresAvailable)('a schema built from auth entities', () => {
   it('has the columns, constraints and indexes the lineage builds', async () => {
@@ -34,15 +39,30 @@ describe.runIf(postgresAvailable)('a schema built from auth entities', () => {
       tables: TABLES,
       entities,
       dependencies: { entities: orgEntities, tables: ORG_TABLES },
-      afterCreate: compositeForeignKeys,
+      afterCreate: [...compositeForeignKeys, baseline],
     })
 
     for (const what of ['columns', 'constraints', 'indexes'] as const) {
       expect(parity[what].lineage.length, `no ${what} were compared`).toBeGreaterThan(0)
       expect(parity[what].entities, `${what} differ`).toEqual(parity[what].lineage)
     }
-    // no non-empty demand here: this plugin owns no trigger, and the day it
-    // does, one the entities cannot rebuild is a difference
+    // Sessions are rebuilt, so auth's baseline must restore its guard.
+    expect(parity.triggers.lineage).toHaveLength(1)
+    expect(parity.triggers.lineage[0]).toContain('sessions.qualy_auth_session_tenant_guard')
     expect(parity.triggers.entities, 'triggers differ').toEqual(parity.triggers.lineage)
+  }, 240_000)
+
+  it('detects a changed trigger function even if its declaration is unchanged', async () => {
+    const altered = baseline.replace('tenant is not enabled', 'a different refusal')
+    expect(altered).not.toBe(baseline)
+    const parity = await schemaParity({
+      label: 'auth-trigger-function-parity',
+      tables: TABLES,
+      entities,
+      dependencies: { entities: orgEntities, tables: ORG_TABLES },
+      afterCreate: [...compositeForeignKeys, altered],
+    })
+    expect(parity.triggers.lineage).toHaveLength(1)
+    expect(parity.triggers.entities).not.toEqual(parity.triggers.lineage)
   }, 240_000)
 })
