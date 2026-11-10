@@ -1,4 +1,5 @@
 import { Schema } from 'effect'
+import { safeReturnPath } from '@qualy/ui-contract/return-path'
 
 // Where a sign-in that left this application lands when it did not work.
 //
@@ -83,14 +84,9 @@ export const failureLocation = (
   path: string,
   failure: { readonly _tag: string; readonly retryAfterSeconds?: number },
 ): string => {
-  const sentinel = 'https://qualy.invalid'
-  let target: URL
-  try {
-    target = new URL(path, sentinel)
-  } catch {
-    return signInFailureLocation(failure)
-  }
-  if (!path.startsWith('/') || target.origin !== sentinel) return signInFailureLocation(failure)
+  const safe = safeReturnPath(path)
+  if (safe === undefined) return signInFailureLocation(failure)
+  const target = new URL(safe, 'https://qualy.invalid')
   target.searchParams.set('error', failure._tag)
   if (failure.retryAfterSeconds !== undefined) {
     target.searchParams.set('retryAfter', String(failure.retryAfterSeconds))

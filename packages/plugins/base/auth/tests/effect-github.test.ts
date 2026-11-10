@@ -415,6 +415,18 @@ describe.runIf(postgresAvailable)('a GitHub account', () => {
     expect(github.seen).toEqual([])
   })
 
+  it('keeps a refused bind on this site when the return path is ambiguous', async () => {
+    const bind = await depart(
+      `?intent=bind&returnTo=${encodeURIComponent('/.//elsewhere.example/path')}`,
+      await signedIn(ada, false),
+    )
+    expect(bind.response.status).toBe(303)
+    expect(bind.response.headers.get('location')).toBe(
+      '/login?error=AUTH_REAUTHENTICATION_REQUIRED',
+    )
+    expect(github.seen).toEqual([])
+  })
+
   it('binds nobody for a visitor who is not signed in', async () => {
     const { response } = await depart('?intent=bind')
     expect(landing(response)).toEqual({ path: '/login', code: 'AUTH_REQUIRED' })
