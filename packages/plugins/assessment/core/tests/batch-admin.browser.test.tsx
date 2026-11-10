@@ -1056,7 +1056,8 @@ describe('the batch list', () => {
         const from = region.getBoundingClientRect().height
         const transitions: string[] = []
         region.addEventListener('transitionrun', (event) => {
-          if (event.target === region) transitions.push(event.propertyName)
+          if (event.target === region && event instanceof TransitionEvent)
+            transitions.push(event.propertyName)
         })
         finish()
         await expect.poll(() => transitions.includes('height')).toBe(true)

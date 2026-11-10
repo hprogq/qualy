@@ -1,5 +1,5 @@
 import { inspect } from 'node:util'
-import { Effect, Exit, Layer } from 'effect'
+import { Deferred, Effect, Exit, Layer } from 'effect'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createTestContext, postgresAvailable } from '@qualy/plugin-database/testkit'
 import type { Orm } from '@qualy/plugin-database/server'
@@ -24,7 +24,7 @@ interface Probe {
   live: number
   peak: number
   finished: number
-  onEnter?: () => void
+  onEnter?: Effect.Effect<void>
   /** example runs asked under the scoring budget, and which of them answer out of time */
   scored: number
   /** runs of the host's reference formula asked under the scoring budget */
@@ -72,7 +72,7 @@ const counted = (probe: Probe) =>
                   }),
                   () =>
                     Effect.sleep(150).pipe(
-                      Effect.tap(() => Effect.sync(() => probe.onEnter?.())),
+                      Effect.tap(() => probe.onEnter ?? Effect.void),
                       Effect.andThen(inner.invoke(call)),
                     ),
                   () =>
@@ -197,8 +197,8 @@ describe.runIf(postgresAvailable)('the runtime sandbox, shared by scoring and au
             published.push(yield* publishedBy(f.t, as, `循环 ${String(index)}`))
           probe.peak = 0
           probe.finished = 0
-          const entered = Promise.withResolvers<void>()
-          probe.onEnter = entered.resolve
+          const entered = yield* Deferred.make<void>()
+          probe.onEnter = Deferred.succeed(entered, undefined).pipe(Effect.asVoid)
           const frozen = yield* store.resolve({ tenantId: f.t, versionId: published[0]!.versionId })
           // three people each trying a looping case at the same moment
           const tries = Effect.forEach(
@@ -209,7 +209,7 @@ describe.runIf(postgresAvailable)('the runtime sandbox, shared by scoring and au
           )
           // and somebody's score asked for while they run
           const score = Effect.gen(function* () {
-            yield* Effect.promise(() => entered.promise)
+            yield* Deferred.await(entered)
             yield* sandbox.invoke({
               artifact: frozen.runtimeJs,
               artifactHash: frozen.runtimeSha256,
