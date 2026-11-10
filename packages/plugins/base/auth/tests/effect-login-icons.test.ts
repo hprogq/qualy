@@ -3,8 +3,15 @@ import { compileCatalog } from '@qualy/rbac-contract/plugin'
 import { permissions as authPermissions } from '@qualy/plugin-auth/permissions'
 import { uiLayer } from '@qualy/plugin-ui-registry/server/registry'
 import { sql } from 'kysely'
-import { Cause, Effect, Exit, Layer } from 'effect'
-import { describe, expect, it } from 'vitest'
+import { Cause, Effect, Exit, Layer, Scope } from 'effect'
+import { HttpRouter } from 'effect/http'
+import { HttpApiBuilder } from 'effect/http-api'
+import { NodeHttpServer } from '@effect/platform-node'
+import { createServer } from 'node:http'
+import { describe, expect, it, vi } from 'vitest'
+import { Api } from '@qualy/api-kit/plugin'
+import { QUALY_API_PREFIX } from '@qualy/api-kit'
+import { Authenticated, CurrentUser } from '@qualy/auth-contract/session'
 import {
   createTestContext,
   databaseFor,
@@ -26,6 +33,7 @@ import {
 } from '@qualy/auth-contract/login'
 import { driver as localDriver } from '@qualy/plugin-auth-local'
 import { DEFAULT_LIMITS, StorageConfig } from '@qualy/plugin-storage/server'
+import { backendFailure } from '@qualy/plugin-storage/errors'
 import { registryLayer } from '@qualy/plugin-storage/server/registry'
 import { serviceLayer as storageOnlyLayer } from '@qualy/plugin-storage/server/service'
 import { backendLayer, memoryBackend, type MemoryBackend } from '@qualy/plugin-storage/testkit'
@@ -33,7 +41,8 @@ import { entities as storageEntities } from '@qualy/plugin-storage/db'
 import { userActions } from '../src/actions.ts'
 import { AuthConfig } from '../src/server/auth-config.ts'
 import { serviceLayer as authLayer } from '../src/server/index.ts'
-import { LoginIcons, loginIconsLayer } from '../src/server/icons.ts'
+import { LoginIcons, loginIconsLayer, loginIconApiHandlers } from '../src/server/icons.ts'
+import { loginIconApiGroup } from '../src/api.ts'
 import { SYSTEM_ACCOUNT_USER_TYPE } from '../src/constants.ts'
 import { authClosure } from './support/closure.ts'
 
@@ -108,8 +117,8 @@ const stack = (url: string, backend: MemoryBackend) =>
 const run = <A, E>(
   url: string,
   backend: MemoryBackend,
-  effect: Effect.Effect<A, E, LoginIcons | Orm>,
-) => Effect.runPromiseExit(Effect.provide(effect, stack(url, backend)))
+  effect: Effect.Effect<A, E, LoginIcons | Orm | Scope.Scope>,
+) => Effect.runPromiseExit(Effect.provide(Effect.scoped(effect), stack(url, backend)))
 
 const ok = <A, E>(exit: Exit.Exit<A, E>): A => {
   if (Exit.isSuccess(exit)) return exit.value
@@ -193,6 +202,142 @@ const bytesOf = async (body: AsyncIterable<Uint8Array>) => {
 }
 
 describe.runIf(postgresAvailable)('a door drawn by its own image', () => {
+  it('serves versioned backend bytes from the origin and releases interrupted reads', async () => {
+    const db = await createTestContext('login-icon-origin')
+    const backend = memoryBackend('cos-like', { versioned: true })
+    const scope = await Effect.runPromise(Scope.make())
+    const server = createServer()
+    try {
+      const f = await seed(db.url)
+      const ticket = ok(
+        await run(
+          db.url,
+          backend,
+          Effect.gen(function* () {
+            const icons = yield* LoginIcons
+            const ticket = yield* icons.prepareUpload(
+              f.tenant,
+              f.local.id,
+              {
+                filename: 'logo.png',
+                declaredMime: 'image/png',
+                size: BigInt(PNG.length),
+              },
+              f.as,
+            )
+            backend.put(`attachments/${f.tenant}/${ticket.attachmentId}`, PNG)
+            yield* icons.choose(
+              f.tenant,
+              f.local.id,
+              {
+                kind: 'upload',
+                reservationId: ticket.reservationId,
+                surface: 'light',
+              },
+              f.as,
+            )
+            return ticket
+          }),
+        ),
+      )
+      backend.put(
+        `attachments/${f.tenant}/${ticket.attachmentId}`,
+        new Uint8Array(PNG.length).fill(7),
+      )
+      const open = vi.spyOn(backend, 'open').mockReturnValue(
+        Effect.succeed({
+          kind: 'redirect',
+          url: 'https://example.invalid/signed',
+          expiresInSeconds: 60,
+        }),
+      )
+      let slow = false
+      let broken = false
+      let released = 0
+      let unblock: () => void = () => {}
+      const read = backend.read.bind(backend)
+      const readSpy = vi.spyOn(backend, 'read').mockImplementation((ref) =>
+        Effect.flatMap(read(ref), (body) =>
+          Effect.acquireRelease(
+            Effect.sync(() =>
+              broken
+                ? (async function* () {
+                    yield PNG.subarray(0, 1)
+                    throw new Error('stream failed')
+                  })()
+                : slow
+                  ? (async function* () {
+                      yield PNG.subarray(0, 1)
+                      await new Promise<void>((resolve) => {
+                        unblock = resolve
+                      })
+                    })()
+                  : body,
+            ),
+            () =>
+              Effect.sync(() => {
+                released++
+                unblock()
+              }),
+          ),
+        ),
+      )
+      const auth = Layer.succeed(
+        Authenticated,
+        Authenticated.of((effect) => Effect.provideService(effect, CurrentUser, f.as)),
+      )
+      const api = Api.local(loginIconApiGroup)
+      const application = HttpRouter.serve(
+        HttpApiBuilder.layer(api).pipe(
+          Layer.provide(loginIconApiHandlers.pipe(Layer.provide(auth))),
+        ),
+      ).pipe(
+        Layer.provide(stack(db.url, backend)),
+        Layer.provide(NodeHttpServer.layer(() => server, { port: 0 })),
+      )
+      await Effect.runPromise(Layer.buildWithScope(application, scope))
+      const address = server.address()
+      if (address === null || typeof address === 'string') throw new Error('server did not listen')
+      const url = `http://127.0.0.1:${address.port}${QUALY_API_PREFIX}/auth/login-methods/local/icon`
+      const response = await fetch(`${url}?v=${ticket.attachmentId}`, { redirect: 'manual' })
+      expect(response.status).toBe(200)
+      expect(response.headers.get('cache-control')).toBe('public, max-age=31536000, immutable')
+      expect(response.headers.get('content-type')).toBe('image/png')
+      expect(response.headers.get('content-length')).toBe(String(PNG.length))
+      expect(response.headers.get('x-content-type-options')).toBe('nosniff')
+      expect(response.headers.get('content-security-policy')).toContain('sandbox')
+      expect(new Uint8Array(await response.arrayBuffer())).toEqual(PNG)
+      expect(backend.openedRevision()).toBe('r1')
+      expect(open).not.toHaveBeenCalled()
+      const stale = await fetch(`${url}?v=wrong`, { redirect: 'manual' })
+      expect(stale.headers.get('cache-control')).toBe('no-cache')
+      await stale.arrayBuffer()
+      const unversioned = await fetch(url)
+      expect(unversioned.headers.get('cache-control')).toBe('no-cache')
+      await unversioned.arrayBuffer()
+      const missing = await fetch(url.replace('/local/icon', '/missing/icon'))
+      expect(missing.status).toBe(404)
+      expect(released).toBe(3)
+      slow = true
+      const abort = new AbortController()
+      const pending = await fetch(url, { signal: abort.signal })
+      const reader = pending.body!.getReader()
+      expect((await reader.read()).value).toEqual(PNG.subarray(0, 1))
+      abort.abort()
+      await vi.waitFor(() => expect(released).toBe(4))
+      slow = false
+      broken = true
+      await expect(fetch(url).then((response) => response.arrayBuffer())).rejects.toThrow()
+      await vi.waitFor(() => expect(released).toBe(5))
+      readSpy.mockReturnValue(Effect.fail(backendFailure('read', new Error('unavailable'))))
+      const failed = await fetch(url)
+      expect(failed.status).toBe(500)
+    } finally {
+      await Effect.runPromise(Scope.close(scope, Exit.void))
+      await db.dispose()
+      vi.restoreAllMocks()
+    }
+  })
   it('is uploaded, chosen, read by anybody, replaced and put back', async () => {
     const db = await createTestContext('login-icons')
     const backend = memoryBackend()
@@ -231,9 +376,7 @@ describe.runIf(postgresAvailable)('a door drawn by its own image', () => {
             const answer = yield* icons.open('campus', 'light')
             if (answer.kind !== 'stored') throw new Error('expected a stored image')
             const opened = answer.opened
-            const target = opened.target
-            const served =
-              target.kind === 'stream' ? yield* Effect.promise(() => bytesOf(target.body)) : null
+            const served = yield* Effect.promise(() => bytesOf(opened.body))
             // one of the page's own instead: the image leaves circulation
             const builtin = yield* icons.choose(
               f.tenant,

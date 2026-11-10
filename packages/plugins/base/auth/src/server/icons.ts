@@ -8,7 +8,7 @@ import { CurrentUser } from '@qualy/auth-contract/session'
 import { LoginDrivers, type BuiltinLoginIcon } from '@qualy/auth-contract/login'
 import type { Principal } from '@qualy/rbac-contract'
 import { Rbac } from '@qualy/rbac-contract/effect'
-import { servedTypeOf, Storage, type AttachmentOpen } from '@qualy/plugin-storage/server'
+import { servedTypeOf, Storage, type AttachmentRead } from '@qualy/plugin-storage/server'
 import { LOGIN_ICON_MAX_BYTES, LOGIN_ICON_TYPES, loginIconApiGroup } from '../api.ts'
 import { ProviderIconChanged } from '../actions.ts'
 import { actorOf } from './audit-actor.ts'
@@ -72,7 +72,7 @@ export type IconChoice =
 /** what the icon address answers with: a drawing kept in the column, or a stored file */
 export type OpenedIcon =
   | { readonly kind: 'svg'; readonly markup: string; readonly version: string }
-  | { readonly kind: 'stored'; readonly opened: AttachmentOpen }
+  | { readonly kind: 'stored'; readonly opened: AttachmentRead }
 
 /** the icon a choice leaves a door with, given the one it had */
 const nextIcon = (
@@ -147,7 +147,7 @@ const make = Effect.gen(function* () {
     // the door names the image, and naming it is the whole permission:
     // an icon is on a page anybody may open
     const opened = yield* storage
-      .open({ tenantId: tenant.id, attachmentId: slot.attachmentId }, () => Effect.void)
+      .read({ tenantId: tenant.id, attachmentId: slot.attachmentId }, () => Effect.void)
       .pipe(
         Effect.catchTags({
           STORAGE_ATTACHMENT_NOT_FOUND: () => new LoginMethodIconUnavailable(),
@@ -321,14 +321,8 @@ export const loginIconApiHandlers = HttpApiBuilder.group(local, 'loginIcon', (ha
           })
         }
         const opened = answer.opened
-        if (opened.target.kind === 'redirect') {
-          // a store that signs its own urls: the image is there, briefly
-          return HttpServerResponse.redirect(opened.target.url, {
-            headers: { 'cache-control': 'no-store' },
-          })
-        }
         return HttpServerResponse.stream(
-          Stream.fromAsyncIterable(opened.target.body, (error) => error),
+          Stream.fromAsyncIterable(opened.body, (error) => error),
           {
             contentType: servedTypeOf(opened.meta.declaredMime),
             contentLength: Number(opened.meta.size),
