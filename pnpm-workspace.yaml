@@ -120,7 +120,7 @@ catalog:
   # driver refuses any document type or entity declaration before it runs,
   # turns its entity processing off and decodes the five predefined entities
   # itself. 5.10.1 is the floor its recent entity-expansion advisories set.
-  fast-xml-parser: 5.11.2
+  fast-xml-parser: 5.12.0
   # ALTCHA, the default CAPTCHA provider: a proof of work computed in the
   # visitor's browser and checked on the server, with no third party in the
   # loop, which is what a deployment in mainland China needs. The server
