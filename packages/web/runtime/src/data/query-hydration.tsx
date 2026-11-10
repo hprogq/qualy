@@ -175,9 +175,7 @@ export function QueryHydration({
     return state.queries.flatMap((read) => {
       if (read.state.status !== 'error') return []
       const query = cache.get(read.queryHash)
-      return query?.state.data === undefined
-        ? []
-        : [{ read, query, updates: query.state.dataUpdateCount }]
+      return query === undefined ? [] : [{ read, query, updates: query.state.dataUpdateCount }]
     })
   }, [client, state])
   // set while rendering, before anything under this reads: the html and the

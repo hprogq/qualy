@@ -121,6 +121,120 @@ describe('a read that follows the html', () => {
     expect(client.getQueryData(KEY)).toBeUndefined()
   })
 
+  it('applies a refusal over an unfinished older cache read', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    let release!: (value: string) => void
+    let signal!: AbortSignal
+    const older = new Promise<string>((resolve) => {
+      release = resolve
+    })
+    void client
+      .fetchQuery({
+        queryKey: KEY,
+        queryFn: ({ signal: value }) => {
+          signal = value
+          return older
+        },
+      })
+      .catch(() => {})
+    const server = new QueryClient()
+    server
+      .getQueryCache()
+      .build(server, { queryKey: KEY })
+      .setState({
+        status: 'error',
+        error: { _tag: 'REFUSED' } as unknown as Error,
+        errorUpdatedAt: Date.now(),
+        errorUpdateCount: 1,
+        fetchStatus: 'idle',
+      })
+    const state = dehydrate(server, {
+      shouldDehydrateQuery: () => true,
+      shouldRedactErrors: () => false,
+    })
+    function ReadRefusal() {
+      const read = useQuery({ queryKey: KEY, queryFn: () => older })
+      return (
+        <p data-testid="pending-refusal">
+          {read.error ? (read.error as unknown as { _tag: string })._tag : (read.data ?? 'pending')}
+        </p>
+      )
+    }
+    const router = createMemoryRouter([
+      {
+        path: '*',
+        element: (
+          <QueryHydration state={state}>
+            <ReadRefusal />
+          </QueryHydration>
+        ),
+      },
+    ])
+    await render(
+      <QueryClientProvider client={client}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    )
+    await expect.element(page.getByTestId('pending-refusal')).toHaveTextContent('REFUSED')
+    expect(signal.aborted).toBe(true)
+    release('old data')
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(client.getQueryState(KEY)?.status).toBe('error')
+    expect(client.getQueryData(KEY)).toBeUndefined()
+  })
+
+  it('does not admit an older in-flight read that settles as the refusal commits', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    let release!: (value: string) => void
+    const older = new Promise<string>((resolve) => {
+      release = resolve
+    })
+    void client.fetchQuery({ queryKey: KEY, queryFn: () => older }).catch(() => {})
+    const server = new QueryClient()
+    server
+      .getQueryCache()
+      .build(server, { queryKey: KEY })
+      .setState({
+        status: 'error',
+        error: { _tag: 'REFUSED' } as unknown as Error,
+        errorUpdatedAt: Date.now(),
+        errorUpdateCount: 1,
+        fetchStatus: 'idle',
+      })
+    const state = dehydrate(server, {
+      shouldDehydrateQuery: () => true,
+      shouldRedactErrors: () => false,
+    })
+    function SettleOnCommit() {
+      useLayoutEffect(() => {
+        release('old')
+      }, [])
+      const read = useQuery({ queryKey: KEY, queryFn: () => older })
+      return (
+        <p data-testid="commit-refusal">
+          {read.error ? (read.error as unknown as { _tag: string })._tag : (read.data ?? 'pending')}
+        </p>
+      )
+    }
+    const router = createMemoryRouter([
+      {
+        path: '*',
+        element: (
+          <QueryHydration state={state}>
+            <SettleOnCommit />
+          </QueryHydration>
+        ),
+      },
+    ])
+    await render(
+      <QueryClientProvider client={client}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    )
+    await expect.element(page.getByTestId('commit-refusal')).toHaveTextContent('REFUSED')
+    expect(client.getQueryData(KEY)).toBeUndefined()
+  })
+
   it('does not apply a refused snapshot over a cache entry changed before commit', async () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     client.setQueryData(KEY, 'cached')
