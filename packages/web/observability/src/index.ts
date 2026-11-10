@@ -24,6 +24,7 @@ export {
   captureException,
   installSink,
   noSinkArriving,
+  recordNavigation,
   resetObservability,
   setObservedPage,
 } from './sink.ts'

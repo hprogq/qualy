@@ -207,6 +207,18 @@ export const tencentRumProvider: BrowserRumProvider = {
         // before calling here.
       },
 
+      recordNavigation(page, durationMs) {
+        // Supply the authorized template explicitly: the custom timing
+        // pipeline does not use the regular log pipeline's privacy hook.
+        if (page.pageId === undefined || page.route === undefined) return
+        aegis.reportTime({
+          name: 'rsc-navigation-commit',
+          duration: Math.round(durationMs),
+          from: page.route,
+          ext1: page.pageId,
+        })
+      },
+
       destroy() {
         aegis.destroy()
       },

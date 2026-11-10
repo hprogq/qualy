@@ -340,6 +340,11 @@ describe('what an event says the page was', () => {
     const Aegis = loaded.default as unknown as { prototype: Record<string, unknown> }
     const original = Aegis.prototype['reportEvent']
     const sent: Record<string, unknown>[] = []
+    const oldTime = Aegis.prototype['reportTime']
+    const timings: Record<string, unknown>[] = []
+    Aegis.prototype['reportTime'] = function (value: Record<string, unknown>) {
+      timings.push(value)
+    }
     // the sdk's own rule, so the stub observes what it would really send:
     // `originFrom: e.originFrom || this.getOriginFrom()`, and the subclass
     // answers getOriginFrom with the real address
@@ -359,10 +364,23 @@ describe('what an event says the page was', () => {
       // than something to step around
       expect(sink).not.toBeNull()
       sink!.captureDiagnostic('ui/component-missing', { pageId: 'assessment/review' })
+      sink!.recordNavigation?.(
+        { pageId: 'assessment/review', route: '/assessment/batches/:batchId/review' },
+        123.4,
+      )
       sink!.destroy?.()
     } finally {
       Aegis.prototype['reportEvent'] = original
+      Aegis.prototype['reportTime'] = oldTime
     }
+    expect(timings).toEqual([
+      {
+        name: 'rsc-navigation-commit',
+        duration: 123,
+        from: '/assessment/batches/:batchId/review',
+        ext1: 'assessment/review',
+      },
+    ])
     expect(sent).toHaveLength(1)
     expect(sent[0]!['originFrom']).toBe('/assessment/batches/:batchId/review')
     expect(String(sent[0]!['originFrom'])).not.toContain(window.location.host)

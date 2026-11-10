@@ -55,6 +55,8 @@ export interface ObservabilitySink {
   captureException(error: unknown, context?: ExceptionContext): void
   captureDiagnostic(code: string, context?: DiagnosticContext): void
   setPage(page: ObservedPage): void
+  /** Client navigation until the router commits; this is not content-ready time. */
+  recordNavigation?(page: ObservedPage, durationMs: number): void
   destroy?(): void
 }
 
@@ -263,6 +265,13 @@ export const captureDiagnostic = (code: string, context?: DiagnosticContext): vo
 export const setObservedPage = (page: ObservedPage): void => {
   rememberObservedPage(page)
   safely('page', (target) => target.setPage(page))
+}
+
+/** Best effort; measurements before a provider starts are deliberately dropped. */
+export const recordNavigation = (page: ObservedPage, durationMs: number): void => {
+  if (page.pageId === undefined || page.route === undefined || !Number.isFinite(durationMs)) return
+  if (durationMs < 0 || durationMs > 2_147_483_646) return
+  safely('navigation', (target) => target.recordNavigation?.(page, durationMs))
 }
 
 /** test seam: module state is per page in a browser and per file in a suite */

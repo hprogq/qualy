@@ -1,18 +1,34 @@
-import { useEffect, type ReactNode } from 'react'
-import { matchRoutes, useLocation } from 'react-router'
-import { setObservedPage } from '@qualy/browser-observability'
+import { useEffect, useRef, type ReactNode } from 'react'
+import { matchRoutes, useLocation, useNavigation } from 'react-router'
+import { recordNavigation, setObservedPage } from '@qualy/browser-observability'
 import { useManifest, type Manifest } from '../runtime-context.tsx'
 import { DocumentTitleScope, useDocumentTitleOverride } from './document-title.tsx'
 
 /** Page identity, diagnostics and title follow the authorized server projection. */
 export function RouteMetadata({ children }: { children: ReactNode }) {
   const { pages, layouts } = useManifest()
-  const { pathname } = useLocation()
+  const { pathname, key } = useLocation()
+  const navigation = useNavigation()
+  const pending = useRef<{ key: string; started: number } | null>(null)
   const available = new Set(layouts.map(({ contract }) => contract))
   const page = matchRoutes(
     pages.filter(({ layout }) => available.has(layout)),
     pathname,
   )?.at(-1)?.route
+  useEffect(() => {
+    const next = navigation.location
+    if (navigation.state !== 'idle' && next !== undefined) {
+      if (pending.current?.key !== next.key) {
+        pending.current = { key: next.key, started: performance.now() }
+      }
+      return
+    }
+    const completed = pending.current
+    pending.current = null
+    if (completed?.key === key && page !== undefined) {
+      recordNavigation({ pageId: page.id, route: page.path }, performance.now() - completed.started)
+    }
+  }, [navigation.state, navigation.location, key, page?.id, page?.path])
   return (
     <DocumentTitleScope>
       <DocumentTitle title={page?.title} />
