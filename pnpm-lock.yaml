@@ -1236,6 +1236,9 @@ importers:
       '@qualy/rbac-contract':
         specifier: workspace:*
         version: link:../../../contracts/rbac
+      '@qualy/release-contract':
+        specifier: workspace:*
+        version: link:../../../contracts/release
       '@qualy/settings-contract':
         specifier: workspace:*
         version: link:../../../contracts/settings

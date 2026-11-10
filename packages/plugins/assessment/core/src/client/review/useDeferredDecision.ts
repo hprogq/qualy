@@ -1,4 +1,11 @@
 import { isUseCaseApiFailure, type UseCaseApiFailure } from '@qualy/web-i18n'
+import { QUALY_IDENTITY_HEADER } from '@qualy/api-kit'
+import {
+  CURRENT_CLIENT_PROTOCOL,
+  QUALY_CLIENT_PROTOCOL_HEADER,
+  QUALY_CLIENT_RELEASE_HEADER,
+} from '@qualy/release-contract'
+import { documentIdentity, ExpectedIdentity } from '@qualy/web-runtime/document-identity'
 import { Effect } from 'effect'
 import { type ApiError } from '@qualy/web-runtime/api'
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -9,9 +16,9 @@ import { assessmentApi, assessmentUrls } from '../api.ts'
 //
 // Letters only choose and ⌘↵ only stages: the decision leaves this machine
 // five seconds later, and ⌘Z inside that window takes it back as if nothing
-// happened - because nothing has. Leaving the page does not lose the
-// decision: whatever is still waiting goes out immediately through
-// sendBeacon, which is built to outlive the page that called it.
+// happened - because nothing has. On leaving, whatever is still waiting
+// goes out through a keepalive request carrying the document's identity.
+// An unload cannot guarantee that the server receives it or replies.
 //
 // What is waiting lives in a ref, not in state, and every path out of the
 // window goes through `flush`, which takes it and clears it in one step.
@@ -39,7 +46,7 @@ export type StagedDecision =
         readonly reason?: string
         readonly comment?: string
         readonly suggestedPayload?: unknown
-        /** the determination staged with an approval; the beacon carries it too */
+        /** the determination staged with an approval; the leave request carries it too */
         readonly recognition?: {
           readonly values: Record<string, unknown>
           readonly reason?: string
@@ -66,10 +73,15 @@ export type DeferredDecisionFailure =
   | ApiError<typeof assessmentApi, 'assessment', 'decideReview'>
   | ApiError<typeof assessmentApi, 'assessment', 'requestSupplement'>
 
+interface WaitingDecision {
+  readonly staged: StagedDecision
+  readonly identity: string | undefined
+}
+
 const WINDOW_MS = 5_000
 
-/** the wire path whatever is waiting goes out on, for the send that outlives the page */
-const beaconPath = (staged: StagedDecision) =>
+/** The contract supplies the path for the send that outlives the page. */
+const leavePath = (staged: StagedDecision) =>
   staged.kind === 'supplement'
     ? assessmentUrls.assessment.requestSupplement({ params: { instanceId: staged.instanceId } })
     : assessmentUrls.assessment.decideReview({ params: { instanceId: staged.instanceId } })
@@ -89,7 +101,7 @@ export function useDeferredDecision({
   const api = useApi(assessmentApi)
   const [pending, setPending] = useState<StagedDecision | null>(null)
   const [deadline, setDeadline] = useState(0)
-  const waiting = useRef<StagedDecision | null>(null)
+  const waiting = useRef<WaitingDecision | null>(null)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   // the callbacks live in refs so a staged decision from one render commits
   // through the handlers of the latest one
@@ -100,8 +112,11 @@ export function useDeferredDecision({
   committed.current = onCommitted
   failed.current = onFailed
 
-  const { mutate: sendDecision } = useApiMutation({
-    mutationFn: (staged: StagedDecision): Effect.Effect<void, DeferredDecisionFailure> =>
+  const { mutate: sendDecision, isPending: sending } = useApiMutation({
+    mutationFn: ({
+      staged,
+      identity,
+    }: WaitingDecision): Effect.Effect<void, DeferredDecisionFailure> =>
       (staged.kind === 'supplement'
         ? api.assessment.requestSupplement({
             params: { instanceId: staged.instanceId },
@@ -111,14 +126,20 @@ export function useDeferredDecision({
             params: { instanceId: staged.instanceId },
             payload: staged.payload,
           })
-      ).pipe(Effect.asVoid),
-    onSuccess: (_answer, staged) => committed.current(staged),
-    onError: (error, staged) => failed.current(staged, error),
-    onSettled: (_answer, error, staged) => {
-      if (error !== null && !isUseCaseApiFailure(error)) rejected.current(staged)
+      ).pipe(Effect.asVoid, Effect.provideService(ExpectedIdentity, identity)),
+    onSuccess: (_answer, held) => committed.current(held.staged),
+    onError: (error, held) => failed.current(held.staged, error),
+    onSettled: (_answer, error, held) => {
+      if (error !== null && !isUseCaseApiFailure(error)) rejected.current(held.staged)
     },
   })
-  const send = useCallback((staged: StagedDecision) => sendDecision(staged), [sendDecision])
+  const send = useCallback(
+    (held: WaitingDecision) => {
+      if (held.identity === undefined) rejected.current(held.staged)
+      else sendDecision(held)
+    },
+    [sendDecision],
+  )
 
   const stopTimer = () => {
     if (timer.current !== null) {
@@ -134,19 +155,19 @@ export function useDeferredDecision({
    * updater, a timer racing an unmount - finds nothing and does nothing.
    */
   const flush = useCallback(() => {
-    const staged = waiting.current
+    const held = waiting.current
     waiting.current = null
     stopTimer()
-    if (staged === null) return
+    if (held === null) return
     setPending(null)
-    send(staged)
+    send(held)
   }, [send])
 
   /** stage a decision; whatever was already waiting goes out right now */
   const stage = useCallback(
     (staged: StagedDecision) => {
       flush()
-      waiting.current = staged
+      waiting.current = { staged, identity: documentIdentity() }
       setPending(staged)
       setDeadline(Date.now() + WINDOW_MS)
       timer.current = setTimeout(flush, WINDOW_MS)
@@ -156,27 +177,60 @@ export function useDeferredDecision({
 
   /** take the waiting decision back; returns it so the caller can go there */
   const undo = useCallback((): StagedDecision | null => {
-    const taken = waiting.current
+    const taken = waiting.current?.staged ?? null
     waiting.current = null
     stopTimer()
     setPending(null)
     return taken
   }, [])
 
-  // A page being left is not a decision being lost: the beacon carries it
-  // out even while the document is being torn down. The api answer is not
-  // readable this way, which is the price of surviving the unload - the
-  // next session's queue is the authority on what went through.
+  // An unload cannot deliver a receipt. Warn while a decision has not yet
+  // been acknowledged, including a send held by session recovery.
+  useEffect(() => {
+    if (pending === null && !sending) return
+    const warn = (event: BeforeUnloadEvent) => event.preventDefault()
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [pending, sending])
+
+  // sendBeacon cannot carry the identity and protocol headers, so the
+  // server would accept the shared cookie as whoever signed in most recently.
+  // Keep the declaration fixed to the person who staged the decision.
+  // A keepalive request is best effort: once the document is gone, its
+  // response cannot be shown and the queue remains the authority.
   useEffect(() => {
     const carryOut = () => {
-      const staged = waiting.current
+      const held = waiting.current
       waiting.current = null
       stopTimer()
-      if (staged === null) return
-      navigator.sendBeacon(
-        beaconPath(staged),
-        new Blob([JSON.stringify(staged.payload)], { type: 'application/json' }),
-      )
+      if (held === null) return
+      const { staged, identity } = held
+      if (identity === undefined) {
+        rejected.current(staged)
+        return
+      }
+      const release = document.documentElement.dataset['release']
+      void fetch(leavePath(staged), {
+        method: 'POST',
+        credentials: 'same-origin',
+        keepalive: true,
+        headers: {
+          'content-type': 'application/json',
+          [QUALY_IDENTITY_HEADER]: identity,
+          [QUALY_CLIENT_PROTOCOL_HEADER]: String(CURRENT_CLIENT_PROTOCOL),
+          ...(release === undefined ? {} : { [QUALY_CLIENT_RELEASE_HEADER]: release }),
+        },
+        body: JSON.stringify(staged.payload),
+      })
+        .then((response) => {
+          setPending((current) => (current === staged ? null : current))
+          if (response.ok) committed.current(staged)
+          else rejected.current(staged)
+        })
+        .catch(() => {
+          setPending((current) => (current === staged ? null : current))
+          rejected.current(staged)
+        })
     }
     window.addEventListener('pagehide', carryOut)
     return () => {
