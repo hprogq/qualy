@@ -1,5 +1,5 @@
 /** The parser-blocking document setup. This function must not close over imports. */
-export function prepareDocument(root: HTMLElement): boolean {
+export function prepareDocument(root: HTMLElement, entranceKey?: string): boolean {
   if (
     !('noModule' in document.createElement('script')) ||
     !window.fetch ||
@@ -15,6 +15,27 @@ export function prepareDocument(root: HTMLElement): boolean {
     root.setAttribute('data-browser-unsupported', '')
     return false
   }
+  // The old page knows this is an in-app sign-in/out transition. Read its
+  // visual intent before first paint; hydration keeps the same visible HTML.
+  try {
+    if (entranceKey !== undefined) {
+      const raw = sessionStorage.getItem(entranceKey)
+      sessionStorage.removeItem(entranceKey)
+      if (raw !== null) {
+        const intent = JSON.parse(raw)
+        const age = Date.now() - intent.at
+        if (
+          typeof intent.at === 'number' &&
+          age >= 0 &&
+          age < 600_000 &&
+          (intent.target === undefined ||
+            intent.target === `${location.pathname}${location.search}`)
+        ) {
+          root.setAttribute('data-document-entrance', '')
+        }
+      }
+    }
+  } catch {}
   let choice: string | null = null
   try {
     choice = localStorage.getItem('qualy.theme')

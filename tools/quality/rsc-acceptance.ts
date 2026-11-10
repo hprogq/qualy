@@ -1044,6 +1044,9 @@ const paintedOne = async (element: Locator): Promise<boolean> =>
 const ownSessionChanges = async (browser: Browser) => {
   const context = await browser.newContext({ locale: 'en-US' })
   try {
+    await context.addInitScript(
+      `window.__documentEntries = []; document.addEventListener('animationstart', (event) => { if (event.animationName === 'qualy-document-entrance') window.__documentEntries.push(event.animationName) }, true)`,
+    )
     const page = await context.newPage()
     const list = '/assessment/batches'
     const refused: string[] = []
@@ -1053,12 +1056,20 @@ const ownSessionChanges = async (browser: Browser) => {
     })
     await page.goto(`${site}/login?method=local&next=${encodeURIComponent(list)}`)
     await hydrated(page)
+    check(
+      'does not animate an external first document',
+      (await inPage<string[]>(page, 'window.__documentEntries')).length === 0,
+    )
     await page.locator('#email').fill(accounts.admin.email)
     await page.locator('#password').fill(accounts.admin.password)
     await inPage(page, 'window.__same = true')
     await page.getByTestId('local-submit').click()
     await page.waitForURL(`${site}${list}`, { timeout: 12_000 })
     await hydrated(page)
+    check(
+      'animates the new document after signing in',
+      (await inPage<string[]>(page, 'window.__documentEntries')).length === 1,
+    )
     const account = page.getByRole('button', { name: '系统管理员' })
     await account.waitFor()
     check(
@@ -1072,6 +1083,10 @@ const ownSessionChanges = async (browser: Browser) => {
     await page.getByRole('menuitem', { name: /^(Sign out|退出登录)$/ }).click()
     await page.waitForURL(`${site}/login`, { timeout: 12_000 })
     await hydrated(page)
+    check(
+      'animates the new document after signing out',
+      (await inPage<string[]>(page, 'window.__documentEntries')).length === 1,
+    )
     check(
       'signs out from the account menu into a fresh login document',
       refused.length === 0 &&

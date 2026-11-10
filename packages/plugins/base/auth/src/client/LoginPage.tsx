@@ -37,6 +37,7 @@ import {
   useManifest,
   useRunApi,
   useSessionTransition,
+  prepareDocumentEntrance,
   useHydrating,
   type SessionDestination,
 } from '@qualy/web-runtime'
@@ -668,7 +669,10 @@ export default function LoginPage({ rendered }: { rendered?: RenderedSignIn } = 
       // other side has vouched for them - to this page again when it is
       // signing in for a waiting one, so it ends here the same way
       const returnTo = resume ? `${here}?${SESSION_RESUME_PARAM}=1` : next
-      window.requestAnimationFrame(() => window.location.assign(startHref(method.href, returnTo)))
+      window.requestAnimationFrame(() => {
+        prepareDocumentEntrance()
+        window.location.assign(startHref(method.href, returnTo))
+      })
       return
     }
     go({ method: method.code, ...(from === 'more' ? { from: 'more' } : {}) })

@@ -1,4 +1,8 @@
 import { describe, expect, it } from 'vitest'
+import {
+  DOCUMENT_ENTRANCE_KEY,
+  prepareDocumentEntrance,
+} from '@qualy/web-runtime/document-entrance'
 import { prepareDocument } from '../src/rsc/early-document.ts'
 
 const PNG =
@@ -16,6 +20,35 @@ describe('login glyphs before hydration', () => {
       expect(glyphs[0]?.querySelector('img')?.naturalWidth).toBeGreaterThan(0)
     } finally {
       host.remove()
+    }
+  })
+})
+
+describe('document entrance intent', () => {
+  it('animates explicit identity transitions once and leaves external visits visible', () => {
+    const root = document.createElement('div')
+    sessionStorage.removeItem(DOCUMENT_ENTRANCE_KEY)
+    prepareDocument(root, DOCUMENT_ENTRANCE_KEY)
+    expect(root.hasAttribute('data-document-entrance')).toBe(false)
+    prepareDocumentEntrance(location.href)
+    prepareDocument(root, DOCUMENT_ENTRANCE_KEY)
+    expect(root.hasAttribute('data-document-entrance')).toBe(true)
+    expect(sessionStorage.getItem(DOCUMENT_ENTRANCE_KEY)).toBeNull()
+    root.removeAttribute('data-document-entrance')
+    prepareDocument(root, DOCUMENT_ENTRANCE_KEY)
+    expect(root.hasAttribute('data-document-entrance')).toBe(false)
+  })
+  it('ignores stale, cancelled-target and malformed intents', () => {
+    const root = document.createElement('div')
+    for (const intent of [
+      'broken',
+      JSON.stringify({ at: Date.now() - 700_000 }),
+      JSON.stringify({ at: Date.now(), target: '/a-different-page' }),
+    ]) {
+      sessionStorage.setItem(DOCUMENT_ENTRANCE_KEY, intent)
+      prepareDocument(root, DOCUMENT_ENTRANCE_KEY)
+      expect(root.hasAttribute('data-document-entrance')).toBe(false)
+      expect(sessionStorage.getItem(DOCUMENT_ENTRANCE_KEY)).toBeNull()
     }
   })
 })

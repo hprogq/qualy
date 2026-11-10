@@ -1,3 +1,4 @@
+import { prepareDocumentEntrance } from '../document/entrance.ts'
 import { useCallback } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useRevalidator } from 'react-router'
@@ -28,7 +29,10 @@ export function useSessionTransition() {
         if (manifest.viewer === 'authenticated') signingOut()
         await queryClient.cancelQueries()
         const href = sessionDestinationHref(options.destination, manifest.pages)
-        await unguarded(() => navigateDocument(href, { replace: options.replace ?? true }))
+        await unguarded(() => {
+          prepareDocumentEntrance(href)
+          return navigateDocument(href, { replace: options.replace ?? true })
+        })
       } finally {
         changed()
         announceSessionChanged()

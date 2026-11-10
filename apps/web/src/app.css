@@ -12,3 +12,19 @@
 @layer theme, base, mantine, components, priority1, priority2, priority3, priority4, priority5;
 
 @import '@qualy/ui/theme.css';
+
+/* Identity changes open a new document. Animate that navigation before
+   hydration; a fresh external visit carries no entrance intent. */
+@keyframes qualy-document-entrance {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  html[data-document-entrance] #root {
+    animation: qualy-document-entrance 240ms ease-out backwards;
+  }
+}

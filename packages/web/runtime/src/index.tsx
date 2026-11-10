@@ -110,3 +110,5 @@ export {
   usePageRouteParams,
 } from './routing/page-hooks.ts'
 export { PluginSurface, UiSlot, useUiCollection } from './surfaces/surfaces.tsx'
+
+export { prepareDocumentEntrance } from './document/entrance.ts'

@@ -20,7 +20,8 @@
     "./hydrating": "./src/document/hydrating.ts",
     "./query-handoff": "./src/data/query-handoff.ts",
     "./query-hydration": "./src/data/query-hydration.tsx",
-    "./document-now": "./src/document/document-now.tsx"
+    "./document-now": "./src/document/document-now.tsx",
+    "./document-entrance": "./src/document/entrance.ts"
   },
   "peerDependencies": {
     "react": "catalog:"

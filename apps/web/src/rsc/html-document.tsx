@@ -11,11 +11,12 @@ import { bootstrapMessages } from '@qualy/web-i18n/bootstrap'
 import * as m from '@qualy/web-i18n/messages'
 import { releases } from '../release.ts'
 import { ReleaseRecoveryGate } from '../release-ui.tsx'
+import { DOCUMENT_ENTRANCE_KEY } from '@qualy/web-runtime/document-entrance'
 import { earlyDocumentScript } from './early-document.ts'
 import '../app.css'
 
 /** the scheme the page starts in, decided before any script of ours ran */
-const EARLY_DOCUMENT = `(function(){var root=document.documentElement;if(!(${earlyDocumentScript})(root))return;${earlyLayoutPreferences}})()`
+const EARLY_DOCUMENT = `(function(){var root=document.documentElement;if(!(${earlyDocumentScript})(root,${JSON.stringify(DOCUMENT_ENTRANCE_KEY)}))return;${earlyLayoutPreferences}})()`
 
 // Plain selectors and colors: even a browser that cannot load the app must
 // be able to draw this explanation. The script only changes <html>, whose
