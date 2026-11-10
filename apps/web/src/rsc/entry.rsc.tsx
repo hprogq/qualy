@@ -39,6 +39,7 @@ import { DocumentError, LayoutError, PageError } from './route-error.tsx'
 import { unavailableDocument } from './emergency-document.ts'
 import { sessionClearings, withCookies } from './session-clearing.ts'
 import { matchedPage } from './route-telemetry.ts'
+import { documentCookies } from './document-cookies.ts'
 import { Empty, Missing, NotFound, Surface } from './frames.tsx'
 
 // The server component half of a document request
@@ -56,25 +57,13 @@ const appApi = Api.local(appApiGroup)
 const defaultApiOrigin =
   process.env['QUALY_RENDER_API_ORIGIN'] ?? `http://127.0.0.1:${process.env['PORT'] ?? '3000'}`
 
-const cookiesOf = (header: string | null): Record<string, string> =>
-  Object.fromEntries(
-    (header ?? '')
-      .split(';')
-      .map((part) => part.trim())
-      .filter((part) => part.includes('='))
-      .map((part) => {
-        const at = part.indexOf('=')
-        return [part.slice(0, at), decodeURIComponent(part.slice(at + 1))]
-      }),
-  )
-
 const renderRequestOf = (request: Request, context: RenderContext): RenderRequest => {
   const headers = Object.fromEntries(request.headers)
   return {
     url: new URL(request.url),
     reads: new Map(),
     renderedAt: Date.now(),
-    locale: localeOfRequest({ headers, cookies: cookiesOf(request.headers.get('cookie')) }),
+    locale: localeOfRequest({ headers, cookies: documentCookies(request.headers.get('cookie')) }),
     release: { releaseId: webRelease.releaseId, clientProtocol: webRelease.clientProtocol },
     apiOrigin: context.apiOrigin ?? defaultApiOrigin,
     dispatchApi: context.dispatchApi,
