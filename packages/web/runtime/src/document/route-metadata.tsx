@@ -15,6 +15,8 @@ export function RouteMetadata({ children }: { children: ReactNode }) {
     pages.filter(({ layout }) => available.has(layout)),
     pathname,
   )?.at(-1)?.route
+  const pageId = page?.id
+  const pagePath = page?.path
   useEffect(() => {
     const next = navigation.location
     if (navigation.state !== 'idle' && next !== undefined) {
@@ -25,10 +27,10 @@ export function RouteMetadata({ children }: { children: ReactNode }) {
     }
     const completed = pending.current
     pending.current = null
-    if (completed?.key === key && page !== undefined) {
-      recordNavigation({ pageId: page.id, route: page.path }, performance.now() - completed.started)
+    if (completed?.key === key && pageId !== undefined && pagePath !== undefined) {
+      recordNavigation({ pageId, route: pagePath }, performance.now() - completed.started)
     }
-  }, [navigation.state, navigation.location, key, page?.id, page?.path])
+  }, [navigation.state, navigation.location, key, pageId, pagePath])
   return (
     <DocumentTitleScope>
       <DocumentTitle title={page?.title} />
