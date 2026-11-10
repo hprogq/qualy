@@ -5,6 +5,7 @@ import { useApi, useApiQuery, useLiveChannel, type LiveChannelState } from '@qua
 import { assessmentApi, assessmentUrls } from './api.ts'
 import { batchLiveEvent, type BatchLiveEvent } from '../api.ts'
 import { settler } from './roster/live-settle.ts'
+import { phaseAlarm } from './phase-alarm.ts'
 
 // One batch's live wake-ups, for whichever screen holds it open. The screen
 // says what each kind of wake-up refreshes; this hook keeps the channel
@@ -36,12 +37,6 @@ import { settler } from './roster/live-settle.ts'
 // its own polling cadence. For a screen that tells its reader how the line
 // stands, the whole answer goes to `liveStateOf` (@qualy/ui/live-mark): the
 // one rule every such screen shares.
-
-/** past this horizon no timer is set; a screen open for days re-reads anyway */
-const ALARM_HORIZON = 24 * 60 * 60 * 1000
-
-/** a beat after the boundary, so the server clock has certainly crossed it */
-const ALARM_MARGIN = 750
 
 /** how long a burst of wake-ups has to be quiet before it is handed over */
 export const LIVE_SETTLE = 250
@@ -129,7 +124,7 @@ export function useBatchLive(batchId: string, onWake: (wake: BatchWake) => void)
   )
 
   // the next instant the diary commits this batch to, if the browser can see
-  // one within the horizon
+  // one
   const entries = timeline.data?.timeline
   const nextPlannedAt = useMemo(() => {
     let next: number | null = null
@@ -144,18 +139,7 @@ export function useBatchLive(batchId: string, onWake: (wake: BatchWake) => void)
 
   useEffect(() => {
     if (nextPlannedAt === null) return
-    const wait = nextPlannedAt + ALARM_MARGIN - Date.now()
-    if (wait > ALARM_HORIZON) return
-    const timer = setTimeout(
-      () => {
-        // the same wake-up the announcement would have carried, so the screen
-        // refreshes whatever it wired to a phase turning - and the timetable
-        // itself, so the alarm re-arms on the next boundary
-        burst.wake('phase-changed')
-      },
-      Math.max(wait, 0),
-    )
-    return () => clearTimeout(timer)
+    return phaseAlarm(nextPlannedAt, () => burst.wake('phase-changed'))
     // the alarm follows the diary and the batch; the client handles are
     // stable for the page's lifetime, so naming them re-arms nothing
   }, [nextPlannedAt, burst])
