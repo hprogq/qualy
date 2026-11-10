@@ -31,6 +31,7 @@ import {
 } from '@qualy/release-contract'
 import { repoRoot } from '../lib/manifest.ts'
 import { startQualyServer, type QualyServer } from '../lib/qualy-server.ts'
+import { acceptItemEditor } from './rsc-item-editor.ts'
 import { acceptEntries } from './rsc-entries.ts'
 import { acceptRouteErrors } from './rsc-route-errors.ts'
 import { acceptTitleNavigation } from './rsc-title-navigation.ts'
@@ -2220,6 +2221,14 @@ const checks = async () => {
   const batch = await batchFor(scratch)
   await batchListFirstScreen(browser, batch)
   await overviewFirstScreen(browser, batch)
+  const editing = await batchFor(scratch, 'RSC editor acceptance')
+  await acceptItemEditor({
+    context: await signedInContext(browser, 'admin'),
+    site,
+    batchId: editing,
+    hydrated,
+    check,
+  })
   const started = await startedBatchFor(scratch)
   await acceptTitleNavigation({
     context: await signedInContext(browser, 'student'),
