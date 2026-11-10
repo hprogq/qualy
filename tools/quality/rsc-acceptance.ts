@@ -142,6 +142,24 @@ const seedInto = (url: string) =>
 /** every render the host started, and whether its request's signal ended */
 const renders: { readonly path: string; aborted: boolean; streamed: boolean }[] = []
 
+// Captured from authenticated real API reads; used only by the fast SSR probe.
+const overviewFixtures = new Map<string, string>()
+const overviewFixtureHits = new Map<string, number>()
+const overviewFixtureKey = (url: URL) => {
+  const search = new URLSearchParams(url.search)
+  search.sort()
+  return `${url.pathname}?${search.toString()}`
+}
+let slowActivityReads = 0
+let activityGate: Promise<void> = Promise.resolve()
+const holdActivity = () => {
+  let release!: () => void
+  activityGate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  return release
+}
+
 /**
  * The api's live channels, passed through to the backend as they are: the
  * upgrade, then the socket both ways. Effect's server answers every other
@@ -182,7 +200,10 @@ const mountHandler = async () => {
   process.env['QUALY_RENDER_API_ORIGIN'] = site
   process.env['NODE_ENV'] = 'production'
   const { default: handler } = (await import(path.join(dist, 'rsc/index.js'))) as {
-    default: (request: Request, context: { nonce?: string }) => Promise<Response>
+    default: (
+      request: Request,
+      context: { nonce?: string; dispatchApi?: (request: Request) => Promise<Response> },
+    ) => Promise<Response>
   }
   const types: Record<string, string> = {
     '.js': 'text/javascript',
@@ -253,12 +274,21 @@ const mountHandler = async () => {
             /(?:^|;\s*)acceptance_fault=roster-slow(?:;|$)/.test(
               String(request.headers['cookie'] ?? ''),
             )) ||
+          (url.pathname.endsWith('/me/activity') &&
+            /(?:^|;\s*)acceptance_fault=activity-slow(?:;|$)/.test(
+              String(request.headers['cookie'] ?? ''),
+            )) ||
           (url.pathname.endsWith('/participant-scores') &&
             /(?:^|;\s*)acceptance_fault=scores-slow(?:;|$)/.test(
               String(request.headers['cookie'] ?? ''),
             ))
         ) {
-          yield* Effect.sleep(900)
+          if (url.pathname.endsWith('/me/activity')) {
+            slowActivityReads++
+            yield* Effect.promise(() => activityGate)
+          } else {
+            yield* Effect.sleep(900)
+          }
         }
         const web = yield* HttpServerRequest.toWeb(request)
         const upstream = yield* Effect.promise((signal) =>
@@ -308,7 +338,28 @@ const mountHandler = async () => {
             headers: request.headers as Record<string, string>,
             signal: controller.signal,
           }),
-          { nonce },
+          {
+            nonce,
+            dispatchApi: (incoming) => {
+              const url = new URL(incoming.url)
+              const cookie = incoming.headers.get('cookie') ?? ''
+              const fast = /(?:^|;\s*)acceptance_fixture=overview-fast(?:;|$)/.test(cookie)
+              const slow = /(?:^|;\s*)acceptance_fixture=overview-slow(?:;|$)/.test(cookie)
+              if (
+                (fast || (slow && url.pathname.endsWith('/me/overview'))) &&
+                overviewFixtures.has(overviewFixtureKey(url))
+              ) {
+                const key = overviewFixtureKey(url)
+                overviewFixtureHits.set(key, (overviewFixtureHits.get(key) ?? 0) + 1)
+                return Promise.resolve(
+                  new Response(overviewFixtures.get(key), {
+                    headers: { 'content-type': 'application/json' },
+                  }),
+                )
+              }
+              return fetch(incoming)
+            },
+          },
         ),
       ).pipe(Effect.onInterrupt(() => Effect.sync(() => controller.abort())))
       const body = response.body
@@ -1314,8 +1365,41 @@ const overviewFirstScreen = async (browser: Browser, batch: string) => {
   const missing = '/assessment/batches/01a1b345-0000-7000-8000-000000000000'
   const firstReads = [`/assessment/batches/${batch}`, '/timeline', '/me/overview', '/me/activity']
 
-  // the screen is in the html's own elements, scripts or none
+  // Read the exact two activity views and the overview through the real API as
+  // this user first. Their captured answers remove database timing from the
+  // fast SSR assertion, without replacing the authorization check.
   const still = await signedInContext(browser, 'admin', { javaScriptEnabled: false })
+  const cookie = browserSessions.get('admin')
+  if (cookie === undefined) throw new Error('the overview fixture has no session')
+  const identity = (await manifestOf(cookie)).identity
+  if (identity === undefined) throw new Error('the overview fixture has no authenticated identity')
+  const release = await pageOf()
+  const apiPaths = [
+    `/api/assessment/batches/${batch}/me/overview`,
+    `/api/assessment/batches/${batch}/me/activity?page=1`,
+    `/api/assessment/batches/${batch}/me/activity?page=2&perspective=participant`,
+  ]
+  overviewFixtures.clear()
+  overviewFixtureHits.clear()
+  for (const path of apiPaths) {
+    const response = await fetch(`${site}${path}`, {
+      headers: {
+        cookie,
+        [IDENTITY_HEADER]: identity,
+        [PROTOCOL_HEADER]: release.protocol,
+        [RELEASE_HEADER]: release.release,
+      },
+    })
+    if (!response.ok) throw new Error(`overview fixture read failed (${response.status})`)
+    const text = await response.text()
+    const value = JSON.parse(text) as { items?: unknown[] }
+    if (path.includes('/me/activity') && (!Array.isArray(value.items) || value.items.length !== 0))
+      throw new Error('overview fixture activity is not empty')
+    overviewFixtures.set(overviewFixtureKey(new URL(path, site)), text)
+  }
+
+  // the screen is in the html's own elements, scripts or none
+  await still.addCookies([{ name: 'acceptance_fixture', value: 'overview-fast', url: site }])
   const html = await still.newPage()
   for (const [at, which] of [
     [address, 'default'],
@@ -1329,6 +1413,13 @@ const overviewFirstScreen = async (browser: Browser, batch: string) => {
     )
     check(`draws the overview's first screen in the html (${which})`, shown.every(Boolean), shown)
   }
+  check(
+    'uses each authenticated fast overview fixture during SSR',
+    apiPaths.every(
+      (path) => (overviewFixtureHits.get(overviewFixtureKey(new URL(path, site))) ?? 0) > 0,
+    ),
+    Object.fromEntries(overviewFixtureHits),
+  )
   const rail = html.getByTestId('workspace-rail')
   check(
     'paints the account and authorized workspace rail without JavaScript',
@@ -1362,6 +1453,89 @@ const overviewFirstScreen = async (browser: Browser, batch: string) => {
     await html.locator('[data-slot=resource-state][data-state=missing]').isVisible(),
   )
   await still.close()
+
+  // A genuinely slow activity read is still the real API, held by the
+  // test proxy until its skeleton has been observed. Without scripts its skeleton stays; with scripts the real
+  // answer eventually replaces it after the streamed handoff.
+  {
+    const staticContext = await signedInContext(browser, 'admin', { javaScriptEnabled: false })
+    await staticContext.addCookies([
+      { name: 'acceptance_fixture', value: 'overview-slow', url: site },
+      { name: 'acceptance_fault', value: 'activity-slow', url: site },
+    ])
+    const staticPage = await staticContext.newPage()
+    const before = slowActivityReads
+    const releaseStatic = holdActivity()
+    const response = await staticPage.goto(`${site}${address}`, { waitUntil: 'commit' })
+    await staticPage
+      .getByTestId('activity-bones')
+      .waitFor({ state: 'visible', timeout: 10000 })
+      .finally(releaseStatic)
+    await staticPage.waitForLoadState('load')
+    const shown = await Promise.all([
+      painted(staticPage.getByTestId('batch-note')),
+      painted(staticPage.getByTestId('overview-clear')),
+      painted(staticPage.getByTestId('activity-bones')),
+      painted(staticPage.getByTestId('overview-activity-empty')),
+      painted(staticPage.locator('.qualy-scripts-off')),
+    ])
+    check(
+      'keeps the overview shell and script notice when activity is slow without JavaScript',
+      response?.status() === 200 &&
+        slowActivityReads > before &&
+        shown[0] &&
+        shown[1] &&
+        shown[2] &&
+        !shown[3] &&
+        shown[4],
+      { status: response?.status(), slowReads: slowActivityReads - before, shown },
+    )
+    await staticContext.close()
+
+    const context = await signedInContext(browser, 'admin')
+    await context.addCookies([
+      { name: 'acceptance_fixture', value: 'overview-slow', url: site },
+      { name: 'acceptance_fault', value: 'activity-slow', url: site },
+    ])
+    const page = await context.newPage()
+    const errors: string[] = []
+    page.on('pageerror', (error) => errors.push(error.message.slice(0, 200)))
+    const beforeClient = slowActivityReads
+    const releaseClient = holdActivity()
+    const navigation = await page.goto(`${site}${address}`, { waitUntil: 'commit' })
+    const bones = await page
+      .getByTestId('activity-bones')
+      .waitFor({ state: 'visible', timeout: 10000 })
+      .then(
+        () => true,
+        () => false,
+      )
+      .finally(releaseClient)
+    const settled = await page
+      .getByTestId('overview-activity-empty')
+      .waitFor({ state: 'visible', timeout: 15000 })
+      .then(
+        () => true,
+        () => false,
+      )
+    check(
+      'renders the real slow activity after JavaScript takes over',
+      navigation?.status() === 200 &&
+        slowActivityReads > beforeClient &&
+        bones &&
+        settled &&
+        errors.length === 0,
+      {
+        status: navigation?.status(),
+        slowReads: slowActivityReads - beforeClient,
+        bones,
+        settled,
+        errors,
+      },
+    )
+    await context.close()
+  }
+  overviewFixtures.clear()
 
   // the page does not ask again for what the html was drawn from; what the
   // live channel sets off is the channel's, after it has spoken
