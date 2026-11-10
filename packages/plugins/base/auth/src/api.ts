@@ -29,7 +29,11 @@ import {
   Viewer,
 } from '@qualy/auth-contract/session'
 import { CaptchaProof, CaptchaRequired } from '@qualy/plugin-captcha/contract'
-import { ReauthenticationRequired } from '@qualy/auth-contract/sign-in-failure'
+import {
+  ReauthenticationRequired,
+  SignInFlowRejected,
+  SignInMethodUnavailable,
+} from '@qualy/auth-contract/sign-in-failure'
 import {
   GrantIncompatible,
   PlacementNotAllowed,
@@ -1062,6 +1066,18 @@ const signedInUser = Schema.Struct({
 })
 
 export const sessionApiGroup = HttpApiGroup.make('auth')
+  .add(
+    HttpApiEndpoint.post('prepareBinding', '/auth/session/binding-preparations', {
+      payload: Schema.Struct({ providerId: uuidInput }),
+      success: Schema.Struct({ ok: Schema.Literal(true) }),
+      error: [
+        SignInMethodUnavailable,
+        SignInFlowRejected,
+        ReauthenticationRequired,
+        TooManyAttemptsResponse,
+      ],
+    }).middleware(Authenticated),
+  )
   .add(
     // The public login context: which workspace this is, by name only, and
     // its ways in. Null when there is no workspace to sign in to here.

@@ -53,6 +53,9 @@ import { chosenLocaleOf } from '@qualy/api-kit/locale'
 import { type SupportedLocale } from '@qualy/i18n-contract'
 import { sameOriginPath } from './same-origin.ts'
 import { iconOf } from './login-icons.ts'
+import { SignInFlowRejected, SignInMethodUnavailable } from '@qualy/auth-contract/sign-in-failure'
+
+const BIND_PREPARATION = 'qualy:bind-preparation:v1'
 
 // Signing in, and signing out.
 //
@@ -963,6 +966,68 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
           if (!held) return yield* new AuthFlowRejected({ reason: 'session-mismatch' })
         }
         return flow
+      }),
+
+    prepareBinding: (input) =>
+      Effect.gen(function* () {
+        const providerRow = yield* withDb(
+          db.query((k) =>
+            k
+              .selectFrom('AuthProvider')
+              .select(['code', 'type'])
+              .where('tenantId', '=', input.tenantId)
+              .where('id', '=', input.providerId)
+              .where('enabled', '=', true)
+              .executeTakeFirst(),
+          ),
+        ).pipe(Effect.orDie)
+        if (!providerRow) return yield* new SignInMethodUnavailable()
+        const provider = yield* sessions.resolveProvider({
+          providerCode: providerRow.code,
+          expectedType: providerRow.type,
+        })
+        const driver = yield* drivers.forType(providerRow.type)
+        if (
+          !provider ||
+          provider.tenantId !== input.tenantId ||
+          provider.providerId !== input.providerId ||
+          driver?.driver.binding?.mode !== 'self'
+        ) {
+          return yield* new SignInMethodUnavailable()
+        }
+        yield* sessions
+          .startFlow({
+            provider,
+            purpose: 'bind',
+            binding: { userId: input.userId, sessionId: input.sessionId },
+            payload: Redacted.make(BIND_PREPARATION),
+          })
+          .pipe(Effect.catchTag('AuthFlowRejected', () => Effect.fail(new SignInFlowRejected())))
+      }),
+
+    takePreparedBinding: (input) =>
+      Effect.gen(function* () {
+        const request = yield* HttpServerRequest.HttpServerRequest
+        const site = request.headers['sec-fetch-site']
+        let sameOrigin = site === 'same-origin'
+        if (site === undefined && request.headers.referer !== undefined) {
+          try {
+            sameOrigin = new URL(request.headers.referer).origin === input.origin
+          } catch {
+            sameOrigin = false
+          }
+        }
+        const state = request.cookies[flowCookie]
+        if (!sameOrigin || !state)
+          return yield* new AuthFlowRejected({ reason: 'browser-mismatch' })
+        const flow = yield* sessions.consumeFlow({ provider: input.provider, state })
+        if (
+          flow.purpose !== 'bind' ||
+          flow.payload === undefined ||
+          Redacted.value(flow.payload) !== BIND_PREPARATION
+        ) {
+          return yield* new AuthFlowRejected({ reason: 'browser-mismatch' })
+        }
       }),
 
     admitAttempt: bound(

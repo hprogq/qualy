@@ -406,8 +406,9 @@ redirect_uri)→ `GET /user` → `subject = String(user.id)`、展示名 = `user
   (`identityNamespaceKeys: ['enterpriseUrl']`),有过绑定后不可再改。
 - **登录**:按 subject 找绑定,找到就 `completeLogin`(同时用当前 login 刷新绑定的展示名——GitHub 改名常有);找不到是
   `AUTH_EXTERNAL_ACCOUNT_UNBOUND`,提示先用别的方式登录再到「我的 → 登录方式」绑定。**绝不按 email 或 login 自动匹配或建号。**
-- **绑定**:只能从「我的 → 登录方式」发起(`start?intent=bind`,经 `Viewer` 中间件取当前会话,未登录即回登录页
-  `AUTH_REQUIRED`);flow 钉住发起人与会话,回来后由 core 的 `bindSubject` 写入(人来自已消费的 flow,不来自回调参数)。
+- **绑定**:从「我的 → 登录方式」先发起受身份声明保护的准备请求，再同源导航到 `start?intent=bind`。
+  准备凭证只放在短期 HttpOnly cookie 中，单次消费并绑定入口与会话；正式 flow 也钉住发起人与会话，回来后由 core 的
+  `bindSubject` 写入(人来自已消费的 flow,不来自回调参数)。
   失败回到发起页并带码:`AUTH_BINDING_SUBJECT_TAKEN` / `AUTH_BINDING_ALREADY_BOUND` 等。自助入口接口给出 `bindHref`
   (驱动的 `binding.start`,同源路径才收)。
 - 其他失败:GitHub 拒绝或用户在授权页取消 → `AUTH_GITHUB_REJECTED`;换 token 或取用户失败 → `AUTH_GITHUB_UNAVAILABLE`;

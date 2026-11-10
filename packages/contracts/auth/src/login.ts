@@ -4,7 +4,11 @@ import { isText, type Text } from '@qualy/text'
 import { commonErrorCodes } from '@qualy/i18n-contract'
 import { type ClientComponentRef } from '@qualy/ui-contract'
 import { type TooManyAttempts } from './session.ts'
-import { type ReauthenticationRequired } from './sign-in-failure.ts'
+import {
+  type ReauthenticationRequired,
+  type SignInFlowRejected,
+  type SignInMethodUnavailable,
+} from './sign-in-failure.ts'
 
 // The login surface a driver plugin needs, and the registry of drivers itself.
 //
@@ -711,6 +715,22 @@ export interface FoundBinding {
  * lets the core stay unaware of which drivers exist.
  */
 export interface LoginSessionsShape {
+  /** Prepare a bind for this document's authenticated session. */
+  readonly prepareBinding: (input: {
+    tenantId: string
+    userId: string
+    sessionId: string
+    providerId: string
+  }) => Effect.Effect<
+    void,
+    SignInMethodUnavailable | SignInFlowRejected | ReauthenticationRequired | TooManyAttempts,
+    HttpServerRequest
+  >
+  /** Spend the browser's prepared bind before starting the provider redirect. */
+  readonly takePreparedBinding: (input: {
+    provider: ResolvedProvider
+    origin: string
+  }) => Effect.Effect<void, AuthFlowRejected, HttpServerRequest>
   /**
    * Where this entrance's kind expects to be called back, absolute.
    *

@@ -389,11 +389,31 @@ const visit = (url: string, cookie?: string) =>
 const flowCookieOf = (response: Response) =>
   response.headers
     .getSetCookie()
-    .find((cookie) => cookie.startsWith(`${flowCookieNameFor(false)}=`))
+    .findLast((cookie) => cookie.startsWith(`${flowCookieNameFor(false)}=`))
     ?.split(';')[0]
 
+const prepare = (cookie: string, declared?: string) =>
+  fetch(`${base}/auth/session/binding-preparations`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      cookie,
+      ...(declared ? { 'x-qualy-identity': declared } : {}),
+    },
+    body: JSON.stringify({ providerId }),
+  })
+
 const depart = async (code = 'op', query = '', cookie?: string) => {
-  const response = await visit(`${base}/auth/oidc/${code}/start${query}`, cookie)
+  let carried = cookie
+  if (query.includes('intent=bind') && cookie !== undefined) {
+    const prepared = await prepare(cookie)
+    if (!prepared.ok) return { response: prepared, away: new URL(origin), browser: cookie }
+    carried = [cookie, flowCookieOf(prepared)].filter(Boolean).join('; ')
+  }
+  const response = await fetch(`${base}/auth/oidc/${code}/start${query}`, {
+    redirect: 'manual',
+    headers: { ...(carried ? { cookie: carried } : {}), 'sec-fetch-site': 'same-origin' },
+  })
   const flow = flowCookieOf(response)
   return {
     response,
@@ -467,17 +487,12 @@ describe.runIf(postgresAvailable)('an OpenID Connect account', () => {
     expect(await labelOf()).toBe('ada.renamed')
   })
 
-  it('sends a session that has not lately shown it is its owner’s back to show it first', async () => {
-    const bind = await depart(
-      'op',
-      `?intent=bind&returnTo=${encodeURIComponent('/account/logins')}`,
-      await signedIn(ada, false),
-    )
-    expect(landing(bind.response)).toEqual({
-      path: '/account/logins',
-      code: 'AUTH_REAUTHENTICATION_REQUIRED',
+  it('requires recent authentication before preparing a binding', async () => {
+    const response = await prepare(await signedIn(ada, false))
+    expect(response.status).toBe(403)
+    expect((await response.json()) as unknown).toMatchObject({
+      _tag: 'AUTH_REAUTHENTICATION_REQUIRED',
     })
-    expect(bind.response.headers.get('location')).not.toContain('/authorize')
   })
 
   it('counts as showing it is them only when asked for afresh and signed in after the asking', async () => {

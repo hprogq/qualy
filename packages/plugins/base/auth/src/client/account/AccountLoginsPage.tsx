@@ -105,13 +105,34 @@ export default function AccountLoginsPage() {
   const when = (iso: string) => instantWords(locale, iso)
 
   /** off to the other side, to come back to this page */
-  const bind = (entrance: Entrance) => {
+  const navigateToBinding = (entrance: Entrance) => {
     const target = new URL(entrance.bindHref!, window.location.origin)
     if (here !== undefined) target.searchParams.set('returnTo', here)
     // a document navigation by design: the start route answers with a
     // redirect to the other side
     window.location.assign(`${target.pathname}${target.search}`)
   }
+
+  const bind = useApiMutation({
+    mutationFn: (entrance: Entrance) =>
+      api.auth.prepareBinding({ payload: { providerId: entrance.providerId } }),
+    onSuccess: (_answer, entrance) => navigateToBinding(entrance),
+    onError: (error, entrance) => {
+      switch (error._tag) {
+        case 'AUTH_METHOD_UNAVAILABLE':
+          toast.error(m.error_methodUnavailable())
+          return
+        case 'AUTH_FLOW_REJECTED':
+          toast.error(m.error_flowRejected())
+          return
+        case 'AUTH_REAUTHENTICATION_REQUIRED':
+          reauthentication.ask(() => bind.mutate(entrance))
+          return
+        default:
+          assertNever(error)
+      }
+    },
+  })
 
   const release = useApiMutation({
     mutationFn: (entrance: Entrance) =>
@@ -276,7 +297,8 @@ export default function AccountLoginsPage() {
                           <Button
                             size="xs"
                             variant="ghost"
-                            onClick={() => reauthentication.ensure(() => bind(entrance))}
+                            disabled={bind.isPending}
+                            onClick={() => reauthentication.ensure(() => bind.mutate(entrance))}
                           >
                             {m.account_bind()}
                           </Button>

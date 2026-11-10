@@ -153,6 +153,13 @@ const handlers = HttpApiBuilder.group(local, 'authGithub', (handlers) =>
         if (binding && viewer === undefined) return failed(new AuthRequired())
         const callback = yield* sessions.callbackUrl(provider).pipe(Effect.option)
         if (callback._tag === 'None') return failed(new SignInMethodUnavailable())
+        if (binding) {
+          const prepared = yield* sessions
+            .takePreparedBinding({ provider, origin: callback.value.origin })
+            .pipe(Effect.result)
+          if (prepared._tag === 'Failure')
+            return away(failureLocation(query.returnTo ?? '/', new SignInFlowRejected()), 303)
+        }
         const { verifier, challenge } = pkce()
         const started = yield* sessions
           .startFlow({

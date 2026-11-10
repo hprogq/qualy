@@ -296,6 +296,13 @@ const handlers = HttpApiBuilder.group(local, 'authOidc', (handlers) =>
         }
         const callback = yield* sessions.callbackUrl(provider).pipe(Effect.option)
         if (callback._tag === 'None') return failed(new SignInMethodUnavailable())
+        if (binding) {
+          const prepared = yield* sessions
+            .takePreparedBinding({ provider, origin: callback.value.origin })
+            .pipe(Effect.result)
+          if (prepared._tag === 'Failure')
+            return away(failureLocation(query.returnTo ?? '/', new SignInFlowRejected()), 303)
+        }
         const { verifier, challenge, nonce } = yield* Effect.promise(beginning)
         // a sign-in asked for afresh: the provider is told to ask for the
         // credentials whatever session it keeps, and the moment of asking is

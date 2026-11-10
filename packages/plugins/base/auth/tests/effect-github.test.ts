@@ -8,6 +8,7 @@ import { HttpRouter } from 'effect/http'
 import { HttpApiBuilder } from 'effect/http-api'
 import { createServer } from 'node:http'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { chromium } from 'playwright'
 import {
   createTestContext,
   databaseFor,
@@ -15,7 +16,11 @@ import {
   runSql,
 } from '@qualy/plugin-database/testkit'
 import { QUALY_API_PREFIX } from '@qualy/api-kit'
+import { QUALY_IDENTITY_HEADER } from '@qualy/api-kit'
+import { CURRENT_CLIENT_PROTOCOL, QUALY_CLIENT_PROTOCOL_HEADER } from '@qualy/release-contract'
+import { identityKeyOf } from '@qualy/auth-contract/identity-key'
 import { requestContext } from '@qualy/api-kit/request'
+import { requestOriginGuard } from '@qualy/api-kit/origin'
 import { Api } from '@qualy/api-kit/plugin'
 import { AuthOutbound } from '@qualy/auth-contract/outbound'
 import { loginDriversLayer, registerLoginDriver } from '@qualy/auth-contract/login'
@@ -92,6 +97,7 @@ const reply = (response: import('node:http').ServerResponse, status: number, bod
 let scope: Scope.Closeable
 let db: Awaited<ReturnType<typeof createTestContext>>
 let providerId: string
+let tenantId: string
 let ada: string
 let lin: string
 
@@ -179,7 +185,7 @@ beforeAll(async () => {
     Layer.provide(middleware),
   )
   const application = HttpRouter.serve(HttpApiBuilder.layer(api).pipe(Layer.provide(handlers)), {
-    middleware: requestContext(),
+    middleware: (app) => requestContext()(requestOriginGuard()(app)),
   }).pipe(
     Layer.provide(signIn),
     Layer.provide(unusedEmailFlows),
@@ -228,15 +234,27 @@ beforeAll(async () => {
                   ${JSON.stringify({ clientId: 'client-1', enterpriseUrl: github.url })}::jsonb)
           returning id`),
       ).id
+      const otherDoor = one<{ id: string }>(
+        yield* runSql(sql`
+          insert into auth_providers (tenant_id, code, type, name, enabled, sort_order, config)
+          values (${tenant}, 'other-hub', 'github', 'Other GitHub', true, 2,
+                  ${JSON.stringify({ clientId: 'client-1', enterpriseUrl: github.url })}::jsonb)
+          returning id`),
+      ).id
       const secrets = yield* Secrets
       yield* secrets.put(
         { ...entranceSecrets(tenant, door), key: 'clientSecret' },
+        Redacted.make('shh-secret'),
+      )
+      yield* secrets.put(
+        { ...entranceSecrets(tenant, otherDoor), key: 'clientSecret' },
         Redacted.make('shh-secret'),
       )
       return { tenant, door, adaId, linId }
     }).pipe(Effect.provide(secretsLayer.pipe(Layer.provideMerge(probeInfra())))),
   )
   providerId = seeded.door
+  tenantId = seeded.tenant
   ada = seeded.adaId
   lin = seeded.linId
 }, 120_000)
@@ -283,11 +301,36 @@ const visit = (url: string, cookie?: string) =>
 const flowCookieOf = (response: Response) =>
   response.headers
     .getSetCookie()
-    .find((cookie) => cookie.startsWith(`${flowCookieNameFor(false)}=`))
+    .findLast((cookie) => cookie.startsWith(`${flowCookieNameFor(false)}=`))
     ?.split(';')[0]
 
+const prepare = (cookie: string, declared?: string) =>
+  fetch(`${base}/auth/session/binding-preparations`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      cookie,
+      ...(declared
+        ? {
+            [QUALY_IDENTITY_HEADER]: declared,
+            [QUALY_CLIENT_PROTOCOL_HEADER]: String(CURRENT_CLIENT_PROTOCOL),
+          }
+        : {}),
+    },
+    body: JSON.stringify({ providerId }),
+  })
+
 const depart = async (query = '', cookie?: string) => {
-  const response = await visit(`${base}/auth/github/hub/start${query}`, cookie)
+  let carried = cookie
+  if (query.includes('intent=bind') && cookie !== undefined) {
+    const prepared = await prepare(cookie)
+    if (!prepared.ok) return { response: prepared, away: new URL(origin), browser: cookie }
+    carried = [cookie, flowCookieOf(prepared)].filter(Boolean).join('; ')
+  }
+  const response = await fetch(`${base}/auth/github/hub/start${query}`, {
+    redirect: 'manual',
+    headers: { ...(carried ? { cookie: carried } : {}), 'sec-fetch-site': 'same-origin' },
+  })
   const flow = flowCookieOf(response)
   return {
     response,
@@ -313,6 +356,154 @@ const bindingsOf = (userId: string) =>
   )
 
 describe.runIf(postgresAvailable)('a GitHub account', () => {
+  it('rejects a binding started by a document whose shared session changed', async () => {
+    const a = await signedIn(ada)
+    const b = await signedIn(lin)
+    const declaredA = identityKeyOf({ tenantId, userId: ada })
+    const wrong = await prepare(b, declaredA)
+    expect(wrong.status).toBe(409)
+    expect(
+      wrong.headers.getSetCookie().some((value) => value.startsWith(flowCookieNameFor(false))),
+    ).toBe(false)
+    const prepared = await prepare(a, declaredA)
+    expect(prepared.status).toBe(200)
+    const flow = flowCookieOf(prepared)
+    expect(flow).toBeDefined()
+    const start = await fetch(`${base}/auth/github/hub/start?intent=bind`, {
+      redirect: 'manual',
+      headers: { cookie: `${b}; ${flow}`, 'sec-fetch-site': 'same-origin' },
+    })
+    expect(landing(start).code).toBe('AUTH_FLOW_REJECTED')
+    const replay = await fetch(`${base}/auth/github/hub/start?intent=bind`, {
+      redirect: 'manual',
+      headers: { cookie: `${a}; ${flow}`, 'sec-fetch-site': 'same-origin' },
+    })
+    expect(landing(replay).code).toBe('AUTH_FLOW_REJECTED')
+    expect(await bindingsOf(ada)).toEqual([])
+    expect(await bindingsOf(lin)).toEqual([])
+  })
+
+  it('does not consume a preparation for a cross-site navigation', async () => {
+    const cookie = await signedIn(ada)
+    const prepared = await prepare(cookie, identityKeyOf({ tenantId, userId: ada }))
+    const flow = flowCookieOf(prepared)
+    for (const site of ['cross-site', 'same-site']) {
+      const blocked = await fetch(`${base}/auth/github/hub/start?intent=bind`, {
+        redirect: 'manual',
+        headers: { cookie: `${cookie}; ${flow}`, 'sec-fetch-site': site },
+      })
+      expect(landing(blocked).code).toBe('AUTH_FLOW_REJECTED')
+    }
+    for (const referer of [undefined, 'https://elsewhere.example/']) {
+      const blocked = await fetch(`${base}/auth/github/hub/start?intent=bind`, {
+        redirect: 'manual',
+        headers: { cookie: `${cookie}; ${flow}`, ...(referer ? { referer } : {}) },
+      })
+      expect(landing(blocked).code).toBe('AUTH_FLOW_REJECTED')
+    }
+    const accepted = await fetch(`${base}/auth/github/hub/start?intent=bind`, {
+      redirect: 'manual',
+      headers: { cookie: `${cookie}; ${flow}`, referer: `${origin}/account/logins` },
+    })
+    expect(accepted.status).toBe(302)
+  })
+
+  it('rejects cross-origin preparation before issuing a flow', async () => {
+    const cookie = await signedIn(ada)
+    for (const headers of [
+      { 'sec-fetch-site': 'cross-site' },
+      { 'sec-fetch-site': 'same-site' },
+      { origin: 'https://elsewhere.example' },
+    ]) {
+      const response = await fetch(`${base}/auth/session/binding-preparations`, {
+        method: 'POST',
+        headers: { ...headers, cookie, 'content-type': 'application/json' },
+        body: JSON.stringify({ providerId }),
+      })
+      expect(response.status).toBe(403)
+      expect(flowCookieOf(response)).toBeUndefined()
+    }
+  })
+
+  it('allows only one concurrent use of the prepared binding', async () => {
+    const cookie = await signedIn(ada)
+    const prepared = await prepare(cookie, identityKeyOf({ tenantId, userId: ada }))
+    const flow = flowCookieOf(prepared)
+    const start = () =>
+      fetch(`${base}/auth/github/hub/start?intent=bind`, {
+        redirect: 'manual',
+        headers: { cookie: `${cookie}; ${flow}`, 'sec-fetch-site': 'same-origin' },
+      })
+    const results = await Promise.all([start(), start()])
+    expect(results.map((response) => response.status).sort()).toEqual([302, 303])
+    expect(landing(results.find((response) => response.status === 303)!).code).toBe(
+      'AUTH_FLOW_REJECTED',
+    )
+  })
+
+  it('does not accept a preparation for a different provider', async () => {
+    const cookie = await signedIn(ada)
+    const prepared = await prepare(cookie, identityKeyOf({ tenantId, userId: ada }))
+    const response = await fetch(`${base}/auth/github/other-hub/start?intent=bind`, {
+      redirect: 'manual',
+      headers: { cookie: `${cookie}; ${flowCookieOf(prepared)}`, 'sec-fetch-site': 'same-origin' },
+    })
+    expect(landing(response).code).toBe('AUTH_FLOW_REJECTED')
+  })
+
+  it('starts a prepared binding through a real browser navigation', async () => {
+    const cookie = await signedIn(ada)
+    const browser = await chromium.launch({ headless: true })
+    try {
+      const context = await browser.newContext()
+      await context.addCookies([
+        { name: sessionCookieName, value: cookie.split('=')[1]!, url: origin },
+      ])
+      const page = await context.newPage()
+      await page.goto(`${origin}/`)
+      const preparedStatus = await page.evaluate(
+        async ({ base, providerId, identity, protocol }) => {
+          const result = await fetch(`${base}/auth/session/binding-preparations`, {
+            method: 'POST',
+            headers: {
+              'content-type': 'application/json',
+              'x-qualy-identity': identity,
+              'x-qualy-client-protocol': protocol,
+            },
+            body: JSON.stringify({ providerId }),
+          })
+          return result.status
+        },
+        {
+          base,
+          providerId,
+          identity: identityKeyOf({ tenantId, userId: ada }),
+          protocol: String(CURRENT_CLIENT_PROTOCOL),
+        },
+      )
+      expect(preparedStatus).toBe(200)
+      const preparationCookie = (await context.cookies(origin)).find(
+        (item) => item.name === flowCookieNameFor(false),
+      )?.value
+      expect(preparationCookie).toBeTruthy()
+      const start = page.waitForRequest((request) =>
+        request.url().includes('/auth/github/hub/start'),
+      )
+      await Promise.all([
+        page.waitForURL(`${github.url}/**`),
+        page.evaluate(
+          `location.assign(${JSON.stringify(`${base}/auth/github/hub/start?intent=bind`)})`,
+        ),
+      ])
+      expect((await (await start).allHeaders())['sec-fetch-site']).toBe('same-origin')
+      const cookies = await context.cookies(origin)
+      const startedCookie = cookies.find((item) => item.name === flowCookieNameFor(false))?.value
+      expect(startedCookie).toBeTruthy()
+      expect(startedCookie).not.toBe(preparationCookie)
+    } finally {
+      await browser.close()
+    }
+  })
   it('goes to GitHub with a challenge and no scope, and signs in nobody it does not know', async () => {
     const { response, away, browser } = await depart()
     expect(response.status).toBe(302)
@@ -402,29 +593,21 @@ describe.runIf(postgresAvailable)('a GitHub account', () => {
     expect(await subjects(lin)).not.toContain('4096')
   })
 
-  it('sends a session that has not lately shown it is its owner’s back to show it first', async () => {
-    const bind = await depart(
-      `?intent=bind&returnTo=${encodeURIComponent('/account/logins')}`,
-      await signedIn(ada, false),
-    )
-    expect(landing(bind.response)).toEqual({
-      path: '/account/logins',
-      code: 'AUTH_REAUTHENTICATION_REQUIRED',
+  it('requires recent authentication before preparing a binding', async () => {
+    const response = await prepare(await signedIn(ada, false))
+    expect(response.status).toBe(403)
+    expect((await response.json()) as unknown).toMatchObject({
+      _tag: 'AUTH_REAUTHENTICATION_REQUIRED',
     })
-    // it never set out
-    expect(github.seen).toEqual([])
   })
 
   it('keeps a refused bind on this site when the return path is ambiguous', async () => {
-    const bind = await depart(
-      `?intent=bind&returnTo=${encodeURIComponent('/.//elsewhere.example/path')}`,
-      await signedIn(ada, false),
+    const response = await visit(
+      `${base}/auth/github/hub/start?intent=bind&returnTo=${encodeURIComponent('/.//elsewhere.example/path')}`,
+      await signedIn(ada),
     )
-    expect(bind.response.status).toBe(303)
-    expect(bind.response.headers.get('location')).toBe(
-      '/login?error=AUTH_REAUTHENTICATION_REQUIRED',
-    )
-    expect(github.seen).toEqual([])
+    expect(response.status).toBe(303)
+    expect(response.headers.get('location')).toBe('/login?error=AUTH_FLOW_REJECTED')
   })
 
   it('binds nobody for a visitor who is not signed in', async () => {

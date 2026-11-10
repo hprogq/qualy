@@ -258,6 +258,15 @@ const local = Api.local(identityApiGroup, sessionApiGroup, selfApiGroup)
 export const sessionApiHandlers = HttpApiBuilder.group(local, 'auth', (handlers) =>
   handlers
     .handle(
+      'prepareBinding',
+      Effect.fn('auth.prepareBinding.handler')(function* ({ payload }) {
+        const principal = yield* CurrentUser
+        const sessions = yield* LoginSessions
+        yield* sessions.prepareBinding({ ...principal, providerId: payload.providerId })
+        return { ok: true as const }
+      }),
+    )
+    .handle(
       'listLoginMethods',
       Effect.fn('auth.listLoginMethods.handler')(function* () {
         const signIn = yield* SignIn
