@@ -22,6 +22,11 @@ const FAKE_DOCKER = `#!/bin/sh
 printf '%s\\n' "$*" >> "$FAKE/docker.log"
 if [ "$1" = compose ]; then
   case "$*" in
+    *'up -d server-green '*) [ "\${FAKE_FAIL_TARGET_START:-}" != 1 ] || exit 1 ;;
+    *'web-release collect '*) [ "\${FAKE_FAIL_COLLECTION:-}" != 1 ] || exit 1 ;;
+    *'stop -t 40 server-blue '*) [ "\${FAKE_FAIL_OLD_STOP:-}" != 1 ] || exit 1 ;;
+  esac
+  case "$*" in
     *'-v email_domain='*)
       cat > "$FAKE/baseline-account-query.sql"
       if [ "\${FAKE_FAIL_BASELINE_QUERY:-}" = 1 ]; then echo 'account query failed' >&2; exit 2; fi
@@ -532,6 +537,11 @@ describe('migration safety when a prerequisite cannot be read', () => {
     expect(ran.status, ran.stderr).toBe(0)
     expect(envOf()).toMatch(/^QUALY_ACTIVE_COLOR=green$/m)
     expect(envOf()).toMatch(/^QUALY_RELEASE=r2$/m)
+    const asked = fs.readFileSync(path.join(fake, 'docker.log'), 'utf8')
+    expect(asked).toContain('run --rm -e QUALY_WEB_RELEASE_RETAIN_COUNT=999999999 migrate')
+    expect(asked.indexOf('stop -t 40 server-blue')).toBeLessThan(
+      asked.indexOf('web-release collect r_web'),
+    )
   })
 
   it('still upgrades when the unread migrations all expand', () => {
@@ -546,6 +556,69 @@ describe('migration safety when a prerequisite cannot be read', () => {
     expect(ran.status, ran.stderr).toBe(0)
     expect(envOf()).toMatch(/^QUALY_ACTIVE_COLOR=green$/m)
     expect(envOf()).toMatch(/^QUALY_RELEASE=r3$/m)
+    const asked = fs.readFileSync(path.join(fake, 'docker.log'), 'utf8')
+    expect(asked).toContain('run --rm -e QUALY_WEB_RELEASE_RETAIN_COUNT=999999999 migrate')
+    expect(asked.indexOf('stop -t 40 server-blue')).toBeLessThan(
+      asked.indexOf('web-release collect r_web'),
+    )
+  })
+
+  it('retains all releases through a failed switch and restoration without running collection', () => {
+    fs.writeFileSync(
+      path.join(fake, 'images/r3/db/migrations/3_next.sql'),
+      '-- rollout: expand\nselect 1;\n',
+    )
+    fs.appendFileSync(
+      envFile,
+      'QUALY_WEB_RELEASE_RETAIN_COUNT=0\nQUALY_WEB_RELEASE_RETAIN_HOURS=0\n',
+    )
+    const ran = run('sh "$UPGRADE" r3', {
+      ...options,
+      FAKE_FAIL_TARGET_START: '1',
+      UPGRADE: path.join(ROOT, 'deploy/upgrade.sh'),
+    })
+    expect(ran.status).toBe(1)
+    const asked = fs.readFileSync(path.join(fake, 'docker.log'), 'utf8')
+    expect(
+      asked.match(/run --rm -e QUALY_WEB_RELEASE_RETAIN_COUNT=999999999 migrate/g),
+    ).toHaveLength(2)
+    expect(asked).not.toContain('web-release collect')
+    expect(envOf()).toMatch(/^QUALY_WEB_RELEASE_RETAIN_COUNT=0$/m)
+    expect(envOf()).toMatch(/^QUALY_ACTIVE_COLOR=blue$/m)
+  })
+
+  it('keeps the successful switch when the independent collection fails', () => {
+    fs.writeFileSync(
+      path.join(fake, 'images/r3/db/migrations/3_next.sql'),
+      '-- rollout: expand\nselect 1;\n',
+    )
+    const ran = run('sh "$UPGRADE" r3', {
+      ...options,
+      FAKE_FAIL_COLLECTION: '1',
+      UPGRADE: path.join(ROOT, 'deploy/upgrade.sh'),
+    })
+    expect(ran.status, ran.stderr).toBe(0)
+    expect(ran.stderr).toContain('collection deferred')
+    expect(envOf()).toMatch(/^QUALY_ACTIVE_COLOR=green$/m)
+    expect(envOf()).toMatch(/^QUALY_RELEASE=r3$/m)
+  })
+
+  it('defers collection when the previous color cannot be stopped', () => {
+    fs.writeFileSync(
+      path.join(fake, 'images/r3/db/migrations/3_next.sql'),
+      '-- rollout: expand\nselect 1;\n',
+    )
+    const ran = run('sh "$UPGRADE" r3', {
+      ...options,
+      FAKE_FAIL_OLD_STOP: '1',
+      UPGRADE: path.join(ROOT, 'deploy/upgrade.sh'),
+    })
+    expect(ran.status, ran.stderr).toBe(0)
+    expect(ran.stderr).toContain('web release collection deferred')
+    expect(fs.readFileSync(path.join(fake, 'docker.log'), 'utf8')).not.toContain(
+      'web-release collect',
+    )
+    expect(envOf()).toMatch(/^QUALY_ACTIVE_COLOR=green$/m)
   })
 
   it('does not require a migration ledger before the first deployment', () => {

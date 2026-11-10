@@ -60,22 +60,39 @@ export default defineCapabilityProvider<never, WebReleaseState>({
       context.providerConfig ?? {},
     )
     const { assetRoot } = rootsFrom(declared, path.dirname(context.manifestPath))
-    const { promoteWebRelease, retentionFromEnv, storeAt } =
-      await import('@qualy/web-build/release-store')
-    const { release, reused, gc } = await promoteWebRelease({
+    const { promoteWebRelease, storeAt } = await import('@qualy/web-build/release-store')
+    const { release, reused } = await promoteWebRelease({
       from: storeAt(assetRoot),
       to: storeAt(target),
-      retention: retentionFromEnv(),
+      // Another color can still be serving from this store. Collection is a
+      // separate operation after the edge moved and that color stopped.
+      retention: false,
     })
     console.log(
       `web-release: ${release.releaseId} ${reused ? 'was already installed in' : 'installed into'} ${target}`,
     )
-    if (gc !== undefined) {
+  },
+  commands: {
+    collect: async (context) => {
+      if (context.args.length !== 1 || !context.args[0])
+        throw new Error('web-release collect requires the serving web release id')
+      const target = process.env[RELEASE_STORE_VARIABLE]?.trim() ?? ''
+      if (!path.isAbsolute(target))
+        throw new Error(`${RELEASE_STORE_VARIABLE} must be an absolute path`)
+      const { gcWebReleases, readCurrentWebRelease, retentionFromEnv, storeAt } =
+        await import('@qualy/web-build/release-store')
+      const store = storeAt(target)
+      const current = readCurrentWebRelease(store)
+      if (current?.releaseId !== context.args[0])
+        throw new Error(
+          'web-release: current store release does not match the serving release; nothing collected',
+        )
+      const gc = gcWebReleases(store, retentionFromEnv())
       console.log(
         gc.skipped === undefined
           ? `web-release: kept ${String(gc.retained.length)} release(s); removed ${String(gc.removedReleases.length)} release(s), ${String(gc.removedAssets.length)} asset file(s)`
           : `web-release: nothing collected: ${gc.skipped}`,
       )
-    }
+    },
   },
 })

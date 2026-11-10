@@ -76,4 +76,7 @@ if ! take_over "$idle" "$release" "$active"; then
   deploy_job "$current" > /dev/null 2>&1 || say "that failed too: run the deploy job for $current by hand" >&2
   refuse "rollback to $release failed; $active serves $current as before"
 fi
+# The release we came from has the current collection command; the older
+# target image need not. If it does not, defer collection safely.
+[ "$take_over_old_stopped" = false ] || collect_web_releases "$current" "$(color_address "$idle")"
 say "rolled back to $release on $idle"

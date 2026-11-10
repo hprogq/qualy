@@ -165,8 +165,9 @@ seed first, then `deploy/upgrade.sh`.
 then finds nothing to do; a migration that fails is not recorded, the job
 exits non-zero, and the serving color keeps serving until it is fixed
 forward. It also installs the new release's web bundle into `web_releases`,
-beside the ones before it: the newest five and everything installed in the
-last 72 hours stay (`QUALY_WEB_RELEASE_RETAIN_COUNT` and
+beside the ones before it. Only after switching traffic and stopping the old
+color does a separate collection keep the newest five and everything installed in the
+last 72 hours (`QUALY_WEB_RELEASE_RETAIN_COUNT` and
 `QUALY_WEB_RELEASE_RETAIN_HOURS` in `.env`). When the release did not change
 which plugins are enabled, a tab of the previous one has its requests
 answered as before and is offered the new release in a notice; a release

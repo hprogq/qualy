@@ -401,6 +401,25 @@ describe('promoting', () => {
     }
   })
 
+  it('keeps a serving old release through repeated legacy promotions when retention is overridden', async () => {
+    const deployment = storeAt(temp('qualy-deployment-'))
+    await promote(await image('A'), deployment, '2020-01-01T00:00:00.000Z')
+    const protectedPolicy = retentionFromEnv({
+      QUALY_WEB_RELEASE_RETAIN_COUNT: '999999999',
+      QUALY_WEB_RELEASE_RETAIN_HOURS: '0',
+    })
+    for (const release of ['B', 'C', 'D']) {
+      await promoteWebRelease({
+        from: await image(release),
+        to: deployment,
+        now: at('2026-09-15T10:00:00.000Z'),
+        retention: protectedPolicy,
+      })
+      expect(exists(resolveReleaseRoot(deployment, 'A'), 'favicon.svg')).toBe(true)
+      expect(exists(deployment.root, 'assets', 'index-A.js')).toBe(true)
+    }
+  })
+
   it('takes the same image again as a no-op, and an earlier one back as a rollback', async () => {
     const deployment = storeAt(temp('qualy-deployment-'))
     const first = await image('A')

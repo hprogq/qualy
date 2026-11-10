@@ -559,7 +559,24 @@ public_serves() {
 # Runs the deploy job for a release: its migrations, then its web release made
 # the store's current one. Prints the job's own words; fails when it does.
 deploy_job() {
-  QUALY_RELEASE=$1 compose run --rm migrate
+  # Rollback may invoke an older image whose deploy step still collects. Keep
+  # all installed releases until the previously serving color has stopped.
+  QUALY_RELEASE=$1 compose run --rm -e QUALY_WEB_RELEASE_RETAIN_COUNT=999999999 migrate
+}
+
+# Collection uses a separate capability command and does not run migrations
+# or any other deploy handler. An older image may not provide it: retaining
+# extra assets until a later deployment is safer than collecting too early.
+collect_web_releases() {
+  local helper="$1" address="$2" serving
+  serving=$(served_release "$address")
+  if [ -z "$serving" ]; then
+    say 'web-release: serving release could not be verified; collection deferred' >&2
+    return 0
+  fi
+  QUALY_RELEASE=$helper compose run --rm --no-deps -T migrate \
+    node apps/cli/src/main.ts web-release collect "$serving" ||
+    say 'web-release: collection deferred; retry after verifying the serving release' >&2
 }
 
 # Starts the idle color on a release whose deploy job has run, points the
@@ -570,6 +587,9 @@ deploy_job() {
 # release store back.
 take_over() {
   local target="$1" release="$2" previous="$3" was address serving drain
+  # A switch may succeed even if the old color cannot be stopped; its assets
+  # must remain available until a later run confirms that it has drained.
+  take_over_old_stopped=true
   was=$(color_release "$target")
   # the idle color goes back to naming what it ran, so a later rollback
   # returns there rather than to a release that never served
@@ -615,7 +635,11 @@ take_over() {
     drain=$(setting QUALY_DRAIN_SECONDS 20)
     say "draining $previous for ${drain}s"
     sleep "$drain"
-    compose stop -t 40 $(color_services "$previous")
-    say "$previous stopped"
+    if compose stop -t 40 $(color_services "$previous"); then
+      say "$previous stopped"
+    else
+      take_over_old_stopped=false
+      say "$previous could not be stopped; web release collection deferred" >&2
+    fi
   fi
 }

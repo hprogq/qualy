@@ -422,7 +422,7 @@ Resend 答 400/422 算这封信被拒,429/409/5xx/超时算暂不可用;401/403 
 当时只考虑了进程(一个进程一套 api 与一个 shell),没考虑还开着的浏览器——换镜像后旧 tab 的下一次请求带着旧 release id,新进程在自己的
 store 里查不到,答 409 `release`,整屏接管,未保存的输入丢失且绕过离开提示;不需要用户操作就会触发(轮询与实时通道的重连都算请求)。
 现在部署把 release 放在比镜像活得久的 `web_releases` 卷里:`migrate` 把镜像带的 release 装进去(已有则只移指针,幂等),
-按保留策略留下之前的(最近 `QUALY_WEB_RELEASE_RETAIN_COUNT`(默认 5)个 ∪ 最近 `QUALY_WEB_RELEASE_RETAIN_HOURS`(默认 72)小时,
+切流完成并停止旧色后再按保留策略回收(最近 `QUALY_WEB_RELEASE_RETAIN_COUNT`(默认 5)个 ∪ 最近 `QUALY_WEB_RELEASE_RETAIN_HOURS`(默认 72)小时,
 current 永不删);server 从卷里服务,旧 tab 照样取到自己的 chunk,插件选择与 surface 不变时它的请求照常被接受,只在右下角看到
 「有新版本」的提示,刷新由读者决定。插件启停或 surface 变化的 release 仍对旧 tab 答 409 `assembly`,那是正确的——旧 tab 的屏幕
 可能已经没有对应的 api。**server 启动时核对卷的 current 就是本镜像的 release**,不是(或卷是空的)就拒启并提示先跑 `migrate`,

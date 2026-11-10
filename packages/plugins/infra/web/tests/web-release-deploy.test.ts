@@ -24,13 +24,16 @@ afterEach(() => {
   for (const dir of dirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true })
 })
 
-const deploy = (options: {
-  readonly assetRoot: string
-  readonly state?: AssemblyPlugin['state']
-}) => {
+const work = (
+  options: {
+    readonly assetRoot: string
+    readonly state?: AssemblyPlugin['state']
+  },
+  args: readonly string[] = [],
+) => {
   const manifestDir = temp('qualy-product-')
   vi.spyOn(console, 'log').mockImplementation(() => {})
-  return provider.deploy!({
+  return {
     manifestPath: path.join(manifestDir, 'qualy.yml'),
     plugins: new Map([
       [
@@ -44,9 +47,13 @@ const deploy = (options: {
     state: {},
     // the manifest block, as the product would write it: relative to the manifest
     providerConfig: { assetRoot: path.relative(manifestDir, options.assetRoot) },
-    args: [],
-  })
+    args,
+  }
 }
+const deploy = (options: {
+  readonly assetRoot: string
+  readonly state?: AssemblyPlugin['state']
+}) => provider.deploy!(work(options))
 
 /** an image's store: the one release it was built with */
 const image = (releaseId?: string) => {
@@ -77,6 +84,30 @@ describe('the web release deploy step', () => {
     for (const id of ['earlier-release', 'test-release']) {
       expect(fs.existsSync(path.join(deployment, 'releases', id, 'favicon.svg'))).toBe(true)
     }
+  })
+
+  it('defers collection during repeated promotions and collects only for the verified serving release', async () => {
+    const deployment = temp('qualy-deployment-')
+    vi.stubEnv(RELEASE_STORE_VARIABLE, deployment)
+    vi.stubEnv('QUALY_WEB_RELEASE_RETAIN_COUNT', '0')
+    vi.stubEnv('QUALY_WEB_RELEASE_RETAIN_HOURS', '0')
+    const first = temp('qualy-image-')
+    installTestRelease(first, { releaseId: 'old', assets: { 'old.js': 'old content' } })
+    await deploy({ assetRoot: first })
+    const metadata = path.join(deployment, 'releases/old/.qualy-release.json')
+    const old = JSON.parse(fs.readFileSync(metadata, 'utf8'))
+    old.installedAt = '2000-01-01T00:00:00.000Z'
+    fs.writeFileSync(metadata, JSON.stringify(old))
+    for (const id of ['candidate-one', 'candidate-two']) await deploy({ assetRoot: image(id) })
+    expect(fs.readFileSync(path.join(deployment, 'assets/old.js'), 'utf8')).toBe('old content')
+    expect(fs.existsSync(path.join(deployment, 'releases/old/favicon.svg'))).toBe(true)
+    await expect(provider.commands!.collect!(work({ assetRoot: first }, ['old']))).rejects.toThrow(
+      /does not match/,
+    )
+    expect(fs.existsSync(path.join(deployment, 'assets/old.js'))).toBe(true)
+    await provider.commands!.collect!(work({ assetRoot: first }, ['candidate-two']))
+    expect(fs.existsSync(path.join(deployment, 'assets/old.js'))).toBe(false)
+    expect(readCurrentWebRelease(storeAt(deployment))?.releaseId).toBe('candidate-two')
   })
 
   it('does nothing where the deployment keeps no store of its own, or serves no web', async () => {

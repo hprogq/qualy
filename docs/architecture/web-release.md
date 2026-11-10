@@ -19,9 +19,9 @@
 - `pnpm build` = RSC 构建(`qualyRelease()` 写 `virtual:qualy/release` 与 `dist-rsc/client/.qualy-web-build.json`)+ `packages/build/web/src/stage.ts`:浏览器一半经 `installWebRelease` 装进 `packages/plugins/infra/web/client-dist`,服务端一半(打包好的 RSC 与 SSR 环境)整体放到同插件的 `server-dist`。
 - Store 布局:`current.json`、`assets/`(所有保留 release 的 hashed 资源共存)、`releases/<id>/`(public 文件、`.qualy-release.json`;文档由服务端绘制,release 不再带 shell)。安装顺序 assets → shell(临时目录整体 rename)→ pointer;同名 asset 字节不同硬失败;同 release 重装幂等;`current` 永远指向完整的 release。
 - 浏览器 chunk 在 Rolldown 计算依赖哈希前纳入仓库相对的模块身份。两个独立模块可能生成同样的代码（例如两个 React Context）；如果只在最后调整重复文件名，引用它们的 chunk 可能换了内容却没换地址。模块名本身不进入公开文件名，store 仍按字节检查。
-- 保留策略:最近 `QUALY_WEB_RELEASE_RETAIN_COUNT`(默认 5)个 ∪ 最近 `QUALY_WEB_RELEASE_RETAIN_HOURS`(默认 72)小时;current 永不删;任何 release 的 metadata 读不出来则整个不 GC。
+- 保留策略:最近 `QUALY_WEB_RELEASE_RETAIN_COUNT`(默认 5)个 ∪ 最近 `QUALY_WEB_RELEASE_RETAIN_HOURS`(默认 72)小时;current 永不删;任何 release 的 metadata 读不出来则整个不 GC。部署安装不执行回收；切流成功且旧色停止后，编排脚本确认当前服务的 Web release，再单独运行 `qualy web-release collect <releaseId>`。探针、版本核对或回收失败时保留多余文件并在下次成功切换后再试。手工回收前也必须确认没有另一色在服务。
 - `node tools/quality/check-staged-web.ts [store]`:校验 current release 完整(release metadata、所有 declared assets、resolutionHash = lock)并打印 releaseId;CI 在 build 后跑它。
-- 部署(2026-09-27 定,纠正 2026-09-17「store 随镜像、只装当前 release」;理由见 docs/deployment.md §3.1):镜像仍带着构建它时的 release(web 插件 `client-dist` 里只有这一个),部署另有一个比镜像活得久的 store(compose 的 `web_releases` 卷,`QUALY_WEB_RELEASE_STORE`)。`qualy deploy` 的 `web-release` 能力(`@qualy/plugin-web` 的 `src/assembly`)以 `promoteWebRelease` 把镜像 store 的 current release 连同资源与压缩件搬进部署 store 并设为 current,与 `installWebRelease` 共用同一段安装逻辑(资源 → shell 整体 rename → 指针 → GC),重跑幂等,回滚镜像时把旧 release 设回 current;`installedAt` 取装进部署 store 的时刻,保留策略按它计。
+- 部署(2026-09-27 定,纠正 2026-09-17「store 随镜像、只装当前 release」;理由见 docs/deployment.md §3.1):镜像仍带着构建它时的 release(web 插件 `client-dist` 里只有这一个),部署另有一个比镜像活得久的 store(compose 的 `web_releases` 卷,`QUALY_WEB_RELEASE_STORE`)。`qualy deploy` 的 `web-release` 能力(`@qualy/plugin-web` 的 `src/assembly`)以 `promoteWebRelease` 把镜像 store 的 current release 连同资源与压缩件搬进部署 store 并设为 current(资源 → shell 整体 rename → 指针),重跑幂等,回滚镜像时把旧 release 设回 current;`installedAt` 取装进部署 store 的时刻,保留策略按它计。
 
 ## 生产服务(`@qualy/plugin-web`)
 

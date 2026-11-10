@@ -115,4 +115,5 @@ if ! take_over "$target" "$release" "$([ "$maintenance" = true ] && printf '' ||
   put_back
   refuse "upgrade to $release failed; ${active:-nothing} serves as before"
 fi
+[ "$take_over_old_stopped" = false ] || collect_web_releases "$release" "$(color_address "$target")"
 say "upgraded to $release on $target"
