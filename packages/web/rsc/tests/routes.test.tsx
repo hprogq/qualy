@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { isValidElement, type ReactElement } from 'react'
 import { matchRoutes, RouterContextProvider, type RouteObject } from 'react-router'
 import type { Manifest } from '@qualy/web-runtime'
+import { serverQueries } from '../src/queries.ts'
 import { serverRoutes, type RouteFrames } from '../src/routes.tsx'
 import { withRenderRequest, type RenderRequest } from '../src/request.ts'
 
@@ -148,6 +149,80 @@ describe('server-owned plugin route assembly', () => {
       childrenOf(tree[0]!).every((layout) => layout.ErrorBoundary === frames.LayoutError),
     ).toBe(true)
     expect(last(tree, '/home').ErrorBoundary).toBe(frames.PageError)
+  })
+
+  it('prepares visible page-requested slot reads once and hands them to the document', async () => {
+    let reads = 0
+    let hidden = 0
+    const shown = { ...manifest(), slots: { 'probe/summary': [{ id: 'probe/summary', order: 0 }] } }
+    const scope: RenderRequest = {
+      url: new URL('http://localhost/home'),
+      locale: 'en-US',
+      renderedAt: 123,
+      release: { releaseId: 'release-a', clientProtocol: 5 },
+      nonce: 'request-nonce',
+      routeTitle: 'Home',
+      cookie: undefined,
+      apiOrigin: 'http://localhost',
+      signal: new AbortController().signal,
+      surfaces: {
+        pageComponents: {
+          'probe/home': async () => ({
+            default: Frame,
+            prefetch: async () => ({
+              slotReferences: [
+                { kind: 'slot', slot: 'probe/summary', id: 'probe/summary' },
+                { kind: 'slot', slot: 'probe/summary', id: 'probe/summary' },
+                { kind: 'slot', slot: 'probe/summary', id: 'probe/hidden' },
+              ],
+            }),
+          }),
+        },
+        layoutComponents: {},
+        layoutSlots: {},
+        loginComponents: {},
+        slotComponents: {
+          'probe/summary': {
+            'probe/summary': async () => ({
+              default: Frame,
+              prefetch: async () => {
+                reads += 1
+                const queries = serverQueries()
+                queries.hold(['summary'], 'prepared')
+                return { hydration: queries.dehydrated() }
+              },
+            }),
+            'probe/hidden': async () => ({
+              default: Frame,
+              prefetch: async () => {
+                hidden += 1
+                return undefined
+              },
+            }),
+          },
+        },
+      },
+    }
+    const document = await withRenderRequest(scope, async () => {
+      const tree = routes(shown)
+      return await (
+        tree[0]!.Component as unknown as (input: {
+          matches: readonly { id: string; params: {} }[]
+        }) => Promise<
+          ReactElement<{
+            hydration: { queries: readonly { queryKey: unknown; state: { data: unknown } }[] }
+          }>
+        >
+      )({ matches: [{ id: 'page:probe/home', params: {} }] })
+    })
+    expect(reads).toBe(1)
+    expect(hidden).toBe(0)
+    expect(document.props.hydration.queries).toContainEqual(
+      expect.objectContaining({
+        queryKey: ['summary'],
+        state: expect.objectContaining({ data: 'prepared' }),
+      }),
+    )
   })
 
   it('uses the same request-local HTML layout for success and failure', () => {

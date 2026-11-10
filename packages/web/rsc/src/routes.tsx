@@ -216,7 +216,24 @@ export const serverRoutes = ({
         : loadPrefetch({ kind: 'page', id: page.id }).then((prefetch) => prefetch?.(address)),
       ...slotReads,
     ])
-    const states = [fromPage, ...fromSlots].flatMap((result) =>
+    // A page can request domain slots whose reads are owned by other plugins.
+    // Prepare those through the same public seam as layout slots, once each.
+    const requested = new Map(
+      (fromPage?.slotReferences ?? [])
+        .filter(
+          (reference) =>
+            !slotKeys.includes(reference.slot) &&
+            (manifest.slots[reference.slot] ?? []).some(({ id }) => id === reference.id),
+        )
+        .map((reference) => [`${reference.slot}:${reference.id}`, reference]),
+    )
+    const fromPageSlots = await Promise.all(
+      [...requested.values()].map(async (reference) => {
+        const prefetch = await loadPrefetch(reference)
+        return prefetch?.(address)
+      }),
+    )
+    const states = [fromPage, ...fromSlots, ...fromPageSlots].flatMap((result) =>
       result?.hydration === undefined ? [] : [result.hydration],
     )
     return {
