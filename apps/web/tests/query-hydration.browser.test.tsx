@@ -164,14 +164,88 @@ describe('a read that follows the html', () => {
     expect(client.getQueryData(KEY)).toBeUndefined()
   })
 
-  it('keeps an existing cache value instead of following a later server arrival', async () => {
+  it('revalidates an existing cache value after a later server arrival', async () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     client.setQueryData(KEY, 'cached')
     const read = held()
     const ask = vi.fn(() => Promise.resolve('asked'))
     await drawn(read.arrival, ask, client)
     read.land({ kind: 'answer', value: 'server' })
-    await expect.element(page.getByTestId('read')).toHaveTextContent('cached')
+    await expect.element(page.getByTestId('read')).toHaveTextContent('asked')
+    expect(ask).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not replace a newer local write while a warm handoff is pending', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    client.setQueryData(KEY, 'cached')
+    const read = held()
+    const ask = vi.fn(() => Promise.resolve('asked'))
+    await drawn(read.arrival, ask, client)
+    client.setQueryData(KEY, 'locally updated')
+    read.land({ kind: 'answer', value: 'old server' })
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    expect(client.getQueryData(KEY)).toBe('locally updated')
+    expect(ask).not.toHaveBeenCalled()
+  })
+
+  it('retains the original warm snapshot when the boundary is rerendered', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    client.setQueryData(KEY, 'cached')
+    const read = held()
+    const ask = vi.fn(() => Promise.resolve('asked'))
+    function Parent() {
+      const [count, setCount] = useState(0)
+      return (
+        <>
+          <button onClick={() => setCount(count + 1)}>Rerender</button>
+          <QueryHydration
+            state={{ queries: [], mutations: [] }}
+            coming={[{ queryKey: KEY, arrival: read.arrival }]}
+          >
+            <Reader ask={ask} />
+          </QueryHydration>
+        </>
+      )
+    }
+    const router = createMemoryRouter([{ path: '*', element: <Parent /> }])
+    await render(
+      <QueryClientProvider client={client}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    )
+    client.setQueryData(KEY, 'locally updated')
+    await page.getByRole('button', { name: 'Rerender' }).click()
+    read.land({ kind: 'answer', value: 'old server' })
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    expect(client.getQueryData(KEY)).toBe('locally updated')
+    expect(ask).not.toHaveBeenCalled()
+  })
+
+  it('does not refresh a replacement query after a warm handoff loses its identity', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    client.setQueryData(KEY, 'old identity')
+    const read = held()
+    const ask = vi.fn(() => Promise.resolve('asked'))
+    await drawn(read.arrival, ask, client)
+    client.clear()
+    client.setQueryData(KEY, 'new identity')
+    read.land({ kind: 'answer', value: 'old server' })
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    expect(client.getQueryData(KEY)).toBe('new identity')
+    expect(client.getQueryState(KEY)?.isInvalidated).toBe(false)
+    expect(ask).not.toHaveBeenCalled()
+  })
+
+  it('does not refresh a warm handoff after its boundary unmounts', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    client.setQueryData(KEY, 'cached')
+    const read = held()
+    const ask = vi.fn(() => Promise.resolve('asked'))
+    const view = await drawn(read.arrival, ask, client)
+    await view.unmount()
+    read.land({ kind: 'answer', value: 'server' })
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    expect(client.getQueryData(KEY)).toBe('cached')
     expect(ask).not.toHaveBeenCalled()
   })
 

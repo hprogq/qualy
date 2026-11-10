@@ -1,5 +1,5 @@
 'use client'
-import { useContext, useEffect, useState, type ReactNode } from 'react'
+import { useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import {
   HydrationBoundary,
   hashKey,
@@ -168,6 +168,8 @@ export function QueryHydration({
   children: ReactNode
 }) {
   const client = useQueryClient()
+  const checked = useRef(new WeakMap<object, Set<string>>())
+  const warm = useRef(new WeakMap<object, Map<string, { query: Query; updates: number } | null>>())
   // set while rendering, before anything under this reads: the html and the
   // browser's first frame are drawn from it
   const [held] = useState(() => [
@@ -188,6 +190,48 @@ export function QueryHydration({
     }),
   ])
   useEffect(() => takeOver(), [])
+  useEffect(() => {
+    let active = true
+    const cache = client.getQueryCache()
+    for (const read of coming) {
+      const hash = hashKey(read.queryKey)
+      let keys = warm.current.get(read.arrival)
+      if (keys === undefined) {
+        keys = new Map()
+        warm.current.set(read.arrival, keys)
+      }
+      if (!keys.has(hash)) {
+        const query = cache.get(hash)
+        keys.set(
+          hash,
+          query?.state.data === undefined ? null : { query, updates: query.state.dataUpdateCount },
+        )
+      }
+      const observed = keys.get(hash)
+      if (observed == null) continue
+      const { query, updates } = observed
+      void Promise.resolve(read.arrival)
+        .then(() => {
+          if (!active || cache.get(hash) !== query || query.state.dataUpdateCount !== updates)
+            return
+          let keys = checked.current.get(read.arrival)
+          if (keys === undefined) {
+            keys = new Set()
+            checked.current.set(read.arrival, keys)
+          }
+          if (keys.has(hash)) return
+          keys.add(hash)
+          // A streamed answer has no reliable cross-machine timestamp. Do not
+          // overwrite the cache with it: re-read under the document's current
+          // identity unless a newer local update has already arrived.
+          void client.invalidateQueries({ queryKey: read.queryKey, exact: true })
+        })
+        .catch(() => {})
+    }
+    return () => {
+      active = false
+    }
+  }, [client, coming])
   const here = useLocation().key
   const [drawnAt] = useState(here)
   useEffect(() => {
