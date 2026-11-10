@@ -23,6 +23,8 @@ import { scoringBudgetLayer } from '../src/scoring/budget.ts'
 interface Probe {
   live: number
   peak: number
+  finished: number
+  onEnter?: () => void
   /** example runs asked under the scoring budget, and which of them answer out of time */
   scored: number
   /** runs of the host's reference formula asked under the scoring budget */
@@ -30,7 +32,14 @@ interface Probe {
   starve: 'nothing' | 'examples' | 'everything'
 }
 
-const fresh = (): Probe => ({ live: 0, peak: 0, scored: 0, referenced: 0, starve: 'nothing' })
+const fresh = (): Probe => ({
+  live: 0,
+  peak: 0,
+  finished: 0,
+  scored: 0,
+  referenced: 0,
+  starve: 'nothing',
+})
 
 // Authoring runs carry the publication-sized deadline; scoring never does.
 // Each authoring run is held a moment before it goes in, so that any two
@@ -61,10 +70,15 @@ const counted = (probe: Probe) =>
                     probe.live += 1
                     probe.peak = Math.max(probe.peak, probe.live)
                   }),
-                  () => Effect.sleep(150).pipe(Effect.andThen(inner.invoke(call))),
+                  () =>
+                    Effect.sleep(150).pipe(
+                      Effect.tap(() => Effect.sync(() => probe.onEnter?.())),
+                      Effect.andThen(inner.invoke(call)),
+                    ),
                   () =>
                     Effect.sync(() => {
                       probe.live -= 1
+                      probe.finished += 1
                     }),
                 ),
       })
@@ -182,6 +196,9 @@ describe.runIf(postgresAvailable)('the runtime sandbox, shared by scoring and au
           for (const [index, as] of people.entries())
             published.push(yield* publishedBy(f.t, as, `循环 ${String(index)}`))
           probe.peak = 0
+          probe.finished = 0
+          const entered = Promise.withResolvers<void>()
+          probe.onEnter = entered.resolve
           const frozen = yield* store.resolve({ tenantId: f.t, versionId: published[0]!.versionId })
           // three people each trying a looping case at the same moment
           const tries = Effect.forEach(
@@ -192,8 +209,7 @@ describe.runIf(postgresAvailable)('the runtime sandbox, shared by scoring and au
           )
           // and somebody's score asked for while they run
           const score = Effect.gen(function* () {
-            yield* Effect.sleep(400)
-            const started = Date.now()
+            yield* Effect.promise(() => entered.promise)
             yield* sandbox.invoke({
               artifact: frozen.runtimeJs,
               artifactHash: frozen.runtimeSha256,
@@ -201,10 +217,12 @@ describe.runIf(postgresAvailable)('the runtime sandbox, shared by scoring and au
               arguments: [JSON.stringify(FINE)],
               limits: FORMULA_SCORING_LIMITS,
             })
-            return Date.now() - started
+            return probe.finished
           })
-          const [results, waited] = yield* Effect.all([tries, score], { concurrency: 'unbounded' })
-          return { results, waited }
+          const [results, finishedBeforeScore] = yield* Effect.all([tries, score], {
+            concurrency: 'unbounded',
+          })
+          return { results, finishedBeforeScore }
         }),
       ),
     )
@@ -212,7 +230,7 @@ describe.runIf(postgresAvailable)('the runtime sandbox, shared by scoring and au
     for (const evaluation of outcome.results)
       expect(evaluation.results[0]!.defect).toBe('execution interrupted')
     // behind the one run already in the sandbox, not behind all three
-    expect(outcome.waited).toBeLessThan(4_000)
+    expect(outcome.finishedBeforeScore).toBeLessThanOrEqual(1)
   }, 120_000)
 
   it('refuses a third run from one person while two are under way', async () => {

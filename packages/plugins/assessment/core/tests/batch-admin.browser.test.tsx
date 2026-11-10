@@ -1045,25 +1045,26 @@ describe('the batch list', () => {
   ] as const) {
     it(`eases the hero region to the card's height with ${duties} agenda rows${longName ? ' and a long name' : ''}`, async () => {
       await commands.emulateMedia({ reducedMotion: 'no-preference' })
+      await expect
+        .poll(() => matchMedia('(prefers-reduced-motion: no-preference)').matches)
+        .toBe(true)
       await page.viewport(390, 900)
       const { finish, view } = await heldHero(duties, longName)
       try {
         await expect.element(page.getByTestId('batch-hero-skeleton')).toBeVisible()
         const region = page.getByTestId('batch-hero-region').element()
         const from = region.getBoundingClientRect().height
+        const transitions: string[] = []
+        region.addEventListener('transitionrun', (event) => {
+          if (event.target === region) transitions.push(event.propertyName)
+        })
         finish()
-        const seen: number[] = []
-        for (const until = performance.now() + 600; performance.now() < until;) {
-          await new Promise((resolve) => requestAnimationFrame(resolve))
-          seen.push(region.getBoundingClientRect().height)
-        }
-        const to = region.firstElementChild!.getBoundingClientRect().height
-        expect(Math.abs(seen.at(-1)! - to)).toBeLessThan(1)
-        expect(Math.abs(to - from)).toBeGreaterThan(4)
-        // some frame drew it between the two, however few a busy machine drew
-        const low = Math.min(from, to)
-        const high = Math.max(from, to)
-        expect(seen.some((height) => height > low + 1 && height < high - 1)).toBe(true)
+        await expect.poll(() => transitions.includes('height')).toBe(true)
+        const contentHeight = () => region.firstElementChild!.getBoundingClientRect().height
+        expect(Math.abs(contentHeight() - from)).toBeGreaterThan(4)
+        await expect
+          .poll(() => Math.abs(region.getBoundingClientRect().height - contentHeight()))
+          .toBeLessThan(1)
       } finally {
         finish()
         await view.unmount()
