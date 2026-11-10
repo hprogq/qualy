@@ -2489,5 +2489,6 @@
   "navigation_phases": "Stage plan",
   "navigation_access": "Staffs",
   "navigation_settings": "Settings",
-  "permissionGroup_assessment": "Assessment"
+  "permissionGroup_assessment": "Assessment",
+  "roster_noMatchHint": "Try another search or adjust the filters."
 }

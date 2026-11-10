@@ -23,6 +23,8 @@ import {
   ListTreeIcon,
   PanelLeftCloseIcon,
   PanelLeftOpenIcon,
+  SearchXIcon,
+  UsersIcon,
 } from 'lucide-react'
 
 import { useTerm } from '@qualy/plugin-settings/client/terms'
@@ -31,7 +33,7 @@ import { authTerms } from '@qualy/auth-contract/terms'
 import { AsyncSection, Feedback, ConfirmDialog } from '@qualy/ui/admin'
 import {
   Card,
-  CardEmpty,
+  Blank,
   CardFoot,
   Cell,
   DetailSheet,
@@ -843,7 +845,12 @@ export function ParticipantResultList({
                 <span />
               </TableHead>
               {rows.length === 0 ? (
-                <CardEmpty>{(narrowed ? m.roster_noMatch : m.roster_empty)()}</CardEmpty>
+                <Blank
+                  size="compact"
+                  icon={narrowed ? <SearchXIcon /> : <UsersIcon />}
+                  title={(narrowed ? m.roster_noMatch : m.roster_empty)()}
+                  description={narrowed ? m.roster_noMatchHint() : undefined}
+                />
               ) : (
                 rows.map((row) => {
                   const { steps, path, unknown } = unitPath(row.anchorLineage)
@@ -1030,10 +1037,8 @@ export function ParticipantResultList({
               />
             </CardFoot>
           )}
-          {notices}
         </Card>
       </AsyncSection>
-      {participants.data === undefined && notices}
     </section>
   )
 
@@ -1079,6 +1084,7 @@ export function ParticipantResultList({
       >
         {listSection}
       </ResizableSplit>
+      {notices}
 
       {narrow && (
         <DetailSheet

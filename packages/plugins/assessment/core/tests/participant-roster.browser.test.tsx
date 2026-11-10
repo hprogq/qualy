@@ -1159,6 +1159,68 @@ describe('the roster on the results page', () => {
 // people: the waiting column is as wide as what it says, a unit is named
 // from its own end, and the tree beside the list folds away on request.
 describe('the room the roster gives its rows', () => {
+  it('keeps the notice in the main footer for empty and single-result filters', async () => {
+    await page.viewport(1440, 900)
+    try {
+      await open(
+        {
+          listParticipantAccounts: (request: Request) =>
+            pageOf(
+              request,
+              request.query?.['q'] === 'none'
+                ? []
+                : request.query?.['q'] === 'one'
+                  ? [person(1)]
+                  : EVERYONE,
+            ),
+          listParticipantPlacements: () =>
+            Effect.succeed({ items: [], nextCursor: null, changedTotal: 1, unavailableTotal: 0 }),
+        },
+        undefined,
+        1216,
+        'zh-CN',
+        {},
+        112,
+      )
+      await expect.element(rows().first()).toBeVisible()
+      const checkDock = () => {
+        const notice = page.getByTestId('placement-notice').element().getBoundingClientRect()
+        const main = page
+          .getByTestId('roster-heading')
+          .element()
+          .parentElement!.getBoundingClientRect()
+        expect(Math.abs(notice.left + notice.width / 2 - main.left - main.width / 2)).toBeLessThan(
+          1,
+        )
+        expect(notice.top).toBeGreaterThan(700)
+        expect(notice.bottom).toBeLessThan(900)
+        expect(
+          page
+            .getByTestId('roster')
+            .element()
+            .contains(page.getByTestId('placement-notice').element()),
+        ).toBe(false)
+      }
+      checkDock()
+      const search = page.getByRole('searchbox', { name: '按姓名或学工号搜索' })
+      await search.fill('none')
+      await expect.element(page.getByText('没有符合条件的参评人员')).toBeVisible()
+      expect(
+        page.getByTestId('roster').element().querySelector('[data-slot="empty-icon"] svg'),
+      ).not.toBeNull()
+      checkDock()
+      await search.fill('one')
+      await expect.poll(() => rows().elements().length).toBe(1)
+      const pager = page.getByTestId('roster-pager').element()
+      expect(pager.getBoundingClientRect().height).toBeLessThanOrEqual(32)
+      expect(
+        pager.closest('[data-slot="card-foot"]')?.getBoundingClientRect().height ?? 44,
+      ).toBeLessThanOrEqual(48)
+      checkDock()
+    } finally {
+      await page.viewport(1280, 800)
+    }
+  })
   const SCHOOL = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa10'
   const GRADE = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa11'
   const MAJOR = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa12'
@@ -1265,7 +1327,7 @@ describe('the room the roster gives its rows', () => {
   })
 
   it.each([false, true])(
-    'ends the tree and roster at the viewport foot with organization warning %s',
+    'reserves the page footer after the tree and roster with organization warning %s',
     async (warning) => {
       await page.viewport(1440, 900)
       try {
@@ -1299,10 +1361,28 @@ describe('the room the roster gives its rows', () => {
         // scrollTop rounds to physical pixels while row heights may end
         // on a half pixel, so compare the two visible edges to that precision.
         await expect
-          .poll(() => Math.abs(card.getBoundingClientRect().bottom - 884))
+          .poll(() =>
+            Math.abs(
+              card.getBoundingClientRect().bottom -
+                (warning
+                  ? document
+                      .querySelector('[data-slot="page-notice-space"]')!
+                      .getBoundingClientRect().top - 12
+                  : 884),
+            ),
+          )
           .toBeLessThanOrEqual(0.5)
         await expect
-          .poll(() => Math.abs(tree.getBoundingClientRect().bottom - 884))
+          .poll(() =>
+            Math.abs(
+              tree.getBoundingClientRect().bottom -
+                (warning
+                  ? document
+                      .querySelector('[data-slot="page-notice-space"]')!
+                      .getBoundingClientRect().top - 12
+                  : 884),
+            ),
+          )
           .toBeLessThanOrEqual(0.5)
         const last = rows().last().element().getBoundingClientRect()
         const pager = page.getByTestId('roster-pager').element().getBoundingClientRect()
@@ -1312,12 +1392,18 @@ describe('the room the roster gives its rows', () => {
         const placement = page.getByTestId('placement-notice')
         const checkNotice = () => {
           const notice = placement.element().getBoundingClientRect()
-          const bounds = card.getBoundingClientRect()
-          const space = card
+          const bounds = page
+            .getByTestId('roster-heading')
+            .element()
+            .parentElement!.getBoundingClientRect()
+          const space = document
             .querySelector('[data-slot="page-notice-space"]')!
             .getBoundingClientRect()
           expect(notice.left).toBeGreaterThanOrEqual(bounds.left)
           expect(notice.right).toBeLessThanOrEqual(bounds.right)
+          expect(
+            Math.abs(notice.left + notice.width / 2 - bounds.left - bounds.width / 2),
+          ).toBeLessThan(1)
           expect(notice.top).toBeGreaterThanOrEqual(space.top)
           expect(notice.bottom).toBeLessThanOrEqual(space.bottom)
           expect(notice.top).toBeGreaterThan(
