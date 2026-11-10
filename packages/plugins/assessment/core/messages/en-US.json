@@ -2491,5 +2491,9 @@
   "navigation_settings": "Settings",
   "permissionGroup_assessment": "Assessment",
   "roster_noMatchHint": "Try another search or adjust the filters.",
-  "items_problemStageUncovered": "{count} units have no reviewer; appoint reviewers there so their submissions can proceed"
+  "items_problemStageUncovered": "{count} units have no reviewer; appoint reviewers there so their submissions can proceed",
+  "overview_actionDetail": "{action}: {summary}",
+  "entry_discardTitle": "Discard unsaved material?",
+  "entry_discardHint": "Your input and newly added attachments have not been saved. Return to the editor to save a draft first.",
+  "entry_discard": "Discard and close"
 }

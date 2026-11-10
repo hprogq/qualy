@@ -949,7 +949,16 @@ function Workbench({ batch }: { batch: BatchDto }) {
   const [visited, setVisited] = useState<ReadonlySet<WorkbenchPart>>(new Set(['filing']))
   useEffect(() => {
     setVisited(new Set(['filing']))
+    setOpenSibling(null)
   }, [instanceId])
+  useEffect(() => {
+    if (
+      openSibling !== null &&
+      review !== undefined &&
+      !(review.context?.siblings ?? []).some((one) => one.entryId === openSibling)
+    )
+      setOpenSibling(null)
+  }, [openSibling, review])
   const partGo = useRef<((part: WorkbenchPart) => void) | null>(null)
   // what the side faces hold that is worth this judgment's while: process
   // history that shaped the round, and terms that bound the score

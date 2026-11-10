@@ -2491,5 +2491,9 @@
   "navigation_settings": "批次设置",
   "permissionGroup_assessment": "综合测评",
   "roster_noMatchHint": "请尝试其他关键词，或调整筛选条件。",
-  "items_problemStageUncovered": "有 {count} 个单位暂无审核人；在这些单位任命审核人后，申报才能继续审核"
+  "items_problemStageUncovered": "有 {count} 个单位暂无审核人；在这些单位任命审核人后，申报才能继续审核",
+  "overview_actionDetail": "{action}：{summary}",
+  "entry_discardTitle": "放弃尚未保存的材料？",
+  "entry_discardHint": "本次输入和新添加的附件尚未保存。返回编辑后，可以先存为草稿。",
+  "entry_discard": "放弃并关闭"
 }

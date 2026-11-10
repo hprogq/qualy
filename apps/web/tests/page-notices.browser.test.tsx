@@ -112,6 +112,32 @@ const dock = () => page.getByTestId('page-notices').element()
 const port = () => dock().querySelector<HTMLElement>('[data-slot="page-notices-port"]')!
 
 describe('persistent page warnings', () => {
+  it('clears the pinned expansion when a stack becomes a single warning', async () => {
+    function Changing() {
+      const [count, setCount] = useState(2)
+      return (
+        <>
+          <button onClick={() => setCount(count === 2 ? 1 : 2)}>Change warning count</button>
+          <Example count={count} />
+        </>
+      )
+    }
+    await render(<Changing />)
+    await parkPointer()
+    await page.getByRole('button', { name: EXPAND }).click()
+    await parkPointer()
+    await expect.element(page.getByRole('button', { name: COLLAPSE })).toBeVisible()
+    ;(
+      page.getByRole('button', { name: 'Change warning count' }).element() as HTMLButtonElement
+    ).click()
+    await expect.element(page.getByRole('button', { name: COLLAPSE })).not.toBeInTheDocument()
+    ;(
+      page.getByRole('button', { name: 'Change warning count' }).element() as HTMLButtonElement
+    ).click()
+    await parkPointer()
+    await expect.element(page.getByRole('button', { name: EXPAND })).toBeVisible()
+    await expect.element(notice(1)).not.toBeInTheDocument()
+  })
   it('shows the collapsed stack before hydration and takes it over without replaying the entrance', async () => {
     await page.viewport(390, 844)
     await commands.emulateMedia({ reducedMotion: 'no-preference' })

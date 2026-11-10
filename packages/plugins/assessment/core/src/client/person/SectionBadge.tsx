@@ -2,7 +2,7 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
-import { useApiQuery, usePageRouteParams } from '@qualy/web-runtime'
+import { isRecordId, useApiQuery, usePageRouteParams } from '@qualy/web-runtime'
 import type { NavigationBadgeContext } from '@qualy/ui-contract'
 import { Count } from '@qualy/ui/count'
 import { assessmentApi } from '../api.ts'
@@ -67,7 +67,7 @@ function Counted({ section }: { section: Section }) {
       params: { userId },
       query: { limit: String(PAGE) },
     }),
-    enabled: userId !== '' && section === 'batches',
+    enabled: isRecordId(userId) && section === 'batches',
     staleTime: 30_000,
   })
   const entries = useQuery({
@@ -75,7 +75,7 @@ function Counted({ section }: { section: Section }) {
       params: { userId },
       query: { limit: String(PAGE) },
     }),
-    enabled: userId !== '' && section === 'entries',
+    enabled: isRecordId(userId) && section === 'entries',
     staleTime: 30_000,
   })
   const held = section === 'batches' ? batches.data : entries.data

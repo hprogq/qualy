@@ -1161,7 +1161,10 @@ function Desk({
       lane: 'participant',
       action: action.kind,
       subject: action.itemTitle,
-      detail: action.summary === null ? sentence : `${sentence}：${action.summary}`,
+      detail:
+        action.summary === null
+          ? sentence
+          : m.overview_actionDetail({ action: sentence, summary: action.summary }),
       at: clockOf(action.at, locale, zone),
       verb: (action.kind === 'supplement' ? m.overview_goSupplement : m.overview_goRevision)(),
       go: () =>

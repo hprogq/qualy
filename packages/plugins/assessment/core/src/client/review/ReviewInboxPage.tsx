@@ -758,6 +758,7 @@ function QueueBody({
               id="review-queue-search"
               ref={searchInput}
               name="review-search"
+              maxLength={200}
               aria-label={m.review_searchPlaceholder()}
               className={stylex.props(styles.searchInput).className}
               placeholder={m.review_searchPlaceholder()}
@@ -951,11 +952,11 @@ function useReviewSearch(
     value: draft,
     onChange: (event: ChangeEvent<HTMLInputElement>) => {
       if (event.nativeEvent instanceof InputEvent && event.nativeEvent.isComposing) start()
-      setDraft(event.currentTarget.value)
+      setDraft(event.currentTarget.value.slice(0, 200))
     },
     onCompositionStart: start,
     onCompositionEnd: (event: CompositionEvent<HTMLInputElement>) => {
-      setDraft(event.currentTarget.value)
+      setDraft(event.currentTarget.value.slice(0, 200))
       composingNow.current = false
       setComposing(false)
     },

@@ -418,6 +418,26 @@ describe('the overview desk', () => {
 })
 
 describe('filing a claim', () => {
+  it('keeps unsaved material until closing is explicitly confirmed', async () => {
+    await screen(
+      { listItems: () => Effect.succeed({ items: [item()], capabilities: { canManage: false } }) },
+      `/assessment/batches/${BATCH_ID}/my-entries?open=${ITEM_ID}`,
+      [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
+    )
+    await clickVisible('file-claim')
+    const input = page.getByLabelText('事项说明', { exact: false })
+    await input.fill('Unsent material')
+    await userEvent.keyboard('{Escape}')
+    await expect.element(page.getByRole('alertdialog')).toBeVisible()
+    await page.getByRole('alertdialog').getByRole('button', { name: '取消', exact: true }).click()
+    await expect.element(input).toHaveValue('Unsent material')
+    await userEvent.keyboard('{Escape}')
+    await page
+      .getByRole('alertdialog')
+      .getByRole('button', { name: '放弃并关闭', exact: true })
+      .click()
+    await expect.element(page.getByLabelText('事项说明', { exact: false })).not.toBeInTheDocument()
+  })
   it('creates a draft through the composed form, then submits it', async () => {
     const created = vi.fn((_request: { payload: Record<string, unknown> }) =>
       Effect.succeed({ entry: entry() }),

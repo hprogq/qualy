@@ -393,6 +393,14 @@ function EntryDialogBody({
   // a file still on its way up is not in the payload yet: both ways out wait
   const [uploading, setUploading] = useState(false)
   const [note, setNote] = useState(entry?.currentRevision?.note ?? '')
+  const [discarding, setDiscarding] = useState(false)
+  const [baseline] = useState(() =>
+    JSON.stringify({
+      payload: entry?.currentRevision?.payload ?? {},
+      note: entry?.currentRevision?.note ?? '',
+    }),
+  )
+  const dirty = JSON.stringify({ payload, note }) !== baseline
   const [problem, setProblem] = useState<string | null>(null)
   // handing it on waits on an answer; keeping a draft does not
   const [asking, setAsking] = useState(false)
@@ -647,7 +655,7 @@ function EntryDialogBody({
       size="wide"
       title={(entry === null ? m.entries_newTitle : m.entries_editTitle)()}
       description={[...trail, asked.title].join(' › ')}
-      onClose={onClose}
+      onClose={() => (dirty || uploading ? setDiscarding(true) : onClose())}
       footer={
         <div {...stylex.props(styles.footer)}>
           {submitShut && !uploading ? (
@@ -900,6 +908,20 @@ function EntryDialogBody({
         </aside>
       </div>
 
+      <ConfirmDialog
+        open={discarding}
+        tone="destructive"
+        title={m.entry_discardTitle()}
+        description={m.entry_discardHint()}
+        confirmLabel={m.entry_discard()}
+        cancelLabel={commonMessages.action_cancel()}
+        pending={save.isPending}
+        onCancel={() => setDiscarding(false)}
+        onConfirm={() => {
+          setDiscarding(false)
+          onClose()
+        }}
+      />
       {/* Handing it on is the act that takes the claim out of the writer's
           hands, so it is a question here as it is in the drawer - and the
           press behind it writes the claim down either way, so the question

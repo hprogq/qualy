@@ -194,7 +194,8 @@ export function PageNotices({
   const [heights, setHeights] = useState<Readonly<Record<string, number>>>({})
   const [pinned, setPinned] = useState(false)
   const [hovered, setHovered] = useState(false)
-  const expanded = (pinned || hovered) && notices.length > 1
+  const stacked = notices.length > 1
+  const expanded = (pinned || hovered) && stacked
   const [available, setAvailable] = useState<number | null>(null)
   const detailsId = useId()
   const visible = notices.length > 0
@@ -230,7 +231,7 @@ export function PageNotices({
   useEffect(() => {
     setPinned(false)
     setHovered(false)
-  }, [visible])
+  }, [visible, stacked])
   // Only the expanded stack needs the amount of room above the dock.
   // The collapsed card is positioned by CSS even before the browser hydrates.
   useLayoutEffect(() => {
