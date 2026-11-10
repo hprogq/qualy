@@ -135,6 +135,28 @@ export const acceptRouteErrors = async ({
       (await older.locator('#qualy-browser-notice').isVisible()) &&
         !(await older.locator('#root').isVisible()),
     )
+    const noticeLayout = await older.evaluate<{
+      coversViewport: boolean
+      centered: boolean
+      background: string
+    }>(`(() => {
+      const notice = document.querySelector('#qualy-browser-notice')
+      const rect = notice.getBoundingClientRect()
+      const heading = notice.querySelector('h1').getBoundingClientRect()
+      const hint = notice.querySelector('p').getBoundingClientRect()
+      return {
+        coversViewport: rect.left === 0 && rect.top === 0 && rect.right === innerWidth && rect.bottom === innerHeight,
+        centered: Math.abs((heading.top + hint.bottom) / 2 - innerHeight / 2) < 2,
+        background: getComputedStyle(notice).backgroundColor,
+      }
+    })()`)
+    check(
+      'the browser upgrade notice covers the viewport and centers its content',
+      noticeLayout.coversViewport &&
+        noticeLayout.centered &&
+        noticeLayout.background === 'rgb(250, 250, 250)',
+      noticeLayout,
+    )
     await older.close()
 
     const browser = context.browser()

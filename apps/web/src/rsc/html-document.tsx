@@ -23,7 +23,7 @@ const EARLY_DOCUMENT = `(function(){var root=document.documentElement;if(!(${ear
 const BROWSER_NOTICE_CSS = `
 #qualy-browser-notice { display: none; }
 [data-browser-unsupported] #root { display: none; }
-[data-browser-unsupported] #qualy-browser-notice { display: block; }
+[data-browser-unsupported] #qualy-browser-notice { display: flex; position: fixed; inset: 0; width: 100%; max-width: none; margin: 0; padding: 24px; flex-direction: column; align-items: center; justify-content: center; background: #fafafa; color: #1b1b1b; }
 .qualy-browser-notice { box-sizing: border-box; width: 100%; max-width: 34rem; margin: 18vh auto 0; padding: 24px; font: 16px/1.6 system-ui, sans-serif; text-align: center; }
 .qualy-browser-notice h1 { margin: 0 0 8px; font-size: 22px; font-weight: 600; }
 .qualy-browser-notice p { margin: 0; }
