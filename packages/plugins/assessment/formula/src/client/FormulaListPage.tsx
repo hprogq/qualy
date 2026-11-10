@@ -8,7 +8,6 @@ import {
   useApi,
   PageLink,
   useApiQuery,
-  useDocumentNow,
   useLoadFailure,
   usePageQueryState,
   usePageQueryUpdate,
@@ -40,7 +39,7 @@ import { formulaApi } from './api.ts'
 import { libraryQueryOf } from './list-place.ts'
 
 import { LibrarySkeleton } from './library.tsx'
-import { libraryStyles as l, shortWhen } from './library-styles.ts'
+import { libraryStyles as l, useShortWhen } from './library-styles.ts'
 import * as commonMessages from '@qualy/web-i18n/messages'
 import * as m from '#messages'
 
@@ -187,7 +186,7 @@ function NewFormulaDialog({
 export default function FormulaListPage() {
   const query = useApiQuery(formulaApi)
   const locale = useLocale()
-  const now = useDocumentNow()
+  const shortWhen = useShortWhen()
   const failure = useLoadFailure()
   const titleRef = usePageTitle(m.list_title())
   const navigate = usePageNavigate()
@@ -311,7 +310,7 @@ export default function FormulaListPage() {
                           </span>
                         </span>
                       )
-                    const updated = shortWhen(row.updatedAt, locale, new Date(now))
+                    const updated = shortWhen(row.updatedAt, locale)
                     return (
                       <div
                         key={row.id}

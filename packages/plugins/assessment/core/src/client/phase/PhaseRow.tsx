@@ -1,3 +1,4 @@
+import { useDocumentNow } from '@qualy/web-runtime'
 import { formatDateTime, useLocale, useList } from '@qualy/web-i18n'
 import { useId, type ReactNode } from 'react'
 import {
@@ -377,6 +378,7 @@ export interface PhaseRowProps {
 
 /** the parts a row and a card both show, so neither can drift from the other */
 function useParts(props: PhaseRowProps) {
+  const now = useDocumentNow()
   const locale = useLocale()
   const listOf = useList()
   const zone = useBatchZone()
@@ -407,7 +409,7 @@ function useParts(props: PhaseRowProps) {
   const timeOf = (iso: string) => formatDateTime(new Date(iso), locale, 'date-time', zone)
   const relative = (iso: string) => {
     const parts = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' })
-    const delta = new Date(iso).getTime() - Date.now()
+    const delta = new Date(iso).getTime() - now
     const abs = Math.abs(delta)
     if (abs < 60_000) return m.plan_justNow()
     const [unit, size]: [Intl.RelativeTimeFormatUnit, number] =

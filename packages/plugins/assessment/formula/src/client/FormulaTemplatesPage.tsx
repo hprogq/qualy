@@ -7,7 +7,6 @@ import { useQuery } from '@tanstack/react-query'
 import {
   PageLink,
   useApiQuery,
-  useDocumentNow,
   useLoadFailure,
   usePageQueryState,
   usePageQueryUpdate,
@@ -25,7 +24,7 @@ import { formulaApi } from './api.ts'
 import { libraryQueryOf } from './list-place.ts'
 
 import { LibrarySkeleton, ParameterChips } from './library.tsx'
-import { libraryStyles as l, shortWhen } from './library-styles.ts'
+import { libraryStyles as l, useShortWhen } from './library-styles.ts'
 import * as commonMessages from '@qualy/web-i18n/messages'
 import * as m from '#messages'
 
@@ -63,7 +62,7 @@ const styles = stylex.create({
 export default function FormulaTemplatesPage() {
   const query = useApiQuery(formulaApi)
   const locale = useLocale()
-  const now = useDocumentNow()
+  const shortWhen = useShortWhen()
   const failure = useLoadFailure()
   const titleRef = usePageTitle(m.templates_title())
   const navigate = usePageNavigate()
@@ -144,7 +143,7 @@ export default function FormulaTemplatesPage() {
                   {items.map((row, index) => {
                     const archived = row.sourceStatus === 'archived'
                     const author = row.authorName ?? m.templates_authorUnknown()
-                    const published = shortWhen(row.publishedAt, locale, new Date(now))
+                    const published = shortWhen(row.publishedAt, locale)
                     const version =
                       row.releaseName ?? m.history_releaseOrdinal({ number: row.versionNo })
                     return (

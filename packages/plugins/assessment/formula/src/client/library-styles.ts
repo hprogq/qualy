@@ -1,3 +1,4 @@
+import { useDocumentNow, useHydrating } from '@qualy/web-runtime'
 import { formatDateTime } from '@qualy/web-i18n'
 import type { SupportedLocale } from '@qualy/i18n-contract'
 import * as stylex from '@stylexjs/stylex'
@@ -211,16 +212,35 @@ export const libraryStyles = stylex.create({
  * ("8月29日 14:30", "Aug 29, 14:30") rather than as digits between dots, which
  * in a column of numbers read as one more number.
  */
-export function shortWhen(at: string, locale: SupportedLocale, now: Date = new Date()): string {
+/** Use the same calendar on the server and the first hydration frame. */
+export function useShortWhen() {
+  const now = new Date(useDocumentNow())
+  const hydrating = useHydrating()
+  return (at: string, locale: SupportedLocale) =>
+    shortWhen(at, locale, now, hydrating ? 'UTC' : undefined)
+}
+
+export function shortWhen(
+  at: string,
+  locale: SupportedLocale,
+  now: Date = new Date(),
+  timezone?: 'UTC',
+): string {
   const date = new Date(at)
+  const year = (day: Date) => (timezone === 'UTC' ? day.getUTCFullYear() : day.getFullYear())
   const startOf = (day: Date) =>
-    new Date(day.getFullYear(), day.getMonth(), day.getDate()).getTime()
+    timezone === 'UTC'
+      ? Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate())
+      : new Date(day.getFullYear(), day.getMonth(), day.getDate()).getTime()
   const days = Math.round((startOf(now) - startOf(date)) / 86_400_000)
-  if (days === 0) return m.when_today({ time: formatDateTime(date, locale, 'clock') })
-  if (days === 1) return m.when_yesterday({ time: formatDateTime(date, locale, 'clock') })
-  return date.getFullYear() === now.getFullYear()
-    ? formatDateTime(date, locale, 'month-day-clock')
-    : formatDateTime(date, locale, 'short-date')
+  if (days === 0) return m.when_today({ time: formatDateTime(date, locale, 'clock', timezone) })
+  if (days === 1) return m.when_yesterday({ time: formatDateTime(date, locale, 'clock', timezone) })
+  return formatDateTime(
+    date,
+    locale,
+    year(date) === year(now) ? 'month-day-clock' : 'short-date',
+    timezone,
+  )
 }
 
 /** the clock alone, for something that happened while the page was open */
