@@ -267,6 +267,7 @@ import {
   phaseScopes,
   replacePhaseScopes,
   rosterAnchors,
+  reviewMembershipNodes,
   scopeOptions as scopeOptionRows,
   orgTypesNamed,
   scopesForBatch,
@@ -2791,18 +2792,46 @@ export const make = Effect.fn('Assessment.make')(function* () {
    */
   const applicableAssignments = (tenantId: string, batchId: string) =>
     Effect.gen(function* () {
-      // the anchors of the people in it: there is no standing scope any more,
-      // and this is the only place authority over this round can come from
-      const anchors = yield* dieQuery(withDb(rosterAnchors(tenantId, batchId)))
-      return yield* bringable(
-        tenantId,
-        yield* rbac.listApplicableAssignments({
+      const [anchors, membershipNodes] = yield* Effect.all([
+        dieQuery(withDb(rosterAnchors(tenantId, batchId))),
+        dieQuery(withDb(reviewMembershipNodes(tenantId, batchId))),
+      ])
+      // Reviewing is exact stage membership, independent of coverage. A
+      // self-only appointment at a major must not be declared lapsed merely
+      // because every participant is placed in a class below that major.
+      // Other staff permissions retain their ordinary scope intersection.
+      const [scoped, reviewing] = yield* Effect.all([
+        rbac.listApplicableAssignments({
           tenantId,
-          codes: [...BATCH_STAFF_CODES],
+          codes: BATCH_STAFF_CODES.filter((code) => code !== 'assessment.review.process'),
           nodeIds: anchors,
           resource: batchResource(batchId),
         }),
-      )
+        rbac.listApplicableAssignments({
+          tenantId,
+          codes: ['assessment.review.process'],
+          nodeIds: membershipNodes,
+          resource: batchResource(batchId),
+        }),
+      ])
+      const exact = new Set(membershipNodes)
+      const assignments = new Map<string, ApplicableAssignment>()
+      for (const assignment of [
+        ...scoped,
+        ...reviewing.filter((row) => row.orgNodeId === null || exact.has(row.orgNodeId)),
+      ]) {
+        const previous = assignments.get(assignment.assignmentId)
+        assignments.set(
+          assignment.assignmentId,
+          previous === undefined
+            ? assignment
+            : {
+                ...previous,
+                codes: [...new Set([...previous.codes, ...assignment.codes])].sort(),
+              },
+        )
+      }
+      return yield* bringable(tenantId, [...assignments.values()])
     })
 
   /**

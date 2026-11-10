@@ -889,6 +889,27 @@ export const rosterAnchors = (tenantId: string, batchId: string) =>
     )
     .pipe(Effect.map((rows) => rows.map((row) => row.assessmentAnchorNodeId)))
 
+/** Exact stage anchors in active participants' frozen lineages. */
+export const reviewMembershipNodes = (tenantId: string, batchId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('BatchParticipant')
+        .select((eb) =>
+          sql<readonly { readonly nodeId: string }[]>`${eb.ref('anchorLineage')}`.as('lineage'),
+        )
+        .distinct()
+        .where('tenantId', '=', tenantId)
+        .where('batchId', '=', batchId)
+        .where('status', '=', 'active')
+        .execute(),
+    )
+    .pipe(
+      Effect.map((rows) => [
+        ...new Set(rows.flatMap((row) => row.lineage.map((step) => step.nodeId))),
+      ]),
+    )
+
 export const nodesByIds = (tenantId: string, nodeIds: readonly string[]) =>
   nodeIds.length === 0
     ? Effect.succeed([] as { id: string; path: string }[])
