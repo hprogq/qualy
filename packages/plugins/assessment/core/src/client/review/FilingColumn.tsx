@@ -1,6 +1,6 @@
 import { AttachmentScope } from '../entry/AttachmentScope.tsx'
 import { EntryFiles } from '../../attachment/contexts.ts'
-import { useAttachmentFiles } from '../entry/AttachmentScope.tsx'
+import { useAttachmentFiles } from '../entry/attachment-files.ts'
 import { useLocale } from '@qualy/web-i18n'
 import { RESERVED } from '../reserved.ts'
 import { memo, useState } from 'react'
