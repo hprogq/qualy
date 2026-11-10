@@ -11,7 +11,7 @@
 
 import fs from 'node:fs'
 import path from 'node:path'
-import { Effect, Layer, Semaphore } from 'effect'
+import { Effect, Layer } from 'effect'
 import { NodeRuntime, NodeSocketServer } from '@effect/platform-node'
 import { SocketServer } from 'effect/socket'
 import { RpcSerialization, RpcServer } from 'effect/rpc'
@@ -26,7 +26,6 @@ import {
 } from '@qualy/formula-compiler'
 import {
   CompileBundleFailed,
-  CompileBusy,
   CompileSourceRefused,
   CompileSourceTooLarge,
   CompileTypecheckFailed,
@@ -41,6 +40,7 @@ import {
 import { createHash } from 'node:crypto'
 import { authoringBuildId } from './identity.ts'
 import { makeLspManager } from './lsp/manager.ts'
+import { makeCompileQueue } from './compile-queue.ts'
 
 const socketPath =
   process.env.QUALY_SANDBOX_AUTHORING_SOCKET ?? '.qualy/run/sandbox/authoring/authoring.sock'
@@ -71,8 +71,7 @@ const formulaRuntimeSha256 = async (): Promise<string> => {
   return sdkRuntimeSha
 }
 
-const compiles = Semaphore.makeUnsafe(1)
-let pendingCompiles = 0
+const compiles = makeCompileQueue(MAX_PENDING_COMPILES)
 
 interface CompiledWire {
   readonly artifact: string
@@ -89,54 +88,41 @@ interface CompiledWire {
 }
 
 const compile = (source: string): Effect.Effect<CompiledWire, AuthoringCompileError> =>
-  Effect.suspend((): Effect.Effect<CompiledWire, AuthoringCompileError> => {
-    if (pendingCompiles >= MAX_PENDING_COMPILES) return Effect.fail(new CompileBusy())
-    pendingCompiles += 1
-    const queuedAt = performance.now()
-    return compiles
-      .withPermits(1)(
-        Effect.gen(function* () {
-          const queueMs = performance.now() - queuedAt
-          const outcome = yield* Effect.promise(() => compileFormula(source))
-          switch (outcome.kind) {
-            case 'source-too-large':
-              return yield* new CompileSourceTooLarge({ limit: outcome.limit })
-            case 'source-refused':
-              return yield* new CompileSourceRefused({ findings: outcome.findings })
-            case 'typecheck-timeout':
-              return yield* new CompileTypecheckTimeout()
-            case 'typecheck-failed':
-              return yield* new CompileTypecheckFailed({
-                diagnostics: outcome.diagnostics,
-                truncated: outcome.truncated,
-              })
-            case 'bundle-failed':
-              return yield* new CompileBundleFailed({ message: outcome.message })
-            case 'compiled':
-              return {
-                artifact: outcome.artifact,
-                sourceSha256: outcome.sourceSha256,
-                runtimeSha256: outcome.runtimeSha256,
-                formulaRuntimeSha256: outcome.formulaRuntimeSha256,
-                sourcePolicyVersion: FORMULA_SOURCE_POLICY_VERSION,
-                sourcePolicyParserVersion: sourcePolicyParserVersion(),
-                typescriptVersion: outcome.typescriptVersion,
-                esbuildVersion: outcome.esbuildVersion,
-                formulaAbiVersion: FORMULA_ABI_VERSION,
-                authoringBuildId: authoringBuildId(),
-                timings: { queueMs, ...outcome.timings },
-              }
+  compiles.run((queuedAt) =>
+    Effect.gen(function* () {
+      const queueMs = performance.now() - queuedAt
+      const outcome = yield* Effect.promise(() => compileFormula(source))
+      switch (outcome.kind) {
+        case 'source-too-large':
+          return yield* new CompileSourceTooLarge({ limit: outcome.limit })
+        case 'source-refused':
+          return yield* new CompileSourceRefused({ findings: outcome.findings })
+        case 'typecheck-timeout':
+          return yield* new CompileTypecheckTimeout()
+        case 'typecheck-failed':
+          return yield* new CompileTypecheckFailed({
+            diagnostics: outcome.diagnostics,
+            truncated: outcome.truncated,
+          })
+        case 'bundle-failed':
+          return yield* new CompileBundleFailed({ message: outcome.message })
+        case 'compiled':
+          return {
+            artifact: outcome.artifact,
+            sourceSha256: outcome.sourceSha256,
+            runtimeSha256: outcome.runtimeSha256,
+            formulaRuntimeSha256: outcome.formulaRuntimeSha256,
+            sourcePolicyVersion: FORMULA_SOURCE_POLICY_VERSION,
+            sourcePolicyParserVersion: sourcePolicyParserVersion(),
+            typescriptVersion: outcome.typescriptVersion,
+            esbuildVersion: outcome.esbuildVersion,
+            formulaAbiVersion: FORMULA_ABI_VERSION,
+            authoringBuildId: authoringBuildId(),
+            timings: { queueMs, ...outcome.timings },
           }
-        }),
-      )
-      .pipe(
-        Effect.ensuring(
-          Effect.sync(() => {
-            pendingCompiles -= 1
-          }),
-        ),
-      )
-  })
+      }
+    }),
+  )
 
 // How often idle language sessions are reaped, in whole milliseconds above 0;
 // refused rather than guessed: `-5` used to be taken as given, and a negative
