@@ -1848,8 +1848,16 @@ export class Assessment extends Context.Service<
       tenantId: string,
       batchId: string,
       as: Principal,
+      groupPage?: number,
     ) => Effect.Effect<
       {
+        blocked: {
+          groupPage: number
+          groupTotal: number
+          pageSize: number
+          waiting: number
+          units: number
+        }
         groups: readonly {
           /** nothing when the step resolved to no unit: a duty nobody holds */
           nodeId: string | null
@@ -6563,11 +6571,19 @@ export const make = Effect.fn('Assessment.make')(function* () {
       tenantId: string,
       batchId: string,
       as: Principal,
+      groupPage = 1,
     ) {
       const batch = yield* dieQuery(withDb(oneBatch(tenantId, batchId)))
       if (!batch) return yield* new BatchNotFound()
       yield* requireRosterReach(as, tenantId, batchId)
-      const groups = yield* dieQuery(withDb(blockedGroups(tenantId, batchId)))
+      const { groups, blocked } = yield* dieQuery(
+        withDb(
+          transaction(blockedGroups(tenantId, batchId, groupPage), {
+            isolation: 'repeatable read',
+            readOnly: true,
+          }),
+        ),
+      )
       const roleNames = yield* dieQuery(
         withDb(
           chainNames({
@@ -6589,6 +6605,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
         )).map((type) => [type.id, type.name]),
       )
       return {
+        blocked,
         groups: groups.map((group) => ({
           nodeId: group.nodeId,
           nodeName: group.nodeName,
@@ -8748,10 +8765,15 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
     )
     .handle(
       'reviewAlerts',
-      Effect.fn('assessment.reviewAlerts.handler')(function* ({ params }) {
+      Effect.fn('assessment.reviewAlerts.handler')(function* ({ params, query }) {
         const assessment = yield* Assessment
         const principal = yield* CurrentUser
-        return yield* assessment.reviewAlerts(principal.tenantId, params.batchId, principal)
+        return yield* assessment.reviewAlerts(
+          principal.tenantId,
+          params.batchId,
+          principal,
+          pageNumber(query.groupPage),
+        )
       }),
     )
     .handle(

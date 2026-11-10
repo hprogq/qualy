@@ -153,6 +153,7 @@ const open = (
         reviewAlerts: () =>
           Effect.succeed({
             groups: [],
+            blocked: { groupPage: 1, groupTotal: 0, pageSize: 20, waiting: 0, units: 0 },
             unreachable: { routes: [], cannotSubmit: 0, cannotAppeal: 0 },
           }),
         listScopeOptions: () =>
@@ -1773,6 +1774,7 @@ describe('people the review steps find nowhere', () => {
   const alerts = (cannotSubmit: number) => () =>
     Effect.succeed({
       groups: [],
+      blocked: { groupPage: 1, groupTotal: 0, pageSize: 20, waiting: 0, units: 0 },
       unreachable: {
         routes:
           cannotSubmit === 0

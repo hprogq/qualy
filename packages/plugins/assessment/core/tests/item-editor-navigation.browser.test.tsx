@@ -153,6 +153,7 @@ const mount = (locale: 'zh-CN' | 'en-US' = 'zh-CN', unfinished = false) =>
         reviewAlerts: () =>
           Effect.succeed({
             groups: [],
+            blocked: { groupPage: 1, groupTotal: 0, pageSize: 20, waiting: 0, units: 0 },
             unreachable: { routes: [], cannotSubmit: 0, cannotAppeal: 0 },
           }),
         reviewCoverage: () => Effect.succeed({ nodes: [] }),

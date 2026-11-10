@@ -204,6 +204,7 @@ const screen = (
         reviewAlerts: () =>
           Effect.succeed({
             groups: [],
+            blocked: { groupPage: 1, groupTotal: 0, pageSize: 20, waiting: 0, units: 0 },
             unreachable: { routes: [], cannotSubmit: 0, cannotAppeal: 0 },
           }),
         listParticipantAccounts: () =>
@@ -356,6 +357,7 @@ describe('the participant results screen', () => {
       reviewAlerts: () =>
         Effect.succeed({
           groups: [],
+          blocked: { groupPage: 1, groupTotal: 0, pageSize: 20, waiting: 0, units: 0 },
           unreachable: { routes: [], cannotSubmit: 0, cannotAppeal: 0 },
         }),
       reconcileParticipantPlacements: decided,
@@ -826,7 +828,7 @@ describe('the participant results screen', () => {
       })
       watch.observe(panel, { attributeFilter: ['data-closing'] })
       try {
-        await dialog.getByRole('button', { name: 'Close' }).click()
+        await dialog.getByRole('button', { name: '关闭对话框', exact: true }).click()
         await expect.poll(() => panel.isConnected).toBe(false)
         expect(closing).toEqual([opened])
       } finally {
@@ -1097,6 +1099,7 @@ describe('one account beside its person', () => {
           reviewAlerts: () =>
             Effect.succeed({
               groups: [],
+              blocked: { groupPage: 1, groupTotal: 0, pageSize: 20, waiting: 0, units: 0 },
               unreachable: { routes: [], cannotSubmit: 0, cannotAppeal: 0 },
             }),
           getParticipant: () =>
@@ -1546,6 +1549,7 @@ describe('the list beside an open account', () => {
           reviewAlerts: () =>
             Effect.succeed({
               groups: [],
+              blocked: { groupPage: 1, groupTotal: 0, pageSize: 20, waiting: 0, units: 0 },
               unreachable: { routes: [], cannotSubmit: 0, cannotAppeal: 0 },
             }),
           getParticipant: (request: Request) =>

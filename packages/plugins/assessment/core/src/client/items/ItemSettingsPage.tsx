@@ -518,7 +518,7 @@ function Editor({
   const items = useQuery(query.assessment.listItems.queryOptions({ params: { batchId } }))
   const options = useQuery(query.assessment.itemOptions.queryOptions({ params: { batchId } }))
   const alerts = useQuery({
-    ...query.assessment.reviewAlerts.queryOptions({ params: { batchId } }),
+    ...query.assessment.reviewAlerts.queryOptions({ params: { batchId }, query: {} }),
     refetchInterval: 60_000,
   })
   // what has been composed and not yet saved. Each press of add puts one more
@@ -1028,6 +1028,7 @@ function Editor({
           <ReviewGapNotice
             batchId={batchId}
             groups={alerts.data?.groups ?? []}
+            blocked={alerts.data?.blocked}
             canAppoint={canAppoint}
             cannotSubmit={alerts.data?.unreachable.cannotSubmit ?? 0}
             cannotAppeal={alerts.data?.unreachable.cannotAppeal ?? 0}

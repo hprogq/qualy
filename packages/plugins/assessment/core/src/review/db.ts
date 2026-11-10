@@ -1,3 +1,4 @@
+import { pageWindow } from '@qualy/api-kit/schema'
 import { Effect } from 'effect'
 import { expressionBuilder, sql, type Expression, type ExpressionBuilder } from 'kysely'
 import { jsonArrayFrom } from 'kysely/helpers/postgres'
@@ -1311,66 +1312,83 @@ export const setInstanceState = (input: {
     .pipe(Effect.map((row) => row !== undefined))
 
 /** the rounds nobody can currently act on, grouped the way an alert panel reads them */
-export const blockedGroups = (tenantId: string, batchId: string) =>
-  db
-    .query((k) =>
-      k
-        .selectFrom('ReviewInstance as ri')
-        .innerJoin('Entry as e', (join) =>
-          join.onRef('e.tenantId', '=', 'ri.tenantId').onRef('e.id', '=', 'ri.entryId'),
-        )
-        // left, because a round stopped at a step that resolved to no unit
-        // has no node to join to, and those are exactly the ones an
-        // administrator most needs to see: a duty nobody anywhere holds
-        .leftJoin('OrgNode as n', (join) =>
-          join.onRef('n.tenantId', '=', 'ri.tenantId').onRef('n.id', '=', 'ri.currentNodeId'),
-        )
-        .select((eb) => [
-          'ri.currentNodeId as nodeId',
-          'n.name as nodeName',
-          // the unit from the root down, as the organization names it
-          // today: two classes called 1 are told apart by where they sit
-          eb
-            .selectFrom('OrgNode as a')
-            .select((agg) =>
-              agg.fn.agg<string[]>('array_agg', ['a.name']).orderBy('a.depth').as('p'),
-            )
-            .where('a.tenantId', '=', tenantId)
-            // ltree containment, PostgreSQL's own operator
-            .where((q) => sql<boolean>`${q.ref('a.path')} @> ${q.ref('n.path')}`)
-            .as('unitPath'),
-          'ri.currentRoleIds as roleIds',
-          'ri.blockedReason as reason',
-          eb.fn.countAll<string>().as('waiting'),
-        ])
-        .where('ri.tenantId', '=', tenantId)
-        .where('e.batchId', '=', batchId)
-        .where('ri.state', '=', 'blocked')
-        .groupBy(['ri.currentNodeId', 'n.name', 'n.path', 'ri.currentRoleIds', 'ri.blockedReason'])
-        // read from the root down, so the classes of one college stand
-        // together and two classes of one name keep one order between them
-        .orderBy('unitPath', (order) => order.asc().nullsFirst())
-        .orderBy('nodeId')
-        .orderBy('roleIds')
-        .orderBy('reason')
-        .execute(),
-    )
-    .pipe(
-      Effect.map((rows) =>
-        rows.map((row) => ({
+export const blockedGroups = (tenantId: string, batchId: string, page: number) =>
+  db.query(async (k) => {
+    const grouped = k
+      .selectFrom('ReviewInstance as ri')
+      .innerJoin('Entry as e', (join) =>
+        join.onRef('e.tenantId', '=', 'ri.tenantId').onRef('e.id', '=', 'ri.entryId'),
+      )
+      // left, because a round stopped at a step that resolved to no unit
+      // has no node to join to, and those are exactly the ones an
+      // administrator most needs to see: a duty nobody anywhere holds
+      .leftJoin('OrgNode as n', (join) =>
+        join.onRef('n.tenantId', '=', 'ri.tenantId').onRef('n.id', '=', 'ri.currentNodeId'),
+      )
+      .select((eb) => [
+        'ri.currentNodeId as nodeId',
+        'n.name as nodeName',
+        // the unit from the root down, as the organization names it
+        // today: two classes called 1 are told apart by where they sit
+        eb
+          .selectFrom('OrgNode as a')
+          .select((agg) => agg.fn.agg<string[]>('array_agg', ['a.name']).orderBy('a.depth').as('p'))
+          .where('a.tenantId', '=', tenantId)
+          // ltree containment, PostgreSQL's own operator
+          .where((q) => sql<boolean>`${q.ref('a.path')} @> ${q.ref('n.path')}`)
+          .as('unitPath'),
+        'ri.currentRoleIds as roleIds',
+        'ri.blockedReason as reason',
+        eb.fn.countAll<string>().as('waiting'),
+      ])
+      .where('ri.tenantId', '=', tenantId)
+      .where('e.batchId', '=', batchId)
+      .where('ri.state', '=', 'blocked')
+      .groupBy(['ri.currentNodeId', 'n.name', 'n.path', 'ri.currentRoleIds', 'ri.blockedReason'])
+    const summary = await k
+      .selectFrom(grouped.as('g'))
+      .select((eb) => [
+        eb.fn.countAll<string>().as('groups'),
+        eb.fn.count<string>('g.nodeId').distinct().as('units'),
+        eb.fn.sum<string>('g.waiting').as('waiting'),
+      ])
+      .executeTakeFirstOrThrow()
+    const pageSize = 20
+    const groupTotal = Number(summary.groups)
+    const window = pageWindow(page, pageSize, groupTotal)
+    // Paths and IDs give the rows a total order across pages.
+    const rows = await grouped
+      .orderBy('unitPath', (order) => order.asc().nullsFirst())
+      .orderBy('nodeId')
+      .orderBy('roleIds')
+      .orderBy('reason')
+      .offset(window.offset)
+      .limit(pageSize)
+      .execute()
+    return {
+      blocked: {
+        groupPage: window.page,
+        groupTotal,
+        pageSize,
+        waiting: Number(summary.waiting ?? 0),
+        units: Number(summary.units),
+      },
+      groups: rows.map((row) => {
+        const reason: 'no-assignee' | 'no-independent-reviewer' | 'panel-seat-unfilled' =
+          row.reason === 'no-independent-reviewer' || row.reason === 'panel-seat-unfilled'
+            ? row.reason
+            : 'no-assignee'
+        return {
           nodeId: row.nodeId === null ? null : String(row.nodeId),
           nodeName: row.nodeName === null ? null : String(row.nodeName),
           unitPath: (row.unitPath ?? []).map(String),
           roleIds: row.roleIds.map(String),
-          // why these wait: a staffing gap and a conflict rule read differently
-          reason: (row.reason ?? 'no-assignee') as
-            | 'no-assignee'
-            | 'no-independent-reviewer'
-            | 'panel-seat-unfilled',
+          reason,
           waiting: Number(row.waiting),
-        })),
-      ),
-    )
+        }
+      }),
+    }
+  })
 
 /** the tenants with open rounds at all, so the patrol visits nothing empty */
 export const tenantsWithOpenRounds = db

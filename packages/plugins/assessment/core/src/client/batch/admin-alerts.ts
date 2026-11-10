@@ -27,6 +27,11 @@ export interface AlertedQuestion {
 export interface AdminAlerts {
   /** review stopped for want of a reviewer, unit by unit */
   readonly gaps: readonly ReviewGap[]
+  readonly blocked: {
+    readonly groupTotal: number
+    readonly waiting: number
+    readonly units: number
+  }
   /**
    * People some question's route finds nowhere to be reviewed, told apart
    * by the route: an ordinary route that misses somebody stops them filing
@@ -111,6 +116,7 @@ export function useAdminAlerts(
     read.data === undefined && read.errorUpdateCount > 0
   return {
     gaps: owed(alerts.data)?.groups ?? [],
+    blocked: owed(alerts.data)?.blocked ?? { groupTotal: 0, waiting: 0, units: 0 },
     unreachable: {
       cannotSubmit: reach?.cannotSubmit ?? 0,
       cannotAppeal: reach?.cannotAppeal ?? 0,
@@ -141,7 +147,7 @@ export function entryAlertTone(
 ): 'warning' | 'info' | null {
   switch (navigationId) {
     case ALERTED_ENTRIES.items:
-      return alerts.gaps.length > 0 ||
+      return alerts.blocked.groupTotal > 0 ||
         alerts.unreachable.cannotSubmit > 0 ||
         alerts.unreachable.cannotAppeal > 0
         ? 'warning'

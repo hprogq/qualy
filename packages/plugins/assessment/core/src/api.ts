@@ -1595,6 +1595,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
     // the rounds nobody can act on: an appointment away from moving again
     HttpApiEndpoint.get('reviewAlerts', '/assessment/batches/:batchId/review-alerts', {
       params: Schema.Struct({ batchId: uuidInput }),
+      query: Schema.Struct({ groupPage: Schema.optional(Schema.String) }),
       success: Schema.Struct({
         groups: Schema.Array(
           Schema.Struct({
@@ -1624,6 +1625,13 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
             waiting: Schema.Number,
           }),
         ),
+        blocked: Schema.Struct({
+          groupPage: Schema.Number,
+          groupTotal: Schema.Number,
+          pageSize: Schema.Number,
+          waiting: Schema.Number,
+          units: Schema.Number,
+        }),
         /**
          * Questions whose route has nowhere to stand for some of the roster:
          * every step asks for a kind of unit these people sit under none of,

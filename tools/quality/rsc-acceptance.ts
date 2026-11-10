@@ -313,7 +313,11 @@ const mountHandler = async () => {
         ) {
           const data = (yield* Effect.promise(() => upstream.json())) as Record<string, unknown>
           const counts = url.pathname.endsWith('/review-alerts')
-            ? { unreachable: { routes: [], cannotSubmit: 2, cannotAppeal: 1 } }
+            ? {
+                groups: [],
+                blocked: { groupPage: 1, groupTotal: 0, pageSize: 20, waiting: 0, units: 0 },
+                unreachable: { routes: [], cannotSubmit: 2, cannotAppeal: 1 },
+              }
             : url.pathname.endsWith('/participant-placements')
               ? { changedTotal: 2 }
               : { pendingTotal: 2 }

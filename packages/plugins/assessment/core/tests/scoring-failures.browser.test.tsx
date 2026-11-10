@@ -401,7 +401,12 @@ describe('a rule that re-prices what stands', () => {
               orgTypes: [{ id: ORG_TYPE_ID, code: 'class', name: '班级' }],
               roles: [{ id: ROLE_ID, name: '审核员' }],
             }),
-          reviewAlerts: () => Effect.succeed({ groups: [], unreachable: NOBODY_UNREACHABLE }),
+          reviewAlerts: () =>
+            Effect.succeed({
+              groups: [],
+              blocked: { groupPage: 1, groupTotal: 0, pageSize: 20, waiting: 0, units: 0 },
+              unreachable: NOBODY_UNREACHABLE,
+            }),
           reviewCoverage: () => Effect.succeed({ nodes: [] }),
           previewScoring: () =>
             Effect.succeed({

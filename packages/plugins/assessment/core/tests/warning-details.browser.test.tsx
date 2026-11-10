@@ -49,6 +49,7 @@ const openPeople = async (
         reviewAlerts: () =>
           Effect.succeed({
             groups: [],
+            blocked: { groupPage: 1, groupTotal: 0, pageSize: 20, waiting: 0, units: 0 },
             unreachable: {
               routes: [
                 routeOf(FIRST, route, 10000),

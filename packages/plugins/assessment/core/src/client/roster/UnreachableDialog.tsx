@@ -195,7 +195,7 @@ export function UnreachableDialog({
   const failures = useLoadFailure()
   // the same reading the roster's notice counts from
   const alerts = useQuery({
-    ...query.assessment.reviewAlerts.queryOptions({ params: { batchId } }),
+    ...query.assessment.reviewAlerts.queryOptions({ params: { batchId }, query: {} }),
     enabled: open,
   })
   const routes: readonly Route[] = (alerts.data?.unreachable.routes ?? []).filter(

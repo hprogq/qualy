@@ -30,7 +30,7 @@ export const owesAdministration = (batch: {
 export const adminAlertReads = (batchId: string) => {
   const params = { batchId }
   return {
-    alerts: { params },
+    alerts: { params, query: {} },
     placements: { params, query: { limit: '1' } },
     access: { params, query: { limit: '1' } },
   }

@@ -2116,7 +2116,11 @@ describe('filing a claim', () => {
     await page.getByRole('button', { name: /2024 年入伍/ }).click()
     await page.getByRole('button', { name: '修改' }).click()
     await vi.waitFor(() => expect(addressNow()).toContain(`entry=${ENTRY_ID}`))
-    await page.getByRole('button', { name: 'Close' }).click()
+    await page
+      .getByRole('dialog')
+      .last()
+      .getByRole('button', { name: '关闭对话框', exact: true })
+      .click()
     await vi.waitFor(() => expect(addressNow()).not.toContain('entry='))
     expect(addressNow()).toContain(`open=${ITEM_ID}`)
   })
@@ -2167,7 +2171,11 @@ describe('filing a claim', () => {
     await expect.element(page.getByLabelText('事项说明', { exact: false })).toBeVisible()
     await save()
     await vi.waitFor(() => expect(revised).toHaveBeenCalledOnce())
-    await page.getByRole('button', { name: 'Close' }).click()
+    await page
+      .getByRole('dialog')
+      .last()
+      .getByRole('button', { name: '关闭对话框', exact: true })
+      .click()
     await vi.waitFor(() => expect(addressNow()).not.toContain('entry='))
     await vi.waitFor(() =>
       expect(document.querySelector('[data-slot="dialog-content"]')).toBeNull(),

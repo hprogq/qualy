@@ -32,7 +32,10 @@ async function prepare(params: Readonly<Record<string, string | undefined>>) {
   )
   const items = keyed('listItems', batch, (client) => client.assessment.listItems(batch))
   const options = keyed('itemOptions', batch, (client) => client.assessment.itemOptions(batch))
-  const alerts = keyed('reviewAlerts', batch, (client) => client.assessment.reviewAlerts(batch))
+  const alertInput = { ...batch, query: {} }
+  const alerts = keyed('reviewAlerts', alertInput, (client) =>
+    client.assessment.reviewAlerts(alertInput),
+  )
   const reads: {
     key: readonly unknown[]
     exit: Promise<import('effect').Exit.Exit<unknown, unknown>>

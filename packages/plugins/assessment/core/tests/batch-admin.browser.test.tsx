@@ -243,7 +243,11 @@ const assessmentStubs = (over: Stubs = {}): Stubs => {
     // the roster's standing warning and the overview's administration lane:
     // nothing stopped here
     reviewAlerts: () =>
-      Effect.succeed({ groups: [], unreachable: { routes: [], cannotSubmit: 0, cannotAppeal: 0 } }),
+      Effect.succeed({
+        groups: [],
+        blocked: { groupPage: 1, groupTotal: 0, pageSize: 20, waiting: 0, units: 0 },
+        unreachable: { routes: [], cannotSubmit: 0, cannotAppeal: 0 },
+      }),
     previewImport: () => Effect.succeed({ candidates: 0 }),
     staffOptions: () => Effect.succeed({ nodes: [], roles: [] }),
     listAccess: () => Effect.succeed(staffPage([subject()])),
@@ -4109,7 +4113,7 @@ describe('who may work on a batch', () => {
     await expect.element(dialog.getByTestId('access-sync-quiet')).toBeVisible()
     expect(dialog.getByRole('checkbox').elements()).toHaveLength(0)
     expect(dialog.getByRole('button', { name: '接受变更' }).elements()).toHaveLength(0)
-    await dialog.getByRole('button', { name: '关闭' }).click()
+    await dialog.getByRole('button', { name: '关闭', exact: true }).click()
     await expect.element(dialog).not.toBeInTheDocument()
   })
 })

@@ -91,7 +91,7 @@ describe.runIf(postgresAvailable)('a vacant step', () => {
                 s1,
               )
               yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
-              return yield* assessment.reviewAlerts(f.t, g.batch.id, admin)
+              return yield* assessment.reviewAlerts(f.t, g.batch.id, admin, 99)
             })
           // the class is found, and nobody there holds the role it asks for
           const atClass = yield* stopAt([
@@ -107,6 +107,14 @@ describe.runIf(postgresAvailable)('a vacant step', () => {
         }),
       ),
     )
+    expect(result.atClass.blocked).toEqual({
+      groupPage: 1,
+      groupTotal: 1,
+      pageSize: 20,
+      waiting: 1,
+      units: 1,
+    })
+    expect(result.nowhere.blocked).toMatchObject({ groupTotal: 1, waiting: 1, units: 0 })
     expect(result.atClass.groups).toEqual([
       {
         nodeId: result.classA,

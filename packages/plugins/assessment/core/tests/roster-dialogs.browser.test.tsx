@@ -443,7 +443,7 @@ describe('a roster dialog with nothing to act on', () => {
     expect(dialog.getByRole('button', { name: '同步所选' }).elements()).toHaveLength(0)
     expect(dialog.getByRole('button', { name: '保留所选' }).elements()).toHaveLength(0)
     expect(dialog.getByTestId('placement-pager').elements()).toHaveLength(0)
-    await dialog.getByRole('button', { name: '关闭' }).click()
+    await dialog.getByRole('button', { name: '关闭', exact: true }).click()
     expect(onClose).toHaveBeenCalledTimes(1)
   })
 

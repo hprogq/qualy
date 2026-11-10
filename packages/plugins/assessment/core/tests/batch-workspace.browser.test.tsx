@@ -61,6 +61,7 @@ const batch = (over: Partial<BatchDto> = {}): BatchDto => ({
 
 const quiet: Alerts = {
   groups: [],
+  blocked: { groupPage: 1, groupTotal: 0, pageSize: 20, waiting: 0, units: 0 },
   unreachable: { routes: [], cannotSubmit: 0, cannotAppeal: 0 },
 }
 
@@ -86,6 +87,7 @@ const stopped: Alerts = {
       waiting: 2,
     },
   ],
+  blocked: { groupPage: 1, groupTotal: 2, pageSize: 20, waiting: 5, units: 1 },
   unreachable: {
     routes: [
       {
@@ -516,6 +518,7 @@ describe('the administration lane of the overview', () => {
       reviewAlerts: () =>
         Effect.succeed({
           groups: [],
+          blocked: { groupPage: 1, groupTotal: 0, pageSize: 20, waiting: 0, units: 0 },
           unreachable: {
             routes: [
               ...stopped.unreachable.routes,
@@ -564,6 +567,13 @@ describe('the administration lane of the overview', () => {
     await shelled(`/assessment/batches/${BATCH_ID}`, {
       reviewAlerts: () =>
         Effect.succeed({
+          blocked: {
+            groupPage: 1,
+            groupTotal: units.length,
+            pageSize: 20,
+            waiting: units.length,
+            units: units.length,
+          },
           groups: units.map((unit, at) => ({
             nodeId: `${NODE_ID.slice(0, -1)}${at}`,
             nodeName: unit,
@@ -613,6 +623,7 @@ describe('the administration lane of the overview', () => {
       reviewAlerts: () =>
         Effect.succeed({
           groups: [],
+          blocked: { groupPage: 1, groupTotal: 0, pageSize: 20, waiting: 0, units: 0 },
           unreachable: {
             routes: stopped.unreachable.routes.filter((one) => one.route === 'escalation'),
             cannotSubmit: 0,
@@ -689,6 +700,7 @@ describe('the administration lane of the overview', () => {
       reviewAlerts: () =>
         Effect.succeed({
           groups: [],
+          blocked: { groupPage: 1, groupTotal: 0, pageSize: 20, waiting: 0, units: 0 },
           unreachable: {
             routes: [
               {

@@ -1,3 +1,4 @@
+import type { ReviewGap } from '../src/client/items/ReviewGapNotice.tsx'
 import ItemSettingsPage from '../src/client/items/ItemSettingsPage.tsx'
 import { QuestionTrail } from '../src/client/items/editor/Trail.tsx'
 import WorkspaceShell from '@qualy/plugin-layout-default/client/WorkspaceShell'
@@ -390,7 +391,7 @@ const open = (
     /** a press that does what the browser's back button does */
     withBack?: boolean
     /** where review is waiting for somebody to review it */
-    alerts?: readonly unknown[]
+    alerts?: readonly ReviewGap[]
     /** hold a gap summary while the paper itself arrives */
     alertsAfter?: Promise<void>
     /** whether the reader may give out the round's roles */
@@ -494,9 +495,24 @@ const open = (
             orgTypes: [{ id: ORG_TYPE_ID, code: 'class', name: '班级' }],
             roles: [{ id: ROLE_ID, name: '审核员' }],
           }),
-        reviewAlerts: () => {
+        reviewAlerts: ({ query }: { query: { groupPage?: string } }) => {
+          const all = had.alerts ?? []
+          const pageSize = 20
+          const groupPage = Math.min(
+            Math.max(1, Number(query.groupPage) || 1),
+            Math.max(1, Math.ceil(all.length / pageSize)),
+          )
           const result = {
-            groups: had.alerts ?? [],
+            groups: all.slice((groupPage - 1) * pageSize, groupPage * pageSize),
+            blocked: {
+              groupPage,
+              groupTotal: all.length,
+              pageSize,
+              waiting: (had.alerts ?? []).reduce((count, row) => count + row.waiting, 0),
+              units: new Set(
+                (had.alerts ?? []).flatMap((row) => (row.nodeId === null ? [] : [row.nodeId])),
+              ).size,
+            },
             unreachable: {
               ...NOBODY_UNREACHABLE,
               routes: had.reach ?? [],
@@ -2322,7 +2338,12 @@ describe('the band', () => {
               orgTypes: [{ id: ORG_TYPE_ID, code: 'class', name: '班级' }],
               roles: [{ id: ROLE_ID, name: '审核员' }],
             }),
-          reviewAlerts: () => Effect.succeed({ groups: [], unreachable: NOBODY_UNREACHABLE }),
+          reviewAlerts: () =>
+            Effect.succeed({
+              groups: [],
+              blocked: { groupPage: 1, groupTotal: 0, pageSize: 20, waiting: 0, units: 0 },
+              unreachable: NOBODY_UNREACHABLE,
+            }),
           reviewCoverage: () => Effect.succeed({ nodes: [] }),
           checkItem: () => Effect.succeed({ issues: [], standing: [] }),
           previewScoring: () => Effect.succeed(previewFor('fixed@1')),
@@ -3246,7 +3267,7 @@ describe('review waiting for a reviewer', () => {
       unitPath: ['示例大学', '管理学院', '大数据管理与应用'],
       roleIds: [ROLE_ID],
       roleNames: ['推免专业负责人'],
-      reason: 'no-assignee',
+      reason: 'no-assignee' as const,
       waiting: 1,
     },
     {
@@ -3255,7 +3276,7 @@ describe('review waiting for a reviewer', () => {
       unitPath: ['示例大学', '管理学院', '1班'],
       roleIds: [ROLE_ID],
       roleNames: ['班长', '学习委员'],
-      reason: 'no-independent-reviewer',
+      reason: 'no-independent-reviewer' as const,
       waiting: 4,
     },
     {
@@ -3264,7 +3285,7 @@ describe('review waiting for a reviewer', () => {
       unitPath: ['示例大学', '信息学院', '1班'],
       roleIds: [ROLE_ID],
       roleNames: ['班长'],
-      reason: 'no-assignee',
+      reason: 'no-assignee' as const,
       waiting: 3,
     },
     {
@@ -3273,7 +3294,7 @@ describe('review waiting for a reviewer', () => {
       unitPath: [],
       roleIds: [ROLE_ID],
       roleNames: ['辅导员'],
-      reason: 'no-assignee',
+      reason: 'no-assignee' as const,
       waiting: 2,
     },
   ]
@@ -3350,6 +3371,28 @@ describe('review waiting for a reviewer', () => {
     expect(notice.element().tagName).toBe('BUTTON')
     await notice.click()
     expect(page.getByTestId('review-gap-details').getByRole('link').elements()).toHaveLength(0)
+  })
+
+  it('pages blocked groups while keeping the complete waiting count', async () => {
+    const alerts = Array.from({ length: 21 }, (_, i) => ({
+      ...gaps[0]!,
+      nodeId: `unit-${i + 1}`,
+      nodeName: `组织 ${i + 1}`,
+      unitPath: ['示例大学', `组织 ${i + 1}`],
+    }))
+    await open({ alerts })
+    const notice = page.getByTestId('review-gap-notice')
+    await expect.element(notice).toHaveAttribute('data-waiting', '21')
+    await notice.click()
+    await expect
+      .element(page.getByTestId('review-gap-row').last())
+      .toHaveAttribute('data-node', 'unit-20')
+    const pager = page.getByTestId('review-gap-pager')
+    await pager.getByRole('button', { name: '2', exact: true }).click()
+    await expect
+      .element(page.getByTestId('review-gap-row').first())
+      .toHaveAttribute('data-node', 'unit-21')
+    expect(page.getByTestId('review-gap-row').all()).toHaveLength(1)
   })
 
   it('says nothing where no review is waiting', async () => {
@@ -3531,7 +3574,12 @@ describe('while the page loads', () => {
             ),
           listItems: () => Effect.succeed({ items: [], capabilities: { canManage: true } }),
           itemOptions: () => Effect.succeed({ orgTypes: [], roles: [] }),
-          reviewAlerts: () => Effect.succeed({ groups: [], unreachable: NOBODY_UNREACHABLE }),
+          reviewAlerts: () =>
+            Effect.succeed({
+              groups: [],
+              blocked: { groupPage: 1, groupTotal: 0, pageSize: 20, waiting: 0, units: 0 },
+              unreachable: NOBODY_UNREACHABLE,
+            }),
         },
       }),
       routes: [

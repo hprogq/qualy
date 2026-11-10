@@ -1686,9 +1686,8 @@ function adminRows(
     })
   }
   const gaps = alerts.gaps
-  if (gaps.length > 0) {
-    const waiting = gaps.reduce((total, one) => total + one.waiting, 0)
-    const units = new Set(gaps.map((one) => one.nodeId ?? '')).size
+  const { groupTotal, waiting, units } = alerts.blocked
+  if (groupTotal > 0) {
     const named = gaps.slice(0, MOST_NAMED).map((one) =>
       m.overview_adminGapUnit({
         unit: one.nodeName ?? m.items_stuckNowhere(),
@@ -1701,8 +1700,8 @@ function adminRows(
       count: waiting,
       subject: m.items_stuckSummary({ waiting, units }),
       detail:
-        gaps.length > MOST_NAMED
-          ? m.overview_adminMoreUnits({ total: gaps.length, items: listJoin(named) })
+        groupTotal > MOST_NAMED
+          ? m.overview_adminMoreUnits({ total: groupTotal, items: listJoin(named) })
           : listJoin(named),
       verb: m.items_stuckAppoint(),
       go: () => go('assessment/batch-access'),

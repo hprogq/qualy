@@ -416,7 +416,8 @@ export function ParticipantResultList({
       }
     }
     // a question's review steps changed: who they find nowhere may have too
-    if (kinds.has('item-changed')) stale(query.assessment.reviewAlerts.key({ params: { batchId } }))
+    if (kinds.has('item-changed'))
+      stale(query.assessment.reviewAlerts.key({ params: { batchId }, query: {} }))
     // a queue or a plan moving changes nothing on this list
     const others = [...kinds].filter(
       (kind) => kind !== 'sync' && kind !== 'plan-changed' && kind !== 'review-inbox-changed',
@@ -476,7 +477,7 @@ export function ParticipantResultList({
   latestPlacements.current = placementsRead.queryKey
   // Only the details opened from an admission outcome read this endpoint.
   // Keep that open dialog fresh without fetching review alerts for the list.
-  const alertsRead = query.assessment.reviewAlerts.queryOptions({ params: { batchId } })
+  const alertsRead = query.assessment.reviewAlerts.queryOptions({ params: { batchId }, query: {} })
   latestAlerts.current = alertsRead.queryKey
   const [unreachableOpen, setUnreachableOpen] = useState(false)
 
