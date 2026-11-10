@@ -4023,17 +4023,27 @@ export const make = Effect.fn('Assessment.make')(function* () {
           subjectUserId: as.userId,
           readerUserId: as.userId,
         }))
-      // each row says which claim it is, in the one projection every
-      // surface shares (§32.74): parts off the claim's current version
-      const summaried = yield* dieQuery(
-        withDb(entrySummaryRowsOf(tenantId, [...new Set(pageRows.map((row) => row.entryId))])),
-      )
-      const identityOf = new Map(
-        summaried.map((row) => [
-          row.entryId,
-          projectEntrySummary(row).map((part) => ({ label: part.label, value: part.value })),
-        ]),
-      )
+      // The participant's own rows use their current work; the reviewer
+      // rows concern other people and may only show what was handed in.
+      const identityOf = new Map<string, ReturnType<typeof projectEntrySummary>>()
+      for (const perspective of ['participant', 'reviewer'] as const) {
+        const entryIds = [
+          ...new Set(
+            pageRows.filter((row) => row.perspective === perspective).map((row) => row.entryId),
+          ),
+        ]
+        const summaried = yield* dieQuery(
+          withDb(
+            entrySummaryRowsOf(
+              tenantId,
+              entryIds,
+              perspective === 'participant' ? 'current' : 'submitted',
+            ),
+          ),
+        )
+        for (const row of summaried)
+          identityOf.set(`${perspective}:${row.entryId}`, projectEntrySummary(row))
+      }
       return {
         items: pageRows.map((row) => ({
           id: row.id,
@@ -4050,7 +4060,10 @@ export const make = Effect.fn('Assessment.make')(function* () {
             .actorName,
           reason: row.reason,
           comment: row.comment,
-          summary: identityOf.get(row.entryId) ?? [],
+          summary: (identityOf.get(`${row.perspective}:${row.entryId}`) ?? []).map((part) => ({
+            label: part.label,
+            value: part.value,
+          })),
           at: row.at,
         })),
         total: rows.total,

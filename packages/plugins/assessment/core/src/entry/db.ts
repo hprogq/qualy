@@ -1900,7 +1900,11 @@ export interface UserActivityRow {
  * (at, source, id): a timestamp alone drops rows sharing an instant.
  */
 /** what a page of activity rows needs to say which claim each one is */
-export const entrySummaryRowsOf = (tenantId: string, entryIds: readonly string[]) =>
+export const entrySummaryRowsOf = (
+  tenantId: string,
+  entryIds: readonly string[],
+  version: 'current' | 'submitted',
+) =>
   entryIds.length === 0
     ? Effect.succeed(
         [] as readonly {
@@ -1917,7 +1921,11 @@ export const entrySummaryRowsOf = (tenantId: string, entryIds: readonly string[]
             .innerJoin('EntryRevision as er', (join) =>
               join
                 .onRef('er.tenantId', '=', 'e.tenantId')
-                .onRef('er.id', '=', 'e.currentRevisionId'),
+                .onRef(
+                  'er.id',
+                  '=',
+                  version === 'current' ? 'e.currentRevisionId' : 'e.lastSubmittedRevisionId',
+                ),
             )
             .innerJoin('AssessmentItemRevision as ir', (join) =>
               join

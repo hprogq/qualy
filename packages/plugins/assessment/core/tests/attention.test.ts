@@ -571,4 +571,92 @@ describe.runIf(postgresAvailable)('the participant attention model', () => {
     ])
     expect(result.filtered.items).toEqual([])
   })
+
+  it('only shows the submitted revision of another person’s claim in reviewer activity', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('at-private-summary')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f, { profile: PROFILE })
+          const owner = f.principal(f.s1)
+          const judge = f.principal(f.reviewer)
+          const item = yield* assessment.createItem(
+            f.t,
+            g.batch.id,
+            {
+              itemType: 'evidence',
+              title: 'Claim',
+              scoreGroupId: g.item.scoreGroupId,
+              maxEntries: 1,
+              config: {
+                entryChannels: ['participant'],
+                formConfig: { fields: [{ key: 'summary', type: 'text', label: 'Summary' }] },
+                scoringConfig: {
+                  calculator: { ref: 'fixed@1', config: { value: '1.00' } },
+                  aggregator: { ref: 'sum@1', config: {} },
+                },
+                reviewPolicy: {
+                  normal: {
+                    stages: [
+                      {
+                        id: 'class',
+                        selector: {
+                          kind: 'roleAt',
+                          nodeTypeId: f.classType,
+                          roleIds: [f.reviewRole],
+                        },
+                        quorum: { type: 'any' },
+                      },
+                    ],
+                  },
+                  escalation: { stages: [] },
+                },
+              },
+            },
+            f.principal(f.admin),
+          )
+          yield* assessment.setItemStatus(f.t, item.id, { status: 'active' }, f.principal(f.admin))
+          const entry = yield* assessment.createEntry(
+            f.t,
+            { itemId: item.id, participantId: g.p1, payload: { summary: 'submitted' } },
+            owner,
+          )
+          const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', owner)
+          yield* assessment.decideReview(
+            f.t,
+            sent.currentReviewInstanceId!,
+            { decision: 'reject', comment: 'revise' },
+            judge,
+          )
+          yield* assessment.appendEntryRevision(
+            f.t,
+            entry.id,
+            { payload: { summary: 'private draft' } },
+            owner,
+          )
+          const ownerDraft = yield* assessment.listMyActivity(f.t, g.batch.id, {}, owner)
+          const reviewerDraft = yield* assessment.listMyActivity(f.t, g.batch.id, {}, judge)
+          yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', owner)
+          const reviewerSubmitted = yield* assessment.listMyActivity(f.t, g.batch.id, {}, judge)
+          return { entry, ownerDraft, reviewerDraft, reviewerSubmitted }
+        }),
+      ),
+    )
+    const summaries = (activity: typeof result.ownerDraft) =>
+      activity.items.filter((row) => row.entryId === result.entry.id).map((row) => row.summary)
+    expect(summaries(result.ownerDraft)).not.toEqual([])
+    expect(
+      summaries(result.ownerDraft).every((summary) => summary[0]?.value === 'private draft'),
+    ).toBe(true)
+    expect(summaries(result.reviewerDraft)).not.toEqual([])
+    expect(
+      summaries(result.reviewerDraft).every((summary) => summary[0]?.value === 'submitted'),
+    ).toBe(true)
+    expect(summaries(result.reviewerSubmitted)).not.toEqual([])
+    expect(
+      summaries(result.reviewerSubmitted).every((summary) => summary[0]?.value === 'private draft'),
+    ).toBe(true)
+  })
 })
