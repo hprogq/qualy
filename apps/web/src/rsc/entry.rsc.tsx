@@ -1,3 +1,4 @@
+import { withRoutePolicies } from '@qualy/web-rsc/route-policies'
 import { randomUUID } from 'node:crypto'
 import type { ComponentProps } from 'react'
 import FontStyles from './font-styles.tsx'
@@ -172,7 +173,7 @@ const renderServer = async (
       if (page !== undefined)
         onRoute?.(page.path, new URL(request.url).pathname.endsWith('.rsc') ? 'rsc' : 'document')
       const stream = withRenderRequest({ ...renderRequest(), routeTitle: page?.title }, () =>
-        renderToReadableStream(match.payload, options),
+        renderToReadableStream(withRoutePolicies(match.payload), options),
       )
       return new Response(stream, {
         status: match.statusCode,

@@ -9,7 +9,8 @@
     "./document-locale": "./src/document-locale.ts",
     "./queries": "./src/queries.ts",
     "./request": "./src/request.ts",
-    "./routes": "./src/routes.tsx"
+    "./routes": "./src/routes.tsx",
+    "./route-policies": "./src/route-policies.ts"
   },
   "peerDependencies": {
     "react": "catalog:"

@@ -24,7 +24,10 @@ export const pageRevalidation: ShouldRevalidateFunction = ({
   currentUrl,
   nextUrl,
   defaultShouldRevalidate,
+  formMethod,
 }) =>
-  currentUrl.pathname === nextUrl.pathname && currentUrl.search !== nextUrl.search
+  (formMethod === undefined || formMethod.toUpperCase() === 'GET') &&
+  currentUrl.pathname === nextUrl.pathname &&
+  currentUrl.search !== nextUrl.search
     ? false
     : defaultShouldRevalidate
