@@ -428,6 +428,17 @@ describe('the queue in brief', () => {
     await expect.element(rows().first()).toBeVisible()
     await expect.element(page.getByTestId('queue-scope')).toBeVisible()
     await expect.element(page.getByTestId('queue-index')).not.toBeVisible()
+    const toolbar = page.getByTestId('review-filters').element().getBoundingClientRect()
+    const project = page
+      .getByRole('combobox', { name: '查找项目' })
+      .element()
+      .getBoundingClientRect()
+    const status = page
+      .getByRole('combobox', { name: '按审核状态筛选' })
+      .element()
+      .getBoundingClientRect()
+    expect(project.width).toBeCloseTo(status.width, 0)
+    expect(status.right).toBeCloseTo(toolbar.right, 0)
   })
 
   it('keeps the group and status controls distinct with badge counts on a phone', async () => {
@@ -469,8 +480,17 @@ describe('the queue in brief', () => {
             node.getBoundingClientRect().width > 0,
         )!
         .getBoundingClientRect()
-      if (frame.width >= 880) expect(Math.abs(groups.top - status.top)).toBeLessThanOrEqual(2)
-      else expect(status.top).toBeGreaterThanOrEqual(groups.bottom)
+      if (frame.width >= 880) {
+        expect(Math.abs(groups.top - status.top)).toBeLessThanOrEqual(2)
+      } else {
+        expect(status.top).toBeGreaterThanOrEqual(groups.bottom)
+        const filterRow = [...region.querySelectorAll('[role="combobox"]')]
+          .map((control) => control.getBoundingClientRect())
+          .filter((rect) => rect.width > 0 && Math.abs(rect.top - status.top) < 1)
+        expect(filterRow).toHaveLength(frame.width >= 560 ? 3 : 2)
+        expect(filterRow[0]!.left).toBeCloseTo(frame.left, 0)
+        expect(filterRow.at(-1)!.right).toBeCloseTo(frame.right, 0)
+      }
       const visible = [
         ...region.querySelectorAll(
           '[role="tablist"], [role="combobox"], [role="group"], #review-queue-search, button[aria-controls="review-queue-search"]',

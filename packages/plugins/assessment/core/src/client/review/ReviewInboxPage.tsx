@@ -62,6 +62,9 @@ const TOOLBAR_WIDE = '@container review-board (min-width: 1240px)'
 const SEARCH_DELAY = 250
 const BOARD_WIDE = reviewLayout.wide
 const FADE_SCROLL_DISTANCE = 64
+const FILTER_ONE = 'minmax(0, 1fr)'
+const FILTER_TWO = `repeat(2, ${FILTER_ONE})`
+const FILTER_THREE = `minmax(0, 1.25fr) ${FILTER_TWO}`
 
 const styles = stylex.create({
   viewsField: { gridArea: 'grouping', minWidth: 0 },
@@ -149,16 +152,16 @@ const styles = stylex.create({
   resultsFadeEdge: {
     height: `calc(${reviewLayout.toolbarFadeEdge} + ${reviewLayout.pinnedResultsFadeExtra} * var(--review-fade-progress, 0))`,
   },
-  filters: {
+  filters: (compactColumns: string, middleColumns: string) => ({
     gridArea: 'filters',
-    display: { default: 'grid', [TOOLBAR_ROOM]: 'flex' },
-    gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+    display: { default: 'grid', [BOARD_WIDE]: 'flex' },
+    gridTemplateColumns: { default: compactColumns, [TOOLBAR_MID]: middleColumns },
     minWidth: 0,
     alignItems: 'center',
     gap: 8,
     // The first filter still lines up with the cards' 28px gutter.
     paddingInlineStart: { default: 0, [BOARD_WIDE]: 20 },
-  },
+  }),
   seekKey: {
     gridArea: 'seek',
     width: 36,
@@ -555,6 +558,12 @@ function QueueBody({
   const data = queue.inbox.data
   const summary = queue.summary
   const unitOptions = (summary?.unitOptions ?? []).map(({ id, name }) => [id, name] as const)
+  const scopeReady = data !== undefined && data.queueTotal > 0
+  const scopeLoading = queue.inbox.isPending && (summary?.queueTotal ?? 0) > 0
+  const hasScope = scopeReady || scopeLoading
+  const hasUnits = unitOptions.length > 0
+  const compactColumns = hasScope ? FILTER_TWO : FILTER_ONE
+  const middleColumns = hasUnits ? (hasScope ? FILTER_THREE : FILTER_TWO) : compactColumns
   const onGroupPage = (next: number) =>
     update({ groupPage: String(next), item: '', person: '', day: '', page: '' })
   useEffect(() => {
@@ -675,15 +684,15 @@ function QueueBody({
             <VisuallyHidden>{m.review_searchPlaceholder()}</VisuallyHidden>
           </Button>
           {summary !== undefined && (
-            <div {...stylex.props(styles.filters)}>
-              {data !== undefined && data.queueTotal > 0 ? (
+            <div {...stylex.props(styles.filters(compactColumns, middleColumns))}>
+              {scopeReady ? (
                 <QueueScope
                   grouping={view}
                   data={data}
                   loadingSelection={queue.loadingSelection}
                   onPick={(key) => pick(groupKey(view), key)}
                 />
-              ) : queue.inbox.isPending && summary.queueTotal > 0 ? (
+              ) : scopeLoading ? (
                 <QueueScopeSkeleton />
               ) : null}
               <StatusFilter
@@ -691,7 +700,7 @@ function QueueBody({
                 counts={summary.marks}
                 onChange={(next) => narrow({ mark: next === ALL ? '' : next })}
               />
-              {unitOptions.length > 0 && (
+              {hasUnits && (
                 <div
                   {...stylex.props(
                     styles.unitFilter,
