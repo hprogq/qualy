@@ -669,8 +669,7 @@ describe('one workbench, three widths', () => {
     await expect.element(page.getByTestId('queue-position')).not.toBeVisible()
   })
 
-  // Narrow, the place is said in figures and the key keeps its name: a
-  // lone word beside a list mark read as a direction, not as the queue.
+  // The narrow key retains its accessible name and the current position.
   for (const width of [390, 834]) {
     it(`keeps one place and a named key at ${String(width)}`, async () => {
       await page.viewport(width, 844)
@@ -681,9 +680,9 @@ describe('one workbench, three widths', () => {
       const compactPlace = page.getByTestId('queue-position')
       const deskPlace = page.getByTestId('run-position')
       if (width < 768) {
-        await expect.element(compactPlace).toBeVisible()
+        await expect.element(compactPlace).not.toBeVisible()
         await expect.element(deskPlace).not.toBeVisible()
-        expect(compactPlace.element().textContent).toContain('1')
+        expect(key.element().getAttribute('aria-label')).toContain('1')
       } else {
         await expect.element(compactPlace).not.toBeVisible()
         await expect.element(deskPlace).toBeVisible()
@@ -924,6 +923,14 @@ describe('the workbench inside the workspace shell', () => {
     await expect.element(page.getByRole('region', { name: '申报内容' })).toBeInTheDocument()
     const main = page.getByRole('main').element()
     await expect.poll(() => getComputedStyle(main).scrollbarGutter).toBe('auto')
+    await page.viewport(1024, 900)
+    await expect.element(page.getByTestId('workspace-rail')).toBeVisible()
+    const frame = page.getByTestId('person-frame').element()
+    expect(frame.getBoundingClientRect().width).toBeLessThan(1024)
+    const named = page.getByRole('heading', { level: 2, name: review.participantName }).element()
+    expect(named.scrollWidth).toBeLessThanOrEqual(named.clientWidth)
+    await expect.element(page.getByTestId('queue-key')).toBeVisible()
+    await expect.element(page.getByTestId('keys-open')).toHaveAccessibleName('键盘快捷键')
     await page.viewport(390, 844)
     await expect.poll(() => window.innerHeight).toBe(844)
     await expect.poll(() => getComputedStyle(main).overflowY).toBe('hidden')
@@ -2050,7 +2057,7 @@ describe('where the person being judged stands', () => {
         const item = itemElement.getBoundingClientRect()
         expect(Math.abs(item.top - line.top)).toBeLessThan(3)
         expect(line.right).toBeLessThanOrEqual(item.left - 4)
-        expect(item.width).toBeGreaterThan(line.width)
+        expect(line.width).toBeGreaterThan(item.width)
         expect(itemElement.querySelector('svg')).not.toBeNull()
         const itemContext = page.getByTestId('review-item-context').element()
         if (item.width > 201) expect(getComputedStyle(itemContext).display).toBe('inline')
@@ -2062,12 +2069,12 @@ describe('where the person being judged stands', () => {
         for (const part of [heading, number, last]) {
           expect(part.getBoundingClientRect().right).toBeLessThanOrEqual(key.left)
         }
-        // Queue state and place are one line; the item gets the whole cell
-        // under them instead of sharing the unit's narrower line.
+        // The place is carried in the queue button's accessible name.
         const place = page.getByTestId('queue-position').element()
         expect(place.closest('[data-testid="queue-key"]')).toBe(
           page.getByTestId('queue-key').element(),
         )
+        await expect.element(page.getByTestId('queue-position')).not.toBeVisible()
         const bar = page
           .getByTestId('review-item')
           .element()
@@ -2078,6 +2085,56 @@ describe('where the person being judged stands', () => {
       })
     }
   }
+
+  it.each([360, 420, 560, 700])(
+    'gives name and the final unit priority in a %ipx workbench beside a rail',
+    async (width) => {
+      await page.viewport(1440, 900)
+      await open()
+      await expect.element(page.getByTestId('person-frame')).toBeVisible()
+      const frame = page.getByTestId('person-frame').element() as HTMLElement
+      frame.style.width = `${String(width)}px`
+      const queue = page.getByTestId('queue-key')
+      await expect.element(queue).toBeVisible()
+      await expect.element(queue).toHaveAccessibleName(/待审核/)
+      const keys = page.getByTestId('keys-open')
+      await expect.element(keys).toBeVisible()
+      await expect.element(keys).toHaveAccessibleName('键盘快捷键')
+      await expect.element(page.getByTestId('queue-key-label')).not.toBeVisible()
+      await expect.element(page.getByTestId('keys-label')).not.toBeVisible()
+      await expect.element(page.getByTestId('run-position')).not.toBeVisible()
+      const person = page.getByRole('heading', { level: 2, name: review.participantName }).element()
+      const last = page.getByTestId('review-unit').element().querySelector('[data-path-step="1"]')!
+      await vi.waitFor(() => {
+        expect(person.scrollWidth).toBeLessThanOrEqual(person.clientWidth)
+        expect(last.getBoundingClientRect().width).toBeGreaterThan(80)
+        const label = last.lastElementChild as HTMLElement
+        expect(label.scrollWidth).toBeLessThanOrEqual(label.clientWidth)
+      })
+      const bounds = frame.getBoundingClientRect()
+      for (const node of [person, last, queue.element(), keys.element()]) {
+        const box = node.getBoundingClientRect()
+        expect(box.left).toBeGreaterThanOrEqual(bounds.left - 1)
+        expect(box.right).toBeLessThanOrEqual(bounds.right + 1)
+      }
+      await keys.click()
+      await expect.element(page.getByText('键盘快捷键').last()).toBeVisible()
+      await userEvent.keyboard('{Escape}')
+      await queue.click()
+      await expect.element(page.getByTestId('queue-sheet')).toBeVisible()
+    },
+  )
+
+  it('restores the control labels when the workbench has room', async () => {
+    await page.viewport(1440, 900)
+    await open()
+    await expect.element(page.getByTestId('person-frame')).toBeVisible()
+    const frame = page.getByTestId('person-frame').element() as HTMLElement
+    frame.style.width = '900px'
+    await expect.element(page.getByTestId('queue-key-label')).toBeVisible()
+    await expect.element(page.getByTestId('keys-label')).toBeVisible()
+    await expect.element(page.getByTestId('run-position')).toBeVisible()
+  })
 
   // A claim whose only answer is a file has no summary; opened from the
   // strip it still shows its form, the file in its own field.
