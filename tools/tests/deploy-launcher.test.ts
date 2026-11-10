@@ -30,12 +30,53 @@ fi
 remote() { printf '%s' "\${1#${REGISTRY}/}"; }
 case $1 in
   pull) [ -d "$FAKE/registry/$(remote "$3")" ] ;;
+  container)
+    case $2 in
+      ls)
+        [ ! -f "$FAKE/containers" ] || cut -d' ' -f1 "$FAKE/containers" ;;
+      inspect)
+        [ "$FAKE_INSPECT_FAIL" != 1 ] || exit 2
+        shift 4
+        for container; do grep "^$container " "$FAKE/containers" | cut -d' ' -f2-; done ;;
+      *) exit 1 ;;
+    esac ;;
   image)
+    if [ "$2" = rm ]; then
+      [ "$3" = --no-prune ] || exit 2
+      shift 3
+      for ref; do
+        [ "$ref" != "$FAKE_REMOVE_FAIL" ] || exit 2
+        case $ref in
+          ${REGISTRY}/*@sha256:*) : ;; # the separate digest name in Docker's containerd store
+          qualy-*:v*) rm "$FAKE/local/$ref" || exit 2 ;;
+          *) exit 2 ;;
+        esac
+      done
+      exit 0
+    fi
+    [ "$2" = inspect ] || exit 1
     ref=$5
     case $ref in
       ${REGISTRY}/*) dir="$FAKE/registry/$(remote "$ref")"; [ -d "$dir" ] || exit 1
         case $4 in *image.version*) cat "$dir/labels" ;; *) cat "$dir/id" ;; esac ;;
-      *) [ -f "$FAKE/local/$ref" ] || exit 1; cat "$FAKE/local/$ref" ;;
+      *) [ -f "$FAKE/local/$ref" ] || exit 1
+        id=$(cat "$FAKE/local/$ref")
+        case $4 in
+          *RepoTags*)
+            for dir in "$FAKE"/registry/*; do
+              [ "$(cat "$dir/id")" = "$id" ] || continue
+              read -r version revision < "$dir/labels"
+              origin=${REGISTRY}/\${dir##*/}
+              tags=$origin
+              for name in "$FAKE"/local/*; do
+                [ "$(cat "$name")" != "$id" ] || tags="$tags \${name##*/}"
+              done
+              printf '%s|%s|%s|%s|%s|%s\\n' "$id" "$(cat "$dir/created")" "$version" "$revision" "$tags" "$origin"
+              exit 0
+            done
+            exit 1 ;;
+          *) printf '%s\\n' "$id" ;;
+        esac ;;
     esac ;;
   tag) mkdir -p "$FAKE/local"; cat "$FAKE/registry/$(remote "$2")/id" > "$FAKE/local/$3" ;;
   create) printf 'container-%s\\n' "$(remote "$2" | tr '@:' '__')"; remote "$2" > "$FAKE/created" ;;
@@ -60,7 +101,12 @@ const digestOf = (seed: string) =>
 const publish = (
   release: string,
   seed: string,
-  labels: { version?: string; revision?: string; revisions?: readonly string[] } = {},
+  labels: {
+    version?: string
+    revision?: string
+    revisions?: readonly string[]
+    created?: string
+  } = {},
 ) => {
   const digests = IMAGES.map((_, at) => digestOf(`${seed}${String(at)}`))
   IMAGES.forEach((image, at) => {
@@ -68,7 +114,8 @@ const publish = (
     fs.mkdirSync(dir, { recursive: true })
     const revision = labels.revisions?.[at] ?? labels.revision ?? `commit-${seed}`
     fs.writeFileSync(path.join(dir, 'labels'), `${labels.version ?? release} ${revision}\n`)
-    fs.writeFileSync(path.join(dir, 'id'), `id-${seed}-${image}\n`)
+    fs.writeFileSync(path.join(dir, 'id'), `${digests[at]!}\n`)
+    fs.writeFileSync(path.join(dir, 'created'), labels.created ?? '2026-01-01T00:00:00Z')
   })
   const scripts = path.join(fake, 'registry', `qualy-server@${digests[0]!}`, 'app', 'deploy')
   fs.mkdirSync(scripts, { recursive: true })
@@ -79,7 +126,15 @@ const publish = (
   ] as const) {
     fs.writeFileSync(
       path.join(scripts, name),
-      `#!/bin/sh\nprintf '%s %s %s %s %s\\n' "${release}" "${name}" "$*" "$QUALY_ENV_FILE" "$QUALY_DEPLOY_LOCK_HELD" >> "$FAKE/ran"\nsed -i.bak "s/^QUALY_RELEASE=.*/QUALY_RELEASE=${serves}/" "$QUALY_ENV_FILE"\n`,
+      `#!/bin/sh
+printf '%s %s %s %s %s\\n' "${release}" "${name}" "$*" "$QUALY_ENV_FILE" "$QUALY_DEPLOY_LOCK_HELD" >> "$FAKE/ran"
+[ "$FAKE_UPGRADE_FAIL" != 1 ] || exit 4
+active=$(sed -n 's/^QUALY_ACTIVE_COLOR=//p' "$QUALY_ENV_FILE")
+if [ "$active" = blue ]; then target=green; key=QUALY_RELEASE_GREEN; else target=blue; key=QUALY_RELEASE_BLUE; fi
+sed -i.bak -e "s/^QUALY_RELEASE=.*/QUALY_RELEASE=${serves}/" \\
+  -e "s/^QUALY_ACTIVE_COLOR=.*/QUALY_ACTIVE_COLOR=$target/" \\
+  -e "s/^$key=.*/$key=${serves}/" "$QUALY_ENV_FILE"
+`,
       { mode: 0o755 },
     )
   }
@@ -100,6 +155,29 @@ const run = (args: readonly string[], env: Record<string, string> = {}) =>
 const ran = () =>
   fs.existsSync(path.join(fake, 'ran')) ? fs.readFileSync(path.join(fake, 'ran'), 'utf8') : ''
 
+const localImage = (name: string) => path.join(fake, 'local', name)
+const pin = (tag: string) => path.join(root, 'releases', tag, 'prefetched')
+const cached = (tag: string, seed: string, created?: string) => {
+  const digests = publish(tag, seed, created === undefined ? {} : { created })
+  const fetched = run(['fetch', tag, ...digests])
+  expect(fetched.status, fetched.stderr).toBe(0)
+  // A release left on disk by the previous launcher does not carry a pin.
+  fs.unlinkSync(pin(tag))
+  return digests
+}
+const serving = (blue: string, green: string) => {
+  fs.writeFileSync(
+    path.join(root, '.env'),
+    `QUALY_ACTIVE_COLOR=blue\nQUALY_RELEASE=${blue}\nQUALY_RELEASE_BLUE=${blue}\nQUALY_RELEASE_GREEN=${green}\n`,
+  )
+  fs.symlinkSync(`releases/${blue}`, path.join(root, 'current'))
+}
+const removals = () =>
+  fs
+    .readFileSync(path.join(fake, 'docker.log'), 'utf8')
+    .split('\n')
+    .filter((line) => line.startsWith('image rm '))
+
 beforeEach(() => {
   fake = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-deploy-launcher-'))
   root = path.join(fake, 'opt')
@@ -110,9 +188,13 @@ beforeEach(() => {
   fs.writeFileSync(path.join(fake, 'bin', 'chown'), '#!/bin/sh\nexit 0\n', { mode: 0o755 })
   conf = path.join(fake, 'deploy.conf')
   fs.writeFileSync(conf, `QUALY_DEPLOY_REGISTRY=${REGISTRY}\nQUALY_DEPLOY_ROOT=${root}\n`)
-  fs.writeFileSync(path.join(root, '.env'), 'QUALY_ACTIVE_COLOR=\nQUALY_RELEASE=\n', {
-    mode: 0o600,
-  })
+  fs.writeFileSync(
+    path.join(root, '.env'),
+    'QUALY_ACTIVE_COLOR=\nQUALY_RELEASE=\nQUALY_RELEASE_BLUE=\nQUALY_RELEASE_GREEN=\n',
+    {
+      mode: 0o600,
+    },
+  )
   launcher = path.join(fake, 'qualy-deploy')
   const source = fs.readFileSync(LAUNCHER, 'utf8')
   expect(source).toContain('\nconf=/etc/qualy/deploy.conf\n')
@@ -130,9 +212,9 @@ describe('deploying a published release', () => {
     expect(done.status, done.stderr).toBe(0)
     const env = path.join(root, '.env')
     expect(ran()).toBe(`v1.0.0 upgrade.sh v1.0.0 ${env} ${env}\n`)
-    for (const image of IMAGES) {
+    for (const [at, image] of IMAGES.entries()) {
       expect(fs.readFileSync(path.join(fake, 'local', `${image}:v1.0.0`), 'utf8')).toBe(
-        `id-1-${image}\n`,
+        `${digests[at]!}\n`,
       )
     }
     expect(fs.readFileSync(path.join(root, 'releases/v1.0.0/server-digest'), 'utf8')).toBe(
@@ -227,6 +309,110 @@ describe('rolling back', () => {
     expect(back.status, back.stderr).toBe(0)
     expect(ran().trim().split('\n').at(-1)).toMatch(/^v2\.0\.0 rollback\.sh {2}/)
     expect(fs.readlinkSync(path.join(root, 'current'))).toBe('releases/v1.0.0')
+  })
+})
+
+describe('local release image retention', () => {
+  it('previews and removes only old, unreferenced Qualy images after an upgrade', () => {
+    cached('v1.0.1', '1')
+    const overwritten = cached('v1.0.2', '2')
+    serving('v1.0.1', 'v1.0.2')
+    cached('v1.0.8', '8', '2026-04-01T00:00:00Z')
+    const old = cached('v1.0.9', '9', '2026-02-01T00:00:00Z')
+    const inUse = cached('v1.0.4', '4')
+    fs.writeFileSync(path.join(fake, 'containers'), `exited ${inUse[1]!} unrelated:former-name\n`)
+    const aliased = cached('v1.0.5', '5')
+    fs.writeFileSync(localImage('another-project:kept'), `${aliased[0]!}\n`)
+    cached('v1.0.6', '6')
+    fs.unlinkSync(localImage('qualy-sandbox-runtime:v1.0.6'))
+    fs.writeFileSync(localImage('qualy-server:v99.0.0'), `${digestOf('ab')}\n`)
+    const future = publish('v1.0.7', '7', { created: '2026-12-01T00:00:00Z' })
+    expect(run(['fetch', 'v1.0.7', ...future]).status).toBe(0)
+
+    const preview = run(['image-gc-preview'])
+    expect(preview.status, preview.stderr).toBe(0)
+    expect(preview.stdout.trim().split('\n')).toHaveLength(1)
+    expect(preview.stdout).toContain('qualy-server:v1.0.9')
+    expect(removals()).toEqual([])
+    expect(fs.existsSync(pin('v1.0.7'))).toBe(true)
+
+    const next = publish('v1.0.3', '3')
+    expect(run(['fetch', 'v1.0.3', ...next]).status).toBe(0)
+    const done = run(['deploy', 'v1.0.3', ...next])
+    expect(done.status, done.stderr).toBe(0)
+    expect(fs.readlinkSync(path.join(root, 'current'))).toBe('releases/v1.0.3')
+    expect(fs.existsSync(pin('v1.0.3'))).toBe(false)
+    expect(fs.existsSync(pin('v1.0.7'))).toBe(true)
+    expect(removals().sort()).toEqual(
+      (
+        [
+          ['v1.0.2', overwritten],
+          ['v1.0.9', old],
+        ] as const
+      )
+        .map(
+          ([tag, digests]) =>
+            `image rm --no-prune ${IMAGES.flatMap((image, at) => [
+              `${REGISTRY}/${image}@${digests[at]}`,
+              `${image}:${tag}`,
+            ]).join(' ')}`,
+        )
+        .sort(),
+    )
+    const left = fs.readdirSync(path.join(fake, 'local'))
+    for (const tag of ['v1.0.1', 'v1.0.3', 'v1.0.4', 'v1.0.5', 'v1.0.7', 'v1.0.8']) {
+      expect(left.filter((name) => name.endsWith(`:${tag}`))).toHaveLength(3)
+    }
+    expect(left).toContain('qualy-server:v1.0.6')
+    expect(left).toContain('qualy-server:v99.0.0')
+    expect(left).toContain('another-project:kept')
+  })
+
+  it('does not clean up or unpin the target of a failed deploy', () => {
+    cached('v1.0.1', '1')
+    cached('v1.0.2', '2')
+    serving('v1.0.1', 'v1.0.2')
+    const next = publish('v1.0.3', '3')
+    expect(run(['fetch', 'v1.0.3', ...next]).status).toBe(0)
+    const failed = run(['deploy', 'v1.0.3', ...next], { FAKE_UPGRADE_FAIL: '1' })
+    expect(failed.status).toBe(4)
+    expect(fs.readlinkSync(path.join(root, 'current'))).toBe('releases/v1.0.1')
+    expect(fs.existsSync(pin('v1.0.3'))).toBe(true)
+    expect(removals()).toEqual([])
+  })
+
+  it.each(['cannot inspect containers', 'cannot remove an image'] as const)(
+    'does not fail a successful deploy when cleanup %s',
+    (failure) => {
+      cached('v1.0.1', '1')
+      cached('v1.0.2', '2')
+      cached('v1.0.4', '4', '2026-04-01T00:00:00Z')
+      serving('v1.0.1', 'v1.0.2')
+      fs.writeFileSync(path.join(fake, 'containers'), `exited ${digestOf('f')} other:v1\n`)
+      const next = publish('v1.0.3', '3')
+      const done = run(
+        ['deploy', 'v1.0.3', ...next],
+        failure === 'cannot inspect containers'
+          ? { FAKE_INSPECT_FAIL: '1' }
+          : { FAKE_REMOVE_FAIL: 'qualy-server:v1.0.2' },
+      )
+      expect(done.status, done.stderr).toBe(0)
+      expect(done.stderr).toContain('WARNING: v1.0.3 is deployed, but image cleanup did not finish')
+      expect(fs.readlinkSync(path.join(root, 'current'))).toBe('releases/v1.0.3')
+      expect(removals()).toHaveLength(failure === 'cannot inspect containers' ? 0 : 1)
+    },
+  )
+
+  it('respects a host that disabled cleanup', () => {
+    cached('v1.0.1', '1')
+    cached('v1.0.2', '2')
+    cached('v1.0.4', '4')
+    serving('v1.0.1', 'v1.0.2')
+    fs.appendFileSync(conf, 'QUALY_DEPLOY_IMAGE_KEEP=0\n')
+    const done = run(['deploy', 'v1.0.3', ...publish('v1.0.3', '3')])
+    expect(done.status, done.stderr).toBe(0)
+    expect(done.stdout).toContain('image cleanup is disabled')
+    expect(removals()).toEqual([])
   })
 })
 

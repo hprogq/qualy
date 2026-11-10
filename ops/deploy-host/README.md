@@ -16,6 +16,7 @@ registry, not an image name, not a script.
 /opt/qualy/.env                  the deployment's settings (deploy/.env.example); root 0600
 /opt/qualy/collector.env         the telemetry uplink's credentials; root 0600
 /opt/qualy/releases/<release>/   each release's deploy/, as its server image carries it; root-owned
+/opt/qualy/releases/<release>/prefetched   a pin left by an explicit fetch, until deployed
 /opt/qualy/current               -> releases/<the release .env records as serving>
 ```
 
@@ -69,6 +70,7 @@ the release's `release.json`, or `rollback`. By hand, as root:
 ```sh
 qualy-deploy check
 qualy-deploy doctor                                          # every fact the deployment should hold; reads only
+qualy-deploy image-gc-preview                                 # show exactly which local image references would go
 qualy-deploy fetch v0.1.0 sha256:... sha256:... sha256:...   # pull, verify, extract; runs nothing
 QUALY_ENV_FILE=/opt/qualy/.env /opt/qualy/current/deploy/backup.sh /var/backups/qualy
 ```
@@ -80,6 +82,21 @@ the color and the public address serve, the certificate's days left,
 PostgreSQL, the collector, containers that restarted, the last whole backup's
 age and its cron entry, free disk and memory - PASS, WARN or FAIL per line,
 exit 1 when anything fails. It changes nothing and takes no lock.
+
+### 本机镜像保留
+
+`deploy` 成功且旧色停下后，launcher 在同一把部署锁内清理镜像。无论是否刚回滚，两个颜色记录的版本始终保留；
+按 server 镜像构建时间从新到旧补足三套。单独执行 `fetch` 会保护预拉版本，直到该版本成功部署，不计入补足名额。
+root 可在 `/etc/qualy/deploy.conf` 用 `QUALY_DEPLOY_IMAGE_KEEP` 调整目标数量（1–99），设为 `0` 停用自动删除。
+这是保留目标，不是硬上限；受保护的版本可能使实际保留数更多。
+
+只清理由 launcher 拉取且能核对来源的完整三件套：镜像标签、仓库来源和已保存的 server digest 必须一致。
+任何容器（包括已停止的）引用其中一份镜像，或镜像有额外标签，整套都不删。只删除通过核对的本机引用，
+包括 Docker containerd 镜像存储保留的独立 digest 引用；不做全局清理，不动远端镜像仓库、容器、数据卷、
+备份或 Web release store。清理失败记录告警，不改变已成功的部署结果。
+
+从旧 launcher 升级时，如果已有预拉但还没部署的版本，先对这些版本重新执行 `fetch` 补上保护，再运行
+`image-gc-preview` 检查当前候选。预览沿用同一把锁，不删除镜像。
 
 `current` always names the release `.env` records as serving, and only the
 launcher moves it, after it has run one of a release's scripts; a fetch

@@ -6,6 +6,7 @@
 #
 #   qualy-deploy check
 #   qualy-deploy doctor
+#   qualy-deploy image-gc-preview
 #   qualy-deploy fetch    <release> <server> <sandbox-runtime> <sandbox-authoring>
 #   qualy-deploy deploy   <release> <server> <sandbox-runtime> <sandbox-authoring> [--maintenance]
 #   qualy-deploy rollback
@@ -63,7 +64,17 @@ refuse() {
   exit 1
 }
 usage() {
-  refuse "usage: qualy-deploy check | doctor | fetch <release> <server> <sandbox-runtime> <sandbox-authoring> | deploy <release> <server> <sandbox-runtime> <sandbox-authoring> [--maintenance] | rollback"
+  refuse "usage: qualy-deploy check | doctor | image-gc-preview | fetch <release> <server> <sandbox-runtime> <sandbox-authoring> | deploy <release> <server> <sandbox-runtime> <sandbox-authoring> [--maintenance] | rollback"
+}
+
+release_name() {
+  case $1 in *[!A-Za-z0-9._-]*) return 1 ;; esac
+  printf '%s\n' "$1" | grep -Eqx 'v[0-9A-Za-z][0-9A-Za-z._-]{0,62}'
+}
+
+image_digest() {
+  case $1 in *[!a-z0-9:]*) return 1 ;; esac
+  printf '%s\n' "$1" | grep -Eqx 'sha256:[0-9a-f]{64}'
 }
 
 # settings are read, never sourced
@@ -157,10 +168,10 @@ extract() {
 fetch() {
   local digest server digests image
   release=$1
-  printf '%s' "$release" | grep -Eqx 'v[0-9A-Za-z][0-9A-Za-z._-]{0,62}' ||
+  release_name "$release" ||
     refuse "$release is not a release name (v...)"
   for digest in "$2" "$3" "$4"; do
-    printf '%s' "$digest" | grep -Eqx 'sha256:[0-9a-f]{64}' ||
+    image_digest "$digest" ||
       refuse "$digest is not an image digest (sha256:<64 hex>)"
   done
   server=$2
@@ -196,6 +207,146 @@ run() {
   return "$status"
 }
 
+# A complete release that this launcher fetched, still pointing at the
+# expected registry. Unknown, retagged or incomplete groups stay put.
+# Print the server image's build time for ordering, not the tag or directory's
+# mtime (pulling an old release again does not make it a newer build).
+image_group() {
+  local tag refs server build revision used removal image ref info id created version commit tags digests digest origin named local_name
+  tag=$1
+  refs=$2
+  server=$(cat "$root/releases/$tag/server-digest") || return 1
+  image_digest "$server" || return 1
+  revision=
+  used=no
+  removal=
+  for image in $IMAGES; do
+    ref=$image:$tag
+    info=$(docker image inspect -f '{{.Id}}|{{.Created}}|{{with index .Config "Labels"}}{{index . "org.opencontainers.image.version"}}|{{index . "org.opencontainers.image.revision"}}{{else}}|{{end}}|{{join .RepoTags " "}}|{{join .RepoDigests " "}}' "$ref" 2>/dev/null) || return 1
+    IFS='|' read -r id created version commit tags digests <<EOF
+$info
+EOF
+    [ "$version" = "$tag" ] && image_digest "$id" || return 1
+    case $commit in '' | *-dirty) return 1 ;; esac
+    [ -z "$revision" ] || [ "$commit" = "$revision" ] || return 1
+    revision=$commit
+    origin=
+    for digest in $digests; do
+      case $digest in
+        "$registry/$image@"*)
+          [ -z "$origin" ] || return 1
+          origin=${digest##*@}
+          image_digest "$origin" || return 1
+          ;;
+        "$image@$id") ;; # Docker may also report a digest under the local name
+        *) return 1 ;;
+      esac
+    done
+    [ -n "$origin" ] || return 1
+    local_name=no
+    for named in $tags; do
+      case $named in
+        "$ref") local_name=yes ;;
+        "$registry/$image@$origin")
+          # The containerd image store keeps a separate reference after a
+          # digest pull. Untagging only the local name does not free it.
+          removal="$removal $named"
+          ;;
+        *) return 1 ;;
+      esac
+    done
+    [ "$local_name" = yes ] || return 1
+    removal="$removal $ref"
+    if [ "$image" = qualy-server ]; then
+      [ "$origin" = "$server" ] || return 1
+      printf '%s\n' "$created" | grep -Eqx '[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.]+Z' || return 1
+      build=$created
+    fi
+    case " $refs " in *" $id "* | *" $ref "* | *" $registry/$image@$origin "*) used=yes ;; esac
+  done
+  printf '%s %s %s%s\n' "$build" "$tag" "$used" "$removal"
+}
+
+image_gc() (
+  local mode keep active serving blue green standby ids refs dir tag groups ranked spare build used removal planned failed
+  mode=$1
+  active=$(env_value QUALY_ACTIVE_COLOR)
+  serving=$(env_value QUALY_RELEASE)
+  blue=$(env_value QUALY_RELEASE_BLUE)
+  green=$(env_value QUALY_RELEASE_GREEN)
+  case $active in
+    blue) [ "$serving" = "$blue" ] || return 1; standby=$green ;;
+    green) [ "$serving" = "$green" ] || return 1; standby=$blue ;;
+    *) return 1 ;;
+  esac
+  release_name "$serving" && [ "$serving" = "${2:-$serving}" ] &&
+    [ "$(readlink "$root/current")" = "releases/$serving" ] || return 1
+  [ -z "$standby" ] || release_name "$standby" || return 1
+  if [ "$mode" = apply ]; then
+    rm -f "$root/releases/$serving/prefetched" || return 1
+  fi
+  keep=$(setting QUALY_DEPLOY_IMAGE_KEEP)
+  keep=${keep:-3}
+  case $keep in
+    0) say 'image cleanup is disabled'; return 0 ;;
+    [1-9] | [1-9][0-9]) ;;
+    *) say 'invalid QUALY_DEPLOY_IMAGE_KEEP (expected 0-99)' >&2; return 1 ;;
+  esac
+  spare=$((keep - 1))
+  if [ -n "$standby" ] && [ "$standby" != "$serving" ]; then
+    spare=$((spare - 1))
+  fi
+
+  # Inspect all states and use the image ID as well as the original name:
+  # a stopped container can have been created by digest or a different tag.
+  ids=$(docker container ls --all --quiet --no-trunc) || return 1
+  refs=$(
+    set -f
+    set -- $ids
+    [ "$#" -eq 0 ] || docker container inspect -f '{{.Image}} {{.Config.Image}}' "$@"
+  ) || return 1
+  refs=$(printf '%s' "$refs" | tr '\n' ' ')
+
+  groups=
+  for dir in "$root"/releases/v*; do
+    [ -f "$dir/server-digest" ] || continue
+    tag=${dir##*/}
+    release_name "$tag" || continue
+    [ "$tag" != "$blue" ] && [ "$tag" != "$green" ] && [ ! -e "$dir/prefetched" ] || continue
+    build=$(image_group "$tag" "$refs") || continue
+    groups="$groups
+$build"
+  done
+  ranked=$(printf '%s\n' "$groups" | LC_ALL=C sort -r) || return 1
+  planned=no
+  failed=0
+  set -f
+  while read -r build tag used removal; do
+    [ -n "$tag" ] || continue
+    if [ "$spare" -gt 0 ]; then
+      spare=$((spare - 1))
+      continue
+    fi
+    [ "$used" = no ] || continue
+    planned=yes
+    set -- $removal
+    if [ "$mode" = preview ]; then
+      say "would remove $*"
+    elif docker image rm --no-prune "$@" > /dev/null; then
+      say "removed local images for $tag"
+    else
+      say "WARNING: could not remove all local images for $tag" >&2
+      failed=1
+    fi
+  done <<EOF
+$ranked
+EOF
+  if [ "$mode" = preview ] && [ "$planned" = no ]; then
+    say 'no local release images are eligible for cleanup'
+  fi
+  return "$failed"
+)
+
 case ${1:-} in
   check)
     [ $# -eq 1 ] || usage
@@ -213,10 +364,17 @@ case ${1:-} in
       refuse "the serving release ($(readlink "$root/current" 2> /dev/null || echo none)) carries no deploy/doctor.sh"
     QUALY_ENV_FILE=$root/.env exec "$root/current/deploy/doctor.sh"
     ;;
+  image-gc-preview)
+    [ $# -eq 1 ] || usage
+    need_env
+    take_lock
+    image_gc preview || refuse 'could not plan image cleanup; nothing was removed'
+    ;;
   fetch)
     [ $# -eq 5 ] || usage
     take_lock
     fetch "$2" "$3" "$4" "$5"
+    touch "$root/releases/$release/prefetched"
     ;;
   deploy)
     [ $# -eq 5 ] || { [ $# -eq 6 ] && [ "$6" = --maintenance ]; } || usage
@@ -224,6 +382,9 @@ case ${1:-} in
     take_lock
     fetch "$2" "$3" "$4" "$5"
     if [ $# -eq 6 ]; then run "$2" upgrade.sh "$2" --maintenance; else run "$2" upgrade.sh "$2"; fi
+    if ! image_gc apply "$2"; then
+      say "WARNING: $2 is deployed, but image cleanup did not finish" >&2
+    fi
     ;;
   rollback)
     [ $# -eq 1 ] || usage
@@ -231,7 +392,7 @@ case ${1:-} in
     take_lock
     serving=$(env_value QUALY_RELEASE)
     [ -n "$serving" ] || refuse "nothing serves yet; there is nothing to roll back"
-    printf '%s' "$serving" | grep -Eqx 'v[0-9A-Za-z][0-9A-Za-z._-]{0,62}' ||
+    release_name "$serving" ||
       refuse "$env_file records $serving as serving, which is not a release name"
     run "$serving" rollback.sh
     ;;

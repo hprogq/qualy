@@ -163,13 +163,16 @@ v0.1.0-rc.3 的 job 因此跑了十分钟,一个 map 也没登记上),所以上�
 
 `deploy/` 进 server 镜像(`prune-server-image.mjs` 保留它;`check-release-image.ts` 逐字节比对它、并确认其中没有任何部署自己的
 env 文件)。服务器上只有一个不随 release 更新的东西:root 安装的 launcher `ops/deploy-host/qualy-deploy`,读 root 所有的
-`/etc/qualy/deploy.conf`(镜像仓库路径)。它接受的只有 `deploy <release> <三个 sha256 digest> [--maintenance]`、`rollback`、`fetch`、`check`:
+`/etc/qualy/deploy.conf`(镜像仓库路径)。写操作只有 `deploy <release> <三个 sha256 digest> [--maintenance]`、`rollback` 和 `fetch`:
 按 digest 从配置里的仓库拉三个镜像,核对都标着该 release、同一个非 dirty 的 revision,本机名 `qualy-*:<release>` 若已指向别的镜像即拒绝,
 三个都通过才命名;从该 server 镜像 `docker create` + `docker cp` 取出 `deploy/` 到 `/opt/qualy/releases/<release>/`(属 root、去掉组与其他人的写权限),
 以 `/opt/qualy/.env` 为 env 文件、在 launcher 持有的同一把锁下执行其 `upgrade.sh`。回滚执行**正在服务的**(较新的)release 的
 `rollback.sh`——回到的那个更旧,它的脚本未必认得新脚本写进 `.env` 的东西;按名字部署一个更旧的 release 则用它自己的脚本,所以
 `.env` 的格式只增不改。每步之后 `/opt/qualy/current` 指向 `.env` 记为服务中的 release:备份的 cron、手工恢复、边缘的维护页都从这里找文件。
 `.env`、`collector.env`(脚本经 `QUALY_COLLECTOR_ENV_FILE` 在 `.env` 旁边找它)与 Caddy 片段永远在镜像之外。
+
+部署成功且旧色停下后，launcher 在同一把锁内回收本机旧镜像。保留当前色、回滚色和明确预拉的镜像；保留设置与首次启用的预览见
+[宿主镜像保留策略](../ops/deploy-host/README.md#本机镜像保留)。它与供旧浏览器标签页读取的 Web 资源保留策略独立。
 
 SSH 用专门的 `qualy-deploy` 账户:`authorized_keys` 里 `restrict,command="/usr/local/sbin/qualy-deploy"`,不在 docker 组,sudo 只允许这一个文件;
 launcher 以非 root 身份被调起时把 `SSH_ORIGINAL_COMMAND` 按空白切词(不做通配展开)经 `sudo -n` 交给自己,以 root 逐个校验。
