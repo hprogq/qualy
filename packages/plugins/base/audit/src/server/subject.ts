@@ -1,4 +1,5 @@
 import { Effect } from 'effect'
+import { transaction } from '@qualy/plugin-database/server'
 import { pageWindow } from '@qualy/api-kit/schema'
 import { PERSON_TARGET } from '@qualy/audit-contract/action'
 import type { SubjectEventsPage, SubjectEventsQuery } from '@qualy/audit-contract/effect'
@@ -71,4 +72,4 @@ export const subjectEvents = (query: SubjectEventsQuery, voices: ReadonlyMap<str
       total,
       page: window.page,
     } satisfies SubjectEventsPage
-  })
+  }).pipe((effect) => transaction(effect, { isolation: 'repeatable read', readOnly: true }))
