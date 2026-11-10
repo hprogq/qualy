@@ -155,6 +155,23 @@ jobs:
         run: pnpm qualy database verify
       - name: drop guard
         run: pnpm qualy database drop-guard
+      # Auth HTTP tests drive real navigations and concurrent tabs.
+      - name: resolve playwright version
+        id: playwright
+        run: echo "version=$(node -e "console.log(require('playwright/package.json').version)")" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ steps.playwright.outputs.version }}
+      - name: install chromium
+        timeout-minutes: 8
+        # The browser cache does not contain apt dependencies. The Azure
+        # mirror fetched 32.1 MB at 91.1 kB/s on 2026-10-02; use Ubuntu's
+        # official HTTPS mirror and bound stalled connections instead.
+        run: |
+          printf '%s\n' 'https://archive.ubuntu.com/ubuntu/' | sudo tee /etc/apt/apt-mirrors.txt > /dev/null
+          printf '%s\n' 'Acquire::Retries "2";' 'Acquire::http::Timeout "20";' 'Acquire::https::Timeout "20";' | sudo tee /etc/apt/apt.conf.d/80qualy-ci > /dev/null
+          pnpm exec playwright install --with-deps chromium
       # Before the build, deliberately. A suite that needs the frontend built
       # is a suite coupled to it, and the web plugin's own tests were: they
       # pointed at client-dist and died here with WebUnservable. Reordering
@@ -217,22 +234,6 @@ jobs:
       # the policy the shell sends is only known to be enforceable by a
       # browser running the page under it: chromium opens the boot graph
       # against a host that enforces rather than reports
-      - name: resolve playwright version
-        id: playwright
-        run: echo "version=$(node -e "console.log(require('playwright/package.json').version)")" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@v6
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ steps.playwright.outputs.version }}
-      - name: install chromium
-        timeout-minutes: 8
-        # The browser cache does not contain apt dependencies. The Azure
-        # mirror fetched 32.1 MB at 91.1 kB/s on 2026-10-02; use Ubuntu's
-        # official HTTPS mirror and bound stalled connections instead.
-        run: |
-          printf '%s\n' 'https://archive.ubuntu.com/ubuntu/' | sudo tee /etc/apt/apt-mirrors.txt > /dev/null
-          printf '%s\n' 'Acquire::Retries "2";' 'Acquire::http::Timeout "20";' 'Acquire::https::Timeout "20";' | sudo tee /etc/apt/apt.conf.d/80qualy-ci > /dev/null
-          pnpm exec playwright install --with-deps chromium
       - name: Node API and Bun development renderer work together
         timeout-minutes: 3
         env:
