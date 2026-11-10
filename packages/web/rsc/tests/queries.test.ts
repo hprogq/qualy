@@ -43,6 +43,10 @@ describe('how a read ended', () => {
     expect(settle(Exit.fail(refusal))).toEqual({ kind: 'refused', error: refusal })
     expect(settle(Exit.fail(status(503)))).toEqual({ kind: 'unanswered' })
     expect(settle(Exit.fail(undeclared(503)))).toEqual({ kind: 'unanswered' })
+    const offline = new HttpClientError.HttpClientError({
+      reason: new HttpClientError.TransportError({ request, cause: new Error('offline') }),
+    })
+    expect(settle(Exit.fail(offline))).toEqual({ kind: 'unanswered' })
   })
 
   it('ends with a reader who left, and throws a bug', () => {

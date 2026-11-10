@@ -85,12 +85,13 @@ describe('a read that follows the html', () => {
       shouldRedactErrors: () => false,
     })
     let aborted = false
+    let finish!: (value: string) => void
     const ask = vi.fn(
       ({ signal }: { signal: AbortSignal }) =>
-        new Promise<string>((_resolve, reject) => {
+        new Promise<string>((resolve) => {
+          finish = resolve
           signal.addEventListener('abort', () => {
             aborted = true
-            reject(new Error('aborted'))
           })
         }),
     )
@@ -114,6 +115,10 @@ describe('a read that follows the html', () => {
     expect(client.getQueryState(KEY)?.error).toEqual({ _tag: 'REFUSED' })
     expect(ask).toHaveBeenCalledTimes(1)
     expect(aborted).toBe(true)
+    finish('late success')
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    expect(client.getQueryState(KEY)?.status).toBe('error')
+    expect(client.getQueryData(KEY)).toBeUndefined()
   })
 
   it('does not apply a refused snapshot over a cache entry changed before commit', async () => {
