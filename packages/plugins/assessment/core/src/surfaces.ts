@@ -56,6 +56,13 @@ export const calculatorAuthoringOptions = defineUiCollection<CalculatorAuthoring
   }),
 })
 
+declare module '@qualy/ui-contract' {
+  interface UiSlotContextTypes {
+    'assessment/calculator-editor': CalculatorEditorContext
+    'assessment/calculator-summary': CalculatorSummaryContext
+  }
+}
+
 /**
  * Editing the chosen calculator's own configuration.
  *

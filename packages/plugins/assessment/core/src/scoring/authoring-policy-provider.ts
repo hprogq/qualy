@@ -27,7 +27,7 @@ import {
 } from '../plugin.ts'
 
 export const bindAuthoringPolicies = (
-  contributions: readonly Contributed<ScoringAuthoringPolicyRegistration<any>>[],
+  contributions: readonly Contributed<ScoringAuthoringPolicyRegistration<unknown>>[],
 ) =>
   Effect.gen(function* () {
     const definitions = yield* ScoringDefinitionCatalog

@@ -25,7 +25,7 @@ import { auditStoredPlans, sweepScoringPlans } from './backfill.ts'
  * through the same binding and the same refusals the host does.
  */
 export const bindScoringRuntimes = (
-  contributions: readonly Contributed<CalculatorRegistration<any>>[],
+  contributions: readonly Contributed<CalculatorRegistration<unknown>>[],
 ) =>
   Effect.gen(function* () {
     const definitions = yield* ScoringDefinitionCatalog

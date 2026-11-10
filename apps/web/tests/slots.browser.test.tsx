@@ -1,6 +1,7 @@
 import { lazy, useState } from 'react'
 import { describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
+import { defineUiSlot } from '@qualy/ui-contract'
 import { UiSlot } from '@qualy/web-runtime'
 import { emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
 
@@ -11,9 +12,23 @@ import { emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
 // mounts a new one. Everything the user had typed disappears and every query
 // the component owns refetches, for a locale switch or a manifest refresh.
 
-const TOKEN = { key: 'test/slot' } as unknown as Parameters<typeof UiSlot>[0]['token']
+declare module '@qualy/ui-contract' {
+  interface UiSlotContextTypes {
+    'test/slot': string
+  }
+}
+const TOKEN = defineUiSlot({ key: 'test/slot', cardinality: 'one' })
 
-function Counter({ context }: { context?: unknown }) {
+const invalidSlots = () => {
+  // @ts-expect-error This token's context is required.
+  const missing = <UiSlot token={TOKEN} />
+  // @ts-expect-error A differently shaped context does not widen the token.
+  const wrong = <UiSlot token={TOKEN} context={{ navigationId: 'other' }} />
+  return [missing, wrong]
+}
+void invalidSlots
+
+function Counter({ context }: { context: string }) {
   const [clicks, setClicks] = useState(0)
   return (
     <button type="button" onClick={() => setClicks((count) => count + 1)}>

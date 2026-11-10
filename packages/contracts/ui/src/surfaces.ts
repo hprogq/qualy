@@ -72,29 +72,53 @@ export interface UiCollectionToken<TContribution, TResolved = Rendered<TContribu
   // a third-party plugin contributes to - so the single place where the item
   // comes from outside this repository was the single place nothing checked
   // what it looked like.
-  readonly schema: Schema.Top
+  readonly schema: Schema.Top & { readonly Type: TContribution }
   // phantom members so both types survive inference; never assigned
   readonly __item?: TContribution
   readonly __resolved?: TResolved
 }
 
-export interface UiSlotToken {
+/** Plugins augment this map for the slots whose context they own. */
+export interface UiSlotContextTypes {
+  'app-shell/header-actions': undefined
+  'app-shell/user-menu': undefined
+  'app-shell/drawer-identity': undefined
+  'app-shell/drawer-account': undefined
+  'app-shell/drawer-sign-out': DrawerSignOutContext | undefined
+  'workspace-shell/context': undefined
+  'workspace-shell/navigation-badge': NavigationBadgeContext
+  'user-detail-shell/navigation-badge': NavigationBadgeContext
+  'iam/user-detail-header': undefined
+  'account-shell/header': undefined
+  'iam/resource-grant-renderer': ResourceGrantContext
+  'iam/person-card': PersonCardContext
+  'iam/people-picker': PeoplePickerContext
+  'iam/people-picker-view': PeoplePickerViewContext
+  'iam/people-import-picker': PeopleImportContext
+  'iam/users-actions': UsersPageActionsContext
+  'iam/org-node-picker': OrgNodePickerContext
+  'iam/org-node-picker-view': OrgNodePickerViewContext
+}
+export type UiSlotKey = Extract<keyof UiSlotContextTypes, NamespacedId>
+export type UiSlotContext<K extends UiSlotKey> = UiSlotContextTypes[K]
+
+export interface UiSlotToken<K extends UiSlotKey = UiSlotKey> {
   readonly kind: 'slot'
-  readonly key: NamespacedId
+  readonly key: K
   readonly cardinality: 'one' | 'many'
 }
 
 export function defineUiCollection<TContribution, TResolved = Rendered<TContribution>>(options: {
   key: NamespacedId
-  schema: Schema.Top
+  schema: Schema.Top & { readonly Type: TContribution }
 }): UiCollectionToken<TContribution, TResolved> {
   return { kind: 'collection', key: options.key, schema: options.schema }
 }
 
-export function defineUiSlot(options: {
-  key: NamespacedId
+export function defineUiSlot<K extends UiSlotKey>(options: {
+  key: K
   cardinality: 'one' | 'many'
-}): UiSlotToken {
+}): UiSlotToken<K> {
   return { kind: 'slot', key: options.key, cardinality: options.cardinality }
 }
 
@@ -167,7 +191,9 @@ export interface ResolvedNavigationGroup extends Omit<NavigationGroup, 'label'> 
 // classic injection vectors and never legitimate navigation
 const EXTERNAL_HREF = /^(https?:\/\/|mailto:|tel:)/
 
-const namespaced = Schema.String.check(Schema.isPattern(NAMESPACED_ID))
+const namespaced = Schema.TemplateLiteral([Schema.String, '/', Schema.String]).check(
+  Schema.isPattern(NAMESPACED_ID),
+)
 
 const navigationItemSchema = Schema.Struct({
   id: namespaced,

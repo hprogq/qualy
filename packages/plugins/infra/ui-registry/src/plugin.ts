@@ -15,6 +15,7 @@ import {
   type CollectionDeclaration,
   type UiCollectionToken,
   type UiSlotToken,
+  type UiSlotKey,
 } from '@qualy/ui-contract'
 import {
   ExtensionPoint,
@@ -152,7 +153,7 @@ export const Ui = {
     }),
 
   /** a renderer for a named slot */
-  slot: (declaration: SlotDeclaration): PluginFeature =>
+  slot: (declaration: Omit<SlotDeclaration, 'key'> & { readonly key: UiSlotKey }): PluginFeature =>
     Plugin.contribute(UiSurfaceDeclarations, { slots: [declaration] }),
 
   /**
@@ -161,7 +162,7 @@ export const Ui = {
    * this plugin's surfaces are registered.
    */
   collection: <TContribution>(
-    token: UiCollectionToken<TContribution, any>,
+    token: UiCollectionToken<TContribution, unknown>,
     item: Omit<CollectionDeclaration<NoInfer<TContribution>>, 'collection'>,
   ): PluginFeature =>
     Plugin.contribute(UiSurfaceDeclarations, { collections: [{ ...item, collection: token }] }),

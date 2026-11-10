@@ -92,7 +92,9 @@ function RailEntry({
   icon?: string
   to: string
   /** the slot a live count beside this entry is contributed to, when the shell has one */
-  badge: UiSlotToken | undefined
+  badge:
+    | UiSlotToken<'workspace-shell/navigation-badge' | 'user-detail-shell/navigation-badge'>
+    | undefined
   /**
    * Whether only this exact path counts as being here.
    *
@@ -191,7 +193,9 @@ function PersonEntry({
   label: ResolvedNavigationItem['label']
   to: string
   exact: boolean
-  badge: UiSlotToken | undefined
+  badge:
+    | UiSlotToken<'workspace-shell/navigation-badge' | 'user-detail-shell/navigation-badge'>
+    | undefined
 }) {
   const navigation = useSectionNavigation(to, exact)
   return (
@@ -239,7 +243,9 @@ function DrawerEntry({
   label: ResolvedNavigationItem['label']
   to: string
   exact: boolean
-  badge: UiSlotToken | undefined
+  badge:
+    | UiSlotToken<'workspace-shell/navigation-badge' | 'user-detail-shell/navigation-badge'>
+    | undefined
 }) {
   const navigation = useSectionNavigation(to, exact)
   return (
@@ -289,9 +295,11 @@ export interface RailShellProps {
   /** the collection whose entries fill the rail */
   navigation: UiCollectionToken<NavigationItem, ResolvedNavigationItem>
   /** the slot that says what is open, above the rail */
-  context: UiSlotToken
+  context: UiSlotToken<
+    'workspace-shell/context' | 'iam/user-detail-header' | 'account-shell/header'
+  >
   /** the slot a live count beside a rail entry is contributed to */
-  badge?: UiSlotToken
+  badge?: UiSlotToken<'workspace-shell/navigation-badge' | 'user-detail-shell/navigation-badge'>
   /**
    * The strip as a banner that takes the height its contribution needs,
    * rather than a one-line bar of fixed height.

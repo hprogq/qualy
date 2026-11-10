@@ -82,7 +82,7 @@ export interface LayoutDeclaration {
  * item stops the boot at its plugin rather than reaching the browser.
  */
 export interface CollectionDeclaration<TContribution = unknown> {
-  readonly collection: UiCollectionToken<TContribution, any>
+  readonly collection: UiCollectionToken<TContribution, unknown>
   readonly id: NamespacedId
   readonly value: TContribution
   readonly visibility: UiVisibility

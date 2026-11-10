@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import type { UiCollectionToken, UiSlotToken } from '@qualy/ui-contract'
+import type { UiCollectionToken, UiSlotContext, UiSlotKey, UiSlotToken } from '@qualy/ui-contract'
 import { useManifest, useRuntime } from '../runtime-context.tsx'
 import { PluginComponent, type PluginComponentProps } from './component-boundary.tsx'
 import { SlotReferenceComponent } from './slot-reference.tsx'
@@ -34,15 +34,14 @@ export function useUiCollection<TContribution, TResolved>(
 // by the surrounding layout or page, never serialized into the manifest.
 // A failing or missing slot item takes no layout space but is always
 // reported — silence here used to hide broken contributions completely.
-export function UiSlot({
+export function UiSlot<K extends UiSlotKey>({
   token,
   context,
   fallback,
   loading,
   waitForFirstPaint = false,
 }: {
-  token: UiSlotToken
-  context?: unknown
+  token: UiSlotToken<K>
   /**
    * What to show when nobody contributes here.
    *
@@ -64,7 +63,9 @@ export function UiSlot({
   loading?: ReactNode
   /** keep this chrome in the first HTML frame of a server-rendered document */
   waitForFirstPaint?: boolean
-}) {
+} & (undefined extends NoInfer<UiSlotContext<K>>
+  ? { context?: NoInfer<UiSlotContext<K>> }
+  : { context: NoInfer<UiSlotContext<K>> })) {
   const manifest = useManifest()
   const items = manifest.slots[token.key] ?? []
   if (items.length === 0) return <>{fallback ?? null}</>

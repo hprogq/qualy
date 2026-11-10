@@ -458,7 +458,7 @@ export const ScoringDefinitions = ExtensionPoint.make<ScoringDefinition>(
  * root discharges them with the running services. That is the one declared
  * erasure of this model, re-proven by the boot.
  */
-export const ScoringRuntimes = ExtensionPoint.make<CalculatorRegistration<any>>(
+export const ScoringRuntimes = ExtensionPoint.make<CalculatorRegistration<unknown>>(
   '@qualy/plugin-assessment/scoring-runtimes',
   { phase: 'runtime' },
 )
@@ -516,7 +516,7 @@ export interface ScoringAuthoringPolicyRegistration<R = never> {
 }
 
 export const ScoringAuthoringPolicies = ExtensionPoint.make<
-  ScoringAuthoringPolicyRegistration<any>
+  ScoringAuthoringPolicyRegistration<unknown>
 >('@qualy/plugin-assessment/scoring-authoring-policies', { phase: 'runtime' })
 
 /**
@@ -701,7 +701,7 @@ export const Scoring = {
     }
     return [
       Plugin.contribute(ScoringDefinitions, definition),
-      Plugin.contribute(ScoringRuntimes, registration as CalculatorRegistration<any>),
+      Plugin.contribute(ScoringRuntimes, registration),
     ] as const
   },
 
@@ -717,10 +717,7 @@ export const Scoring = {
    */
   authoringPolicy: <R>(registration: ScoringAuthoringPolicyRegistration<R>): PluginFeature => {
     refuseRefFormat(registration.ref)
-    return Plugin.contribute(
-      ScoringAuthoringPolicies,
-      registration as ScoringAuthoringPolicyRegistration<any>,
-    )
+    return Plugin.contribute(ScoringAuthoringPolicies, registration)
   },
 
   definitionProvider: Plugin.provideExtension(ScoringDefinitions, {
