@@ -1,4 +1,5 @@
 'use client'
+import { LibrarySearch } from './LibrarySearch.tsx'
 import { FormulaPager } from './FormulaPager.tsx'
 import { assertNever, useLocale } from '@qualy/web-i18n'
 
@@ -230,7 +231,6 @@ export default function FormulaListPage() {
       description={m.list_hint()}
       titleRef={titleRef}
       actions={newButton}
-      animateBody={false}
     >
       <div {...stylex.props(l.page)}>
         <section
@@ -253,13 +253,7 @@ export default function FormulaListPage() {
             </PageLink>
           </div>
 
-          <Input
-            aria-label={m.pagination_search()}
-            placeholder={m.pagination_search()}
-            maxLength={200}
-            value={search}
-            onChange={(event) => write({ search: event.target.value, page: '' })}
-          />
+          <LibrarySearch value={search} onSearch={(search) => write({ search, page: '' })} />
 
           <AsyncSection
             pending={functions.isPending}

@@ -1,5 +1,5 @@
 'use client'
-import { Input } from '@qualy/ui/input'
+import { LibrarySearch } from './LibrarySearch.tsx'
 import { FormulaPager } from './FormulaPager.tsx'
 import { useLocale } from '@qualy/web-i18n'
 import * as stylex from '@stylexjs/stylex'
@@ -83,12 +83,7 @@ export default function FormulaTemplatesPage() {
   const items = templates.data?.items ?? []
 
   return (
-    <Screen
-      title={m.templates_title()}
-      description={m.templates_hint()}
-      titleRef={titleRef}
-      animateBody={false}
-    >
+    <Screen title={m.templates_title()} description={m.templates_hint()} titleRef={titleRef}>
       <div {...stylex.props(l.page)}>
         <section
           data-formula-results
@@ -110,13 +105,7 @@ export default function FormulaTemplatesPage() {
             </PageLink>
           </div>
 
-          <Input
-            aria-label={m.pagination_search()}
-            placeholder={m.pagination_search()}
-            maxLength={200}
-            value={search}
-            onChange={(event) => write({ search: event.target.value, page: '' })}
-          />
+          <LibrarySearch value={search} onSearch={(search) => write({ search, page: '' })} />
 
           <AsyncSection
             pending={templates.isPending}

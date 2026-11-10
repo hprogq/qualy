@@ -43,6 +43,42 @@ describe('formula numbered pages', () => {
     ['library', 'listFormulaFunctions', FormulaListPage, 'formula-row'],
     ['templates', 'listFormulaTemplates', FormulaTemplatesPage, 'template-row'],
   ] as const) {
+    it(`${name} waits for Chinese composition and debounces its settled search`, async () => {
+      const list = vi.fn(({ query }: { query: Record<string, string> }) =>
+        Effect.succeed({ items: [row(1)], total: 1, page: Number(query['page']), pageSize: 50 }),
+      )
+      await renderScreen({
+        client: fakeClient({
+          app: { getManifest: emptyManifest() },
+          assessmentFormula: { [endpoint]: list },
+        }),
+        route: '/library?page=2',
+        path: '/library',
+        children: <Page />,
+      })
+      const search = page.getByRole('searchbox')
+      await expect.element(search).toBeVisible()
+      const input = search.element() as HTMLInputElement
+      input.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }))
+      await search.fill('zhong')
+      await new Promise((resolve) => setTimeout(resolve, 350))
+      expect(list.mock.calls.some(([request]) => request.query['search'])).toBe(false)
+      await search.fill('中')
+      input.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true, data: '中' }))
+      await expect
+        .poll(() => list.mock.calls.filter(([request]) => request.query['search']).length)
+        .toBe(1)
+      expect(list).toHaveBeenLastCalledWith({ query: { page: '1', search: '中' } })
+      expect(input.value).toBe('中')
+      expect(document.activeElement).toBe(input)
+      await search.fill('中文')
+      await search.fill('中文公式')
+      await expect
+        .poll(() => list.mock.calls.filter(([request]) => request.query['search']).length)
+        .toBe(2)
+      expect(list).toHaveBeenLastCalledWith({ query: { page: '1', search: '中文公式' } })
+    })
+
     it(`${name} jumps to a numbered page and resets the page atomically with search`, async () => {
       const list = vi.fn(({ query }: { query: Record<string, string> }) => {
         const total = query['search'] ? 1 : 151
@@ -64,7 +100,7 @@ describe('formula numbered pages', () => {
       await expect.element(pager).toHaveAttribute('data-page', '4')
       expect(page.getByTestId(testId).elements()).toHaveLength(1)
       expect(addressNow()).toContain('page=4')
-      await page.getByRole('textbox').fill('Needle')
+      await page.getByRole('searchbox').fill('Needle')
       await vi.waitFor(() =>
         expect(list).toHaveBeenLastCalledWith({ query: { page: '1', search: 'Needle' } }),
       )
