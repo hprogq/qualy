@@ -4,7 +4,7 @@ import { useCallback, useMemo, useState } from 'react'
 import { useApi, useRunApi, useManifest } from '@qualy/web-runtime'
 import type { ApiResult, ClientOf } from '@qualy/web-runtime/api'
 import { assessmentApi } from '../api.ts'
-import { useAttachmentFiles } from './AttachmentScope.tsx'
+import { useAttachmentFiles } from './attachment-files.ts'
 
 // One request for a screenful of files.
 //

@@ -369,6 +369,7 @@ const CROSS_PLUGIN_SURFACES: Readonly<Record<string, string>> = {
   '@qualy/plugin-storage/client': 'the upload registry a provider registers into',
   '@qualy/plugin-storage/backend': 'what a storage provider implements',
   '@qualy/plugin-storage/errors': 'the failures that capability defines',
+  '@qualy/plugin-storage/content': 'typed read contexts, metadata and the same-origin URL builder',
   '@qualy/plugin-storage/upload': 'the ticket a screen spends',
   '@qualy/plugin-mail/server': 'the mail capability: the registry a backend registers into',
   '@qualy/plugin-rum/server': 'the reporting capability',
@@ -391,6 +392,7 @@ const CROSS_PLUGIN_SURFACES: Readonly<Record<string, string>> = {
   '@qualy/plugin-auth/db': 'a table closure, which is the schema graph and not the runtime one',
   '@qualy/plugin-org/db': 'a table closure',
   '@qualy/plugin-rbac/db': 'a table closure',
+  '@qualy/plugin-assessment/api': 'the assessment read contract used by calculator slot prefetch',
   '@qualy/plugin-assessment/surfaces': 'the slot tokens assessment publishes',
   '@qualy/plugin-assessment/errors': 'the failures its api declares, which a neighbour api reuses',
 }

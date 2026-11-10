@@ -58,6 +58,7 @@ export const storageContentApiHandlers = HttpApiBuilder.group(
             STORAGE_BACKEND_UNAVAILABLE: (error) => Effect.die(error),
           }),
         )
+        yield* Effect.annotateCurrentSpan('qualy.storage.read_context', query.context)
         if (opened.target.kind === 'redirect')
           return HttpServerResponse.redirect(
             query.purpose === 'thumbnail'

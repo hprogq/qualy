@@ -141,31 +141,20 @@ describe('what a report may say an api call was', () => {
   })
 
   it('reads a fixed segment as itself where a parameter could also claim it', () => {
-    // `/api/assessment/attachments/uploads` is a route AND a possible value of
-    // `/api/assessment/attachments/:attachmentId`. More literals wins, which
-    // is the reading every router gives. Derived, so this stays true of
-    // whichever pair the api has next.
-    const overlaps = templates.flatMap((fixed) => {
-      const parts = segmentsOf(fixed)
-      if (parts.some(isParameter)) return []
-      const claimed = templates.filter(
-        (other) =>
-          other !== fixed &&
-          segmentsOf(other).length === parts.length &&
-          segmentsOf(other).every((segment, at) => isParameter(segment) || segment === parts[at]),
-      )
-      return claimed.length === 0 ? [] : [fixed]
-    })
-    expect(overlaps.length).toBeGreaterThan(0)
+    const fixed = '/api/probe/files/staged'
+    const overlapping = [
+      { method: 'GET', template: fixed },
+      { method: 'GET', template: '/api/probe/files/:attachmentId' },
+    ]
     // Both orders, because the routes arrive in whichever order clients are
     // built and a rule that only holds for one of them is not a rule. Asserted
     // after deliberately reversing: with the api's own order, answering with
     // the first claimant happens to be right, so this case passed a registry
     // that had no specificity rule at all.
-    for (const order of [routes, [...routes].reverse()]) {
+    for (const order of [overlapping, [...overlapping].reverse()]) {
       resetApiRoutes()
       registerApiRoutes(order)
-      for (const fixed of overlaps) expect(apiRouteFor(fixed)).toBe(fixed)
+      expect(apiRouteFor(fixed, 'GET')).toBe(fixed)
     }
   })
 
