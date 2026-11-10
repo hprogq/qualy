@@ -45,6 +45,7 @@ import { ReviewDock } from './ReviewDock.tsx'
 import { pageNumberOf, type InboxItemDto } from './model.ts'
 import * as commonMessages from '@qualy/web-i18n/messages'
 import { ReviewActions } from './ReviewActions.tsx'
+import { reviewLayout } from './queue-layout.stylex.ts'
 import * as m from '#messages'
 
 // The queue, laid out three ways: by question so one standard is applied in
@@ -59,8 +60,7 @@ const TOOLBAR_ROOM = '@container review-board (min-width: 560px)'
 const TOOLBAR_MID = '@container review-board (min-width: 560px) and (max-width: 879.98px)'
 const TOOLBAR_WIDE = '@container review-board (min-width: 1240px)'
 const SEARCH_DELAY = 250
-/** where the board draws its index beside the list (QueueBoard.tsx) */
-const BOARD_WIDE = '@container review-board (min-width: 880px)'
+const BOARD_WIDE = reviewLayout.wide
 
 const styles = stylex.create({
   viewsField: { gridArea: 'grouping', minWidth: 0 },
@@ -101,6 +101,25 @@ const styles = stylex.create({
     columnGap: 8,
     rowGap: 8,
   }),
+  // Only pin the toolbar when the board can lay it out on one line.
+  // The added insets paint over the cards as they pass under it without
+  // changing the normal spacing between the controls and the list.
+  pinnedControls: {
+    position: { default: null, [BOARD_WIDE]: 'sticky' },
+    top: { default: null, [BOARD_WIDE]: 0 },
+    zIndex: { default: null, [BOARD_WIDE]: 2 },
+    backgroundColor: { default: null, [BOARD_WIDE]: tokens.background },
+    minHeight: { default: null, [BOARD_WIDE]: reviewLayout.controlHeight },
+    boxSizing: 'content-box',
+    paddingBlock: {
+      default: null,
+      [BOARD_WIDE]: `${reviewLayout.toolbarInsetStart} ${reviewLayout.toolbarInsetEnd}`,
+    },
+    marginBlock: {
+      default: null,
+      [BOARD_WIDE]: `calc(0px - ${reviewLayout.toolbarInsetStart}) calc(0px - ${reviewLayout.toolbarInsetEnd})`,
+    },
+  },
   filters: {
     gridArea: 'filters',
     display: { default: 'grid', [TOOLBAR_ROOM]: 'flex' },
@@ -153,7 +172,7 @@ const styles = stylex.create({
   },
   markOptionLabel: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' },
   filterCount: { marginInlineStart: 0, flexShrink: 0 },
-  groupingList: { height: 36, padding: 3 },
+  groupingList: { height: reviewLayout.controlHeight, padding: 3 },
   groupingKey: { height: 30, paddingInline: 12, fontSize: 13.5 },
   mark: {
     display: 'inline-flex',
@@ -217,7 +236,7 @@ const styles = stylex.create({
     transform: 'translateY(-50%)',
     color: tokens.mutedForeground,
   },
-  searchInput: { height: 36, width: '100%', paddingLeft: 34 },
+  searchInput: { height: reviewLayout.controlHeight, width: '100%', paddingLeft: 34 },
   // ---- how much is waiting, in the band ----
   roomTabs: { display: 'flex', width: 'fit-content', marginBlockStart: 10 },
   standing: {
@@ -434,8 +453,8 @@ export default function ReviewInboxPage() {
 
 /**
  * How much is waiting, how much this reader moved today, and how much is out
- * with somebody else - one line under the page's name. The last only where
- * there is any: a zero there is a fact nobody asked for.
+ * with somebody else - beside the action, or under the title where space
+ * is tight. Only show the last count when there is any material awaited.
  */
 function QueueStanding({ queue }: { queue: Queue }) {
   if (queue.summary === undefined) {
@@ -536,6 +555,7 @@ function QueueBody({
                 ? '"grouping seek" "filters filters" "search search"'
                 : '"grouping seek" "filters filters"',
             ),
+            styles.pinnedControls,
           )}
         >
           <Tabs

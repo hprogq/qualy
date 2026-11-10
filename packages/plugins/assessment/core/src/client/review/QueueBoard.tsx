@@ -13,6 +13,7 @@ import { dayKeyOf, useBatchZone } from '../batch/zone.ts'
 import { SUMMARY_FIELDS_MOST } from '../../entry/summary.ts'
 import { useDayHeading, useQueueClock, writeRunScope, type InboxItemDto } from './model.ts'
 import type { QueuePage } from './queue.ts'
+import { reviewLayout } from './queue-layout.stylex.ts'
 import * as commonMessages from '@qualy/web-i18n/messages'
 import * as m from '#messages'
 
@@ -39,7 +40,8 @@ const indexLabel = (grouping: Grouping) =>
       : m.review_masterItems()
 
 /** the room the index needs beside a list of rows worth reading */
-const BOARD_WIDE = '@container review-board (min-width: 880px)'
+const BOARD_WIDE = reviewLayout.wide
+const TOOLBAR_HEIGHT = `calc(${reviewLayout.controlHeight} + ${reviewLayout.toolbarInsetStart} + ${reviewLayout.toolbarInsetEnd})`
 /** the room a row needs to lay its answers out as columns */
 const ROWS_WIDE = '@container review-rows (min-width: 680px)'
 
@@ -79,7 +81,11 @@ const styles = stylex.create({
   index: {
     display: { default: 'none', [BOARD_WIDE]: 'flex' },
     position: 'sticky',
-    top: 16,
+    top: TOOLBAR_HEIGHT,
+    // A long index must still offer its last groups and pager, even when
+    // the index itself is pinned above a much longer result list.
+    maxHeight: `calc(100cqh - ${TOOLBAR_HEIGHT})`,
+    overflowY: 'auto',
     minWidth: 0,
     flexDirection: 'column',
     gap: 2,
@@ -101,6 +107,7 @@ const styles = stylex.create({
     alignItems: 'center',
     gap: 6,
     height: 32,
+    flexShrink: 0,
     marginBottom: 6,
     paddingInline: 10,
     borderWidth: 1,
@@ -170,6 +177,7 @@ const styles = stylex.create({
     containerType: 'inline-size',
     containerName: 'review-rows',
   },
+  clearToolbar: { scrollMarginBlockStart: { default: null, [BOARD_WIDE]: TOOLBAR_HEIGHT } },
   groupHead: {
     display: 'flex',
     justifyContent: 'space-between',
@@ -498,7 +506,7 @@ function QueueRow({
         data-instance={row.instanceId}
         data-answers={answers.filter((pair) => pair.value !== '').length}
         onClick={onOpen}
-        {...stylex.props(styles.subgrid, styles.row, styles.rowAreas(areas))}
+        {...stylex.props(styles.subgrid, styles.row, styles.rowAreas(areas), styles.clearToolbar)}
       >
         <span {...stylex.props(styles.lead)}>
           <span {...stylex.props(styles.leadLine)}>
@@ -642,7 +650,13 @@ function GroupCard({
   const tracks = tracksOf(summaryCount)
   const run = group.run ?? ''
   return (
-    <Card data-testid="queue-group" data-key={group.key} data-count={group.count} tabIndex={-1}>
+    <Card
+      data-testid="queue-group"
+      data-key={group.key}
+      data-count={group.count}
+      tabIndex={-1}
+      xstyle={styles.clearToolbar}
+    >
       <div {...stylex.props(styles.groupHead)}>
         <h2 {...stylex.props(styles.groupTitle)}>
           {group.title}

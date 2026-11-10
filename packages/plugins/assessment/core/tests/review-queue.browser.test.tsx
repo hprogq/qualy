@@ -217,6 +217,32 @@ describe('the queue in brief', () => {
     })
   })
 
+  it('pins the desktop filters and index without pinning the title band', async () => {
+    await page.viewport(1440, 540)
+    await shelled(both(), `?item=${ITEM_ID}`)
+    await expect.element(rows().last()).toBeInTheDocument()
+    await document.fonts.ready
+    const main = page.getByRole('main').element() as HTMLElement
+    const band = page.getByTestId('batch-band').element()
+    const filters = page.getByTestId('review-filters').element()
+    const projectIndex = page.getByTestId('queue-index').element()
+    const first = rows().first().element()
+    const top = main.getBoundingClientRect().top
+    const before = first.getBoundingClientRect().top
+    const stickAt = filters.getBoundingClientRect().top - top
+
+    main.scrollTop = stickAt + 50
+    expect(band.getBoundingClientRect().bottom).toBeLessThan(top)
+    expect(filters.getBoundingClientRect().top).toBeCloseTo(top, 0)
+    const indexTop = projectIndex.getBoundingClientRect().top
+    expect(indexTop).toBeGreaterThanOrEqual(filters.getBoundingClientRect().bottom - 0.5)
+    expect(first.getBoundingClientRect().top).toBeLessThan(before)
+
+    main.scrollTop += 60
+    expect(filters.getBoundingClientRect().top).toBeCloseTo(top, 0)
+    expect(projectIndex.getBoundingClientRect().top).toBeCloseTo(indexTop, 0)
+  })
+
   // Nothing picked, every project shows its oldest few and a way to all of
   // them; the index beside it says how much each one holds.
   it('lays every project out in brief beside an index of them', async () => {
@@ -714,6 +740,12 @@ describe('when reviewing is open', () => {
 
       main.scrollTop = main.scrollHeight
       expect(main.scrollTop).toBeGreaterThan(0)
+      if (width < 768) {
+        const filters = page.getByTestId('review-filters').element()
+        expect(filters.getBoundingClientRect().bottom).toBeLessThan(
+          main.getBoundingClientRect().top,
+        )
+      }
       const after = dock.element().getBoundingClientRect()
       expect(after.bottom).toBeGreaterThan(main.getBoundingClientRect().bottom - footer - 80)
       expect(rows().last().element().getBoundingClientRect().bottom).toBeLessThanOrEqual(after.top)
