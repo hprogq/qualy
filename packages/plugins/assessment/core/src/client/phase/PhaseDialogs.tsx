@@ -74,7 +74,10 @@ export function ScheduleDialog({
   const [movedTo, setMovedTo] = useState<string | null>(null)
   const moved = movedTo !== null && movedTo === value ? movedTo : null
   const [mode, setMode] = useState<'later' | 'now'>('later')
-  const start = mode === 'now' ? 'now' : 'later'
+  // A later opening is a new decision, and a target that cannot start now
+  // must never inherit the previous target's immediate action.
+  if (!open && mode !== 'later') setMode('later')
+  const start = canStartNow && mode === 'now' ? 'now' : 'later'
   // the dialog animates out after its subject is gone; a title that empties
   // mid-flight reads as a bug, and the body collapsing moves the page
   const [shown, setShown] = useState({ name, canStartNow })

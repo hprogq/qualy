@@ -3028,6 +3028,50 @@ describe('the stage plan', () => {
     await vi.waitFor(() => expect(page.getByTestId('time-skipped').elements()).toHaveLength(0))
   })
 
+  it('does not carry an immediate start to a later stage', async () => {
+    const scheduled = vi.fn()
+    const advanced = vi.fn()
+    function Scheduling() {
+      const [target, setTarget] = useState<'first' | 'later' | null>(null)
+      return (
+        <BatchZone zone="UTC">
+          <button type="button" onClick={() => setTarget('first')}>
+            First stage
+          </button>
+          <button type="button" onClick={() => setTarget('later')}>
+            Later stage
+          </button>
+          <ScheduleDialog
+            open={target !== null}
+            name={target ?? ''}
+            canStartNow={target === 'first'}
+            value="2027-03-14T05:00:00.000Z"
+            pending={false}
+            onChange={() => {}}
+            onCancel={() => setTarget(null)}
+            onSchedule={scheduled}
+            onStartNow={advanced}
+          />
+        </BatchZone>
+      )
+    }
+    await renderScreen({
+      client: fakeClient({ app: { getManifest: () => Effect.succeed(emptyManifest()) } }),
+      children: <Scheduling />,
+    })
+    await page.getByRole('button', { name: 'First stage' }).click()
+    let dialog = page.getByRole('dialog')
+    await dialog.getByRole('radio', { name: /立即开始/ }).click()
+    await dialog.getByRole('button', { name: '取消' }).click()
+    await expect.element(dialog).not.toBeInTheDocument()
+    await page.getByRole('button', { name: 'Later stage' }).click()
+    dialog = page.getByRole('dialog')
+    await expect.element(dialog.getByLabelText('开始时间')).toBeVisible()
+    await dialog.getByRole('button', { name: '确认排期' }).click()
+    expect(scheduled).toHaveBeenCalledOnce()
+    expect(advanced).not.toHaveBeenCalled()
+  })
+
   it('refuses scheduled input when the device cannot interpret the batch zone', async () => {
     const schedule = vi.fn()
     await renderScreen({
