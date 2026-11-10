@@ -4,7 +4,7 @@
 
 ## 动态文档压缩
 
-Caddy 模板对 GET 的 HTML 和 RSC 流启用 Brotli 和 gzip，保留代理的逐块 flush；API、静态资源、健康检查和包含操作凭证的密码重置及邮箱验证页面不走该规则。EdgeOne 可继续压缩可缓存的静态资源。动态 Brotli 需要 Caddy 的 `http.encoders.br` 模块，构建自定义二进制时还须保留站点使用的 DNS 模块；上线前在实际代理版本上验证首块输出、`Content-Encoding`、`Vary`、未压缩响应以及认证页面的私有缓存头。
+Caddy 模板对 GET 的 HTML 和 RSC 流启用 Brotli（质量级别 5）和 gzip，保留代理的逐块 flush；API、静态资源、健康检查和包含操作凭证的密码重置及邮箱验证页面不走该规则。EdgeOne 可继续压缩可缓存的静态资源。动态 Brotli 需要 Caddy 的 `http.encoders.br` 模块，构建自定义二进制时还须保留站点使用的 DNS 模块；上线前在实际代理版本上验证首块输出、`Content-Encoding`、`Vary`、未压缩响应以及认证页面的私有缓存头。
 
 ## Caddy 自动 HTTPS
 

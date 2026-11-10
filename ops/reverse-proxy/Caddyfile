@@ -68,7 +68,9 @@ qualy.example.com {
 		method GET
 		not path /api/* /assets/* /health/* /reset-password* /confirm-email*
 	}
-	encode @document br gzip {
+	encode @document {
+		br 5
+		gzip
 		minimum_length 1
 		match {
 			header Content-Type text/html*
