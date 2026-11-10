@@ -1,5 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { forgetDraft, forgetStaleDrafts, readDraft, writeDraft } from '../local-store.ts'
+import {
+  draftRevision,
+  forgetDraft,
+  forgetStaleDrafts,
+  readDraft,
+  writeDraft,
+} from '../local-store.ts'
 import { useSignedInUserId } from '../signed-in.ts'
 
 // Keeping what a reviewer has typed but not sent.
@@ -39,9 +45,20 @@ export interface DraftKeeper {
   readonly at: number | null
   /** throw it away and start again: the caller clears its own state */
   readonly discard: () => void
-  /** the act went through; there is nothing left to keep */
-  readonly forget: () => void
+  /** Save the current words immediately and identify exactly that version. */
+  readonly snapshot: () => Promise<DraftReceipt | null>
 }
+
+export interface DraftReceipt {
+  readonly id: string
+  readonly revision: string
+}
+
+export const stageDraftId = (
+  instanceId: string,
+  act: string,
+  stage: { route: string; stageId: string },
+) => `${instanceId}:${act}:${stage.route}:${encodeURIComponent(stage.stageId)}`
 
 /**
  * Keeps one panel's unsent words, and puts them back when it reopens.
@@ -79,6 +96,7 @@ export function useLocalDraft<T>({
   const kept = useRef(value)
   kept.current = value
   const done = useRef(false)
+  const pendingWrite = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     if (key === null || !enabled) return
@@ -108,23 +126,31 @@ export function useLocalDraft<T>({
   useEffect(() => {
     if (key === null || !enabled || !loaded || done.current) return
     const timer = setTimeout(() => {
+      pendingWrite.current = null
       void (empty(value) ? forgetDraft(key) : writeDraft(key, value))
     }, SETTLE_MS)
-    return () => clearTimeout(timer)
+    pendingWrite.current = timer
+    return () => {
+      clearTimeout(timer)
+      if (pendingWrite.current === timer) pendingWrite.current = null
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, enabled, loaded, value])
 
   return {
     restored,
     at,
+    snapshot: () => {
+      done.current = true
+      if (pendingWrite.current !== null) clearTimeout(pendingWrite.current)
+      pendingWrite.current = null
+      if (key === null) return Promise.resolve(null)
+      const revision = draftRevision()
+      return writeDraft(key, kept.current, revision).then(() => ({ id: key, revision }))
+    },
     discard: () => {
       setRestored(false)
       setAt(null)
-      if (key !== null) void forgetDraft(key)
-    },
-    forget: () => {
-      done.current = true
-      setRestored(false)
       if (key !== null) void forgetDraft(key)
     },
   }

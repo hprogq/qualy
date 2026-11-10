@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { FileIcon, PlusIcon, TypeIcon, XIcon } from 'lucide-react'
 import * as stylex from '@stylexjs/stylex'
 import { DraftNote } from './DraftNote.tsx'
-import { useLocalDraft } from './use-draft.ts'
+import { stageDraftId, useLocalDraft, type DraftReceipt } from './use-draft.ts'
 
 import { VisuallyHidden } from '@qualy/ui/visually-hidden'
 import { Field, FormDialog } from '@qualy/ui/admin'
@@ -117,6 +117,7 @@ const LABEL_MAX = 100
 export function SupplementDialog({
   open,
   instanceId,
+  stage,
   initial,
   onClose,
   onConfirm,
@@ -125,10 +126,11 @@ export function SupplementDialog({
   open: boolean
   /** the round the ask belongs to, which is what an unsent draft hangs on */
   instanceId: string
+  stage: { route: string; stageId: string }
   /** what the last attempt asked, when it came back unsent */
   initial?: WordedSupplement
   onClose: () => void
-  onConfirm: (worded: WordedSupplement) => void
+  onConfirm: (worded: WordedSupplement, receipt?: Promise<DraftReceipt | null>) => void
 }) {
   const fine = useFinePointer()
   const [instructions, setInstructions] = useState(initial?.instructions ?? '')
@@ -140,7 +142,7 @@ export function SupplementDialog({
 
   const blankPieces: readonly Piece[] = [{ label: '', kind: 'file', required: true }]
   const draft = useLocalDraft<{ instructions: string; pieces: readonly Piece[] }>({
-    id: `${instanceId}:supplement`,
+    id: stageDraftId(instanceId, 'supplement', stage),
     value: { instructions, pieces },
     empty: (one) =>
       one.instructions === '' &&
@@ -210,15 +212,18 @@ export function SupplementDialog({
     pieces.every((piece) => piece.label.trim() !== '')
 
   const confirm = () => {
-    draft.forget()
-    onConfirm({
-      instructions: instructions.trim(),
-      requirements: pieces.map((piece) => ({
-        label: piece.label.trim(),
-        kind: piece.kind,
-        required: piece.required,
-      })),
-    })
+    const receipt = draft.snapshot()
+    onConfirm(
+      {
+        instructions: instructions.trim(),
+        requirements: pieces.map((piece) => ({
+          label: piece.label.trim(),
+          kind: piece.kind,
+          required: piece.required,
+        })),
+      },
+      receipt,
+    )
   }
 
   const body = (

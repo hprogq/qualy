@@ -29,6 +29,7 @@ import { sessionApiGroup } from '../src/api.ts'
 import { sessionApiHandlers } from '../src/server/index.ts'
 import { AuthConfig, layer as signInLayer } from '../src/server/sign-in.ts'
 import { sessionCookieName } from '@qualy/auth-contract/session'
+import { identityKeyOf } from '@qualy/auth-contract/identity-key'
 import { layer as sessionLayer, viewerLayer } from '../src/server/session.ts'
 import { authClosure } from './support/closure.ts'
 import { secretsLayer } from '@qualy/plugin-secrets/testkit'
@@ -332,7 +333,14 @@ describe.runIf(postgresAvailable)('signing in', () => {
 
     const session = await fetch(`${base}/auth/session`, { headers: { cookie } })
     expect(session.status).toBe(200)
-    expect(await session.json()).toMatchObject({ user: { id: userId } })
+    const sessionBody = (await session.json()) as {
+      identity: string
+      user: { tenant: { id: string } }
+    }
+    expect(sessionBody).toMatchObject({ user: { id: userId } })
+    expect(sessionBody.identity).toBe(
+      identityKeyOf({ tenantId: sessionBody.user.tenant.id, userId }),
+    )
 
     // the session remembers the door it came in through, and the binding
     const token = cookie.slice(sessionCookieName.length + 1)

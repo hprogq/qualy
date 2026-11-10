@@ -56,6 +56,7 @@ import { ContextRail } from './ContextRail.tsx'
 import { SiblingSheet } from './SiblingSheet.tsx'
 import { useBeside, useFinePointer } from './pointer.ts'
 import { useDeferredDecision, type StagedDecision } from './useDeferredDecision.ts'
+import type { DraftReceipt } from './use-draft.ts'
 import { useDraftSweep } from './use-draft.ts'
 import { VersionPicker } from './history.tsx'
 import { EntryHistory } from '../entry/EntryHistory.tsx'
@@ -1030,18 +1031,19 @@ function Workbench({ batch }: { batch: BatchDto }) {
     decision: SessionEntry['decision'],
     itemTitle: string,
     participantName: string,
+    receipt?: Promise<DraftReceipt | null>,
   ) => {
     setLog((current) => [
       ...current,
       { instanceId, participantName, itemTitle, decision, status: 'waiting' },
     ])
-    deferred.stage(staged)
+    deferred.stage(staged, receipt)
     setDialog(null)
     if (advanceId != null) goTo(advanceId)
   }
 
   /** asking for more material, through the same window everything else uses */
-  const stageSupplement = (worded: WordedSupplement) => {
+  const stageSupplement = (worded: WordedSupplement, receipt?: Promise<DraftReceipt | null>) => {
     if (review === undefined || lostTurn || actionStage.current === null) return
     stageAndAdvance(
       {
@@ -1053,11 +1055,16 @@ function Workbench({ batch }: { batch: BatchDto }) {
       'supplement',
       review.itemTitle,
       review.participantName,
+      receipt,
     )
   }
 
   /** stage a round-moving decision, log it, and put the next one on screen */
-  const stageDecision = (decision: 'approve' | 'reject' | 'escalate', worded?: WordedDecision) => {
+  const stageDecision = (
+    decision: 'approve' | 'reject' | 'escalate',
+    worded?: WordedDecision,
+    receipt?: Promise<DraftReceipt | null>,
+  ) => {
     if (review === undefined || lostTurn || actionStage.current === null) return
     const staged: StagedDecision = {
       kind: 'decision',
@@ -1076,7 +1083,7 @@ function Workbench({ batch }: { batch: BatchDto }) {
         ...(worded?.recognition !== undefined ? { recognition: worded.recognition } : {}),
       },
     }
-    stageAndAdvance(staged, decision, review.itemTitle, review.participantName)
+    stageAndAdvance(staged, decision, review.itemTitle, review.participantName, receipt)
   }
 
   /** taking the ask back; the round returns to the queue as it stood */
@@ -1565,15 +1572,16 @@ function Workbench({ batch }: { batch: BatchDto }) {
             <ApproveDialog
               // remade whenever the claim or the sitting's frozen text moves:
               // drafts belong to one determination, never to the next
-              key={`${review.id}:${review.recognitionForm?.locked?.hash ?? 'open'}:${heldFor('approve') === undefined ? 'fresh' : 'held'}`}
+              key={`${review.id}:${actionStage.current?.route}:${actionStage.current?.stageId}:${review.recognitionForm?.locked?.hash ?? 'open'}:${heldFor('approve') === undefined ? 'fresh' : 'held'}`}
               open={dialog === 'approve'}
               review={review}
+              draftStage={actionStage.current ?? review.chain}
               caution={caution(unseen())}
               {...withHeld('approve')}
               onClose={() => setDialog(null)}
-              onConfirm={(worded) => {
+              onConfirm={(worded, receipt) => {
                 letGo(instanceId)
-                stageDecision('approve', worded)
+                stageDecision('approve', worded, receipt)
               }}
             />
           )}
@@ -1582,16 +1590,17 @@ function Workbench({ batch }: { batch: BatchDto }) {
               // one round's words, never the next one's: the panel stays
               // mounted after it closes, and without this the send-back
               // written for one filing opened again on the one after it
-              key={`${review.id}:${heldFor('reject') === undefined ? 'fresh' : 'held'}`}
+              key={`${review.id}:${actionStage.current?.route}:${actionStage.current?.stageId}:${heldFor('reject') === undefined ? 'fresh' : 'held'}`}
               open={dialog === 'reject'}
               review={review}
+              draftStage={actionStage.current ?? review.chain}
               reasons={batch.reviewReasons.reject}
               caution={caution(unseen())}
               {...withHeld('reject')}
               onClose={() => setDialog(null)}
-              onConfirm={(worded) => {
+              onConfirm={(worded, receipt) => {
                 letGo(instanceId)
-                stageDecision('reject', worded)
+                stageDecision('reject', worded, receipt)
               }}
             />
           )}
@@ -1626,14 +1635,15 @@ function Workbench({ batch }: { batch: BatchDto }) {
           />
           {lingeringDialog === 'supplement' && review !== undefined && (
             <SupplementDialog
-              key={`${instanceId}:${heldHere?.act === 'supplement' ? 'held' : 'fresh'}`}
+              key={`${instanceId}:${actionStage.current?.route}:${actionStage.current?.stageId}:${heldHere?.act === 'supplement' ? 'held' : 'fresh'}`}
               open={dialog === 'supplement'}
               instanceId={instanceId}
+              stage={actionStage.current ?? review.chain}
               {...(heldHere?.act === 'supplement' ? { initial: heldHere.worded } : {})}
               onClose={() => setDialog(null)}
-              onConfirm={(worded) => {
+              onConfirm={(worded, receipt) => {
                 letGo(instanceId)
-                stageSupplement(worded)
+                stageSupplement(worded, receipt)
               }}
             />
           )}

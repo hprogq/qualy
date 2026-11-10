@@ -11,6 +11,8 @@ import { type ApiError } from '@qualy/web-runtime/api'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useApi, useApiMutation } from '@qualy/web-runtime'
 import { assessmentApi, assessmentUrls } from '../api.ts'
+import { forgetDraftRevision } from '../local-store.ts'
+import type { DraftReceipt } from './use-draft.ts'
 
 // The five-second window between deciding and having decided.
 //
@@ -84,6 +86,7 @@ export type DeferredDecisionFailure =
 interface WaitingDecision {
   readonly staged: StagedDecision
   readonly identity: string | undefined
+  readonly receipt?: Promise<DraftReceipt | null>
 }
 
 const WINDOW_MS = 5_000
@@ -135,7 +138,13 @@ export function useDeferredDecision({
             payload: staged.payload,
           })
       ).pipe(Effect.asVoid, Effect.provideService(ExpectedIdentity, identity)),
-    onSuccess: (_answer, held) => committed.current(held.staged),
+    onSuccess: (_answer, held) => {
+      if (held.receipt !== undefined)
+        void held.receipt.then((row) => {
+          if (row !== null) void forgetDraftRevision(row.id, row.revision)
+        })
+      committed.current(held.staged)
+    },
     onError: (error, held) => failed.current(held.staged, error),
     onSettled: (_answer, error, held) => {
       if (error !== null && !isUseCaseApiFailure(error)) rejected.current(held.staged)
@@ -173,9 +182,9 @@ export function useDeferredDecision({
 
   /** stage a decision; whatever was already waiting goes out right now */
   const stage = useCallback(
-    (staged: StagedDecision) => {
+    (staged: StagedDecision, receipt?: Promise<DraftReceipt | null>) => {
       flush()
-      waiting.current = { staged, identity: documentIdentity() }
+      waiting.current = { staged, identity: documentIdentity(), receipt }
       setPending(staged)
       setDeadline(Date.now() + WINDOW_MS)
       timer.current = setTimeout(flush, WINDOW_MS)
@@ -232,8 +241,13 @@ export function useDeferredDecision({
       })
         .then((response) => {
           setPending((current) => (current === staged ? null : current))
-          if (response.ok) committed.current(staged)
-          else rejected.current(staged)
+          if (response.ok) {
+            if (held.receipt !== undefined)
+              void held.receipt.then((row) => {
+                if (row !== null) void forgetDraftRevision(row.id, row.revision)
+              })
+            committed.current(staged)
+          } else rejected.current(staged)
         })
         .catch(() => {
           setPending((current) => (current === staged ? null : current))

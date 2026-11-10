@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { signingOut } from '@qualy/web-runtime/identity'
 import browser from '../src/client/browser.ts'
-import { readDraft, writeDraft } from '../src/client/local-store.ts'
+import { forgetDraftRevision, readDraft, writeDraft } from '../src/client/local-store.ts'
 
 // A reviewer's unsent words are kept in this browser, under their own id,
 // until the act goes out. A browser can be shared: signing out is when it
@@ -35,4 +35,14 @@ describe('unsent review words at sign-out', () => {
     await new Promise((settle) => setTimeout(settle, 100))
     expect(await readDraft('reader-a:round-3:reject')).not.toBeNull()
   })
+})
+
+it('does not remove newer words when an older request is acknowledged', async () => {
+  const id = 'reader-a:round-race:reject:normal:class'
+  await writeDraft(id, { comment: 'first' }, 'first')
+  await writeDraft(id, { comment: 'later' }, 'later')
+  await forgetDraftRevision(id, 'first')
+  expect((await readDraft(id))?.value).toEqual({ comment: 'later' })
+  await forgetDraftRevision(id, 'later')
+  expect(await readDraft(id)).toBeNull()
 })

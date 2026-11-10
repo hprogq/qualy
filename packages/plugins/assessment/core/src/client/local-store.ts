@@ -20,6 +20,7 @@ export interface DraftRow {
    */
   readonly id: string
   readonly at: number
+  readonly revision?: string
   readonly value: unknown
 }
 
@@ -107,7 +108,14 @@ export const readDraft = (id: string): Promise<DraftRow | null> =>
     null,
   )
 
-export const writeDraft = (id: string, value: unknown): Promise<void> =>
+export const draftRevision = (): string =>
+  globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}-${Math.random()}`
+
+export const writeDraft = (
+  id: string,
+  value: unknown,
+  revision: string = draftRevision(),
+): Promise<void> =>
   inDrafts(
     'readwrite',
     (store) => {
@@ -115,7 +123,12 @@ export const writeDraft = (id: string, value: unknown): Promise<void> =>
       // here turns a value it could not store into nothing kept rather than
       // an aborted transaction
       try {
-        store.put({ id, at: Date.now(), value: structuredClone(value) } satisfies DraftRow)
+        store.put({
+          id,
+          at: Date.now(),
+          revision,
+          value: structuredClone(value),
+        } satisfies DraftRow)
       } catch {
         // not storable: there is nothing to keep and nothing to say
       }
@@ -173,6 +186,19 @@ export const forgetDraft = (id: string): Promise<void> =>
     'readwrite',
     (store) => {
       store.delete(id)
+    },
+    undefined,
+  )
+
+/** Delete only the precise snapshot confirmed by the server. */
+export const forgetDraftRevision = (id: string, revision: string): Promise<void> =>
+  inDrafts(
+    'readwrite',
+    (store) => {
+      const request = store.get(id)
+      request.onsuccess = () => {
+        if ((request.result as DraftRow | undefined)?.revision === revision) store.delete(id)
+      }
     },
     undefined,
   )

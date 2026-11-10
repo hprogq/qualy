@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { documentIdentity } from '@qualy/web-runtime/document-identity'
 import { Api } from '@qualy/api-kit/local'
 import { sessionApiGroup } from '@qualy/plugin-auth/api'
 import { useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
@@ -22,5 +23,6 @@ export function useSignedInUserId(): string | null {
     retry: false,
     staleTime: 30_000,
   })
-  return session.data?.user.id ?? null
+  const identity = documentIdentity()
+  return identity !== undefined && session.data?.identity === identity ? session.data.user.id : null
 }

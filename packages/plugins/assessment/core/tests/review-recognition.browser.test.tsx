@@ -3,6 +3,7 @@ import ReviewInstancePage from '../src/client/review/ReviewInstancePage.tsx'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
 import { Effect } from 'effect'
+import { adoptDocumentIdentity } from '@qualy/web-runtime/document-identity'
 import { focusManager } from '@tanstack/react-query'
 import { readDraft, writeDraft } from '../src/client/local-store.ts'
 import { emptyManifest, READER_ID, renderScreen } from './support/screen.tsx'
@@ -160,13 +161,28 @@ const open = (
   stubs: Record<string, unknown> = {},
   /** who is signed in, when it is not the harness's own reader */
   reader?: string,
-) =>
-  renderScreen({
+  sessionIdentity?: string,
+) => {
+  const identity = `identity-${reader ?? READER_ID}`
+  adoptDocumentIdentity(identity)
+  return renderScreen({
     client: reviewClient({
-      ...(reader === undefined
-        ? {}
-        : { auth: { getSession: () => Effect.succeed({ user: { id: reader } }) } }),
-      app: { getManifest: () => Effect.succeed({ ...emptyManifest(), pages: PAGES }) },
+      auth: {
+        getSession: () =>
+          Effect.succeed({
+            user: { id: reader ?? READER_ID },
+            identity: sessionIdentity ?? identity,
+          }),
+      },
+      app: {
+        getManifest: () =>
+          Effect.succeed({
+            ...emptyManifest(),
+            viewer: 'authenticated' as const,
+            identity,
+            pages: PAGES,
+          }),
+      },
       assessment: {
         getBatch: () => Effect.succeed({ batch: batch() }),
         getReviewInstance: () => Effect.succeed({ review: fixture }),
@@ -195,6 +211,7 @@ const open = (
     ] as never,
     route: `/assessment/batches/${BATCH_ID}/reviews/${INSTANCE_ID}`,
   })
+}
 
 const openApprove = async () => {
   await expect.element(page.getByText('中国机器人大赛').first()).toBeVisible()
@@ -490,7 +507,7 @@ describe('approving with a determination', () => {
   // mounted. What the browser's own store is for is the other way of losing
   // them: the tab reloaded, the browser restarted, the machine slept.
   it('writes unsent words into this browser, and stops once the approval is sent', async () => {
-    const id = `${READER_ID}:${INSTANCE_ID}:approve`
+    const id = `${READER_ID}:${INSTANCE_ID}:approve:normal:class`
     const decided = stagedDecide()
     await open(review(), { decideReview: decided })
     await openApprove()
@@ -522,8 +539,60 @@ describe('approving with a determination', () => {
     await expect.poll(() => readDraft(id), { timeout: 4_000 }).toBeNull()
   })
 
+  it('keeps the latest words after a leave request is refused', async () => {
+    const id = `${READER_ID}:${INSTANCE_ID}:approve:normal:class`
+    vi.spyOn(window, 'fetch').mockResolvedValue(new Response(null, { status: 409 }))
+    await open(review())
+    await openApprove()
+    const { userEvent } = await import('vitest/browser')
+    await userEvent.fill(
+      page.getByRole('dialog').getByRole('textbox', { name: '审核意见' }).element(),
+      '核对后补充意见',
+    )
+    const form = document.querySelector('[data-testid="recognition-form"]')!
+    await userEvent.fill(
+      form.querySelector('[data-parameter="rec-ordinal"] input') as HTMLInputElement,
+      '3',
+    )
+    await page
+      .getByRole('dialog')
+      .getByRole('button', { name: /^通过/ })
+      .click()
+    window.dispatchEvent(new Event('pagehide'))
+    await expect
+      .poll(async () => (await readDraft(id))?.value)
+      .toMatchObject({
+        comment: '核对后补充意见',
+      })
+  })
+
+  it('keeps staged words when the review screen unmounts before a reply', async () => {
+    const id = `${READER_ID}:${INSTANCE_ID}:approve:normal:class`
+    vi.spyOn(window, 'fetch').mockImplementation(() => new Promise(() => {}))
+    const rendered = await open(review())
+    await openApprove()
+    const { userEvent } = await import('vitest/browser')
+    await userEvent.fill(
+      page.getByRole('dialog').getByRole('textbox', { name: '审核意见' }).element(),
+      '离开前的意见',
+    )
+    const form = document.querySelector('[data-testid="recognition-form"]')!
+    await userEvent.fill(
+      form.querySelector('[data-parameter="rec-ordinal"] input') as HTMLInputElement,
+      '3',
+    )
+    await page
+      .getByRole('dialog')
+      .getByRole('button', { name: /^通过/ })
+      .click()
+    await rendered.unmount()
+    await expect
+      .poll(async () => (await readDraft(id))?.value)
+      .toMatchObject({ comment: '离开前的意见' })
+  })
+
   it('puts unsent words back when the page comes up again', async () => {
-    const id = `${READER_ID}:${INSTANCE_ID}:approve`
+    const id = `${READER_ID}:${INSTANCE_ID}:approve:normal:class`
     // what the last visit left behind, before this one draws anything
     await writeDraft(id, {
       comment: '等待奖状原件',
@@ -565,11 +634,37 @@ describe('approving with a determination', () => {
     await expect.element(comment()).toBeVisible()
     // and what they left is not kept for whoever comes next
     await expect
-      .poll(() => readDraft(`${colleague}:${INSTANCE_ID}:approve`), { timeout: 4_000 })
+      .poll(() => readDraft(`${colleague}:${INSTANCE_ID}:approve:normal:class`), { timeout: 4_000 })
       .toBeNull()
     await new Promise((resolve) => setTimeout(resolve, 500))
     expect(document.querySelector('[data-testid="draft-note"]')).toBeNull()
     expect((comment() as HTMLTextAreaElement).value).toBe('')
+  })
+
+  it('does not restore a draft from an earlier review stage', async () => {
+    const old = `${READER_ID}:${INSTANCE_ID}:approve:normal:class`
+    await writeDraft(old, { comment: 'earlier stage', reason: '', values: {} })
+    const current = review()
+    await open({ ...current, chain: { ...current.chain, stageId: 'next' } })
+    await openApprove()
+    await expect
+      .element(page.getByRole('dialog').getByRole('textbox', { name: '审核意见' }))
+      .toHaveValue('')
+    expect((await readDraft(old))?.value).toMatchObject({ comment: 'earlier stage' })
+  })
+
+  it('does not read or write another session when the document identity differs', async () => {
+    const other = 'ffffffff-ffff-4fff-8fff-ffffffffffff'
+    const id = `${other}:${INSTANCE_ID}:approve:normal:class`
+    await writeDraft(id, { comment: 'other person', reason: '', values: {} })
+    await open(review(), {}, other, 'different-document')
+    await openApprove()
+    const comment = page.getByRole('dialog').getByRole('textbox', { name: '审核意见' })
+    await expect.element(comment).toHaveValue('')
+    const { userEvent } = await import('vitest/browser')
+    await userEvent.fill(comment.element(), 'this page')
+    await new Promise((resolve) => setTimeout(resolve, 700))
+    expect((await readDraft(id))?.value).toMatchObject({ comment: 'other person' })
   })
 
   it('keeps the refusal entirely out of it', async () => {

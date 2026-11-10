@@ -1,3 +1,4 @@
+import { identityKeyOf } from '@qualy/auth-contract/identity-key'
 import { Context, Effect, Layer } from 'effect'
 import { UserProvisioning } from '@qualy/auth-contract/provisioning'
 import { Placement, UserPlacement } from '@qualy/auth-contract'
@@ -282,7 +283,7 @@ export const sessionApiHandlers = HttpApiBuilder.group(local, 'auth', (handlers)
         // the middleware resolved the session a moment ago; if the account is
         // gone now, that is a lapsed session rather than a missing person
         if (!user) return yield* new AuthRequired()
-        return { user }
+        return { user, identity: identityKeyOf(principal) }
       }),
     )
     .handle(

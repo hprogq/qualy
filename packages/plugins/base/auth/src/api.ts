@@ -1105,7 +1105,7 @@ export const sessionApiGroup = HttpApiGroup.make('auth')
   )
   .add(
     HttpApiEndpoint.get('getSession', '/auth/session', {
-      success: Schema.Struct({ user: signedInUser }),
+      success: Schema.Struct({ user: signedInUser, identity: Schema.optional(Schema.String) }),
       // the middleware already declares AUTH_REQUIRED and SESSION_EXPIRED, and
       // it is what tells them apart: a session that was presented and has
       // since lapsed is not the same as never having had one

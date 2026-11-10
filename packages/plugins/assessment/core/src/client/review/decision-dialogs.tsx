@@ -25,7 +25,7 @@ import { type EvidenceFieldSpec } from '../entry/EvidenceForm.tsx'
 import { AttachmentLink } from '../entry/AttachmentLink.tsx'
 import { Choice } from '../items/Choice.tsx'
 import { DraftNote } from './DraftNote.tsx'
-import { useLocalDraft } from './use-draft.ts'
+import { stageDraftId, useLocalDraft, type DraftReceipt } from './use-draft.ts'
 import { SlideKey } from './touch.tsx'
 import { useFinePointer } from './pointer.ts'
 import { ValueFieldsForm } from '@qualy/web-value-form/InputValueForm'
@@ -745,6 +745,7 @@ function FadedScroll({ ground, children }: { ground: 'surface' | 'inset'; childr
 export function ApproveDialog({
   open,
   review,
+  draftStage,
   caution,
   initial,
   onClose,
@@ -753,6 +754,7 @@ export function ApproveDialog({
   /** false while it animates shut; it keeps drawing what it was showing */
   open: boolean
   review: ReviewDto
+  draftStage?: { route: string; stageId: string }
   /** a last quiet word above the act - faces that matter, still unread */
   caution?: ReactNode
   /**
@@ -762,7 +764,7 @@ export function ApproveDialog({
    */
   initial?: WordedDecision
   onClose: () => void
-  onConfirm: (decision: WordedDecision) => void
+  onConfirm: (decision: WordedDecision, receipt?: Promise<DraftReceipt | null>) => void
 }) {
   const locale = useLocale()
   const listJoin = useList()
@@ -805,8 +807,8 @@ export function ApproveDialog({
     draftsFromFields(fields, locked?.values ?? initial?.recognition?.values ?? seed),
   )
   const [determinationReason, setDeterminationReason] = useState(initial?.recognition?.reason ?? '')
-  // what the rule sent back outranks what was merely left unfinished, and a
-  // settled sitting is read-only, so neither keeps a draft
+  // What the rule sent back outranks a stored draft. A settled sitting is
+  // read-only and keeps nothing; a returned decision may be edited again.
   const blank = useMemo(
     () => draftsFromFields(fields, (locked?.values ?? seed) as Record<string, unknown>),
     [fields, locked, seed],
@@ -816,7 +818,7 @@ export function ApproveDialog({
     reason: string
     values: Record<string, FieldDraft>
   }>({
-    id: initial === undefined && locked === null ? `${review.id}:approve` : null,
+    id: locked === null ? stageDraftId(review.id, 'approve', draftStage ?? review.chain) : null,
     value: { comment, reason: determinationReason, values: drafts },
     empty: (one) =>
       one.comment === '' &&
@@ -874,11 +876,14 @@ export function ApproveDialog({
               values: materialized.value!,
               ...(changed ? { reason: determinationReason.trim() } : {}),
             }
-    draft.forget()
-    onConfirm({
-      comment: comment.trim(),
-      ...(recognition === undefined ? {} : { recognition }),
-    })
+    const receipt = draft.snapshot()
+    onConfirm(
+      {
+        comment: comment.trim(),
+        ...(recognition === undefined ? {} : { recognition }),
+      },
+      receipt,
+    )
   }
 
   const titleOf = (id: string) => {
@@ -1441,6 +1446,7 @@ function FiledValues({
 export function RejectDialog({
   open,
   review,
+  draftStage,
   reasons,
   caution,
   initial,
@@ -1450,13 +1456,14 @@ export function RejectDialog({
   /** false while it animates shut; it keeps drawing what it was showing */
   open: boolean
   review: ReviewDto
+  draftStage?: { route: string; stageId: string }
   reasons: readonly string[]
   /** a last quiet word above the act - faces that matter, still unread */
   caution?: ReactNode
   /** what the last attempt said, when it came back unsent */
   initial?: WordedDecision
   onClose: () => void
-  onConfirm: (decision: WordedDecision) => void
+  onConfirm: (decision: WordedDecision, receipt?: Promise<DraftReceipt | null>) => void
 }) {
   const locale = useLocale()
   const pickerWords = usePickerWords()
@@ -1486,7 +1493,7 @@ export function RejectDialog({
     suggested: Record<string, string>
     suggesting: boolean
   }>({
-    id: `${review.id}:reject`,
+    id: stageDraftId(review.id, 'reject', draftStage ?? review.chain),
     value: { reason, comment, suggested, suggesting },
     empty: (one) =>
       one.reason === '' && one.comment === '' && Object.keys(one.suggested).length === 0,
@@ -1556,14 +1563,17 @@ export function RejectDialog({
         .filter((field) => (answerOf(suggested, field.key) ?? '').trim() !== '')
         .map((field) => [field.key, materializeSuggestion(field, answerOf(suggested, field.key)!)]),
     )
-    draft.forget()
-    onConfirm({
-      ...(reason === '' ? {} : { reason }),
-      comment: comment.trim(),
-      ...(maySuggest && suggesting && Object.keys(changes).length > 0
-        ? { suggestedPayload: { ...filed, ...changes } }
-        : {}),
-    })
+    const receipt = draft.snapshot()
+    onConfirm(
+      {
+        ...(reason === '' ? {} : { reason }),
+        comment: comment.trim(),
+        ...(maySuggest && suggesting && Object.keys(changes).length > 0
+          ? { suggestedPayload: { ...filed, ...changes } }
+          : {}),
+      },
+      receipt,
+    )
   }
 
   if (!fine) {
