@@ -60,6 +60,22 @@ qualy.example.com {
 	# whole registrable domain and is a decision for its owner, not this file.
 	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
 
+	# Dynamic documents and RSC navigation streams are private and cannot use
+	# the edge cache. Compress them here; keep assets and API responses on their
+	# existing delivery paths. A one-byte threshold lets small initial chunks
+	# stream rather than disabling compression for the entire response.
+	@document {
+		method GET
+		not path /api/* /assets/* /health/* /reset-password /confirm-email
+	}
+	encode @document gzip {
+		minimum_length 1
+		match {
+			header Content-Type text/html*
+			header Content-Type text/x-component*
+		}
+	}
+
 	import /etc/caddy/qualy/upstream.caddy
 
 	# no color answering (both down, or the maintenance snippet): each asker
