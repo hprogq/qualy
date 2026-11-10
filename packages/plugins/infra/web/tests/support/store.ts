@@ -85,12 +85,23 @@ export const placeTestServer = (
   }
   fs.writeFileSync(
     path.join(root, 'rsc', 'index.js'),
-    `export default async (request, context) =>
-  new Response(
+    `export default async (request, context) => {
+  if (new URL(request.url).pathname.startsWith('/telemetry-slow/')) {
+    context.onRoute?.('/telemetry-slow/:id', 'document')
+    return new Response(new ReadableStream({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('first'))
+        setTimeout(() => { try { controller.enqueue(new TextEncoder().encode('second')); controller.close() } catch {} }, 1000)
+      }
+    }), { headers: { 'content-type': 'text/html' } })
+  }
+  if (new URL(request.url).pathname.startsWith('/telemetry/')) context.onRoute?.('/telemetry/:id', new URL(request.url).pathname.endsWith('.rsc') ? 'rsc' : 'document')
+  return new Response(
     '<!doctype html><title>drawn</title><p data-path="' + new URL(request.url).pathname +
       '" data-nonce="' + context.nonce + '" data-api="' + context.apiOrigin + '">${releaseId}</p>',
     { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'private, no-store' } },
   )
+}
 `,
   )
 }

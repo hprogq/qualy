@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import type { ServerResponse } from 'node:http'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { Config, Context, Data, Effect, Layer, Option, Schema } from 'effect'
+import { Config, Context, Data, Effect, Layer, Option, Schema, Tracer } from 'effect'
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from 'effect/http'
 import sirv from 'sirv'
 import { apiRouteNotFound, insideApi } from '@qualy/api-kit/route-fallback'
@@ -350,6 +350,7 @@ type Draw = (
     readonly dispatchApi?: ((request: Request) => Promise<Response>) | undefined
     readonly requestId?: string | undefined
     readonly traceId?: string | undefined
+    readonly onRoute?: ((route: string, kind: 'document' | 'rsc') => void) | undefined
   },
 ) => Promise<Response>
 
@@ -419,6 +420,9 @@ const drawDocument = (
     const nonce = randomBytes(16).toString('base64')
     const correlation = Option.getOrUndefined(yield* Effect.serviceOption(RequestContext))
     const dispatchApi = Option.getOrUndefined(yield* Effect.serviceOption(LocalRenderApi))
+    const parent = Option.getOrUndefined(yield* Effect.serviceOption(Tracer.ParentSpan))
+    let route: string | undefined
+    let kind: 'document' | 'rsc' | undefined
     const controller = new AbortController()
     const response = yield* Effect.tryPromise({
       try: () =>
@@ -434,6 +438,10 @@ const drawDocument = (
             dispatchApi,
             requestId: correlation?.requestId,
             traceId: correlation?.traceId,
+            onRoute: (matched, matchedKind) => {
+              route = matched
+              kind = matchedKind
+            },
           },
         ),
       catch: (cause) => new DrawFailed({ cause }),
@@ -441,6 +449,12 @@ const drawDocument = (
       Effect.onInterrupt(() => Effect.sync(() => controller.abort())),
       Effect.orDie,
     )
+    // Only the renderer's authorized manifest match may label telemetry.
+    // Files and unknown pages keep the wildcard rather than a raw path.
+    if (route !== undefined && kind !== undefined && parent?._tag === 'Span') {
+      parent.attribute('http.route', route)
+      parent.attribute('qualy.web.request_kind', kind)
+    }
     const body = response.body
     const relayed =
       body === null

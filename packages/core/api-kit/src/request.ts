@@ -703,6 +703,7 @@ export const httpMetrics = (options?: {
             return typeof value === 'string' ? value : undefined
           }
           const route = spanAttribute('http.route')
+          const webKind = spanAttribute('qualy.web.request_kind')
           return Metric.update(
             Metric.withAttributes(requestDuration, {
               unit: 's',
@@ -713,6 +714,7 @@ export const httpMetrics = (options?: {
               'url.scheme': publicSchemeOf(request, trusted),
               'http.response.status_code': String(status),
               ...(route === undefined ? {} : { 'http.route': route }),
+              ...(webKind === undefined ? {} : { 'qualy.web.request_kind': webKind }),
               // a server error is the condition semconv requires error.type
               // under; the status code is its stable low-cardinality form
               ...(status >= 500 ? { 'error.type': String(status) } : {}),

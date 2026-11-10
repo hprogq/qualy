@@ -4,10 +4,22 @@ import {
   clientAssemblyLayer,
   type ReleaseStanding,
 } from '@qualy/api-kit/client-assembly'
-import { Cause, Context, Effect, Exit, Layer, Logger, References, Schema, Scope } from 'effect'
-import { HttpRouter, HttpServerResponse } from 'effect/http'
+import {
+  Cause,
+  Context,
+  Effect,
+  Exit,
+  Layer,
+  Logger,
+  Metric,
+  References,
+  Schema,
+  Scope,
+} from 'effect'
+import { FetchHttpClient, HttpRouter, HttpServerResponse } from 'effect/http'
+import { OtlpSerialization, OtlpTracer } from 'effect/observability'
 import fs from 'node:fs'
-import { createServer } from 'node:http'
+import { createServer, type Server } from 'node:http'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -15,6 +27,7 @@ import { QUALY_API_PREFIX } from '@qualy/api-kit'
 import { QUALY_RELEASE_ENDPOINT, ReleaseProbeSchema } from '@qualy/release-contract'
 import { AssemblyInfo } from '@qualy/api-kit/assembled'
 import { NodeServer } from '@qualy/api-kit/node'
+import { httpMetrics, platformTracerOff, routeSpanNames, serverSpans } from '@qualy/api-kit/request'
 import { WebConfig, namesHiddenPath, routes } from '../src/server/index.ts'
 import { composeShellPolicy, ShellPolicyHeader } from '../src/server/shell-policy.ts'
 import { viteLogger } from '../src/dev/index.ts'
@@ -84,10 +97,30 @@ const policy = Layer.succeed(
 )
 
 let scope: Scope.Closeable
+let receiver: Server
+const exported: {
+  name: string
+  traceId: string
+  attributes: { key: string; value: { stringValue?: string } }[]
+}[] = []
 /** what this process says about a release a page claims to be running */
 let standingOf: (releaseId: string) => ReleaseStanding
 
 beforeAll(async () => {
+  receiver = createServer((request, response) => {
+    const chunks: Buffer[] = []
+    request.on('data', (chunk) => chunks.push(chunk))
+    request.on('end', () => {
+      const body = JSON.parse(Buffer.concat(chunks).toString('utf8')) as {
+        resourceSpans?: { scopeSpans: { spans: typeof exported }[] }[]
+      }
+      for (const resource of body.resourceSpans ?? [])
+        for (const group of resource.scopeSpans) exported.push(...group.spans)
+      response.writeHead(200, { 'content-type': 'application/json' })
+      response.end('{}')
+    })
+  })
+  await new Promise<void>((resolve) => receiver.listen(3246, '127.0.0.1', resolve))
   scope = await Effect.runPromise(Scope.make())
   // built first and handed in, so the test can ask the registry the same
   // question the serve chain asks it per request. The judgement itself is
@@ -103,7 +136,18 @@ beforeAll(async () => {
       HttpRouter.add('GET', `${QUALY_API_PREFIX}/probe`, HttpServerResponse.text('probe')),
       routes,
     ),
+    {
+      middleware: (app) => serverSpans()(httpMetrics()(routeSpanNames(app))),
+    },
   ).pipe(
+    Layer.provide(platformTracerOff),
+    Layer.provide(
+      OtlpTracer.layer({
+        url: 'http://127.0.0.1:3246/v1/traces',
+        resource: { serviceName: 'web-test' },
+        exportInterval: 50,
+      }).pipe(Layer.provide(OtlpSerialization.layerJson), Layer.provide(FetchHttpClient.layer)),
+    ),
     Layer.provide(
       Layer.mergeAll(
         Layer.succeed(
@@ -123,6 +167,10 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await Effect.runPromise(Scope.close(scope, Exit.void))
+  receiver.closeAllConnections()
+  await new Promise<void>((resolve, reject) =>
+    receiver.close((error) => (error ? reject(error) : resolve())),
+  )
   fs.rmSync(assetRoot, { recursive: true, force: true })
   fs.rmSync(serverRoot, { recursive: true, force: true })
 })
@@ -149,6 +197,69 @@ describe('what the shell refuses to serve', () => {
 })
 
 describe('documents against the api mount', () => {
+  it('labels rendered page metrics with the template without labeling asset paths', async () => {
+    const traceId = 'aaaabbbbccccddddeeeeffff00001234'
+    await (
+      await fetch(`${base}/telemetry/private-id?token=secret`, {
+        headers: { traceparent: `00-${traceId}-00f067aa0ba902b7-01` },
+      })
+    ).text()
+    await (await fetch(`${base}/telemetry/private-id.rsc?token=secret`)).text()
+    await (await fetch(`${base}/assets/index-current.js`)).text()
+    const snapshot = await Effect.runPromise(Metric.snapshot)
+    const labels = snapshot
+      .filter((state) => state.id === 'http.server.request.duration')
+      .map((state) => state.attributes?.['http.route'])
+    expect(labels).toContain('/telemetry/:id')
+    expect(labels).not.toContain('/assets/index-current.js')
+    const kinds = snapshot
+      .filter(
+        (state) =>
+          state.id === 'http.server.request.duration' &&
+          state.attributes?.['http.route'] === '/telemetry/:id',
+      )
+      .map((state) => state.attributes?.['qualy.web.request_kind'])
+    expect(kinds).toContain('document')
+    expect(kinds).toContain('rsc')
+    expect(JSON.stringify(labels)).not.toContain('private-id')
+    expect(JSON.stringify(labels)).not.toContain('secret')
+    for (let i = 0; i < 40 && !exported.some((span) => span.traceId === traceId); i++)
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    const span = exported.find((candidate) => candidate.traceId === traceId)
+    expect(span?.name).toBe('GET /telemetry/:id')
+    expect(
+      span?.attributes.find((attribute) => attribute.key === 'url.path')?.value.stringValue,
+    ).toBe('/telemetry/:id')
+    expect(JSON.stringify(span)).not.toContain('private-id')
+    expect(JSON.stringify(span)).not.toContain('secret')
+  })
+
+  it('records the route after a streamed document finishes', async () => {
+    const response = await fetch(`${base}/telemetry-slow/private-id`)
+    const reader = response.body!.getReader()
+    expect(new TextDecoder().decode((await reader.read()).value)).toBe('first')
+    const snapshot = await Effect.runPromise(Metric.snapshot)
+    expect(
+      snapshot.some(
+        (state) =>
+          state.id === 'http.server.request.duration' &&
+          state.attributes?.['http.route'] === '/telemetry-slow/:id',
+      ),
+    ).toBe(false)
+    while (!(await reader.read()).done) {
+      /* drain the stream */
+    }
+    let recorded = false
+    for (let i = 0; i < 40 && !recorded; i++) {
+      recorded = (await Effect.runPromise(Metric.snapshot)).some(
+        (state) =>
+          state.id === 'http.server.request.duration' &&
+          state.attributes?.['http.route'] === '/telemetry-slow/:id',
+      )
+      if (!recorded) await new Promise((resolve) => setTimeout(resolve, 10))
+    }
+    expect(recorded).toBe(true)
+  })
   it("draws a document for a route the browser owns, through this process's own api", async () => {
     const response = await fetch(`${base}/ping`)
     expect(response.status).toBe(200)

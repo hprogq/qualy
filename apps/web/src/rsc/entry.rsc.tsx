@@ -7,7 +7,7 @@ import { Api } from '@qualy/api-kit/local'
 import { appApiGroup } from '@qualy/app-contract'
 import { ANONYMOUS_IDENTITY, QUALY_IDENTITY_HEADER, QUALY_REQUEST_ID_HEADER } from '@qualy/api-kit'
 import { localeOfRequest } from '@qualy/api-kit/locale'
-import { primaryNavigation, SLOT_REFERENCE_PATH, surfaceLabel } from '@qualy/ui-contract'
+import { primaryNavigation, SLOT_REFERENCE_PATH } from '@qualy/ui-contract'
 import { SIGN_IN_PAGE } from '@qualy/auth-contract/sign-in-failure'
 import { withDocumentLocale } from '@qualy/web-rsc/document-locale'
 import {
@@ -38,6 +38,7 @@ import { HtmlDocument } from './html-document.tsx'
 import { DocumentError, LayoutError, PageError } from './route-error.tsx'
 import { unavailableDocument } from './emergency-document.ts'
 import { sessionClearings, withCookies } from './session-clearing.ts'
+import { matchedPage } from './route-telemetry.ts'
 import { Empty, Missing, NotFound, Surface } from './frames.tsx'
 
 // The server component half of a document request
@@ -135,7 +136,11 @@ function DocumentHtml({ children, ...props }: ComponentProps<typeof HtmlDocument
   )
 }
 
-const renderServer = async (request: Request, manifest: Manifest) => {
+const renderServer = async (
+  request: Request,
+  manifest: Manifest,
+  onRoute?: (route: string, kind: 'document' | 'rsc') => void,
+) => {
   const correlation = renderRequest().correlation
   const home = (manifest.collections[primaryNavigation.key] ?? []) as readonly {
     readonly target: { readonly kind: string; readonly path?: string }
@@ -173,11 +178,11 @@ const renderServer = async (request: Request, manifest: Manifest) => {
       // Flight URLs name the transport, not the route. Use the router's
       // authorized match for both a new document and a client navigation.
       const leaf = match.payload.type === 'render' ? match.payload.matches.at(-1) : undefined
-      const routeTitle =
-        leaf === undefined
-          ? undefined
-          : manifest.pages.find(({ id }) => surfaceLabel({ kind: 'page', id }) === leaf.id)?.title
-      const stream = withRenderRequest({ ...renderRequest(), routeTitle }, () =>
+      const page = matchedPage(manifest.pages, leaf?.id)
+      // Only the authorized manifest may name telemetry, never the request URL.
+      if (page !== undefined)
+        onRoute?.(page.path, new URL(request.url).pathname.endsWith('.rsc') ? 'rsc' : 'document')
+      const stream = withRenderRequest({ ...renderRequest(), routeTitle: page?.title }, () =>
         renderToReadableStream(match.payload, options),
       )
       return new Response(stream, {
@@ -221,6 +226,8 @@ export interface RenderContext extends RenderCorrelation {
    */
   readonly apiOrigin?: string | undefined
   readonly dispatchApi?: RenderRequest['dispatchApi']
+  /** The matched manifest route template, never the request URL. */
+  readonly onRoute?: ((route: string, kind: 'document' | 'rsc') => void) | undefined
 }
 
 export default async function handler(
@@ -301,7 +308,7 @@ async function handle(
       )
     }
     const served = await withDocumentLocale(scope.locale, () =>
-      withRenderRequest(scope, () => renderServer(request, manifest)),
+      withRenderRequest(scope, () => renderServer(request, manifest, context.onRoute)),
     )
     const ssr = await import.meta.viteRsc.loadModule<typeof import('./entry.ssr.tsx')>(
       'ssr',
