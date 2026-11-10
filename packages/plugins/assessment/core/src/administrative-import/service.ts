@@ -19,7 +19,7 @@ import {
   ItemRevisionConflict,
   ScoringUnavailable,
 } from '../errors.ts'
-import type { AttachmentDescriptor } from '../attachment/service.ts'
+import type { AttachmentMetaView } from '../attachment/service.ts'
 import {
   recordAdministrativeEntriesTx,
   voidAdministrativeEntryTx,
@@ -182,7 +182,8 @@ export interface AdministrativeImportDetail {
   readonly batchId: string
   readonly item: { readonly id: string; readonly title: string }
   readonly itemRevision: { readonly id: string; readonly revisionNo: number }
-  readonly source: AdministrativeImportSource
+  readonly source: AdministrativeImportSource &
+    ({ readonly available: false } | { readonly available: true; readonly attachmentId: string })
   readonly actor: { readonly id: string; readonly name: string } | null
   readonly createdAt: string
   readonly defaultBasis: string | null
@@ -393,12 +394,18 @@ export interface AdministrativeImportMethods {
     AttachmentOpen,
     AdministrativeImportNotFound | AccessDenied | AttachmentUnavailable
   >
+  /** Resolve the source only after the same whole-import reach check as opening it. */
+  readonly administrativeImportSourceId: (
+    tenantId: string,
+    importId: string,
+    as: Principal,
+  ) => Effect.Effect<string, AdministrativeImportNotFound | AccessDenied>
   readonly describeAdministrativeImportSource: (
     tenantId: string,
     importId: string,
     as: Principal,
   ) => Effect.Effect<
-    AttachmentDescriptor,
+    AttachmentMetaView,
     AdministrativeImportNotFound | AccessDenied | AttachmentUnavailable
   >
   /**
@@ -1428,6 +1435,7 @@ export const makeAdministrativeImportMethods = (
       source: reachesAll
         ? {
             available: true as const,
+            attachmentId: found.sourceAttachmentId,
             filename: found.filenameSnapshot,
             size: found.sizeBytes,
             integrity:
@@ -1541,30 +1549,25 @@ export const makeAdministrativeImportMethods = (
         )
     })
 
+  const administrativeImportSourceId: AdministrativeImportMethods['administrativeImportSourceId'] =
+    Effect.fn('Assessment.administrativeImportSourceId')(function* (tenantId, importId, as) {
+      const found = yield* reachableImport(tenantId, importId, as)
+      return found.sourceAttachmentId
+    })
+
   const describeAdministrativeImportSource: AdministrativeImportMethods['describeAdministrativeImportSource'] =
     Effect.fn('Assessment.describeAdministrativeImportSource')(function* (tenantId, importId, as) {
-      const opened = yield* openAdministrativeImportSource(tenantId, importId, as)
-      const meta = {
-        id: opened.meta.id,
-        filename: opened.meta.filename,
-        declaredMime: opened.meta.declaredMime,
-        size: opened.meta.size.toString(),
-        status: opened.meta.status,
+      const attachmentId = yield* administrativeImportSourceId(tenantId, importId, as)
+      const meta = yield* storage
+        .metadata({ tenantId, attachmentId })
+        .pipe(Effect.catchTag('STORAGE_ATTACHMENT_NOT_FOUND', () => new AttachmentUnavailable()))
+      return {
+        id: meta.id,
+        filename: meta.filename,
+        declaredMime: meta.declaredMime,
+        size: meta.size.toString(),
+        status: meta.status,
       }
-      if (opened.target.kind === 'redirect') {
-        return {
-          ...meta,
-          delivery: {
-            kind: 'redirect' as const,
-            url: opened.target.url,
-            expiresInSeconds: opened.target.expiresInSeconds,
-          },
-        }
-      }
-      // describing must not spend the stream: a disk opens a descriptor
-      // eagerly, and an unread one is a leak
-      ;(opened.target.body as { destroy?: () => void }).destroy?.()
-      return { ...meta, delivery: { kind: 'content' as const } }
     })
 
   const reverseAdministrativeImport: AdministrativeImportMethods['reverseAdministrativeImport'] =
@@ -1674,6 +1677,7 @@ export const makeAdministrativeImportMethods = (
     getAdministrativeImport,
     listAdministrativeImportRows,
     openAdministrativeImportSource,
+    administrativeImportSourceId,
     describeAdministrativeImportSource,
     reverseAdministrativeImport,
   }

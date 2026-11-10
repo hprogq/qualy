@@ -1,3 +1,4 @@
+import { useQueryClient } from '@tanstack/react-query'
 import { formatPlatformFailure as formatError, useLocale } from '@qualy/web-i18n'
 
 import { useEffect, useRef, useState } from 'react'
@@ -23,7 +24,6 @@ import { tokens } from '@qualy/ui/theme/tokens.stylex'
 
 import { uploadFile, type UploadDoors, type UploadedFile } from './upload.ts'
 import {
-  attachmentContentUrl,
   fileKindLabels,
   lastDay,
   LOOKS_LIKE_A_PHOTOGRAPH,
@@ -225,6 +225,7 @@ export function EvidenceForm({
    */
   advice?: Readonly<Record<string, string>>
 }) {
+  const queryClient = useQueryClient()
   const handlePlatformFailure = useHandlePlatformFailure()
   const locale = useLocale()
   const words = usePickerWords()
@@ -556,6 +557,7 @@ export function EvidenceForm({
           try {
             for (const file of taking) {
               const done = await uploadFile(doors, where, file)
+              queryClient.setQueryData(['assessment', 'attachment', done.id], done)
               setUploaded((previous) => ({ ...previous, [done.attachmentId]: done }))
               landed.push(done.attachmentId)
             }
@@ -722,7 +724,7 @@ function CitedFile({
   const descriptor = useAttachmentDescriptor(attachmentId)
   const data = descriptor.metadata
   const href = descriptor.thumbnailUrl
-  const previewHref = attachmentContentUrl(attachmentId)
+  const previewHref = descriptor.contentUrl
   usePhotoRecovery(previewHref, descriptor.renew)
   const name = data?.filename ?? fallbackName
   const isImage = data !== undefined && LOOKS_LIKE_A_PHOTOGRAPH.has(data.declaredMime)
@@ -754,7 +756,7 @@ function CitedFile({
               what actually went up should not have to wait for a submission */}
           <Button variant="ghost" size="icon-sm" asChild>
             <a
-              href={attachmentContentUrl(attachmentId)}
+              href={descriptor.contentUrl || undefined}
               download={data?.filename}
               target="_blank"
               rel="noreferrer"

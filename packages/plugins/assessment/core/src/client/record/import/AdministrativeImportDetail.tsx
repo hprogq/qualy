@@ -1,3 +1,4 @@
+import { ImportSourceFiles } from '../../../attachment/contexts.ts'
 import { pageNumber } from '@qualy/api-kit/schema'
 import { RecordPager } from '../RecordPager.tsx'
 import {
@@ -15,6 +16,7 @@ import {
   useApiQuery,
   useLoadFailure,
   usePageQueryState,
+  useManifest,
 } from '@qualy/web-runtime'
 import { Fragment, useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
@@ -30,7 +32,7 @@ import { Button } from '@qualy/ui/button'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { toast } from '@qualy/ui/toast'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { assessmentApi, assessmentUrls } from '../../api.ts'
+import { assessmentApi } from '../../api.ts'
 
 import { useBatchZone } from '../../batch/zone.ts'
 import { EntryStanding } from '../../entry/EntryStanding.tsx'
@@ -214,18 +216,14 @@ export function AdministrativeImportDetail({
   })
   const lines = rows.data?.items ?? []
 
+  const documentIdentity = useManifest().identity
   const download = useApiMutation({
     mutationFn: () => api.assessment.describeAdministrativeImportSource({ params: { importId } }),
     onSuccess: (described) => {
-      // a store with its own door is sent to; otherwise the bytes come
-      // through this api, under the file's own name
-      window.location.assign(
-        described.delivery.kind === 'redirect'
-          ? described.delivery.url
-          : assessmentUrls.assessment.getAdministrativeImportSourceContent({
-              params: { importId },
-            }),
-      )
+      if (documentIdentity !== undefined)
+        window.location.assign(
+          ImportSourceFiles.at({ importId }).contentUrl(described.id, documentIdentity),
+        )
     },
     onError: (error) => {
       switch (error._tag) {

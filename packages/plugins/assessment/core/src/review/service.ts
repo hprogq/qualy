@@ -389,6 +389,7 @@ export interface ReviewContextView {
     readonly revisionNo: number
     readonly formConfig: unknown
     readonly payload: unknown
+    readonly attachments?: readonly { readonly attachmentId: string; readonly position: number }[]
   } | null
   /** the rounds before that, one line each: has this been asked twice? */
   readonly earlier: readonly {
@@ -930,6 +931,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
                   revisionNo: before.revisionNo,
                   formConfig: before.formConfig,
                   payload: before.payload,
+                  attachments: yield* revisionAttachmentsOf(tenantId, before.id),
                 },
           // everything before the one shown in full, most recent first
           earlier: older

@@ -15,7 +15,9 @@ import {
   useScreenFootClaimed,
 } from '@qualy/web-runtime'
 import { addressNow, apiError, emptyManifest, renderScreen } from './support/screen.tsx'
-import { attachmentContentUrl } from '../src/client/entry/model.ts'
+import { ReviewFiles } from '../src/attachment/contexts.ts'
+const attachmentContentUrl = (id: string) =>
+  ReviewFiles.at({ instanceId: INSTANCE_ID }).contentUrl(id, 'test-reader')
 import * as m from '#messages'
 // The only suite that needs the real stylesheet: what it asserts is which
 // parts a width shows, and without the sheet every breakpoint is the same
@@ -176,7 +178,15 @@ const inboxRow = (over: Record<string, unknown> = {}) => ({
 const queue = (inbox?: Record<string, unknown>, search = '') =>
   renderScreen({
     client: reviewClient({
-      app: { getManifest: () => Effect.succeed({ ...emptyManifest(), pages: PAGES }) },
+      app: {
+        getManifest: () =>
+          Effect.succeed({
+            ...emptyManifest(),
+            viewer: 'authenticated' as const,
+            identity: 'test-reader',
+            pages: PAGES,
+          }),
+      },
       assessment: {
         getBatch: () => Effect.succeed({ batch: batch() }),
         listReviewInbox: () =>
@@ -215,7 +225,15 @@ describe('the wake-ups of one decision', () => {
     ] as const
     await renderScreen({
       client: reviewClient({
-        app: { getManifest: () => Effect.succeed({ ...emptyManifest(), pages: PAGES }) },
+        app: {
+          getManifest: () =>
+            Effect.succeed({
+              ...emptyManifest(),
+              viewer: 'authenticated' as const,
+              identity: 'test-reader',
+              pages: PAGES,
+            }),
+        },
         assessment: {
           getBatch: () => Effect.succeed({ batch: batch() }),
           getMyOverview: () => Effect.succeed({}),
@@ -260,7 +278,15 @@ const open = (stubs: Record<string, unknown> = {}, locale: 'zh-CN' | 'en-US' = '
   renderScreen({
     locale,
     client: reviewClient({
-      app: { getManifest: () => Effect.succeed({ ...emptyManifest(), pages: PAGES }) },
+      app: {
+        getManifest: () =>
+          Effect.succeed({
+            ...emptyManifest(),
+            viewer: 'authenticated' as const,
+            identity: 'test-reader',
+            pages: PAGES,
+          }),
+      },
       assessment: {
         getBatch: () => Effect.succeed({ batch: batch() }),
         // named because a wake-up stales the rail's count with the queue;
@@ -337,6 +363,13 @@ describe('one workbench, three widths', () => {
           Effect.succeed({
             review: {
               ...review,
+              files: ids.map((id, index) => ({
+                id,
+                filename: `scan-${String(index)}.pdf`,
+                declaredMime: 'application/pdf',
+                size: '204800',
+                status: 'bound' as const,
+              })),
               revision: { ...review.revision, payload: { scan: ids } },
               form: {
                 itemType: 'evidence',
@@ -345,17 +378,6 @@ describe('one workbench, three widths', () => {
                 },
               },
             },
-          }),
-        listAttachmentDescriptors: () =>
-          Effect.succeed({
-            attachments: ids.map((id, index) => ({
-              id,
-              filename: `scan-${String(index)}.pdf`,
-              declaredMime: 'application/pdf',
-              size: '204800',
-              status: 'bound',
-              delivery: { kind: 'content' as const },
-            })),
           }),
       })
       const download = page.getByRole('button', { name: m.review_downloadAll() })
@@ -572,7 +594,15 @@ describe('one workbench, three widths', () => {
     }
     await renderScreen({
       client: reviewClient({
-        app: { getManifest: () => Effect.succeed({ ...emptyManifest(), pages: PAGES }) },
+        app: {
+          getManifest: () =>
+            Effect.succeed({
+              ...emptyManifest(),
+              viewer: 'authenticated' as const,
+              identity: 'test-reader',
+              pages: PAGES,
+            }),
+        },
         assessment: {
           getBatch: () => Effect.succeed({ batch: batch() }),
           listReviewInbox: () =>
@@ -610,7 +640,15 @@ describe('one workbench, three widths', () => {
     }
     await renderScreen({
       client: reviewClient({
-        app: { getManifest: () => Effect.succeed({ ...emptyManifest(), pages: PAGES }) },
+        app: {
+          getManifest: () =>
+            Effect.succeed({
+              ...emptyManifest(),
+              viewer: 'authenticated' as const,
+              identity: 'test-reader',
+              pages: PAGES,
+            }),
+        },
         assessment: {
           getBatch: () => Effect.succeed({ batch: batch() }),
           listReviewInbox: () =>
@@ -1061,7 +1099,15 @@ describe('a round the address names that is not there', () => {
     const asked = vi.fn(() => Effect.succeed({ review }))
     await renderScreen({
       client: reviewClient({
-        app: { getManifest: () => Effect.succeed({ ...emptyManifest(), pages: PAGES }) },
+        app: {
+          getManifest: () =>
+            Effect.succeed({
+              ...emptyManifest(),
+              viewer: 'authenticated' as const,
+              identity: 'test-reader',
+              pages: PAGES,
+            }),
+        },
         assessment: {
           getBatch: () => Effect.succeed({ batch: batch() }),
           listReviewInbox: () =>
@@ -1185,7 +1231,15 @@ describe('the rail badge beside the workbench', () => {
         )
       await renderScreen({
         client: reviewClient({
-          app: { getManifest: () => Effect.succeed({ ...emptyManifest(), pages: PAGES }) },
+          app: {
+            getManifest: () =>
+              Effect.succeed({
+                ...emptyManifest(),
+                viewer: 'authenticated' as const,
+                identity: 'test-reader',
+                pages: PAGES,
+              }),
+          },
           assessment: {
             getBatch: () => Effect.succeed({ batch: batch() }),
             listReviewInbox: () =>
@@ -1543,7 +1597,15 @@ describe('a queue longer than one page', () => {
     })
   }
   const stubs = (seen: (string | undefined)[]) => ({
-    app: { getManifest: () => Effect.succeed({ ...emptyManifest(), pages: PAGES }) },
+    app: {
+      getManifest: () =>
+        Effect.succeed({
+          ...emptyManifest(),
+          viewer: 'authenticated' as const,
+          identity: 'test-reader',
+          pages: PAGES,
+        }),
+    },
     assessment: {
       getBatch: () => Effect.succeed({ batch: batch() }),
       listReviewInbox: paged(seen),
@@ -1735,7 +1797,15 @@ describe('the queue, a page at a time', () => {
   ) =>
     renderScreen({
       client: reviewClient({
-        app: { getManifest: () => Effect.succeed({ ...emptyManifest(), pages: PAGES }) },
+        app: {
+          getManifest: () =>
+            Effect.succeed({
+              ...emptyManifest(),
+              viewer: 'authenticated' as const,
+              identity: 'test-reader',
+              pages: PAGES,
+            }),
+        },
         assessment: {
           getBatch: () => Effect.succeed({ batch: batch() }),
           listReviewInbox: () => Effect.succeed(inboxOf(items)),
@@ -2254,6 +2324,15 @@ describe('where the person being judged stands', () => {
         asked.push(params.entryId)
         return Effect.succeed({
           sibling: {
+            files: [
+              {
+                id: FILE_ID,
+                filename: '考核表.pdf',
+                declaredMime: 'application/pdf',
+                size: '204800',
+                status: 'bound' as const,
+              },
+            ],
             entryId: SIBLING_ID,
             status: 'approved',
             submittedAt: '2026-03-02T00:00:00.000Z',
@@ -2265,19 +2344,6 @@ describe('where the person being judged stands', () => {
           },
         })
       },
-      listAttachmentDescriptors: () =>
-        Effect.succeed({
-          attachments: [
-            {
-              id: FILE_ID,
-              filename: '考核表.pdf',
-              declaredMime: 'application/pdf',
-              size: '204800',
-              status: 'bound',
-              delivery: { kind: 'content' as const },
-            },
-          ],
-        }),
     })
     // nothing is fetched for a claim nobody opened
     await expect.element(page.getByText(review.itemTitle).first()).toBeVisible()

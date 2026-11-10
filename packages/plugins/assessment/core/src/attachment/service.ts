@@ -1,35 +1,10 @@
 import { Effect } from 'effect'
 import type { Orm } from '@qualy/plugin-database/server'
 import type { Principal } from '@qualy/rbac-contract'
-import type { AttachmentMeta, AttachmentOpen, Storage } from '@qualy/plugin-storage/server'
+import type { AttachmentMeta, Storage } from '@qualy/plugin-storage/server'
 import type { UploadTicket } from '@qualy/plugin-storage/upload'
 import { AttachmentUnavailable, EntryActionRefused, ItemNotFound } from '../errors.ts'
 import { itemOf } from '../item/db.ts'
-import { userMayReadReview } from '../review/db.ts'
-import {
-  citingEntries,
-  citingInstances,
-  peerCitingInstances,
-  supplementCitingEntries,
-  supplementCitingInstances,
-} from './db.ts'
-
-// The assessment attachment authorizer (§3.5): storage knows objects and
-// backends, this module knows why a person may read a business material.
-// Storage.open runs the decision it is handed and learns nothing from it.
-//
-// A file belongs to a story, and its readers are the story's people: the
-// uploader while it is still staged, the subject whose filings cite it -
-// membership is history, an excluded member keeps reading what they filed -
-// the staff whose administrative reach covers a citing round, and whoever
-// the reviewer's READ predicate admits to a round that judged it - the
-// read one, not the act one, so a round waiting on an ask stops answering
-// for the colleague it has been taken from (§32.70) - and, through the same
-// predicate, a round on another claim the person holds on the same question,
-// for the version last handed in (§32.74 revised 2026-10-15). A retired
-// attachment answers the same question the same way: retirement stops new
-// citations, never the reading of history.
-
 export interface AttachmentUploadInput {
   readonly batchId: string
   readonly itemId: string
@@ -43,26 +18,10 @@ export interface AttachmentMetaView {
   readonly filename: string
   readonly declaredMime: string
   readonly size: string
-  readonly status: string
-}
-
-export interface AttachmentDescriptor extends AttachmentMetaView {
-  readonly delivery:
-    | {
-        readonly kind: 'redirect'
-        readonly url: string
-        readonly expiresInSeconds: number
-        readonly thumbnail?: { readonly url: string; readonly expiresInSeconds: number }
-      }
-    | { readonly kind: 'content' }
+  readonly status: AttachmentMeta['status']
 }
 
 export interface AttachmentMethods {
-  readonly openAttachment: (
-    tenantId: string,
-    attachmentId: string,
-    as: Principal,
-  ) => Effect.Effect<AttachmentOpen, AttachmentUnavailable>
   readonly prepareAttachmentUpload: (
     tenantId: string,
     input: AttachmentUploadInput,
@@ -73,42 +32,11 @@ export interface AttachmentMethods {
     reservationId: string,
     as: Principal,
   ) => Effect.Effect<AttachmentMetaView, AttachmentUnavailable | EntryActionRefused>
-  readonly describeAttachment: (
-    tenantId: string,
-    attachmentId: string,
-    as: Principal,
-  ) => Effect.Effect<AttachmentDescriptor, AttachmentUnavailable>
-  /**
-   * Many files described in one crossing, for a screen that cites many.
-   * Authorization stays per file - each id is admitted or omitted on its own
-   * answer, and an id this reader may not touch simply is not in the reply,
-   * indistinguishable from one that does not exist.
-   */
-  readonly describeAttachments: (
-    tenantId: string,
-    attachmentIds: readonly string[],
-    as: Principal,
-  ) => Effect.Effect<readonly AttachmentDescriptor[]>
 }
 
 export interface AttachmentDeps {
   readonly withDb: <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, Exclude<R, Orm>>
   readonly storage: Storage['Service']
-  readonly rosterReach: (as: Principal, tenantId: string, batchId: string) => Effect.Effect<boolean>
-  /**
-   * Whether this person may read the filing that cites the material.
-   *
-   * The batch administrator's reach above is not the only way in. A recorder
-   * writes administrative facts about the people their authority covers and
-   * puts the document behind the fact in with them, so reading the material
-   * back has to be the same boundary as reading the fact - otherwise the
-   * person who attached it is refused it the moment they reopen the record.
-   */
-  readonly mayReadEntry: (
-    tenantId: string,
-    entryId: string,
-    as: Principal,
-  ) => Effect.Effect<boolean>
   /** may this person put material into this batch at all: an active member, or staff who records */
   readonly uploadStanding: (
     tenantId: string,
@@ -119,73 +47,6 @@ export interface AttachmentDeps {
 
 export const makeAttachmentMethods = (deps: AttachmentDeps): AttachmentMethods => {
   const { withDb } = deps
-
-  const authorize = (tenantId: string, meta: AttachmentMeta, as: Principal) =>
-    Effect.gen(function* () {
-      // one's own upload, before anything cites it
-      if (meta.status === 'staged' && meta.ownerUserId === as.userId) return
-      // citations come from two places that tell one story: the filing's own
-      // revisions, and the supplement answers given on its rounds
-      const entries = [
-        ...(yield* withDb(citingEntries(tenantId, meta.id))),
-        ...(yield* withDb(supplementCitingEntries(tenantId, meta.id))),
-      ]
-      if (entries.some((entry) => entry.subjectUserId === as.userId)) return
-      // everybody else reads what was handed in: a file only the owner's
-      // working version cites is still on their desk
-      const handedIn = entries.filter((entry) => entry.handedIn)
-      for (const batchId of new Set(handedIn.map((entry) => entry.batchId))) {
-        if (yield* deps.rosterReach(as, tenantId, batchId)) return
-      }
-      // and whoever may read the filing itself, which a recorder's own
-      // administrative fact is
-      for (const entry of handedIn) {
-        if (yield* deps.mayReadEntry(tenantId, entry.entryId, as)) return
-      }
-      const instances = [
-        ...(yield* withDb(citingInstances(tenantId, meta.id))),
-        ...(yield* withDb(supplementCitingInstances(tenantId, meta.id))),
-        // the rounds on the person's other claims on the same question:
-        // their reader compares this filing with the one being judged
-        ...(yield* withDb(peerCitingInstances(tenantId, meta.id))),
-      ]
-      for (const instance of instances) {
-        const judge = yield* withDb(
-          userMayReadReview({
-            tenantId,
-            userId: as.userId,
-            instance: {
-              id: instance.id,
-              batchId: instance.batchId,
-              state: instance.state,
-              currentRoute: instance.currentRoute,
-              currentNodeId: instance.currentNodeId,
-              currentRoleIds: instance.currentRoleIds,
-              subjectUserId: instance.subjectUserId,
-              actorId: instance.actorId,
-            },
-          }),
-        )
-        if (judge) return
-      }
-      return yield* new AttachmentUnavailable()
-    })
-
-  const openAttachment: AttachmentMethods['openAttachment'] = Effect.fn(
-    'Assessment.openAttachment',
-  )(function* (tenantId, attachmentId, as) {
-    return yield* deps.storage
-      .open({ tenantId, attachmentId }, (meta) => authorize(tenantId, meta, as))
-      .pipe(
-        // absent, refused and backend trouble all read the same from
-        // outside: nothing here for this reader
-        Effect.catchTags({
-          STORAGE_ATTACHMENT_NOT_FOUND: () => new AttachmentUnavailable(),
-          STORAGE_BACKEND_UNAVAILABLE: (error) => Effect.die(error),
-          QueryFailed: (error) => Effect.die(error),
-        }),
-      )
-  })
 
   const metaView = (meta: AttachmentMeta): AttachmentMetaView => ({
     id: meta.id,
@@ -243,61 +104,8 @@ export const makeAttachmentMethods = (deps: AttachmentDeps): AttachmentMethods =
       )
   })
 
-  const describeAttachment: AttachmentMethods['describeAttachment'] = Effect.fn(
-    'Assessment.describeAttachment',
-  )(function* (tenantId, attachmentId, as) {
-    // Describing must not spend the stream, and a disk opens its descriptor
-    // eagerly - so the close is the release of the open rather than a line
-    // after it. Written as a line after it, a request abandoned in the
-    // window between the two left the descriptor open for good.
-    return yield* Effect.acquireUseRelease(
-      openAttachment(tenantId, attachmentId, as),
-      (opened) =>
-        Effect.succeed(
-          opened.target.kind === 'redirect'
-            ? {
-                ...metaView(opened.meta),
-                delivery: {
-                  kind: 'redirect' as const,
-                  url: opened.target.url,
-                  expiresInSeconds: opened.target.expiresInSeconds,
-                  ...(opened.target.thumbnail === undefined
-                    ? {}
-                    : { thumbnail: opened.target.thumbnail }),
-                },
-              }
-            : { ...metaView(opened.meta), delivery: { kind: 'content' as const } },
-        ),
-      (opened) =>
-        Effect.sync(() => {
-          if (opened.target.kind === 'stream') {
-            ;(opened.target.body as { destroy?: () => void }).destroy?.()
-          }
-        }),
-    )
-  })
-
-  const describeAttachments: AttachmentMethods['describeAttachments'] = Effect.fn(
-    'Assessment.describeAttachments',
-  )(function* (tenantId, attachmentIds, as) {
-    const described = yield* Effect.forEach(
-      [...new Set(attachmentIds)],
-      (attachmentId) =>
-        describeAttachment(tenantId, attachmentId, as).pipe(
-          Effect.catchTag('ASSESSMENT_ATTACHMENT_NOT_FOUND', () => Effect.succeed(null)),
-        ),
-      // each description authorizes against the citation graph; a page of
-      // fifty files must not open fifty concurrent walks of it
-      { concurrency: 4 },
-    )
-    return described.filter((one) => one !== null)
-  })
-
   return {
-    openAttachment,
     prepareAttachmentUpload,
     completeAttachmentUpload,
-    describeAttachment,
-    describeAttachments,
   }
 }

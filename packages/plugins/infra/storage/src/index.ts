@@ -1,4 +1,7 @@
 import { Plugin } from '@qualy/plugin-kit'
+import { Api } from '@qualy/api-kit/plugin'
+import { storageContentApiGroup } from './api.ts'
+import { storageContentApiHandlers } from './server/content-api.ts'
 import { Cli } from '@qualy/plugin-kit/cli'
 import { Db } from '@qualy/plugin-database/plugin'
 import { entities } from './db/entities.ts'
@@ -17,6 +20,8 @@ const plugin = Plugin.define(
   { dependsOn: ['@qualy/plugin-database'], config },
   Db.entities(entities),
   Storage.provider,
+  Storage.readContextProvider,
+  Api.group(storageContentApiGroup, storageContentApiHandlers),
   Plugin.layer(serviceLayer),
   // what a backup fetches of the attachments, each at the version it
   // completed with; run by an operator, never by the serving process

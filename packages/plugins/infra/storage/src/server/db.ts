@@ -426,6 +426,21 @@ export const attachmentOf = (input: { tenantId: string; id: string }) =>
     )
     .pipe(Effect.map((row) => (row ? toAttachment(row as Record<string, unknown>) : null)))
 
+export const attachmentsOf = (input: { tenantId: string; ids: readonly string[] }) =>
+  input.ids.length === 0
+    ? Effect.succeed([])
+    : db
+        .query((k) =>
+          k
+            .selectFrom('Attachment')
+            .select(attachmentColumns)
+            .select(attachmentInstants)
+            .where('tenantId', '=', input.tenantId)
+            .where('id', 'in', input.ids)
+            .execute(),
+        )
+        .pipe(Effect.map((rows) => rows.map((row) => toAttachment(row as Record<string, unknown>))))
+
 /**
  * staged to bound, if it is still staged and nobody is sweeping it.
  *

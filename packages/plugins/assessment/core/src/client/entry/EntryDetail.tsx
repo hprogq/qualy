@@ -1,3 +1,5 @@
+import { EntryFiles } from '../../attachment/contexts.ts'
+import { AttachmentScope } from './AttachmentScope.tsx'
 import { useLocale } from '@qualy/web-i18n'
 import { useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
@@ -535,310 +537,255 @@ export function EntryDetail({
   )
 
   return (
-    <Sheet open={open} onOpenChange={(next) => !next && onClose()}>
-      <SheetContent
-        side={phone ? 'bottom' : 'right'}
-        xstyle={[styles.panel, phone && styles.panelBelow]}
-        showCloseButton={false}
-      >
-        {phone && <span aria-hidden data-sheet-grab="" {...stylex.props(styles.grab)} />}
-        <div {...stylex.props(styles.head)}>
-          <div {...stylex.props(styles.headWords)}>
-            <UnitPath
-              steps={[...trail, item.title]}
-              emphasis="last"
-              currentPage
-              xstyle={styles.breadcrumb}
-            />
-            {/* the claim by its own identity line, field names set apart as
+    <AttachmentScope
+      files={history.data?.files ?? entry.files}
+      context={EntryFiles.at({ entryId: entry.id })}
+    >
+      <Sheet open={open} onOpenChange={(next) => !next && onClose()}>
+        <SheetContent
+          side={phone ? 'bottom' : 'right'}
+          xstyle={[styles.panel, phone && styles.panelBelow]}
+          showCloseButton={false}
+        >
+          {phone && <span aria-hidden data-sheet-grab="" {...stylex.props(styles.grab)} />}
+          <div {...stylex.props(styles.head)}>
+            <div {...stylex.props(styles.headWords)}>
+              <UnitPath
+                steps={[...trail, item.title]}
+                emphasis="last"
+                currentPage
+                xstyle={styles.breadcrumb}
+              />
+              {/* the claim by its own identity line, field names set apart as
                 its row in the list sets them */}
-            <SheetTitle className={stylex.props(styles.sheetTitle).className}>
-              {summary === undefined ? (
-                m.entrySheet_title()
-              ) : (
-                <LineParts parts={summary.parts.slice(0, 1)} />
+              <SheetTitle className={stylex.props(styles.sheetTitle).className}>
+                {summary === undefined ? (
+                  m.entrySheet_title()
+                ) : (
+                  <LineParts parts={summary.parts.slice(0, 1)} />
+                )}
+              </SheetTitle>
+              {summary !== undefined && summary.parts.length > 1 && (
+                <p data-part="sub" {...stylex.props(styles.headSub)}>
+                  <LineParts parts={summary.parts.slice(1)} />
+                </p>
               )}
-            </SheetTitle>
-            {summary !== undefined && summary.parts.length > 1 && (
-              <p data-part="sub" {...stylex.props(styles.headSub)}>
-                <LineParts parts={summary.parts.slice(1)} />
-              </p>
-            )}
-            {/* Each fact carries the divider before it, and the row is set
+              {/* Each fact carries the divider before it, and the row is set
                 back by one divider inside a clipped box: whichever fact
                 starts a line has its divider cut off, so a narrow drawer
                 never ends a line on one or starts one with it. */}
-            <div {...stylex.props(styles.titleClip)}>
-              <div {...stylex.props(styles.titleRow)}>
-                <span data-head-fact="standing" {...stylex.props(styles.headFact)}>
-                  <span aria-hidden {...stylex.props(styles.headRule)} />
-                  <EntryStanding
-                    status={entry.status}
-                    source={entry.source}
-                    revised={entry.currentReviewInstanceId !== null}
-                    asked={entry.supplement !== null}
-                    openRound={entry.openRound}
-                    withItem={voidedWithItem(entry, item)}
-                  />
-                  <span {...stylex.props(styles.versionNote)}>{sourceLabelOf(entry.source)()}</span>
-                </span>
-                {revisionNo !== undefined && entry.status !== 'draft' && (
-                  <span data-head-fact="version" {...stylex.props(styles.headFact)}>
+              <div {...stylex.props(styles.titleClip)}>
+                <div {...stylex.props(styles.titleRow)}>
+                  <span data-head-fact="standing" {...stylex.props(styles.headFact)}>
                     <span aria-hidden {...stylex.props(styles.headRule)} />
+                    <EntryStanding
+                      status={entry.status}
+                      source={entry.source}
+                      revised={entry.currentReviewInstanceId !== null}
+                      asked={entry.supplement !== null}
+                      openRound={entry.openRound}
+                      withItem={voidedWithItem(entry, item)}
+                    />
                     <span {...stylex.props(styles.versionNote)}>
-                      {m.entry_versionNo({ no: revisionNo })}
+                      {sourceLabelOf(entry.source)()}
                     </span>
                   </span>
-                )}
-                {summary?.dated === true && (
-                  <span data-head-fact="when" {...stylex.props(styles.headFact)}>
-                    <span aria-hidden {...stylex.props(styles.headRule)} />
-                    <span {...stylex.props(styles.versionNote)}>
-                      {m.entries_when({
-                        when: timeOf(summary.at, locale, zone),
-                        action: summary.action(),
-                      })}
+                  {revisionNo !== undefined && entry.status !== 'draft' && (
+                    <span data-head-fact="version" {...stylex.props(styles.headFact)}>
+                      <span aria-hidden {...stylex.props(styles.headRule)} />
+                      <span {...stylex.props(styles.versionNote)}>
+                        {m.entry_versionNo({ no: revisionNo })}
+                      </span>
                     </span>
-                  </span>
-                )}
+                  )}
+                  {summary?.dated === true && (
+                    <span data-head-fact="when" {...stylex.props(styles.headFact)}>
+                      <span aria-hidden {...stylex.props(styles.headRule)} />
+                      <span {...stylex.props(styles.versionNote)}>
+                        {m.entries_when({
+                          when: timeOf(summary.at, locale, zone),
+                          action: summary.action(),
+                        })}
+                      </span>
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
-          <span {...stylex.props(styles.spacer)} />
-          {summary !== undefined && (
-            <div {...stylex.props(styles.headAmount)} data-amount={summary.amount ?? ''}>
-              {summary.amount !== null && (
-                <span {...stylex.props(styles.headAmountValue)}>{summary.amount}</span>
-              )}
-              <span {...stylex.props(styles.versionNote)}>{summary.amountWord()}</span>
-            </div>
-          )}
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label={commonMessages.action_close()}
-            onClick={onClose}
-          >
-            <XIcon aria-hidden />
-          </Button>
-        </div>
-
-        <div {...stylex.props(styles.tabBar)}>
-          {(
-            [
-              [
-                'content',
-                m.entrySheet_content,
-                m.entrySheet_contentCount({ count: fields.length }),
-              ],
-              ['trail', m.entrySheet_trail, m.entrySheet_trailCount({ count: versions })],
-            ] as const
-          ).map(([key, label, count]) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => setTab(key)}
-              {...stylex.props(styles.tab, tab === key && styles.tabOn)}
+            <span {...stylex.props(styles.spacer)} />
+            {summary !== undefined && (
+              <div {...stylex.props(styles.headAmount)} data-amount={summary.amount ?? ''}>
+                {summary.amount !== null && (
+                  <span {...stylex.props(styles.headAmountValue)}>{summary.amount}</span>
+                )}
+                <span {...stylex.props(styles.versionNote)}>{summary.amountWord()}</span>
+              </div>
+            )}
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label={commonMessages.action_close()}
+              onClick={onClose}
             >
-              {label()}
-              <Count>{count}</Count>
-              {tab === key && <span aria-hidden {...stylex.props(styles.tabInk)} />}
-            </button>
-          ))}
-        </div>
+              <XIcon aria-hidden />
+            </Button>
+          </div>
 
-        <ScrollArea className={stylex.props(styles.scroller).className}>
-          {/* the two tabs replace each other in place, seen to change */}
-          <Swap swapKey={tab} className={stylex.props(styles.body).className}>
-            {tab === 'trail' ? (
-              <EntryTrail entryId={entry.id} />
-            ) : (
-              <>
-                {aside}
-                {entry.refusal !== null && (
-                  <div
-                    data-testid="entry-refusal"
-                    data-kind={entry.refusal.kind}
-                    {...stylex.props(
-                      styles.notice,
-                      entry.refusal.kind !== 'rejected' && styles.noticeReturned,
-                    )}
-                  >
-                    <div {...stylex.props(styles.noticeHead)}>
-                      <p
-                        {...stylex.props(
-                          styles.noticeTitle,
-                          entry.refusal.kind !== 'rejected' && styles.noticeTitleReturned,
-                        )}
-                      >
-                        {(entry.refusal.kind === 'rejected'
-                          ? m.entry_refusedTitle
-                          : m.entry_returnedTitle)()}
-                      </p>
-                      {entry.refusal.reason !== null && (
-                        <Badge
-                          variant="outline"
-                          className={stylex.props(styles.reasonBadge).className}
-                        >
-                          {entry.refusal.reason}
-                        </Badge>
+          <div {...stylex.props(styles.tabBar)}>
+            {(
+              [
+                [
+                  'content',
+                  m.entrySheet_content,
+                  m.entrySheet_contentCount({ count: fields.length }),
+                ],
+                ['trail', m.entrySheet_trail, m.entrySheet_trailCount({ count: versions })],
+              ] as const
+            ).map(([key, label, count]) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setTab(key)}
+                {...stylex.props(styles.tab, tab === key && styles.tabOn)}
+              >
+                {label()}
+                <Count>{count}</Count>
+                {tab === key && <span aria-hidden {...stylex.props(styles.tabInk)} />}
+              </button>
+            ))}
+          </div>
+
+          <ScrollArea className={stylex.props(styles.scroller).className}>
+            {/* the two tabs replace each other in place, seen to change */}
+            <Swap swapKey={tab} className={stylex.props(styles.body).className}>
+              {tab === 'trail' ? (
+                <EntryTrail entryId={entry.id} />
+              ) : (
+                <>
+                  {aside}
+                  {entry.refusal !== null && (
+                    <div
+                      data-testid="entry-refusal"
+                      data-kind={entry.refusal.kind}
+                      {...stylex.props(
+                        styles.notice,
+                        entry.refusal.kind !== 'rejected' && styles.noticeReturned,
                       )}
-                      <span {...stylex.props(styles.spacer)} />
-                      <span {...stylex.props(styles.noticeWhen)} data-testid="refusal-when">
-                        {timeOf(entry.refusal.at, locale, zone)}
-                      </span>
-                    </div>
-                    {(entry.refusal.comment ?? '') !== '' && (
-                      <div>
-                        <p {...stylex.props(styles.fieldLabel)}>{m.review_comment()}</p>
-                        <p {...stylex.props(styles.prose)}>{entry.refusal.comment}</p>
-                      </div>
-                    )}
-                    <SuggestedChanges
-                      suggested={entry.refusal.suggestedPayload}
-                      payload={payload}
-                      fields={fields}
-                    />
-                  </div>
-                )}
-
-                {/* the open ask, with its answer one press away */}
-                {entry.supplement !== null && (
-                  <div
-                    data-testid="supplement-ask"
-                    {...stylex.props(styles.notice, styles.noticeAsk, styles.noticeReturned)}
-                  >
-                    <div {...stylex.props(styles.askHead)}>
-                      <AlertCircleIcon
-                        aria-hidden
-                        className={stylex.props(styles.askIcon).className}
-                      />
-                      <p {...stylex.props(styles.askTitle)}>{m.entry_supplementTitle()}</p>
-                    </div>
-                    <p {...stylex.props(styles.prose)}>{entry.supplement.instructions}</p>
-                    {entry.supplement.requirements.length > 0 && (
-                      <div {...stylex.props(styles.askNeeds)}>
-                        <p {...stylex.props(styles.quietNote)}>{m.supplement_needs()}</p>
-                        {entry.supplement.requirements.map((asked) => (
-                          <span key={asked.key} {...stylex.props(styles.askPiece)}>
-                            <span aria-hidden {...stylex.props(styles.askDot)} />
-                            <span {...stylex.props(styles.askPieceName)}>{asked.label}</span>
-                            <span {...stylex.props(styles.askPieceKind)}>
-                              {(asked.kind === 'file'
-                                ? m.supplement_addFile
-                                : m.supplement_addText)()}
-                            </span>
-                            {asked.required && (
-                              <span {...stylex.props(styles.askPieceRequired)}>
-                                {m.supplement_pieceRequired()}
-                              </span>
-                            )}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                    <Button
-                      size="sm"
-                      disabled={onSupplement === undefined}
-                      onClick={() => onSupplement?.()}
                     >
-                      {m.entry_supplementAnswer()}
-                    </Button>
-                  </div>
-                )}
+                      <div {...stylex.props(styles.noticeHead)}>
+                        <p
+                          {...stylex.props(
+                            styles.noticeTitle,
+                            entry.refusal.kind !== 'rejected' && styles.noticeTitleReturned,
+                          )}
+                        >
+                          {(entry.refusal.kind === 'rejected'
+                            ? m.entry_refusedTitle
+                            : m.entry_returnedTitle)()}
+                        </p>
+                        {entry.refusal.reason !== null && (
+                          <Badge
+                            variant="outline"
+                            className={stylex.props(styles.reasonBadge).className}
+                          >
+                            {entry.refusal.reason}
+                          </Badge>
+                        )}
+                        <span {...stylex.props(styles.spacer)} />
+                        <span {...stylex.props(styles.noticeWhen)} data-testid="refusal-when">
+                          {timeOf(entry.refusal.at, locale, zone)}
+                        </span>
+                      </div>
+                      {(entry.refusal.comment ?? '') !== '' && (
+                        <div>
+                          <p {...stylex.props(styles.fieldLabel)}>{m.review_comment()}</p>
+                          <p {...stylex.props(styles.prose)}>{entry.refusal.comment}</p>
+                        </div>
+                      )}
+                      <SuggestedChanges
+                        suggested={entry.refusal.suggestedPayload}
+                        payload={payload}
+                        fields={fields}
+                      />
+                    </div>
+                  )}
 
-                {/* What the round decided, above what was filed: it is the
+                  {/* the open ask, with its answer one press away */}
+                  {entry.supplement !== null && (
+                    <div
+                      data-testid="supplement-ask"
+                      {...stylex.props(styles.notice, styles.noticeAsk, styles.noticeReturned)}
+                    >
+                      <div {...stylex.props(styles.askHead)}>
+                        <AlertCircleIcon
+                          aria-hidden
+                          className={stylex.props(styles.askIcon).className}
+                        />
+                        <p {...stylex.props(styles.askTitle)}>{m.entry_supplementTitle()}</p>
+                      </div>
+                      <p {...stylex.props(styles.prose)}>{entry.supplement.instructions}</p>
+                      {entry.supplement.requirements.length > 0 && (
+                        <div {...stylex.props(styles.askNeeds)}>
+                          <p {...stylex.props(styles.quietNote)}>{m.supplement_needs()}</p>
+                          {entry.supplement.requirements.map((asked) => (
+                            <span key={asked.key} {...stylex.props(styles.askPiece)}>
+                              <span aria-hidden {...stylex.props(styles.askDot)} />
+                              <span {...stylex.props(styles.askPieceName)}>{asked.label}</span>
+                              <span {...stylex.props(styles.askPieceKind)}>
+                                {(asked.kind === 'file'
+                                  ? m.supplement_addFile
+                                  : m.supplement_addText)()}
+                              </span>
+                              {asked.required && (
+                                <span {...stylex.props(styles.askPieceRequired)}>
+                                  {m.supplement_pieceRequired()}
+                                </span>
+                              )}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      <Button
+                        size="sm"
+                        disabled={onSupplement === undefined}
+                        onClick={() => onSupplement?.()}
+                      >
+                        {m.entry_supplementAnswer()}
+                      </Button>
+                    </div>
+                  )}
+
+                  {/* What the round decided, above what was filed: it is the
                     answer, and the filing is the question it was asked of.
                     Not where the reader brought their own card for it - the
                     office's drawer says more about a determination than this
                     does, and two of them would disagree the moment one of
                     them is the one being corrected. */}
-                {aside === undefined && <RecognizedValues entry={entry} />}
+                  {aside === undefined && <RecognizedValues entry={entry} />}
 
-                <section {...stylex.props(styles.section)}>
-                  <div {...stylex.props(styles.sectionHead)}>
-                    {/* what this section holds depends on how the fact
+                  <section {...stylex.props(styles.section)}>
+                    <div {...stylex.props(styles.sectionHead)}>
+                      {/* what this section holds depends on how the fact
                         arrived, not on what kind of question it answers:
                         an item may accept both a claim and a record */}
-                    <p {...stylex.props(styles.sectionTitle)}>
-                      {(entry.source === 'record' || entry.source === 'import'
-                        ? m.entrySheet_recorded
-                        : m.entrySheet_own)()}
-                    </p>
-                    <span aria-hidden {...stylex.props(styles.sectionRule)} />
-                    {revisionNo !== undefined && (
-                      <p {...stylex.props(styles.sectionNote)}>
-                        {m.entry_versionNo({ no: revisionNo })}
-                      </p>
-                    )}
-                  </div>
-                  {fields.map((field) => {
-                    const value = answerOf(payload, field.key)
-                    return (
-                      <div key={field.key} {...stylex.props(styles.field)}>
-                        <p {...stylex.props(styles.fieldLabel)}>{field.label}</p>
-                        {field.type === 'attachment' ? (
-                          Array.isArray(value) && value.length > 0 ? (
-                            <span {...stylex.props(styles.fileRow)}>
-                              {value.map((id) => (
-                                <AttachmentLink
-                                  key={String(id)}
-                                  attachmentId={String(id)}
-                                  variant="card"
-                                />
-                              ))}
-                            </span>
-                          ) : (
-                            <p {...stylex.props(styles.fieldCleared)}>{m.entry_fieldCleared()}</p>
-                          )
-                        ) : (
-                          <p {...stylex.props(styles.fieldValue)}>
-                            {displayValueOf(field, value, yesNo) || m.entry_fieldCleared()}
-                          </p>
-                        )}
-                      </div>
-                    )
-                  })}
-                  {(entry.currentRevision?.note ?? null) !== null && (
-                    <div {...stylex.props(styles.field)}>
-                      <p {...stylex.props(styles.fieldLabel)}>
+                      <p {...stylex.props(styles.sectionTitle)}>
                         {(entry.source === 'record' || entry.source === 'import'
-                          ? m.entry_recordBasis
-                          : m.entry_note)()}
+                          ? m.entrySheet_recorded
+                          : m.entrySheet_own)()}
                       </p>
-                      <p {...stylex.props(styles.fieldValue)}>{entry.currentRevision!.note}</p>
-                    </div>
-                  )}
-                </section>
-
-                {/* what a reviewer asked for and what answered it, one
-                    section per ask: the requirement and the material stay
-                    together, because apart neither says what it is for */}
-                {answered.map((ask) => (
-                  <section key={ask.id} {...stylex.props(styles.section)}>
-                    <div {...stylex.props(styles.sectionHead)}>
-                      <p {...stylex.props(styles.sectionTitle)}>{m.entrySheet_supHead()}</p>
                       <span aria-hidden {...stylex.props(styles.sectionRule)} />
-                      <p {...stylex.props(styles.sectionNote)}>
-                        {m.entrySheet_supNote({
-                          round: ask.roundNo,
-                          asked: timeOf(ask.requestedAt, locale, zone),
-                          answered: timeOf(ask.response!.respondedAt, locale, zone),
-                        })}
-                      </p>
+                      {revisionNo !== undefined && (
+                        <p {...stylex.props(styles.sectionNote)}>
+                          {m.entry_versionNo({ no: revisionNo })}
+                        </p>
+                      )}
                     </div>
-                    <p {...stylex.props(styles.supAsk)}>
-                      {m.entrySheet_supAsk()}　{ask.instructions}
-                    </p>
-                    {ask.requirements.map((piece) => {
-                      const value = answerOf(
-                        ask.response!.payload as Record<string, unknown>,
-                        piece.key,
-                      )
+                    {fields.map((field) => {
+                      const value = answerOf(payload, field.key)
                       return (
-                        <div key={piece.key} {...stylex.props(styles.field)}>
-                          <p {...stylex.props(styles.fieldLabel)}>{piece.label}</p>
-                          {piece.kind === 'file' ? (
+                        <div key={field.key} {...stylex.props(styles.field)}>
+                          <p {...stylex.props(styles.fieldLabel)}>{field.label}</p>
+                          {field.type === 'attachment' ? (
                             Array.isArray(value) && value.length > 0 ? (
                               <span {...stylex.props(styles.fileRow)}>
                                 {value.map((id) => (
@@ -846,35 +793,97 @@ export function EntryDetail({
                                     key={String(id)}
                                     attachmentId={String(id)}
                                     variant="card"
-                                    mark="supplement"
                                   />
                                 ))}
                               </span>
                             ) : (
-                              <p {...stylex.props(styles.fieldCleared)}>–</p>
+                              <p {...stylex.props(styles.fieldCleared)}>{m.entry_fieldCleared()}</p>
                             )
                           ) : (
                             <p {...stylex.props(styles.fieldValue)}>
-                              {typeof value === 'string' && value !== '' ? value : '–'}
+                              {displayValueOf(field, value, yesNo) || m.entry_fieldCleared()}
                             </p>
                           )}
                         </div>
                       )
                     })}
+                    {(entry.currentRevision?.note ?? null) !== null && (
+                      <div {...stylex.props(styles.field)}>
+                        <p {...stylex.props(styles.fieldLabel)}>
+                          {(entry.source === 'record' || entry.source === 'import'
+                            ? m.entry_recordBasis
+                            : m.entry_note)()}
+                        </p>
+                        <p {...stylex.props(styles.fieldValue)}>{entry.currentRevision!.note}</p>
+                      </div>
+                    )}
                   </section>
-                ))}
-              </>
-            )}
-          </Swap>
-        </ScrollArea>
 
-        {footer !== undefined && footer !== null && (
-          <div {...stylex.props(styles.actionBar)} data-testid="entry-actions">
-            {footer}
-          </div>
-        )}
-      </SheetContent>
-    </Sheet>
+                  {/* what a reviewer asked for and what answered it, one
+                    section per ask: the requirement and the material stay
+                    together, because apart neither says what it is for */}
+                  {answered.map((ask) => (
+                    <section key={ask.id} {...stylex.props(styles.section)}>
+                      <div {...stylex.props(styles.sectionHead)}>
+                        <p {...stylex.props(styles.sectionTitle)}>{m.entrySheet_supHead()}</p>
+                        <span aria-hidden {...stylex.props(styles.sectionRule)} />
+                        <p {...stylex.props(styles.sectionNote)}>
+                          {m.entrySheet_supNote({
+                            round: ask.roundNo,
+                            asked: timeOf(ask.requestedAt, locale, zone),
+                            answered: timeOf(ask.response!.respondedAt, locale, zone),
+                          })}
+                        </p>
+                      </div>
+                      <p {...stylex.props(styles.supAsk)}>
+                        {m.entrySheet_supAsk()}　{ask.instructions}
+                      </p>
+                      {ask.requirements.map((piece) => {
+                        const value = answerOf(
+                          ask.response!.payload as Record<string, unknown>,
+                          piece.key,
+                        )
+                        return (
+                          <div key={piece.key} {...stylex.props(styles.field)}>
+                            <p {...stylex.props(styles.fieldLabel)}>{piece.label}</p>
+                            {piece.kind === 'file' ? (
+                              Array.isArray(value) && value.length > 0 ? (
+                                <span {...stylex.props(styles.fileRow)}>
+                                  {value.map((id) => (
+                                    <AttachmentLink
+                                      key={String(id)}
+                                      attachmentId={String(id)}
+                                      variant="card"
+                                      mark="supplement"
+                                    />
+                                  ))}
+                                </span>
+                              ) : (
+                                <p {...stylex.props(styles.fieldCleared)}>–</p>
+                              )
+                            ) : (
+                              <p {...stylex.props(styles.fieldValue)}>
+                                {typeof value === 'string' && value !== '' ? value : '–'}
+                              </p>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </section>
+                  ))}
+                </>
+              )}
+            </Swap>
+          </ScrollArea>
+
+          {footer !== undefined && footer !== null && (
+            <div {...stylex.props(styles.actionBar)} data-testid="entry-actions">
+              {footer}
+            </div>
+          )}
+        </SheetContent>
+      </Sheet>
+    </AttachmentScope>
   )
 }
 

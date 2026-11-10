@@ -15,6 +15,7 @@ import { AuthorizationRefused, measured } from './metrics.ts'
 import { StorageConfig } from './config.ts'
 import {
   attachmentOf,
+  attachmentsOf,
   bindAttachment,
   completeReservation,
   failReservation,
@@ -134,6 +135,10 @@ export class Storage extends Context.Service<
       readonly tenantId: string
       readonly attachmentId: string
     }) => Effect.Effect<AttachmentMeta, AttachmentNotFound>
+    readonly metadataMany: (input: {
+      readonly tenantId: string
+      readonly attachmentIds: readonly string[]
+    }) => Effect.Effect<readonly AttachmentMeta[]>
     /**
      * Records that an attachment has entered immutable history.
      *
@@ -405,6 +410,14 @@ const make = () =>
         measured('metadata'),
       )
 
+    const metadataMany = (input: { tenantId: string; attachmentIds: readonly string[] }) =>
+      attachmentsOf({ tenantId: input.tenantId, ids: input.attachmentIds }).pipe(
+        Effect.map((rows) => rows.map(metaOf)),
+        Effect.catchTag('QueryFailed', (error) => Effect.die(error)),
+        Effect.withSpan('Storage.metadataMany'),
+        measured('metadata'),
+      )
+
     const bind = (input: { tenantId: string; attachmentId: string; ownerUserId: string }) =>
       Effect.gen(function* () {
         const now = yield* Clock.currentTimeMillis
@@ -539,6 +552,7 @@ const make = () =>
       prepareUpload: (input) => withDb(prepareUpload(input)),
       completeUpload: (input) => withDb(completeUpload(input)),
       metadata: (input) => withDb(metadata(input)),
+      metadataMany: (input) => withDb(metadataMany(input)),
       bind: (input) => withDb(bind(input)),
       open: (input, authorize) => withDb(open(input, authorize)),
       read: (input, authorize) => withDb(read(input, authorize)),

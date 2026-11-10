@@ -1,4 +1,5 @@
 import { Layer } from 'effect'
+import { attachmentReadContexts } from './attachment/read-context-registration.ts'
 import { OrgUsage } from '@qualy/org-contract/plugin'
 import { batchesAtNode } from './server/node-usage.ts'
 import { Plugin } from '@qualy/plugin-kit'
@@ -83,6 +84,7 @@ const plugin = Plugin.define(
     ],
   }),
   ItemTypes.provider,
+  ...attachmentReadContexts,
   // the one kind of question core itself asks: granted, not filed
   ItemTypes.driver(constantDriver),
   ItemTypes.driver(declarationDriver),

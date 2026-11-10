@@ -1,7 +1,7 @@
+import type { ContentDescriptor } from '@qualy/plugin-storage/content'
 import type { Message } from '@qualy/i18n-contract'
 import type { EvidenceChoiceOptionSpec, EvidenceFieldSpec } from './EvidenceForm.tsx'
 
-import { assessmentUrls } from '../api.ts'
 import * as m from '#messages'
 
 // The wire shapes these screens read, named once. They mirror the api
@@ -41,6 +41,7 @@ export interface EntrySupplementDto {
 }
 
 export interface EntryDto {
+  files?: readonly ContentDescriptor[]
   id: string
   batchId: string
   itemId: string
@@ -202,10 +203,6 @@ export const displayValueOf = (
   }
   return raw
 }
-
-/** the url the api serves bytes at, for stores without their own door */
-export const attachmentContentUrl = (attachmentId: string) =>
-  assessmentUrls.assessment.getAttachmentContent({ params: { attachmentId } })
 
 /**
  * The last day a half-open material range actually admits.

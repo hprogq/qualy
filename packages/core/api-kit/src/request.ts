@@ -714,7 +714,7 @@ export const safeRequestPath = (url: string): string => {
   }
   const segments = decoded.replace(/\/{2,}/g, '/').split('/')
   for (let i = 0; i < segments.length; i++) {
-    if (/^uploads?$/i.test(segments[i]!) && i + 1 < segments.length) {
+    if (/^(?:uploads?|contents)$/i.test(segments[i]!) && i + 1 < segments.length) {
       return `${segments.slice(0, i + 1).join('/')}/:redacted`
     }
   }

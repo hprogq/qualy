@@ -1,3 +1,11 @@
+import { identityKeyOf } from '@qualy/auth-contract/identity-key'
+import { contentApiHandlersForTest, contentReadForTest } from '@qualy/plugin-storage/testkit'
+import { storageContentApiGroup } from '@qualy/plugin-storage/api'
+import { Storage } from '@qualy/plugin-storage/server'
+import { withDatabase } from '@qualy/plugin-database/server'
+import { Assessment } from '../src/server/index.ts'
+import { assessmentContentRead } from '../src/attachment/read-context.ts'
+import { StagedFiles } from '../src/attachment/contexts.ts'
 import { Effect, Layer } from 'effect'
 import { HttpRouter, HttpServer, HttpServerRequest } from 'effect/http'
 import { HttpApiBuilder } from 'effect/http-api'
@@ -23,7 +31,7 @@ import { backend, ok, run, seed, staged, stack } from './support/round.ts'
 describe.runIf(postgresAvailable)('attachment content HTTP delivery', () => {
   let db: Awaited<ReturnType<typeof createTestContext>>
   let web: { handler: (request: Request) => Promise<Response>; dispose: () => Promise<void> }
-  let fixture: { tenantId: string; owner: string; other: string; id: string }
+  let fixture: { tenantId: string; owner: string; other: string; id: string; url: string }
 
   beforeAll(async () => {
     db = await createTestContext('attachment-content-http')
@@ -33,7 +41,13 @@ describe.runIf(postgresAvailable)('attachment content HTTP delivery', () => {
         Effect.gen(function* () {
           const f = yield* seed('attachment-http')
           const id = yield* staged(f.t, f.s1, 16)
-          return { tenantId: f.t, owner: f.s1, other: f.s2, id }
+          return {
+            tenantId: f.t,
+            owner: f.s1,
+            other: f.s2,
+            id,
+            url: StagedFiles.at({}).contentUrl(id, identityKeyOf(f.principal(f.s1))),
+          }
         }),
       ),
     )
@@ -62,8 +76,26 @@ describe.runIf(postgresAvailable)('attachment content HTTP delivery', () => {
     )
     const presence = Layer.succeed(SessionPresence, { isLive: () => Effect.succeed(false) })
     web = HttpRouter.toWebHandler(
-      HttpApiBuilder.layer(Api.local(assessmentApiGroup)).pipe(
-        Layer.provide(assessmentApiHandlers),
+      HttpApiBuilder.layer(
+        Api.local(assessmentApiGroup).add(storageContentApiGroup.prefix(QUALY_API_PREFIX)),
+      ).pipe(
+        Layer.provide(Layer.merge(assessmentApiHandlers, contentApiHandlersForTest)),
+        Layer.provideMerge(
+          contentReadForTest(
+            Effect.gen(function* () {
+              const assessment = yield* Assessment
+              const storage = yield* Storage
+              const withDb = yield* withDatabase
+              const read = assessmentContentRead({ assessment, storage, withDb })
+              return {
+                authorize: (input) =>
+                  input.key === 'assessment/staged'
+                    ? read({ ...input, context: { kind: 'staged' } })
+                    : Effect.succeed([]),
+              }
+            }),
+          ),
+        ),
         Layer.provideMerge(
           Layer.mergeAll(
             AssessmentLive.layer.pipe(Layer.provide(assembledLayer)),
@@ -88,10 +120,9 @@ describe.runIf(postgresAvailable)('attachment content HTTP delivery', () => {
 
   const ask = (user?: string) =>
     web.handler(
-      new Request(
-        `http://qualy.test${QUALY_API_PREFIX}/assessment/attachments/${fixture.id}/content`,
-        { headers: user === undefined ? {} : { 'x-test-user': user } },
-      ),
+      new Request(`http://qualy.test${fixture.url}`, {
+        headers: user === undefined ? {} : { 'x-test-user': user },
+      }),
     )
 
   it('checks access before issuing a fresh, uncacheable redirect on each click', async () => {
@@ -105,7 +136,21 @@ describe.runIf(postgresAvailable)('attachment content HTTP delivery', () => {
     )
     expect((await ask()).status).toBe(401)
     // Attachments outside the reader's reach deliberately look absent.
-    expect((await ask(fixture.other)).status).toBe(404)
+    expect((await ask(fixture.other)).status).toBe(409)
+    // Knowing one's own page identity never grants another person's staged file.
+    const ownIdentityUrl = StagedFiles.at({}).contentUrl(
+      fixture.id,
+      identityKeyOf({ tenantId: fixture.tenantId, userId: fixture.other }),
+    )
+    expect(
+      (
+        await web.handler(
+          new Request(new URL(ownIdentityUrl, 'http://qualy.test'), {
+            headers: { 'x-test-user': fixture.other },
+          }),
+        )
+      ).status,
+    ).toBe(404)
     expect(open).not.toHaveBeenCalled()
     for (const expected of [1, 2]) {
       const response = await ask(fixture.owner)
@@ -138,16 +183,21 @@ describe.runIf(postgresAvailable)('attachment content HTTP delivery', () => {
     const open = vi.spyOn(backend, 'open').mockImplementation(() => Effect.succeed(delivery))
     const describe = (user: string) =>
       web.handler(
-        new Request(`http://qualy.test${QUALY_API_PREFIX}/assessment/attachments/${fixture.id}`, {
-          headers: { 'x-test-user': user },
-        }),
+        new Request(
+          `http://qualy.test${QUALY_API_PREFIX}/assessment/attachments/staged?id=${fixture.id}`,
+          {
+            headers: { 'x-test-user': user },
+          },
+        ),
       )
-    expect((await describe(fixture.other)).status).toBe(404)
+    expect(await (await describe(fixture.other)).json()).toEqual({ attachments: [] })
     expect(open).not.toHaveBeenCalled()
     const response = await describe(fixture.owner)
     expect(response.status).toBe(200)
-    expect(await response.json()).toEqual(expect.objectContaining({ delivery }))
-    expect(open.mock.calls[0]![1].size).toBe(16n)
+    const described = (await response.json()) as { attachments: { id: string }[] }
+    expect(described.attachments[0]?.id).toBe(fixture.id)
+    expect(JSON.stringify(described)).not.toContain('files.example.test')
+    expect(open).not.toHaveBeenCalled()
     expect((await ask(fixture.owner)).headers.get('location')).toBe(delivery.url)
   })
 })

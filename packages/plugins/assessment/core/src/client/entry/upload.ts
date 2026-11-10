@@ -5,6 +5,9 @@ import { upload, type UploadProgress } from '@qualy/plugin-storage/client'
 // the attachment id and the name to show for it.
 
 export interface UploadedFile {
+  readonly id: string
+  readonly declaredMime: string
+  readonly status: string
   readonly attachmentId: string
   readonly filename: string
   readonly size: string
@@ -25,7 +28,7 @@ export interface UploadDoors {
   }>
   readonly complete: (
     reservationId: string,
-  ) => Promise<{ id: string; filename: string; size: string }>
+  ) => Promise<{ id: string; filename: string; size: string; declaredMime: string; status: string }>
 }
 
 export const uploadFile = async (
@@ -52,5 +55,5 @@ export const uploadFile = async (
     { onProgress },
   )
   const meta = await doors.complete(ticket.reservationId)
-  return { attachmentId: meta.id, filename: meta.filename, size: meta.size }
+  return { ...meta, attachmentId: meta.id }
 }

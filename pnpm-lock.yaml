@@ -2742,12 +2742,18 @@ importers:
       '@qualy/api-kit':
         specifier: workspace:*
         version: link:../../../core/api-kit
+      '@qualy/auth-contract':
+        specifier: workspace:*
+        version: link:../../../contracts/auth
       '@qualy/plugin-database':
         specifier: workspace:*
         version: link:../database
       '@qualy/plugin-kit':
         specifier: workspace:*
         version: link:../../../core/plugin-kit
+      '@qualy/rbac-contract':
+        specifier: workspace:*
+        version: link:../../../contracts/rbac
       '@qualy/telemetry':
         specifier: workspace:*
         version: link:../../../core/telemetry

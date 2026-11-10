@@ -200,7 +200,15 @@ const ambient = {
 const screen = (stubs: Stubs, route: string, elements: { path: string; element: unknown }[]) =>
   renderScreen({
     client: reviewClient({
-      app: { getManifest: () => Effect.succeed({ ...emptyManifest(), pages: PAGES }) },
+      app: {
+        getManifest: () =>
+          Effect.succeed({
+            ...emptyManifest(),
+            viewer: 'authenticated' as const,
+            identity: 'test-reader',
+            pages: PAGES,
+          }),
+      },
       assessment: { ...ambient, ...stubs },
     }),
     routes: elements as never,
@@ -2230,6 +2238,15 @@ describe('filing a claim', () => {
             entries: [
               entry({
                 status: 'approved',
+                files: [
+                  {
+                    id: '88888888-8888-4888-8888-888888888888',
+                    filename: '退役证明.pdf',
+                    declaredMime: 'application/pdf',
+                    size: '204800',
+                    status: 'bound' as const,
+                  },
+                ],
                 currentRevision: {
                   ...entry().currentRevision!,
                   payload: {
@@ -2248,19 +2265,6 @@ describe('filing a claim', () => {
             ],
             nextCursor: null,
             attention: { unreadEntryIds: [] },
-          }),
-        listAttachmentDescriptors: () =>
-          Effect.succeed({
-            attachments: [
-              {
-                id: '88888888-8888-4888-8888-888888888888',
-                filename: '退役证明.pdf',
-                declaredMime: 'application/pdf',
-                size: '204800',
-                status: 'bound',
-                delivery: { kind: 'content' as const },
-              },
-            ],
           }),
       },
       `/assessment/batches/${BATCH_ID}/my-entries?open=${ITEM_ID}`,

@@ -1,4 +1,5 @@
 import { Context, Layer } from 'effect'
+import { readContext, readContextProvider } from './server/read-contexts.ts'
 import { ExtensionPoint, Plugin, type PluginFeature } from '@qualy/plugin-kit'
 
 // This capability's face in the descriptor model: what a plugin writes to say
@@ -39,6 +40,8 @@ export class DeclaredBackends extends Context.Service<
 >()('@qualy/plugin-storage/DeclaredBackends') {}
 
 export const Storage = {
+  readContext,
+  readContextProvider,
   /** declares that this plugin provides a place to keep bytes */
   backend: (declaration: StorageBackendDeclaration): PluginFeature =>
     Plugin.contribute(StorageBackendDeclarations, declaration),

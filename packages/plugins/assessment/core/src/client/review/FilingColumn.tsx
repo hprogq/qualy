@@ -1,3 +1,6 @@
+import { AttachmentScope } from '../entry/AttachmentScope.tsx'
+import { EntryFiles } from '../../attachment/contexts.ts'
+import { useAttachmentFiles } from '../entry/AttachmentScope.tsx'
 import { useLocale } from '@qualy/web-i18n'
 import { RESERVED } from '../reserved.ts'
 import { memo, useState } from 'react'
@@ -13,7 +16,7 @@ import { useLingering } from '@qualy/ui/use-lingering'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 
 import { AttachmentLink } from '../entry/AttachmentLink.tsx'
-import { answerOf, attachmentContentUrl, displayValueOf, fieldsOf } from '../entry/model.ts'
+import { answerOf, displayValueOf, fieldsOf } from '../entry/model.ts'
 import {
   idsOf,
   timeLabel,
@@ -384,6 +387,7 @@ const styles = stylex.create({
 // navigations. Give each file its own context; its final disposition starts
 // the browser download. No file bytes are buffered by the application.
 function DownloadAll({ attachmentIds }: { attachmentIds: readonly string[] }) {
+  const files = useAttachmentFiles()
   const [requested, setRequested] = useState<{ attempt: number; ids: readonly string[] } | null>(
     null,
   )
@@ -394,7 +398,7 @@ function DownloadAll({ attachmentIds }: { attachmentIds: readonly string[] }) {
         onClick={() =>
           setRequested((previous) => ({
             attempt: (previous?.attempt ?? 0) + 1,
-            ids: [...attachmentIds],
+            ids: attachmentIds.filter((id) => files.has(id)),
           }))
         }
         {...stylex.props(styles.saveButton)}
@@ -409,7 +413,7 @@ function DownloadAll({ attachmentIds }: { attachmentIds: readonly string[] }) {
           {...stylex.props(styles.downloadFrame)}
           title={m.review_downloadAll()}
           sandbox="allow-downloads"
-          src={attachmentContentUrl(id)}
+          src={files.get(id)?.contentUrl}
         />
       ))}
     </>
@@ -516,251 +520,256 @@ export const FilingColumn = memo(function FilingColumn({
     summaryLines.push(m.review_summarySupplemented({ count: review.supplements.length }))
   }
   return (
-    <Pane
-      as="section"
-      part="filing"
-      label={PART_LABEL.filing()}
-      xstyle={styles.frame}
-      innerXstyle={styles.inner}
-      footer={
-        !RESERVED.insight ? undefined : (
-          // What the machine noticed, on the pane's own floor: there whatever
-          // the filing's length, so the checks always sit after the evidence,
-          // never over it. The caveat is part of the block: a machine's note
-          // without its error bar reads as a verdict.
-          <aside {...stylex.props(styles.insight)}>
-            <div {...stylex.props(styles.insightHead)}>
-              <SparklesIcon aria-hidden className={stylex.props(styles.insightIcon).className} />
-              <p {...stylex.props(styles.insightTitle)}>{m.review_insight()}</p>
-              <span {...stylex.props(styles.spacer)} />
-              <p {...stylex.props(styles.insightCaveat)}>{m.review_insightCaveat()}</p>
-            </div>
-            <p {...stylex.props(styles.insightBody)}>{m.review_insightSoon()}</p>
-          </aside>
-        )
-      }
+    <AttachmentScope
+      files={history.data?.files}
+      context={EntryFiles.at({ entryId: review.entryId })}
     >
-      {/* under the columns' line only: the flow column carries it beside */}
-      <AtWidth below={1024}>
-        <div {...stylex.props(styles.phoneEscalation)}>
-          <EscalationNotice review={review} />
-        </div>
-      </AtWidth>
-      {/* only below lg: on a desk the flow column is in the same glance */}
-      <button
-        type="button"
-        data-testid="filing-summary"
-        onClick={() => onPart('flow')}
-        {...stylex.props(styles.summary)}
+      <Pane
+        as="section"
+        part="filing"
+        label={PART_LABEL.filing()}
+        xstyle={styles.frame}
+        innerXstyle={styles.inner}
+        footer={
+          !RESERVED.insight ? undefined : (
+            // What the machine noticed, on the pane's own floor: there whatever
+            // the filing's length, so the checks always sit after the evidence,
+            // never over it. The caveat is part of the block: a machine's note
+            // without its error bar reads as a verdict.
+            <aside {...stylex.props(styles.insight)}>
+              <div {...stylex.props(styles.insightHead)}>
+                <SparklesIcon aria-hidden className={stylex.props(styles.insightIcon).className} />
+                <p {...stylex.props(styles.insightTitle)}>{m.review_insight()}</p>
+                <span {...stylex.props(styles.spacer)} />
+                <p {...stylex.props(styles.insightCaveat)}>{m.review_insightCaveat()}</p>
+              </div>
+              <p {...stylex.props(styles.insightBody)}>{m.review_insightSoon()}</p>
+            </aside>
+          )
+        }
       >
-        <span {...stylex.props(styles.summaryLines)}>
-          {summaryLines.map((line, index) => (
-            <span
-              key={index}
-              {...stylex.props(
-                styles.summaryLine,
-                index === 0 ? styles.summaryLead : styles.summaryRest,
-              )}
-            >
-              {line}
-            </span>
-          ))}
-        </span>
-        <ChevronRightIcon aria-hidden className={stylex.props(styles.summaryChevron).className} />
-      </button>
-      <section {...stylex.props(styles.filing)}>
-        <div {...stylex.props(styles.filingHead)}>
-          <div {...stylex.props(styles.headRow)}>
-            {/* stacked, the strip names the part; the version and the
-                compare key are what is left to say */}
-            <h3 {...stylex.props(styles.headTitle)}>{m.review_payloadTitle()}</h3>
-            <p {...stylex.props(styles.filedVersion)}>
-              {m.review_filedVersion({
-                no: review.revision.revisionNo,
-                at: timeLabel(review.submittedAt, locale, zone),
-              })}
-            </p>
-            <span {...stylex.props(styles.spacer)} />
-            {review.revision.revisionNo > 1 && (
-              <>
-                <Button
-                  variant={comparing === null ? 'outline' : 'secondary'}
-                  size="sm"
-                  className={stylex.props(styles.xs).className}
-                  onClick={() => onCompare(comparing === null ? 'previous' : null)}
-                >
-                  {(comparing === null ? m.review_compareOn : m.review_compareOff)()}
-                  {fine && (
-                    <FineHint>
-                      <Kbd>D</Kbd>
-                    </FineHint>
-                  )}
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className={stylex.props(styles.xs).className}
-                  onClick={onVersions}
-                >
-                  {m.review_pickVersion()}
-                  {fine && (
-                    <FineHint>
-                      <Kbd>⇧D</Kbd>
-                    </FineHint>
-                  )}
-                </Button>
-              </>
-            )}
+        {/* under the columns' line only: the flow column carries it beside */}
+        <AtWidth below={1024}>
+          <div {...stylex.props(styles.phoneEscalation)}>
+            <EscalationNotice review={review} />
           </div>
-          {/* It closes over rather than leaving a blank line behind: the
+        </AtWidth>
+        {/* only below lg: on a desk the flow column is in the same glance */}
+        <button
+          type="button"
+          data-testid="filing-summary"
+          onClick={() => onPart('flow')}
+          {...stylex.props(styles.summary)}
+        >
+          <span {...stylex.props(styles.summaryLines)}>
+            {summaryLines.map((line, index) => (
+              <span
+                key={index}
+                {...stylex.props(
+                  styles.summaryLine,
+                  index === 0 ? styles.summaryLead : styles.summaryRest,
+                )}
+              >
+                {line}
+              </span>
+            ))}
+          </span>
+          <ChevronRightIcon aria-hidden className={stylex.props(styles.summaryChevron).className} />
+        </button>
+        <section {...stylex.props(styles.filing)}>
+          <div {...stylex.props(styles.filingHead)}>
+            <div {...stylex.props(styles.headRow)}>
+              {/* stacked, the strip names the part; the version and the
+                compare key are what is left to say */}
+              <h3 {...stylex.props(styles.headTitle)}>{m.review_payloadTitle()}</h3>
+              <p {...stylex.props(styles.filedVersion)}>
+                {m.review_filedVersion({
+                  no: review.revision.revisionNo,
+                  at: timeLabel(review.submittedAt, locale, zone),
+                })}
+              </p>
+              <span {...stylex.props(styles.spacer)} />
+              {review.revision.revisionNo > 1 && (
+                <>
+                  <Button
+                    variant={comparing === null ? 'outline' : 'secondary'}
+                    size="sm"
+                    className={stylex.props(styles.xs).className}
+                    onClick={() => onCompare(comparing === null ? 'previous' : null)}
+                  >
+                    {(comparing === null ? m.review_compareOn : m.review_compareOff)()}
+                    {fine && (
+                      <FineHint>
+                        <Kbd>D</Kbd>
+                      </FineHint>
+                    )}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className={stylex.props(styles.xs).className}
+                    onClick={onVersions}
+                  >
+                    {m.review_pickVersion()}
+                    {fine && (
+                      <FineHint>
+                        <Kbd>⇧D</Kbd>
+                      </FineHint>
+                    )}
+                  </Button>
+                </>
+              )}
+            </div>
+            {/* It closes over rather than leaving a blank line behind: the
               row reserved its height so nothing would jump, which traded a
               jump for a permanent gap above the rule. Collapsing gives the
               space back on the way out, so neither happens. The version it
               was reading against lingers through the exit - the sentence has
               to stay whole while it is leaving. */}
-          <Appear key={String(arrived)} show={against !== null} collapse>
-            <p {...stylex.props(styles.compareCount)}>
-              {m.review_compareCount({
-                count: changes,
-                no: lingeringAgainst?.revisionNo ?? 0,
-              })}
-            </p>
-          </Appear>
-        </div>
-        <dl {...stylex.props(styles.fieldList)}>
-          {fields.map((field) => {
-            const now = shown(field, answerOf(record, field.key))
-            const previous = was.get(field.key)
-            const before = previous?.value ?? ''
-            const changed = against !== null && before !== now
-            const cited = field.type === 'attachment' ? idsOf(answerOf(record, field.key)) : []
-            // only while comparing: without a version to read against, a file
-            // that is not here now was simply never here
-            const gone =
-              field.type === 'attachment'
-                ? (previous?.ids ?? []).filter((one) => !cited.includes(one))
-                : []
-            return (
-              // Stacked, and flush with the heading above: this column is
-              // 1.18fr of what is left after the queue and the two rails, and
-              // a fixed label gutter there costs more width than the
-              // alignment buys - a long field name wrapped to three lines
-              // against a one-line answer.
-              <div key={field.key} {...stylex.props(styles.fieldRow)}>
-                {/* A field's name is what identifies its row, so a long one
+            <Appear key={String(arrived)} show={against !== null} collapse>
+              <p {...stylex.props(styles.compareCount)}>
+                {m.review_compareCount({
+                  count: changes,
+                  no: lingeringAgainst?.revisionNo ?? 0,
+                })}
+              </p>
+            </Appear>
+          </div>
+          <dl {...stylex.props(styles.fieldList)}>
+            {fields.map((field) => {
+              const now = shown(field, answerOf(record, field.key))
+              const previous = was.get(field.key)
+              const before = previous?.value ?? ''
+              const changed = against !== null && before !== now
+              const cited = field.type === 'attachment' ? idsOf(answerOf(record, field.key)) : []
+              // only while comparing: without a version to read against, a file
+              // that is not here now was simply never here
+              const gone =
+                field.type === 'attachment'
+                  ? (previous?.ids ?? []).filter((one) => !cited.includes(one))
+                  : []
+              return (
+                // Stacked, and flush with the heading above: this column is
+                // 1.18fr of what is left after the queue and the two rails, and
+                // a fixed label gutter there costs more width than the
+                // alignment buys - a long field name wrapped to three lines
+                // against a one-line answer.
+                <div key={field.key} {...stylex.props(styles.fieldRow)}>
+                  {/* A field's name is what identifies its row, so a long one
                     wraps rather than being cut or shoved into the answer
                     beside it: "参加校级以上竞赛并获奖" truncated to its first
                     few characters names nothing. The count of files sits
                     under the name, in the same column. */}
-                <dt {...stylex.props(styles.fieldName)}>
-                  <span {...stylex.props(styles.anywhere)}>{field.label}</span>
-                  {field.type === 'attachment' && cited.length > 0 && (
-                    <>
-                      <span {...stylex.props(styles.filesCount)}>
-                        {m.review_filesCount({ count: cited.length })}
-                      </span>
-                      <span {...stylex.props(styles.spacer)} />
-                      {/* this field's files in a run of saves: a zip would
+                  <dt {...stylex.props(styles.fieldName)}>
+                    <span {...stylex.props(styles.anywhere)}>{field.label}</span>
+                    {field.type === 'attachment' && cited.length > 0 && (
+                      <>
+                        <span {...stylex.props(styles.filesCount)}>
+                          {m.review_filesCount({ count: cited.length })}
+                        </span>
+                        <span {...stylex.props(styles.spacer)} />
+                        {/* this field's files in a run of saves: a zip would
                           be a server-side archive nobody asked for yet */}
-                      <DownloadAll attachmentIds={cited} />
-                    </>
-                  )}
-                </dt>
-                <dd {...stylex.props(styles.fieldValue)}>
-                  {field.type === 'attachment' ? (
-                    cited.length === 0 ? (
-                      <span {...stylex.props(styles.mutedInk)}>–</span>
+                        <DownloadAll attachmentIds={cited} />
+                      </>
+                    )}
+                  </dt>
+                  <dd {...stylex.props(styles.fieldValue)}>
+                    {field.type === 'attachment' ? (
+                      cited.length === 0 ? (
+                        <span {...stylex.props(styles.mutedInk)}>–</span>
+                      ) : (
+                        // the files themselves, under the field that asked for
+                        // them: one flat "materials" heap at the end of the page
+                        // could not say which of them was the certificate
+                        <span {...stylex.props(styles.fileRow)}>
+                          {cited.map((attachmentId) => (
+                            <AttachmentLink
+                              key={attachmentId}
+                              attachmentId={attachmentId}
+                              variant="card"
+                              slot={slots.get(attachmentId)}
+                              mark={
+                                previous !== undefined && !previous.ids.includes(attachmentId)
+                                  ? 'added'
+                                  : undefined
+                              }
+                            />
+                          ))}
+                        </span>
+                      )
                     ) : (
-                      // the files themselves, under the field that asked for
-                      // them: one flat "materials" heap at the end of the page
-                      // could not say which of them was the certificate
-                      <span {...stylex.props(styles.fileRow)}>
-                        {cited.map((attachmentId) => (
-                          <AttachmentLink
-                            key={attachmentId}
-                            attachmentId={attachmentId}
-                            variant="card"
-                            slot={slots.get(attachmentId)}
-                            mark={
-                              previous !== undefined && !previous.ids.includes(attachmentId)
-                                ? 'added'
-                                : undefined
-                            }
-                          />
-                        ))}
+                      <span {...stylex.props(styles.answer, changed && styles.answerChanged)}>
+                        {now === '' ? '–' : now}
                       </span>
-                    )
-                  ) : (
-                    <span {...stylex.props(styles.answer, changed && styles.answerChanged)}>
-                      {now === '' ? '–' : now}
-                    </span>
-                  )}
-                  {/* What the last version had here, under what this one
+                    )}
+                    {/* What the last version had here, under what this one
                       has - the same grey line for a sentence that was
                       rewritten and for a file that was taken out. The file
                       is named and nothing more: drawn as a card among the
                       cards it would read as one of the materials on offer,
                       which is the opposite of what it is. */}
-                  {field.type === 'attachment' ? (
-                    <Appear key={String(arrived)} show={gone.length > 0} collapse>
-                      {/* Further from the cards than they stand from each
+                    {field.type === 'attachment' ? (
+                      <Appear key={String(arrived)} show={gone.length > 0} collapse>
+                        {/* Further from the cards than they stand from each
                           other, nearer than the next field: it belongs to
                           this question, and a row of tiles is a heavy enough
                           block that a hairline gap under it reads as part of
                           the row. */}
-                      <span {...stylex.props(styles.goneBlock)}>
-                        <span {...stylex.props(styles.goneTag)}>{m.review_fileGone()}</span>
-                        {gone.map((attachmentId) => (
-                          // struck through, or a reviewer scanning the column
-                          // reads it as one more file that is there
-                          <span key={attachmentId} {...stylex.props(styles.struck)}>
-                            <AttachmentLink attachmentId={attachmentId} variant="line" />
-                          </span>
-                        ))}
-                      </span>
-                    </Appear>
-                  ) : (
-                    <Appear key={String(arrived)} show={changed} collapse>
-                      <span {...stylex.props(styles.wasLine)}>
-                        <span {...stylex.props(styles.wasTag)}>{m.review_comparePrevious()}</span>
-                        {before === '' ? (
-                          <span>{m.review_compareBlank()}</span>
-                        ) : (
-                          <span {...stylex.props(styles.struck)}>{before}</span>
-                        )}
-                      </span>
-                    </Appear>
-                  )}
-                </dd>
+                        <span {...stylex.props(styles.goneBlock)}>
+                          <span {...stylex.props(styles.goneTag)}>{m.review_fileGone()}</span>
+                          {gone.map((attachmentId) => (
+                            // struck through, or a reviewer scanning the column
+                            // reads it as one more file that is there
+                            <span key={attachmentId} {...stylex.props(styles.struck)}>
+                              <AttachmentLink attachmentId={attachmentId} variant="line" />
+                            </span>
+                          ))}
+                        </span>
+                      </Appear>
+                    ) : (
+                      <Appear key={String(arrived)} show={changed} collapse>
+                        <span {...stylex.props(styles.wasLine)}>
+                          <span {...stylex.props(styles.wasTag)}>{m.review_comparePrevious()}</span>
+                          {before === '' ? (
+                            <span>{m.review_compareBlank()}</span>
+                          ) : (
+                            <span {...stylex.props(styles.struck)}>{before}</span>
+                          )}
+                        </span>
+                      </Appear>
+                    )}
+                  </dd>
+                </div>
+              )
+            })}
+            {review.revision.note !== null && (
+              <div {...stylex.props(styles.fieldRow)}>
+                <dt {...stylex.props(styles.noteName)}>{m.entry_note()}</dt>
+                <dd {...stylex.props(styles.proseValue)}>{review.revision.note}</dd>
               </div>
-            )
-          })}
-          {review.revision.note !== null && (
-            <div {...stylex.props(styles.fieldRow)}>
-              <dt {...stylex.props(styles.noteName)}>{m.entry_note()}</dt>
-              <dd {...stylex.props(styles.proseValue)}>{review.revision.note}</dd>
-            </div>
-          )}
-        </dl>
-      </section>
+            )}
+          </dl>
+        </section>
 
-      {/* What a reviewer asked for mid-round and what came back, after the
+        {/* What a reviewer asked for mid-round and what came back, after the
           filing and apart from it: these questions were written by whoever
           was reviewing at the time, so they are not the item's fields and
           must not read as though the filer answered them unprompted. */}
-      {review.supplements.length > 0 && (
-        <section {...stylex.props(styles.supSection)}>
-          <div {...stylex.props(styles.supHead)}>
-            <p {...stylex.props(styles.supTitle)}>{m.review_supplementSection()}</p>
-            <span {...stylex.props(styles.spacer)} />
-            <p {...stylex.props(styles.supNote)}>{m.review_supplementSectionNote()}</p>
-          </div>
-          {review.supplements.map((one) => (
-            <SupplementCard key={one.id} supplement={one} endedBy={review.outcome} />
-          ))}
-        </section>
-      )}
-    </Pane>
+        {review.supplements.length > 0 && (
+          <section {...stylex.props(styles.supSection)}>
+            <div {...stylex.props(styles.supHead)}>
+              <p {...stylex.props(styles.supTitle)}>{m.review_supplementSection()}</p>
+              <span {...stylex.props(styles.spacer)} />
+              <p {...stylex.props(styles.supNote)}>{m.review_supplementSectionNote()}</p>
+            </div>
+            {review.supplements.map((one) => (
+              <SupplementCard key={one.id} supplement={one} endedBy={review.outcome} />
+            ))}
+          </section>
+        )}
+      </Pane>
+    </AttachmentScope>
   )
 })
 

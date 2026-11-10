@@ -302,7 +302,7 @@ describe.runIf(postgresAvailable)('an import, looked back on', () => {
       ),
     )
     expect(found.described.filename).toBe('import.xlsx')
-    expect(found.described.delivery.kind).toBe('content')
+    expect(found.described.status).toBe('bound')
     // the bytes that come back are the bytes the store verified at import
     expect(found.integrity?.algorithm).toBe('sha256')
     expect(found.digest).toBe(found.integrity?.value)

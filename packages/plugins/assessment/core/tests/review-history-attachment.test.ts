@@ -1,3 +1,4 @@
+import { readFile } from './support/content.ts'
 import { decideReviewAtCurrentStage } from './support/round.ts'
 import { Effect, Exit } from 'effect'
 import { sql } from 'kysely'
@@ -68,13 +69,24 @@ describe.runIf(postgresAvailable)('review access to historical attachments', () 
           const history = yield* assessment.getEntryHistory(f.t, entry.id, reviewer)
           const before = {
             removed: answerOf(
-              yield* Effect.exit(assessment.openAttachment(f.t, removed, reviewer)),
+              yield* Effect.exit(
+                readFile(assessment, { kind: 'entry', entryId: entry.id }, removed, reviewer),
+              ),
             ),
             current: answerOf(
-              yield* Effect.exit(assessment.openAttachment(f.t, current, reviewer)),
+              yield* Effect.exit(
+                readFile(assessment, { kind: 'entry', entryId: entry.id }, current, reviewer),
+              ),
             ),
             stranger: answerOf(
-              yield* Effect.exit(assessment.openAttachment(f.t, removed, f.principal(f.s2))),
+              yield* Effect.exit(
+                readFile(
+                  assessment,
+                  { kind: 'entry', entryId: entry.id },
+                  removed,
+                  f.principal(f.s2),
+                ),
+              ),
             ),
           }
           yield* decideReviewAtCurrentStage(
@@ -85,7 +97,9 @@ describe.runIf(postgresAvailable)('review access to historical attachments', () 
             reviewer,
           )
           const after = answerOf(
-            yield* Effect.exit(assessment.openAttachment(f.t, removed, reviewer)),
+            yield* Effect.exit(
+              readFile(assessment, { kind: 'entry', entryId: entry.id }, removed, reviewer),
+            ),
           )
           return { history, before, after }
         }),
@@ -157,11 +171,18 @@ describe.runIf(postgresAvailable)('review access to historical attachments', () 
           )
 
           const open = (file: string) =>
-            Effect.map(Effect.exit(assessment.openAttachment(f.t, file, reviewer)), answerOf)
+            Effect.map(
+              Effect.exit(
+                readFile(assessment, { kind: 'entry', entryId: entry.id }, file, reviewer),
+              ),
+              answerOf,
+            )
           return {
             desk: yield* open(desk),
             ownDesk: answerOf(
-              yield* Effect.exit(assessment.openAttachment(f.t, desk, f.principal(f.s1))),
+              yield* Effect.exit(
+                readFile(assessment, { kind: 'entry', entryId: entry.id }, desk, f.principal(f.s1)),
+              ),
             ),
             judged: yield* open(judgedFile),
             draft: yield* open(draftFile),
@@ -192,10 +213,14 @@ describe.runIf(postgresAvailable)('review access to historical attachments', () 
                 yield* Effect.exit(assessment.getEntryHistory(f.t, entry.id, reviewer)),
               ),
               removed: answerOf(
-                yield* Effect.exit(assessment.openAttachment(f.t, removed, reviewer)),
+                yield* Effect.exit(
+                  readFile(assessment, { kind: 'entry', entryId: entry.id }, removed, reviewer),
+                ),
               ),
               current: answerOf(
-                yield* Effect.exit(assessment.openAttachment(f.t, current, reviewer)),
+                yield* Effect.exit(
+                  readFile(assessment, { kind: 'entry', entryId: entry.id }, current, reviewer),
+                ),
               ),
             }
           })

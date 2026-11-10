@@ -1,3 +1,5 @@
+import { EntryFiles, StagedFiles } from '../../attachment/contexts.ts'
+import { AttachmentScope } from './AttachmentScope.tsx'
 import { assertNever, useLocale } from '@qualy/web-i18n'
 import { Effect } from 'effect'
 import { useApiMutation, useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
@@ -649,303 +651,312 @@ function EntryDialogBody({
   }, [stale])
 
   return (
-    <FormDialog
-      open={open}
-      whole
-      size="wide"
-      title={(entry === null ? m.entries_newTitle : m.entries_editTitle)()}
-      description={[...trail, asked.title].join(' › ')}
-      onClose={() => (dirty || uploading ? setDiscarding(true) : onClose())}
-      footer={
-        <div {...stylex.props(styles.footer)}>
-          {submitShut && !uploading ? (
-            <p
-              data-testid="entry-held"
-              data-acts="submit"
-              data-reason={submitGate.reason ?? ''}
-              {...stylex.props(styles.quietNote, styles.heldNote)}
-            >
-              <ClockIcon aria-hidden {...stylex.props(styles.heldIcon)} />
-              {submitWhy}
-            </p>
-          ) : (
-            <p
-              {...stylex.props(styles.quietNote, !uploading && styles.quietIdle)}
-              data-uploading={uploading || undefined}
-            >
-              {(uploading ? m.entry_saveAfterUpload : m.entry_draftKept)()}
-            </p>
-          )}
-          <span {...stylex.props(styles.spacer)} />
-          {/* while the question is out of date both ways out are shut: either
+    <AttachmentScope
+      files={entry?.files}
+      context={entry == null ? StagedFiles.at({}) : EntryFiles.at({ entryId: entry.id })}
+    >
+      <FormDialog
+        open={open}
+        whole
+        size="wide"
+        title={(entry === null ? m.entries_newTitle : m.entries_editTitle)()}
+        description={[...trail, asked.title].join(' › ')}
+        onClose={() => (dirty || uploading ? setDiscarding(true) : onClose())}
+        footer={
+          <div {...stylex.props(styles.footer)}>
+            {submitShut && !uploading ? (
+              <p
+                data-testid="entry-held"
+                data-acts="submit"
+                data-reason={submitGate.reason ?? ''}
+                {...stylex.props(styles.quietNote, styles.heldNote)}
+              >
+                <ClockIcon aria-hidden {...stylex.props(styles.heldIcon)} />
+                {submitWhy}
+              </p>
+            ) : (
+              <p
+                {...stylex.props(styles.quietNote, !uploading && styles.quietIdle)}
+                data-uploading={uploading || undefined}
+              >
+                {(uploading ? m.entry_saveAfterUpload : m.entry_draftKept)()}
+              </p>
+            )}
+            <span {...stylex.props(styles.spacer)} />
+            {/* while the question is out of date both ways out are shut: either
               would file an answer under rules its author has not seen */}
-          <Button
-            variant="outline"
-            disabled={save.isPending || stale || !evidenceValid || uploading}
-            onClick={() => save.mutate(false)}
-          >
-            {m.entry_saveDraft()}
-          </Button>
-          {/* a phase may take drafts without taking submissions; then this
+            <Button
+              variant="outline"
+              disabled={save.isPending || stale || !evidenceValid || uploading}
+              onClick={() => save.mutate(false)}
+            >
+              {m.entry_saveDraft()}
+            </Button>
+            {/* a phase may take drafts without taking submissions; then this
               half is shut with its reason beside it and on hover, and the
               draft half works */}
-          {submitShut ? (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span tabIndex={0}>
-                    <Button
-                      data-testid="save-and-submit"
-                      data-gate={submitGate.state}
-                      disabled
-                      className={stylex.props(styles.noPointer).className}
-                    >
-                      {(resubmitting ? m.entry_resubmit : m.entry_saveAndSubmit)()}
-                    </Button>
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent>{submitWhy}</TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          ) : (
-            <Button
-              data-testid="save-and-submit"
-              disabled={save.isPending || stale || !evidenceValid || uploading}
-              onClick={() => setAsking(true)}
-            >
-              {(resubmitting ? m.entry_resubmit : m.entry_saveAndSubmit)()}
-            </Button>
-          )}
-        </div>
-      }
-    >
-      {/* Above the work and never over it: what has been typed stays on
+            {submitShut ? (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span tabIndex={0}>
+                      <Button
+                        data-testid="save-and-submit"
+                        data-gate={submitGate.state}
+                        disabled
+                        className={stylex.props(styles.noPointer).className}
+                      >
+                        {(resubmitting ? m.entry_resubmit : m.entry_saveAndSubmit)()}
+                      </Button>
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>{submitWhy}</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            ) : (
+              <Button
+                data-testid="save-and-submit"
+                disabled={save.isPending || stale || !evidenceValid || uploading}
+                onClick={() => setAsking(true)}
+              >
+                {(resubmitting ? m.entry_resubmit : m.entry_saveAndSubmit)()}
+              </Button>
+            )}
+          </div>
+        }
+      >
+        {/* Above the work and never over it: what has been typed stays on
           screen and stays in state, and the only press that changes the
           form is the reader's own. */}
-      {stale && (
-        <div ref={notice} data-testid="rules-changed" {...stylex.props(styles.notice)}>
-          <div {...stylex.props(styles.noticeWords)}>
-            <p {...stylex.props(styles.noticeTitle)}>{m.entry_rulesChangedTitle()}</p>
-            <p {...stylex.props(styles.noticeBody)}>{m.entry_rulesChangedBody()}</p>
+        {stale && (
+          <div ref={notice} data-testid="rules-changed" {...stylex.props(styles.notice)}>
+            <div {...stylex.props(styles.noticeWords)}>
+              <p {...stylex.props(styles.noticeTitle)}>{m.entry_rulesChangedTitle()}</p>
+              <p {...stylex.props(styles.noticeBody)}>{m.entry_rulesChangedBody()}</p>
+            </div>
+            <span {...stylex.props(styles.spacer)} />
+            <Button
+              variant="outline"
+              size="sm"
+              className={stylex.props(styles.noticeButton).className}
+              disabled={awaiting}
+              onClick={() => {
+                if (item.currentRevision?.id !== asked.currentRevision?.id) adopt(item)
+                else {
+                  setAwaiting(true)
+                  onStale?.()
+                }
+              }}
+            >
+              <RefreshCwIcon
+                aria-hidden
+                className={stylex.props(awaiting && styles.spinning).className}
+              />
+              {m.entry_rulesChangedAction()}
+            </Button>
           </div>
-          <span {...stylex.props(styles.spacer)} />
-          <Button
-            variant="outline"
-            size="sm"
-            className={stylex.props(styles.noticeButton).className}
-            disabled={awaiting}
-            onClick={() => {
-              if (item.currentRevision?.id !== asked.currentRevision?.id) adopt(item)
-              else {
-                setAwaiting(true)
-                onStale?.()
-              }
-            }}
-          >
-            <RefreshCwIcon
-              aria-hidden
-              className={stylex.props(awaiting && styles.spinning).className}
-            />
-            {m.entry_rulesChangedAction()}
-          </Button>
-        </div>
-      )}
+        )}
 
-      <div {...stylex.props(styles.body)}>
-        <div {...stylex.props(styles.form)}>
-          {entry?.refusal != null &&
-            (entry.status === 'needs_revision' || entry.status === 'rejected') && (
-              <div data-testid="form-returned" {...stylex.props(styles.returned)}>
-                <div {...stylex.props(styles.returnedHead)}>
-                  <p {...stylex.props(styles.returnedTitle)}>
-                    {(entry.refusal.kind === 'rejected'
-                      ? m.entry_refusedTitle
-                      : m.entry_returnedTitle)()}
-                  </p>
-                  {entry.refusal.reason !== null && (
-                    <span {...stylex.props(styles.returnedReason)}>{entry.refusal.reason}</span>
+        <div {...stylex.props(styles.body)}>
+          <div {...stylex.props(styles.form)}>
+            {entry?.refusal != null &&
+              (entry.status === 'needs_revision' || entry.status === 'rejected') && (
+                <div data-testid="form-returned" {...stylex.props(styles.returned)}>
+                  <div {...stylex.props(styles.returnedHead)}>
+                    <p {...stylex.props(styles.returnedTitle)}>
+                      {(entry.refusal.kind === 'rejected'
+                        ? m.entry_refusedTitle
+                        : m.entry_returnedTitle)()}
+                    </p>
+                    {entry.refusal.reason !== null && (
+                      <span {...stylex.props(styles.returnedReason)}>{entry.refusal.reason}</span>
+                    )}
+                  </div>
+                  {(entry.refusal.comment ?? '') !== '' && (
+                    <p {...stylex.props(styles.returnedWords)}>{entry.refusal.comment}</p>
                   )}
                 </div>
-                {(entry.refusal.comment ?? '') !== '' && (
-                  <p {...stylex.props(styles.returnedWords)}>{entry.refusal.comment}</p>
-                )}
-              </div>
+              )}
+            {entry !== null && entry.status !== 'draft' && entry.currentRevision !== null && (
+              <p {...stylex.props(styles.versionNote)} data-testid="form-version">
+                {m.entries_versionNote({
+                  now: entry.currentRevision.revisionNo,
+                  next: entry.currentRevision.revisionNo + 1,
+                })}
+              </p>
             )}
-          {entry !== null && entry.status !== 'draft' && entry.currentRevision !== null && (
-            <p {...stylex.props(styles.versionNote)} data-testid="form-version">
-              {m.entries_versionNote({
-                now: entry.currentRevision.revisionNo,
-                next: entry.currentRevision.revisionNo + 1,
-              })}
-            </p>
-          )}
-          <EvidenceForm
-            advice={advice}
-            session={asked.currentRevision?.id ?? asked.id}
-            onValidityChange={setEvidenceValid}
-            onBusyChange={setUploading}
-            fields={fields}
-            value={payload}
-            onChange={setPayload}
-            doors={doors}
-            where={{ batchId, itemId: asked.id }}
-            materialRange={materialRange}
-          />
-          <Field label={m.entry_note()}>
-            {(id) => (
-              <Textarea id={id} value={note} onChange={(event) => setNote(event.target.value)} />
-            )}
-          </Field>
-          <Feedback message={problem} />
-          {issues.length > 0 && (
-            <ul {...stylex.props(styles.issueList)}>
-              {issues.map((issue, index) => (
-                <li key={index}>
-                  {labelOf(issue.field)}{' '}
-                  {issueSentence(
-                    issue.reason,
-                    fields.find((field) => field.key === issue.field),
-                    { value: answerOf(refusedOver, issue.field), materialRange },
-                  )()}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-
-        <aside {...stylex.props(styles.aside)} data-testid="form-aside">
-          <Basis compact />
-          <div {...stylex.props(styles.asideBlock)}>
-            <p {...stylex.props(styles.asideLabel)}>{m.entries_scoring()}</p>
-            <p {...stylex.props(styles.asideStrong)}>{calc(asked)}</p>
-            {asked.maxEntries !== null && (
-              <>
-                <div {...stylex.props(styles.quotaLine)} data-testid="form-quota" data-used={used}>
-                  <span {...stylex.props(styles.quotaWord)}>{m.myEntries_quota()}</span>
-                  <span {...stylex.props(styles.quotaValue)}>
-                    {used} / {asked.maxEntries}
-                  </span>
-                </div>
-                <span {...stylex.props(styles.bar)}>
-                  <span
-                    {...stylex.props(styles.barFill)}
-                    style={{
-                      width: `${Math.min(100, (used / Math.max(1, asked.maxEntries)) * 100)}%`,
-                    }}
-                  />
-                </span>
-                {/* what is left once this one is kept, for a new claim */}
-                {entry === null && (
-                  <p {...stylex.props(styles.asideFoot)} data-testid="form-room">
-                    {m.entries_roomAfter({
-                      count: Math.max(0, asked.maxEntries - used - 1),
-                    })}
-                  </p>
-                )}
-              </>
-            )}
-          </div>
-
-          <div {...stylex.props(styles.asideBlock, styles.asideRuled)}>
-            <p {...stylex.props(styles.asideLabel)}>
-              {m.entry_alreadyFiled()}
-              <span {...stylex.props(styles.asideCount)}>
-                {m.entries_filedShort({ count: filed.length })}
-              </span>
-            </p>
-            {filed.length === 0 ? (
-              <p {...stylex.props(styles.asideFoot)}>{m.entries_noneFiled()}</p>
-            ) : (
-              <ul {...stylex.props(styles.filed)}>
-                {filed.map((one) => (
-                  <li key={one.id} {...stylex.props(styles.filedLine)}>
-                    <span {...stylex.props(styles.filedWords)}>{summary(one, item)}</span>
-                    <EntryStanding
-                      status={one.status}
-                      source={one.source}
-                      revised={one.currentReviewInstanceId !== null}
-                      asked={one.supplement !== null}
-                      openRound={one.openRound}
-                    />
+            <EvidenceForm
+              advice={advice}
+              session={asked.currentRevision?.id ?? asked.id}
+              onValidityChange={setEvidenceValid}
+              onBusyChange={setUploading}
+              fields={fields}
+              value={payload}
+              onChange={setPayload}
+              doors={doors}
+              where={{ batchId, itemId: asked.id }}
+              materialRange={materialRange}
+            />
+            <Field label={m.entry_note()}>
+              {(id) => (
+                <Textarea id={id} value={note} onChange={(event) => setNote(event.target.value)} />
+              )}
+            </Field>
+            <Feedback message={problem} />
+            {issues.length > 0 && (
+              <ul {...stylex.props(styles.issueList)}>
+                {issues.map((issue, index) => (
+                  <li key={index}>
+                    {labelOf(issue.field)}{' '}
+                    {issueSentence(
+                      issue.reason,
+                      fields.find((field) => field.key === issue.field),
+                      { value: answerOf(refusedOver, issue.field), materialRange },
+                    )()}
                   </li>
                 ))}
               </ul>
             )}
-            <p {...stylex.props(styles.asideFoot)}>{m.entry_noDuplicates()}</p>
           </div>
 
-          {chain.normal.length > 0 && (
+          <aside {...stylex.props(styles.aside)} data-testid="form-aside">
+            <Basis compact />
+            <div {...stylex.props(styles.asideBlock)}>
+              <p {...stylex.props(styles.asideLabel)}>{m.entries_scoring()}</p>
+              <p {...stylex.props(styles.asideStrong)}>{calc(asked)}</p>
+              {asked.maxEntries !== null && (
+                <>
+                  <div
+                    {...stylex.props(styles.quotaLine)}
+                    data-testid="form-quota"
+                    data-used={used}
+                  >
+                    <span {...stylex.props(styles.quotaWord)}>{m.myEntries_quota()}</span>
+                    <span {...stylex.props(styles.quotaValue)}>
+                      {used} / {asked.maxEntries}
+                    </span>
+                  </div>
+                  <span {...stylex.props(styles.bar)}>
+                    <span
+                      {...stylex.props(styles.barFill)}
+                      style={{
+                        width: `${Math.min(100, (used / Math.max(1, asked.maxEntries)) * 100)}%`,
+                      }}
+                    />
+                  </span>
+                  {/* what is left once this one is kept, for a new claim */}
+                  {entry === null && (
+                    <p {...stylex.props(styles.asideFoot)} data-testid="form-room">
+                      {m.entries_roomAfter({
+                        count: Math.max(0, asked.maxEntries - used - 1),
+                      })}
+                    </p>
+                  )}
+                </>
+              )}
+            </div>
+
             <div {...stylex.props(styles.asideBlock, styles.asideRuled)}>
-              <p {...stylex.props(styles.asideLabel)}>{m.entries_afterSubmit()}</p>
-              {/* Steps by the names the administrator gave them, and only
+              <p {...stylex.props(styles.asideLabel)}>
+                {m.entry_alreadyFiled()}
+                <span {...stylex.props(styles.asideCount)}>
+                  {m.entries_filedShort({ count: filed.length })}
+                </span>
+              </p>
+              {filed.length === 0 ? (
+                <p {...stylex.props(styles.asideFoot)}>{m.entries_noneFiled()}</p>
+              ) : (
+                <ul {...stylex.props(styles.filed)}>
+                  {filed.map((one) => (
+                    <li key={one.id} {...stylex.props(styles.filedLine)}>
+                      <span {...stylex.props(styles.filedWords)}>{summary(one, item)}</span>
+                      <EntryStanding
+                        status={one.status}
+                        source={one.source}
+                        revised={one.currentReviewInstanceId !== null}
+                        asked={one.supplement !== null}
+                        openRound={one.openRound}
+                      />
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <p {...stylex.props(styles.asideFoot)}>{m.entry_noDuplicates()}</p>
+            </div>
+
+            {chain.normal.length > 0 && (
+              <div {...stylex.props(styles.asideBlock, styles.asideRuled)}>
+                <p {...stylex.props(styles.asideLabel)}>{m.entries_afterSubmit()}</p>
+                {/* Steps by the names the administrator gave them, and only
                   the names: who each step lands on is the round's business
                   and not this reader's to be told. */}
-              <ol {...stylex.props(styles.steps)}>
-                {chain.normal.map((label, index) => (
-                  <li key={index} {...stylex.props(styles.stepLine)}>
-                    <span aria-hidden {...stylex.props(styles.stepNo)}>
-                      {index + 1}
+                <ol {...stylex.props(styles.steps)}>
+                  {chain.normal.map((label, index) => (
+                    <li key={index} {...stylex.props(styles.stepLine)}>
+                      <span aria-hidden {...stylex.props(styles.stepNo)}>
+                        {index + 1}
+                      </span>
+                      <span {...stylex.props(styles.stepName)}>
+                        {label ?? m.entry_flowStep({ n: index + 1 })}
+                      </span>
+                    </li>
+                  ))}
+                </ol>
+                {chain.escalation.length > 0 && (
+                  <p {...stylex.props(styles.escalationLine)}>
+                    <span {...stylex.props(styles.keepShort)}>{m.review_routeEscalation()}</span>
+                    <span {...stylex.props(styles.escalationSteps)}>
+                      {chain.escalation
+                        .map((label, index) => label ?? m.entry_flowStep({ n: index + 1 }))
+                        .join(' → ')}
                     </span>
-                    <span {...stylex.props(styles.stepName)}>
-                      {label ?? m.entry_flowStep({ n: index + 1 })}
-                    </span>
-                  </li>
-                ))}
-              </ol>
-              {chain.escalation.length > 0 && (
-                <p {...stylex.props(styles.escalationLine)}>
-                  <span {...stylex.props(styles.keepShort)}>{m.review_routeEscalation()}</span>
-                  <span {...stylex.props(styles.escalationSteps)}>
-                    {chain.escalation
-                      .map((label, index) => label ?? m.entry_flowStep({ n: index + 1 }))
-                      .join(' → ')}
-                  </span>
-                </p>
-              )}
-              <p {...stylex.props(styles.asideFoot)}>{m.entries_countsAfterAll()}</p>
-            </div>
-          )}
-        </aside>
-      </div>
+                  </p>
+                )}
+                <p {...stylex.props(styles.asideFoot)}>{m.entries_countsAfterAll()}</p>
+              </div>
+            )}
+          </aside>
+        </div>
 
-      <ConfirmDialog
-        open={discarding}
-        tone="destructive"
-        title={m.entry_discardTitle()}
-        description={m.entry_discardHint()}
-        confirmLabel={m.entry_discard()}
-        cancelLabel={commonMessages.action_cancel()}
-        pending={save.isPending}
-        onCancel={() => setDiscarding(false)}
-        onConfirm={() => {
-          setDiscarding(false)
-          onClose()
-        }}
-      />
-      {/* Handing it on is the act that takes the claim out of the writer's
+        <ConfirmDialog
+          open={discarding}
+          tone="destructive"
+          title={m.entry_discardTitle()}
+          description={m.entry_discardHint()}
+          confirmLabel={m.entry_discard()}
+          cancelLabel={commonMessages.action_cancel()}
+          pending={save.isPending}
+          onCancel={() => setDiscarding(false)}
+          onConfirm={() => {
+            setDiscarding(false)
+            onClose()
+          }}
+        />
+        {/* Handing it on is the act that takes the claim out of the writer's
           hands, so it is a question here as it is in the drawer - and the
           press behind it writes the claim down either way, so the question
           offers that on its own key rather than sending the reader back to
           the form to find it. */}
-      <ConfirmDialog
-        open={asking}
-        title={m.entry_submitConfirm()}
-        description={m.entry_submitConfirmHint()}
-        confirmLabel={m.entry_saveThenSubmit()}
-        otherLabel={m.entry_saveOnly()}
-        cancelLabel={commonMessages.action_cancel()}
-        pending={save.isPending || uploading}
-        onCancel={() => setAsking(false)}
-        onOther={() => {
-          setAsking(false)
-          save.mutate(false)
-        }}
-        onConfirm={() => {
-          setAsking(false)
-          save.mutate(true)
-        }}
-      />
-    </FormDialog>
+        <ConfirmDialog
+          open={asking}
+          title={m.entry_submitConfirm()}
+          description={m.entry_submitConfirmHint()}
+          confirmLabel={m.entry_saveThenSubmit()}
+          otherLabel={m.entry_saveOnly()}
+          cancelLabel={commonMessages.action_cancel()}
+          pending={save.isPending || uploading}
+          onCancel={() => setAsking(false)}
+          onOther={() => {
+            setAsking(false)
+            save.mutate(false)
+          }}
+          onConfirm={() => {
+            setAsking(false)
+            save.mutate(true)
+          }}
+        />
+      </FormDialog>
+    </AttachmentScope>
   )
 }
 

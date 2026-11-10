@@ -1,3 +1,4 @@
+export { attachmentInfo, presentAttachmentMetadata } from './metadata.ts'
 import { Layer } from 'effect'
 import { Assembled } from '@qualy/api-kit/assembled'
 import type { Orm } from '@qualy/plugin-database/server'

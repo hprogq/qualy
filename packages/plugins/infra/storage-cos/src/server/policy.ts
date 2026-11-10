@@ -117,7 +117,7 @@ export const cosOrigin = (input: { readonly region: string; readonly bucket: str
  * to.
  *
  * Downloads are not streamed through the api when this backend signs its own
- * urls: `describeAttachment` hands the browser a redirect and the browser
+ * URLs: the authorized content endpoint redirects the browser, which
  * goes to the store itself - through `downloadDomain` when a deployment
  * names one. Left out of the policy, the shell blocked the product's own
  * evidence: an `<img>` against `img-src`, and a fetch against `connect-src`.

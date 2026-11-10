@@ -1,3 +1,4 @@
+import { readFile } from './support/content.ts'
 import { decideReviewAtCurrentStage, requestSupplementAtCurrentStage } from './support/round.ts'
 import { sql } from 'kysely'
 import { Effect, Exit } from 'effect'
@@ -129,7 +130,9 @@ describe.runIf(postgresAvailable)('the review read boundary', () => {
                 assessment.getReviewInstance(f.t, instanceId, f.principal(who)),
               ),
               history: Effect.exit(assessment.getEntryHistory(f.t, entry.id, f.principal(who))),
-              file: Effect.exit(assessment.openAttachment(f.t, file, f.principal(who))),
+              file: Effect.exit(
+                readFile(assessment, { kind: 'entry', entryId: entry.id }, file, f.principal(who)),
+              ),
             })
           const shape = (three: {
             instance: Exit.Exit<unknown, unknown>
@@ -689,7 +692,9 @@ describe.runIf(postgresAvailable)('the review read boundary', () => {
                 assessment.getReviewInstance(f.t, instanceId, f.principal(who)),
               ),
               history: Effect.exit(assessment.getEntryHistory(f.t, entry.id, f.principal(who))),
-              file: Effect.exit(assessment.openAttachment(f.t, file, f.principal(who))),
+              file: Effect.exit(
+                readFile(assessment, { kind: 'entry', entryId: entry.id }, file, f.principal(who)),
+              ),
             })
           const shape = (three: {
             instance: Exit.Exit<unknown, unknown>
@@ -783,7 +788,9 @@ describe.runIf(postgresAvailable)('the review read boundary', () => {
             reviewer,
           )
           const fileBefore = answerOf(
-            yield* Effect.exit(assessment.openAttachment(f.t, file, reviewer)),
+            yield* Effect.exit(
+              readFile(assessment, { kind: 'entry', entryId: earlier.id }, file, reviewer),
+            ),
           )
 
           // a second claim on the same question goes to the same reviewer
@@ -815,9 +822,25 @@ describe.runIf(postgresAvailable)('the review read boundary', () => {
             draft: answerOf(yield* sibling(draft.id, f.reviewer)),
             other: answerOf(yield* sibling(other.id, f.reviewer)),
             stranger: answerOf(yield* sibling(earlier.id, f.s2)),
-            file: answerOf(yield* Effect.exit(assessment.openAttachment(f.t, file, reviewer))),
+            file: answerOf(
+              yield* Effect.exit(
+                readFile(
+                  assessment,
+                  { kind: 'sibling', instanceId: round, entryId: earlier.id },
+                  file,
+                  reviewer,
+                ),
+              ),
+            ),
             strangerFile: answerOf(
-              yield* Effect.exit(assessment.openAttachment(f.t, file, f.principal(f.s2))),
+              yield* Effect.exit(
+                readFile(
+                  assessment,
+                  { kind: 'sibling', instanceId: round, entryId: earlier.id },
+                  file,
+                  f.principal(f.s2),
+                ),
+              ),
             ),
           }
 
@@ -831,7 +854,16 @@ describe.runIf(postgresAvailable)('the review read boundary', () => {
           )
           const after = {
             earlier: answerOf(yield* sibling(earlier.id, f.reviewer)),
-            file: answerOf(yield* Effect.exit(assessment.openAttachment(f.t, file, reviewer))),
+            file: answerOf(
+              yield* Effect.exit(
+                readFile(
+                  assessment,
+                  { kind: 'sibling', instanceId: round, entryId: earlier.id },
+                  file,
+                  reviewer,
+                ),
+              ),
+            ),
           }
           return { fileBefore, read, during, after, file }
         }),

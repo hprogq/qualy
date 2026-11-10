@@ -3,6 +3,14 @@ import { Effect, Layer } from 'effect'
 import { backendFailure } from '../errors.ts'
 import type { StorageBackend } from '../server/backend.ts'
 import { StorageBackends } from '../server/registry.ts'
+import { ReadContextCatalog } from '../server/read-contexts.ts'
+
+export { storageContentApiHandlers as contentApiHandlersForTest } from '../server/content-api.ts'
+
+/** Bind real business authorization while serving the public content API in isolation. */
+export const contentReadForTest = <R>(
+  bind: Effect.Effect<ReadContextCatalog['Service'], never, R>,
+) => Layer.effect(ReadContextCatalog, bind)
 
 // What a suite needs to exercise storage without a disk or a cloud, and what
 // every real provider has to agree with.
@@ -243,3 +251,5 @@ export const memoryBackend = (
 /** registers a backend the way a provider plugin's layer would */
 export const backendLayer = (backend: StorageBackend): Layer.Layer<never, never, StorageBackends> =>
   Layer.effectDiscard(Effect.flatMap(StorageBackends, (registry) => registry.register(backend)))
+
+/** Real content projection under the same deterministic secret as other service tests. */

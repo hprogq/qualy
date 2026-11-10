@@ -12,12 +12,7 @@ import { tokens } from '@qualy/ui/theme/tokens.stylex'
 
 import { DocumentLightbox } from './DocumentLightbox.tsx'
 import { useAttachmentDescriptor } from './use-attachment-descriptor.ts'
-import {
-  attachmentContentUrl,
-  LOOKS_LIKE_A_DOCUMENT,
-  LOOKS_LIKE_A_PHOTOGRAPH,
-  sizeLabel,
-} from './model.ts'
+import { LOOKS_LIKE_A_DOCUMENT, LOOKS_LIKE_A_PHOTOGRAPH, sizeLabel } from './model.ts'
 import * as m from '#messages'
 
 // A cited file, by its own name, and - when it is a picture - as a picture.
@@ -359,7 +354,7 @@ export function AttachmentLink({
   // A new preview can start long after the thumbnail loaded. This stable
   // endpoint authorizes each opening and redirects to a newly signed URL.
   // Already displayed thumbnails keep their bytes instead of reloading on a timer.
-  const previewHref = attachmentContentUrl(attachmentId)
+  const previewHref = descriptor.contentUrl
   const name = data?.filename ?? m.entry_fileUnnamed()
   const isImage = data !== undefined && LOOKS_LIKE_A_PHOTOGRAPH.has(data.declaredMime)
   const isDocument = data !== undefined && LOOKS_LIKE_A_DOCUMENT.has(data.declaredMime)
@@ -408,7 +403,7 @@ export function AttachmentLink({
             </button>
           ) : (
             <a
-              href={attachmentContentUrl(attachmentId)}
+              href={descriptor.contentUrl || undefined}
               download={data?.filename}
               target="_blank"
               rel="noreferrer"
@@ -420,7 +415,7 @@ export function AttachmentLink({
           {lightbox}
           {(isImage || isDocument) && (
             <a
-              href={attachmentContentUrl(attachmentId)}
+              href={descriptor.contentUrl || undefined}
               download={data?.filename}
               target="_blank"
               rel="noreferrer"
@@ -484,7 +479,7 @@ export function AttachmentLink({
                 cannot hover. The caption belongs to the file: its name, and
                 what it weighs. */}
             <a
-              href={attachmentContentUrl(attachmentId)}
+              href={descriptor.contentUrl || undefined}
               download={data?.filename}
               target="_blank"
               rel="noreferrer"
@@ -541,7 +536,7 @@ export function AttachmentLink({
               {name}
             </span>
             <a
-              href={attachmentContentUrl(attachmentId)}
+              href={descriptor.contentUrl || undefined}
               download={data?.filename}
               target="_blank"
               rel="noreferrer"
@@ -586,7 +581,7 @@ export function AttachmentLink({
         actions={
           <Button variant="ghost" size="icon-sm" asChild>
             <a
-              href={attachmentContentUrl(attachmentId)}
+              href={descriptor.contentUrl || undefined}
               download={data?.filename}
               target="_blank"
               rel="noreferrer"

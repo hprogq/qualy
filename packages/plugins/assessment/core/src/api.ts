@@ -1,3 +1,4 @@
+import { contentDescriptor } from '@qualy/plugin-storage/content'
 import { Schema } from 'effect'
 import { HttpApiEndpoint, HttpApiGroup, HttpApiSchema } from 'effect/http-api'
 import {
@@ -809,29 +810,6 @@ const decimalAmount = Schema.String.check(Schema.isPattern(/^-?\d{1,8}(?:\.\d{1,
 /** validated jsonb, carried opaquely: the driver is the schema's owner */
 const configJson = Schema.Unknown
 
-/** what a stored file is and how to fetch it, as both attachment doors say it */
-const attachmentDescriptor = Schema.Struct({
-  id: Schema.String,
-  filename: Schema.String,
-  declaredMime: Schema.String,
-  size: Schema.String,
-  status: Schema.String,
-  delivery: Schema.Union([
-    Schema.Struct({
-      kind: Schema.Literals(['redirect']),
-      url: Schema.String,
-      expiresInSeconds: Schema.Number,
-      thumbnail: Schema.optional(
-        Schema.Struct({
-          url: Schema.String,
-          expiresInSeconds: Schema.Number,
-        }),
-      ),
-    }),
-    Schema.Struct({ kind: Schema.Literals(['content']) }),
-  ]),
-})
-
 /** one door a question's records come in through */
 const entryChannel = Schema.Literals(['participant', 'administrative'])
 
@@ -1197,6 +1175,7 @@ const administrativeImportRowView = Schema.Struct({
 })
 
 const entryView = Schema.Struct({
+  files: Schema.optional(Schema.Array(contentDescriptor)),
   id: Schema.String,
   batchId: Schema.String,
   itemId: Schema.String,
@@ -1365,6 +1344,7 @@ const reviewActionView = Schema.Struct({
 })
 
 const reviewDetailView = Schema.Struct({
+  files: Schema.optional(Schema.Array(contentDescriptor)),
   id: Schema.String,
   state: Schema.Literals(['active', 'blocked', 'awaiting_supplement', 'completed']),
   outcome: Schema.NullOr(Schema.String),
@@ -1444,6 +1424,9 @@ const reviewDetailView = Schema.Struct({
           revisionNo: Schema.Number,
           formConfig: configJson,
           payload: configJson,
+          attachments: Schema.optional(
+            Schema.Array(Schema.Struct({ attachmentId: Schema.String, position: Schema.Number })),
+          ),
         }),
       ),
       /** the rounds before that, one line each */
@@ -1972,6 +1955,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
         params: Schema.Struct({ instanceId: uuidInput, entryId: uuidInput }),
         success: Schema.Struct({
           sibling: Schema.Struct({
+            files: Schema.optional(Schema.Array(contentDescriptor)),
             entryId: Schema.String,
             status: Schema.String,
             submittedAt: Schema.String,
@@ -2079,43 +2063,17 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
       '/assessment/attachments/uploads/:reservationId/complete',
       {
         params: Schema.Struct({ reservationId: uuidInput }),
-        success: Schema.Struct({
-          id: Schema.String,
-          filename: Schema.String,
-          declaredMime: Schema.String,
-          size: Schema.String,
-          status: Schema.String,
-        }),
+        success: contentDescriptor,
         error: [AttachmentUnavailable, EntryActionRefused, AccessDenied, BadRequest],
       },
     ).middleware(Authenticated),
   )
   .add(
-    // Many files at once, for a screen that cites many: one crossing instead
-    // of one per file. A keyed multi-get rather than an open collection, so
-    // it is bounded by the ids asked for and carries no cursor; ids the
-    // reader may not touch are omitted, indistinguishable from absent ones.
-    HttpApiEndpoint.get('listAttachmentDescriptors', '/assessment/attachments', {
+    // Only restored, unbound browser drafts need this metadata lookup.
+    HttpApiEndpoint.get('listStagedAttachmentDescriptors', '/assessment/attachments/staged', {
       query: Schema.Struct({ id: Schema.ArrayEnsure(uuidInput) }),
-      success: Schema.Struct({ attachments: Schema.Array(attachmentDescriptor) }),
+      success: Schema.Struct({ attachments: Schema.Array(contentDescriptor) }),
       error: [BadRequest, AccessDenied],
-    }).middleware(Authenticated),
-  )
-  .add(
-    // what the file is and how to fetch it: a short-lived url for stores
-    // that sign their own, or this api's own content door
-    HttpApiEndpoint.get('describeAttachment', '/assessment/attachments/:attachmentId', {
-      params: Schema.Struct({ attachmentId: uuidInput }),
-      success: attachmentDescriptor,
-      error: [AttachmentUnavailable, AccessDenied],
-    }).middleware(Authenticated),
-  )
-  .add(
-    // fresh authorization, then a stream or a short-lived redirect to the file
-    HttpApiEndpoint.get('getAttachmentContent', '/assessment/attachments/:attachmentId/content', {
-      params: Schema.Struct({ attachmentId: uuidInput }),
-      success: HttpApiSchema.StreamUint8Array(),
-      error: [AttachmentUnavailable, AccessDenied],
     }).middleware(Authenticated),
   )
   .add(
@@ -2372,6 +2330,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
     HttpApiEndpoint.get('getEntryHistory', '/assessment/entries/:entryId/revisions', {
       params: Schema.Struct({ entryId: uuidInput }),
       success: Schema.Struct({
+        files: Schema.optional(Schema.Array(contentDescriptor)),
         /** false where the phase keeps from the participant who judged the claim */
         reviewersShown: Schema.Boolean,
         entry: entryView,
@@ -3518,19 +3477,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
       '/assessment/administrative-imports/:importId/source',
       {
         params: Schema.Struct({ importId: uuidInput }),
-        success: attachmentDescriptor,
-        error: [AdministrativeImportNotFound, AccessDenied, AttachmentUnavailable],
-      },
-    ).middleware(Authenticated),
-  )
-  .add(
-    // fresh authorization, then a stream or a short-lived redirect to the source
-    HttpApiEndpoint.get(
-      'getAdministrativeImportSourceContent',
-      '/assessment/administrative-imports/:importId/source/content',
-      {
-        params: Schema.Struct({ importId: uuidInput }),
-        success: HttpApiSchema.StreamUint8Array(),
+        success: contentDescriptor,
         error: [AdministrativeImportNotFound, AccessDenied, AttachmentUnavailable],
       },
     ).middleware(Authenticated),

@@ -1,3 +1,4 @@
+import { readFile } from './support/content.ts'
 import { decideReviewAtCurrentStage } from './support/round.ts'
 import { sql } from 'kysely'
 import { Effect, Exit } from 'effect'
@@ -749,7 +750,9 @@ describe.runIf(postgresAvailable)('the item lifecycle and the files it leaves', 
           yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', f.principal(f.s1))
 
           const openAs = (who: string) =>
-            Effect.exit(assessment.openAttachment(f.t, file, f.principal(who)))
+            Effect.exit(
+              readFile(assessment, { kind: 'entry', entryId: entry.id }, file, f.principal(who)),
+            )
           const subject = yield* openAs(f.s1)
           const judge = yield* openAs(f.reviewer)
           const admin = yield* openAs(f.admin)
@@ -759,10 +762,10 @@ describe.runIf(postgresAvailable)('the item lifecycle and the files it leaves', 
           // your own upload is yours while it is still nobody's evidence
           const pending = yield* staged(f.t, f.s2)
           const ownPending = yield* Effect.exit(
-            assessment.openAttachment(f.t, pending, f.principal(f.s2)),
+            readFile(assessment, { kind: 'staged' }, pending, f.principal(f.s2)),
           )
           const othersPending = yield* Effect.exit(
-            assessment.openAttachment(f.t, pending, f.principal(f.s1)),
+            readFile(assessment, { kind: 'staged' }, pending, f.principal(f.s1)),
           )
 
           // history outlives standing: excluded from the roster, retired in
@@ -781,7 +784,12 @@ describe.runIf(postgresAvailable)('the item lifecycle and the files it leaves', 
           // another tenant's identically-named ask sees nothing
           const f2 = yield* seed('il-files-other')
           const crossTenant = yield* Effect.exit(
-            assessment.openAttachment(f2.t, file, f2.principal(f2.admin)),
+            readFile(
+              assessment,
+              { kind: 'entry', entryId: entry.id },
+              file,
+              f2.principal(f2.admin),
+            ),
           )
           return {
             subject,

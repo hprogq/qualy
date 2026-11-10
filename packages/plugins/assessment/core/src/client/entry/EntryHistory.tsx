@@ -1,3 +1,5 @@
+import { EntryFiles } from '../../attachment/contexts.ts'
+import { AttachmentScope } from './AttachmentScope.tsx'
 import type { SupportedLocale } from '@qualy/i18n-contract'
 import { formatDateTime, useLocale } from '@qualy/web-i18n'
 import { type ReactNode } from 'react'
@@ -350,7 +352,11 @@ export function EntryHistory({
         onRetry={() => void history.refetch()}
         skeleton={<Skeleton className={stylex.props(styles.skeleton).className} />}
       >
-        {data !== undefined && <Trail data={data} subject={subject} />}
+        {data !== undefined && (
+          <AttachmentScope files={data.files} context={EntryFiles.at({ entryId })}>
+            <Trail data={data} subject={subject} />
+          </AttachmentScope>
+        )}
       </AsyncSection>
     </SidePanel>
   )
@@ -401,7 +407,11 @@ export function EntryTrail({
       onRetry={() => void history.refetch()}
       skeleton={<Skeleton className={stylex.props(styles.skeleton).className} />}
     >
-      {history.data !== undefined && <Trail data={history.data} subject={subject} />}
+      {history.data !== undefined && (
+        <AttachmentScope files={history.data.files} context={EntryFiles.at({ entryId })}>
+          <Trail data={history.data} subject={subject} />
+        </AttachmentScope>
+      )}
     </AsyncSection>
   )
 }

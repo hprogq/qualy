@@ -1,3 +1,4 @@
+import { readFile } from './support/content.ts'
 import { decideReviewAtCurrentStage } from './support/round.ts'
 import { sql } from 'kysely'
 import { Effect, Exit } from 'effect'
@@ -165,13 +166,17 @@ describe.runIf(postgresAvailable)('what staff read of the claims handed in', () 
                 {},
                 as,
               )).entries.map((row) => row.entry.id),
-              file: yield* Effect.exit(assessment.openAttachment(f.t, file, as)),
+              file: yield* Effect.exit(
+                readFile(assessment, { kind: 'entry', entryId: draft.id }, file, as),
+              ),
             })
           }
           return {
             seen,
             own: (yield* assessment.getEntry(f.t, draft.id, owner)).id,
-            ownFile: yield* Effect.exit(assessment.openAttachment(f.t, file, owner)),
+            ownFile: yield* Effect.exit(
+              readFile(assessment, { kind: 'entry', entryId: draft.id }, file, owner),
+            ),
             last: yield* lastHandedIn(draft.id),
             draftId: draft.id,
           }
@@ -244,15 +249,23 @@ describe.runIf(postgresAvailable)('what staff read of the claims handed in', () 
             ownerHistory: (yield* assessment.getEntryHistory(f.t, filed.id, owner)).revisions.map(
               (revision) => revision.id,
             ),
-            firstFile: yield* Effect.exit(assessment.openAttachment(f.t, first, staff)),
-            secondFile: yield* Effect.exit(assessment.openAttachment(f.t, second, staff)),
-            ownSecondFile: yield* Effect.exit(assessment.openAttachment(f.t, second, owner)),
+            firstFile: yield* Effect.exit(
+              readFile(assessment, { kind: 'entry', entryId: filed.id }, first, staff),
+            ),
+            secondFile: yield* Effect.exit(
+              readFile(assessment, { kind: 'entry', entryId: filed.id }, second, staff),
+            ),
+            ownSecondFile: yield* Effect.exit(
+              readFile(assessment, { kind: 'entry', entryId: filed.id }, second, owner),
+            ),
           }
           yield* assessment.setEntryStatus(f.t, filed.id, 'in_review', owner)
           const resent = {
             last: yield* lastHandedIn(filed.id),
             staff: (yield* assessment.getEntry(f.t, filed.id, staff)).currentRevision?.id,
-            secondFile: yield* Effect.exit(assessment.openAttachment(f.t, second, staff)),
+            secondFile: yield* Effect.exit(
+              readFile(assessment, { kind: 'entry', entryId: filed.id }, second, staff),
+            ),
           }
           return { handed, working, afterSubmit, whileRevising, resent }
         }),

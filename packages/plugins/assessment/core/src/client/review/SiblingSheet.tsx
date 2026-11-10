@@ -1,3 +1,5 @@
+import { SiblingFiles } from '../../attachment/contexts.ts'
+import { AttachmentScope } from '../entry/AttachmentScope.tsx'
 import { useLocale } from '@qualy/web-i18n'
 import { useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
@@ -145,7 +147,7 @@ function SiblingFiling({
   const record = (filing?.revision.payload ?? {}) as Record<string, unknown>
   const words = { yes: m.recognition_yes(), no: m.recognition_no() }
   return (
-    <>
+    <AttachmentScope files={filing?.files} context={SiblingFiles.at({ instanceId, entryId })}>
       <DialogHeader>
         <DialogTitle className={stylex.props(styles.title).className}>
           {itemTitle}
@@ -222,6 +224,6 @@ function SiblingFiling({
           )}
         </dl>
       </AsyncSection>
-    </>
+    </AttachmentScope>
   )
 }

@@ -18,13 +18,18 @@
     "./testkit/contract": "./src/testkit/contract.ts",
     "./package.json": "./package.json",
     "./server/registry": "./src/server/registry.ts",
-    "./server/service": "./src/server/service.ts"
+    "./server/service": "./src/server/service.ts",
+    "./content": "./src/content.ts",
+    "./api": "./src/api.ts",
+    "./read-contexts": "./src/server/read-contexts.ts"
   },
   "dependencies": {
     "@mikro-orm/core": "catalog:",
     "@qualy/api-kit": "workspace:*",
+    "@qualy/auth-contract": "workspace:*",
     "@qualy/plugin-database": "workspace:*",
     "@qualy/plugin-kit": "workspace:*",
+    "@qualy/rbac-contract": "workspace:*",
     "@qualy/telemetry": "workspace:*",
     "effect": "catalog:",
     "kysely": "catalog:"

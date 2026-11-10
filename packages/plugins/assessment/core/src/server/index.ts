@@ -1,3 +1,7 @@
+import { AttachmentUnavailable } from '../errors.ts'
+import { entryFileIds, historyFileIds, reviewFileIds } from '../attachment/citations.ts'
+import { siblingFileIds } from '../attachment/db.ts'
+import { attachmentInfo, presentAttachmentMetadata } from '@qualy/plugin-storage/server'
 import { Clock, Context, Effect, Layer, Option, Result, Stream } from 'effect'
 import { hashCanonicalJson } from '@qualy/value-schema/hash'
 import { HttpApiBuilder } from 'effect/http-api'
@@ -1541,6 +1545,7 @@ export class Assessment extends Context.Service<
     readonly getAdministrativeImport: AdministrativeImportMethods['getAdministrativeImport']
     readonly listAdministrativeImportRows: AdministrativeImportMethods['listAdministrativeImportRows']
     readonly openAdministrativeImportSource: AdministrativeImportMethods['openAdministrativeImportSource']
+    readonly administrativeImportSourceId: AdministrativeImportMethods['administrativeImportSourceId']
     readonly describeAdministrativeImportSource: AdministrativeImportMethods['describeAdministrativeImportSource']
     readonly reverseAdministrativeImport: AdministrativeImportMethods['reverseAdministrativeImport']
     /**
@@ -1927,12 +1932,9 @@ export class Assessment extends Context.Service<
     readonly getMyResult: ScoringMethods['getMyResult']
     /** the same standing for a named participant, behind administrative reach */
     readonly getParticipantResult: ScoringMethods['getParticipantResult']
-    /** the bytes of a business material, for whoever its story admits */
-    readonly openAttachment: AttachmentMethods['openAttachment']
+    /** Uploads enter the attachment store; reads use registered contexts. */
     readonly prepareAttachmentUpload: AttachmentMethods['prepareAttachmentUpload']
     readonly completeAttachmentUpload: AttachmentMethods['completeAttachmentUpload']
-    readonly describeAttachment: AttachmentMethods['describeAttachment']
-    readonly describeAttachments: AttachmentMethods['describeAttachments']
     /** the score tree and the items on it; the save gauntlet lives behind these */
     readonly listItems: ItemMethods['listItems']
     readonly createItem: ItemMethods['createItem']
@@ -3450,11 +3452,6 @@ export const make = Effect.fn('Assessment.make')(function* () {
   const attachmentMethods = makeAttachmentMethods({
     withDb,
     storage,
-    rosterReach: (as, tenantId, batchId) =>
-      Effect.map(Effect.result(requireRosterReach(as, tenantId, batchId)), Result.isSuccess),
-    // the filing's own boundary, so material a recorder attached to an
-    // administrative fact reads back to the person who attached it
-    mayReadEntry: (tenantId, entryId, as) => entryMethods.mayReadEntryById(tenantId, entryId, as),
     // who may put material in at all: an active member, or staff whose
     // accepted authority includes recording on others' behalf
     uploadStanding: (tenantId, batchId, as) =>
@@ -6743,6 +6740,27 @@ const entryDto = (entry: EntryView) => ({
   capabilities: entry.capabilities,
 })
 
+const entriesWithFiles = Effect.fnUntraced(function* (
+  entries: readonly EntryView[],
+  principal: Principal,
+) {
+  const storage = yield* Storage
+  const metadata = yield* storage.metadataMany({
+    tenantId: principal.tenantId,
+    attachmentIds: [...new Set(entries.flatMap(entryFileIds))],
+  })
+  const byId = new Map(metadata.map((meta) => [meta.id, meta]))
+  return entries.map((entry) => ({
+    ...entryDto(entry),
+    files: (entry.currentRevision?.attachments ?? []).flatMap((file) => {
+      const meta = byId.get(file.attachmentId)
+      return meta === undefined ? [] : [attachmentInfo(meta)]
+    }),
+  }))
+})
+const entryWithFiles = (entry: EntryView, principal: Principal) =>
+  entriesWithFiles([entry], principal).pipe(Effect.map((entries) => entries[0]!))
+
 const reviewDto = (review: ReviewDetailView) => ({
   id: review.id,
   state: review.state,
@@ -7010,6 +7028,16 @@ const templateDto = (row: TemplateRow) => ({
   kind: row.kind as 'timeline' | 'phase',
   version: row.version,
   phases: (row.phases as unknown as readonly PhaseSpecInput[]).map(specDto),
+})
+
+const reviewWithFiles = Effect.fnUntraced(function* (
+  review: ReviewDetailView,
+  principal: Principal,
+) {
+  return {
+    ...reviewDto(review),
+    files: yield* presentAttachmentMetadata(principal.tenantId, reviewFileIds(review)),
+  }
 })
 
 /**
@@ -7559,24 +7587,15 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
       Effect.fn('assessment.describeAdministrativeImportSource.handler')(function* ({ params }) {
         const assessment = yield* Assessment
         const principal = yield* CurrentUser
-        return yield* assessment.describeAdministrativeImportSource(
+        const id = yield* assessment.administrativeImportSourceId(
           principal.tenantId,
           params.importId,
           principal,
         )
-      }),
-    )
-    .handle(
-      'getAdministrativeImportSourceContent',
-      Effect.fn('assessment.getAdministrativeImportSourceContent.handler')(function* ({ params }) {
-        const assessment = yield* Assessment
-        const principal = yield* CurrentUser
-        const opened = yield* assessment.openAdministrativeImportSource(
-          principal.tenantId,
-          params.importId,
-          principal,
-        )
-        return downloadOf(opened)
+        const files = yield* presentAttachmentMetadata(principal.tenantId, [id])
+        const file = files[0]
+        if (file === undefined) return yield* new AttachmentUnavailable()
+        return file
       }),
     )
     .handle(
@@ -8031,10 +8050,14 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
           },
           principal,
         )
+        const entries = yield* entriesWithFiles(
+          page.entries.map((one) => one.entry),
+          principal,
+        )
         return {
           participantId: page.participantId,
-          entries: page.entries.map((one) => ({
-            entry: entryDto(one.entry),
+          entries: page.entries.map((one, index) => ({
+            entry: entries[index]!,
             corrections: one.corrections,
             recognition: one.recognition,
           })),
@@ -8287,55 +8310,30 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
       Effect.fn('assessment.completeAttachmentUpload.handler')(function* ({ params }) {
         const assessment = yield* Assessment
         const principal = yield* CurrentUser
-        return yield* assessment.completeAttachmentUpload(
+        const completed = yield* assessment.completeAttachmentUpload(
           principal.tenantId,
           params.reservationId,
           principal,
         )
+        return completed
       }),
     )
     .handle(
-      'listAttachmentDescriptors',
-      Effect.fn('assessment.listAttachmentDescriptors.handler')(function* ({ query }) {
-        const assessment = yield* Assessment
+      'listStagedAttachmentDescriptors',
+      Effect.fn('assessment.listStagedAttachmentDescriptors.handler')(function* ({ query }) {
         const principal = yield* CurrentUser
-        // bounded loudly rather than truncated quietly: a page that asks for
-        // more than this is a page bug, and half an answer would hide it
-        if (query.id.length > 60) {
-          return yield* new BadRequest({ message: 'at most 60 attachments per request' })
-        }
+        if (query.id.length > 60)
+          return yield* new BadRequest({ message: 'At most 60 attachments per request' })
+        const storage = yield* Storage
+        const metadata = yield* storage.metadataMany({
+          tenantId: principal.tenantId,
+          attachmentIds: [...new Set(query.id)],
+        })
         return {
-          attachments: yield* assessment.describeAttachments(
-            principal.tenantId,
-            query.id,
-            principal,
-          ),
+          attachments: metadata
+            .filter((file) => file.status === 'staged' && file.ownerUserId === principal.userId)
+            .map((file) => attachmentInfo(file)),
         }
-      }),
-    )
-    .handle(
-      'describeAttachment',
-      Effect.fn('assessment.describeAttachment.handler')(function* ({ params }) {
-        const assessment = yield* Assessment
-        const principal = yield* CurrentUser
-        return yield* assessment.describeAttachment(
-          principal.tenantId,
-          params.attachmentId,
-          principal,
-        )
-      }),
-    )
-    .handle(
-      'getAttachmentContent',
-      Effect.fn('assessment.getAttachmentContent.handler')(function* ({ params }) {
-        const assessment = yield* Assessment
-        const principal = yield* CurrentUser
-        const opened = yield* assessment.openAttachment(
-          principal.tenantId,
-          params.attachmentId,
-          principal,
-        )
-        return downloadOf(opened)
       }),
     )
     .handle(
@@ -8354,7 +8352,7 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
         )
         return {
           participantId: page.participantId,
-          entries: page.entries.map(entryDto),
+          entries: yield* entriesWithFiles(page.entries, principal),
           filing: page.filing,
           nextCursor: page.nextCursor,
           attention: page.attention,
@@ -8371,9 +8369,18 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
           params.entryId,
           principal,
         )
+        const files = yield* presentAttachmentMetadata(principal.tenantId, historyFileIds(history))
+        const filesById = new Map(files.map((file) => [file.id, file]))
         return {
+          files,
           reviewersShown: history.reviewersShown,
-          entry: entryDto(history.entry),
+          entry: {
+            ...entryDto(history.entry),
+            files: entryFileIds(history.entry).flatMap((id) => {
+              const file = filesById.get(id)
+              return file === undefined ? [] : [file]
+            }),
+          },
           revisions: history.revisions.map((revision) => ({
             id: revision.id,
             revisionNo: revision.revisionNo,
@@ -8446,7 +8453,7 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
           },
           principal,
         )
-        return { entry: entryDto(entry) }
+        return { entry: yield* entryWithFiles(entry, principal) }
       }),
     )
     .handle(
@@ -8455,7 +8462,7 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
         const assessment = yield* Assessment
         const principal = yield* CurrentUser
         const entry = yield* assessment.getEntry(principal.tenantId, params.entryId, principal)
-        return { entry: entryDto(entry) }
+        return { entry: yield* entryWithFiles(entry, principal) }
       }),
     )
     .handle(
@@ -8478,7 +8485,7 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
           },
           principal,
         )
-        return { entry: entryDto(entry) }
+        return { entry: yield* entryWithFiles(entry, principal) }
       }),
     )
     .handle(
@@ -8553,7 +8560,7 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
           payload.expectedItemRevisionId,
           payload.expectedEntryRevisionId,
         )
-        return { entry: entryDto(entry) }
+        return { entry: yield* entryWithFiles(entry, principal) }
       }),
     )
     .handle(
@@ -8567,7 +8574,7 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
           payload,
           principal,
         )
-        return { entry: entryDto(entry) }
+        return { entry: yield* entryWithFiles(entry, principal) }
       }),
     )
     .handle(
@@ -8633,7 +8640,9 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
           params.instanceId,
           principal,
         )
-        return { review: reviewDto(review) }
+        return {
+          review: yield* reviewWithFiles(review, principal),
+        }
       }),
     )
     .handle(
@@ -8648,7 +8657,16 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
           principal,
         )
         return {
-          sibling: { ...sibling, submittedAt: new Date(sibling.submittedAt).toISOString() },
+          sibling: {
+            ...sibling,
+            submittedAt: new Date(sibling.submittedAt).toISOString(),
+            files: yield* presentAttachmentMetadata(
+              principal.tenantId,
+              yield* (yield* withDatabase)(
+                siblingFileIds(principal.tenantId, params.entryId, sibling.revision.revisionNo),
+              ).pipe(Effect.orDie),
+            ),
+          },
         }
       }),
     )
@@ -8694,7 +8712,9 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
           },
           principal,
         )
-        return { review: reviewDto(review) }
+        return {
+          review: yield* reviewWithFiles(review, principal),
+        }
       }),
     )
     .handle(
@@ -8804,7 +8824,9 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
           payload,
           principal,
         )
-        return { review: reviewDto(review) }
+        return {
+          review: yield* reviewWithFiles(review, principal),
+        }
       }),
     )
     .handle(
@@ -8838,7 +8860,9 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
           payload,
           principal,
         )
-        return { review: reviewDto(review) }
+        return {
+          review: yield* reviewWithFiles(review, principal),
+        }
       }),
     )
     .handle(
@@ -8856,7 +8880,9 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
           },
           principal,
         )
-        return { review: reviewDto(review) }
+        return {
+          review: yield* reviewWithFiles(review, principal),
+        }
       }),
     )
     .handle(
@@ -8869,7 +8895,9 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
           params.requestId,
           principal,
         )
-        return { review: reviewDto(review) }
+        return {
+          review: yield* reviewWithFiles(review, principal),
+        }
       }),
     )
     .handle(
@@ -8883,7 +8911,9 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
           { payload: payload.payload },
           principal,
         )
-        return { review: reviewDto(review) }
+        return {
+          review: yield* reviewWithFiles(review, principal),
+        }
       }),
     )
     .handle(
