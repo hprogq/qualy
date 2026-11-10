@@ -549,10 +549,17 @@ describe('one workbench, three widths', () => {
   })
 
   it('says nothing has arrived while judging is open', async () => {
+    await page.viewport(1440, 900)
     await queue({ items: [], nextCursor: null, handledToday: 0, judging: true })
     await expect
       .element(page.getByTestId('review-inbox-empty'))
       .toHaveAttribute('data-empty', 'nothing')
+    await expect.element(page.getByTestId('review-start')).not.toBeInTheDocument()
+    const stats = page.getByTestId('review-stats').element()
+    const inset = stats.closest('[data-slot="page-container"]')!
+    const right =
+      inset.getBoundingClientRect().right - parseFloat(getComputedStyle(inset).paddingRight)
+    expect(stats.getBoundingClientRect().right).toBeCloseTo(right, 0)
   })
 
   // The workbench is a screenful at every width and scrolls its parts
@@ -1856,36 +1863,46 @@ describe('the queue, a page at a time', () => {
     await expect.element(group()).toHaveAttribute('data-key', ITEM_ID)
   })
 
-  it('keeps the band in place while the start-review action is loading', async () => {
-    await page.viewport(390, 844)
-    const answer = inboxOf(both())
-    let resolve!: (value: typeof answer) => void
-    const delayed = new Promise<typeof answer>((done) => {
-      resolve = done
-    })
-    await withBench(both(), '', { listReviewInbox: () => Effect.promise(() => delayed) })
-    const start = page.getByTestId('review-start')
-    await expect.element(start).toBeInTheDocument()
-    await expect.element(start).not.toBeVisible()
-    const band = page.getByTestId('batch-band').element()
-    const before = band.getBoundingClientRect().bottom
-    resolve(answer)
-    await expect.element(start).toBeVisible()
-    expect(Math.abs(band.getBoundingClientRect().bottom - before)).toBeLessThan(1)
-    const title = page.getByTestId('batch-band').getByRole('heading').element()
-    const stats = page.getByTestId('review-stats').element()
-    const centerY = (node: Element) => {
-      const box = node.getBoundingClientRect()
-      return box.top + box.height / 2
-    }
-    expect(Math.abs(centerY(title) - centerY(start.element()))).toBeLessThan(1)
-    expect(stats.getBoundingClientRect().top).toBeGreaterThan(title.getBoundingClientRect().bottom)
-
-    // A mid-width window already has enough room, even without the desktop shell.
-    await page.viewport(500, 844)
-    await expect.poll(() => Math.abs(centerY(title) - centerY(stats))).toBeLessThan(1)
-    expect(Math.abs(centerY(title) - centerY(start.element()))).toBeLessThan(1)
-  })
+  it.each([390, 1440])(
+    'keeps the tabs in place when the review action arrives at %ipx',
+    async (width) => {
+      await page.viewport(width, 844)
+      const answer = inboxOf(both())
+      let resolve!: (value: typeof answer) => void
+      const delayed = new Promise<typeof answer>((done) => {
+        resolve = done
+      })
+      await withBench(both(), '', { listReviewInbox: () => Effect.promise(() => delayed) })
+      const start = page.getByTestId('review-start')
+      await expect.element(start).not.toBeInTheDocument()
+      const header = page.getByTestId('batch-band')
+      const tabs = header.getByRole('tablist')
+      await expect.element(tabs).toBeVisible()
+      await document.fonts.ready
+      const before = tabs.element().getBoundingClientRect().top
+      resolve(answer)
+      await expect.element(start).toBeVisible()
+      expect(tabs.element().getBoundingClientRect().top).toBeCloseTo(before, 0)
+      const title = header.getByRole('heading').element()
+      const stats = page.getByTestId('review-stats').element()
+      const centerY = (node: Element) => {
+        const box = node.getBoundingClientRect()
+        return box.top + box.height / 2
+      }
+      expect(Math.abs(centerY(title) - centerY(start.element()))).toBeLessThan(1)
+      if (width === 390) {
+        expect(stats.getBoundingClientRect().top).toBeGreaterThan(
+          title.getBoundingClientRect().bottom,
+        )
+        // A mid-width window already has enough room, even without the desktop shell.
+        await page.viewport(500, 844)
+        await expect.poll(() => Math.abs(centerY(title) - centerY(stats))).toBeLessThan(1)
+        expect(Math.abs(centerY(title) - centerY(start.element()))).toBeLessThan(1)
+      } else {
+        expect(Math.abs(centerY(title) - centerY(stats))).toBeLessThan(1)
+      }
+    },
+  )
 
   // The band's key is for somebody who only wants to get through what is
   // waiting: the whole queue, from its oldest filing.

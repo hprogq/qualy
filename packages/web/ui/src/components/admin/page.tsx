@@ -58,10 +58,26 @@ const styles = stylex.create({
       default: 'minmax(0, 1fr) auto',
       [HEADER_ROOM]: 'minmax(7rem, 1fr) minmax(0, max-content) auto',
     },
+    // The title row owns its rhythm. A late action fits this line without
+    // changing the position of the tabs or list that follow the header.
+    gridTemplateRows: {
+      default: 'minmax(2.25rem, auto) auto',
+      [HEADER_ROOM]: 'minmax(2.25rem, auto)',
+    },
     alignItems: 'center',
     columnGap: { default: 8, [HEADER_ROOM]: 12 },
     rowGap: 4,
     paddingBlockEnd: 0,
+  },
+  headerWithoutActions: {
+    gridTemplateAreas: {
+      default: '"title" "summary"',
+      [HEADER_ROOM]: '"title summary"',
+    },
+    gridTemplateColumns: {
+      default: 'minmax(0, 1fr)',
+      [HEADER_ROOM]: 'minmax(7rem, 1fr) minmax(0, max-content)',
+    },
   },
   summary: {
     gridArea: 'summary',
@@ -196,6 +212,7 @@ export function PageHeader({
         styles.header,
         variant === 'banner' && styles.headerBanner,
         hasSummary && styles.headerWithSummary,
+        hasSummary && !actions && styles.headerWithoutActions,
         xstyle,
       )}
     >

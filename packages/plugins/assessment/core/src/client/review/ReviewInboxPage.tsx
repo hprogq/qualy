@@ -388,15 +388,8 @@ export default function ReviewInboxPage() {
       title={m.review_tab()}
       summary={reviewing ? <QueueStanding queue={queue} /> : undefined}
       actions={
-        reviewing ? (
-          <ReviewActions
-            available={first != null}
-            pending={queue.inbox.isPending}
-            count={pending}
-            onStart={() => {
-              if (first != null) open({ instanceId: first }, '')
-            }}
-          />
+        reviewing && first != null ? (
+          <ReviewActions count={pending} onStart={() => open({ instanceId: first }, '')} />
         ) : undefined
       }
       bannerFooter={

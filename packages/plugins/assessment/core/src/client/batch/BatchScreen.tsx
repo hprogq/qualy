@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, type ReactNode } from 'react'
+import { createContext, Fragment, useContext, useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { LoadFailure, isRecordId, useApiQuery, usePageRouteParams } from '@qualy/web-runtime'
 
@@ -254,6 +254,10 @@ export function BatchScreen({
   // the section's own name is what shows unless it says otherwise
   const showing = banner ?? 'section'
   const noting = notes ?? showing === 'section'
+  // Only measure a band that hands over to another heading. A fixed section
+  // heading already has its height in CSS; a stale measurement would move
+  // the tabs when the first query updates the band.
+  const BannerHeight = banner === undefined ? Fragment : Resizing
 
   const detail = useQuery({
     ...query.assessment.getBatch.queryOptions({ params: { batchId } }),
@@ -355,7 +359,7 @@ export function BatchScreen({
           size={size}
           xstyle={[styles.bandInset, bannerFooter != null && styles.bandWithFooter]}
         >
-          <Resizing>
+          <BannerHeight>
             {/* The heading parked out of sight is out of reach too: not a
                 second heading to a screen reader, and no key in it to tab
                 to that nobody can see. */}
@@ -380,7 +384,7 @@ export function BatchScreen({
                 {...stylex.props(showing === 'section' ? styles.bannerParked : styles.bannerShown)}
               />
             </div>
-          </Resizing>
+          </BannerHeight>
           {bannerFooter}
         </PageContainer>
       </div>
