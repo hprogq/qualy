@@ -6,6 +6,8 @@
 
 Caddy 模板对 GET 的 HTML 和 RSC 流启用 Brotli（质量级别 5）和 gzip，保留代理的逐块 flush；API、静态资源、健康检查和包含操作凭证的密码重置及邮箱验证页面不走该规则。EdgeOne 可继续压缩可缓存的静态资源。动态 Brotli 需要 Caddy 的 `http.encoders.br` 模块，构建自定义二进制时还须保留站点使用的 DNS 模块；上线前在实际代理版本上验证首块输出、`Content-Encoding`、`Vary`、未压缩响应以及认证页面的私有缓存头。
 
+生产主机 2026-11-10 的自定义构建保留了 Caddy 2.11.4、`caddy-dns/cloudflare` v0.2.4 和 `caddy-dns/tencentcloud` `723aebc4c1b0`，并加入 `ueffel/caddy-brotli` v1.7.0（`a11b086aedd96b143eb18ea6e84cedf909b1bd25`）。更新 Caddy 前应记录 `caddy build-info` 和 `caddy list-modules`，重新构建所有现用模块，使用服务的环境变量校验完整配置，并在替换二进制前保留可执行的回退副本；它还服务同机其他站点。
+
 ## Caddy 自动 HTTPS
 
 公开站点只有一个明确主机名时，在 Caddyfile 中用这个主机名替换 `qualy.example.com`，通常即可使用 Caddy 的自动证书申请、续期和 HTTP 到 HTTPS 跳转，不需要 DNS 服务商 API。默认 HTTP-01 使用公网 TCP 80，TLS-ALPN-01 使用公网 TCP 443；DNS 托管在 DNSPod 或 Cloudflare，不改变这两个验证方式。
