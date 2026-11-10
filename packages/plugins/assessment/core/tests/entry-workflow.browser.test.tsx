@@ -2508,6 +2508,138 @@ describe('judging a submission', () => {
     })
   })
 
+  it('keeps the filters when moving from a finished run to the next group', async () => {
+    await page.viewport(1440, 900)
+    const other = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+    const unit = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+    const reads: Array<Record<string, unknown>> = []
+    const rows = [
+      inboxRow({ unitId: unit, roundNo: 2 }),
+      inboxRow({
+        instanceId: other,
+        itemId: ITEM2_ID,
+        itemTitle: '第二项目',
+        unitId: unit,
+        roundNo: 2,
+      }),
+      inboxRow({
+        instanceId: REQUEST_ID,
+        itemId: ITEM3_ID,
+        itemTitle: '不匹配',
+        unitId: unit,
+        roundNo: 1,
+      }),
+    ]
+    await screen(
+      {
+        listReviewInbox: (({ query }: { query: Record<string, unknown> }) => {
+          reads.push(query)
+          return Effect.succeed({ items: rows, nextCursor: null, handledToday: 0 })
+        }) as never,
+        getReviewInstance: () => Effect.succeed({ review }),
+        decideReview: () =>
+          Effect.succeed({
+            review: { ...review, state: 'completed' as const, outcome: 'approved' },
+          }),
+      },
+      `/assessment/batches/${BATCH_ID}/reviews?unit=${unit}&mark=resubmitted&q=${encodeURIComponent('张三')}`,
+      [
+        { path: '/assessment/batches/:batchId/reviews', element: <ReviewInboxPage /> },
+        {
+          path: '/assessment/batches/:batchId/reviews/:instanceId',
+          element: <ReviewInstancePage />,
+        },
+      ],
+    )
+    await page.getByTestId('queue-run').first().click()
+    await expect.element(page.getByTestId('run-position')).toHaveAttribute('data-total', '1')
+    await page.getByRole('button', { name: /^通过/ }).click()
+    await page
+      .getByRole('dialog')
+      .getByRole('button', { name: /^通过/ })
+      .click()
+    await expect.element(page.getByTestId('run-done')).toBeVisible()
+    await expect.element(page.getByTestId('review-done-left')).toHaveAttribute('data-count', '1')
+    await page.getByTestId('review-next-run').click()
+    await expect.poll(addressNow).toContain(other)
+    // The position counts the completed work from this sitting too.
+    await expect.element(page.getByTestId('run-position')).toHaveAttribute('data-total', '2')
+    await expect
+      .poll(() => reads.find((read) => read.focus === other))
+      .toMatchObject({
+        itemId: ITEM2_ID,
+        unitId: unit,
+        mark: 'resubmitted',
+        search: '张三',
+      })
+  })
+
+  it('excludes staged and confirmed decisions from filtered navigation', async () => {
+    await page.viewport(1440, 900)
+    const other = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+    const unit = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+    const reads: Array<Record<string, unknown>> = []
+    const decided = vi.fn(() =>
+      Effect.succeed({ review: { ...review, state: 'completed' as const, outcome: 'approved' } }),
+    )
+    const rows = [
+      inboxRow({ unitId: unit, roundNo: 2 }),
+      inboxRow({ instanceId: other, unitId: unit, roundNo: 2 }),
+      inboxRow({ instanceId: REQUEST_ID, unitId: unit, roundNo: 1 }),
+    ]
+    await screen(
+      {
+        listReviewInbox: (({ query }: { query: Record<string, unknown> }) => {
+          reads.push(query)
+          return Effect.succeed({ items: rows, nextCursor: null, handledToday: 0 })
+        }) as never,
+        getReviewInstance: () => Effect.succeed({ review }),
+        decideReview: decided,
+      },
+      `/assessment/batches/${BATCH_ID}/reviews?unit=${unit}&mark=resubmitted&q=${encodeURIComponent('张三')}`,
+      [
+        { path: '/assessment/batches/:batchId/reviews', element: <ReviewInboxPage /> },
+        {
+          path: '/assessment/batches/:batchId/reviews/:instanceId',
+          element: <ReviewInstancePage />,
+        },
+      ],
+    )
+    await page.getByTestId('queue-run').first().click()
+    await expect.element(page.getByTestId('run-position')).toHaveAttribute('data-total', '2')
+    await page.getByRole('button', { name: /^通过/ }).click()
+    await page
+      .getByRole('dialog')
+      .getByRole('button', { name: /^通过/ })
+      .click()
+    await expect.poll(addressNow).toContain(other)
+    await expect
+      .poll(() =>
+        reads.find(
+          (read) =>
+            read.focus === other &&
+            Array.isArray(read.exclude) &&
+            read.exclude.includes(INSTANCE_ID),
+        ),
+      )
+      .toMatchObject({
+        itemId: ITEM_ID,
+        unitId: unit,
+        mark: 'resubmitted',
+        search: '张三',
+        exclude: [INSTANCE_ID],
+      })
+    await userEvent.keyboard('k')
+    expect(addressNow()).toContain(other)
+    await userEvent.keyboard('j')
+    expect(addressNow()).toContain(other)
+    await vi.waitFor(() => expect(decided).toHaveBeenCalledOnce(), { timeout: 8000 })
+    await userEvent.keyboard('k')
+    expect(addressNow()).toContain(other)
+    await userEvent.keyboard('j')
+    expect(addressNow()).toContain(other)
+  })
+
   it('sends one decision per press, however it was pressed', async () => {
     const decided = vi.fn(() =>
       Effect.succeed({ review: { ...review, state: 'completed' as const, outcome: 'rejected' } }),

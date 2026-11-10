@@ -548,6 +548,39 @@ describe('the queue in brief', () => {
     expect(input.value).toBe('项目')
   })
 
+  it('disables the old start action until the changed filter has loaded', async () => {
+    await page.viewport(1000, 850)
+    const items = both()
+    const reply = { items, handledToday: 0, judging: true }
+    let release!: () => void
+    const delayed = new Promise<typeof reply>((resolve) => {
+      release = () => resolve(reply)
+    })
+    let searched = false
+    await shelled(items, '', {
+      listReviewInbox: ({ query }: { query: { search?: string } }) => {
+        if (query.search) {
+          searched = true
+          return Effect.promise(() => delayed)
+        }
+        return Effect.succeed(reply)
+      },
+    })
+    const start = page.getByTestId('review-start')
+    await expect.element(start).toBeEnabled()
+    const original = start.element()
+    try {
+      await page.getByRole('textbox', { name: '搜索姓名、学号或申报内容' }).fill('参评人1')
+      await expect.poll(() => searched).toBe(true)
+      await expect.element(start).toBeDisabled()
+      expect(start.element()).toBe(original)
+      release()
+      await expect.element(start).toBeEnabled()
+    } finally {
+      release()
+    }
+  })
+
   it('starts a run over a project from its key', async () => {
     await page.viewport(1440, 900)
     await shelled(both())
