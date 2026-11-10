@@ -130,6 +130,7 @@ const PROBLEM_LABEL: Record<string, Message> = {
   'binding-orphan': m.items_problemBindingOrphan,
   'stages-required': m.items_problemStagesRequired,
   'escalation-required': m.items_problemEscalationRequired,
+  'stage-uncovered': m.items_problemStageUncovered,
   'stage-unnamed': m.items_problemStageUnnamed,
   'stage-unset': m.items_problemStageUnset,
   'stage-quorum': m.items_problemStageQuorum,

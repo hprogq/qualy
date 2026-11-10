@@ -2490,5 +2490,6 @@
   "navigation_access": "Staffs",
   "navigation_settings": "Settings",
   "permissionGroup_assessment": "Assessment",
-  "roster_noMatchHint": "Try another search or adjust the filters."
+  "roster_noMatchHint": "Try another search or adjust the filters.",
+  "items_problemStageUncovered": "{count} units have no reviewer; appoint reviewers there so their submissions can proceed"
 }

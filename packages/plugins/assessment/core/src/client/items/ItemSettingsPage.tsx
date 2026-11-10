@@ -1,4 +1,6 @@
 'use client'
+
+import { PageContainer } from '@qualy/ui/page-container'
 import { scoringIncompatibleValues } from './scoring-refusals.ts'
 import { assertNever, formatPlatformFailure as formatError } from '@qualy/web-i18n'
 import { Effect } from 'effect'
@@ -19,7 +21,7 @@ import * as stylex from '@stylexjs/stylex'
 import { PencilIcon } from 'lucide-react'
 
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { AsyncSection, ConfirmDialog } from '@qualy/ui/admin'
+import { AsyncSection, PageHeader, ConfirmDialog } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { DropdownMenuItem, DropdownMenuSeparator } from '@qualy/ui/dropdown-menu'
 import { Drill, type DrillMove } from '@qualy/ui/reveal'
@@ -28,7 +30,7 @@ import { Skeleton } from '@qualy/ui/skeleton'
 import { toast } from '@qualy/ui/toast'
 import { assessmentApi } from '../api.ts'
 
-import { BatchScreen } from '../batch/BatchScreen.tsx'
+import { BatchScreen, BatchBand } from '../batch/BatchScreen.tsx'
 import { ItemEditor } from './editor/ItemEditor.tsx'
 import { GroupEditor } from './GroupEditor.tsx'
 import { PaperStart } from './PaperStart.tsx'
@@ -98,6 +100,7 @@ const refusedPublish = (error: unknown, fallback: (value: unknown) => string): s
 }
 
 const styles = stylex.create({
+  structureInset: { display: 'flex', flexDirection: 'column', flexGrow: 1, paddingBlock: 24 },
   grow: {
     display: 'flex',
     flexGrow: 1,
@@ -324,19 +327,30 @@ function StructureSkeleton() {
  */
 function QuestionSkeleton() {
   return (
-    <div {...stylex.props(styles.skeletonStack)} aria-hidden data-testid="question-skeleton">
-      <div {...stylex.props(styles.skeletonTabs)}>
-        {[56, 72, 64].map((width) => (
-          <Skeleton
-            key={width}
-            className={stylex.props(styles.skeletonTab).className}
-            width={width}
-          />
-        ))}
-      </div>
-      <SkeletonBlock rows={2} />
-      <SkeletonBlock rows={3} />
-    </div>
+    <>
+      <BatchBand state="open">
+        <PageHeader
+          variant="banner"
+          title={<Skeleton width={180} height={28} />}
+          description={<Skeleton width={240} height={20} />}
+        />
+      </BatchBand>
+      <PageContainer xstyle={styles.structureInset}>
+        <div {...stylex.props(styles.skeletonStack)} aria-hidden data-testid="question-skeleton">
+          <div {...stylex.props(styles.skeletonTabs)}>
+            {[56, 72, 64].map((width) => (
+              <Skeleton
+                key={width}
+                className={stylex.props(styles.skeletonTab).className}
+                width={width}
+              />
+            ))}
+          </div>
+          <SkeletonBlock rows={2} />
+          <SkeletonBlock rows={3} />
+        </div>
+      </PageContainer>
+    </>
   )
 }
 
@@ -408,17 +422,13 @@ export default function ItemSettingsPage() {
     restoring.current = true
     setUnsaved(false)
   }
-  // The band is handed over once the question is there to take it. Handed
-  // over on the address alone, it stood empty while the round was still
-  // being read, and grew into the question's heading when that arrived.
-  const [questionUp, setQuestionUp] = useState(false)
 
   return (
     <BatchScreen
       title={m.items_tab()}
       fixedNotices
       description={m.items_hint()}
-      banner={shown !== '' && questionUp ? 'open' : 'section'}
+      chrome="none"
       // the round's notes belong to the structure: an address naming a
       // question drops them at once, so the outline of the question stands
       // where the question will
@@ -442,7 +452,6 @@ export default function ItemSettingsPage() {
           heldPanel={holding ? kept.panel : undefined}
           onStay={stay}
           onLetGo={letGo}
-          onQuestionUp={setQuestionUp}
         />
       )}
     </BatchScreen>
@@ -466,7 +475,6 @@ function Editor({
   heldPanel,
   onStay,
   onLetGo,
-  onQuestionUp,
 }: {
   batchId: string
   batchStatus: string
@@ -498,8 +506,6 @@ function Editor({
   onStay: () => void
   /** let the held question's changes go */
   onLetGo: () => void
-  /** whether a question is on screen to speak through the band */
-  onQuestionUp: (up: boolean) => void
 }) {
   const query = useApiQuery(assessmentApi)
   const api = useApi(assessmentApi)
@@ -945,8 +951,6 @@ function Editor({
         onSaved={(itemId) => void opened(itemId)}
       />
     ) : null
-  const questionUp = editorArea !== null
-  useEffect(() => onQuestionUp(questionUp), [questionUp, onQuestionUp])
 
   const structure =
     paper === undefined ? (
@@ -1008,7 +1012,16 @@ function Editor({
     >
       <div {...stylex.props(styles.grow, styles.editorColumn)}>
         <Drill move={move} drillKey={drillKey} className={stylex.props(styles.grow).className}>
-          {selection === null ? structure : editorArea}
+          {selection === null ? (
+            <>
+              <BatchBand>
+                <PageHeader variant="banner" title={m.items_tab()} description={m.items_hint()} />
+              </BatchBand>
+              <PageContainer xstyle={styles.structureInset}>{structure}</PageContainer>
+            </>
+          ) : (
+            editorArea
+          )}
         </Drill>
         {selection === null && batchStatus !== 'archived' && (
           <ReviewGapNotice

@@ -2490,5 +2490,6 @@
   "navigation_access": "人员权限",
   "navigation_settings": "批次设置",
   "permissionGroup_assessment": "综合测评",
-  "roster_noMatchHint": "请尝试其他关键词，或调整筛选条件。"
+  "roster_noMatchHint": "请尝试其他关键词，或调整筛选条件。",
+  "items_problemStageUncovered": "有 {count} 个单位暂无审核人；在这些单位任命审核人后，申报才能继续审核"
 }

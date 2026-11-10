@@ -58,7 +58,11 @@ const styles = stylex.create({
     overflow: 'hidden',
     borderRadius: 14,
     backgroundColor: tokens.background,
-    boxShadow: `0 0 0 1px ${tokens.border}, 0 1px 2px rgb(0 0 0 / 0.04)`,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    boxSizing: 'border-box',
+    boxShadow: '0 1px 2px rgb(0 0 0 / 0.04)',
   },
   cell: {
     display: 'flex',
@@ -139,7 +143,11 @@ const styles = stylex.create({
     paddingBlock: 8,
     borderRadius: 14,
     backgroundColor: tokens.background,
-    boxShadow: `0 0 0 1px ${tokens.border}, 0 1px 2px rgb(0 0 0 / 0.04)`,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    boxSizing: 'border-box',
+    boxShadow: '0 1px 2px rgb(0 0 0 / 0.04)',
   },
   link: { display: 'grid', gridTemplateColumns: '28px minmax(0, 1fr)', columnGap: 14 },
   list: { display: 'flex', flexDirection: 'column', margin: 0, padding: 0, listStyleType: 'none' },
@@ -683,7 +691,7 @@ function StepChain({
     return askable
       ? {
           nodeTypeId: stage.nodeTypeId,
-          roleIds,
+          roleIds: [...roleIds].sort(),
           key: `${stage.nodeTypeId}|${[...roleIds].sort().join(',')}`,
         }
       : null

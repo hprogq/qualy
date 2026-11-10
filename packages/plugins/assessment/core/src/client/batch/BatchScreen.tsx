@@ -184,6 +184,22 @@ export function BatchBanner({ children }: { children: ReactNode }) {
   return <Portal into={slot}>{children}</Portal>
 }
 
+/** A section-owned band renders in HTML as well as after hydration. */
+export function BatchBand({
+  children,
+  state = 'section',
+}: {
+  children: ReactNode
+  state?: 'section' | 'open'
+}) {
+  return (
+    <div data-testid="batch-band" data-banner={state} {...stylex.props(styles.band)}>
+      <div aria-hidden {...stylex.props(styles.hairlines)} />
+      <PageContainer xstyle={styles.bandInset}>{children}</PageContainer>
+    </div>
+  )
+}
+
 export function BatchScreen({
   title,
   description,

@@ -2279,7 +2279,26 @@ describe('the band', () => {
     await expect.element(trail).toHaveAttribute('data-folded', '0')
   })
 
-  it('keeps the section heading in the band until a question arriving by address can take it', async () => {
+  it('keeps reviewer vacancies in the shared problem summary on every editor tab', async () => {
+    await open({
+      items: [officerWithAppeals()],
+      question: ITEM_ID,
+      coverage: [{ id: 'c1', name: '1班', reviewers: 0 }],
+    })
+    await expect.element(page.getByTestId('pending-trigger')).toBeVisible()
+    const rules = page.getByRole('tab', { name: /记录与审核/ })
+    await expect.element(rules).toHaveAttribute('data-tone', 'pending')
+    await tab(/表单与计分/).click()
+    await expect.element(page.getByTestId('pending-trigger')).toBeVisible()
+    await page.getByTestId('pending-trigger').click()
+    const vacancy = page.getByTestId('pending-row').filter({ hasText: '暂无审核人' }).first()
+    await expect.element(vacancy).toBeVisible()
+    await vacancy.click()
+    await expect.element(editor()).toHaveAttribute('data-panel', 'rules')
+    await expect.element(page.getByTestId('pending-trigger')).toBeVisible()
+  })
+
+  it('keeps an editor heading outline until a question arriving by address is ready', async () => {
     let release: (() => void) | undefined
     const held = new Promise<void>((resolve) => {
       release = resolve
@@ -2317,7 +2336,7 @@ describe('the band', () => {
     await expect.element(page.getByTestId('question-skeleton')).toBeVisible()
     const band = page.getByTestId('batch-band')
     // an empty band would stand shorter and grow when the question came
-    await expect.element(band).toHaveAttribute('data-banner', 'section')
+    await expect.element(band).toHaveAttribute('data-banner', 'open')
     const waiting = band.element().getBoundingClientRect().height
     expect(waiting).toBeGreaterThan(60)
     // The round is a draft, and the structure says so above itself. Said

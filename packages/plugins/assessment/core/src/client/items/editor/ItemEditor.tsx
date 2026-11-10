@@ -1,3 +1,4 @@
+import { PageContainer } from '@qualy/ui/page-container'
 import {
   formatDateTime,
   assertNever,
@@ -8,6 +9,7 @@ import {
 import {
   useApiMutation,
   useApi,
+  useApiQuery,
   useLeaveGuard,
   useRunApi,
   usePageQueryState,
@@ -16,11 +18,12 @@ import {
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, type Path } from 'react-router'
-import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQuery, useQueries } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { EllipsisVerticalIcon, EyeIcon } from 'lucide-react'
 
 import { kindOf, type AtomicSchema, type ChoiceSchema } from '@qualy/value-schema'
+import { coverageRequestsOf, coverageKeyOf } from './coverage.ts'
 import { type FieldDraft as ValueDraft } from '@qualy/web-value-form/model'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { BannerBack, ConfirmDialog, PageHeader } from '@qualy/ui/admin'
@@ -31,12 +34,12 @@ import { toast } from '@qualy/ui/toast'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { useLingering } from '@qualy/ui/use-lingering'
 import { useSettled } from '@qualy/ui/use-settled'
-import { useIsBelow } from '@qualy/ui/use-mobile'
+import { AtWidth } from '@qualy/ui/at-width'
 import { calculatorAuthoringOptions } from '../../../surfaces.ts'
 import { assessmentApi } from '../../api.ts'
 
 import { dayKeyOf, useBatchZone } from '../../batch/zone.ts'
-import { BatchBanner } from '../../batch/BatchScreen.tsx'
+import { BatchBand } from '../../batch/BatchScreen.tsx'
 import { type ItemDto } from '../../entry/model.ts'
 import { ImpactDialog, type ChangeEffects, type ChangeImpact } from '../ImpactDialog.tsx'
 import { ReasonDialog } from '../ReasonDialog.tsx'
@@ -105,6 +108,7 @@ import * as m from '#messages'
 // will happen, why, and where to go next.
 
 const styles = stylex.create({
+  editorInset: { paddingBlockStart: 24 },
   root: {
     display: 'flex',
     minHeight: 0,
@@ -229,11 +233,16 @@ const styles = stylex.create({
   },
   tabInnerLabel: { display: 'flex', minWidth: 0, width: '100%', maxWidth: '100%' },
   tabWord: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-  body: { display: 'flex', flexDirection: 'column', gap: 24, paddingBottom: 40, minWidth: 0 },
-  bodyBeside: {
+  body: {
     display: 'grid',
-    gridTemplateColumns: '192px minmax(0, 1fr)',
+    minWidth: 0,
+    gap: 24,
+    paddingBottom: 40,
     alignItems: 'start',
+    gridTemplateColumns: {
+      default: '192px minmax(0, 1fr)',
+      '@media (max-width: 1199.98px)': 'minmax(0, 1fr)',
+    },
   },
   sidebar: {
     top: 12,
@@ -399,11 +408,11 @@ export function ItemEditor({
 }) {
   const api = useApi(assessmentApi)
   const run = useRunApi()
+  const query = useApiQuery(assessmentApi)
   const locale = useLocale()
   const zone = useBatchZone()
   // At 1200px the workspace rail leaves enough room for this navigation
   // and a 700px form. Below it, keep the form's full width.
-  const navigationBeside = !useIsBelow(1200)
   const listJoin = useList()
   // What the last save here answered with, until the page's own read of the
   // question catches up. Until then it IS the question: the next save names
@@ -672,7 +681,33 @@ export function ItemEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [draft, contract, locale, JSON.stringify(serverIssues)],
   )
-  const problems = useMemo(() => mergedProblems(local, server.placed), [local, server.placed])
+  const coverageRequests = coverageRequestsOf(batchId, draft.stages)
+  const coverage = useQueries({
+    queries: coverageRequests.map(({ input }) => ({
+      ...query.assessment.reviewCoverage.queryOptions(input),
+      refetchInterval: 60_000,
+    })),
+  })
+  const staffingProblems = draft.stages.flatMap((stage): EditorProblem[] => {
+    const key = coverageKeyOf(stage)
+    const answer =
+      key === null ? undefined : coverage[coverageRequests.findIndex((one) => one.key === key)]
+    const count = (answer?.data?.nodes ?? []).filter((node) => node.reviewers === 0).length
+    return count === 0
+      ? []
+      : [
+          {
+            area: 'rules',
+            block: stage.chain === 'normal' ? 'review' : 'escalation',
+            code: 'stage-uncovered',
+            entity: { kind: 'stage', key: stage.key },
+            subject: stage.label,
+            tone: 'pending',
+            values: { count },
+          },
+        ]
+  })
+  const problems = mergedProblems(mergedProblems(local, server.placed), staffingProblems)
   const wrong = problems.some((one) => one.tone === 'error')
   const toneOf = (one: EditorArea): 'ok' | 'pending' | 'error' => {
     const here = problems.filter((candidate) => candidate.area === one)
@@ -1557,6 +1592,71 @@ export function ItemEditor({
     setAsk(null)
   }
 
+  const navigation = (navigationBeside: boolean) => (
+    <div
+      {...stylex.props(styles.tabStrip, navigationBeside ? styles.sidebar : styles.horizontalShade)}
+      data-testid="item-tabs"
+    >
+      <div {...stylex.props(styles.tabsSeat, navigationBeside && styles.sidebarTabs)}>
+        <Tabs
+          value={area}
+          onValueChange={(next) => setPanelParam(next)}
+          orientation={navigationBeside ? 'vertical' : 'horizontal'}
+          variant={navigationBeside ? 'segmented' : 'line'}
+          xstyle={styles.tabsRoot}
+        >
+          <TabsList xstyle={[styles.tabList, navigationBeside && styles.verticalList]}>
+            {AREAS.filter((one) => one !== 'rules' || draft.mode !== 'automatic').map((one) => {
+              const name = (
+                one === 'basics'
+                  ? m.items_tabBasics
+                  : one === 'scoring'
+                    ? draft.mode === 'automatic'
+                      ? m.items_tabScoring
+                      : m.items_tabForm
+                    : m.items_tabRules
+              )()
+              return (
+                <TabsTrigger
+                  key={one}
+                  value={one}
+                  labelXstyle={styles.tabInnerLabel}
+                  xstyle={[
+                    styles.tab,
+                    one === 'basics' && styles.shortTab,
+                    navigationBeside && styles.verticalTab,
+                    navigationBeside && area === one && styles.verticalSelected,
+                  ]}
+                  data-area={one}
+                  data-pending={toneOf(one) !== 'ok'}
+                  data-tone={toneOf(one)}
+                >
+                  <span
+                    {...stylex.props(styles.tabLabel, navigationBeside && styles.verticalLabel)}
+                  >
+                    <Dot tone={toneOf(one)} />
+                    <span {...stylex.props(styles.tabWord)} title={name}>
+                      {name}
+                    </span>
+                  </span>
+                </TabsTrigger>
+              )
+            })}
+          </TabsList>
+        </Tabs>
+      </div>
+      {navigationBeside ? (
+        problems.length > 0 && (
+          <div {...stylex.props(styles.sidebarStatus)}>
+            <PendingList problems={problems} failed={failed} onGo={jumpTo} sidebar />
+          </div>
+        )
+      ) : (
+        <PendingList problems={problems} failed={failed} onGo={jumpTo} />
+      )}
+    </div>
+  )
+
   return (
     <div
       {...stylex.props(styles.root)}
@@ -1564,7 +1664,7 @@ export function ItemEditor({
       data-mode={draft.mode}
       data-panel={area}
     >
-      <BatchBanner>
+      <BatchBand state="open">
         <div ref={setBand} data-testid="item-band">
           <PageHeader
             variant="banner"
@@ -1679,74 +1779,11 @@ export function ItemEditor({
             }
           />
         </div>
-      </BatchBanner>
+      </BatchBand>
 
-      <div {...stylex.props(styles.body, navigationBeside && styles.bodyBeside)}>
-        <div
-          {...stylex.props(
-            styles.tabStrip,
-            navigationBeside ? styles.sidebar : styles.horizontalShade,
-          )}
-          data-testid="item-tabs"
-        >
-          <div {...stylex.props(styles.tabsSeat, navigationBeside && styles.sidebarTabs)}>
-            <Tabs
-              value={area}
-              onValueChange={(next) => setPanelParam(next)}
-              orientation={navigationBeside ? 'vertical' : 'horizontal'}
-              variant={navigationBeside ? 'segmented' : 'line'}
-              xstyle={styles.tabsRoot}
-            >
-              <TabsList xstyle={[styles.tabList, navigationBeside && styles.verticalList]}>
-                {AREAS.filter((one) => one !== 'rules' || draft.mode !== 'automatic').map((one) => {
-                  const name = (
-                    one === 'basics'
-                      ? m.items_tabBasics
-                      : one === 'scoring'
-                        ? draft.mode === 'automatic'
-                          ? m.items_tabScoring
-                          : m.items_tabForm
-                        : m.items_tabRules
-                  )()
-                  return (
-                    <TabsTrigger
-                      key={one}
-                      value={one}
-                      labelXstyle={styles.tabInnerLabel}
-                      xstyle={[
-                        styles.tab,
-                        one === 'basics' && styles.shortTab,
-                        navigationBeside && styles.verticalTab,
-                        navigationBeside && area === one && styles.verticalSelected,
-                      ]}
-                      data-area={one}
-                      data-pending={toneOf(one) !== 'ok'}
-                      data-tone={toneOf(one)}
-                    >
-                      <span
-                        {...stylex.props(styles.tabLabel, navigationBeside && styles.verticalLabel)}
-                      >
-                        <Dot tone={toneOf(one)} />
-                        <span {...stylex.props(styles.tabWord)} title={name}>
-                          {name}
-                        </span>
-                      </span>
-                    </TabsTrigger>
-                  )
-                })}
-              </TabsList>
-            </Tabs>
-          </div>
-          {navigationBeside ? (
-            problems.length > 0 && (
-              <div {...stylex.props(styles.sidebarStatus)}>
-                <PendingList problems={problems} failed={failed} onGo={jumpTo} sidebar />
-              </div>
-            )
-          ) : (
-            <PendingList problems={problems} failed={failed} onGo={jumpTo} />
-          )}
-        </div>
+      <PageContainer xstyle={[styles.body, styles.editorInset]}>
+        <AtWidth from={1200}>{navigation(true)}</AtWidth>
+        <AtWidth below={1200}>{navigation(false)}</AtWidth>
         <div {...stylex.props(styles.panel)} data-testid="item-editor-panel">
           {failed && !dismissed && (
             <FailureList problems={problems} onGo={jumpTo} onDismiss={() => setDismissed(true)} />
@@ -1862,7 +1899,7 @@ export function ItemEditor({
             />
           )}
         </div>
-      </div>
+      </PageContainer>
 
       {/* kept mounted while they shut, or they would vanish rather than close */}
       {lingeringSheet?.kind === 'recognition' && (

@@ -25,7 +25,11 @@ const styles = stylex.create({
     flexDirection: 'column',
     borderRadius: 14,
     backgroundColor: tokens.background,
-    boxShadow: `0 0 0 1px ${tokens.border}, 0 1px 2px rgb(0 0 0 / 0.04)`,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    boxSizing: 'border-box',
+    boxShadow: '0 1px 2px rgb(0 0 0 / 0.04)',
     overflow: 'hidden',
   },
   row: {
