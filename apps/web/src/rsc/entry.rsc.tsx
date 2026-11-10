@@ -256,8 +256,8 @@ async function handle(
   }
   const asked = renderRequestOf(request, context)
   const correlation = { requestId: context.requestId, traceId: context.traceId }
-  // the cookies the manifest's answer set, the one read finished before
-  // anything goes out: a session it found lapsed is cleared there
+  // Record cookies from the manifest read so they can be excluded from the
+  // render response and diagnosed without logging their values.
   const heard: string[] = []
   try {
     // who is signed in, asked first and asked as nobody in particular: the

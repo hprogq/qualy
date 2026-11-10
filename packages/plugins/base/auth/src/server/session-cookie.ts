@@ -40,8 +40,7 @@ export const setSessionCookie = (
 /**
  * Drops a session cookie by name.
  *
- * Every dead-session branch and the sign-out clear the name in use; a
- * secure sign-in also clears the bare name once, the hygiene of the rename
+ * A secure sign-in clears the bare name once, the hygiene of the rename
  * for a browser that still carries the old cookie. A cookie a sibling host
  * planted for the parent domain cannot be cleared from here, and does not
  * need to be: it is never read.

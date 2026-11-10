@@ -30,10 +30,9 @@ import type { DatabaseWork } from './work.ts'
 // sides and the diff never mentions them; a newly declared one appears as an
 // addition on its own.
 //
-// Extensions, functions and seed rows are not in this picture at all: nothing
-// reads them into a schema, so nothing can diff them. They travel as baseline
-// fragments, written into the migration verbatim, and the two mechanisms
-// therefore never describe the same object.
+// Baseline fragments own extensions, functions, triggers and seed rows. The
+// comparator can see triggers but cannot reconstruct their PostgreSQL body,
+// so baseline-owned triggers must not also become generated structural SQL.
 
 /** where the migrator records what it has run, which nothing may diff against */
 const LEDGER_TABLE = 'mikro_orm_migrations'
@@ -246,6 +245,7 @@ export async function diffAgainstDeclared(
           await declaredOrm.schema.execute(statement)
         }
       }
+      const beforeBaseline = await readSchema(declaredOrm)
       for (const fragment of phase('post-structure')) {
         await declaredOrm.schema.execute(fragment.sql)
       }
@@ -253,6 +253,24 @@ export async function diffAgainstDeclared(
       const comparator = new SchemaComparator(lineageOrm.em.getPlatform())
       const from = await readSchema(lineageOrm)
       const to = await readSchema(declaredOrm)
+      // MikroORM introspects triggers but its generated trigger function has
+      // no body. Those created by a baseline are emitted by that fragment,
+      // not by the comparator. Compare names before and after the fragments
+      // rather than parsing arbitrary SQL or suppressing unrelated triggers.
+      for (const table of to.getTables()) {
+        const before = beforeBaseline.getTable(table.name)
+        const original = new Set(before?.getTriggers().map((trigger) => trigger.name) ?? [])
+        const owned = new Set(
+          table
+            .getTriggers()
+            .filter((trigger) => !original.has(trigger.name))
+            .map((trigger) => trigger.name),
+        )
+        if (owned.size === 0) continue
+        table.setTriggers(table.getTriggers().filter((trigger) => !owned.has(trigger.name)))
+        const existing = from.getTable(table.name)
+        existing?.setTriggers(existing.getTriggers().filter((trigger) => !owned.has(trigger.name)))
+      }
       // No reverse. The lineage is fix-forward by rule, and a `down` for an
       // initial migration is a file that drops every table - which the drop
       // guard would then have to be taught to ignore, in the one place whose

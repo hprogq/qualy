@@ -131,6 +131,7 @@ const tokens = {
   ada: 'token-ada',
   adaLater: 'token-ada-later',
   adaLapsed: 'token-ada-lapsed',
+  adaViewerLapsed: 'token-ada-viewer-lapsed',
   bob: 'token-bob',
 }
 
@@ -173,6 +174,7 @@ const seed = Effect.fn('seed')(function* () {
   yield* put(a, tokens.ada, `interval '1 day'`)
   yield* put(a, tokens.adaLater, `interval '1 day'`)
   yield* put(a, tokens.adaLapsed, `interval '-1 minute'`)
+  yield* put(a, tokens.adaViewerLapsed, `interval '-1 minute'`)
   yield* put(b, tokens.bob, `interval '1 day'`)
   return { tenant, a, b }
 })
@@ -357,14 +359,16 @@ describe.runIf(postgresAvailable)('a page and the session behind it', () => {
     })
     expect(lapsed.status).toBe(401)
     expect(await tagOf(lapsed)).toBe('SESSION_EXPIRED')
-    // the cookie is still told to go, as before
-    expect(
-      lapsed.headers.getSetCookie().some((cookie) => cookie.startsWith('qualy_session=;')),
-    ).toBe(true)
+    // A later response must not clear a newer session in the browser.
+    expect(lapsed.headers.getSetCookie()).toEqual([])
     // a read that may be anonymous is not answered as nobody for A's page
-    const viewed = await fromPage('/probe/viewed', { declared: identityOf(ada) })
+    const viewed = await fromPage('/probe/viewed', {
+      token: tokens.adaViewerLapsed,
+      declared: identityOf(ada),
+    })
     expect(viewed.status).toBe(401)
-    expect(await tagOf(viewed)).toBe('AUTH_REQUIRED')
+    expect(await tagOf(viewed)).toBe('SESSION_EXPIRED')
+    expect(viewed.headers.getSetCookie()).toEqual([])
     // and once A is signed in again, the page goes on
     const back = await fromPage('/probe/write', {
       token: tokens.adaLater,

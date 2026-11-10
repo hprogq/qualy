@@ -158,7 +158,7 @@ describe.runIf(postgresAvailable)('a session left unused', () => {
     const response = await ask('used-2h05')
     expect(response.status).toBe(401)
     expect(await response.json()).toMatchObject({ _tag: 'SESSION_EXPIRED' })
-    expect(response.headers.get('set-cookie')).toContain(`${sessionCookieName}=`)
+    expect(response.headers.get('set-cookie')).toBeNull()
     expect(await lastUsed('used-2h05')).toBeUndefined()
   })
 

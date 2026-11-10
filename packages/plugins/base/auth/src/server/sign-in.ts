@@ -1549,7 +1549,6 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
         if (token) {
           yield* revokeSessionByToken(hashSessionToken(token)).pipe(Effect.orDie)
         }
-        yield* clearSessionCookie(config.sessionCookieName, config.secureCookies)
       }),
     ),
 
@@ -1560,7 +1559,6 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
         if (token) {
           yield* revokeSessionByToken(hashSessionToken(token)).pipe(Effect.orDie)
         }
-        yield* clearSessionCookie(config.sessionCookieName, config.secureCookies)
       }),
     ),
   }

@@ -25,7 +25,6 @@ import {
   SessionPresence,
   Viewer,
 } from '@qualy/auth-contract/session'
-import { clearSessionCookie } from './session-cookie.ts'
 
 // Deliberately NOT re-exported any more. The middleware, its errors and the
 // principal are the contract, and they live in `@qualy/auth-contract/session`
@@ -172,23 +171,21 @@ const presentedToken = (name: string) =>
  * reports an anonymous viewer.
  */
 const resolve = Effect.fn('Auth.resolveSession')(function* (
-  clear: () => Effect.Effect<void, never, HttpServerRequest.HttpServerRequest>,
   token: string,
   idleSeconds: number | undefined,
 ) {
   const session = yield* sessionByToken(hashSessionToken(token), idleSeconds).pipe(Effect.orDie)
   if (!session) return { state: 'absent' as const }
   // gone unused for longer than the deployment allows is the same end as
-  // running out: the row goes, and the browser is told to drop the cookie
+  // running out: the row goes and the token cannot authenticate again
   if (session.expired || session.idle) {
     yield* deleteSession(session.id).pipe(Effect.orDie)
-    yield* clear()
     return { state: 'expired' as const }
   }
   // a disabled user, a disabled type or a lapsed tenant is not a
   // distinguishable state either: it is simply not a session
   if (!session.usable) {
-    yield* clear()
+    yield* deleteSession(session.id).pipe(Effect.orDie)
     return { state: 'absent' as const }
   }
   return {
@@ -287,12 +284,6 @@ export const viewerLayer = Layer.effect(
   Effect.gen(function* () {
     const config = yield* AuthConfig
     const withDb = yield* withDatabase
-    // both dead-session branches clear the cookie, as the cordis enricher
-    // did: without this the browser keeps re-presenting a token the server
-    // has already refused until the cookie's own lifetime lapses, and on the
-    // not-usable branch the row is not deleted either, so a user disabled
-    // and re-enabled would resume on it
-    const clear = () => clearSessionCookie(config.sessionCookieName, config.secureCookies)
     return Viewer.of((httpEffect, { endpoint }) =>
       withDb(
         Effect.gen(function* () {
@@ -300,7 +291,7 @@ export const viewerLayer = Layer.effect(
           const found =
             token === ''
               ? { state: 'absent' as const }
-              : yield* resolve(clear, token, config.sessionIdleSeconds)
+              : yield* resolve(token, config.sessionIdleSeconds)
           const page = yield* pageDeclaration
           // a live channel behind this middleware is judged by its handler
           // once the socket is open: a browser cannot read a refused
@@ -334,7 +325,6 @@ export const layer = Layer.effect(
   Effect.gen(function* () {
     const config = yield* AuthConfig
     const withDb = yield* withDatabase
-    const clear = () => clearSessionCookie(config.sessionCookieName, config.secureCookies)
 
     // the handler wraps the rest of the request rather than returning a
     // value: it decides whether to continue at all, and provides the
@@ -361,13 +351,12 @@ export const layer = Layer.effect(
           if (!session) return yield* new AuthRequired()
           if (session.expired || session.idle) {
             yield* deleteSession(session.id).pipe(Effect.orDie)
-            yield* clear()
             return yield* new SessionExpired()
           }
           // a disabled user, a disabled type or a lapsed tenant is not a
           // distinguishable state either: it is simply not a session
           if (!session.usable) {
-            yield* clear()
+            yield* deleteSession(session.id).pipe(Effect.orDie)
             return yield* new AuthRequired()
           }
 

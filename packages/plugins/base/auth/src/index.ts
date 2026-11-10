@@ -74,7 +74,11 @@ const plugin = Plugin.define(
     ],
     config,
   },
-  Db.entities(entities, { compositeForeignKeys, dependsOn: ['@qualy/plugin-org'] }),
+  Db.entities(entities, {
+    compositeForeignKeys,
+    dependsOn: ['@qualy/plugin-org'],
+    baselineDir: 'db/baseline',
+  }),
   Audit.actions('auth', userActions),
   // an operator's way to give an imported account this deployment's password,
   // run over the assembled services and never by the serving process

@@ -44,7 +44,7 @@ Cookie + 不透明 session token(库存 sha256),不用 JWT/localStorage:
 - Cookie:HttpOnly + SameSite=Lax + Path=/,无 Domain;生产(`secureCookies`,即 `NODE_ENV === 'production'`)加 Secure 且名字带 `__Host-` 前缀——见下节「Cookie 名」;
 - TTL 默认 7 天(sessionTtlSeconds),Cookie maxAge 与之对齐;这是绝对上限;
 - **空闲上限**(2026-09-27,外部审计 P2-1):`QUALY_SESSION_IDLE_SECONDS`,默认 7200(2 小时),`0` 关闭,小于 600 拒启。
-  从 `coalesce(last_used_at, created_at)` 算,由库的 `now()` 判定;超过即与过期同样处理(删行、清 Cookie、回 SESSION_EXPIRED)。
+  从 `coalesce(last_used_at, created_at)` 算,由库的 `now()` 判定;超过即与过期同样处理(删行、回 SESSION_EXPIRED)。
   机房、共用电脑上关掉浏览器而会话还在,是这条要挡的;
 - last_used_at 节流 300s 才写(`TOUCH_INTERVAL_MS`),所以空闲判定有 5 分钟松弛:1 小时 55 分前记下的使用仍有效,2 小时 05 分前的一定过期;
 - **公用设备会话**(2026-09-29,用户裁决):登录页三处(入口首页、表单页、更多方式)都有「在公用设备上使用」(小字「30 分钟无操作后自动退出登录」;2026-09-30 由「这是公用电脑」改名,手机上看到的也是它),答案写进页面自己的
@@ -87,7 +87,9 @@ Cookie + 不透明 session token(库存 sha256),不用 JWT/localStorage:
 | 属性       | `HttpOnly; Secure; SameSite=Lax; Path=/`,无 Domain                                                                        | `HttpOnly; SameSite=Lax; Path=/`    |
 | 服务端读取 | 只读 `__Host-qualy_session`;请求里的 `qualy_session` 一律忽略                                                             | 只读 `qualy_session`                |
 | 登录成功   | 设新 Cookie,**并附带一次** `qualy_session=; Max-Age=0; Path=/` 清旧名(改名后的一次性卫生;父域投掷的清不掉也无妨,不再读它) | 设 Cookie                           |
-| 登出、无效 | 清 `__Host-qualy_session`                                                                                                 | 清 `qualy_session`                  |
+| 登出、无效 | 服务端撤销该会话，不发送 Cookie 清除头                                                                                    | 同左                                |
+
+退出、过期、闲置或请求发现账户不可用时，删除对应服务端会话使令牌失效；用户停用操作本身也会撤销该用户的全部会话。租户目前没有停用的应用入口，数据库在租户 `enabled` 改为 false 时同事务撤销其全部会话；会话插入同时锁定租户状态，使并发中的旧版登录无法绕过停用。租户自然到期并非数据库写入，不触发这条停用规则；请求发现过期后会撤销其对应会话。浏览器仍持有不可用的 HttpOnly Cookie，直到其原有有效期结束、共享设备会话关闭或下一次登录覆盖。响应不能按浏览器届时持有的值条件删除 Cookie，因此不从这些响应清除同名 Cookie，以免迟到响应覆盖另一标签页的新会话。服务端渲染不转发 API 读取的 Cookie，包括旧版服务端返回的清除头。
 
 威胁:SameSite 只区分站不区分源。兄弟子域(`records.example.edu` 对 `qualy-dev.example.edu`,学校域名下任何一个被 XSS 的系统对生产 Qualy)可以给父域种一个名叫 `qualy_session` 的 Cookie,浏览器会随请求一起发给 Qualy:塞进攻击者自己的合法 session 就是登录 CSRF 的 Cookie 版(受害者把材料提交进攻击者账号);塞一个垃圾值则服务端清 Cookie 只能清自己 host 的那个,该用户永久打不开 Qualy。`__Host-` 的浏览器语义正是堵这两条:必须 Secure、Path=/、无 Domain,任何子域都无法为父域创建同名 Cookie。
 
@@ -530,7 +532,7 @@ smtp 后端对着 Mailpit 跑同一套,CI 设 `QUALY_REQUIRE_MAILPIT_TESTS=1`,�
 - **自助解绑**只针对本人自绑(`binding.mode = 'self'`)的外部账号;密码由管理员管理(`AUTH_BINDING_UNSUPPORTED`),
   系统账户一律 `SYSTEM_ACCOUNT_PROTECTED`。租户锁内先撤销、再按撤销后的状态复核「仍有一条可用登录方式」
   (密码入口要有凭据、按字段找人的入口要本人有该字段、自绑入口要有绑定),没有就 `AUTH_LAST_WAY_IN` 整体回滚——
-  想换一种方式的人先绑新的再解旧的。通过被解绑账号登录的会话全部结束;当前会话若在其中,响应 `signedOut` 并清 cookie。
+  想换一种方式的人先绑新的再解旧的。通过被解绑账号登录的会话全部结束;当前会话若在其中,响应 `signedOut`，令牌不再可用。
   审计 `auth.identity.revoke`,actor 为本人。
 
 ## 恢复通道(2026-09-22 定案)

@@ -1,7 +1,7 @@
 {
   "lockfileVersion": 2,
   "manifestHash": "sha256:5981ac1966d5b429f0b6290b636f57344bd8daad4ddefb73292fc6ea6d48d213",
-  "resolutionHash": "sha256:64709b6dd57c93d9f5bdcbf05a0c11db09eab929faf3b5b7b1a0e724057c5128",
+  "resolutionHash": "sha256:ed3e7377f1f69380c2c395e5a4386f22be382925a712644f5785a545e097c61d",
   "plugins": {
     "@qualy/plugin-assessment": {
       "version": "0.0.0",
@@ -139,6 +139,7 @@
             "UserType",
             "UserTypeAllowedOrgType"
           ],
+          "baselineDir": "db/baseline",
           "dependsOn": [
             "@qualy/plugin-org"
           ]

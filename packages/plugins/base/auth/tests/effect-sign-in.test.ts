@@ -1,4 +1,5 @@
 import fs from 'node:fs'
+import { chromium } from 'playwright'
 import { NodeHttpServer } from '@effect/platform-node'
 import { sql } from 'kysely'
 import { Effect, Exit, Layer, Scope } from 'effect'
@@ -160,6 +161,133 @@ const attributesOf = (response: Response) =>
     .map((part) => part.trim())
 
 describe.runIf(postgresAvailable)('signing in', () => {
+  it('keeps a new session when an older expired-session response arrives late', async () => {
+    const first = await login({ email: SEEDED_EMAILS.ada, password })
+    const token = cookieFrom(first).slice(sessionCookieName.length + 1)
+    await Effect.runPromise(
+      runSql(
+        sql`update sessions set expires_at = now() - interval '1 minute' where token_hash = ${hashSessionToken(token)}`,
+      ).pipe(Effect.provide(probeInfra())),
+    )
+    const browser = await chromium.launch({ headless: true })
+    try {
+      const origin = `http://127.0.0.1:${port}`
+      const context = await browser.newContext()
+      await context.addCookies([{ name: sessionCookieName, value: token, url: origin }])
+      const a = await context.newPage()
+      const b = await context.newPage()
+      await Promise.all([a.goto(origin), b.goto(origin)])
+      let release!: () => void
+      let received!: () => void
+      const blocked = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      const waiting = new Promise<void>((resolve) => {
+        received = resolve
+      })
+      await a.route('**/api/auth/session', async (route) => {
+        const response = await route.fetch()
+        expect(response.status()).toBe(401)
+        received()
+        await blocked
+        await route.fulfill({ response })
+      })
+      const old = a.evaluate(async (url) => (await fetch(url)).status, `${base}/auth/session`)
+      await waiting
+      const next = await b.evaluate(
+        async ({ url, email }) =>
+          (
+            await fetch(url, {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ email, password: 'short' }),
+            })
+          ).status,
+        { url: `${base}/auth/local/password/login`, email: SEEDED_EMAILS.mei },
+      )
+      expect(next).toBe(200)
+      const nextCookie = (await context.cookies(origin)).find(
+        (c) => c.name === sessionCookieName,
+      )?.value
+      expect(nextCookie).toBeTruthy()
+      release()
+      expect(await old).toBe(401)
+      expect((await context.cookies(origin)).find((c) => c.name === sessionCookieName)?.value).toBe(
+        nextCookie,
+      )
+      const current = await b.evaluate(
+        async (url) => (await (await fetch(url)).json()) as { user: { displayName: string } },
+        `${base}/auth/session`,
+      )
+      expect(current.user.displayName).toBe('Mei')
+    } finally {
+      await browser.close()
+    }
+  })
+
+  it('revokes the old session without clearing a later login when sign-out arrives late', async () => {
+    const first = await login({ email: SEEDED_EMAILS.ada, password })
+    const cookie = cookieFrom(first)
+    const token = cookie.slice(sessionCookieName.length + 1)
+    const browser = await chromium.launch({ headless: true })
+    try {
+      const origin = `http://127.0.0.1:${port}`
+      const context = await browser.newContext()
+      await context.addCookies([{ name: sessionCookieName, value: token, url: origin }])
+      const a = await context.newPage()
+      const b = await context.newPage()
+      await Promise.all([a.goto(origin), b.goto(origin)])
+      let release!: () => void
+      let received!: () => void
+      const blocked = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      const waiting = new Promise<void>((resolve) => {
+        received = resolve
+      })
+      await a.route('**/api/auth/session', async (route) => {
+        const response = await route.fetch()
+        expect(response.status()).toBe(200)
+        received()
+        await blocked
+        await route.fulfill({ response })
+      })
+      const old = a.evaluate(
+        async (url) => (await fetch(url, { method: 'DELETE' })).status,
+        `${base}/auth/session`,
+      )
+      await waiting
+      const next = await b.evaluate(
+        async ({ url, email }) =>
+          (
+            await fetch(url, {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ email, password: 'short' }),
+            })
+          ).status,
+        { url: `${base}/auth/local/password/login`, email: SEEDED_EMAILS.mei },
+      )
+      expect(next).toBe(200)
+      const nextCookie = (await context.cookies(origin)).find(
+        (c) => c.name === sessionCookieName,
+      )?.value
+      expect(nextCookie).toBeTruthy()
+      release()
+      expect(await old).toBe(200)
+      expect((await context.cookies(origin)).find((c) => c.name === sessionCookieName)?.value).toBe(
+        nextCookie,
+      )
+      expect((await fetch(`${base}/auth/session`, { headers: { cookie } })).status).toBe(401)
+      const current = await b.evaluate(
+        async (url) => (await (await fetch(url)).json()) as { user: { displayName: string } },
+        `${base}/auth/session`,
+      )
+      expect(current.user.displayName).toBe('Mei')
+    } finally {
+      await browser.close()
+    }
+  })
   it('offers only the providers whose driver this assembly loaded', async () => {
     const response = await fetch(`${base}/auth/login-methods`)
     expect(response.status).toBe(200)
@@ -293,9 +421,8 @@ describe.runIf(postgresAvailable)('signing in', () => {
     expect(await prefixed.json()).toMatchObject({ _tag: 'AUTH_REQUIRED' })
   })
 
-  it('drops the cookie when the session it presented is dead', async () => {
-    // Without this the browser keeps re-presenting a token the server has
-    // already refused until the cookie's own lifetime lapses.
+  it('revokes an expired session without changing the browser cookie', async () => {
+    // A retained cookie must never make the expired token usable again.
     const response = await login({ email: SEEDED_EMAILS.ada, password })
     const cookie = cookieFrom(response)
     const token = cookie.slice(sessionCookieName.length + 1)
@@ -308,12 +435,12 @@ describe.runIf(postgresAvailable)('signing in', () => {
     const dead = await fetch(`${base}/auth/session`, { headers: { cookie } })
     expect(dead.status).toBe(401)
     expect(await dead.json()).toMatchObject({ _tag: 'SESSION_EXPIRED' })
-    expect(dead.headers.get('set-cookie') ?? '').toContain('Max-Age=0')
+    expect(dead.headers.get('set-cookie')).toBeNull()
+    expect((await fetch(`${base}/auth/session`, { headers: { cookie } })).status).toBe(401)
   })
 
-  it('drops the cookie when the account behind a live session is disabled', async () => {
-    // this branch does not delete the row either, so a user disabled and later
-    // re-enabled would otherwise resume on the same cookie
+  it('revokes a disabled account session so it cannot resume after re-enabling', async () => {
+    // The cookie remains in the browser, including after re-enabling.
     const response = await login({ email: SEEDED_EMAILS.ada, password })
     const cookie = cookieFrom(response)
     await Effect.runPromise(
@@ -323,12 +450,13 @@ describe.runIf(postgresAvailable)('signing in', () => {
     )
     const refused = await fetch(`${base}/auth/session`, { headers: { cookie } })
     expect(refused.status).toBe(401)
-    expect(refused.headers.get('set-cookie') ?? '').toContain('Max-Age=0')
+    expect(refused.headers.get('set-cookie')).toBeNull()
     await Effect.runPromise(
       runSql(sql`update users set enabled = true where display_name = 'Ada'`).pipe(
         Effect.provide(probeInfra()),
       ),
     )
+    expect((await fetch(`${base}/auth/session`, { headers: { cookie } })).status).toBe(401)
   })
 
   it('records the address the session was created from', async () => {

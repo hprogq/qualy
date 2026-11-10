@@ -219,7 +219,8 @@ describe.runIf(postgresAvailable)('the session middleware', () => {
     await Effect.runPromise(
       runSql(sql`update tenants set enabled = true`).pipe(Effect.provide(probeInfra())),
     )
-    expect((await withCookie(validToken)).status).toBe(200)
+    // The refused session cannot resume using a retained cookie.
+    expect((await withCookie(validToken)).status).toBe(401)
   })
 
   it('leaves an endpoint that declares no middleware open', async () => {

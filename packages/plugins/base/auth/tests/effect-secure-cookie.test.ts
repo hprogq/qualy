@@ -187,17 +187,14 @@ describe.runIf(postgresAvailable)('the session cookie of a secure deployment', (
     expect(await both.json()).toMatchObject({ user: { id: seeded.user } })
   })
 
-  it('signs out by clearing the prefixed name', async () => {
+  it('signs out by revoking the prefixed cookie session', async () => {
     const token = cookiesSet(await login())[0]!.value
     const out = await fetch(`${base}/auth/session`, {
       method: 'DELETE',
       headers: { cookie: `${secureName}=${token}` },
     })
     expect(out.status).toBe(200)
-    const cleared = cookiesSet(out)
-    expect(cleared.map((cookie) => cookie.name)).toEqual([secureName])
-    expect(cleared[0]!.value).toBe('')
-    expect(cleared[0]!.attributes).toEqual(expect.arrayContaining(['Max-Age=0', 'Secure']))
+    expect(cookiesSet(out)).toEqual([])
     expect(
       (await fetch(`${base}/auth/session`, { headers: { cookie: `${secureName}=${token}` } }))
         .status,
