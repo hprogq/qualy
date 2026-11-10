@@ -4,7 +4,7 @@ import { Effect, Exit } from 'effect'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createTestContext, postgresAvailable, runSql } from '@qualy/plugin-database/testkit'
 import { Assessment } from '../src/server/index.ts'
-import { imported, numbered, recordItem } from './support/administrative.ts'
+import { imported, numbered, recordItem, workbook } from './support/administrative.ts'
 import { GATED, errorOf, ok, one, run, runningBatch, seed, type Seeded } from './support/round.ts'
 
 // What an import is afterwards: something that happened, that a reader can
@@ -86,6 +86,52 @@ describe.runIf(postgresAvailable)('an import, looked back on', () => {
 
   afterAll(async () => {
     await db?.dispose()
+  })
+
+  it('withholds original cells when an uploaded preview row is outside recording reach', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('aih-preview-scope')
+          const g = yield* runningBatch(f)
+          yield* numbered(f)
+          const item = yield* recordItem(f, g.batch.id, {
+            formConfig: { fields: [{ key: 'note', type: 'text', label: 'Note' }] },
+          })
+          const attachmentId = yield* workbook(f, item.id, f.recorder, [
+            ['2023003', 'Wang Wu', 'Sensitive basis', 'Sensitive note'],
+          ])
+          const current = yield* (yield* Assessment).getItem(f.t, item.id, f.principal(f.admin))
+          return yield* (yield* Assessment).previewAdministrativeImport(
+            f.t,
+            g.batch.id,
+            {
+              attachmentId,
+              itemId: item.id,
+              expectedItemRevisionId: current.currentRevision!.id,
+            },
+            f.principal(f.recorder),
+          )
+        }),
+      ),
+    )
+    expect(result.canCommit).toBe(false)
+    expect(result.rows).toEqual([
+      expect.objectContaining({
+        rowNo: 2,
+        businessNo: '',
+        displayNameFromFile: '',
+        matchedParticipant: null,
+        payloadPreview: {},
+        recognitionPreview: {},
+        basis: '',
+      }),
+    ])
+    expect(JSON.stringify(result)).not.toContain('Sensitive')
+    expect(result.rows[0]?.issues).toContainEqual(
+      expect.objectContaining({ reason: 'participant-not-found' }),
+    )
   })
 
   it('shows anybody who may record in the round what it was, and nobody else anything', async () => {
@@ -596,7 +642,7 @@ describe.runIf(postgresAvailable)('an import, looked back on', () => {
         await run(
           db.url,
           Effect.gen(function* () {
-            const { f, g, done } = yield* importedPair('aih-scope-lost')
+            const { f, g, item, done } = yield* importedPair('aih-scope-lost')
             const assessment = yield* Assessment
             yield* runSql(sql`
               update batch_participants p
@@ -627,13 +673,30 @@ describe.runIf(postgresAvailable)('an import, looked back on', () => {
                 f.principal(f.recorder),
               ),
             )
-            return { refused, detail, rows, source, facts: yield* factsOf(done.importId) }
+            const sourceAttachment = one<{ id: string }>(
+              yield* runSql(sql`
+              select source_attachment_id as id from administrative_entry_imports where id = ${done.importId}`),
+            )
+            const current = yield* assessment.getItem(f.t, item.id, f.principal(f.admin))
+            const preview = yield* Effect.exit(
+              assessment.previewAdministrativeImport(
+                f.t,
+                g.batch.id,
+                {
+                  itemId: item.id,
+                  expectedItemRevisionId: current.currentRevision!.id,
+                  attachmentId: sourceAttachment.id,
+                },
+                f.principal(f.recorder),
+              ),
+            )
+            return { refused, detail, rows, source, preview, facts: yield* factsOf(done.importId) }
           }),
         ),
       )
       expect(found.detail.importedCount).toBe(2)
       expect(found.detail.capabilities.reverse).toBe(false)
-      for (const exit of [found.rows, found.source]) {
+      for (const exit of [found.rows, found.source, found.preview]) {
         expect(errorOf<{ _tag: string }>(exit)?._tag).toBe('ACCESS_DENIED')
       }
       // the reversal names the row it cannot touch, and touches none

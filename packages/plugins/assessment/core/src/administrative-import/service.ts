@@ -597,7 +597,23 @@ export const makeAdministrativeImportMethods = (
     // and read as a workbook under the process's one permit
     const source = storage
       .read({ tenantId, attachmentId: input.attachmentId }, (meta) =>
-        meta.ownerUserId === as.userId ? Effect.void : Effect.fail(new AttachmentUnavailable()),
+        Effect.gen(function* () {
+          if (meta.ownerUserId !== as.userId) return yield* new AttachmentUnavailable()
+          if (meta.status === 'staged') return
+          // Once a workbook is history, its original whole-import boundary
+          // applies to previews too; ownership no longer bypasses that boundary.
+          const existing = yield* dieQuery(
+            withDb(importOfAttachment({ tenantId, attachmentId: meta.id })),
+          )
+          if (existing === null || existing.batchId !== batchId || existing.itemId !== input.itemId)
+            return yield* new AttachmentUnavailable()
+          yield* reachableImport(tenantId, existing.importId, as).pipe(
+            Effect.catchTag(
+              'ASSESSMENT_ADMINISTRATIVE_IMPORT_NOT_FOUND',
+              () => new AttachmentUnavailable(),
+            ),
+          )
+        }),
       )
       .pipe(
         Effect.catchTags({
@@ -878,13 +894,15 @@ export const makeAdministrativeImportMethods = (
       summary,
       rows: judged.map((row) => ({
         rowNo: row.rowNo,
-        businessNo: row.businessNo,
-        displayNameFromFile: row.displayNameFromFile,
+        businessNo: row.matchedParticipant === null ? '' : row.businessNo,
+        displayNameFromFile: row.matchedParticipant === null ? '' : row.displayNameFromFile,
         matchedParticipant: row.matchedParticipant,
-        payloadPreview: row.payload,
-        recognitionPreview: row.recognition,
-        basis: row.basis,
-        issues: row.issues as readonly ImportIssue[],
+        payloadPreview: row.matchedParticipant === null ? {} : row.payload,
+        recognitionPreview: row.matchedParticipant === null ? {} : row.recognition,
+        basis: row.matchedParticipant === null ? '' : row.basis,
+        issues: (row.matchedParticipant === null
+          ? row.issues.map(({ severity, field, reason }) => ({ severity, field, reason }))
+          : row.issues) as readonly ImportIssue[],
       })),
       canCommit: summary.errors === 0 && summary.rows > 0,
     } satisfies AdministrativeImportPreview
