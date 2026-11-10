@@ -1,9 +1,8 @@
-import { Effect, Stream } from 'effect'
+import { Effect, Schema, Stream } from 'effect'
 import { HttpEffect, HttpServerResponse } from 'effect/http'
 import { HttpApiBuilder } from 'effect/http-api'
 import { Api } from '@qualy/api-kit/local'
 import { identityKeyOf } from '@qualy/auth-contract/identity-key'
-import { Schema } from 'effect'
 import { IdentityChanged, CurrentUser } from '@qualy/auth-contract/session'
 import { transaction, withDatabase } from '@qualy/plugin-database/server'
 import { ContentUnavailable, storageContentApiGroup } from '../api.ts'
@@ -11,6 +10,7 @@ import { ReadContextCatalog } from './read-contexts.ts'
 import { Storage } from './service.ts'
 import { servedTypeOf } from './served-type.ts'
 
+const decodeContext = Schema.decodeEffect(Schema.fromJsonString(Schema.Json))
 const headers = { 'cache-control': 'private, no-store', 'referrer-policy': 'no-referrer' }
 export const storageContentApiHandlers = HttpApiBuilder.group(
   Api.local(storageContentApiGroup),
@@ -25,10 +25,9 @@ export const storageContentApiHandlers = HttpApiBuilder.group(
         // This is the fixed identity of the document that built the URL,
         // not an authorization credential and never a replacement for Cookie.
         if (query.identity !== identityKeyOf(principal)) return yield* new IdentityChanged()
-        const context = yield* Effect.try({
-          try: () => Schema.decodeUnknownSync(Schema.Json)(JSON.parse(query.params)),
-          catch: () => new ContentUnavailable(),
-        })
+        const context = yield* decodeContext(query.params).pipe(
+          Effect.mapError(() => new ContentUnavailable()),
+        )
         const catalog = yield* ReadContextCatalog
         const storage = yield* Storage
         const withDb = yield* withDatabase
