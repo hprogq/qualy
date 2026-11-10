@@ -307,9 +307,10 @@ export const routeSpanNames = <A, E, R>(
  * Every label is low-cardinality by where it comes from: the method is
  * normalized against the semconv known set (anything else says `_OTHER`),
  * and the route is what the ROUTER already wrote onto the span
- * (`/things/:thingId`, never the raw URL) - written synchronously while
- * dispatching, so it is there by the time this runs. A request no route
- * matched carries no route label at all.
+ * (`/things/:thingId`, never the raw URL). Rendered pages supply their
+ * authorized template in a request-local slot instead, since the host's
+ * wildcard is not the page and a noop span discards attributes. A request
+ * no route matched carries no route label at all.
  *
  * The scheme is read from the request instead, and used to be read from the
  * span beside the route. It could never work: the tracer writes `url.scheme`
@@ -678,6 +679,14 @@ const pathOf = (url: string) => {
   }
 }
 
+/** A matched Web route, owned by this request rather than by a sampled span. */
+export class WebMetricRoute extends Context.Service<
+  WebMetricRoute,
+  {
+    readonly set: (route: string, kind: 'document' | 'rsc') => void
+  }
+>()('@qualy/api-kit/WebMetricRoute') {}
+
 /** the platform's own server span, which would write the query; see serverSpans */
 export const platformTracerOff: Layer.Layer<never> = Layer.succeed(
   HttpMiddleware.TracerDisabledWhen,
@@ -693,6 +702,7 @@ export const httpMetrics = (options?: {
     Effect.withFiber((fiber) => {
       const request = Context.getUnsafe(fiber.context, HttpServerRequest.HttpServerRequest)
       const span = Option.getOrUndefined(Context.getOption(fiber.context, Tracer.ParentSpan))
+      let webRoute: { readonly route: string; readonly kind: 'document' | 'rsc' } | undefined
       const started = performance.now()
       const record = (status: number) =>
         Effect.suspend(() => {
@@ -702,8 +712,8 @@ export const httpMetrics = (options?: {
               span !== undefined && span._tag === 'Span' ? span.attributes.get(key) : undefined
             return typeof value === 'string' ? value : undefined
           }
-          const route = spanAttribute('http.route')
-          const webKind = spanAttribute('qualy.web.request_kind')
+          const route = webRoute?.route ?? spanAttribute('http.route')
+          const webKind = webRoute?.kind
           return Metric.update(
             Metric.withAttributes(requestDuration, {
               unit: 's',
@@ -728,7 +738,14 @@ export const httpMetrics = (options?: {
           recorded = true
           return record(response.status)
         }),
-        Effect.onExit(httpApp, (exit) => (recorded ? Effect.void : record(endedStatus(exit)))),
+        Effect.onExit(
+          Effect.provideService(httpApp, WebMetricRoute, {
+            set: (route, kind) => {
+              webRoute = { route, kind }
+            },
+          }),
+          (exit) => (recorded ? Effect.void : record(endedStatus(exit))),
+        ),
       )
     })
 }

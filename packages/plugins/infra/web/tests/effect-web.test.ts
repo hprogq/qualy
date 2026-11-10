@@ -16,7 +16,7 @@ import {
   Schema,
   Scope,
 } from 'effect'
-import { FetchHttpClient, HttpRouter, HttpServerResponse } from 'effect/http'
+import { FetchHttpClient, HttpRouter, HttpServerRequest, HttpServerResponse } from 'effect/http'
 import { OtlpSerialization, OtlpTracer } from 'effect/observability'
 import fs from 'node:fs'
 import { createServer, type Server } from 'node:http'
@@ -137,7 +137,13 @@ beforeAll(async () => {
       routes,
     ),
     {
-      middleware: (app) => serverSpans()(httpMetrics()(routeSpanNames(app))),
+      middleware: (app) =>
+        Effect.flatMap(HttpServerRequest.HttpServerRequest, (request) => {
+          const instrumented = serverSpans()(httpMetrics()(routeSpanNames(app)))
+          return request.headers['x-test-tracing'] === 'off'
+            ? Effect.withTracerEnabled(instrumented, false)
+            : instrumented
+        }),
     },
   ).pipe(
     Layer.provide(platformTracerOff),
@@ -197,6 +203,38 @@ describe('what the shell refuses to serve', () => {
 })
 
 describe('documents against the api mount', () => {
+  it('keeps the rendered route metric when the incoming trace is unsampled', async () => {
+    await (
+      await fetch(`${base}/telemetry-unsampled/private-id.rsc`, {
+        headers: { traceparent: '00-0123456789abcdef0123456789abcdef-00f067aa0ba902b7-00' },
+      })
+    ).text()
+    const snapshot = await Effect.runPromise(Metric.snapshot)
+    expect(
+      snapshot.some(
+        (state) =>
+          state.id === 'http.server.request.duration' &&
+          state.attributes?.['http.route'] === '/telemetry-unsampled/:id' &&
+          state.attributes?.['qualy.web.request_kind'] === 'rsc',
+      ),
+    ).toBe(true)
+  })
+  it('keeps the rendered route metric when tracing is disabled', async () => {
+    await (
+      await fetch(`${base}/telemetry-noop/private-id?token=secret`, {
+        headers: { 'x-test-tracing': 'off' },
+      })
+    ).text()
+    const snapshot = await Effect.runPromise(Metric.snapshot)
+    expect(
+      snapshot.some(
+        (state) =>
+          state.id === 'http.server.request.duration' &&
+          state.attributes?.['http.route'] === '/telemetry-noop/:id' &&
+          state.attributes?.['qualy.web.request_kind'] === 'document',
+      ),
+    ).toBe(true)
+  })
   it('labels rendered page metrics with the template without labeling asset paths', async () => {
     const traceId = 'aaaabbbbccccddddeeeeffff00001234'
     await (

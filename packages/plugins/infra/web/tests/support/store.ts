@@ -86,6 +86,8 @@ export const placeTestServer = (
   fs.writeFileSync(
     path.join(root, 'rsc', 'index.js'),
     `export default async (request, context) => {
+  if (new URL(request.url).pathname.startsWith('/telemetry-noop/')) context.onRoute?.('/telemetry-noop/:id', 'document')
+  if (new URL(request.url).pathname.startsWith('/telemetry-unsampled/')) context.onRoute?.('/telemetry-unsampled/:id', 'rsc')
   if (new URL(request.url).pathname.startsWith('/telemetry-slow/')) {
     context.onRoute?.('/telemetry-slow/:id', 'document')
     return new Response(new ReadableStream({

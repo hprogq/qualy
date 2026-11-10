@@ -7,7 +7,7 @@ import { Config, Context, Data, Effect, Layer, Option, Schema, Tracer } from 'ef
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from 'effect/http'
 import sirv from 'sirv'
 import { apiRouteNotFound, insideApi } from '@qualy/api-kit/route-fallback'
-import { RequestContext } from '@qualy/api-kit/request'
+import { RequestContext, WebMetricRoute } from '@qualy/api-kit/request'
 import { QUALY_RELEASE_ENDPOINT } from '@qualy/release-contract'
 import { releaseProbeOf, type InstalledWebRelease } from '@qualy/release-contract/private'
 import { Assembled, AssemblyInfo } from '@qualy/api-kit/assembled'
@@ -421,6 +421,7 @@ const drawDocument = (
     const correlation = Option.getOrUndefined(yield* Effect.serviceOption(RequestContext))
     const dispatchApi = Option.getOrUndefined(yield* Effect.serviceOption(LocalRenderApi))
     const parent = Option.getOrUndefined(yield* Effect.serviceOption(Tracer.ParentSpan))
+    const metricRoute = Option.getOrUndefined(yield* Effect.serviceOption(WebMetricRoute))
     let route: string | undefined
     let kind: 'document' | 'rsc' | undefined
     const controller = new AbortController()
@@ -451,6 +452,7 @@ const drawDocument = (
     )
     // Only the renderer's authorized manifest match may label telemetry.
     // Files and unknown pages keep the wildcard rather than a raw path.
+    if (route !== undefined && kind !== undefined) metricRoute?.set(route, kind)
     if (route !== undefined && kind !== undefined && parent?._tag === 'Span') {
       parent.attribute('http.route', route)
       parent.attribute('qualy.web.request_kind', kind)
