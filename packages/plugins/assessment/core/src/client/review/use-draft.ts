@@ -1,52 +1,36 @@
 import { useEffect, useRef, useState } from 'react'
 import {
+  compareDraft,
   draftRevision,
-  forgetDraft,
+  draftVersionOf,
+  forgetDraftRevision,
   forgetStaleDrafts,
   readDraft,
-  writeDraft,
+  watchDraft,
+  type DraftRow,
+  type DraftVersion,
 } from '../local-store.ts'
 import { useSignedInUserId } from '../signed-in.ts'
 
-// Keeping what a reviewer has typed but not sent.
-//
-// A decision panel is closed for ordinary reasons - to read the filing behind
-// it on a narrow screen, to look something up, because the tab was reloaded -
-// and losing three paragraphs of a refusal to any of those is the kind of
-// loss that teaches people to write somewhere else first. So every panel that
-// takes words keeps them in this browser until the act is sent.
-//
-// It is this browser's copy and nothing more: it is never read by the server,
-// and dropped the moment the act goes through. A browser can be shared, so a
-// draft belongs to whoever typed it: it is kept under their id, put back only
-// for them, and nothing is kept until the page knows who that is.
-
-/** how long the typing rests before it is written down */
 const SETTLE_MS = 500
-
-/** how long an unsent draft is worth keeping: a month of ordinary interruptions */
 const KEEP_DRAFTS_MS = 30 * 24 * 60 * 60 * 1000
 
-/**
- * Sweeps the unsent words nobody came back for, and any somebody else left
- * in this browser, once it is known who is reading.
- */
+/** Expire old copies without clearing another account's retained work. */
 export function useDraftSweep(): void {
   const reader = useSignedInUserId()
   useEffect(() => {
-    if (reader !== null) void forgetStaleDrafts(KEEP_DRAFTS_MS, reader)
+    if (reader !== null) void forgetStaleDrafts(KEEP_DRAFTS_MS)
   }, [reader])
 }
 
 export interface DraftKeeper {
-  /** something typed earlier was put back, and the screen should say so */
   readonly restored: boolean
-  /** when it was last written, for saying how old it is */
   readonly at: number | null
-  /** throw it away and start again: the caller clears its own state */
   readonly discard: () => void
-  /** Save the current words immediately and identify exactly that version. */
   readonly snapshot: () => Promise<DraftReceipt | null>
+  /** Copies retained by another editor of this exact account, round and stage. */
+  readonly conflicts: readonly { revision: string; at: number }[]
+  readonly choose: (revision: string | null) => void
 }
 
 export interface DraftReceipt {
@@ -60,15 +44,12 @@ export const stageDraftId = (
   stage: { route: string; stageId: string },
 ) => `${instanceId}:${act}:${stage.route}:${encodeURIComponent(stage.stageId)}`
 
-/**
- * Keeps one panel's unsent words, and puts them back when it reopens.
- *
- * `onRestore` is called at most once, with what was kept, before anybody has
- * typed - the caller applies it to its own state, because only the caller
- * knows what its state is. Writing waits for the read to finish: otherwise
- * the blank state a panel opens with would be written over the very draft
- * being loaded.
- */
+const copiesOf = (row: DraftRow): readonly DraftVersion[] => [
+  draftVersionOf(row),
+  ...(row.alternatives ?? []),
+]
+
+/** A panel owns its input; the shared browser store never silently replaces it. */
 export function useLocalDraft<T>({
   id,
   value,
@@ -76,10 +57,8 @@ export function useLocalDraft<T>({
   onRestore,
   enabled = true,
 }: {
-  /** null keeps nothing: a panel with no round to hang a draft on */
   id: string | null
   value: T
-  /** whether this value is worth keeping; an untouched panel is not */
   empty: (value: T) => boolean
   onRestore: (value: T) => void
   enabled?: boolean
@@ -88,70 +67,202 @@ export function useLocalDraft<T>({
   const key = id === null || owner === null ? null : `${owner}:${id}`
   const [restored, setRestored] = useState(false)
   const [at, setAt] = useState<number | null>(null)
-  const [loaded, setLoaded] = useState(false)
-  // the callback is read at the moment the row arrives, never subscribed to:
-  // a caller that rebuilds it every render must not re-run the read
+  const [loaded, setLoaded] = useState<string | null>(null)
+  const [conflict, setConflict] = useState<DraftRow | null>(null)
   const restore = useRef(onRestore)
   restore.current = onRestore
+  const isEmpty = useRef(empty)
+  isEmpty.current = empty
   const kept = useRef(value)
   kept.current = value
+  const currentKey = useRef(key)
+  currentKey.current = key
+  const writer = useRef(draftRevision())
+  const head = useRef<string | null>(null)
+  const selected = useRef<string | null>(null)
+  const lastValue = useRef('')
   const done = useRef(false)
   const pendingWrite = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const queue = useRef<Promise<unknown>>(Promise.resolve())
+
+  const save = (words: T, preserveCurrent = false): Promise<DraftReceipt | null> => {
+    if (key === null || isEmpty.current(words)) return Promise.resolve(null)
+    const revision = draftRevision()
+    const editor = writer.current
+    const next = queue.current.then(async () => {
+      const result = await compareDraft(key, words, {
+        expected: head.current,
+        writer: editor,
+        revision,
+        preserveCurrent,
+      })
+      if (result.kind === 'unavailable') return null
+      if (currentKey.current === key) {
+        selected.current = revision
+        lastValue.current = JSON.stringify(words)
+        setAt(Date.now())
+        if (result.kind === 'saved') {
+          head.current = draftVersionOf(result.row).revision
+          setConflict(null)
+        } else setConflict(result.row)
+      }
+      return { id: key, revision }
+    })
+    queue.current = next
+    return next
+  }
+  const saveNow = useRef(save)
+  saveNow.current = save
 
   useEffect(() => {
     if (key === null || !enabled) return
     let left = false
-    setLoaded(false)
+    setLoaded(null)
     setRestored(false)
+    setConflict(null)
+    head.current = null
+    selected.current = null
+    lastValue.current = ''
+    writer.current = draftRevision()
     done.current = false
     void readDraft(key).then((row) => {
       if (left) return
-      // somebody who started typing while the read was in flight has already
-      // said more than the row does
-      if (row !== null && empty(kept.current)) {
-        restore.current(row.value as T)
-        setRestored(true)
-        setAt(row.at)
+      if (row !== null) {
+        const version = draftVersionOf(row)
+        head.current = version.revision
+        selected.current = version.revision
+        // A user can type while IndexedDB is opening. Their input wins and
+        // its eventual save still compares against the version actually read.
+        if (isEmpty.current(kept.current)) {
+          try {
+            restore.current(row.value as T)
+            lastValue.current = JSON.stringify(row.value)
+            setRestored(true)
+            setAt(row.at)
+          } catch {}
+        }
+        if (row.conflicted === true) setConflict(row)
       }
-      setLoaded(true)
+      setLoaded(key)
     })
     return () => {
       left = true
     }
-    // `empty` is a predicate over the shape, not state; re-reading on a new
-    // closure identity would restore twice
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, enabled])
 
   useEffect(() => {
-    if (key === null || !enabled || !loaded || done.current) return
+    if (
+      key === null ||
+      !enabled ||
+      loaded !== key ||
+      done.current ||
+      JSON.stringify(value) === lastValue.current
+    )
+      return
+    if (isEmpty.current(value)) {
+      const revision = selected.current
+      selected.current = null
+      lastValue.current = JSON.stringify(value)
+      if (revision !== null)
+        queue.current = queue.current.then(() => forgetDraftRevision(key, revision))
+      return
+    }
     const timer = setTimeout(() => {
       pendingWrite.current = null
-      void (empty(value) ? forgetDraft(key) : writeDraft(key, value))
+      void saveNow.current(kept.current)
     }, SETTLE_MS)
     pendingWrite.current = timer
     return () => {
       clearTimeout(timer)
       if (pendingWrite.current === timer) pendingWrite.current = null
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, enabled, loaded, value])
+
+  useEffect(() => {
+    if (key === null || !enabled || loaded !== key) return
+    let active = true
+    const check = () => {
+      void readDraft(key).then((row) => {
+        if (!active || done.current || row === null) return
+        const current = draftVersionOf(row)
+        const changedElsewhere =
+          current.revision !== head.current && current.writer !== writer.current
+        const otherCopies =
+          row.conflicted === true &&
+          (row.alternatives ?? []).some(
+            (copy) => copy.writer !== writer.current && copy.at > (at ?? 0),
+          )
+        if (!changedElsewhere && !otherCopies) return
+        if (isEmpty.current(kept.current)) {
+          head.current = current.revision
+          selected.current = current.revision
+          restore.current(row.value as T)
+          lastValue.current = JSON.stringify(row.value)
+          setRestored(true)
+          setAt(row.at)
+        } else {
+          setConflict(row)
+          // The notification can precede this panel's debounce. Preserve its
+          // current input immediately, in the same CAS path as an autosave.
+          if (changedElsewhere && JSON.stringify(kept.current) !== lastValue.current)
+            void saveNow.current(kept.current)
+        }
+      })
+    }
+    const stop = watchDraft(key, check)
+    const leaving = () => {
+      if (!done.current) void saveNow.current(kept.current)
+    }
+    window.addEventListener('pagehide', leaving)
+    return () => {
+      active = false
+      stop()
+      window.removeEventListener('pagehide', leaving)
+    }
+  }, [key, enabled, loaded, at])
 
   return {
     restored,
     at,
+    conflicts:
+      conflict === null
+        ? []
+        : copiesOf(conflict)
+            .filter((copy) => copy.writer !== writer.current)
+            .map(({ revision, at }) => ({ revision, at })),
+    choose: (revision) => {
+      if (conflict === null) return
+      const chosen =
+        revision === null
+          ? kept.current
+          : (copiesOf(conflict).find((copy) => copy.revision === revision)?.value as T | undefined)
+      if (chosen === undefined) return
+      // Retain the just-typed version before choosing a different copy.
+      void saveNow.current(kept.current).then(async () => {
+        if (currentKey.current !== key || key === null) return
+        const latest = await readDraft(key)
+        head.current = latest === null ? null : draftVersionOf(latest).revision
+        writer.current = draftRevision()
+        restore.current(chosen)
+        kept.current = chosen
+        await saveNow.current(chosen, true)
+        setRestored(true)
+      })
+    },
     snapshot: () => {
       done.current = true
       if (pendingWrite.current !== null) clearTimeout(pendingWrite.current)
       pendingWrite.current = null
-      if (key === null) return Promise.resolve(null)
-      const revision = draftRevision()
-      return writeDraft(key, kept.current, revision).then(() => ({ id: key, revision }))
+      return saveNow.current(kept.current)
     },
     discard: () => {
+      if (pendingWrite.current !== null) clearTimeout(pendingWrite.current)
+      pendingWrite.current = null
       setRestored(false)
       setAt(null)
-      if (key !== null) void forgetDraft(key)
+      setConflict(null)
+      lastValue.current = ''
+      if (key !== null && selected.current !== null) void forgetDraftRevision(key, selected.current)
     },
   }
 }

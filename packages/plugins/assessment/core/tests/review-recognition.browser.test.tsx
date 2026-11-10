@@ -632,10 +632,10 @@ describe('approving with a determination', () => {
     await open(review())
     await openApprove()
     await expect.element(comment()).toBeVisible()
-    // and what they left is not kept for whoever comes next
-    await expect
-      .poll(() => readDraft(`${colleague}:${INSTANCE_ID}:approve:normal:class`), { timeout: 4_000 })
-      .toBeNull()
+    // Their copy stays under the original account, never in the next reader's form.
+    expect(
+      (await readDraft(`${colleague}:${INSTANCE_ID}:approve:normal:class`))?.value,
+    ).toMatchObject({ comment: '不同意，奖项级别存疑' })
     await new Promise((resolve) => setTimeout(resolve, 500))
     expect(document.querySelector('[data-testid="draft-note"]')).toBeNull()
     expect((comment() as HTMLTextAreaElement).value).toBe('')

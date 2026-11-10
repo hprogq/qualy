@@ -22,7 +22,24 @@ export interface DraftRow {
   readonly at: number
   readonly revision?: string
   readonly value: unknown
+  readonly writer?: string
+  readonly alternatives?: readonly DraftVersion[]
+  readonly conflicted?: boolean
 }
+
+export interface DraftVersion {
+  readonly at: number
+  readonly revision: string
+  readonly writer: string
+  readonly value: unknown
+}
+
+export const draftVersionOf = (row: DraftRow): DraftVersion => ({
+  at: row.at,
+  revision: row.revision ?? `legacy:${row.at}`,
+  writer: row.writer ?? 'legacy',
+  value: row.value,
+})
 
 let opening: Promise<IDBDatabase | null> | null = null
 
@@ -136,29 +153,30 @@ export const writeDraft = (
     undefined,
   )
 
-/**
- * Drops what nobody came back for, and what somebody else left here.
- *
- * A draft is kept until its act is sent, and some acts never are: a colleague
- * takes the round, the filing is withdrawn, the reviewer changes their mind
- * and closes the tab. Nothing else would ever delete those rows, so the store
- * would only grow. And a browser can be shared: whoever signed in before
- * left their unsent words behind, which are not the next person's to read.
- * Swept when the review screens open, best effort like the rest - a sweep that
- * does not happen costs a few kilobytes.
- */
-export const forgetStaleDrafts = (olderThanMs: number, owner: string): Promise<void> =>
+/** Expiration never deletes another account's still-current drafts. */
+export const forgetStaleDrafts = (olderThanMs: number, _owner?: string): Promise<void> =>
   inDrafts(
     'readwrite',
     (store) => {
       const before = Date.now() - olderThanMs
-      const mine = `${owner}:`
       const cursor = store.openCursor()
       cursor.onsuccess = () => {
         const at = cursor.result
         if (at === null) return
         const row = at.value as DraftRow
-        if ((row.at ?? 0) < before || !String(row.id).startsWith(mine)) at.delete()
+        const copies = [draftVersionOf(row), ...(row.alternatives ?? [])].filter(
+          (copy) => copy.at >= before,
+        )
+        if (copies.length === 0) at.delete()
+        else if (copies.length !== 1 + (row.alternatives?.length ?? 0)) {
+          const [current, ...alternatives] = copies
+          at.update({
+            id: row.id,
+            ...current!,
+            alternatives,
+            conflicted: row.conflicted === true && alternatives.length > 0,
+          } satisfies DraftRow)
+        }
         at.continue()
       }
     },
@@ -190,15 +208,135 @@ export const forgetDraft = (id: string): Promise<void> =>
     undefined,
   )
 
-/** Delete only the precise snapshot confirmed by the server. */
+/** Delete only the precise submitted/discarded version; retain other tabs' words. */
 export const forgetDraftRevision = (id: string, revision: string): Promise<void> =>
   inDrafts(
     'readwrite',
     (store) => {
       const request = store.get(id)
       request.onsuccess = () => {
-        if ((request.result as DraftRow | undefined)?.revision === revision) store.delete(id)
+        const row = request.result as DraftRow | undefined
+        if (row === undefined) return
+        const versions = [draftVersionOf(row), ...(row.alternatives ?? [])].filter(
+          (copy) => copy.revision !== revision,
+        )
+        if (versions.length === 0) store.delete(id)
+        else {
+          const [current, ...alternatives] = versions
+          store.put({
+            id,
+            ...current!,
+            alternatives,
+            conflicted: row.conflicted === true && alternatives.length > 0,
+          } satisfies DraftRow)
+        }
       }
     },
     undefined,
-  )
+  ).then(() => announceDraft(id))
+
+type DraftWrite =
+  | { readonly kind: 'saved' | 'conflict'; readonly row: DraftRow }
+  | { readonly kind: 'unavailable' }
+
+/** Compare and preserve in one read/write transaction, including across browser tabs. */
+export const compareDraft = (
+  id: string,
+  value: unknown,
+  input: {
+    readonly expected: string | null
+    readonly writer: string
+    readonly revision: string
+    readonly preserveCurrent?: boolean
+  },
+): Promise<DraftWrite> =>
+  inDrafts<DraftWrite>(
+    'readwrite',
+    (store) => {
+      let result: DraftWrite = { kind: 'unavailable' }
+      const request = store.get(id)
+      request.onsuccess = () => {
+        try {
+          const row = request.result as DraftRow | undefined
+          const current = row === undefined ? null : draftVersionOf(row)
+          const incoming: DraftVersion = {
+            at: Date.now(),
+            revision: input.revision,
+            writer: input.writer,
+            value: structuredClone(value),
+          }
+          const matched =
+            (current?.revision ?? null) === input.expected || current?.writer === input.writer
+          if (!matched && row !== undefined) {
+            const alternatives = [
+              ...(row.alternatives ?? []).filter((copy) => copy.writer !== input.writer),
+              incoming,
+            ]
+            const retained: DraftRow = { ...row, alternatives, conflicted: true }
+            store.put(retained)
+            result = { kind: 'conflict', row: retained }
+          } else {
+            const alternatives = [
+              ...(row?.alternatives ?? []).filter((copy) => copy.writer !== input.writer),
+            ]
+            if (
+              input.preserveCurrent === true &&
+              current !== null &&
+              current.writer !== input.writer &&
+              JSON.stringify(current.value) !== JSON.stringify(value)
+            ) {
+              // Choosing this tab's copy is explicit. Archive the other copy before
+              // moving the shared head, so a resolution never destroys either side.
+              alternatives.push(current)
+            }
+            const conflicted = row?.conflicted === true && input.preserveCurrent !== true
+            const saved: DraftRow = { id, ...incoming, alternatives, conflicted }
+            store.put(saved)
+            result = { kind: conflicted ? 'conflict' : 'saved', row: saved }
+          }
+        } catch {}
+      }
+      return () => result
+    },
+    { kind: 'unavailable' },
+  ).then((result) => {
+    if (result.kind !== 'unavailable') announceDraft(id)
+    return result
+  })
+
+const listeners = new Set<(id: string) => void>()
+const CHANNEL = 'qualy-assessment-drafts'
+const announceDraft = (id: string) => {
+  for (const listener of listeners) listener(id)
+  try {
+    const channel = new BroadcastChannel(CHANNEL)
+    channel.postMessage(id)
+    channel.close()
+  } catch {}
+}
+
+/** Notifications carry only the row key, never draft text or account credentials. */
+export function watchDraft(id: string, changed: () => void): () => void {
+  const listen = (key: string) => {
+    if (key === id) changed()
+  }
+  listeners.add(listen)
+  let channel: BroadcastChannel | undefined
+  try {
+    channel = new BroadcastChannel(CHANNEL)
+    channel.onmessage = (event: MessageEvent<unknown>) => {
+      if (event.data === id) changed()
+    }
+  } catch {}
+  const visible = () => {
+    if (document.visibilityState === 'visible') changed()
+  }
+  window.addEventListener('focus', changed)
+  document.addEventListener('visibilitychange', visible)
+  return () => {
+    listeners.delete(listen)
+    channel?.close()
+    window.removeEventListener('focus', changed)
+    document.removeEventListener('visibilitychange', visible)
+  }
+}

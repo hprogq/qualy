@@ -2495,5 +2495,8 @@
   "overview_actionDetail": "{action}: {summary}",
   "entry_discardTitle": "Discard unsaved material?",
   "entry_discardHint": "Your input and newly added attachments have not been saved. Return to the editor to save a draft first.",
-  "entry_discard": "Discard and close"
+  "entry_discard": "Discard and close",
+  "review_draftConflict": "Another tab edited this draft. Both copies are kept; choose which one to continue.",
+  "review_draftKeepHere": "Keep this page’s input",
+  "review_draftLoadCopy": "Load the draft from {when}"
 }

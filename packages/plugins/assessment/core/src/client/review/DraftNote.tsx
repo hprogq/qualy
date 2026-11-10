@@ -16,6 +16,7 @@ const styles = stylex.create({
     display: 'flex',
     flexShrink: 0,
     alignItems: 'center',
+    flexWrap: 'wrap',
     gap: 10,
     borderRadius: tokens.radiusLg,
     paddingInline: 12,
@@ -43,6 +44,33 @@ const styles = stylex.create({
 export function DraftNote({ draft, onDiscard }: { draft: DraftKeeper; onDiscard: () => void }) {
   const locale = useLocale()
   const zone = useBatchZone()
+  if (draft.conflicts.length > 0)
+    return (
+      <div {...stylex.props(styles.bar)} data-testid="draft-conflict" role="status">
+        <span {...stylex.props(styles.words)}>{m.review_draftConflict()}</span>
+        <button
+          type="button"
+          {...stylex.props(styles.again)}
+          data-testid="draft-conflict-keep"
+          onClick={() => draft.choose(null)}
+        >
+          {m.review_draftKeepHere()}
+        </button>
+        {draft.conflicts.map((copy) => (
+          <button
+            key={copy.revision}
+            type="button"
+            {...stylex.props(styles.again)}
+            data-testid="draft-conflict-load"
+            onClick={() => draft.choose(copy.revision)}
+          >
+            {m.review_draftLoadCopy({
+              when: formatDateTime(new Date(copy.at), locale, 'month-day-long-clock', zone),
+            })}
+          </button>
+        ))}
+      </div>
+    )
   if (!draft.restored) return null
   const when =
     draft.at === null

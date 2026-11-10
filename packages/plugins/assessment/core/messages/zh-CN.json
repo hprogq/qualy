@@ -2495,5 +2495,8 @@
   "overview_actionDetail": "{action}：{summary}",
   "entry_discardTitle": "放弃尚未保存的材料？",
   "entry_discardHint": "本次输入和新添加的附件尚未保存。返回编辑后，可以先存为草稿。",
-  "entry_discard": "放弃并关闭"
+  "entry_discard": "放弃并关闭",
+  "review_draftConflict": "另一标签页也修改了这份草稿。两份内容均已保留，请选择要继续编辑的一份。",
+  "review_draftKeepHere": "保留本页内容",
+  "review_draftLoadCopy": "载入 {when} 的草稿"
 }
