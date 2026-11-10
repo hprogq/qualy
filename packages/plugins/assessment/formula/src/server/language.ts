@@ -92,6 +92,7 @@ export const formulaLanguageLayer = (options?: {
             tameTransport(unavailable, 'OpenLsp'),
             Effect.catchTags({
               LspBusy: () => Effect.fail(new FormulaLanguageBusy()),
+              LspUnavailable: () => Effect.fail(new FormulaLanguageUnavailable()),
               // the source came from the persisted draft, which is already
               // held to the same ceiling; reaching it is an outage-grade
               // inconsistency, not a caller mistake

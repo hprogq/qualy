@@ -22,6 +22,7 @@ import {
   LSP_FRAME_LIMIT,
   LSP_SESSION_LIMITS,
   LspBusy,
+  LspUnavailable,
   LspFrameTooLarge,
   LspMalformedFrame,
   LspMethodRefused,
@@ -74,6 +75,7 @@ interface Session {
   readonly workspace: LspWorkspace
   readonly boundary: UriBoundary
   readonly child: ChildProcess
+  readonly started: Promise<boolean>
   readonly outbound: Queue.Queue<OutboundEvent, Cause.Done>
   readonly openedAt: number
   lastActivity: number
@@ -132,7 +134,7 @@ export interface LspManager {
   readonly sweepOnce: () => Promise<unknown>
   readonly open: (
     initialSource: string,
-  ) => Effect.Effect<{ sessionId: string }, LspBusy | LspSourceTooLarge>
+  ) => Effect.Effect<{ sessionId: string }, LspBusy | LspUnavailable | LspSourceTooLarge>
   readonly send: (request: {
     readonly sessionId: string
     readonly sequence: number
@@ -314,6 +316,12 @@ export const makeLspManager = (): LspManager => {
 
   const finishClose = async (session: Session): Promise<void> => {
     const { child } = session
+    if (!(await session.started)) {
+      dropLspWorkspace(session.workspace)
+      Queue.endUnsafe(session.outbound)
+      releasePermit()
+      return
+    }
     try {
       // protocol goodbye is a courtesy, never the mechanism (measured: TS7
       // ignores both shutdown and exit)
@@ -361,26 +369,66 @@ export const makeLspManager = (): LspManager => {
   }
 
   const open: LspManager['open'] = (initialSource) =>
-    Effect.suspend(() => {
-      if (Buffer.byteLength(initialSource, 'utf8') > SOURCE_LIMIT)
-        return Effect.fail(new LspSourceTooLarge({ limit: SOURCE_LIMIT }))
-      if (permits <= 0)
-        return Effect.fail(new LspBusy({ limit: LSP_SESSION_LIMITS.globalSessions }))
-      permits -= 1
-      return openReserved(initialSource).pipe(Effect.onError(() => Effect.sync(releasePermit)))
-    })
+    Effect.suspend(
+      (): Effect.Effect<{ sessionId: string }, LspBusy | LspUnavailable | LspSourceTooLarge> => {
+        if (Buffer.byteLength(initialSource, 'utf8') > SOURCE_LIMIT)
+          return Effect.fail(new LspSourceTooLarge({ limit: SOURCE_LIMIT }))
+        if (permits <= 0)
+          return Effect.fail(new LspBusy({ limit: LSP_SESSION_LIMITS.globalSessions }))
+        permits -= 1
+        let owned: Session | undefined
+        let workspace: LspWorkspace | undefined
+        return Effect.uninterruptibleMask((restore) =>
+          openReserved(
+            initialSource,
+            restore,
+            (session) => {
+              owned = session
+            },
+            (created) => {
+              workspace = created
+            },
+          ),
+        ).pipe(
+          Effect.onError(() =>
+            Effect.promise(async () => {
+              if (owned !== undefined) await closeSession(owned)
+              else {
+                if (workspace !== undefined) dropLspWorkspace(workspace)
+                releasePermit()
+              }
+            }),
+          ),
+        )
+      },
+    )
 
   const openReserved = (
     initialSource: string,
-  ): Effect.Effect<{ sessionId: string }, LspBusy | LspSourceTooLarge> =>
+    restore: <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>,
+    own: (session: Session) => void,
+    madeWorkspace: (workspace: LspWorkspace) => void,
+  ): Effect.Effect<{ sessionId: string }, LspUnavailable> =>
     Effect.gen(function* () {
       const id = randomBytes(24).toString('base64url')
-      const workspace = makeLspWorkspace(initialSource)
-      const child = spawn(tscExecutable, ['--lsp', '-stdio'], {
-        // least privilege: the server's working directory is its own
-        // session, never the app's
-        cwd: workspace.root,
-        stdio: ['pipe', 'pipe', 'ignore'],
+      const workspace = yield* Effect.try({
+        try: () => makeLspWorkspace(initialSource),
+        catch: () => new LspUnavailable(),
+      })
+      madeWorkspace(workspace)
+      const boundary = makeUriBoundary(workspace.root)
+      const outbound = yield* Queue.bounded<OutboundEvent, Cause.Done>(
+        LSP_SESSION_LIMITS.outboundQueue,
+      )
+      const child = yield* Effect.try({
+        try: () =>
+          spawn(tscExecutable, ['--lsp', '-stdio'], {
+            // least privilege: the server's working directory is its own
+            // session, never the app's
+            cwd: workspace.root,
+            stdio: ['pipe', 'pipe', 'ignore'],
+          }),
+        catch: () => new LspUnavailable(),
       })
       // a write racing the server's death lands EPIPE on this stream, and a
       // stream with no error listener turns that into an uncaught 'error'
@@ -392,18 +440,20 @@ export const makeLspManager = (): LspManager => {
       // 'error' event, not a throw, and a ChildProcess with no listener for
       // it turns that into an uncaught exception - the same way a stream
       // does, with the same consequence: the whole authoring process goes
-      // down because one session could not start. The exit handling below
-      // is what actually cleans up; a child that never started simply has
-      // nothing to wait for.
+      // down because one session could not start. Wait for the OS to
+      // confirm startup before giving the caller a session; the open's
+      // failure path owns cleanup if the process never started.
+      const started = new Promise<boolean>((resolve) => {
+        child.once('spawn', () => resolve(true))
+        child.once('error', () => resolve(false))
+      })
       child.on('error', () => {})
-      const outbound = yield* Queue.bounded<OutboundEvent, Cause.Done>(
-        LSP_SESSION_LIMITS.outboundQueue,
-      )
       const session: Session = {
         id,
         workspace,
-        boundary: makeUriBoundary(workspace.root),
+        boundary,
         child,
+        started,
         outbound,
         openedAt: Date.now(),
         lastActivity: Date.now(),
@@ -415,6 +465,7 @@ export const makeLspManager = (): LspManager => {
         formatting: false,
       }
       sessions.set(id, session)
+      own(session)
       const parser = new FrameParser()
       child.stdout?.on('data', (chunk: Buffer) => {
         try {
@@ -432,6 +483,9 @@ export const makeLspManager = (): LspManager => {
       child.once('exit', () => {
         void closeSession(session)
       })
+      if (!(yield* restore(Effect.promise(() => started))) || session.closing !== undefined) {
+        return yield* new LspUnavailable()
+      }
       return { sessionId: id }
     })
 

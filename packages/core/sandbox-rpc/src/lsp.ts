@@ -27,6 +27,8 @@ export class LspBusy extends Schema.TaggedError<LspBusy>()('LspBusy', {
   limit: Schema.Number,
 }) {}
 
+export class LspUnavailable extends Schema.TaggedError<LspUnavailable>()('LspUnavailable', {}) {}
+
 export class LspSourceTooLarge extends Schema.TaggedError<LspSourceTooLarge>()(
   'LspSourceTooLarge',
   { limit: Schema.Number },
@@ -78,7 +80,7 @@ export const lspRpcs = [
   Rpc.make('OpenLsp', {
     payload: { initialSource: Schema.String },
     success: Schema.Struct({ sessionId: Schema.String }),
-    error: Schema.Union([LspBusy, LspSourceTooLarge]),
+    error: Schema.Union([LspBusy, LspUnavailable, LspSourceTooLarge]),
   }),
   Rpc.make('SendLsp', {
     payload: {

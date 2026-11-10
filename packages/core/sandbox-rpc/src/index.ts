@@ -54,6 +54,7 @@ export {
   LSP_FRAME_LIMIT,
   LSP_SESSION_LIMITS,
   LspBusy,
+  LspUnavailable,
   LspEvent,
   LspFrameTooLarge,
   LspMalformedFrame,

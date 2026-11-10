@@ -35,24 +35,30 @@ export const makeLspWorkspace = (initialSource: string): LspWorkspace => {
   // realpath at birth: macOS tmp lives behind a /var -> /private/var
   // symlink, and the language server answers in REAL paths - the URI
   // boundary must speak the same spelling or drop everything it says
-  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-lsp-')))
-  const sdk = path.join(root, 'node_modules', '@qualy', 'formula')
-  fs.mkdirSync(sdk, { recursive: true })
-  fs.writeFileSync(path.join(sdk, 'package.json'), SDK_MANIFEST)
-  fs.cpSync(path.join(formulaPackageRoot, 'src'), path.join(sdk, 'src'), { recursive: true })
-  const nested = path.join(sdk, 'node_modules', '@qualy', 'value-schema')
-  fs.mkdirSync(nested, { recursive: true })
-  fs.copyFileSync(
-    path.join(valueSchemaPackageRoot, 'package.json'),
-    path.join(nested, 'package.json'),
-  )
-  fs.cpSync(path.join(valueSchemaPackageRoot, 'src'), path.join(nested, 'src'), {
-    recursive: true,
-  })
-  fs.writeFileSync(path.join(root, 'tsconfig.json'), JSON.stringify(FORMULA_TSCONFIG, null, 2))
-  const formulaPath = path.join(root, 'formula.ts')
-  fs.writeFileSync(formulaPath, initialSource)
-  return { root, formulaPath, sdkRoot: path.join(root, 'node_modules', '@qualy') }
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-lsp-'))
+  try {
+    const root = fs.realpathSync(directory)
+    const sdk = path.join(root, 'node_modules', '@qualy', 'formula')
+    fs.mkdirSync(sdk, { recursive: true })
+    fs.writeFileSync(path.join(sdk, 'package.json'), SDK_MANIFEST)
+    fs.cpSync(path.join(formulaPackageRoot, 'src'), path.join(sdk, 'src'), { recursive: true })
+    const nested = path.join(sdk, 'node_modules', '@qualy', 'value-schema')
+    fs.mkdirSync(nested, { recursive: true })
+    fs.copyFileSync(
+      path.join(valueSchemaPackageRoot, 'package.json'),
+      path.join(nested, 'package.json'),
+    )
+    fs.cpSync(path.join(valueSchemaPackageRoot, 'src'), path.join(nested, 'src'), {
+      recursive: true,
+    })
+    fs.writeFileSync(path.join(root, 'tsconfig.json'), JSON.stringify(FORMULA_TSCONFIG, null, 2))
+    const formulaPath = path.join(root, 'formula.ts')
+    fs.writeFileSync(formulaPath, initialSource)
+    return { root, formulaPath, sdkRoot: path.join(root, 'node_modules', '@qualy') }
+  } catch (error) {
+    fs.rmSync(directory, { recursive: true, force: true })
+    throw error
+  }
 }
 
 export const dropLspWorkspace = (workspace: LspWorkspace): void => {
