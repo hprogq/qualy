@@ -237,8 +237,15 @@ describe('the queue in brief', () => {
       bodyInset,
       0,
     )
+    const fade = filters.querySelector('[data-slot="review-results-fade"]')!
+    const fadeDepth = () => fade.getBoundingClientRect().height
+    const restingDepth = fadeDepth()
+    // Just inside the sticky range, only some of the extra fade is visible.
+    main.scrollTop = stickAt + 16
+    await expect.poll(fadeDepth).toBeCloseTo(restingDepth + 3, 0)
 
     main.scrollTop = stickAt + 50
+    await expect.poll(fadeDepth).toBeCloseTo(restingDepth + 6, 0)
     expect(band.getBoundingClientRect().bottom).toBeLessThan(top)
     const pinnedTop = filters.getBoundingClientRect().top
     expect(pinnedTop - top).toBeCloseTo(16, 0)
@@ -249,6 +256,8 @@ describe('the queue in brief', () => {
     main.scrollTop += 60
     expect(filters.getBoundingClientRect().top).toBeCloseTo(pinnedTop, 0)
     expect(projectIndex.getBoundingClientRect().top).toBeCloseTo(indexTop, 0)
+    main.scrollTop = 0
+    await expect.poll(fadeDepth).toBeCloseTo(restingDepth, 0)
   })
 
   // Nothing picked, every project shows its oldest few and a way to all of

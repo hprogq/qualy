@@ -61,6 +61,7 @@ const TOOLBAR_MID = '@container review-board (min-width: 560px) and (max-width: 
 const TOOLBAR_WIDE = '@container review-board (min-width: 1240px)'
 const SEARCH_DELAY = 250
 const BOARD_WIDE = reviewLayout.wide
+const FADE_SCROLL_DISTANCE = 64
 
 const styles = stylex.create({
   viewsField: { gridArea: 'grouping', minWidth: 0 },
@@ -72,6 +73,7 @@ const styles = stylex.create({
     flexDirection: 'column',
   },
   queue: {
+    position: 'relative',
     display: 'flex',
     flexGrow: 1,
     flexShrink: 1,
@@ -95,7 +97,7 @@ const styles = stylex.create({
     gridTemplateColumns: {
       default: 'minmax(0, 1fr) auto',
       [TOOLBAR_MID]: 'minmax(0, 1fr) minmax(0, 15rem)',
-      [BOARD_WIDE]: '13rem minmax(0, 1fr) minmax(0, 14rem)',
+      [BOARD_WIDE]: `${reviewLayout.indexWidth} minmax(0, 1fr) minmax(0, 14rem)`,
     },
     alignItems: 'center',
     columnGap: 8,
@@ -116,11 +118,36 @@ const styles = stylex.create({
     display: { default: 'none', [BOARD_WIDE]: 'block' },
     position: 'absolute',
     insetBlockStart: `calc(0px - ${reviewLayout.toolbarStickyTop})`,
-    insetBlockEnd: `calc(0px - ${reviewLayout.toolbarFadeEdge})`,
-    insetInline: -12,
+    insetBlockEnd: 0,
+    insetInline: `calc(0px - ${reviewLayout.scrimBleed})`,
     zIndex: -1,
     pointerEvents: 'none',
+    backgroundColor: tokens.background,
+  },
+  // A fixed marker in the queue's flow crosses the scrollport when the
+  // toolbar reaches its sticky inset. The extra fade is paint only.
+  toolbarMarker: {
+    position: 'absolute',
+    insetBlockStart: `calc(-1px - ${reviewLayout.toolbarStickyTop})`,
+    insetInlineStart: 0,
+    width: 1,
+    height: 1,
+    pointerEvents: 'none',
+  },
+  toolbarFade: {
+    position: 'absolute',
+    insetBlockStart: '100%',
+    insetInline: 0,
+    display: 'grid',
+    gridTemplateColumns: `calc(${reviewLayout.indexWidth} + ${reviewLayout.indexGap}) minmax(0, 1fr)`,
+    alignItems: 'start',
+  },
+  fadeEdge: {
+    height: reviewLayout.toolbarFadeEdge,
     backgroundImage: `linear-gradient(to bottom, ${tokens.background} calc(100% - 6px), transparent)`,
+  },
+  resultsFadeEdge: {
+    height: `calc(${reviewLayout.toolbarFadeEdge} + ${reviewLayout.pinnedResultsFadeExtra} * var(--review-fade-progress, 0))`,
   },
   filters: {
     gridArea: 'filters',
@@ -544,11 +571,47 @@ function QueueBody({
     focusSearch.current = false
     searchInput.current?.focus()
   }, [seeking])
-  const { resetSearch, ...searchField } = useReviewSearch(search, view !== 'asked', update)
+  const showFilters = view !== 'asked'
+  const { resetSearch, ...searchField } = useReviewSearch(search, showFilters, update)
+  const toolbarMarker = useRef<HTMLSpanElement>(null)
+  const resultsFade = useRef<HTMLSpanElement>(null)
+  useEffect(() => {
+    if (!showFilters) return
+    const marker = toolbarMarker.current
+    const fade = resultsFade.current
+    const root = marker?.closest('main')
+    if (marker == null || root == null || fade == null) return
+    let frame = 0
+    let previous = 0
+    // Read the distance past the sticky point, not the time since it stuck.
+    // Paint only the fade; scrolling never rerenders the queue.
+    const paint = () => {
+      frame = 0
+      if (fade.offsetParent === null) return
+      const distance = root.getBoundingClientRect().top - marker.getBoundingClientRect().bottom
+      const progress = Math.max(0, Math.min(1, distance / FADE_SCROLL_DISTANCE))
+      if (progress === previous) return
+      previous = progress
+      fade.style.setProperty('--review-fade-progress', String(progress))
+    }
+    const schedule = () => {
+      if (frame === 0) frame = requestAnimationFrame(paint)
+    }
+    schedule()
+    root.addEventListener('scroll', schedule, { passive: true })
+    window.addEventListener('resize', schedule)
+    return () => {
+      root.removeEventListener('scroll', schedule)
+      window.removeEventListener('resize', schedule)
+      cancelAnimationFrame(frame)
+      fade.style.removeProperty('--review-fade-progress')
+    }
+  }, [showFilters])
 
   return (
     <div {...stylex.props(styles.queue)}>
-      {view !== 'asked' && (
+      <span ref={toolbarMarker} aria-hidden {...stylex.props(styles.toolbarMarker)} />
+      {showFilters && (
         <div
           data-testid="review-filters"
           {...stylex.props(
@@ -560,7 +623,16 @@ function QueueBody({
             styles.pinnedControls,
           )}
         >
-          <span aria-hidden {...stylex.props(styles.toolbarScrim)} />
+          <span aria-hidden {...stylex.props(styles.toolbarScrim)}>
+            <span {...stylex.props(styles.toolbarFade)}>
+              <span {...stylex.props(styles.fadeEdge)} />
+              <span
+                ref={resultsFade}
+                data-slot="review-results-fade"
+                {...stylex.props(styles.fadeEdge, styles.resultsFadeEdge)}
+              />
+            </span>
+          </span>
           <Tabs
             variant="segmented"
             value={view}

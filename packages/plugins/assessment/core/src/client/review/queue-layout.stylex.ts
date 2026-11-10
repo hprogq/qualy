@@ -4,7 +4,11 @@ import * as stylex from '@stylexjs/stylex'
 // can stick below the toolbar before any JavaScript measures the page.
 export const reviewLayout = stylex.defineConsts({
   wide: '@container review-board (min-width: 880px)',
+  indexWidth: '13rem',
+  indexGap: '28px',
   controlHeight: '36px',
   toolbarStickyTop: '16px',
   toolbarFadeEdge: '16px',
+  pinnedResultsFadeExtra: '6px',
+  scrimBleed: '12px',
 })

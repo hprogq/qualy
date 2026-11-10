@@ -42,6 +42,7 @@ const indexLabel = (grouping: Grouping) =>
 /** the room the index needs beside a list of rows worth reading */
 const BOARD_WIDE = reviewLayout.wide
 const TOOLBAR_CLEARANCE = `calc(${reviewLayout.controlHeight} + ${reviewLayout.toolbarStickyTop} + ${reviewLayout.toolbarFadeEdge})`
+const RESULTS_CLEARANCE = `calc(${TOOLBAR_CLEARANCE} + ${reviewLayout.pinnedResultsFadeExtra})`
 /** the room a row needs to lay its answers out as columns */
 const ROWS_WIDE = '@container review-rows (min-width: 680px)'
 
@@ -73,8 +74,8 @@ const styles = stylex.create({
   scope: { display: { default: 'block', [BOARD_WIDE]: 'none' }, flex: '0 1 14rem', minWidth: 0 },
   body: {
     display: { default: 'block', [BOARD_WIDE]: 'grid' },
-    gridTemplateColumns: 'minmax(0, 13rem) minmax(0, 1fr)',
-    columnGap: 28,
+    gridTemplateColumns: `minmax(0, ${reviewLayout.indexWidth}) minmax(0, 1fr)`,
+    columnGap: reviewLayout.indexGap,
     alignItems: 'start',
   },
   // ---- the index ----
@@ -177,7 +178,7 @@ const styles = stylex.create({
     containerType: 'inline-size',
     containerName: 'review-rows',
   },
-  clearToolbar: { scrollMarginBlockStart: { default: null, [BOARD_WIDE]: TOOLBAR_CLEARANCE } },
+  clearToolbar: { scrollMarginBlockStart: { default: null, [BOARD_WIDE]: RESULTS_CLEARANCE } },
   groupHead: {
     display: 'flex',
     justifyContent: 'space-between',
