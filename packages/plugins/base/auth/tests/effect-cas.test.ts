@@ -510,6 +510,71 @@ describe.runIf(postgresAvailable)('signing in through a CAS server', () => {
     expect(failureOf(refused).code).toBe('AUTH_CAS_TICKET_REJECTED')
   })
 
+  it('binds a fresh CAS sign-in to the initiating person and session', async () => {
+    expect(failureOf(await visit(`${base}/auth/cas/legacy/start?intent=reauthenticate`)).code).toBe(
+      'AUTH_REQUIRED',
+    )
+    await Effect.runPromise(
+      runSql(sql`
+      insert into users (tenant_id, display_name, user_type_id, primary_org_node_id, business_no)
+      select tenant_id, 'Other', user_type_id, primary_org_node_id, '20990002'
+      from users where id = ${userId}`).pipe(Effect.provide(probeInfra())),
+    )
+    const signIn = async () => {
+      const initial = await depart('legacy')
+      const response = await comeBack(
+        initial.service,
+        cas.issue(initial.service, 'person', { id_number: ['20990001'] }),
+      )
+      return response.headers
+        .getSetCookie()
+        .find((cookie) => cookie.startsWith(`${sessionCookieName}=`))!
+        .split(';')[0]!
+    }
+    const cookie = await signIn()
+    const fresh = async () => {
+      const response = await visit(`${base}/auth/cas/legacy/start?intent=reauthenticate`, cookie)
+      expect(response.status).toBe(302)
+      const service = new URL(response.headers.get('location')!).searchParams.get('service')!
+      const flow = response.headers
+        .getSetCookie()
+        .find((c) => c.startsWith(`${flowCookieNameFor(false)}=`))!
+        .split(';')[0]!
+      return { service, browser: `${cookie}; ${flow}`, flow }
+    }
+    const good = await fresh()
+    const accepted = await comeBack(
+      good.service,
+      cas.issue(good.service, 'person', { id_number: ['20990001'] }),
+      good.browser,
+    )
+    expect(accepted.headers.get('location')).toBe('/')
+    expect(await newestGrants()).toEqual(['qualy:reauthenticated'])
+
+    const other = await fresh()
+    const refused = await comeBack(
+      other.service,
+      cas.issue(other.service, 'person', { id_number: ['20990002'] }),
+      other.browser,
+    )
+    expect(failureOf(refused).code).toBe('AUTH_FLOW_REJECTED')
+    expect(refused.headers.getSetCookie().some((c) => c.startsWith(`${sessionCookieName}=`))).toBe(
+      false,
+    )
+
+    const switched = await signIn()
+    const left = await fresh()
+    const changed = await comeBack(
+      left.service,
+      cas.issue(left.service, 'person', { id_number: ['20990001'] }),
+      `${switched}; ${left.flow}`,
+    )
+    expect(failureOf(changed).code).toBe('AUTH_FLOW_REJECTED')
+    expect(changed.headers.getSetCookie().some((c) => c.startsWith(`${sessionCookieName}=`))).toBe(
+      false,
+    )
+  })
+
   it('offers nothing for a door that is not there, and slows a burst of departures', async () => {
     const nowhere = await visit(`${base}/auth/cas/nowhere/start`)
     expect(nowhere.status).toBe(303)

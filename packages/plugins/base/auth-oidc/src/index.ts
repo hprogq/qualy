@@ -230,16 +230,28 @@ interface Carried {
    * happened before anybody asked.
    */
   readonly askedAt?: number
+  readonly owner?: { readonly userId: string; readonly sessionId: string }
 }
 
 const carriedOf = (payload: Redacted.Redacted<string>): Carried | undefined => {
   try {
     const parsed = JSON.parse(Redacted.value(payload)) as Partial<Carried>
+    const owner = parsed.owner
+    if ((parsed.askedAt === undefined) !== (owner === undefined)) return undefined
+    if (
+      parsed.askedAt !== undefined &&
+      (!Number.isSafeInteger(parsed.askedAt) ||
+        owner === undefined ||
+        typeof owner.userId !== 'string' ||
+        typeof owner.sessionId !== 'string')
+    )
+      return undefined
     return typeof parsed.verifier === 'string' && typeof parsed.nonce === 'string'
       ? {
           verifier: parsed.verifier,
           nonce: parsed.nonce,
           ...(typeof parsed.askedAt === 'number' ? { askedAt: parsed.askedAt } : {}),
+          ...(owner === undefined ? {} : { owner }),
         }
       : undefined
   } catch {
@@ -285,7 +297,8 @@ const handlers = HttpApiBuilder.group(local, 'authOidc', (handlers) =>
         if (provider === undefined) return failed(new SignInMethodUnavailable())
         const viewer = (yield* CurrentViewer).principal
         const binding = query.intent === 'bind'
-        if (binding && viewer === undefined) return failed(new AuthRequired())
+        const afresh = query.intent === 'reauthenticate'
+        if ((binding || afresh) && viewer === undefined) return failed(new AuthRequired())
         const configured = yield* configurationOf(provider)
         if (configured === undefined) return failed(new SignInMethodUnavailable())
         if (configured.kind === 'failed') {
@@ -307,11 +320,11 @@ const handlers = HttpApiBuilder.group(local, 'authOidc', (handlers) =>
         // a sign-in asked for afresh: the provider is told to ask for the
         // credentials whatever session it keeps, and the moment of asking is
         // kept to hold its answer against
-        const afresh = query.intent === 'reauthenticate'
         const carried: Carried = {
           verifier,
           nonce,
           ...(afresh ? { askedAt: Math.floor(Date.now() / 1000) } : {}),
+          ...(afresh ? { owner: { userId: viewer!.userId, sessionId: viewer!.sessionId } } : {}),
         }
         const started = yield* sessions
           .startFlow({
@@ -371,6 +384,14 @@ const handlers = HttpApiBuilder.group(local, 'authOidc', (handlers) =>
           return failed(new SignInFlowRejected())
         }
         const flow = taken.success
+        if (carried.owner !== undefined) {
+          const viewer = (yield* CurrentViewer).principal
+          if (
+            viewer?.userId !== carried.owner.userId ||
+            viewer.sessionId !== carried.owner.sessionId
+          )
+            return failed(new SignInFlowRejected())
+        }
         const back = (failure: { readonly _tag: string }) =>
           flow.purpose === 'bind'
             ? away(failureLocation(flow.returnPath ?? '/', failure), 303)
@@ -429,6 +450,8 @@ const handlers = HttpApiBuilder.group(local, 'authOidc', (handlers) =>
           yield* sessions.failAttempt(provider, { reason: 'binding-not-found' })
           return failed(new ExternalAccountUnbound())
         }
+        if (carried.owner !== undefined && binding.userId !== carried.owner.userId)
+          return failed(new SignInFlowRejected())
         // asked for afresh, and the provider says the person authenticated
         // after the asking: that is them at the keyboard now. A provider that
         // let an older session through signs the person in all the same, and
@@ -446,6 +469,9 @@ const handlers = HttpApiBuilder.group(local, 'authOidc', (handlers) =>
           tenantId: provider.tenantId,
           providerId: provider.providerId,
           userId: binding.userId,
+          ...(carried.owner === undefined
+            ? {}
+            : { reauthenticationSessionId: carried.owner.sessionId }),
           bindingId: binding.id,
           ...(answer.label === undefined ? {} : { bindingDisplayLabel: answer.label }),
           present,

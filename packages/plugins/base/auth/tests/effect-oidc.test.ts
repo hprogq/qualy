@@ -78,6 +78,7 @@ const op = {
   seen: [] as string[],
   userinfo: 'normal' as 'normal' | 'down',
   token: 'normal' as 'normal' | 'down',
+  gate: undefined as { reached: () => void; release: Promise<void> } | undefined,
   next: 1,
   async sign(claims: Claims) {
     const { forged, ...rest } = claims
@@ -140,6 +141,11 @@ const answer = async (
   }
   if (url.pathname === '/jwks') return json(response, 200, { keys: [op.jwk] })
   if (url.pathname === '/token') {
+    if (op.gate !== undefined) {
+      const gate = op.gate
+      gate.reached()
+      await gate.release
+    }
     if (op.token === 'down') return json(response, 503, {})
     const form = new URLSearchParams(body)
     const grant = op.codes.get(form.get('code') ?? '')
@@ -359,6 +365,7 @@ beforeEach(async () => {
   if (!postgresAvailable) return
   op.userinfo = 'normal'
   op.token = 'normal'
+  op.gate = undefined
   op.seen.length = 0
   await Effect.runPromise(
     runSql(sql`delete from auth_rate_limit_buckets`).pipe(Effect.provide(probeInfra())),
@@ -525,9 +532,14 @@ describe.runIf(postgresAvailable)('an OpenID Connect account', () => {
       )
 
     // asked for afresh: the provider is told to ask whatever session it keeps
+    expect(landing(await visit(`${base}/auth/oidc/op/start?intent=reauthenticate`)).code).toBe(
+      'AUTH_REQUIRED',
+    )
+    const beaCookie = await signedIn(bea, false)
     const afresh = await depart(
       'op',
       `?intent=reauthenticate&returnTo=${encodeURIComponent('/me')}`,
+      beaCookie,
     )
     expect(afresh.away.searchParams.get('prompt')).toBe('login')
     expect(afresh.away.searchParams.get('max_age')).toBe('0')
@@ -538,9 +550,34 @@ describe.runIf(postgresAvailable)('an OpenID Connect account', () => {
     expect(fresh.headers.get('location')).toBe('/me')
     expect(await newest()).toEqual(['qualy:reauthenticated'])
 
+    const otherCookie = await signedIn(ada, false)
+    const differentPerson = await depart('op', '?intent=reauthenticate', otherCookie)
+    const refusedPerson = await visit(
+      op.authorize(differentPerson.away, { sub: 'sub-bea', auth_time: now() }),
+      differentPerson.browser,
+    )
+    expect(landing(refusedPerson).code).toBe('AUTH_FLOW_REJECTED')
+    expect(
+      refusedPerson.headers
+        .getSetCookie()
+        .some((cookie) => cookie.startsWith(`${sessionCookieName}=`)),
+    ).toBe(false)
+
+    for (const switched of [otherCookie, await signedIn(bea, false)]) {
+      const left = await depart('op', '?intent=reauthenticate', beaCookie)
+      const back = await visit(
+        op.authorize(left.away, { sub: 'sub-bea', auth_time: now() }),
+        `${switched}; ${flowCookieOf(left.response)}`,
+      )
+      expect(landing(back).code).toBe('AUTH_FLOW_REJECTED')
+      expect(
+        back.headers.getSetCookie().some((cookie) => cookie.startsWith(`${sessionCookieName}=`)),
+      ).toBe(false)
+    }
+
     // a provider that let an earlier sign-in through, or does not say when
     for (const claims of [{ sub: 'sub-bea', auth_time: now() - 3600 }, { sub: 'sub-bea' }]) {
-      const lax = await depart('op', '?intent=reauthenticate')
+      const lax = await depart('op', '?intent=reauthenticate', beaCookie)
       const back = await visit(op.authorize(lax.away, claims), lax.browser)
       expect(back.status, JSON.stringify(claims)).toBe(303)
       expect(await newest(), JSON.stringify(claims)).toEqual([])
@@ -552,6 +589,42 @@ describe.runIf(postgresAvailable)('an OpenID Connect account', () => {
     expect(plain.away.searchParams.get('max_age')).toBeNull()
     await visit(op.authorize(plain.away, { sub: 'sub-bea', auth_time: now() }), plain.browser)
     expect(await newest()).toEqual([])
+  })
+
+  it('refuses a reauthentication whose session is revoked during the provider exchange', async () => {
+    const cookie = await signedIn(ada, false)
+    const departed = await depart('op', '?intent=reauthenticate', cookie)
+    let reached!: () => void
+    let release!: () => void
+    const waiting = new Promise<void>((resolve) => {
+      reached = resolve
+    })
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    op.gate = { reached, release: gate }
+    try {
+      const callback = visit(
+        op.authorize(departed.away, { sub: 'sub-ada', auth_time: now() }),
+        departed.browser,
+      )
+      await waiting
+      const token = cookie.slice(`${sessionCookieName}=`.length)
+      await Effect.runPromise(
+        runSql(sql`delete from sessions where token_hash = ${hashSessionToken(token)}`).pipe(
+          Effect.provide(probeInfra()),
+        ),
+      )
+      release()
+      const response = await callback
+      expect(landing(response).code).toBe('AUTH_PERSON_NOT_FOUND')
+      expect(
+        response.headers.getSetCookie().some((c) => c.startsWith(`${sessionCookieName}=`)),
+      ).toBe(false)
+    } finally {
+      release()
+      op.gate = undefined
+    }
   })
 
   it('refuses an ID Token that is for another client, from another issuer, for another nonce, long expired, or signed by anybody else', async () => {

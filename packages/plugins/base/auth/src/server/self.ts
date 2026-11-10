@@ -300,13 +300,9 @@ export const make = Effect.fn('Iam.self.make')(function* () {
           const again = found.flatMap(({ door, driver }) => {
             if (!opens(driver, door, row)) return []
             if (!provesPresence(driver, configOf(door.config))) return []
-            // its own way back to the credentials, or its sign-in when every
-            // sign-in there asks for them
-            const declared =
-              driver.reauthenticate?.({ code: door.code }) ??
-              (driver.presentation.mode === 'redirect'
-                ? driver.presentation.href({ code: door.code })
-                : undefined)
+            // A reauthentication route must bind the initiating identity;
+            // an ordinary sign-in route can authenticate a different person.
+            const declared = driver.reauthenticate?.({ code: door.code })
             if (declared === undefined) return []
             const href = sameOriginPath(declared)
             return href === undefined

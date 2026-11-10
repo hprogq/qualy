@@ -3,6 +3,7 @@ import { HttpServerResponse } from 'effect/http'
 import { HttpApiBuilder, HttpApiClient } from 'effect/http-api'
 import { LoginSessions, type EntranceField, type LoginDriver } from '@qualy/auth-contract/login'
 import { Login } from '@qualy/auth-contract/plugin'
+import { AuthRequired, CurrentViewer } from '@qualy/auth-contract/session'
 import {
   SignInFlowRejected,
   SignInMethodUnavailable,
@@ -202,6 +203,8 @@ export const driver: LoginDriver = {
   // and again when the ticket is validated - signs in only somebody who
   // just typed it, never a session the server was keeping
   provesPresence: ({ config }) => settingsOf(config)?.renew === true,
+  reauthenticate: ({ code }) =>
+    urls.authCas.start({ params: { providerCode: code }, query: { intent: 'reauthenticate' } }),
 }
 
 /** the person is sent somewhere; every answer here is one */
@@ -226,6 +229,10 @@ const handlers = HttpApiBuilder.group(local, 'authCas', (handlers) =>
         if (provider === undefined || settings === undefined) {
           return failed(new SignInMethodUnavailable())
         }
+        const afresh = query.intent === 'reauthenticate'
+        const viewer = (yield* CurrentViewer).principal
+        if (afresh && viewer === undefined) return failed(new AuthRequired())
+        if (afresh && !settings.renew) return failed(new SignInMethodUnavailable())
         const callback = yield* sessions.callbackUrl(provider).pipe(Effect.option)
         if (callback._tag === 'None') return failed(new SignInMethodUnavailable())
         // written once, from the state the flow is issued under, and kept in
@@ -238,7 +245,15 @@ const handlers = HttpApiBuilder.group(local, 'authCas', (handlers) =>
             ...(query.returnTo === undefined ? {} : { returnPath: query.returnTo }),
             payload: (state) => {
               service = serviceFor(callback.value, Redacted.value(state))
-              return Redacted.make(service)
+              return Redacted.make(
+                afresh
+                  ? JSON.stringify({
+                      service,
+                      userId: viewer!.userId,
+                      sessionId: viewer!.sessionId,
+                    })
+                  : service,
+              )
             },
           })
           .pipe(Effect.result)
@@ -271,6 +286,28 @@ const handlers = HttpApiBuilder.group(local, 'authCas', (handlers) =>
           return failed(new SignInFlowRejected())
         }
         const flow = taken.success
+        const payload = Redacted.value(flow.payload!)
+        let service = payload
+        let owner: { userId: string; sessionId: string } | undefined
+        if (payload.startsWith('{')) {
+          try {
+            const parsed = JSON.parse(payload) as Record<string, unknown>
+            if (
+              typeof parsed.service !== 'string' ||
+              typeof parsed.userId !== 'string' ||
+              typeof parsed.sessionId !== 'string'
+            )
+              return failed(new SignInFlowRejected())
+            service = parsed.service
+            owner = { userId: parsed.userId, sessionId: parsed.sessionId }
+          } catch {
+            return failed(new SignInFlowRejected())
+          }
+          const viewer = (yield* CurrentViewer).principal
+          if (viewer?.userId !== owner.userId || viewer.sessionId !== owner.sessionId)
+            return failed(new SignInFlowRejected())
+          if (!settings.renew) return failed(new SignInMethodUnavailable())
+        }
         // a return without a ticket - the person gave up, or the server
         // declined to sign them in - and anything that is not a service
         // ticket are refused without asking the server
@@ -278,7 +315,7 @@ const handlers = HttpApiBuilder.group(local, 'authCas', (handlers) =>
           yield* sessions.failAttempt(provider, { reason: 'external-rejected' })
           return failed(new CasTicketRejected())
         }
-        const answer = yield* validateTicket(settings, Redacted.value(flow.payload!), query.ticket)
+        const answer = yield* validateTicket(settings, service, query.ticket)
         if (answer.kind === 'unavailable') {
           yield* Effect.logWarning('cas validation did not answer').pipe(
             Effect.annotateLogs({ provider: provider.code, reason: answer.reason }),
@@ -315,10 +352,13 @@ const handlers = HttpApiBuilder.group(local, 'authCas', (handlers) =>
           yield* sessions.failAttempt(provider, { reason: 'user-not-found' })
           return failed(new SignInPersonNotFound())
         }
+        if (owner !== undefined && person.userId !== owner.userId)
+          return failed(new SignInFlowRejected())
         const user = yield* sessions.completeLogin({
           tenantId: provider.tenantId,
           providerId: provider.providerId,
           userId: person.userId,
+          ...(owner === undefined ? {} : { reauthenticationSessionId: owner.sessionId }),
           // the ticket was validated under these settings: with renew, the
           // server refuses one it issued from a standing session
           present: settings.renew === true,

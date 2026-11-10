@@ -28,7 +28,7 @@ import { createSessionToken, hashSessionToken } from '../session.ts'
 import { pageMaySignOut } from './session.ts'
 import { createHash, timingSafeEqual } from 'node:crypto'
 import { Secrets } from '@qualy/plugin-secrets/plugin'
-import { AuthConfig, SHARED_DEVICE_TTL_SECONDS } from './auth-config.ts'
+import { AuthConfig, SHARED_DEVICE_IDLE_SECONDS, SHARED_DEVICE_TTL_SECONDS } from './auth-config.ts'
 import { type SignInDevice } from '@qualy/auth-contract/device'
 import { signInDevice } from './sign-in-device.ts'
 import { configOf, entranceSecrets, makeReadiness } from './readiness.ts'
@@ -1286,6 +1286,7 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
         bindingId?: string
         bindingCredentialHash?: string
         bindingDisplayLabel?: string
+        reauthenticationSessionId?: string
         grants?: readonly SessionGrantInput[]
         present?: boolean
       }) {
@@ -1331,6 +1332,8 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
         // it made, and not the door's settings read again here: those may
         // have moved between that check and this line
         const present = input.present === true
+        const request = yield* HttpServerRequest.HttpServerRequest
+        const originalToken = request.cookies[config.sessionCookieName]
         // one transaction: the session, the binding's last-used stamp, what
         // the session keeps from the other side and the sign-in event exist
         // together or not at all
@@ -1342,6 +1345,28 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
             // ends the sessions it opened; one written after that would
             // outlive it, so the door is asked again, held, here.
             yield* shareTenant(input.tenantId).pipe(Effect.orDie)
+            if (input.reauthenticationSessionId !== undefined) {
+              if (originalToken === undefined) return undefined
+              const held = yield* db
+                .query((k) =>
+                  k
+                    .selectFrom('Session')
+                    .select('id')
+                    .where('tenantId', '=', input.tenantId)
+                    .where('userId', '=', input.userId)
+                    .where('id', '=', input.reauthenticationSessionId!)
+                    .where('tokenHash', '=', hashSessionToken(originalToken))
+                    .where('expiresAt', '>', sql<Date>`now()`)
+                    .where(sql<boolean>`case when device = 'shared'
+                    then coalesce(last_used_at, created_at) > now() - make_interval(secs => ${SHARED_DEVICE_IDLE_SECONDS})
+                    else ${config.sessionIdleSeconds === undefined ? sql<boolean>`true` : sql<boolean>`coalesce(last_used_at, created_at) > now() - make_interval(secs => ${config.sessionIdleSeconds})`}
+                    end`)
+                    .forShare()
+                    .executeTakeFirst(),
+                )
+                .pipe(Effect.orDie)
+              if (held === undefined) return undefined
+            }
             let refused: SignInFailureReason | undefined
             const currentUser = yield* loadUser(input.tenantId, input.userId)
             if (currentUser === undefined) {
@@ -1435,7 +1460,6 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
         }
         // a browser nobody chose a language in opens in the person's own from
         // now on; one somebody did choose in is theirs, and keeps it
-        const request = yield* HttpServerRequest.HttpServerRequest
         if (chosenLocaleOf(request.cookies) === undefined) {
           const preferred = yield* preferredLocaleOf(input.tenantId, input.userId).pipe(
             Effect.orDie,

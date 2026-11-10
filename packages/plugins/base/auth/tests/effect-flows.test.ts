@@ -73,7 +73,10 @@ const campus: LoginDriver = {
   callback: ({ code }) => `/api/auth/campus/${code}/callback`,
   // an entrance told to ask for the password every time
   provesPresence: ({ config }) => config['renew'] === true,
+  reauthenticate: ({ code }) => `/api/auth/campus/${code}/start?intent=reauthenticate`,
 }
+const { reauthenticate: _explicitReauthentication, ...campusWithoutReauthentication } = campus
+const legacyCampus: LoginDriver = { ...campusWithoutReauthentication, type: 'legacy-campus' }
 
 const PUBLIC_URL = 'https://qualy.example.edu'
 
@@ -96,9 +99,11 @@ const stack = (url: string, publicUrl: string | null) =>
       Layer.provideMerge(
         Layer.mergeAll(
           databaseFor(url, { entities: authClosure }),
-          Layer.mergeAll(registerLoginDriver(localDriver), registerLoginDriver(campus)).pipe(
-            Layer.provideMerge(loginDriversLayer),
-          ),
+          Layer.mergeAll(
+            registerLoginDriver(localDriver),
+            registerLoginDriver(campus),
+            registerLoginDriver(legacyCampus),
+          ).pipe(Layer.provideMerge(loginDriversLayer)),
           uiLayer,
           Layer.succeed(
             AuthConfig,
@@ -1194,6 +1199,16 @@ describe.runIf(postgresAvailable)('showing it is you again', () => {
             const asked = () => iam.self.reauthentication(own)
             // no password, an address never proven, no way in that asks again
             const nothing = yield* asked()
+            const legacy = one<{ id: string }>(
+              yield* runSql(sql`
+              insert into auth_providers (tenant_id, code, type, name, config)
+              values (${f.tenant}, 'legacy-campus', 'legacy-campus', 'Legacy', '{"renew": true}'::jsonb)
+              returning id`),
+            ).id
+            yield* runSql(sql`
+              insert into user_auth_bindings (tenant_id, user_id, auth_provider_id, subject)
+              values (${f.tenant}, ${f.person}, ${legacy}, 'legacy-ada')`)
+            const unsafe = yield* asked()
             yield* runSql(
               sql`update auth_providers set config = '{"renew": true}' where id = ${f.door.id}`,
             )
@@ -1207,11 +1222,12 @@ describe.runIf(postgresAvailable)('showing it is you again', () => {
               insert into user_auth_bindings (tenant_id, user_id, auth_provider_id, subject, credential_hash)
               values (${f.tenant}, ${f.person}, ${f.local.id}, null, 'digest')`)
             const password = yield* asked()
-            return { nothing, again, address, password }
+            return { nothing, unsafe, again, address, password }
           }),
         ),
       )
       expect(answer.nothing).toMatchObject({ method: 'unavailable', entrances: [] })
+      expect(answer.unsafe).toMatchObject({ method: 'unavailable', entrances: [] })
       // the seeded session showed it a moment ago
       expect(answer.nothing.until).not.toBeNull()
       expect(answer.again).toMatchObject({
@@ -1221,7 +1237,7 @@ describe.runIf(postgresAvailable)('showing it is you again', () => {
             providerId: f.door.id,
             name: 'Campus',
             type: 'campus',
-            href: '/api/auth/campus/campus/start',
+            href: '/api/auth/campus/campus/start?intent=reauthenticate',
           },
         ],
       })

@@ -60,5 +60,5 @@ export const authOidcApiGroup = HttpApiGroup.make('authOidc')
         session_state: received,
       }),
       success: HttpApiSchema.Empty(303),
-    }),
+    }).middleware(Viewer),
   )

@@ -1,6 +1,7 @@
 import { Schema } from 'effect'
 import { HttpApiEndpoint, HttpApiGroup, HttpApiSchema } from 'effect/http-api'
 import { RETURN_PATH_MAX_LENGTH } from '@qualy/ui-contract/return-path'
+import { Viewer } from '@qualy/auth-contract/session'
 
 // Two addresses a browser is sent to, never called by a script: `start` sends
 // the person to the CAS server, and the server sends them back to `callback`
@@ -49,10 +50,11 @@ export const authCasApiGroup = HttpApiGroup.make('authCas')
       // where to land once signed in; anything but a path inside this
       // application is dropped when the flow starts
       query: Schema.Struct({
+        intent: Schema.optional(Schema.Literal('reauthenticate')),
         returnTo: Schema.optional(Schema.String.check(Schema.isMaxLength(RETURN_PATH_MAX_LENGTH))),
       }),
       success: HttpApiSchema.Empty(302),
-    }),
+    }).middleware(Viewer),
   )
   .add(
     HttpApiEndpoint.get('callback', '/auth/cas/:providerCode/callback', {
@@ -62,5 +64,5 @@ export const authCasApiGroup = HttpApiGroup.make('authCas')
         ticket: received,
       }),
       success: HttpApiSchema.Empty(303),
-    }),
+    }).middleware(Viewer),
   )

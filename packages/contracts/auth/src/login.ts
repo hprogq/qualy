@@ -388,9 +388,9 @@ export interface LoginDriver {
   }) => boolean
   /**
    * Where somebody is sent to show it is them again through this entrance,
-   * as a same-origin path of one of the driver's own routes. Absent means
-   * the address its sign-in presentation sends people to, for an entrance
-   * every sign-in of which asks for the credentials.
+   * as a same-origin path of one of the driver's own routes. That route must
+   * bind the initiating user and session. Absent means it cannot be offered
+   * as a reauthentication method.
    */
   readonly reauthenticate?: (provider: { readonly code: string }) => string
 }
@@ -906,6 +906,8 @@ export interface LoginSessionsShape {
     bindingCredentialHash?: string
     /** what the bound account is called over there now, when the driver learned it */
     bindingDisplayLabel?: string
+    /** The initiating session for a fresh sign-in that must remain valid. */
+    reauthenticationSessionId?: string
     /** what the new session keeps from the other side, written with it */
     grants?: readonly SessionGrantInput[]
     /**
