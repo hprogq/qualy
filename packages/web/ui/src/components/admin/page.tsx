@@ -4,7 +4,8 @@ import { ArrowLeftIcon } from 'lucide-react'
 import type { StyleXStyles } from '@stylexjs/stylex'
 import { tokens } from '../../theme/tokens.stylex.ts'
 
-const HEADER_ROOM = '@container page-heading (min-width: 28rem)'
+// Allow room for the title, a full status line and its action together.
+const HEADER_ROOM = '@container page-heading (min-width: 40rem)'
 
 const styles = stylex.create({
   // sized to the line it sits in, not to itself: no vertical padding, no

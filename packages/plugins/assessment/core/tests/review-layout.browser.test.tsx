@@ -1863,7 +1863,7 @@ describe('the queue, a page at a time', () => {
     await expect.element(group()).toHaveAttribute('data-key', ITEM_ID)
   })
 
-  it.each([390, 1440])(
+  it.each([390, 500, 1440])(
     'keeps the tabs in place when the review action arrives at %ipx',
     async (width) => {
       await page.viewport(width, 844)
@@ -1872,7 +1872,11 @@ describe('the queue, a page at a time', () => {
       const delayed = new Promise<typeof answer>((done) => {
         resolve = done
       })
-      await withBench(both(), '', { listReviewInbox: () => Effect.promise(() => delayed) })
+      await withBench(both(), '', {
+        listReviewInbox: () => Effect.promise(() => delayed),
+        listAwaitingSupplements: () =>
+          Effect.succeed({ items: [], total: 3, page: 1, pageSize: 10, answered: 0 }),
+      })
       const start = page.getByTestId('review-start')
       await expect.element(start).not.toBeInTheDocument()
       const header = page.getByTestId('batch-band')
@@ -1890,14 +1894,11 @@ describe('the queue, a page at a time', () => {
         return box.top + box.height / 2
       }
       expect(Math.abs(centerY(title) - centerY(start.element()))).toBeLessThan(1)
-      if (width === 390) {
-        expect(stats.getBoundingClientRect().top).toBeGreaterThan(
-          title.getBoundingClientRect().bottom,
-        )
-        // A mid-width window already has enough room, even without the desktop shell.
-        await page.viewport(500, 844)
-        await expect.poll(() => Math.abs(centerY(title) - centerY(stats))).toBeLessThan(1)
-        expect(Math.abs(centerY(title) - centerY(start.element()))).toBeLessThan(1)
+      if (width < 768) {
+        const bounds = stats.getBoundingClientRect()
+        expect(bounds.top).toBeGreaterThan(title.getBoundingClientRect().bottom)
+        expect(bounds.left).toBeCloseTo(title.getBoundingClientRect().left, 0)
+        expect(bounds.right).toBeLessThan(header.element().getBoundingClientRect().right)
       } else {
         expect(Math.abs(centerY(title) - centerY(stats))).toBeLessThan(1)
       }
