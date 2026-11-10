@@ -57,6 +57,91 @@ describe.runIf(postgresAvailable).concurrent('recording one finding on a group',
       (result) => (result as unknown as { rows: { id: string; user_id: string }[] }).rows,
     )
 
+  it('keeps moved-unit roster selections on the frozen membership used by preview and write', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const { f, g, item, revision } = yield* ready('ar-moved-unit')
+          const assessment = yield* Assessment
+          const admin = f.principal(f.admin)
+          const recorder = f.principal(f.recorder)
+          const before = yield* assessment.listParticipants(
+            f.t,
+            g.batch.id,
+            { orgNodeIds: [f.classA], limit: 50 },
+            recorder,
+          )
+          const destination = one<{ id: string; path: string }>(
+            yield* runSql(
+              sql`select n.parent_id as id, p.path::text as path from org_nodes n join org_nodes p on p.tenant_id=n.tenant_id and p.id=n.parent_id join users u on u.tenant_id=n.tenant_id and u.primary_org_node_id=n.id where n.tenant_id=${f.t} and u.id=${f.s3}`,
+            ),
+          )
+          yield* runSql(
+            sql`update org_nodes set parent_id=${destination.id}, path=(${destination.path} || '.moved_a')::ltree where tenant_id=${f.t} and id=${f.classA}`,
+          )
+          const list = yield* assessment.listParticipants(
+            f.t,
+            g.batch.id,
+            { orgNodeIds: [f.classA], limit: 50 },
+            recorder,
+          )
+          const self = yield* assessment.listParticipants(
+            f.t,
+            g.batch.id,
+            { orgNodeIds: [f.classA], orgScope: 'self', limit: 50 },
+            recorder,
+          )
+          const destinationList = yield* assessment.listParticipants(
+            f.t,
+            g.batch.id,
+            { orgNodeIds: [destination.id], limit: 50 },
+            admin,
+          )
+          const restricted = yield* assessment.listParticipants(
+            f.t,
+            g.batch.id,
+            { orgNodeIds: [destination.id], limit: 50 },
+            recorder,
+          )
+          const input = {
+            itemId: item.id,
+            expectedItemRevisionId: revision,
+            target: { kind: 'organization' as const, orgNodeIds: [f.classA], userTypeIds: [] },
+            payload: {},
+            basis: 'b',
+          }
+          const preview = yield* assessment.previewAdministrativeRecord(
+            f.t,
+            g.batch.id,
+            input,
+            recorder,
+          )
+          const written = yield* assessment.recordAdministrativeBatch(
+            f.t,
+            g.batch.id,
+            {
+              ...input,
+              excludedParticipantIds: preview.blocked.map((row) => row.participantId),
+              expectedTargetFingerprint: preview.targetFingerprint,
+            },
+            recorder,
+          )
+          return { before, list, self, destinationList, restricted, preview, written }
+        }),
+      ),
+    )
+    expect(result.before).toHaveLength(3)
+    expect(result.list.map((row) => row.id)).toEqual(result.before.map((row) => row.id))
+    expect(result.self.map((row) => row.id)).toEqual(result.before.map((row) => row.id))
+    expect(result.destinationList.map((row) => row.id)).not.toEqual(
+      expect.arrayContaining(result.before.map((row) => row.id)),
+    )
+    expect(result.restricted).toEqual([])
+    expect(result.preview.eligibleCount).toBe(result.list.length)
+    expect(result.written.recordedCount).toBe(result.list.length)
+  })
+
   it('binds the document it cites, so the staged sweep cannot take it away', async () => {
     const found = ok(
       await run(

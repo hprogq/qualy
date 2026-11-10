@@ -3258,8 +3258,10 @@ export const listParticipantsPage = (
               .where((q) =>
                 filter.orgScope === 'self'
                   ? q('BatchParticipant.assessmentAnchorNodeId', '=', q.ref('scope.id'))
-                  : // ltree containment, PostgreSQL's own operator
-                    sql<boolean>`${q.ref('BatchParticipant.anchorPath')} <@ ${q.ref('scope.path')}`,
+                  : sql<boolean>`exists (
+                      select 1 from jsonb_array_elements(${q.ref('BatchParticipant.anchorLineage')}) as step
+                       where (step.value ->> 'nodeId')::uuid = ${q.ref('scope.id')}
+                    )`,
               ),
           ),
         )
