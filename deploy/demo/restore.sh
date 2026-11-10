@@ -210,6 +210,15 @@ if [ "$keep_sign_in" = true ]; then
       grep -Eqx 'attachments/[0-9a-f-]{36}/[0-9a-f-]{36}' ||
       refuse "a kept icon is stored under an unexpected key; the serving color has not been stopped"
   done
+  step="saving and checking the kept local icons"
+  echo "$step"
+  compose run --rm --no-deps -T --user 0:0 --entrypoint sh \
+    -e QUALY_KEEP_KEYS="$keep_local_keys" tools -s prepare /var/lib/qualy/storage \
+    < "$here/demo/restore-storage.sh"
+else
+  step="checking for an unfinished kept-icon restore"
+  compose run --rm --no-deps -T --user 0:0 --entrypoint sh tools \
+    -s check /var/lib/qualy/storage < "$here/demo/restore-storage.sh"
 fi
 
 step="stopping the serving color"
@@ -235,20 +244,10 @@ echo "$step"
 # The server image, as root, on the storage volume: the volume is found by
 # its role in compose.yaml rather than by a project-prefixed name.
 compose run --rm --no-deps -T --user 0:0 --entrypoint sh \
-  -e QUALY_KEEP_KEYS="$keep_local_keys" -v "$baseline:/in:ro" tools -c '
-    set -eu
-    root=/var/lib/qualy/storage
-    rm -rf "$root/.incoming"
-    mkdir "$root/.incoming"
-    tar -xzf /in/storage.tar.gz -C "$root/.incoming"
-    for key in $QUALY_KEEP_KEYS; do
-      mkdir -p "$root/.incoming/${key%/*}"
-      cp -p "$root/$key" "$root/.incoming/$key"
-    done
-    find "$root" -mindepth 1 -maxdepth 1 ! -name .incoming -exec rm -rf {} +
-    find "$root/.incoming" -mindepth 1 -maxdepth 1 -exec mv {} "$root/" \;
-    rmdir "$root/.incoming"
-    chown -R 1000:1000 "$root"'
+  -e QUALY_KEEP_KEYS="$keep_local_keys" -v "$baseline:/in:ro" tools \
+  -s swap /var/lib/qualy/storage /in/storage.tar.gz < "$here/demo/restore-storage.sh"
+compose run --rm --no-deps -T --user 0:0 --entrypoint sh tools -c \
+  'chown -R 1000:1000 /var/lib/qualy/storage'
 
 step="applying the release's migrations"
 echo "$step"
@@ -279,6 +278,12 @@ else
   step="starting blue, the first color"
   echo "$step"
   take_over blue "$release" '' || refuse "blue did not start"
+fi
+
+if [ "$keep_sign_in" = true ]; then
+  step="removing the saved local icons"
+  compose run --rm --no-deps -T --user 0:0 --entrypoint sh tools \
+    -s finish /var/lib/qualy/storage < "$here/demo/restore-storage.sh"
 fi
 
 step="done"

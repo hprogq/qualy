@@ -24,6 +24,7 @@ if [ "$1" = compose ]; then
   case "$*" in
     *'up -d server-green '*) [ "\${FAKE_FAIL_TARGET_START:-}" != 1 ] || exit 1 ;;
     *'web-release collect '*) [ "\${FAKE_FAIL_COLLECTION:-}" != 1 ] || exit 1 ;;
+    *'tools -s prepare /var/lib/qualy/storage'*) [ "\${FAKE_FAIL_KEEP_FILES:-}" != 1 ] || { echo 'kept icon missing' >&2; exit 1; } ;;
     *'stop -t 40 server-blue '*) [ "\${FAKE_FAIL_OLD_STOP:-}" != 1 ] || exit 1 ;;
   esac
   case "$*" in
@@ -302,6 +303,19 @@ describe('the demonstration baseline account domain', () => {
     expect(fs.readFileSync(path.join(fake, 'docker.log'), 'utf8')).toContain(
       `QUALY_KEEP_KEYS=${key}`,
     )
+  })
+
+  it('does not stop the serving color if a kept local icon cannot be saved', () => {
+    const key =
+      'attachments/0190a7a0-0000-7000-8000-000000000001/0190a7a0-0000-7000-8000-000000000002'
+    const ran = restore('mail.example.test', { FAKE_KEEP_KEYS: key, FAKE_FAIL_KEEP_FILES: '1' }, [
+      '--keep-sign-in',
+    ])
+    expect(ran.status).not.toBe(0)
+    expect(ran.stderr).toContain('kept icon missing')
+    const asked = fs.readFileSync(path.join(fake, 'docker.log'), 'utf8')
+    expect(asked).toContain('tools -s prepare /var/lib/qualy/storage')
+    expect(asked).not.toContain('stop -t')
   })
 
   it('refuses a kept image under an unexpected key while the site still serves', () => {
