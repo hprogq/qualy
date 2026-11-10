@@ -1,3 +1,4 @@
+import { state_loading } from '@qualy/web-i18n/messages'
 import type * as React from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { Loader } from '@qualy/brand/loader'
@@ -49,7 +50,7 @@ function Spinner({ className, style, xstyle, ...rest }: SpinnerProps) {
       size={16}
       data-slot="spinner"
       role="status"
-      aria-label="Loading"
+      aria-label={state_loading()}
       {...rest}
       {...seatOf(stylex.props(xstyle), className, style)}
     />
@@ -61,7 +62,7 @@ function PageLoading() {
   return (
     <div {...stylex.props(styles.page)} role="status" data-band-foot="">
       <Loader size={24} xstyle={styles.lateArrival} />
-      <VisuallyHidden>Loading</VisuallyHidden>
+      <VisuallyHidden>{state_loading()}</VisuallyHidden>
     </div>
   )
 }

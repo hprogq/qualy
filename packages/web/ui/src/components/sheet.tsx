@@ -1,4 +1,5 @@
 'use client'
+import { action_close } from '@qualy/web-i18n/messages'
 
 import * as React from 'react'
 import { Drawer as MDrawer, FocusTrap } from '@mantine/core'
@@ -505,7 +506,7 @@ function SheetContent({
             onClick={() => setOpen(false)}
           >
             <XIcon />
-            <VisuallyHidden>Close</VisuallyHidden>
+            <VisuallyHidden>{action_close()}</VisuallyHidden>
           </Button>
         )}
       </MDrawer.Content>

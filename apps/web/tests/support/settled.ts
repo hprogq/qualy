@@ -1,6 +1,9 @@
 import { beforeEach } from 'vitest'
 import { cleanup } from 'vitest-browser-react'
 
+// Standalone widgets also render inside a document with a fixed language.
+document.documentElement.dataset.locale ??= 'en-US'
+
 // Every test opens on a quiet stage. The library unmounts the previous
 // test's tree in its own beforeEach - which runs after this one, so the
 // stage is cleared here first (cleanup is idempotent), then watched until

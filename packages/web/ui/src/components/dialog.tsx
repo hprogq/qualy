@@ -1,4 +1,5 @@
 'use client'
+import { action_close, action_closeDialog } from '@qualy/web-i18n/messages'
 
 import * as React from 'react'
 import clsx from 'clsx'
@@ -413,7 +414,7 @@ function DialogContent({
             onClick={() => setOpen(false)}
           >
             <XIcon />
-            <VisuallyHidden>Close</VisuallyHidden>
+            <VisuallyHidden>{action_closeDialog()}</VisuallyHidden>
           </Button>
         )}
       </MModal.Content>
@@ -472,7 +473,7 @@ function DialogFooter({
       {children}
       {showCloseButton && (
         <Button variant="outline" onClick={() => setOpen(false)}>
-          Close
+          {action_close()}
         </Button>
       )}
     </div>

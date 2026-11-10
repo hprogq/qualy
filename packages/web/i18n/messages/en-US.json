@@ -3,6 +3,7 @@
   "action_back": "Back",
   "action_cancel": "Cancel",
   "action_close": "Close",
+  "action_closeDialog": "Close dialog",
   "answer_yes": "Yes",
   "answer_no": "No",
   "list_separator": ", ",

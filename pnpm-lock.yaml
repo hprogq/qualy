@@ -3103,6 +3103,9 @@ importers:
       '@qualy/date-format':
         specifier: workspace:*
         version: link:../../core/date-format
+      '@qualy/web-i18n':
+        specifier: workspace:*
+        version: link:../i18n
       '@stylexjs/stylex':
         specifier: 'catalog:'
         version: 0.19.1
