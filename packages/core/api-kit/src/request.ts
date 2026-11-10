@@ -1,4 +1,4 @@
-import { Cause, Clock, Context, Effect, Exit, Layer, Metric, Option, Tracer } from 'effect'
+import { Cause, Clock, Context, Data, Effect, Exit, Layer, Metric, Option, Tracer } from 'effect'
 import {
   HttpEffect,
   HttpMiddleware,
@@ -655,6 +655,10 @@ export const endedStatus = (exit: Exit.Exit<{ readonly status: number }, unknown
  * event stream reached the trace backend as an error whose message was its
  * own 200.
  */
+class RedactedUploadFailure extends Data.TaggedError('RedactedUploadFailure')<{
+  readonly message: string
+}> {}
+
 const spanExitOf = <A, E>(
   exit: Exit.Exit<A, E>,
   span: { attribute(key: string, value: unknown): void },
@@ -671,7 +675,7 @@ const spanExitOf = <A, E>(
   // An HTTP error may embed the original address in its message and stack,
   // including for a route that never reached its handler.
   if (Option.isSome(rest) && safeRequestPath(url).endsWith('/:redacted')) {
-    return Exit.fail(new Error('request failed on an upload path'))
+    return Exit.fail(new RedactedUploadFailure({ message: 'request failed on an upload path' }))
   }
   return Option.isSome(rest) ? Exit.failCause(rest.value) : Exit.succeed(response)
 }

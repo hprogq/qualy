@@ -563,6 +563,7 @@ describe('the span a request exports', () => {
     expect(response.status).toBe(500)
     const span = await exportedSpan((candidate) => candidate.traceId === inbound)
     expect(span.status?.code).toBe(2)
+    expect(span.status?.message).toContain('request failed on an upload path')
     expect(JSON.stringify(span)).not.toContain(ticket)
   })
 
