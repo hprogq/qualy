@@ -482,26 +482,6 @@ const styles = stylex.create({
     color: { default: tokens.mutedForeground, ':hover': tokens.foreground },
     cursor: 'pointer',
   },
-  // the words a packager raised, kept for whoever needs them, on one line
-  rawLine: {
-    display: 'flex',
-    alignItems: 'flex-start',
-    gap: 8,
-    margin: 0,
-    paddingInline: 16,
-    paddingBottom: 10,
-  },
-  rawWords: {
-    minWidth: 0,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-    // the font stack is spelled here: stylex.create cannot read a constant
-    // another module exported
-    fontFamily: 'ui-monospace, SFMono-Regular, "JetBrains Mono", Menlo, Consolas, monospace',
-    fontSize: 11.5,
-    color: tokens.mutedForeground,
-  },
   stripBad: {
     display: 'inline-flex',
     alignItems: 'center',
@@ -669,8 +649,6 @@ interface PublishFindings {
   readonly issues?: readonly { path: string; reason: string }[]
   /** the guest's own words when contract extraction itself threw */
   readonly detail?: string
-  /** the packager's own words when bundling failed */
-  readonly packager?: string
 }
 
 /** which refusal an error is, when it is one of the api's */
@@ -687,11 +665,6 @@ const findingsOf = (error: unknown): PublishFindings => {
     ...(carried.report === undefined ? {} : { report: carried.report }),
     ...(carried.issues === undefined ? {} : { issues: carried.issues }),
     ...(carried.detail === undefined ? {} : { detail: carried.detail }),
-    // every error has a message; only the packager's refusal carries one worth showing
-    ...(tagOf(error) === 'ASSESSMENT_FORMULA_BUNDLE_FAILED' &&
-    typeof (error as { message?: unknown }).message === 'string'
-      ? { packager: (error as { message: string }).message }
-      : {}),
   }
 }
 
@@ -2226,8 +2199,6 @@ function FormulaEditor() {
   const issues = held((from) => from.issues).issues ?? []
   const contractDetail =
     findingsHeld && findings.detail !== undefined ? findings.detail : previewFindings.detail
-  const packagerWords =
-    findingsHeld && findings.packager !== undefined ? findings.packager : previewFindings.packager
 
   // the draft contract, as the try-run and the tabs speak of it
   const structure: 'blank' | 'synced' | 'refused' | 'loading' | 'stale' = blank
@@ -2928,21 +2899,6 @@ function FormulaEditor() {
             ))}
           </tbody>
         </table>
-      )}
-      {packagerWords === undefined ? null : (
-        <p {...stylex.props(styles.rawLine)}>
-          <span {...stylex.props(styles.rawWords)}>{packagerWords}</span>
-          <button
-            type="button"
-            data-testid="formula-packager-copy"
-            aria-label={m.editor_copyTechnicalDetail()}
-            title={m.editor_copyTechnicalDetail()}
-            onClick={() => copyWords(packagerWords)}
-            {...stylex.props(styles.iconAction)}
-          >
-            <CopyIcon size={13} aria-hidden />
-          </button>
-        </p>
       )}
     </>
   )

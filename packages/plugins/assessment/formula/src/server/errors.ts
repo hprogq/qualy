@@ -232,7 +232,7 @@ export class FormulaTypecheckFailed extends Schema.TaggedError<FormulaTypecheckF
 
 export class FormulaBundleFailed extends Schema.TaggedError<FormulaBundleFailed>()(
   'ASSESSMENT_FORMULA_BUNDLE_FAILED',
-  { message: Schema.String },
+  {},
   { httpApiStatus: 422, identifier: 'AssessmentFormulaBundleFailed' },
 ) {}
 

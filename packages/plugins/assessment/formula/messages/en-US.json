@@ -461,7 +461,7 @@
   "error_sourceRefused": "A formula may only import '@qualy/formula'.",
   "error_typecheckFailed": "The source does not compile; see the compile results.",
   "error_contractInvalid": "The input and output schemas must stay within the supported kinds.",
-  "error_bundleFailed": "The source could not be packaged; see the compile results.",
+  "error_bundleFailed": "The source could not be packaged. Check the imports and try again.",
   "error_executionLimit": "Compiling or extracting the contract took more than the allowed resources.",
   "error_testFailed": "Publishing needs every example to pass, and at least one example.",
   "error_compileUnavailable": "The compile service is unavailable. Try again shortly.",

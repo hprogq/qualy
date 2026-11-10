@@ -76,7 +76,7 @@ export const fromWire = (failure: AuthoringCompileError): AuthoringRefusal => {
         truncated: failure.truncated,
       })
     case 'CompileBundleFailed':
-      return new FormulaBundleFailed({ message: failure.message })
+      return new FormulaBundleFailed()
     case 'CompileBusy':
       return new FormulaCompileUnavailable()
   }

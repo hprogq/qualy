@@ -461,7 +461,7 @@
   "error_sourceRefused": "公式只能导入 @qualy/formula。",
   "error_typecheckFailed": "代码编译未通过，详情见编译结果。",
   "error_contractInvalid": "输入或输出参数使用了不支持的类型或配置。",
-  "error_bundleFailed": "代码打包失败，详情见编译结果。",
+  "error_bundleFailed": "代码打包失败，请检查导入语句后重试。",
   "error_executionLimit": "编译或解析参数结构超出资源限制，请精简公式后重试。",
   "error_testFailed": "发布前至少需要一条示例，且所有示例都必须通过。",
   "error_compileUnavailable": "编译服务暂时不可用，请稍后再试。",
