@@ -4,6 +4,7 @@ import { insideApi } from '@qualy/api-kit/route-fallback'
 import {
   clientWentAway,
   onResponseEstablished,
+  safeRequestPath,
   RequestContext,
   type EstablishedResponse,
   type RequestContextShape,
@@ -42,11 +43,10 @@ const strip = (url: string): string => {
  * concrete address follows the request id, which every line already carries
  * and every handler's own logs repeat.
  *
- * A request no route matched has no endpoint bound, and its raw path is
- * logged: there is no parameter in it to have leaked.
+ * Before an endpoint is bound, upload path credentials are redacted too.
  */
 const endpointOf = (context: RequestContextShape | undefined, path: string): string =>
-  context?.endpoint ?? path
+  context?.endpoint ?? safeRequestPath(path)
 
 // the settings speak LogLevel, which admits None (say nothing) and All
 // (say everything); logWithLevel speaks Severity, which admits neither
@@ -61,6 +61,7 @@ export const accessLog =
     Effect.withFiber((fiber) => {
       const request = Context.getUnsafe(fiber.context, HttpServerRequest.HttpServerRequest)
       const path = strip(request.url)
+      const sensitive = safeRequestPath(path).endsWith('/:redacted')
       const bound = Option.getOrUndefined(Context.getOption(fiber.context, RequestContext))
       if (
         settings.mode === 'off' ||
@@ -114,9 +115,10 @@ export const accessLog =
             const failed = Option.isSome(cause) && !clientWentAway(cause.value)
             const message = `${established.protocol} ${endpointOf(bound, path)} ${elapsed}ms (connection ${failed ? 'failed' : 'closed'})`
             const log = failed
-              ? // the cause itself, not its printout: an exported record writes
-                // a cause the way telemetry may carry it, and a string it whole
-                Effect.logError(message, cause.value)
+              ? // A cause can embed the original request address.
+                sensitive
+                ? Effect.logError(message)
+                : Effect.logError(message, cause.value)
               : Effect.logDebug(message)
             return Effect.andThen(Effect.annotateLogs(log, 'source', 'connection'), exit)
           }
@@ -143,7 +145,7 @@ export const accessLog =
             interrupted || (isEventStream(response) && response.status < 400)
               ? Effect.logDebug(line(interrupted ? 'client closed' : response.status))
               : response.status >= 500
-                ? Option.isSome(remainder)
+                ? Option.isSome(remainder) && !sensitive
                   ? Effect.logError(line(response.status), remainder.value)
                   : Effect.logError(line(response.status))
                 : response.status === 429

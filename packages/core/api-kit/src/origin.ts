@@ -3,6 +3,7 @@ import { HttpServerRequest, HttpServerResponse } from 'effect/http'
 import {
   publicHostOf,
   publicOriginOf,
+  safeRequestPath,
   trustedProxies,
   type AddressedRequest,
   type TrustedProxies,
@@ -77,11 +78,6 @@ const refused = HttpServerResponse.schemaJson(RequestOriginRefused)(
   { status: 403 },
 ).pipe(Effect.orDie)
 
-const pathOf = (url: string): string => {
-  const at = url.search(/[?#]/)
-  return at === -1 ? url : url.slice(0, at)
-}
-
 /**
  * Serve middleware that refuses unsafe requests from other origins before
  * the router sees them. Innermost of the host's chain: a refusal is logged
@@ -114,7 +110,7 @@ export const requestOriginGuard = (options?: {
       return Effect.logWarning('request refused: not from this application').pipe(
         Effect.annotateLogs({
           method: request.method,
-          path: pathOf(request.url),
+          path: safeRequestPath(request.url),
           secFetchSite: secFetchSite ?? null,
           origin: origin ?? null,
           addressed: publicOrigin ?? null,

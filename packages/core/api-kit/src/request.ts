@@ -479,7 +479,7 @@ export const webSocketSession = Effect.fnUntraced(function* <A, E, R>(
  * the way out, the path and the status.
  *
  * The path is the same rule the access log follows: the route template when
- * a route matched, the concrete path only when none did. A path segment can
+ * a route matched, a sanitized path when none did. A path segment can
  * be a credential too - the local upload door's ticket is the whole
  * authority to write those bytes - and the concrete path went to the trace
  * backend for every upload while the access log had stopped writing it.
@@ -520,7 +520,10 @@ export const serverSpans = (options?: {
             const route = span.attributes.get('http.route')
             if (typeof route === 'string')
               (span as { name: string }).name = `${request.method} ${route}`
-            span.attribute('url.path', typeof route === 'string' ? route : pathOf(request.url))
+            span.attribute(
+              'url.path',
+              typeof route === 'string' ? route : safeRequestPath(request.url),
+            )
           }
           const observers: ((response: EstablishedResponse) => Effect.Effect<void>)[] = []
           let established = false
@@ -566,7 +569,7 @@ export const serverSpans = (options?: {
                 Effect.sync(() => {
                   if (span.status._tag === 'Ended') return
                   writePath()
-                  span.end(now, spanExitOf(exit, span))
+                  span.end(now, spanExitOf(exit, span, request.url))
                 }),
               ),
             ),
@@ -655,6 +658,7 @@ export const endedStatus = (exit: Exit.Exit<{ readonly status: number }, unknown
 const spanExitOf = <A, E>(
   exit: Exit.Exit<A, E>,
   span: { attribute(key: string, value: unknown): void },
+  url: string,
 ): Exit.Exit<unknown, unknown> => {
   if (Exit.isSuccess(exit)) return exit
   // no response came back: a client gone before one was written is a 499,
@@ -664,19 +668,53 @@ const spanExitOf = <A, E>(
   // a client that left is not this service failing: the span ends as the
   // answer it was last given, as the log and the histogram say it
   if (clientWentAway(exit.cause)) return Exit.succeed(response)
+  // An HTTP error may embed the original address in its message and stack,
+  // including for a route that never reached its handler.
+  if (Option.isSome(rest) && safeRequestPath(url).endsWith('/:redacted')) {
+    return Exit.fail(new Error('request failed on an upload path'))
+  }
   return Option.isSome(rest) ? Exit.failCause(rest.value) : Exit.succeed(response)
 }
 
-/** the path alone: no query, no fragment, whatever form the url came in */
-const pathOf = (url: string) => {
+/** A diagnostic path cannot carry query credentials or upload path credentials. */
+export const safeRequestPath = (url: string): string => {
   const cut = url.search(/[?#]/)
-  const path = cut === -1 ? url : url.slice(0, cut)
-  if (path.startsWith('/')) return path
-  try {
-    return new URL(path).pathname
-  } catch {
-    return '/'
+  const address = cut === -1 ? url : url.slice(0, cut)
+  let path = address
+  if (!path.startsWith('/')) {
+    try {
+      path = new URL(address).pathname
+    } catch {
+      return '/'
+    }
   }
+  // The router matches decoded paths and collapses duplicate slashes. Do
+  // the same before looking for an upload component, including encoded '/'.
+  let decoded = path
+  try {
+    decoded = decodeURIComponent(path)
+  } catch {
+    // An invalid escape elsewhere must not prevent recognition of encoded
+    // separators and the upload component before the credential.
+    decoded = path
+      .replace(/%2f/gi, '/')
+      .split('/')
+      .map((part) => {
+        try {
+          return decodeURIComponent(part)
+        } catch {
+          return part
+        }
+      })
+      .join('/')
+  }
+  const segments = decoded.replace(/\/{2,}/g, '/').split('/')
+  for (let i = 0; i < segments.length; i++) {
+    if (/^uploads?$/i.test(segments[i]!) && i + 1 < segments.length) {
+      return `${segments.slice(0, i + 1).join('/')}/:redacted`
+    }
+  }
+  return path
 }
 
 /** A matched Web route, owned by this request rather than by a sampled span. */

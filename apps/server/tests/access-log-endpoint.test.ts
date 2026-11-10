@@ -21,6 +21,7 @@ import {
 import { NodeHttpServer } from '@effect/platform-node'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { QUALY_API_PREFIX } from '@qualy/api-kit'
+import { QUALY_CLIENT_PROTOCOL_HEADER } from '@qualy/release-contract'
 import { nameEndpoint, RequestContext, webSocketSession } from '@qualy/api-kit/request'
 import { unavailable, unavailableDependencies } from '@qualy/api-kit/unavailable'
 import { serveMiddleware } from '../src/serve-middleware.ts'
@@ -36,6 +37,8 @@ const port = 3299
 /** a second server whose access level is development's, Debug */
 const quietPort = 3298
 const logged: string[] = []
+const annotations: string[] = []
+const spans: Tracer.Span[] = []
 /** each line again, with the level it was written at */
 const leveled: string[] = []
 const correlated: { message: string; traceId?: string; source?: unknown }[] = []
@@ -43,11 +46,13 @@ const capture = Logger.layer([
   Logger.make((options) => {
     const message = String(Array.isArray(options.message) ? options.message[0] : options.message)
     logged.push(message)
+    annotations.push(JSON.stringify(options.fiber.getRef(References.CurrentLogAnnotations)))
     // what a failure died of travels as the record's cause, as the stdout
     // logger prints it
     const failure = options.cause.reasons.length === 0 ? '' : `\n${Cause.pretty(options.cause)}`
     leveled.push(`${options.logLevel} ${message}${failure}`)
     const span = Option.getOrUndefined(Context.getOption(options.fiber.context, Tracer.ParentSpan))
+    if (span?._tag === 'Span') spans.push(span)
     correlated.push({
       message,
       traceId: span?.traceId,
@@ -87,6 +92,13 @@ beforeAll(async () => {
   )
   const routes = Layer.mergeAll(
     HttpRouter.add('PUT', `${QUALY_API_PREFIX}/probe/uploads/:reservationId`, ticketed),
+    HttpRouter.add(
+      'PUT',
+      `${QUALY_API_PREFIX}/probe/uploads/:reservationId/fail`,
+      Effect.flatMap(Effect.service(HttpServerRequest.HttpServerRequest), (request) =>
+        Effect.die(new Error(`failure at ${request.url}`)),
+      ),
+    ),
     HttpRouter.add('GET', `${QUALY_API_PREFIX}/probe/plain`, ok),
     HttpRouter.add('GET', `${QUALY_API_PREFIX}/probe/down`, down),
     HttpRouter.add(
@@ -180,6 +192,46 @@ describe('the access log', () => {
     // the endpoint is still named, so a line still says what was asked
     expect(lines.some((line) => line.includes('/probe/uploads/:reservationId'))).toBe(true)
     expect(lines.some((line) => line.includes('/probe/plain'))).toBe(true)
+  }, 30_000)
+
+  it('does not log an upload credential on pre-routing refusals or unmatched requests', async () => {
+    const ticket = 'credential-to-never-log'
+    const url = `http://127.0.0.1:${port}${QUALY_API_PREFIX}/storage/local/uploads/${ticket}`
+    const before = logged.length
+    const notes = annotations.length
+    const spanStart = spans.length
+    expect(
+      (await fetch(url, { method: 'PUT', headers: { 'sec-fetch-site': 'cross-site' } })).status,
+    ).toBe(403)
+    expect(
+      (await fetch(url, { method: 'PUT', headers: { [QUALY_CLIENT_PROTOCOL_HEADER]: '0' } }))
+        .status,
+    ).toBe(409)
+    expect((await fetch(url)).status).toBe(404)
+    expect((await fetch(`${url}%00`, { method: 'PUT' })).status).toBe(400)
+    expect(
+      (
+        await fetch(`http://127.0.0.1:${port}${QUALY_API_PREFIX}/probe/uploads/${ticket}/fail`, {
+          method: 'PUT',
+        })
+      ).status,
+    ).toBe(500)
+    await expect
+      .poll(() => logged.slice(before).filter((line) => line.includes(':redacted')).length)
+      .toBeGreaterThanOrEqual(4)
+    expect(
+      JSON.stringify({
+        lines: logged.slice(before),
+        annotations: annotations.slice(notes),
+        causes: leveled.slice(before),
+      }),
+    ).not.toContain(ticket)
+    await expect
+      .poll(() => spans.slice(spanStart).filter((span) => span.attributes.has('url.path')).length)
+      .toBeGreaterThanOrEqual(4)
+    expect(
+      JSON.stringify(spans.slice(spanStart).map((span) => [...span.attributes])),
+    ).not.toContain(ticket)
   }, 30_000)
 
   it('logs the WebSocket HTTP handshake immediately with its HTTP trace, then reports connection failure separately', async () => {

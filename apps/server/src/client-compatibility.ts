@@ -7,6 +7,7 @@ import {
   type ProtocolWindow,
 } from '@qualy/api-kit/client-assembly'
 import { insideApi } from '@qualy/api-kit/route-fallback'
+import { safeRequestPath } from '@qualy/api-kit/request'
 import {
   ClientAssemblyUnsupported,
   ClientProtocolUnsupported,
@@ -99,7 +100,7 @@ export const clientCompatibility = (window: ProtocolWindow = SERVER_PROTOCOL_WIN
     Effect.withFiber<A | HttpServerResponse.HttpServerResponse, E, R>((fiber) => {
       const request = Context.getUnsafe(fiber.context, HttpServerRequest.HttpServerRequest)
       if (!insideApi(request.url)) return httpApp
-      const path = request.url.split('?')[0]!
+      const path = safeRequestPath(request.url)
 
       const declared = request.headers[QUALY_CLIENT_PROTOCOL_HEADER]
       const release = request.headers[QUALY_CLIENT_RELEASE_HEADER]

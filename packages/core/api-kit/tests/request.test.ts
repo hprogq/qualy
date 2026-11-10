@@ -12,6 +12,7 @@ import {
   platformTracerOff,
   requestContext,
   routeSpanNames,
+  safeRequestPath,
   serverSpans,
   clientWentAway,
   trustedProxies,
@@ -25,6 +26,24 @@ import {
 // headers are attacker-writable, so the resolution must anchor on the one
 // fact this process observed - the socket peer - and only follow the header
 // through hops the deployment itself declared trustworthy.
+
+describe('diagnostic upload paths', () => {
+  it.each([
+    '/api/storage/local/uploads/secret',
+    '/api/storage/local/%75ploads/secret',
+    '/api/storage/local%2Fuploads%2Fsecret',
+    '/api/storage/local%2F%75ploads%2Fsecret%ZZ',
+    '//api//storage//local//UPLOADS//secret',
+    '/api/storage/local/uploads/secret?query=also-secret',
+  ])('redacts router-equivalent spellings: %s', (url) => {
+    expect(safeRequestPath(url)).not.toContain('secret')
+    expect(safeRequestPath(url)).toMatch(/\/:redacted$/)
+  })
+
+  it('retains a normal path without its query', () => {
+    expect(safeRequestPath('/api/things/123?secret=hidden')).toBe('/api/things/123')
+  })
+})
 
 describe('the trusted-proxy client address', () => {
   const none = trustedProxies([])
@@ -185,6 +204,13 @@ beforeAll(async () => {
       }),
     ),
     HttpRouter.add('GET', '/defect', Effect.die(new Error('a defect in the handler'))),
+    HttpRouter.add(
+      'GET',
+      '/uploads/:ticket/fail',
+      Effect.flatMap(Effect.service(HttpServerRequest.HttpServerRequest), (request) =>
+        Effect.die(new Error(`failed at ${request.url}`)),
+      ),
+    ),
     // an answer that takes a while, for a reader who does not wait for it
     HttpRouter.add('GET', '/slow', Effect.andThen(Effect.sleep('2 seconds'), echo)),
     HttpRouter.add(
@@ -197,6 +223,7 @@ beforeAll(async () => {
     ),
   )
   const application = HttpRouter.serve(routes, {
+    disableLogger: true,
     // the loopback peer stands in for the deployment's proxy tier; the span
     // is opened by the chain, as the host opens it
     middleware: (httpApp) =>
@@ -525,6 +552,30 @@ describe('the span a request exports', () => {
     const span = await exportedSpan((candidate) => candidate.traceId === inbound)
     expect(span.status?.code).toBe(2)
     expect(span.status?.message).toContain('a defect in the handler')
+  })
+
+  it('does not export an upload address carried in a failure cause', async () => {
+    const inbound = 'fedcbafedcbafedcbafedcbafedcbafe'
+    const ticket = 'credential-in-error-message'
+    const response = await fetch(`${base}/uploads/${ticket}/fail`, {
+      headers: { traceparent: `00-${inbound}-00f067aa0ba902b7-01` },
+    })
+    expect(response.status).toBe(500)
+    const span = await exportedSpan((candidate) => candidate.traceId === inbound)
+    expect(span.status?.code).toBe(2)
+    expect(JSON.stringify(span)).not.toContain(ticket)
+  })
+
+  it('redacts an upload credential from an unmatched server span', async () => {
+    const inbound = 'abcdefabcdefabcdefabcdefabcdefab'
+    const ticket = 'credential-to-never-export'
+    await fetch(`${base}/missing/uploads/${ticket}`, {
+      headers: { traceparent: `00-${inbound}-00f067aa0ba902b7-01` },
+    })
+    const span = await exportedSpan((candidate) => candidate.traceId === inbound)
+    const path = span.attributes.find((attribute) => attribute.key === 'url.path')
+    expect(path?.value.stringValue).toBe('/missing/uploads/:redacted')
+    expect(JSON.stringify(span)).not.toContain(ticket)
   })
 
   it('keeps the method-only name when no route matched', async () => {
