@@ -36,7 +36,8 @@ import { useBatchLive } from '../live.ts'
 import { BatchScreen } from '../batch/BatchScreen.tsx'
 import { AwaitingSection } from './AwaitingSection.tsx'
 import { useAwaitingQuery, useQueueRefresh, useReviewQueueQuery, type QueuePage } from './queue.ts'
-import { queueRequestOf, viewOf, type View } from './inbox-reads.ts'
+import { queuePlaceOf, queueRequestOf, viewOf, type View } from './inbox-reads.ts'
+import { readRunScope, writeRunScope } from './run-scope.ts'
 import { useDraftSweep } from './use-draft.ts'
 import { rememberQueuePlace } from './queue-place.ts'
 import { QueueBoard, QueueScope, QueueScopeSkeleton, QueueSkeleton } from './QueueBoard.tsx'
@@ -305,7 +306,13 @@ const BATCH_NOT_FOUND = 'ASSESSMENT_BATCH_NOT_FOUND'
 
 type QueueSummary = Pick<
   QueuePage,
-  'queueTotal' | 'queueFirstId' | 'handledToday' | 'marks' | 'unitOptions'
+  | 'queueTotal'
+  | 'queueFirstId'
+  | 'filteredFirstId'
+  | 'filteredTotal'
+  | 'handledToday'
+  | 'marks'
+  | 'unitOptions'
 >
 
 /**
@@ -365,13 +372,14 @@ function useQueue(batchId: string, reviewing: boolean) {
     refetchInterval: live ? 60_000 : 30_000,
   })
   // Keep the batch-wide controls steady while the new grouping is read.
-  const [last, setLast] = useState<{ batchId: string; summary: QueueSummary }>()
+  const filterKey = JSON.stringify([request.search ?? '', request.unitId ?? '', request.mark ?? ''])
+  const [last, setLast] = useState<{ batchId: string; filterKey: string; summary: QueueSummary }>()
   if (
     inbox.data !== undefined &&
     !inbox.isPlaceholderData &&
-    (last?.batchId !== batchId || last.summary !== inbox.data)
+    (last?.batchId !== batchId || last.filterKey !== filterKey || last.summary !== inbox.data)
   ) {
-    setLast({ batchId, summary: inbox.data })
+    setLast({ batchId, filterKey, summary: inbox.data })
   }
   const summary: QueueSummary | undefined =
     inbox.data ?? (last?.batchId === batchId ? last.summary : undefined)
@@ -391,9 +399,20 @@ function useQueue(batchId: string, reviewing: boolean) {
   // but its rows belong to the previous selection.
   const loadingSelection =
     inbox.isPlaceholderData && (inbox.data?.selected ?? '') !== selected ? selected : null
+  const start =
+    inbox.data !== undefined && !inbox.isPlaceholderData
+      ? inbox.data
+      : last?.batchId === batchId
+        ? last.summary
+        : undefined
+  const startCurrent =
+    (inbox.data !== undefined && !inbox.isPlaceholderData) ||
+    (last?.batchId === batchId && last.filterKey === filterKey)
   return {
     inbox,
     summary,
+    start,
+    startCurrent,
     scoped: selected !== '',
     loadingSelection,
     awaiting: asked.data?.total ?? 0,
@@ -408,9 +427,20 @@ function useOpenRow(batchId: string) {
   const location = useLocation()
   return (row: Pick<InboxItemDto, 'instanceId'>, run: string) => {
     rememberQueuePlace(batchId, location.search)
+    const { search, unitId, mark } = queueRequestOf(
+      queuePlaceOf(new URLSearchParams(location.search)),
+    )
+    const scoped = writeRunScope({
+      ...readRunScope(run),
+      filters: {
+        ...(search === undefined ? {} : { search }),
+        ...(unitId === undefined ? {} : { unitId }),
+        ...(mark === undefined ? {} : { mark }),
+      },
+    })
     navigate('assessment/review-instance', {
       params: { batchId, instanceId: row.instanceId },
-      search: run === '' ? {} : { run },
+      search: scoped === '' ? {} : { run: scoped },
     })
   }
 }
@@ -430,8 +460,9 @@ export default function ReviewInboxPage() {
   const reviewing = standing.data?.batch.capabilities.review === true
   const queue = useQueue(batchId, reviewing)
   const open = useOpenRow(batchId)
-  const first = queue.summary?.queueFirstId
+  const first = queue.start?.filteredFirstId
   const pending = queue.summary?.queueTotal ?? 0
+  const filtered = queue.start?.filteredTotal ?? 0
   return (
     <BatchScreen
       size="wide"
@@ -440,7 +471,11 @@ export default function ReviewInboxPage() {
       summary={reviewing ? <QueueStanding queue={queue} /> : undefined}
       actions={
         reviewing && first != null ? (
-          <ReviewActions count={pending} onStart={() => open({ instanceId: first }, '')} />
+          <ReviewActions
+            count={filtered}
+            disabled={!queue.startCurrent}
+            onStart={() => open({ instanceId: first }, '')}
+          />
         ) : undefined
       }
       bannerFooter={

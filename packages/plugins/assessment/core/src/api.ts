@@ -1902,6 +1902,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
         itemOptions: Schema.Array(Schema.Struct({ id: Schema.String, name: Schema.String })),
         unitOptions: Schema.Array(Schema.Struct({ id: Schema.String, name: Schema.String })),
         queueFirstId: Schema.NullOr(Schema.String),
+        filteredFirstId: Schema.NullOr(Schema.String),
         firstId: Schema.NullOr(Schema.String),
         previousId: Schema.NullOr(Schema.String),
         nextId: Schema.NullOr(Schema.String),

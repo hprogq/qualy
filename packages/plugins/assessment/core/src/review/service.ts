@@ -560,6 +560,7 @@ export interface ReviewMethods {
       itemOptions: readonly { id: string; name: string }[]
       unitOptions: readonly { id: string; name: string }[]
       queueFirstId: string | null
+      filteredFirstId: string | null
       firstId: string | null
       previousId: string | null
       nextId: string | null

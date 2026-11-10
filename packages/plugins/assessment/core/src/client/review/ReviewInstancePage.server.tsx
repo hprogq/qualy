@@ -3,7 +3,7 @@ import { renderRequest } from '@qualy/web-rsc/request'
 import { answersOf, settle } from '@qualy/web-rsc/queries'
 import { batchIdOf, keyed, namesRecord, readBatch } from '../batch/batch-reads.server.ts'
 import { queueReadOf } from './inbox-reads.ts'
-import { readRunScope } from './run-scope.ts'
+import { readRunScope, runQueryOf } from './run-scope.ts'
 import ReviewInstancePage from './ReviewInstancePage.tsx'
 
 // One review as a server draws it (docs/adr/0012-rsc-data-mode.md): the
@@ -30,8 +30,7 @@ export default async function ReviewInstance({
   // the run as the workbench asks for it before this sitting has decided
   // anything: nothing yet to leave out
   const run = queueReadOf(batchId, {
-    ...(scope.kind === 'item' ? { itemId: scope.itemId } : {}),
-    ...(scope.kind === 'person' ? { person: scope.participantId } : {}),
+    ...runQueryOf(scope),
     exclude: [],
     focus: instanceId,
     limit: '20',

@@ -180,6 +180,13 @@ export const inboxNumberedPage = (input: InboxQuery) =>
         answeredAsk({ tenantId: eb.ref('ri.tenantId'), instanceId: eb.ref('ri.id') }),
       )
     const filteredTotal = await count(filtered)
+    const filteredFirst = await filtered
+      .clearSelect()
+      .select('ri.id')
+      .orderBy('ri.createdAt')
+      .orderBy('ri.id')
+      .limit(1)
+      .executeTakeFirst()
     // By time the queue is grouped by the calendar day a filing came in, on
     // the batch's clock - where it is read as an overview or a day is named;
     // read otherwise (a run's neighbours) it stays one line of filings.
@@ -394,6 +401,7 @@ export const inboxNumberedPage = (input: InboxQuery) =>
         one.id === null ? [] : [{ id: one.id, name: one.name ?? '' }],
       ),
       queueFirstId: queueFirst?.id ?? null,
+      filteredFirstId: filteredFirst?.id ?? null,
       firstId: first?.id ?? null,
       previousId: previous?.id ?? null,
       nextId: next?.id ?? null,

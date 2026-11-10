@@ -813,6 +813,53 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
     })
   })
 
+  it('keeps a filtered group and its workbench run on the same rows', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('rv-filtered-run')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f, { profile: REVIEW_OPEN })
+          const first = yield* submitted(f, g, g.p1, f.s1)
+          const second = yield* submitted(f, g, g.p2, f.s2)
+          // Fixture the visible resubmitted mark without changing who may review.
+          yield* runSql(
+            sql`update review_instances set round_no = 2 where tenant_id = ${f.t} and id = ${second.instanceId}`,
+          )
+          const filters = {
+            batchId: g.batch.id,
+            unitId: f.classA,
+            search: 'Li Si',
+            mark: 'resubmitted' as const,
+          }
+          const reviewer = f.principal(f.reviewer)
+          const overview = yield* assessment.listReviewInbox(
+            f.t,
+            { ...filters, view: 'item', layout: 'overview' },
+            reviewer,
+          )
+          const run = yield* assessment.listReviewInbox(
+            f.t,
+            { ...filters, itemId: g.item.id, focus: second.instanceId },
+            reviewer,
+          )
+          return { first, second, overview, run }
+        }),
+      ),
+    )
+    expect(result.overview.queueTotal).toBe(2)
+    expect(result.overview.filteredTotal).toBe(1)
+    expect(result.overview.filteredFirstId).toBe(result.second.instanceId)
+    expect(result.overview.groups[0]).toMatchObject({
+      count: 1,
+      firstInstanceId: result.second.instanceId,
+    })
+    expect(result.run.items.map((item) => item.instanceId)).toEqual([result.second.instanceId])
+    expect(result.run.previousId).toBeNull()
+    expect(result.run.nextId).toBeNull()
+  })
+
   it('reads a grouped queue as an overview of each group\u2019s oldest filings', async () => {
     const result = ok(
       await run(

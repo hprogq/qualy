@@ -1839,6 +1839,99 @@ describe('the queue, a page at a time', () => {
     expect(marks).toEqual([undefined, 'escalated', 'round'])
   })
 
+  it('shows the workbench scope after opening a search-filtered group', async () => {
+    await page.viewport(1440, 900)
+    await withBench(filings(3, 0), `?q=${encodeURIComponent('参评人1')}`)
+    await expect.element(group()).toHaveAttribute('data-count', '1')
+    await page.getByTestId('queue-run').click()
+    await expect.element(page.getByTestId('run-position')).toHaveAttribute('data-total', '1')
+    expect(addressNow()).toContain(`run=item%3A${ITEM_ID}`)
+  })
+
+  it('keeps status, unit and search in the group run without carrying pagination', async () => {
+    await page.viewport(1440, 900)
+    const unit = '77777777-7777-4777-8777-777777777777'
+    const other = '88888888-8888-4888-8888-888888888888'
+    const items = [
+      ...filings(2, 0, { unitId: unit, supplemented: true }),
+      ...filings(1, 2, { unitId: other, supplemented: true }),
+      ...filings(1, 3, { unitId: unit, supplemented: false }),
+    ]
+    const reads: Array<Record<string, unknown>> = []
+    await withBench(
+      items,
+      `?unit=${unit}&mark=supplemented&q=${encodeURIComponent('参评人')}&page=2`,
+      {
+        listReviewInbox: (input: { query: Record<string, unknown> }) => {
+          reads.push(input.query)
+          return Effect.succeed(inboxOf(items))
+        },
+      },
+    )
+    await expect.element(group()).toHaveAttribute('data-count', '2')
+    await page.getByTestId('queue-run').click()
+    await expect.element(page.getByTestId('run-position')).toHaveAttribute('data-total', '2')
+    await expect
+      .poll(() => reads.find((read) => read.focus !== undefined))
+      .toMatchObject({
+        itemId: ITEM_ID,
+        unitId: unit,
+        mark: 'supplemented',
+        search: '参评人',
+      })
+    expect(reads.find((read) => read.focus !== undefined)).not.toHaveProperty('page')
+    await userEvent.keyboard('j')
+    await expect.poll(addressNow).toContain(rowId(1))
+    await userEvent.keyboard('k')
+    await expect.poll(addressNow).toContain(rowId(0))
+  })
+
+  it('starts at the first filtered filing from the global start button', async () => {
+    await page.viewport(1440, 900)
+    await withBench(filings(3, 0), `?q=${encodeURIComponent('参评人1')}`)
+    await page.getByTestId('review-start').click()
+    await expect.element(page.getByTestId('run-position')).toHaveAttribute('data-total', '1')
+    expect(addressNow()).toContain(rowId(1))
+  })
+
+  it('retains the filters when opening a participant group', async () => {
+    await page.viewport(1440, 900)
+    const unit = '77777777-7777-4777-8777-777777777777'
+    const person = '99999999-9999-4999-8999-999999999999'
+    const items = [
+      ...filings(1, 0, { participantId: person, unitId: unit, supplemented: true }),
+      ...filings(1, 1, {
+        participantId: person,
+        unitId: unit,
+        supplemented: true,
+        itemId: OTHER_ITEM,
+      }),
+      ...filings(1, 2, { participantId: person, unitId: unit, supplemented: false }),
+    ]
+    const reads: Array<Record<string, unknown>> = []
+    await withBench(
+      items,
+      `?view=person&unit=${unit}&mark=supplemented&q=${encodeURIComponent('参评人')}`,
+      {
+        listReviewInbox: (input: { query: Record<string, unknown> }) => {
+          reads.push(input.query)
+          return Effect.succeed(inboxOf(items))
+        },
+      },
+    )
+    await expect.element(group()).toHaveAttribute('data-count', '2')
+    await page.getByTestId('queue-run').click()
+    await expect.element(page.getByTestId('run-position')).toHaveAttribute('data-total', '2')
+    await expect
+      .poll(() => reads.find((read) => read.focus !== undefined))
+      .toMatchObject({
+        person,
+        unitId: unit,
+        mark: 'supplemented',
+        search: '参评人',
+      })
+  })
+
   it('walks the whole question from a page of it, and comes back to that page', async () => {
     await page.viewport(1440, 900)
     await withBench(both(), `?item=${ITEM_ID}&page=2`)

@@ -33,7 +33,8 @@ import { useBatchLive } from '../live.ts'
 import { BatchScreen } from '../batch/BatchScreen.tsx'
 import { sayEntryFailure } from '../entry/refusals.ts'
 import { reviewOutcomeMessage } from './events.ts'
-import { readRunScope, type ReviewDto } from './model.ts'
+import { readRunScope, writeRunScope, type RunScope, type ReviewDto } from './model.ts'
+import { runQueryOf } from './run-scope.ts'
 import { useQueueRefresh, useReviewQueueQuery } from './queue.ts'
 import { type BatchDto } from '../phase/model.ts'
 
@@ -709,8 +710,7 @@ function Workbench({ batch }: { batch: BatchDto }) {
   const handled = useMemo(() => log.filter((entry) => entry.status !== 'gone'), [log])
 
   const scopedRequest = {
-    ...(scope.kind === 'item' ? { itemId: scope.itemId } : {}),
-    ...(scope.kind === 'person' ? { person: scope.participantId } : {}),
+    ...runQueryOf(scope),
     // Include recent completed acts too, so a previously cached page cannot flash them back.
     exclude: log.slice(-100).map((entry) => entry.instanceId),
   }
@@ -1330,6 +1330,7 @@ function Workbench({ batch }: { batch: BatchDto }) {
                   log={handled}
                   startedAt={startedAt.current}
                   exclude={scopedRequest.exclude}
+                  filters={scope.filters}
                 />
               ) : review === undefined ? (
                 <BenchSkeleton />
@@ -1943,6 +1944,7 @@ function DoneScreen({
   log,
   startedAt,
   exclude,
+  filters,
 }: {
   batchId: string
   /** back to the queue as it was left */
@@ -1950,10 +1952,17 @@ function DoneScreen({
   log: readonly SessionEntry[]
   startedAt: number
   exclude: readonly string[]
+  filters: RunScope['filters'] | undefined
 }) {
   const navigate = usePageNavigate()
   const nextQueue = useQuery({
-    ...useReviewQueueQuery(batchId, { view: 'item', groupOrder: 'largest', limit: '1', exclude }),
+    ...useReviewQueueQuery(batchId, {
+      ...filters,
+      view: 'item',
+      groupOrder: 'largest',
+      limit: '1',
+      exclude,
+    }),
     refetchInterval: 30_000,
   })
   const confirmed = log.filter((entry) => entry.status === 'sent')
@@ -2000,7 +2009,7 @@ function DoneScreen({
               onClick={() =>
                 navigate('assessment/review-instance', {
                   params: { batchId, instanceId: next.firstInstanceId },
-                  search: { run: `item:${next.key}` },
+                  search: { run: writeRunScope({ kind: 'item', itemId: next.key, filters }) },
                 })
               }
             >
@@ -2013,10 +2022,10 @@ function DoneScreen({
           <span {...stylex.props(styles.keysSpacer)} />
           <p
             data-testid="review-done-left"
-            data-count={nextQueue.data?.queueTotal}
+            data-count={nextQueue.data?.filteredTotal}
             {...stylex.props(styles.doneLeft)}
           >
-            {m.review_doneLeft({ count: nextQueue.data?.queueTotal ?? 0 })}
+            {m.review_doneLeft({ count: nextQueue.data?.filteredTotal ?? 0 })}
           </p>
         </div>
       </Stagger>

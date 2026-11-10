@@ -20,7 +20,7 @@ export function reviewPage(
         !request.exclude?.includes(row.instanceId),
     )
   const needle = request.search?.toLowerCase() ?? ''
-  const filtered = all.filter(
+  const narrowed = all.filter(
     (row) =>
       (!request.unitId || row.unitId === request.unitId) &&
       (!request.itemId || request.view === 'item' || row.itemId === request.itemId) &&
@@ -32,6 +32,15 @@ export function reviewPage(
           row.itemTitle,
           ...row.values.map((part) => part.value),
         ].some((value) => value.toLowerCase().includes(needle))),
+  )
+  const filtered = narrowed.filter(
+    (row) =>
+      !request.mark ||
+      (request.mark === 'escalated'
+        ? row.route === 'escalation'
+        : request.mark === 'resubmitted'
+          ? row.roundNo > 1
+          : row.supplemented === true),
   )
   const byDay =
     request.view === 'time' && (request.layout === 'overview' || request.day !== undefined)
@@ -100,10 +109,10 @@ export function reviewPage(
     queueTotal: all.length,
     filteredTotal: filtered.length,
     marks: {
-      all: filtered.length,
-      escalated: filtered.filter((row) => row.route === 'escalation').length,
-      resubmitted: filtered.filter((row) => row.roundNo > 1).length,
-      supplemented: filtered.filter((row) => row.supplemented === true).length,
+      all: narrowed.length,
+      escalated: narrowed.filter((row) => row.route === 'escalation').length,
+      resubmitted: narrowed.filter((row) => row.roundNo > 1).length,
+      supplemented: narrowed.filter((row) => row.supplemented === true).length,
     },
     groups: shownGroups,
     groupPage,
@@ -122,6 +131,7 @@ export function reviewPage(
       ).values(),
     ],
     queueFirstId: all[0]?.instanceId ?? null,
+    filteredFirstId: filtered[0]?.instanceId ?? null,
     firstId: scoped[0]?.instanceId ?? null,
     previousId: at < 1 ? null : (scoped[at - 1]?.instanceId ?? null),
     nextId: at < 0 ? null : (scoped[at + 1]?.instanceId ?? null),
