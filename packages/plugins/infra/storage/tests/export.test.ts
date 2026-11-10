@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createTestContext, postgresAvailable } from '@qualy/plugin-database/testkit'
 import { run as exportFiles } from '../src/cli/export.ts'
 import { Storage } from '../src/server/service.ts'
-import { memoryBackend, ok, run } from './support/harness.ts'
+import { memoryBackend, ok, run, tagOf } from './support/harness.ts'
 
 describe.runIf(postgresAvailable)('direct attachment backup', () => {
   let db: Awaited<ReturnType<typeof createTestContext>>
@@ -61,6 +61,54 @@ describe.runIf(postgresAvailable)('direct attachment backup', () => {
     expect(manifest.split('\n').filter(Boolean)).toHaveLength(2)
     expect(open).not.toHaveBeenCalled()
   })
+
+  it.each(['original', 'tampered'] as const)(
+    'checks COS CRC64 against the completed bytes when the stream contains %s',
+    async (body) => {
+      const backend = memoryBackend('memory', { versioned: true })
+      const stat = backend.stat.bind(backend)
+      vi.spyOn(backend, 'stat').mockImplementation((key) =>
+        stat(key).pipe(
+          Effect.map((value) =>
+            value === null
+              ? null
+              : {
+                  ...value,
+                  integrityAlgorithm: 'crc64-ecma' as const,
+                  integrityValue: '16684194152576135820',
+                },
+          ),
+        ),
+      )
+      const key = ok(await upload(backend))
+      let released = false
+      vi.spyOn(backend, 'read').mockImplementation(() =>
+        Effect.acquireRelease(
+          Effect.sync(() =>
+            (async function* () {
+              yield Buffer.from(body.slice(0, 3))
+              yield Buffer.from(body.slice(3))
+            })(),
+          ),
+          () =>
+            Effect.sync(() => {
+              released = true
+            }),
+        ),
+      )
+      const result = await run(db.url, backend, exportFiles({ args: ['--to', directory] }))
+      expect(result._tag).toBe(body === 'original' ? 'Success' : 'Failure')
+      if (body === 'tampered') expect(tagOf(result)).toBe('CliRefused')
+      expect(released).toBe(true)
+      expect(
+        (await readFile(path.join(directory, 'attachments.tsv'), 'utf8'))
+          .split('\n')
+          .filter(Boolean),
+      ).toHaveLength(body === 'original' ? 2 : 1)
+      if (body === 'original')
+        expect(await readFile(path.join(directory, backend.code, key), 'utf8')).toBe(body)
+    },
+  )
 
   it.each(['oversize', 'truncated', 'wrong-hash'] as const)(
     'fails an %s backup and releases the read scope',

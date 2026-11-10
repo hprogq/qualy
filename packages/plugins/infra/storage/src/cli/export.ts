@@ -7,6 +7,7 @@ import { CliRefused, type RuntimeCliContext } from '@qualy/plugin-kit/cli'
 import { withDatabase } from '@qualy/plugin-database/server'
 import { StorageBackends } from '../server/registry.ts'
 import { attachmentsToExport, type ExportRow } from '../server/db.ts'
+import { Crc64 } from './crc64.ts'
 
 // `qualy storage export --to <dir> [--except <backend>]...`
 //
@@ -20,7 +21,7 @@ import { attachmentsToExport, type ExportRow } from '../server/db.ts'
 // with `--except local`, whose files it archives from the volume whole.
 //
 // Each file is checked on the way: its size always, and its fingerprint
-// where the fingerprint is one this process can compute (sha256). An
+// where the fingerprint is one this process can compute. An
 // attachment that cannot be fetched, or does not match, fails the command:
 // a backup missing an attachment is not one to find out about later.
 
@@ -35,23 +36,25 @@ const failedWith = (cause: unknown) =>
 const options = (args: readonly string[], name: string): string[] =>
   args.flatMap((arg, at) => (arg === `--${name}` && args[at + 1] ? [args[at + 1]!] : []))
 
-/** writes the body to the file, answering with its length and sha256 */
-const written = (body: AsyncIterable<Uint8Array>, file: string, ceiling: bigint) =>
+/** writes unchanged bytes, computing the fingerprints while they pass */
+const written = (body: AsyncIterable<Uint8Array>, file: string, ceiling: bigint, crc64: boolean) =>
   Effect.tryPromise({
     try: async (signal) => {
       await fs.promises.mkdir(path.dirname(file), { recursive: true })
       const hash = createHash('sha256')
+      const crc = crc64 ? new Crc64() : undefined
       let size = 0n
       const checked = async function* () {
         for await (const chunk of body) {
           size += BigInt(chunk.byteLength)
           if (size > ceiling) throw new Error('the object exceeds its recorded size')
           hash.update(chunk)
+          crc?.update(chunk)
           yield chunk
         }
       }
       await pipeline(checked(), fs.createWriteStream(file, { flags: 'wx' }), { signal })
-      return { size, sha256: hash.digest('hex') }
+      return { size, sha256: hash.digest('hex'), crc64: crc?.decimal() }
     },
     catch: failedWith,
   })
@@ -108,7 +111,7 @@ export const run = (context: RuntimeCliContext) =>
           const body = yield* backend
             .read({ key: row.storageKey, revision: row.storageVersion })
             .pipe(Effect.mapError((error) => refused(error.message)))
-          return yield* written(body, file, row.size).pipe(
+          return yield* written(body, file, row.size, row.integrityAlgorithm === 'crc64-ecma').pipe(
             Effect.mapError((error) => refused(error.reason)),
           )
         }).pipe(Effect.scoped)
@@ -119,6 +122,9 @@ export const run = (context: RuntimeCliContext) =>
         }
         if (row.integrityAlgorithm === 'sha256' && got.sha256 !== row.integrityValue) {
           return yield* Effect.fail(refused('its sha256 is not the one it completed with'))
+        }
+        if (row.integrityAlgorithm === 'crc64-ecma' && got.crc64 !== row.integrityValue) {
+          return yield* Effect.fail(refused('its crc64 is not the one it completed with'))
         }
         yield* Effect.promise(() => fs.promises.appendFile(manifest, `${line(row)}\n`))
         count += 1
