@@ -909,6 +909,8 @@ export interface LoginSessionsShape {
     bindingDisplayLabel?: string
     /** The initiating session for reauthentication; no new session or cookie is issued. */
     reauthenticationSessionId?: string
+    /** Notify other documents after a redirect sign-in, without exposing identity. */
+    notifySessionChange?: boolean
     /** what the session keeps from the other side, written with it */
     grants?: readonly SessionGrantInput[]
     /**

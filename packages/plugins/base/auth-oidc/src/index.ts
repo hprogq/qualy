@@ -26,6 +26,7 @@ import { text } from '@qualy/text'
 import { messageRefs } from '@qualy/text/node'
 import type * as M from '#messages'
 import { Plugin } from '@qualy/plugin-kit'
+import { recoveryReturn } from '@qualy/ui-contract/session-notice'
 import { authOidcApiGroup, OidcRejected, OidcUnavailable } from './api.ts'
 import {
   authorizeRedirect,
@@ -469,6 +470,7 @@ const handlers = HttpApiBuilder.group(local, 'authOidc', (handlers) =>
           tenantId: provider.tenantId,
           providerId: provider.providerId,
           userId: binding.userId,
+          notifySessionChange: !recoveryReturn(flow.returnPath),
           ...(carried.owner === undefined
             ? {}
             : { reauthenticationSessionId: carried.owner.sessionId }),

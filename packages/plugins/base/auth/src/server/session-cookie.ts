@@ -1,6 +1,10 @@
 import { Duration, Effect } from 'effect'
 import { HttpEffect, HttpServerResponse, type HttpServerRequest } from 'effect/http'
 import { sessionCookieNameFor, sessionCookieNames } from '@qualy/auth-contract/session'
+import {
+  SESSION_NOTICE_COOKIE,
+  SESSION_NOTICE_SECURE_COOKIE,
+} from '@qualy/ui-contract/session-notice'
 
 // The session cookie's attributes, decided in one place on the server side;
 // its name is the contract's (@qualy/auth-contract/session).
@@ -50,6 +54,25 @@ export const clearSessionCookie = (
   secure: boolean,
 ): Effect.Effect<void, never, HttpServerRequest.HttpServerRequest> =>
   setSessionCookie(name, '', { secure, maxAge: Duration.zero })
+
+/** A short-lived, non-secret hint for the document after an external sign-in. */
+export const setSessionNotice = (secure: boolean) =>
+  HttpEffect.appendPreResponseHandler((_request, response) =>
+    Effect.orDie(
+      HttpServerResponse.setCookie(
+        response,
+        secure ? SESSION_NOTICE_SECURE_COOKIE : SESSION_NOTICE_COOKIE,
+        '1',
+        {
+          httpOnly: false,
+          sameSite: 'lax',
+          path: '/',
+          secure,
+          maxAge: Duration.seconds(120),
+        },
+      ),
+    ),
+  )
 
 /**
  * The cookie that ties a redirect through somebody else's server to the

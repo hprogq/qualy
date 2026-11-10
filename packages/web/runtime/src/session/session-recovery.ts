@@ -1,5 +1,7 @@
 import { isAuthenticationError } from '@qualy/web-i18n'
 import { unassertedHeard } from './document-identity.ts'
+import { SESSION_CHANNEL, SESSION_NOTICE_STORAGE_KEY } from '@qualy/ui-contract/session-notice'
+export { SESSION_RESUME_PARAM } from '@qualy/ui-contract/session-notice'
 
 // What a call does when it finds the session gone.
 //
@@ -143,21 +145,18 @@ export const presentedManifest = <M extends Viewed>(shown: M | undefined, asked:
 // the sign-in tab closes on hearing it: by the time the reader is back on
 // the page, it has already carried on, rather than doing so as they arrive -
 // a lock that vanished the moment it was seen read as a glitch.
-const SESSION_CHANNEL = 'qualy:session'
 
 type SessionMessage =
   | { readonly type: 'signed-in' }
   | { readonly type: 'resumed' }
   | { readonly type: 'switched' }
   | { readonly type: 'changed' }
+  | { readonly type: 'external-changed'; readonly stamp: string }
   | { readonly type: 'waiting?' }
   | { readonly type: 'waiting' }
 
 const isMessage = (data: unknown, type: SessionMessage['type']): boolean =>
   typeof data === 'object' && data !== null && (data as { type?: unknown }).type === type
-
-/** the query a sign-in opened for a recovery carries, so it ends by saying so */
-export const SESSION_RESUME_PARAM = 'resume'
 
 /** what the page that waited made of a sign-in, as the tab that signed in hears it */
 export type SignInOutcome = 'resumed' | 'switched' | 'unanswered' | 'unknown'
@@ -286,15 +285,40 @@ export const announceSessionChanged = () => {
   hintChannel()?.postMessage({ type: 'changed' } satisfies SessionMessage)
 }
 
-/** calls `heard` whenever another tab signs in or out; returns the way to stop */
+let lastExternalNotice: string | undefined
+
+/** Calls `heard` for a session change, including one received before hydration. */
 export const onSessionChangedElsewhere = (heard: () => void): (() => void) => {
   const channel = hintChannel()
-  if (channel === undefined) return () => {}
-  const listener = (event: MessageEvent) => {
-    if (isMessage(event.data, 'changed') || isMessage(event.data, 'signed-in')) heard()
+  let listening = true
+  const external = (stamp: unknown) => {
+    if (!listening || typeof stamp !== 'string' || stamp === lastExternalNotice) return
+    const time = Number(stamp.split(':', 1)[0])
+    const age = Date.now() - time
+    if (!Number.isFinite(time) || age < 0 || age >= 120_000) return
+    lastExternalNotice = stamp
+    heard()
   }
-  channel.addEventListener('message', listener)
-  return () => channel.removeEventListener('message', listener)
+  const listener = (event: MessageEvent<unknown>) => {
+    if (isMessage(event.data, 'changed') || isMessage(event.data, 'signed-in')) heard()
+    if (isMessage(event.data, 'external-changed'))
+      external((event.data as { stamp?: unknown }).stamp)
+  }
+  const stored = (event: StorageEvent) => {
+    if (event.key === SESSION_NOTICE_STORAGE_KEY) external(event.newValue)
+  }
+  channel?.addEventListener('message', listener)
+  window.addEventListener('storage', stored)
+  queueMicrotask(() => {
+    try {
+      external(localStorage.getItem(SESSION_NOTICE_STORAGE_KEY))
+    } catch {}
+  })
+  return () => {
+    listening = false
+    channel?.removeEventListener('message', listener)
+    window.removeEventListener('storage', stored)
+  }
 }
 
 // A change of identity the page is making on purpose - signing out, signing

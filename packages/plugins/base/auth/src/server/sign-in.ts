@@ -47,7 +47,12 @@ import { CORE_GRANT_PREFIX, makeReauthentication, sessionGrantRef } from './reau
 
 export { AuthConfig }
 import { sessionCookieName, TooManyAttempts } from '@qualy/auth-contract/session'
-import { clearSessionCookie, flowCookieNameFor, setSessionCookie } from './session-cookie.ts'
+import {
+  clearSessionCookie,
+  flowCookieNameFor,
+  setSessionCookie,
+  setSessionNotice,
+} from './session-cookie.ts'
 import { preferredLocaleOf, setLocaleCookie, writePreferredLocale } from './locale.ts'
 import { chosenLocaleOf } from '@qualy/api-kit/locale'
 import { type SupportedLocale } from '@qualy/i18n-contract'
@@ -1294,6 +1299,7 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
         bindingCredentialHash?: string
         bindingDisplayLabel?: string
         reauthenticationSessionId?: string
+        notifySessionChange?: boolean
         grants?: readonly SessionGrantInput[]
         present?: boolean
       }) {
@@ -1504,6 +1510,7 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
         yield* bindSessionId(completed.sessionId)
         if (completed.reauthenticated) return completed.user
         yield* setCookie(token, device === 'shared' ? undefined : config.sessionTtlSeconds)
+        if (input.notifySessionChange === true) yield* setSessionNotice(config.secureCookies)
         // a secure deployment reads only the prefixed name; the bare one a
         // browser may still carry from before the rename is dropped here,
         // once, so it does not ride along for the rest of its lifetime

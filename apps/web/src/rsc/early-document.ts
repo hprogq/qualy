@@ -1,5 +1,9 @@
 /** The parser-blocking document setup. This function must not close over imports. */
-export function prepareDocument(root: HTMLElement, entranceKey?: string): boolean {
+export function prepareDocument(
+  root: HTMLElement,
+  entranceKey?: string,
+  notice?: readonly [plain: string, secure: string, channel: string, storageKey: string],
+): boolean {
   if (
     !('noModule' in document.createElement('script')) ||
     !window.fetch ||
@@ -46,6 +50,27 @@ export function prepareDocument(root: HTMLElement, entranceKey?: string): boolea
   root.setAttribute('data-mantine-color-scheme', dark ? 'dark' : 'light')
   if (dark) root.classList.add('dark')
   root.style.colorScheme = dark ? 'dark' : 'light'
+  // An external sign-in ended in an HTTP redirect. Tell existing documents
+  // before hydration, without placing an identity or credential in the hint.
+  if (notice !== undefined)
+    try {
+      const [plain, secure, channelName, storageKey] = notice
+      const names = document.cookie.split(';').map((part) => part.trim().split('=')[0])
+      const found = [plain, secure].filter((name) => names.includes(name))
+      for (const name of found)
+        document.cookie = `${name}=; Path=/; Max-Age=0; SameSite=Lax${name === secure ? '; Secure' : ''}`
+      if (found.length > 0) {
+        const stamp = `${Date.now()}:${Math.random().toString(36).slice(2)}`
+        try {
+          localStorage.setItem(storageKey, stamp)
+        } catch {}
+        if (typeof BroadcastChannel !== 'undefined') {
+          const channel = new BroadcastChannel(channelName)
+          channel.postMessage({ type: 'external-changed', stamp })
+          channel.close()
+        }
+      }
+    } catch {}
   // Login-provider images can complete before their React component is
   // hydrated. Record their state without running or inlining uploaded SVG.
   const imageFinished = (event: Event) => {

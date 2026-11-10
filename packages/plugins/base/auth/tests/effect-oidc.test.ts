@@ -491,7 +491,16 @@ describe.runIf(postgresAvailable)('an OpenID Connect account', () => {
     expect(back.status).toBe(303)
     expect(back.headers.get('location')).toBe('/assessment')
     expect(back.headers.get('set-cookie')).toContain(`${sessionCookieName}=`)
+    expect(back.headers.getSetCookie()).toContainEqual(
+      expect.stringMatching(/^qualy_session_notice=1;/),
+    )
     expect(await labelOf()).toBe('ada.renamed')
+    const resume = await depart('op', `?returnTo=${encodeURIComponent('/login?resume=1')}`)
+    const resumed = await visit(op.authorize(resume.away, { sub: 'sub-ada' }), resume.browser)
+    expect(resumed.headers.get('location')).toBe('/login?resume=1')
+    expect(
+      resumed.headers.getSetCookie().some((cookie) => cookie.startsWith('qualy_session_notice=')),
+    ).toBe(false)
   })
 
   it('requires recent authentication before preparing a binding', async () => {

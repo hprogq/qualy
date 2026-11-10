@@ -544,6 +544,9 @@ describe.runIf(postgresAvailable)('a GitHub account', () => {
     expect(back.status).toBe(303)
     expect(back.headers.get('location')).toBe('/assessment')
     expect(back.headers.get('set-cookie')).toContain(`${sessionCookieName}=`)
+    expect(back.headers.getSetCookie()).toContainEqual(
+      expect.stringMatching(/^qualy_session_notice=1;/),
+    )
     // the name is whatever the account is called now
     expect((await bindingsOf(ada))[0]!.display_label).toBe('ada-renamed')
 

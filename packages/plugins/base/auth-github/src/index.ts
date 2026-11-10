@@ -25,6 +25,7 @@ import { text } from '@qualy/text'
 import { messageRefs } from '@qualy/text/node'
 import type * as M from '#messages'
 import { Plugin } from '@qualy/plugin-kit'
+import { recoveryReturn } from '@qualy/ui-contract/session-notice'
 import { authGithubApiGroup, GithubRejected, GithubUnavailable } from './api.ts'
 import { authorizeRedirect, endpointsOf, identify, pkce } from './oauth.ts'
 
@@ -276,6 +277,7 @@ const handlers = HttpApiBuilder.group(local, 'authGithub', (handlers) =>
           tenantId: provider.tenantId,
           providerId: provider.providerId,
           userId: binding.userId,
+          notifySessionChange: !recoveryReturn(flow.returnPath),
           bindingId: binding.id,
           bindingDisplayLabel: answer.login,
         })

@@ -354,6 +354,9 @@ describe.runIf(postgresAvailable)('signing in through a CAS server', () => {
     expect(back.status).toBe(303)
     expect(back.headers.get('location')).toBe('/assessment/batches')
     expect(back.headers.get('set-cookie')).toContain(`${sessionCookieName}=`)
+    expect(back.headers.getSetCookie()).toContainEqual(
+      expect.stringMatching(/^qualy_session_notice=1;/),
+    )
     // validated once, with the very string the flow was started with
     expect(cas.validations).toEqual([{ method: 'GET', path: '/cas/p3/serviceValidate', service }])
     const event = await latestEvent()

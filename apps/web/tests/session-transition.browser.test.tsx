@@ -12,6 +12,13 @@ import {
 } from '@qualy/web-runtime'
 import { onSignOut } from '@qualy/web-runtime/identity'
 import { apiError, emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
+import { prepareDocument } from '../src/rsc/early-document.ts'
+import {
+  SESSION_CHANNEL,
+  SESSION_NOTICE_COOKIE,
+  SESSION_NOTICE_SECURE_COOKIE,
+  SESSION_NOTICE_STORAGE_KEY,
+} from '@qualy/ui-contract/session-notice'
 
 function focusAfterAbsence() {
   const clock = vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 60_000)
@@ -795,9 +802,112 @@ describe('a signed-in page that finds somebody else signed in', () => {
       elsewhere.close()
     }
   })
+
+  it('freezes the old page when an external sign-in document consumes its notice', async () => {
+    const { signInElsewhere, counted, moves } = await screen()
+    signInElsewhere()
+    const other = window.open('about:blank', '_blank')
+    if (other === null) throw new Error('browser refused the second tab')
+    try {
+      other.document.cookie = `${SESSION_NOTICE_COOKIE}=1; Path=/; SameSite=Lax`
+      other.document.open()
+      other.document.write(
+        `<html><head><script>(${prepareDocument.toString()})(document.documentElement,undefined,${JSON.stringify([SESSION_NOTICE_COOKIE, SESSION_NOTICE_SECURE_COOKIE, SESSION_CHANNEL, SESSION_NOTICE_STORAGE_KEY])})</script></head><body></body></html>`,
+      )
+      other.document.close()
+      await locked()
+      expect(document.cookie).not.toContain(`${SESSION_NOTICE_COOKIE}=`)
+      const before = { ...counted }
+      moves.refetch?.()
+      moves.save?.()
+      await new Promise((resolve) => setTimeout(resolve, 300))
+      expect(counted).toEqual(before)
+    } finally {
+      other.close()
+    }
+  })
 })
 
 describe('the manifest, asked again in the background', () => {
+  it('does not miss a change that arrived before the old document hydrated', async () => {
+    let asks = 0
+    await renderScreen({
+      storage: { [SESSION_NOTICE_STORAGE_KEY]: `${Date.now()}:before-hydration` },
+      client: fakeClient({
+        app: {
+          getManifest: () =>
+            Effect.sync(() => ({
+              ...emptyManifest(),
+              viewer: 'authenticated' as const,
+              identity: ++asks === 1 ? 'reader' : 'someone-else',
+            })),
+        },
+      }),
+      routes: [{ path: '/work', element: <p>Old document</p> }],
+      route: '/work',
+    })
+    await expect
+      .element(page.getByTestId('session-recovery'))
+      .toHaveAttribute('data-state', 'switched')
+    expect(asks).toBe(2)
+  })
+  it('rechecks after another external sign-in while the first probe is in flight', async () => {
+    let who = 'reader'
+    let asks = 0
+    let release!: () => void
+    const held = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const watch = new BroadcastChannel(SESSION_CHANNEL)
+    let messages = 0
+    watch.onmessage = () => {
+      messages++
+    }
+    await renderScreen({
+      client: fakeClient({
+        app: {
+          getManifest: () =>
+            Effect.promise(async () => {
+              const found = who
+              asks++
+              if (asks === 2) await held
+              return { ...emptyManifest(), viewer: 'authenticated' as const, identity: found }
+            }),
+        },
+      }),
+      routes: [{ path: '/work', element: <p data-testid="standing">Open</p> }],
+      route: '/work',
+    })
+    const tabs: Window[] = []
+    const notify = () => {
+      const tab = window.open('about:blank', '_blank')
+      if (tab === null) throw new Error('browser refused the second tab')
+      tabs.push(tab)
+      tab.document.cookie = `${SESSION_NOTICE_COOKIE}=1; Path=/; SameSite=Lax`
+      tab.document.open()
+      tab.document.write(
+        `<html><head><script>(${prepareDocument.toString()})(document.documentElement,undefined,${JSON.stringify([SESSION_NOTICE_COOKIE, SESSION_NOTICE_SECURE_COOKIE, SESSION_CHANNEL, SESSION_NOTICE_STORAGE_KEY])})</script></head><body></body></html>`,
+      )
+      tab.document.close()
+    }
+    try {
+      notify()
+      await expect.poll(() => asks).toBe(2)
+      who = 'someone-else'
+      notify()
+      await expect.poll(() => messages).toBe(2)
+      release()
+      await expect
+        .element(page.getByTestId('session-recovery'))
+        .toHaveAttribute('data-state', 'switched')
+      expect(asks).toBe(3)
+    } finally {
+      release()
+      watch.close()
+      for (const tab of tabs) tab.close()
+    }
+  })
+
   it('uses the hydrated manifest on fresh focus and coalesces a stale return', async () => {
     let asks = 0
     let release!: () => void

@@ -13,10 +13,22 @@ import { releases } from '../release.ts'
 import { ReleaseRecoveryGate } from '../release-ui.tsx'
 import { DOCUMENT_ENTRANCE_KEY } from '@qualy/web-runtime/document-entrance'
 import { earlyDocumentScript } from './early-document.ts'
+import {
+  SESSION_CHANNEL,
+  SESSION_NOTICE_COOKIE,
+  SESSION_NOTICE_SECURE_COOKIE,
+  SESSION_NOTICE_STORAGE_KEY,
+} from '@qualy/ui-contract/session-notice'
 import '../app.css'
 
 /** the scheme the page starts in, decided before any script of ours ran */
-const EARLY_DOCUMENT = `(function(){var root=document.documentElement;if(!(${earlyDocumentScript})(root,${JSON.stringify(DOCUMENT_ENTRANCE_KEY)}))return;${earlyLayoutPreferences}})()`
+const SESSION_NOTICE = [
+  SESSION_NOTICE_COOKIE,
+  SESSION_NOTICE_SECURE_COOKIE,
+  SESSION_CHANNEL,
+  SESSION_NOTICE_STORAGE_KEY,
+] as const
+const EARLY_DOCUMENT = `(function(){var root=document.documentElement;if(!(${earlyDocumentScript})(root,${JSON.stringify(DOCUMENT_ENTRANCE_KEY)},${JSON.stringify(SESSION_NOTICE)}))return;${earlyLayoutPreferences}})()`
 
 // Plain selectors and colors: even a browser that cannot load the app must
 // be able to draw this explanation. The script only changes <html>, whose

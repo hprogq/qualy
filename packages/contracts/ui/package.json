@@ -9,6 +9,7 @@
     ".": "./src/index.ts",
     "./browser-contract": "./src/browser-contract.ts",
     "./return-path": "./src/return-path.ts",
+    "./session-notice": "./src/session-notice.ts",
     "./package.json": "./package.json"
   },
   "dependencies": {
