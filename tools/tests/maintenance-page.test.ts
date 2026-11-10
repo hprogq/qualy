@@ -24,7 +24,7 @@ import { localeOfRequest } from '../../packages/core/api-kit/src/locale.ts'
 const ROOT = path.resolve(import.meta.dirname, '../..')
 const read = (file: string) => fs.readFileSync(path.join(ROOT, file), 'utf8')
 const page = read('deploy/demo/maintenance.html')
-const document = read('apps/web/src/rsc/html-document.tsx')
+const document = read('apps/web/src/rsc/early-document.ts')
 const tokens = read('packages/web/ui/src/styles/tokens.css')
 const caddy = read('ops/reverse-proxy/Caddyfile')
 
