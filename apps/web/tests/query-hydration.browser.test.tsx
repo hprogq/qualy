@@ -281,6 +281,52 @@ describe('a read that follows the html', () => {
     expect(client.getQueryData(KEY)).toBeUndefined()
   })
 
+  it('does not start an ask that arrives after cancellation', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const read = held()
+    const ask = vi.fn(() => Promise.resolve('asked'))
+    await drawn(read.arrival, ask, client)
+    await client.cancelQueries({ queryKey: KEY })
+    read.land({ kind: 'ask' })
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    expect(ask).not.toHaveBeenCalled()
+    expect(client.getQueryData(KEY)).toBeUndefined()
+  })
+
+  it('aborts an active fallback when its query is cancelled', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const read = held()
+    let signal!: AbortSignal
+    const ask = vi.fn(({ signal: received }: { signal: AbortSignal }) => {
+      signal = received
+      return new Promise<string>((_resolve, reject) => {
+        received.addEventListener('abort', () => reject(new Error('aborted')))
+      })
+    })
+    await drawn(read.arrival, ask, client)
+    read.land({ kind: 'ask' })
+    await expect.poll(() => ask.mock.calls.length).toBe(1)
+    expect(signal.aborted).toBe(false)
+    await client.cancelQueries({ queryKey: KEY })
+    await expect.poll(() => signal.aborted).toBe(true)
+    expect(client.getQueryData(KEY)).toBeUndefined()
+  })
+
+  it('accepts a fallback that finishes normally without aborting it', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const read = held()
+    let signal!: AbortSignal
+    const ask = vi.fn(({ signal: received }: { signal: AbortSignal }) => {
+      signal = received
+      return Promise.resolve('fresh')
+    })
+    await drawn(read.arrival, ask, client)
+    read.land({ kind: 'ask' })
+    await expect.poll(() => client.getQueryData(KEY)).toBe('fresh')
+    expect(signal.aborted).toBe(false)
+    expect(ask).toHaveBeenCalledTimes(1)
+  })
+
   it('aborts an active fallback read when its cache is cleared', async () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     const read = held()
