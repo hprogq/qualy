@@ -20,6 +20,7 @@ const LIB = path.join(ROOT, 'deploy/lib.sh')
 const FAKE_DOCKER = `#!/bin/sh
 # docker, as far as lib.sh asks it
 printf '%s\\n' "$*" >> "$FAKE/docker.log"
+printf 'release=%s %s\\n' "\${QUALY_RELEASE:-}" "$*" >> "$FAKE/docker-release.log"
 if [ "$1" = compose ]; then
   case "$*" in
     *'up -d server-green '*) [ "\${FAKE_FAIL_TARGET_START:-}" != 1 ] || exit 1 ;;
@@ -293,6 +294,22 @@ describe('the demonstration baseline account domain', () => {
     }
     // the deploy job pointed at the scratch database, not the live one
     expect(asked).toMatch(/run --rm --no-deps -T --entrypoint sh migrate -c/)
+  })
+
+  it('uses the reconciled serving release for both scratch and live migrations', () => {
+    edgeOn(3002)
+    serverRuns('green', 'r2')
+    const ran = restore(
+      'mail.example.test',
+      { QUALY_PROXY: 'caddy', QUALY_PROXY_UPSTREAM: snippet },
+      ['--keep-sign-in'],
+    )
+    expect(ran.status, ran.stderr).toBe(0)
+    expect(ran.stdout).toContain('RECONCILED: the edge serves green running r2')
+    const calls = fs.readFileSync(path.join(fake, 'docker-release.log'), 'utf8')
+    const migrations = calls.split('\n').filter((line) => line.includes(' migrate'))
+    expect(migrations.length).toBeGreaterThanOrEqual(2)
+    for (const call of migrations) expect(call).toMatch(/^release=r2 /)
   })
 
   it('carries an image kept on the local backend into the restored volume', () => {

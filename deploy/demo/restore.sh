@@ -82,8 +82,6 @@ baseline_scalar() {
 [ -f "$env_file" ] || refuse "no $env_file"
 [ -f "$baseline/qualy-demo.dump" ] || refuse "no $baseline/qualy-demo.dump"
 [ -f "$baseline/storage.tar.gz" ] || refuse "no $baseline/storage.tar.gz"
-release=$(env_get QUALY_RELEASE)
-[ -n "$release" ] || refuse "no QUALY_RELEASE in $env_file: which release runs the baseline?"
 # Match tools/demo/accounts.ts without depending on source files in the
 # release image. The domain names accounts already in the dump; it never
 # renames them and is independent of QUALY_PUBLIC_URL and QUALY_MAIL_FROM.
@@ -123,6 +121,10 @@ finish() {
 }
 trap finish EXIT
 reconcile --stopped-ok
+# Reconcile can repair both the serving color and the release under the lock.
+# All subsequent jobs must use that same observed release.
+release=$(env_get QUALY_RELEASE)
+[ -n "$release" ] || refuse "no QUALY_RELEASE in $env_file: which release runs the baseline?"
 active=$(env_get QUALY_ACTIVE_COLOR)
 
 step="starting the database"
