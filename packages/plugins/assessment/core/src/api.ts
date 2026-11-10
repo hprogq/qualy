@@ -2012,6 +2012,10 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
       params: Schema.Struct({ instanceId: uuidInput }),
       payload: Schema.Struct({
         decision: Schema.Literals(['approve', 'reject', 'escalate']),
+        expectedStage: Schema.Struct({
+          route: Schema.Literals(['normal', 'escalation']),
+          stageId: Schema.String,
+        }),
         /**
          * One of the batch's configured reason labels, for reject and
          * escalate. Required exactly when the batch configured a list for
@@ -2640,6 +2644,10 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
         params: Schema.Struct({ instanceId: uuidInput }),
         payload: Schema.Struct({
           instructions: boundedText(2000),
+          expectedStage: Schema.Struct({
+            route: Schema.Literals(['normal', 'escalation']),
+            stageId: Schema.String,
+          }),
           // A ceiling on the body only. The rule (a handful of pieces) is the
           // service's, answered as a field issue the dialog can show.
           requirements: Schema.Array(

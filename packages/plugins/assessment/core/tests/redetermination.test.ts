@@ -1,3 +1,4 @@
+import { decideReviewAtCurrentStage, requestSupplementAtCurrentStage } from './support/round.ts'
 import { sql } from 'kysely'
 import { Effect, Exit } from 'effect'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -71,7 +72,8 @@ const judged = (
       owner,
     )
     const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', owner)
-    yield* assessment.decideReview(
+    yield* decideReviewAtCurrentStage(
+      assessment,
       f.t,
       sent.currentReviewInstanceId!,
       word === 'approve'
@@ -234,7 +236,8 @@ describe.runIf(postgresAvailable)('re-determining a concluded claim', () => {
           const s1 = f.principal(f.s1)
           const entryId = yield* judged(f, w.g, 'reject')
           const appeal = yield* assessment.appealEntry(f.t, entryId, { reason: '请复核' }, s1)
-          yield* assessment.requestSupplement(
+          yield* requestSupplementAtCurrentStage(
+            assessment,
             f.t,
             appeal.id,
             {
@@ -264,7 +267,8 @@ describe.runIf(postgresAvailable)('re-determining a concluded claim', () => {
               select status from review_supplement_requests where review_instance_id = ${appeal.id}`),
           )
           const late = yield* Effect.exit(
-            assessment.decideReview(
+            decideReviewAtCurrentStage(
+              assessment,
               f.t,
               appeal.id,
               { decision: 'reject', comment: '维持' },
@@ -295,7 +299,8 @@ describe.runIf(postgresAvailable)('re-determining a concluded claim', () => {
           const entryId = yield* judged(f, w.g, 'approve')
           // the participant spends the appeal of the first result
           const first = yield* assessment.appealEntry(f.t, entryId, { reason: '等级偏低' }, s1)
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             first.id,
             {
@@ -319,7 +324,8 @@ describe.runIf(postgresAvailable)('re-determining a concluded claim', () => {
               join entry_events ev on ev.id = r.appealed_event_id
               where r.id = ${second.id}`),
           )
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             second.id,
             { decision: 'reject', comment: '维持撤销' },

@@ -1,3 +1,4 @@
+import { decideReviewAtCurrentStage } from './support/round.ts'
 import { sql } from 'kysely'
 import { Effect } from 'effect'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -68,7 +69,8 @@ describe.runIf(postgresAvailable)("one participant's account, read by staff", ()
             s1,
           )
           const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             sent.currentReviewInstanceId!,
             { decision: 'approve' },
@@ -112,7 +114,8 @@ describe.runIf(postgresAvailable)("one participant's account, read by staff", ()
             s1,
           )
           const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             sent.currentReviewInstanceId!,
             { decision: 'approve' },

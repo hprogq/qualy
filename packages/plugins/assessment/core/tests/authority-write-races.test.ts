@@ -1,3 +1,4 @@
+import { requestSupplementAtCurrentStage } from './support/round.ts'
 import { Effect, Exit } from 'effect'
 import { sql } from 'kysely'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -115,7 +116,8 @@ describe.runIf(postgresAvailable)('assessment authority under write locks', () =
             'in_review',
             f.principal(f.s1),
           )
-          const asked = yield* assessment.requestSupplement(
+          const asked = yield* requestSupplementAtCurrentStage(
+            assessment,
             f.t,
             sent.currentReviewInstanceId!,
             {
@@ -191,7 +193,8 @@ describe.runIf(postgresAvailable)('assessment authority under write locks', () =
             'in_review',
             f.principal(f.s1),
           )
-          const asked = yield* assessment.requestSupplement(
+          const asked = yield* requestSupplementAtCurrentStage(
+            assessment,
             f.t,
             sent.currentReviewInstanceId!,
             {

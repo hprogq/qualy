@@ -1,3 +1,4 @@
+import { decideReviewAtCurrentStage } from './support/round.ts'
 import { sql } from 'kysely'
 import { Effect, Exit } from 'effect'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -295,7 +296,8 @@ describe.runIf(postgresAvailable)('the item lifecycle and the files it leaves', 
             'in_review',
             f.principal(f.s1),
           )
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             sent1.currentReviewInstanceId!,
             { decision: 'reject', comment: 'not enough' },
@@ -548,7 +550,8 @@ describe.runIf(postgresAvailable)('the item lifecycle and the files it leaves', 
                 owner,
               )
               const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', owner)
-              yield* assessment.decideReview(
+              yield* decideReviewAtCurrentStage(
+                assessment,
                 f.t,
                 sent.currentReviewInstanceId!,
                 word === 'approve'
@@ -907,7 +910,8 @@ describe.runIf(postgresAvailable)('the item lifecycle and the files it leaves', 
             s1,
           )
           const sent = yield* assessment.setEntryStatus(f.t, filed.id, 'in_review', s1)
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             sent.currentReviewInstanceId!,
             { decision: 'approve' },

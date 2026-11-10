@@ -1,3 +1,4 @@
+import { decideReviewAtCurrentStage } from './review-stage.ts'
 import { Effect } from 'effect'
 import ExcelJS from 'exceljs'
 import { sql } from 'kysely'
@@ -571,7 +572,8 @@ export const runTerm = (input: {
           deadline,
           refuse: (judge, rejection) =>
             Effect.gen(function* () {
-              yield* assessment.decideReview(
+              yield* decideReviewAtCurrentStage(
+                assessment,
                 t,
                 instanceId,
                 { decision: 'reject', reason: rejection.reason, comment: rejection.comment },
@@ -598,7 +600,8 @@ export const runTerm = (input: {
     ): Effect.Effect<void, unknown, unknown> =>
       Effect.gen(function* () {
         if (roll < 0.095 && judge.round.actions.escalate.state === 'available') {
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             t,
             instanceId,
             {
@@ -660,37 +663,36 @@ export const runTerm = (input: {
             : null
         const asks = form !== null && form.fields.length > 0
         const said = note === undefined ? {} : { comment: note }
-        yield* assessment
-          .decideReview(
-            t,
-            entry.instanceId!,
-            !asks
-              ? { decision: 'approve', ...said }
-              : correction === null
-                ? {
-                    decision: 'approve',
-                    ...said,
-                    recognition: { values: { ...(locked?.values ?? form.seed) } },
-                  }
-                : {
-                    decision: 'approve',
-                    comment: correction.comment,
-                    recognition: { values: correction.values, reason: correction.comment },
-                  },
-            judge.as,
-          )
-          .pipe(
-            Effect.tapError(() =>
-              Effect.sync(() =>
-                console.error(
-                  'approve refused',
-                  entry.claim.item,
-                  JSON.stringify(form),
-                  JSON.stringify(entry.claim.payload),
-                ),
+        yield* decideReviewAtCurrentStage(
+          assessment,
+          t,
+          entry.instanceId!,
+          !asks
+            ? { decision: 'approve', ...said }
+            : correction === null
+              ? {
+                  decision: 'approve',
+                  ...said,
+                  recognition: { values: { ...(locked?.values ?? form.seed) } },
+                }
+              : {
+                  decision: 'approve',
+                  comment: correction.comment,
+                  recognition: { values: correction.values, reason: correction.comment },
+                },
+          judge.as,
+        ).pipe(
+          Effect.tapError(() =>
+            Effect.sync(() =>
+              console.error(
+                'approve refused',
+                entry.claim.item,
+                JSON.stringify(form),
+                JSON.stringify(entry.claim.payload),
               ),
             ),
-          )
+          ),
+        )
         entry.status = 'approved'
       })
 
@@ -815,7 +817,8 @@ export const runTerm = (input: {
           const stage = judge.round.chain.stageId
           const last = stage === 'counsellor'
           if (!accept && !last && judge.round.actions.escalate.state === 'available') {
-            yield* assessment.decideReview(
+            yield* decideReviewAtCurrentStage(
+              assessment,
               t,
               entry.instanceId!,
               {
@@ -835,7 +838,8 @@ export const runTerm = (input: {
             return
           }
           if (!accept && last) {
-            yield* assessment.decideReview(
+            yield* decideReviewAtCurrentStage(
+              assessment,
               t,
               entry.instanceId!,
               {
@@ -1176,7 +1180,8 @@ export const runTerm = (input: {
         const form = judge.round.recognitionForm
         const said = comment === undefined ? {} : { comment }
         if (form === null || form.fields.length === 0) {
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             t,
             entry.instanceId!,
             { decision: 'approve', ...said },
@@ -1194,7 +1199,8 @@ export const runTerm = (input: {
             }
           }
         }
-        yield* assessment.decideReview(
+        yield* decideReviewAtCurrentStage(
+          assessment,
           t,
           entry.instanceId!,
           {
@@ -1226,7 +1232,8 @@ export const runTerm = (input: {
         if (verdict.kind === 'approve') {
           yield* approveWith(entry, judge, verdict.override, verdict.comment)
         } else {
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             t,
             entry.instanceId!,
             { decision: 'reject', reason: verdict.reason, comment: verdict.comment },
@@ -1306,7 +1313,8 @@ export const runTerm = (input: {
       const rejectNow = (reason: string, comment: string) => (entry: Filed) =>
         judged(entry, (judge) =>
           Effect.tap(
-            assessment.decideReview(
+            decideReviewAtCurrentStage(
+              assessment,
               t,
               entry.instanceId!,
               { decision: 'reject', reason, comment },
@@ -1415,7 +1423,8 @@ export const runTerm = (input: {
           fileAt(1, '20:00', episode.claim!)
           on(2, '19:30', (entry) =>
             judged(entry, (judge) =>
-              assessment.decideReview(
+              decideReviewAtCurrentStage(
+                assessment,
                 t,
                 entry.instanceId!,
                 {
@@ -1752,7 +1761,8 @@ export const runTerm = (input: {
       const reject = (reason: string, comment: string) => (entry: Filed) =>
         judged(entry, (judge) =>
           Effect.tap(
-            assessment.decideReview(
+            decideReviewAtCurrentStage(
+              assessment,
               t,
               entry.instanceId!,
               { decision: 'reject', reason, comment },
@@ -1766,7 +1776,8 @@ export const runTerm = (input: {
         )
       const escalate = (entry: Filed) =>
         judged(entry, (judge) =>
-          assessment.decideReview(
+          decideReviewAtCurrentStage(
+            assessment,
             t,
             entry.instanceId!,
             {

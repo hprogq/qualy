@@ -1,3 +1,4 @@
+import { decideReviewAtCurrentStage } from './support/round.ts'
 import { sql } from 'kysely'
 import { Effect } from 'effect'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -186,7 +187,8 @@ const approved = (f: Seeded, itemId: string, participantId: string, who: string)
     const as = f.principal(who)
     const entry = yield* assessment.createEntry(f.t, { itemId, participantId, payload: {} }, as)
     const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', as)
-    yield* assessment.decideReview(
+    yield* decideReviewAtCurrentStage(
+      assessment,
       f.t,
       sent.currentReviewInstanceId!,
       { decision: 'approve' },
@@ -235,7 +237,8 @@ describe.runIf(postgresAvailable)('the provisional account', () => {
             s1,
           )
           const sent = yield* assessment.setEntryStatus(f.t, volunteer.id, 'in_review', s1)
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             sent.currentReviewInstanceId!,
             { decision: 'reject', comment: 'no evidence attached' },

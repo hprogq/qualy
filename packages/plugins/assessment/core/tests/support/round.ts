@@ -29,6 +29,7 @@ import { semanticPlanBody } from '../../src/scoring/plan.ts'
 import { hashCanonicalJson } from '@qualy/value-schema/hash'
 import { permissions as assessmentPermissions } from '../../src/permissions.ts'
 import { Assessment, serviceLayer, type PhaseSpecInput } from '../../src/server/index.ts'
+import type { ReviewDecisionInput, ReviewMethods } from '../../src/review/service.ts'
 import {
   catalogLayers,
   scoringAuthoringPolicyLayer,
@@ -145,6 +146,38 @@ export const refusalOf = (exit: Exit.Exit<unknown, unknown>) =>
   errorOf<{ _tag?: string; reason?: string }>(exit)
 
 export const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
+
+/** A legacy scenario acts on the stage that is current when its request starts. */
+const currentReviewStage = (tenantId: string, instanceId: string) =>
+  Effect.map(
+    runSql<{ route: 'normal' | 'escalation'; stage_id: string }>(sql`
+      select current_route as route, current_stage_id as stage_id from review_instances
+      where tenant_id = ${tenantId} and id = ${instanceId}
+    `),
+    ({ rows }) => ({ route: rows[0]?.route ?? 'normal', stageId: rows[0]?.stage_id ?? '' }),
+  )
+
+export const decideReviewAtCurrentStage = (
+  assessment: Pick<ReviewMethods, 'decideReview'>,
+  tenantId: string,
+  instanceId: string,
+  input: Omit<ReviewDecisionInput, 'expectedStage'>,
+  as: Principal,
+) =>
+  Effect.flatMap(currentReviewStage(tenantId, instanceId), (expectedStage) =>
+    assessment.decideReview(tenantId, instanceId, { ...input, expectedStage }, as),
+  )
+
+export const requestSupplementAtCurrentStage = (
+  assessment: Pick<ReviewMethods, 'requestSupplement'>,
+  tenantId: string,
+  instanceId: string,
+  input: Omit<Parameters<ReviewMethods['requestSupplement']>[2], 'expectedStage'>,
+  as: Principal,
+) =>
+  Effect.flatMap(currentReviewStage(tenantId, instanceId), (expectedStage) =>
+    assessment.requestSupplement(tenantId, instanceId, { ...input, expectedStage }, as),
+  )
 
 /**
  * A granted question's frozen rule told to fail from now on, in a plan that

@@ -1,3 +1,4 @@
+import { decideReviewAtCurrentStage } from './support/round.ts'
 import { sql } from 'kysely'
 import { Effect, Exit } from 'effect'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -102,7 +103,8 @@ const approvedClaim = (f: Seeded, g: { item: { id: string }; p1: string }) =>
       s1,
     )
     const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
-    yield* assessment.decideReview(
+    yield* decideReviewAtCurrentStage(
+      assessment,
       f.t,
       sent.currentReviewInstanceId!,
       { decision: 'approve' },
@@ -159,13 +161,15 @@ describe.runIf(postgresAvailable)('reopening a concluded claim', () => {
             yield* runSql(sql`select status from entries where id = ${claim.entryId}`),
           )
           // the first step only gives an opinion; the last one concludes
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             opened.id,
             { decision: 'reject', comment: '证书与本人不符' },
             f.principal(w.mid),
           )
-          const concluded = yield* assessment.decideReview(
+          const concluded = yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             opened.id,
             { decision: 'reject', comment: '撤销原通过' },
@@ -219,13 +223,15 @@ describe.runIf(postgresAvailable)('reopening a concluded claim', () => {
           const s1 = f.principal(f.s1)
           const claim = yield* approvedClaim(f, w.g)
           const appeal = yield* assessment.appealEntry(f.t, claim.entryId, { reason: '偏低' }, s1)
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             appeal.id,
             { decision: 'approve', comment: '同意' },
             f.principal(w.mid),
           )
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             appeal.id,
             { decision: 'approve' },

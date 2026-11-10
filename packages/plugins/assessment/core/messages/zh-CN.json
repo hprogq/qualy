@@ -1393,6 +1393,7 @@
   "refuse_supplementUnreadable": "当前版本无法处理该补充要求，请联系管理员。",
   "refuse_awaitingSupplement": "正在等待对方补充材料。",
   "refuse_reviewNotOpen": "当前审核轮次无法操作。",
+  "refuse_reviewStageChanged": "审核环节已变更，请查看当前环节后重试。",
   "review_keysTitle": "键盘快捷键",
   "review_keysToggle": "按 ? 显示或隐藏快捷键面板",
   "review_keysFoot": "字母键仅用于选择，⌘↵ 用于提交；输入文字时不会触发快捷键。",

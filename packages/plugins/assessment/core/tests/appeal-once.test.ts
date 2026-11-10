@@ -1,3 +1,4 @@
+import { decideReviewAtCurrentStage } from './support/round.ts'
 import { inspect } from 'node:util'
 import { sql } from 'kysely'
 import { Effect, Exit } from 'effect'
@@ -59,7 +60,8 @@ describe.runIf(postgresAvailable)('one appeal per conclusion', () => {
             s1,
           )
           const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             sent.currentReviewInstanceId!,
             { decision: 'reject', comment: '材料不足' },
@@ -67,7 +69,8 @@ describe.runIf(postgresAvailable)('one appeal per conclusion', () => {
           )
           const before = yield* assessment.getEntry(f.t, entry.id, s1)
           const appealed = yield* assessment.appealEntry(f.t, entry.id, { reason: '请复核' }, s1)
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             appealed.id,
             { decision: 'reject', comment: '维持' },
@@ -109,14 +112,16 @@ describe.runIf(postgresAvailable)('one appeal per conclusion', () => {
             s1,
           )
           const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             sent.currentReviewInstanceId!,
             { decision: 'reject', comment: '材料不足' },
             reviewer,
           )
           const appealed = yield* assessment.appealEntry(f.t, entry.id, { reason: '请复核' }, s1)
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             appealed.id,
             { decision: 'reject', comment: '维持' },
@@ -125,7 +130,8 @@ describe.runIf(postgresAvailable)('one appeal per conclusion', () => {
           // new material, judged again: a conclusion the appeal never saw
           yield* assessment.appendEntryRevision(f.t, entry.id, { payload: {} }, s1)
           const resent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             resent.currentReviewInstanceId!,
             { decision: 'reject', comment: '仍不足' },
@@ -159,7 +165,8 @@ describe.runIf(postgresAvailable)('one appeal per conclusion', () => {
           )
           const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
           const contested = sent.currentReviewInstanceId!
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             contested,
             { decision: 'reject', comment: '材料不足' },

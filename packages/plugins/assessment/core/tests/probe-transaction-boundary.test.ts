@@ -1,3 +1,4 @@
+import { decideReviewAtCurrentStage } from './support/round.ts'
 import { Duration, Effect, Fiber, Option } from 'effect'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { createTestContext, postgresAvailable } from '@qualy/plugin-database/testkit'
@@ -81,7 +82,8 @@ describe.runIf(postgresAvailable)('where the arithmetic runs', () => {
           const release = holding()
           const proving = yield* Effect.forkChild(
             Effect.exit(
-              assessment.decideReview(
+              decideReviewAtCurrentStage(
+                assessment,
                 f.t,
                 sent.currentReviewInstanceId!,
                 {
@@ -130,7 +132,8 @@ describe.runIf(postgresAvailable)('where the arithmetic runs', () => {
             s1,
           )
           const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             sent.currentReviewInstanceId!,
             {
@@ -198,7 +201,8 @@ describe.runIf(postgresAvailable)('where the arithmetic runs', () => {
             'in_review',
             f.principal(f.s2),
           )
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             sentAgain.currentReviewInstanceId!,
             {

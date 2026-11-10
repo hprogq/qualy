@@ -47,7 +47,7 @@
 access log → metrics → response headers → origin guard → client compatibility → router
 (测试证明:跨站请求先被 403)。
 
-**协议版本的变化。** 当前版本是 5，服务端兼容窗口为 5..5（2026-11-06）。从这一版起，网页的每个请求都要声明自己属于谁，服务端在业务 handler 运行之前核对，见 [ADR 0013](../adr/0013-document-identity.md)。旧标签页不会带这个声明，因此要在下一次请求时进入 reload-required。上一版是 4：列表改为带页码的分页。
+**协议版本的变化。** 当前版本是 6，服务端兼容窗口为 6..6。审核决定和补件请求必须携带发起时所见的审核环节，避免过期的操作落在后续环节。第 5 版起，网页的每个请求都要声明自己属于谁，服务端在业务 handler 运行之前核对，见 [ADR 0013](../adr/0013-document-identity.md)。第 4 版把列表改为带页码的分页。
 
 **二、release 属于哪套装配**(API 的**内容**,2026-09-15 起)。active-only 构建之后,两个 release
 不再只差代码:插件选择变了,页面里就有这台服务端没有 API 的屏,或者它会向 manifest 要自己 bundle

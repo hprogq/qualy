@@ -1393,6 +1393,7 @@
   "refuse_supplementUnreadable": "This supplement request cannot be answered in this version. Contact an administrator.",
   "refuse_awaitingSupplement": "The submission is awaiting additional material.",
   "refuse_reviewNotOpen": "The current review round does not allow this action.",
+  "refuse_reviewStageChanged": "The review stage changed. Review the current stage before trying again.",
   "review_keysTitle": "Keyboard shortcuts",
   "review_keysToggle": "Press ? to open or close this panel",
   "review_keysFoot": "Letter keys select actions; ⌘↵ submits. Shortcuts are disabled while typing.",

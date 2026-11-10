@@ -1,3 +1,4 @@
+import { decideReviewAtCurrentStage, requestSupplementAtCurrentStage } from './support/round.ts'
 import { sql } from 'kysely'
 import { Effect, Exit } from 'effect'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -133,7 +134,8 @@ const panelWorld = (f: Seeded, over?: { scoring?: unknown }) =>
     const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
     const instanceId = sent.currentReviewInstanceId!
     // B1 walks the ordinary step and escalates: the sitting is the other two
-    yield* assessment.decideReview(
+    yield* decideReviewAtCurrentStage(
+      assessment,
       f.t,
       instanceId,
       { decision: 'escalate', comment: '拿不准，提请合议' },
@@ -269,7 +271,8 @@ const appealWorld = (
       s1,
     )
     const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
-    yield* assessment.decideReview(
+    yield* decideReviewAtCurrentStage(
+      assessment,
       f.t,
       sent.currentReviewInstanceId!,
       first === 'approve' ? { decision: 'approve' } : { decision: 'reject', comment: '材料不足' },
@@ -293,7 +296,8 @@ const appealWorld = (
     const appeal = (reason: string) =>
       Effect.map(assessment.appealEntry(f.t, entry.id, { reason }, s1), (opened) => opened.id)
     const vote = (instanceId: string, who: string, decision: 'approve' | 'reject') =>
-      assessment.decideReview(
+      decideReviewAtCurrentStage(
+        assessment,
         f.t,
         instanceId,
         decision === 'approve' ? { decision } : { decision, comment: '不予支持' },
@@ -338,7 +342,8 @@ describe.runIf(postgresAvailable)('the sitting', () => {
           const b2Before = yield* queueOf(w.b2)
           const b3Before = yield* queueOf(w.b3)
           // one ballot goes in: the round stands, the voter's turn ends
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             w.instanceId,
             { decision: 'approve' },
@@ -384,13 +389,15 @@ describe.runIf(postgresAvailable)('the sitting', () => {
           const f = yield* seed('pn-unanimous')
           const assessment = yield* Assessment
           const w = yield* panelWorld(f)
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             w.instanceId,
             { decision: 'approve', comment: '材料充分' },
             f.principal(w.b2),
           )
-          const agreed = yield* assessment.decideReview(
+          const agreed = yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             w.instanceId,
             { decision: 'approve' },
@@ -414,7 +421,8 @@ describe.runIf(postgresAvailable)('the sitting', () => {
             w.instanceId,
             f.principal(w.closer),
           )
-          const settled = yield* assessment.decideReview(
+          const settled = yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             w.instanceId,
             { decision: 'approve' },
@@ -474,13 +482,15 @@ describe.runIf(postgresAvailable)('the sitting', () => {
           const f = yield* seed('pn-split')
           const assessment = yield* Assessment
           const w = yield* panelWorld(f)
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             w.instanceId,
             { decision: 'approve', comment: '我认为可以认定' },
             f.principal(w.b2),
           )
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             w.instanceId,
             { decision: 'reject', comment: '日期超出认定范围' },
@@ -495,7 +505,8 @@ describe.runIf(postgresAvailable)('the sitting', () => {
           // the filer reads the same round without anybody's name on a
           // ballot while the phase keeps them from it (§32.85)
           const asFiler = yield* assessment.getReviewInstance(f.t, w.instanceId, f.principal(f.s1))
-          const settled = yield* assessment.decideReview(
+          const settled = yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             w.instanceId,
             { decision: 'reject', comment: '采纳异议，不予认定' },
@@ -529,13 +540,15 @@ describe.runIf(postgresAvailable)('the sitting', () => {
           const f = yield* seed('pn-pull-up')
           const assessment = yield* Assessment
           const w = yield* panelWorld(f)
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             w.instanceId,
             { decision: 'approve' },
             f.principal(w.b2),
           )
-          const pulled = yield* assessment.decideReview(
+          const pulled = yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             w.instanceId,
             { decision: 'escalate', comment: '超出本环节判断范围' },
@@ -572,7 +585,8 @@ describe.runIf(postgresAvailable)('the sitting', () => {
           const f = yield* seed('pn-excluded')
           const assessment = yield* Assessment
           const w = yield* panelWorld(f)
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             w.instanceId,
             { decision: 'approve' },
@@ -608,7 +622,13 @@ describe.runIf(postgresAvailable)('the sitting', () => {
               where p.review_instance_id = ${w.instanceId}`),
           ).n
           const late = yield* Effect.exit(
-            assessment.decideReview(f.t, w.instanceId, { decision: 'approve' }, f.principal(w.b3)),
+            decideReviewAtCurrentStage(
+              assessment,
+              f.t,
+              w.instanceId,
+              { decision: 'approve' },
+              f.principal(w.b3),
+            ),
           )
           const queued = (yield* assessment.listReviewInbox(
             f.t,
@@ -642,17 +662,25 @@ describe.runIf(postgresAvailable)('the sitting', () => {
           const f = yield* seed('pn-spent-seat')
           const assessment = yield* Assessment
           const w = yield* panelWorld(f)
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             w.instanceId,
             { decision: 'approve', comment: '材料充分' },
             f.principal(w.b2),
           )
           const again = yield* Effect.exit(
-            assessment.decideReview(f.t, w.instanceId, { decision: 'approve' }, f.principal(w.b2)),
+            decideReviewAtCurrentStage(
+              assessment,
+              f.t,
+              w.instanceId,
+              { decision: 'approve' },
+              f.principal(w.b2),
+            ),
           )
           const pullUp = yield* Effect.exit(
-            assessment.decideReview(
+            decideReviewAtCurrentStage(
+              assessment,
               f.t,
               w.instanceId,
               { decision: 'escalate', comment: '交上级' },
@@ -669,7 +697,8 @@ describe.runIf(postgresAvailable)('the sitting', () => {
               sql`select state from review_panels where review_instance_id = ${w.instanceId}`,
             ),
           )
-          const settled = yield* assessment.decideReview(
+          const settled = yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             w.instanceId,
             { decision: 'approve' },
@@ -817,7 +846,8 @@ describe.runIf(postgresAvailable)('the sitting', () => {
           const f = yield* seed('pn-seats')
           const assessment = yield* Assessment
           const w = yield* panelWorld(f)
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             w.instanceId,
             { decision: 'approve' },
@@ -847,7 +877,8 @@ describe.runIf(postgresAvailable)('the sitting', () => {
             assessment.listReviewInbox(f.t, { batchId: w.batchId }, f.principal(b4.who)),
             (page) => page.items.map((row) => row.instanceId),
           )
-          const settled = yield* assessment.decideReview(
+          const settled = yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             w.instanceId,
             { decision: 'approve' },
@@ -910,7 +941,8 @@ describe.runIf(postgresAvailable)('the sitting', () => {
             (page) => page.items.map((row) => row.instanceId),
           )
           const b4Tried = yield* Effect.exit(
-            assessment.decideReview(
+            decideReviewAtCurrentStage(
+              assessment,
               f.t,
               w.instanceId,
               { decision: 'approve' },
@@ -937,7 +969,8 @@ describe.runIf(postgresAvailable)('the sitting', () => {
           const assessment = yield* Assessment
           const w = yield* panelWorld(f)
           const s1 = f.principal(f.s1)
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             w.instanceId,
             { decision: 'approve' },
@@ -949,7 +982,8 @@ describe.runIf(postgresAvailable)('the sitting', () => {
               where review_instance_id = ${w.instanceId} and state = 'open'`),
           ).id
           // an ask taken back returns the round exactly as it stood
-          yield* assessment.requestSupplement(
+          yield* requestSupplementAtCurrentStage(
+            assessment,
             f.t,
             w.instanceId,
             {
@@ -972,7 +1006,8 @@ describe.runIf(postgresAvailable)('the sitting', () => {
           )
           // an ask answered changes the evidence: the sitting dissolves and
           // the same people are asked again, ballots and all
-          yield* assessment.requestSupplement(
+          yield* requestSupplementAtCurrentStage(
+            assessment,
             f.t,
             w.instanceId,
             {
@@ -1000,13 +1035,15 @@ describe.runIf(postgresAvailable)('the sitting', () => {
             assessment.listReviewInbox(f.t, { batchId: w.batchId }, f.principal(w.b2)),
             (page) => page.items.map((row) => row.instanceId),
           )
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             w.instanceId,
             { decision: 'approve' },
             f.principal(w.b2),
           )
-          const settled = yield* assessment.decideReview(
+          const settled = yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             w.instanceId,
             { decision: 'approve' },
@@ -1054,7 +1091,8 @@ describe.runIf(postgresAvailable)('the sitting', () => {
           // the first juror cannot pass it, and says so: a refusal
           // determines nothing, so there is nothing to freeze and nothing
           // for the seed's missing field to block
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             w.instanceId,
             { decision: 'reject', comment: '材料不足以判定等级' },
@@ -1067,7 +1105,8 @@ describe.runIf(postgresAvailable)('the sitting', () => {
           )
           // the second agrees, and the round ends refused with no
           // determination anywhere
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             w.instanceId,
             { decision: 'reject', comment: '同上' },

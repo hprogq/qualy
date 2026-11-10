@@ -1,3 +1,4 @@
+import { decideReviewAtCurrentStage, requestSupplementAtCurrentStage } from './support/round.ts'
 import { Effect, Exit } from 'effect'
 import { sql } from 'kysely'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -43,7 +44,8 @@ describe.runIf(postgresAvailable)('what leaving the roster does to open work', (
           )
           const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
           const roundId = sent.currentReviewInstanceId!
-          yield* assessment.requestSupplement(
+          yield* requestSupplementAtCurrentStage(
+            assessment,
             f.t,
             roundId,
             {
@@ -139,7 +141,8 @@ describe.runIf(postgresAvailable)('what leaving the roster does to open work', (
           )
           const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
           const decision = sent.currentReviewInstanceId!
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             decision,
             { decision: 'approve' },
@@ -233,7 +236,8 @@ describe.runIf(postgresAvailable)('what leaving the roster does to open work', (
                 s1,
               )
               const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
-              yield* assessment.decideReview(
+              yield* decideReviewAtCurrentStage(
+                assessment,
                 f.t,
                 sent.currentReviewInstanceId!,
                 word === 'approve'
@@ -415,7 +419,8 @@ describe.runIf(postgresAvailable)('what leaving the roster does to open work', (
             s1,
           )
           const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
-          yield* assessment.requestSupplement(
+          yield* requestSupplementAtCurrentStage(
+            assessment,
             f.t,
             sent.currentReviewInstanceId!,
             {

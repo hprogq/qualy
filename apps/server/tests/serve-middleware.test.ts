@@ -260,6 +260,7 @@ describe('the web client protocol', () => {
       '1',
       '2',
       '3',
+      '5',
       String(CURRENT_CLIENT_PROTOCOL + 1),
       'one',
       '-1',

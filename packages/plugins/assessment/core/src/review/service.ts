@@ -460,6 +460,7 @@ const wordEnds = (policy: ResolvedPolicy, here: ResolvedStage, action: ReviewDec
 
 export interface ReviewDecisionInput {
   readonly decision: ReviewDecision
+  readonly expectedStage: { readonly route: 'normal' | 'escalation'; readonly stageId: string }
   /** one of the batch's configured labels; required when a list is configured */
   readonly reason?: string
   readonly comment?: string
@@ -647,6 +648,7 @@ export interface ReviewMethods {
     instanceId: string,
     input: {
       instructions: string
+      expectedStage: { readonly route: 'normal' | 'escalation'; readonly stageId: string }
       requirements: readonly { label: string; kind: 'text' | 'file'; required: boolean }[]
     },
     as: Principal,
@@ -1608,12 +1610,10 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
               // the instance first was a deadlock with everything (found the
               // hard way, as an ABBA kill under CI load).
               yield* lockReviewInstance(tenantId, instanceId)
-              // Read it again, and judge from this one. A word is answered by
-              // the step the round stands on at the moment it is written, not
-              // the step it stood on when the page was drawn: between the two
-              // another judge can have confirmed this step and handed the
-              // round upward, and a decision taken against the abandoned step
-              // would close the round from a place its author never held.
+              // Read again under the lock. Authority must still hold here,
+              // and this must be the step the reviewer made the word for:
+              // authority at the next step does not make an older word a
+              // decision knowingly made at that next step.
               const row = yield* instanceOf(tenantId, instanceId)
               if (row === null) return yield* new ReviewNotFound()
               const judge = yield* mayAct(tenantId, row, as)
@@ -1625,6 +1625,12 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
                   return yield* refuse(action, 'not-reviewer')
                 }
                 return yield* new ReviewNotFound()
+              }
+              if (
+                row.currentRoute !== input.expectedStage.route ||
+                row.currentStageId !== input.expectedStage.stageId
+              ) {
+                return yield* refuse(action, 'review-stage-changed')
               }
               const gate = yield* deps.reviewGate(tenantId, row.batchId)
               if (!gate.allowed) return yield* refuse(action, gate.reason)
@@ -2868,16 +2874,18 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
           if (located === null) return yield* new ReviewNotFound()
           const locked = yield* lockBatch(tenantId, located.batchId)
           if (locked!.status === 'archived') return yield* new BatchReadOnly()
-          // Read it again, and ask from this one. Standing to ask is standing
-          // at the step the round stands on now: between the two reads a
-          // colleague can have confirmed this step and handed the round
-          // upward, and an ask taken against the abandoned step would pause
-          // the round out of the next judge's queue in the name of somebody
-          // who holds nothing there. Nobody with standing could take it back
-          // either, because cancelling belongs to the requester alone.
+          // Read again under the lock, and require both current authority and
+          // the step the reviewer saw. A late request must not pause a later
+          // step, even if the same reviewer is also eligible to act there.
           const row = yield* instanceOf(tenantId, instanceId)
           if (row === null) return yield* new ReviewNotFound()
           yield* requireJudge(tenantId, row, as, 'supplement-request')
+          if (
+            row.currentRoute !== input.expectedStage.route ||
+            row.currentStageId !== input.expectedStage.stageId
+          ) {
+            return yield* refuse('supplement-request', 'review-stage-changed')
+          }
           const gate = yield* deps.reviewGate(tenantId, row.batchId)
           if (!gate.allowed) return yield* refuse('supplement-request', gate.reason)
           if (row.state !== 'active') {

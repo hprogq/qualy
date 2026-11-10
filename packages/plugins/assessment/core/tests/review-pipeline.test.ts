@@ -1,3 +1,4 @@
+import { decideReviewAtCurrentStage } from './support/round.ts'
 import { sql } from 'kysely'
 import { Effect, Exit } from 'effect'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -119,14 +120,16 @@ describe.runIf(postgresAvailable)('the escalation route as a pipeline', () => {
           )
           const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
           const round = sent.currentReviewInstanceId!
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             round,
             { decision: 'escalate', comment: '拿不准，提请复核' },
             f.principal(f.reviewer),
           )
           const atMiddle = yield* assessment.getReviewInstance(f.t, round, f.principal(w.mid))
-          const opined = yield* assessment.decideReview(
+          const opined = yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             round,
             {
@@ -141,7 +144,8 @@ describe.runIf(postgresAvailable)('the escalation route as a pipeline', () => {
           // the last step judges for itself: a different determination from
           // the one it was handed has to say why
           const unexplained = yield* Effect.exit(
-            assessment.decideReview(
+            decideReviewAtCurrentStage(
+              assessment,
               f.t,
               round,
               {
@@ -151,7 +155,8 @@ describe.runIf(postgresAvailable)('the escalation route as a pipeline', () => {
               f.principal(w.end),
             ),
           )
-          const settled = yield* assessment.decideReview(
+          const settled = yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             round,
             {
@@ -217,7 +222,8 @@ describe.runIf(postgresAvailable)('the escalation route as a pipeline', () => {
             s1,
           )
           const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             sent.currentReviewInstanceId!,
             {
@@ -233,7 +239,8 @@ describe.runIf(postgresAvailable)('the escalation route as a pipeline', () => {
             s1,
           )
           // the middle step would uphold it; that is an opinion, not the end
-          const upheldMidway = yield* assessment.decideReview(
+          const upheldMidway = yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             appealed.id,
             {
@@ -244,7 +251,8 @@ describe.runIf(postgresAvailable)('the escalation route as a pipeline', () => {
           )
           const during = yield* standing(entry.id)
           // the last step finds the claim should never have been approved
-          const revoked = yield* assessment.decideReview(
+          const revoked = yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             appealed.id,
             { decision: 'reject', comment: '证书与本人不符' },
@@ -252,7 +260,13 @@ describe.runIf(postgresAvailable)('the escalation route as a pipeline', () => {
           )
           const after = yield* standing(entry.id)
           const again = yield* Effect.exit(
-            assessment.decideReview(f.t, appealed.id, { decision: 'approve' }, f.principal(w.mid)),
+            decideReviewAtCurrentStage(
+              assessment,
+              f.t,
+              appealed.id,
+              { decision: 'approve' },
+              f.principal(w.mid),
+            ),
           )
           return { upheldMidway, during, revoked, after, again }
         }),

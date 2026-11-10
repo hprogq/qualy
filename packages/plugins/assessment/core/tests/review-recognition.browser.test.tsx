@@ -3,6 +3,7 @@ import ReviewInstancePage from '../src/client/review/ReviewInstancePage.tsx'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
 import { Effect } from 'effect'
+import { focusManager } from '@tanstack/react-query'
 import { readDraft, writeDraft } from '../src/client/local-store.ts'
 import { emptyManifest, READER_ID, renderScreen } from './support/screen.tsx'
 
@@ -251,6 +252,24 @@ const choiceAt = (form: Element, parameter: string) => {
 const previewAt = () => document.querySelector('[data-testid="score-preview"]')
 
 describe('approving with a determination', () => {
+  it('keeps the stage seen when the dialog opened if the round refreshes before confirmation', async () => {
+    const decided = stagedDecide()
+    let current = review({ recognitionForm: null })
+    const read = vi.fn(() => Effect.succeed({ review: current }))
+    await open(current, { getReviewInstance: read, decideReview: decided })
+    await openApprove()
+    current = review({
+      recognitionForm: null,
+      itemTitle: 'Refreshed item',
+      chain: { ...current.chain, stageId: 'next' },
+    })
+    focusManager.setFocused(false)
+    focusManager.setFocused(true)
+    await vi.waitFor(() => expect(read.mock.calls.length).toBeGreaterThan(1))
+    await expect.element(page.getByText('Refreshed item').first()).toBeVisible()
+    await confirmAndWait(decided)
+    expect(decidedPayload(decided)['expectedStage']).toEqual({ route: 'normal', stageId: 'class' })
+  })
   it('shows the filing beside the form, through the words the form offered', async () => {
     await open(review())
     await openApprove()

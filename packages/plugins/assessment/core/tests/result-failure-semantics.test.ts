@@ -1,3 +1,4 @@
+import { decideReviewAtCurrentStage } from './support/round.ts'
 import { Effect, Exit } from 'effect'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createTestContext, postgresAvailable } from '@qualy/plugin-database/testkit'
@@ -46,7 +47,8 @@ const standing = (f: Seeded, g: { item: { id: string } }, participantId: string,
       as,
     )
     const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', as)
-    yield* assessment.decideReview(
+    yield* decideReviewAtCurrentStage(
+      assessment,
       f.t,
       sent.currentReviewInstanceId!,
       {
@@ -183,7 +185,8 @@ describe.runIf(postgresAvailable)('reading an account the arithmetic cannot answ
             s1,
           )
           const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             sent.currentReviewInstanceId!,
             { decision: 'approve' },

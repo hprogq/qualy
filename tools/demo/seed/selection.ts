@@ -1,3 +1,4 @@
+import { decideReviewAtCurrentStage } from './review-stage.ts'
 import { Effect } from 'effect'
 import ExcelJS from 'exceljs'
 import { sql } from 'kysely'
@@ -810,7 +811,13 @@ export const runSelection = (input: {
           const ask = askFor(entry)
           const answered = judge.round.supplements.some((one) => one.status === 'answered')
           if (ask === undefined || answered) {
-            yield* assessment.decideReview(t, entry.instanceId, approval(form), judge.as)
+            yield* decideReviewAtCurrentStage(
+              assessment,
+              t,
+              entry.instanceId,
+              approval(form),
+              judge.as,
+            )
             return
           }
           const canAsk = judge.round.actions.supplement.state === 'available'
@@ -819,7 +826,8 @@ export const runSelection = (input: {
             return
           }
           if (paper.refusal === undefined) return
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             t,
             entry.instanceId,
             { decision: 'reject', ...paper.refusal },
@@ -828,7 +836,8 @@ export const runSelection = (input: {
           return
         }
         if (entry.proof === 'competition-6' && roll < 0.65) {
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             t,
             entry.instanceId,
             {
@@ -848,7 +857,8 @@ export const runSelection = (input: {
           judge.round.chain.stageId === 'counsellor' &&
           judge.round.actions.escalate.state === 'available'
         ) {
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             t,
             entry.instanceId,
             {
@@ -872,7 +882,7 @@ export const runSelection = (input: {
           yield* askAndWait(entry, ask, judge.as)
           return
         }
-        yield* assessment.decideReview(t, entry.instanceId, approval(form), judge.as)
+        yield* decideReviewAtCurrentStage(assessment, t, entry.instanceId, approval(form), judge.as)
       })
 
     const filingCounts = new Map<string, number>()
@@ -1075,7 +1085,13 @@ export const runSelection = (input: {
               const judge = yield* judgeFor(entry.instanceId)
               if (judge === null) break
               const form = judge.round.recognitionForm as Form
-              yield* assessment.decideReview(t, entry.instanceId, approval(form), judge.as)
+              yield* decideReviewAtCurrentStage(
+                assessment,
+                t,
+                entry.instanceId,
+                approval(form),
+                judge.as,
+              )
             }
             const desk = principalOf(t, world.staff.counsellors[0]!.id)
             const seen = yield* Effect.result(
@@ -1151,7 +1167,7 @@ export const runSelection = (input: {
         }
         const input_ =
           said.decision === 'approve' ? { ...approval(view.recognitionForm), ...said } : said
-        yield* assessment.decideReview(t, round!, input_, as)
+        yield* decideReviewAtCurrentStage(assessment, t, round!, input_, as)
       })
     /** the step judging now approves, unless it is `stop` */
     const passStep = (entry: Filed, stop?: string) =>
@@ -1160,7 +1176,13 @@ export const runSelection = (input: {
         if (round === null) return
         const judge = yield* judgeFor(round)
         if (judge === null || judge.round.chain.stageId === stop) return
-        yield* assessment.decideReview(t, round, approval(judge.round.recognitionForm), judge.as)
+        yield* decideReviewAtCurrentStage(
+          assessment,
+          t,
+          round,
+          approval(judge.round.recognitionForm),
+          judge.as,
+        )
       })
     /** asks for `ask`, or for what the claim's own question asks of it */
     const askAs = (entry: Filed, as: Principal, ask: Ask | undefined = askFor(entry)) =>

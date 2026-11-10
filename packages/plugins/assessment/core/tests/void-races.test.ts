@@ -1,3 +1,4 @@
+import { decideReviewAtCurrentStage } from './support/round.ts'
 import { sql } from 'kysely'
 import { Effect, Exit } from 'effect'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -179,7 +180,8 @@ describe.runIf(postgresAvailable)('a void against everything it must stop', () =
                 ),
               ),
               Effect.exit(
-                assessment.decideReview(
+                decideReviewAtCurrentStage(
+                  assessment,
                   f.t,
                   instanceId,
                   { decision: 'approve' },

@@ -1,3 +1,4 @@
+import { decideReviewAtCurrentStage, requestSupplementAtCurrentStage } from './support/round.ts'
 import { sql } from 'kysely'
 import { Effect, Exit } from 'effect'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -146,7 +147,8 @@ describe.runIf(postgresAvailable)('the review read boundary', () => {
           const classPeer = shape(yield* doors(extra.reviewer2))
           const collegeEarly = shape(yield* doors(extra.collegeReviewer))
 
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             instanceId,
             { decision: 'approve' },
@@ -159,7 +161,8 @@ describe.runIf(postgresAvailable)('the review read boundary', () => {
           const peerAfter = shape(yield* doors(extra.reviewer2))
           const collegeDuty = shape(yield* doors(extra.collegeReviewer))
 
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             instanceId,
             { decision: 'approve' },
@@ -222,7 +225,8 @@ describe.runIf(postgresAvailable)('the review read boundary', () => {
             s1,
           )
           const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             sent.currentReviewInstanceId!,
             { decision: 'approve', comment: 'fine' },
@@ -272,7 +276,8 @@ describe.runIf(postgresAvailable)('the review read boundary', () => {
               s1,
             )
             const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
-            yield* assessment.decideReview(
+            yield* decideReviewAtCurrentStage(
+              assessment,
               f.t,
               sent.currentReviewInstanceId!,
               { decision: 'reject', comment: 'not enough' },
@@ -342,7 +347,8 @@ describe.runIf(postgresAvailable)('the review read boundary', () => {
             )
             const first = (yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1))
               .currentReviewInstanceId!
-            yield* assessment.requestSupplement(
+            yield* requestSupplementAtCurrentStage(
+              assessment,
               f.t,
               first,
               {
@@ -359,7 +365,8 @@ describe.runIf(postgresAvailable)('the review read boundary', () => {
               { payload: { f1: '已补充' } },
               s1,
             )
-            yield* assessment.decideReview(
+            yield* decideReviewAtCurrentStage(
+              assessment,
               f.t,
               first,
               { decision: 'reject', comment: 'not enough' },
@@ -372,7 +379,13 @@ describe.runIf(postgresAvailable)('the review read boundary', () => {
             const secondRound = yield* assessment.getReviewInstance(f.t, second, s1)
             const staffFirst = yield* assessment.getReviewInstance(f.t, first, admin)
             const staffSecond = yield* assessment.getReviewInstance(f.t, second, admin)
-            yield* assessment.decideReview(f.t, second, { decision: 'approve' }, reviewer)
+            yield* decideReviewAtCurrentStage(
+              assessment,
+              f.t,
+              second,
+              { decision: 'approve' },
+              reviewer,
+            )
             yield* assessment.interveneOnEntry(
               f.t,
               entry.id,
@@ -495,7 +508,8 @@ describe.runIf(postgresAvailable)('the review read boundary', () => {
             const again = (yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1))
               .currentReviewInstanceId!
             const round = yield* assessment.getReviewInstance(f.t, again, s1)
-            yield* assessment.decideReview(
+            yield* decideReviewAtCurrentStage(
+              assessment,
               f.t,
               again,
               { decision: 'reject', comment: 'not enough' },
@@ -517,7 +531,8 @@ describe.runIf(postgresAvailable)('the review read boundary', () => {
                 return { id: made.id, round: sent.currentReviewInstanceId! }
               })
             const asked = yield* file()
-            yield* assessment.requestSupplement(
+            yield* requestSupplementAtCurrentStage(
+              assessment,
               f.t,
               asked.round,
               {
@@ -527,7 +542,13 @@ describe.runIf(postgresAvailable)('the review read boundary', () => {
               reviewer,
             )
             const approved = yield* file()
-            yield* assessment.decideReview(f.t, approved.round, { decision: 'approve' }, reviewer)
+            yield* decideReviewAtCurrentStage(
+              assessment,
+              f.t,
+              approved.round,
+              { decision: 'approve' },
+              reviewer,
+            )
             // the filer is staff here too: they administer the whole round
             yield* runSql(sql`
               insert into role_grants (tenant_id, user_id, role_id)
@@ -594,7 +615,8 @@ describe.runIf(postgresAvailable)('the review read boundary', () => {
             history: answerOf(two.history),
           })
 
-          yield* assessment.requestSupplement(
+          yield* requestSupplementAtCurrentStage(
+            assessment,
             f.t,
             instanceId,
             {
@@ -614,7 +636,8 @@ describe.runIf(postgresAvailable)('the review read boundary', () => {
           )
           const afterAnswer = shape(yield* reads())
 
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             instanceId,
             { decision: 'reject', comment: 'not enough' },
@@ -679,7 +702,8 @@ describe.runIf(postgresAvailable)('the review read boundary', () => {
           })
 
           const peerBefore = shape(yield* doors(extra.reviewer2))
-          yield* assessment.requestSupplement(
+          yield* requestSupplementAtCurrentStage(
+            assessment,
             f.t,
             instanceId,
             {
@@ -751,7 +775,13 @@ describe.runIf(postgresAvailable)('the review read boundary', () => {
           )
           const earlierRound = (yield* assessment.setEntryStatus(f.t, earlier.id, 'in_review', s1))
             .currentReviewInstanceId!
-          yield* assessment.decideReview(f.t, earlierRound, { decision: 'approve' }, reviewer)
+          yield* decideReviewAtCurrentStage(
+            assessment,
+            f.t,
+            earlierRound,
+            { decision: 'approve' },
+            reviewer,
+          )
           const fileBefore = answerOf(
             yield* Effect.exit(assessment.openAttachment(f.t, file, reviewer)),
           )
@@ -792,7 +822,13 @@ describe.runIf(postgresAvailable)('the review read boundary', () => {
           }
 
           // the round decided, the door it opened shuts with it
-          yield* assessment.decideReview(f.t, round, { decision: 'approve' }, reviewer)
+          yield* decideReviewAtCurrentStage(
+            assessment,
+            f.t,
+            round,
+            { decision: 'approve' },
+            reviewer,
+          )
           const after = {
             earlier: answerOf(yield* sibling(earlier.id, f.reviewer)),
             file: answerOf(yield* Effect.exit(assessment.openAttachment(f.t, file, reviewer))),

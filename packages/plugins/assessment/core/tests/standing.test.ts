@@ -1,3 +1,4 @@
+import { decideReviewAtCurrentStage, requestSupplementAtCurrentStage } from './support/round.ts'
 import { Effect } from 'effect'
 import { sql } from 'kysely'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -215,14 +216,16 @@ describe.runIf(postgresAvailable)('the standing of a reader across the rounds un
 
           // the reviewer reaches the first two students' class: one filing
           // is accepted, the other is asked for more, answered, and refused
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             yield* sent(f.s1, g.p1),
             { decision: 'approve' },
             judge,
           )
           const round = yield* sent(f.s2, g.p2)
-          yield* assessment.requestSupplement(
+          yield* requestSupplementAtCurrentStage(
+            assessment,
             f.t,
             round,
             {
@@ -239,7 +242,8 @@ describe.runIf(postgresAvailable)('the standing of a reader across the rounds un
             { payload: { f1: '已补充活动说明' } },
             f.principal(f.s2),
           )
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             round,
             { decision: 'reject', comment: 'not enough' },
@@ -369,7 +373,8 @@ describe.runIf(postgresAvailable)('the standing of a reader across the rounds un
             s1,
           )
           const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             sent.currentReviewInstanceId!,
             { decision: 'approve' },
@@ -381,7 +386,8 @@ describe.runIf(postgresAvailable)('the standing of a reader across the rounds un
             { reason: '认定等级有误' },
             s1,
           )
-          yield* assessment.requestSupplement(
+          yield* requestSupplementAtCurrentStage(
+            assessment,
             f.t,
             appealed.id,
             {
@@ -440,7 +446,8 @@ describe.runIf(postgresAvailable)('the standing of a reader across the rounds un
             s1,
           )
           const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             sent.currentReviewInstanceId!,
             { decision: 'reject', comment: '材料不足' },

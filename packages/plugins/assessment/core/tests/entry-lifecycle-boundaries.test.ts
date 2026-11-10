@@ -1,3 +1,4 @@
+import { decideReviewAtCurrentStage, requestSupplementAtCurrentStage } from './support/round.ts'
 import { Effect } from 'effect'
 import { sql } from 'kysely'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -41,7 +42,8 @@ describe.runIf(postgresAvailable)('where withdraw ends and abandon does not', ()
           const offeredBefore = submitted.capabilities.withdraw.state
 
           // a reviewer asks for more material - review has begun
-          yield* assessment.requestSupplement(
+          yield* requestSupplementAtCurrentStage(
+            assessment,
             f.t,
             submitted.currentReviewInstanceId!,
             {
@@ -144,7 +146,8 @@ describe.runIf(postgresAvailable)('where withdraw ends and abandon does not', ()
             s1,
           )
           const submitted = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             submitted.currentReviewInstanceId!,
             { decision: 'reject', comment: 'not enough' },
@@ -200,7 +203,8 @@ describe.runIf(postgresAvailable)('where withdraw ends and abandon does not', ()
             s1,
           )
           const submitted = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             submitted.currentReviewInstanceId!,
             { decision: 'reject', comment: 'not enough' },
@@ -235,7 +239,8 @@ describe.runIf(postgresAvailable)('where withdraw ends and abandon does not', ()
           const card = (yield* assessment.listMyEntries(f.t, g.batch.id, {}, s1)).entries[0]!
           const during = yield* standing()
           // the appeal is upheld at the ladder's only rung
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             appealed.id,
             { decision: 'approve' },
@@ -300,7 +305,8 @@ describe.runIf(postgresAvailable)('where withdraw ends and abandon does not', ()
                 owner,
               )
               const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', owner)
-              yield* assessment.decideReview(
+              yield* decideReviewAtCurrentStage(
+                assessment,
                 f.t,
                 sent.currentReviewInstanceId!,
                 first === 'approve'
@@ -318,7 +324,8 @@ describe.runIf(postgresAvailable)('where withdraw ends and abandon does not', ()
             })
           const kept = yield* appealed(f.s1, g.p1, 'approve')
           const asked = yield* appealed(f.s2, g.p2, 'reject')
-          yield* assessment.requestSupplement(
+          yield* requestSupplementAtCurrentStage(
+            assessment,
             f.t,
             asked.roundId,
             {
@@ -389,7 +396,8 @@ describe.runIf(postgresAvailable)('where withdraw ends and abandon does not', ()
             s1,
           )
           const submitted = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             submitted.currentReviewInstanceId!,
             { decision: 'approve' },
@@ -431,7 +439,8 @@ describe.runIf(postgresAvailable)('where withdraw ends and abandon does not', ()
             s1,
           )
           const submitted = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             submitted.currentReviewInstanceId!,
             {

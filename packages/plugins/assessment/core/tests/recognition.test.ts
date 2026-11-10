@@ -1,3 +1,4 @@
+import { decideReviewAtCurrentStage } from './support/round.ts'
 import { Effect, Exit } from 'effect'
 import { inspect } from 'node:util'
 import { sql } from 'kysely'
@@ -142,7 +143,8 @@ describe.runIf(postgresAvailable)('recognitions', () => {
           const assessment = yield* Assessment
           const g = yield* runningBatch(f, { profile: REVIEW_OPEN })
           const { entryId, instanceId } = yield* submitted(f, g, g.p1, f.s1)
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             instanceId,
             { decision: 'approve', comment: 'checked' },
@@ -179,14 +181,16 @@ describe.runIf(postgresAvailable)('recognitions', () => {
           const g = yield* runningBatch(f, { profile: REVIEW_OPEN })
           const { entryId, instanceId } = yield* submitted(f, g, g.p1, f.s1)
           const offered = yield* Effect.exit(
-            assessment.decideReview(
+            decideReviewAtCurrentStage(
+              assessment,
               f.t,
               instanceId,
               { decision: 'reject', comment: 'no', recognition: { values: {} } },
               f.principal(f.reviewer),
             ),
           )
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             instanceId,
             { decision: 'reject', comment: 'the certificate is for another year' },
@@ -226,7 +230,8 @@ describe.runIf(postgresAvailable)('recognitions', () => {
           const assessment = yield* Assessment
           const g = yield* runningBatch(f, { profile: REVIEW_OPEN })
           const { entryId, instanceId } = yield* submitted(f, g, g.p1, f.s1)
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             instanceId,
             { decision: 'approve', comment: 'checked' },
@@ -248,7 +253,8 @@ describe.runIf(postgresAvailable)('recognitions', () => {
             'in_review',
             f.principal(f.s1),
           )
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             again.currentReviewInstanceId!,
             { decision: 'approve', comment: 'readable now' },
@@ -322,7 +328,8 @@ describe.runIf(postgresAvailable)('recognitions', () => {
           const g = yield* graded(f)
           const { entryId, instanceId } = yield* claimed(f, g, g.p1)
           // the first reviewer corrects the level down
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             instanceId,
             {
@@ -344,7 +351,8 @@ describe.runIf(postgresAvailable)('recognitions', () => {
           // the appeal reviewer confirms exactly what they were shown - no
           // reason given, so if the seed were the filing's claim instead of
           // the correction, this would be a contradiction and refused
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             appealed.id,
             {
@@ -380,7 +388,8 @@ describe.runIf(postgresAvailable)('recognitions', () => {
           const { entryId, instanceId } = yield* claimed(f, g, g.p1)
           // the first reviewer determines it provincial, against the first
           // filing, which claimed national
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             instanceId,
             {
@@ -421,7 +430,8 @@ describe.runIf(postgresAvailable)('recognitions', () => {
           // the reviewer confirms the new material's own claim, reasonless:
           // were the seed still the old determination, this would read as a
           // contradiction and be refused
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             again.currentReviewInstanceId!,
             {
@@ -461,7 +471,8 @@ describe.runIf(postgresAvailable)('recognitions', () => {
             stages: [at(f, 'n1'), at(f, 'n2')],
           })
           const { entryId, instanceId } = yield* claimed(f, g, g.p1)
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             instanceId,
             {
@@ -514,7 +525,8 @@ describe.runIf(postgresAvailable)('recognitions', () => {
           // the round starts over on the new chain; both steps confirm the
           // inherited correction, reasonless - a wrong seed would make this
           // a contradiction and refuse it
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             rerouted.id,
             {
@@ -524,7 +536,8 @@ describe.runIf(postgresAvailable)('recognitions', () => {
             },
             f.principal(f.reviewer),
           )
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             rerouted.id,
             {
@@ -565,7 +578,8 @@ describe.runIf(postgresAvailable)('recognitions', () => {
           // the first reviewer writes the fact nobody had determined, and
           // leaves the seeded one alone: that is doing the job, not changing
           // somebody's mind, so no explanation is owed
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             instanceId,
             {
@@ -577,7 +591,8 @@ describe.runIf(postgresAvailable)('recognitions', () => {
           )
           // the second one contradicts it, and is asked why
           const bare = yield* Effect.exit(
-            assessment.decideReview(
+            decideReviewAtCurrentStage(
+              assessment,
               f.t,
               instanceId,
               {
@@ -588,7 +603,8 @@ describe.runIf(postgresAvailable)('recognitions', () => {
               f.principal(f.reviewer),
             ),
           )
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             instanceId,
             {
@@ -651,7 +667,8 @@ describe.runIf(postgresAvailable)('recognitions', () => {
               sql`select id from review_instances where entry_id = ${entry.id} and state = 'active'`,
             ),
           )
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             round.id,
             {
@@ -685,7 +702,8 @@ describe.runIf(postgresAvailable)('recognitions', () => {
           const g = yield* graded(f)
           const { entryId, instanceId } = yield* claimed(f, g, g.p1)
           // the first filing is determined provincial and approved
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             instanceId,
             {
@@ -717,7 +735,8 @@ describe.runIf(postgresAvailable)('recognitions', () => {
               sql`select id from review_instances where entry_id = ${entryId} and state = 'active'`,
             ),
           )
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             second.id,
             { decision: 'reject', comment: '仍有疑问' },
@@ -730,7 +749,8 @@ describe.runIf(postgresAvailable)('recognitions', () => {
             { reason: '原件已附上' },
             f.principal(f.s1),
           )
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             appealed.id,
             {
@@ -785,7 +805,8 @@ describe.runIf(postgresAvailable)('recognitions', () => {
           // and the round closed with it: a reviewer arriving late finds a
           // concluded round, not a live queue item about a withdrawn fact
           const decided = yield* Effect.exit(
-            assessment.decideReview(
+            decideReviewAtCurrentStage(
+              assessment,
               f.t,
               appealed.id,
               { decision: 'approve', comment: 'too late' },
@@ -826,7 +847,8 @@ describe.runIf(postgresAvailable)('recognitions', () => {
           const g = yield* runningBatch(f, { profile: REVIEW_OPEN })
           const { instanceId } = yield* submitted(f, g, g.p1, f.s1)
           const offered = yield* Effect.exit(
-            assessment.decideReview(
+            decideReviewAtCurrentStage(
+              assessment,
               f.t,
               instanceId,
               { decision: 'approve', comment: 'ok', recognition: { values: null } },
@@ -928,7 +950,8 @@ describe.runIf(postgresAvailable)('recognitions', () => {
               select id, appealed_recognition_id from review_instances
               where entry_id = ${entry.id} and state = 'active'`),
           )
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             moved.id,
             {
@@ -1082,7 +1105,8 @@ describe.runIf(postgresAvailable)('recognitions', () => {
           // old client or a screen that failed to render the form must not
           // have the defaults recorded as this reviewer's words
           const bare = yield* Effect.exit(
-            assessment.decideReview(
+            decideReviewAtCurrentStage(
+              assessment,
               f.t,
               instanceId,
               { decision: 'approve', comment: 'looks fine' },
@@ -1170,7 +1194,8 @@ describe.runIf(postgresAvailable)('recognitions', () => {
           const admin = f.principal(f.admin)
           const g = yield* graded(f)
           const { entryId, instanceId } = yield* claimed(f, g, g.p1)
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             instanceId,
             {
@@ -1327,7 +1352,8 @@ describe.runIf(postgresAvailable)('recognitions', () => {
           const assessment = yield* Assessment
           const g = yield* twoFacted(f)
           const { entryId, instanceId } = yield* claimed(f, g, g.p1)
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             instanceId,
             {
@@ -1414,7 +1440,8 @@ describe.runIf(postgresAvailable)('recognitions', () => {
           const assessment = yield* Assessment
           const g = yield* twoFacted(f)
           const { instanceId } = yield* claimed(f, g, g.p1)
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             instanceId,
             {
@@ -1481,7 +1508,8 @@ describe.runIf(postgresAvailable)('recognitions', () => {
           // 9 is inside the contract the round opened with and outside the
           // plan that would have to score it
           const outside = yield* Effect.exit(
-            assessment.decideReview(
+            decideReviewAtCurrentStage(
+              assessment,
               f.t,
               instanceId,
               {
@@ -1493,7 +1521,8 @@ describe.runIf(postgresAvailable)('recognitions', () => {
             ),
           )
           const inside = yield* Effect.exit(
-            assessment.decideReview(
+            decideReviewAtCurrentStage(
+              assessment,
               f.t,
               instanceId,
               {
@@ -1583,7 +1612,8 @@ describe.runIf(postgresAvailable)('recognitions', () => {
           })
           const decide = (level: string, ordinal: number) =>
             Effect.exit(
-              assessment.decideReview(
+              decideReviewAtCurrentStage(
+                assessment,
                 f.t,
                 instanceId,
                 {
@@ -1695,7 +1725,8 @@ describe.runIf(postgresAvailable)('recognitions', () => {
           // the sitting round still judges by the contract it opened with:
           // 8 is legal under the question as it reads today, and refused
           const wide = yield* Effect.exit(
-            assessment.decideReview(
+            decideReviewAtCurrentStage(
+              assessment,
               f.t,
               instanceId,
               {
@@ -1706,7 +1737,8 @@ describe.runIf(postgresAvailable)('recognitions', () => {
               f.principal(f.reviewer),
             ),
           )
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             instanceId,
             {
@@ -1912,7 +1944,8 @@ describe.runIf(postgresAvailable)('recognitions', () => {
           // the appeal is heard and the office's finding is overturned, so
           // the fact ends up `rejected` - the one state an administrative
           // entry reaches where the ordinary editing doors look open
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             appealed.id,
             { decision: 'reject', comment: '不予更正' },
@@ -2100,7 +2133,8 @@ describe.runIf(postgresAvailable)('recognitions', () => {
           const first = yield* assessment.getReviewInstance(f.t, instanceId, reviewer)
           // the first stage confirms the seeded fact and determines the
           // reviewer-only one
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             instanceId,
             {

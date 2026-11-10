@@ -1,3 +1,4 @@
+import { decideReviewAtCurrentStage, requestSupplementAtCurrentStage } from './support/round.ts'
 import { Deferred, Effect, Fiber } from 'effect'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { sql } from 'kysely'
@@ -42,7 +43,8 @@ describe.runIf(postgresAvailable)('the participant attention model', () => {
             s1,
           )
           const submitted = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
-          yield* assessment.requestSupplement(
+          yield* requestSupplementAtCurrentStage(
+            assessment,
             f.t,
             submitted.currentReviewInstanceId!,
             {
@@ -153,7 +155,8 @@ describe.runIf(postgresAvailable)('the participant attention model', () => {
           const afterOwn = yield* unread()
 
           // the first stage confirms; the round moves on - still no news
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             submitted.currentReviewInstanceId!,
             { decision: 'approve' },
@@ -164,7 +167,8 @@ describe.runIf(postgresAvailable)('the participant attention model', () => {
           // the second reviewer is excluded? same reviewer holds both class
           // stages - same-round independence only binds the escalation
           // route, so the same judge may take the second step here
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             submitted.currentReviewInstanceId!,
             { decision: 'approve' },
@@ -275,7 +279,8 @@ describe.runIf(postgresAvailable)('the participant attention model', () => {
           const submitted = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
 
           // the reviewer asks for material: news
-          yield* assessment.requestSupplement(
+          yield* requestSupplementAtCurrentStage(
+            assessment,
             f.t,
             submitted.currentReviewInstanceId!,
             {
@@ -417,7 +422,8 @@ describe.runIf(postgresAvailable)('the participant attention model', () => {
           const sent = yield* assessment.setEntryStatus(f.t, first.id, 'in_review', s1)
           // approved by the round, then sent back by the administrator:
           // that is the return mark the summary must carry
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             sent.currentReviewInstanceId!,
             { decision: 'approve' },
@@ -437,7 +443,8 @@ describe.runIf(postgresAvailable)('the participant attention model', () => {
           // a returned claim answers with a new version first (§32.65)
           yield* assessment.appendEntryRevision(f.t, first.id, { payload: {} }, s1)
           const resent = yield* assessment.setEntryStatus(f.t, first.id, 'in_review', s1)
-          yield* assessment.requestSupplement(
+          yield* requestSupplementAtCurrentStage(
+            assessment,
             f.t,
             resent.currentReviewInstanceId!,
             {
@@ -506,14 +513,16 @@ describe.runIf(postgresAvailable)('the participant attention model', () => {
           const before = yield* assessment.getMyOverview(f.t, g.batch.id, judge)
           const quiet = yield* assessment.listMyActivity(f.t, g.batch.id, {}, judge)
 
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             submitted.currentReviewInstanceId!,
             { decision: 'approve' },
             judge,
           )
           const midway = yield* assessment.listMyActivity(f.t, g.batch.id, {}, judge)
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             submitted.currentReviewInstanceId!,
             { decision: 'approve' },
@@ -624,7 +633,8 @@ describe.runIf(postgresAvailable)('the participant attention model', () => {
             owner,
           )
           const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', owner)
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             sent.currentReviewInstanceId!,
             { decision: 'reject', comment: 'revise' },

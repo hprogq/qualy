@@ -8649,6 +8649,7 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
           params.instanceId,
           {
             decision: payload.decision,
+            expectedStage: payload.expectedStage,
             ...(payload.reason !== undefined ? { reason: payload.reason } : {}),
             ...(payload.comment !== undefined ? { comment: payload.comment } : {}),
             ...(payload.suggestedPayload !== undefined
@@ -8822,7 +8823,11 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
         const review = yield* assessment.requestSupplement(
           principal.tenantId,
           params.instanceId,
-          { instructions: payload.instructions, requirements: payload.requirements },
+          {
+            instructions: payload.instructions,
+            requirements: payload.requirements,
+            expectedStage: payload.expectedStage,
+          },
           principal,
         )
         return { review: reviewDto(review) }

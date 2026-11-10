@@ -90,9 +90,9 @@ export const isClientUnsupportedReason = (value: unknown): value is ClientUnsupp
 // and must reload, so the window holds no older generation.
 // Generation 4: assessment lists, review queues and formula histories return
 // numbered pages. Formula detail returns versionCount instead of all versions.
-export const CURRENT_CLIENT_PROTOCOL = 5
-export const SERVER_MIN_CLIENT_PROTOCOL = 5
-export const SERVER_MAX_CLIENT_PROTOCOL = 5
+export const CURRENT_CLIENT_PROTOCOL = 6
+export const SERVER_MIN_CLIENT_PROTOCOL = 6
+export const SERVER_MAX_CLIENT_PROTOCOL = 6
 
 export type ReleaseMode = 'development' | 'production'
 

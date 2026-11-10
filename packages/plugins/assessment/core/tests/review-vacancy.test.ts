@@ -1,3 +1,4 @@
+import { decideReviewAtCurrentStage } from './support/round.ts'
 import { sql } from 'kysely'
 import { Effect } from 'effect'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -241,7 +242,8 @@ describe.runIf(postgresAvailable)('a vacant step', () => {
           )
           const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
           const round = sent.currentReviewInstanceId!
-          const moved = yield* assessment.decideReview(
+          const moved = yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             round,
             { decision: 'approve' },
@@ -293,7 +295,8 @@ describe.runIf(postgresAvailable)('a vacant step', () => {
             s1,
           )
           const firstSent = yield* assessment.setEntryStatus(f.t, first.id, 'in_review', s1)
-          const escalated = yield* assessment.decideReview(
+          const escalated = yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             firstSent.currentReviewInstanceId!,
             { decision: 'escalate', comment: '拿不准，提请复核' },
@@ -306,7 +309,8 @@ describe.runIf(postgresAvailable)('a vacant step', () => {
             s2,
           )
           const secondSent = yield* assessment.setEntryStatus(f.t, second.id, 'in_review', s2)
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             secondSent.currentReviewInstanceId!,
             { decision: 'reject', comment: '材料不足' },
@@ -388,7 +392,8 @@ describe.runIf(postgresAvailable)('a vacant step', () => {
             values (${f.t}, ${source}, 'assessment.review.process')`)
           const woke = yield* assessment.patrolReviewRounds
           const placed = yield* standing(round)
-          const decided = yield* assessment.decideReview(
+          const decided = yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             round,
             { decision: 'approve' },

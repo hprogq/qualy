@@ -913,6 +913,12 @@ function Workbench({ batch }: { batch: BatchDto }) {
   const [dialog, setDialog] = useState<'approve' | 'reject' | 'escalate' | 'supplement' | null>(
     null,
   )
+  const actionStage = useRef<{ route: 'normal' | 'escalation'; stageId: string } | null>(null)
+  const openAction = (next: 'approve' | 'reject' | 'escalate' | 'supplement') => {
+    if (review === undefined) return
+    actionStage.current = { route: review.chain.route, stageId: review.chain.stageId }
+    setDialog(next)
+  }
   const [keysOpen, setKeysOpen] = useState(false)
   const [openSibling, setOpenSibling] = useState<string | null>(null)
   const lingeringSibling = useLingering(openSibling)
@@ -1036,9 +1042,14 @@ function Workbench({ batch }: { batch: BatchDto }) {
 
   /** asking for more material, through the same window everything else uses */
   const stageSupplement = (worded: WordedSupplement) => {
-    if (review === undefined || lostTurn) return
+    if (review === undefined || lostTurn || actionStage.current === null) return
     stageAndAdvance(
-      { kind: 'supplement', instanceId, participantName: review.participantName, payload: worded },
+      {
+        kind: 'supplement',
+        instanceId,
+        participantName: review.participantName,
+        payload: { ...worded, expectedStage: actionStage.current },
+      },
       'supplement',
       review.itemTitle,
       review.participantName,
@@ -1047,7 +1058,7 @@ function Workbench({ batch }: { batch: BatchDto }) {
 
   /** stage a round-moving decision, log it, and put the next one on screen */
   const stageDecision = (decision: 'approve' | 'reject' | 'escalate', worded?: WordedDecision) => {
-    if (review === undefined || lostTurn) return
+    if (review === undefined || lostTurn || actionStage.current === null) return
     const staged: StagedDecision = {
       kind: 'decision',
       instanceId,
@@ -1055,6 +1066,7 @@ function Workbench({ batch }: { batch: BatchDto }) {
       participantName: review.participantName,
       payload: {
         decision,
+        expectedStage: actionStage.current,
         ...(worded?.reason !== undefined ? { reason: worded.reason } : {}),
         // an approval's opinion is optional, and an empty box means none
         ...(worded !== undefined && worded.comment !== '' ? { comment: worded.comment } : {}),
@@ -1150,26 +1162,26 @@ function Workbench({ batch }: { batch: BatchDto }) {
         case 'a':
         case 'A':
           event.preventDefault()
-          if (may('approve')) setDialog('approve')
+          if (may('approve')) openAction('approve')
           return
         case 'r':
         case 'R':
           // swallowed before the dialog opens, or the letter lands in the
           // box it is about to focus
           event.preventDefault()
-          if (may('reject')) setDialog('reject')
+          if (may('reject')) openAction('reject')
           return
         case 'e':
         case 'E':
           event.preventDefault()
-          if (may('escalate')) setDialog('escalate')
+          if (may('escalate')) openAction('escalate')
           return
         case 's':
         case 'S':
           // the ask has to be written before it can be staged, so the letter
           // opens the box rather than arming anything
           event.preventDefault()
-          if (may('supplement')) setDialog('supplement')
+          if (may('supplement')) openAction('supplement')
           return
         case 'd':
           event.preventDefault()
@@ -1445,7 +1457,7 @@ function Workbench({ batch }: { batch: BatchDto }) {
                       {columns.handles}
                     </div>
                   </Drill>
-                  {bar && <DecisionBar review={review} onDialog={setDialog} />}
+                  {bar && <DecisionBar review={review} onDialog={openAction} />}
                   {review.state === 'awaiting_supplement' && (
                     <footer {...stylex.props(styles.awaitingFoot)}>
                       <InfoIcon

@@ -31,6 +31,25 @@ const accepts = (schema: Schema.Codec<unknown, unknown>, value: unknown) =>
 
 const id = (n: number) => `019fd31f-0a15-7092-b49e-${n.toString(16).padStart(12, '0')}`
 
+describe('a review decision', () => {
+  const decision = payloadOf('decideReview')
+  it('requires the route and stage that the reviewer saw', () => {
+    expect(accepts(decision, { decision: 'approve' })).toBe(false)
+    expect(
+      accepts(decision, {
+        decision: 'approve',
+        expectedStage: { route: 'normal', stageId: 'class' },
+      }),
+    ).toBe(true)
+    expect(
+      accepts(decision, {
+        decision: 'approve',
+        expectedStage: { route: 'other', stageId: 'class' },
+      }),
+    ).toBe(false)
+  })
+})
+
 describe('a plan write', () => {
   const put = payloadOf('putPhases')
   const phases = (count: number) =>

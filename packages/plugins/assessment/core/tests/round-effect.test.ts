@@ -1,3 +1,4 @@
+import { decideReviewAtCurrentStage } from './support/round.ts'
 import { Effect } from 'effect'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createTestContext, postgresAvailable } from '@qualy/plugin-database/testkit'
@@ -54,7 +55,8 @@ const appealed = (
       owner,
     )
     const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', owner)
-    yield* assessment.decideReview(
+    yield* decideReviewAtCurrentStage(
+      assessment,
       f.t,
       sent.currentReviewInstanceId!,
       first === 'approve'
@@ -63,7 +65,8 @@ const appealed = (
       reviewer,
     )
     const appeal = yield* assessment.appealEntry(f.t, entry.id, { reason: '请复核' }, owner)
-    yield* assessment.decideReview(
+    yield* decideReviewAtCurrentStage(
+      assessment,
       f.t,
       appeal.id,
       then.decision === 'approve'

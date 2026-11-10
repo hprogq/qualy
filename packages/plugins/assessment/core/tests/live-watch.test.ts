@@ -11,6 +11,7 @@ import { createTestContext, postgresAvailable, runSql } from '@qualy/plugin-data
 import { Api } from '@qualy/api-kit/local'
 import { LIVE_CLOSE, LIVE_PONG, LIVE_SUBPROTOCOL } from '@qualy/api-kit/live-socket'
 import { identityKeyOf } from '@qualy/auth-contract/identity-key'
+import { CURRENT_CLIENT_PROTOCOL } from '@qualy/release-contract'
 import {
   layer as sessionLayer,
   presenceLayer,
@@ -229,7 +230,9 @@ describe.runIf(postgresAvailable)('the batch live channel, as served', () => {
       code: LIVE_CLOSE.unsupported,
       reason: 'protocol',
     })
-    expect(await dial({ query: '?protocol=5&release=..%2Fetc' }).closed).toEqual({
+    expect(
+      await dial({ query: `?protocol=${CURRENT_CLIENT_PROTOCOL}&release=..%2Fetc` }).closed,
+    ).toEqual({
       code: LIVE_CLOSE.unsupported,
       reason: 'release',
     })
@@ -239,18 +242,24 @@ describe.runIf(postgresAvailable)('the batch live channel, as served', () => {
       reason: 'protocol',
     })
     // a query said twice is not a query said once
-    expect(await dial({ query: '?protocol=5&protocol=5' }).closed).toMatchObject({
+    expect(
+      await dial({
+        query: `?protocol=${CURRENT_CLIENT_PROTOCOL}&protocol=${CURRENT_CLIENT_PROTOCOL}`,
+      }).closed,
+    ).toMatchObject({
       code: LIVE_CLOSE.unsupported,
     })
     // a page of this generation that does not say whose it is
-    expect(await dial({ query: '?protocol=5&release=web-r1' }).closed).toEqual({
+    expect(
+      await dial({ query: `?protocol=${CURRENT_CLIENT_PROTOCOL}&release=web-r1` }).closed,
+    ).toEqual({
       code: LIVE_CLOSE.unsupported,
       reason: 'protocol',
     })
     expect(ledger.open()).toBe(0)
     const accepted = held(
       dial({
-        query: `?protocol=5&release=web-r1&identity=${identityKeyOf({ tenantId, userId: adminId })}`,
+        query: `?protocol=${CURRENT_CLIENT_PROTOCOL}&release=web-r1&identity=${identityKeyOf({ tenantId, userId: adminId })}`,
       }),
     )
     await until(() => accepted.kinds.includes('sync'))
@@ -262,7 +271,7 @@ describe.runIf(postgresAvailable)('the batch live channel, as served', () => {
     const line = held(
       dial({
         token: tokens.other,
-        query: `?protocol=5&release=web-r1&identity=${identityKeyOf({ tenantId, userId: adminId })}`,
+        query: `?protocol=${CURRENT_CLIENT_PROTOCOL}&release=web-r1&identity=${identityKeyOf({ tenantId, userId: adminId })}`,
       }),
     )
     expect(await line.closed).toEqual({ code: LIVE_CLOSE.identityChanged, reason: 'identity' })

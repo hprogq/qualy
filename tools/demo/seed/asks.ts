@@ -1,3 +1,4 @@
+import { requestSupplementAtCurrentStage } from './review-stage.ts'
 import { Effect } from 'effect'
 import type { Principal } from '@qualy/rbac-contract'
 import { Assessment } from '@qualy/plugin-assessment/testkit'
@@ -177,7 +178,8 @@ export const SCRIPTED_ASKS = {
 export const requestAsk = (tenantId: string, instanceId: string, ask: Ask, as: Principal) =>
   Effect.gen(function* () {
     const assessment = yield* Assessment
-    yield* assessment.requestSupplement(
+    yield* requestSupplementAtCurrentStage(
+      assessment,
       tenantId,
       instanceId,
       { instructions: ask.instructions, requirements: requirementsOf(ask) },

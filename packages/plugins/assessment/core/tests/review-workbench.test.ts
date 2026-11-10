@@ -1,3 +1,4 @@
+import { decideReviewAtCurrentStage, requestSupplementAtCurrentStage } from './support/round.ts'
 import { sql } from 'kysely'
 import { Effect } from 'effect'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -148,7 +149,8 @@ describe.runIf(postgresAvailable)('the review workbench', () => {
             { batchId: g.batch.id, search: '证书原件备案' },
             f.principal(f.reviewer),
           )
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             sent.currentReviewInstanceId!,
             { decision: 'approve' },
@@ -217,7 +219,8 @@ describe.runIf(postgresAvailable)('the review workbench', () => {
           // a configured list makes the label part of the act: absent it is
           // refused, invented it is refused, and approve has no use for one
           const unlabelled = yield* Effect.exit(
-            assessment.decideReview(
+            decideReviewAtCurrentStage(
+              assessment,
               f.t,
               instanceId,
               { decision: 'reject', comment: 'too blurry' },
@@ -225,7 +228,8 @@ describe.runIf(postgresAvailable)('the review workbench', () => {
             ),
           )
           const invented = yield* Effect.exit(
-            assessment.decideReview(
+            decideReviewAtCurrentStage(
+              assessment,
               f.t,
               instanceId,
               { decision: 'reject', reason: '不在名单', comment: 'too blurry' },
@@ -233,14 +237,16 @@ describe.runIf(postgresAvailable)('the review workbench', () => {
             ),
           )
           const misplaced = yield* Effect.exit(
-            assessment.decideReview(
+            decideReviewAtCurrentStage(
+              assessment,
               f.t,
               instanceId,
               { decision: 'approve', reason: '材料不清晰' },
               reviewer,
             ),
           )
-          const rejected = yield* assessment.decideReview(
+          const rejected = yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             instanceId,
             { decision: 'reject', reason: '材料不清晰', comment: '证书照片缺少落款' },
@@ -433,7 +439,8 @@ describe.runIf(postgresAvailable)('the review workbench', () => {
             s1,
           )
           const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             sent.currentReviewInstanceId!,
             { decision: 'reject', comment: 'look again later' },
@@ -450,7 +457,8 @@ describe.runIf(postgresAvailable)('the review workbench', () => {
             reviewer,
           )
           // a second claim, given up: the record stays and the place opens
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             resent.currentReviewInstanceId!,
             { decision: 'reject', comment: 'no' },
@@ -651,7 +659,8 @@ describe.runIf(postgresAvailable)('the review workbench', () => {
           )
           const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
           // the canonical label is offered, and the offer can be taken up
-          const decided = yield* assessment.decideReview(
+          const decided = yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             sent.currentReviewInstanceId!,
             { decision: 'reject', reason: '证据不足', comment: '按证据不足退回' },
@@ -688,7 +697,8 @@ describe.runIf(postgresAvailable)('the review workbench', () => {
             s1,
           )
           const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
-          yield* assessment.requestSupplement(
+          yield* requestSupplementAtCurrentStage(
+            assessment,
             f.t,
             sent.currentReviewInstanceId!,
             {
@@ -753,7 +763,8 @@ describe.runIf(postgresAvailable)('the review workbench', () => {
             s1,
           )
           const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
-          yield* assessment.requestSupplement(
+          yield* requestSupplementAtCurrentStage(
+            assessment,
             f.t,
             sent.currentReviewInstanceId!,
             {
@@ -807,7 +818,8 @@ describe.runIf(postgresAvailable)('the review workbench', () => {
             s1,
           )
           const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
-          yield* assessment.requestSupplement(
+          yield* requestSupplementAtCurrentStage(
+            assessment,
             f.t,
             sent.currentReviewInstanceId!,
             {
@@ -861,7 +873,8 @@ describe.runIf(postgresAvailable)('the review workbench', () => {
           const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
           const instanceId = sent.currentReviewInstanceId!
 
-          const asked = yield* assessment.requestSupplement(
+          const asked = yield* requestSupplementAtCurrentStage(
+            assessment,
             f.t,
             instanceId,
             {
@@ -880,7 +893,13 @@ describe.runIf(postgresAvailable)('the review workbench', () => {
             reviewer,
           )
           const decideWhileWaiting = yield* Effect.exit(
-            assessment.decideReview(f.t, instanceId, { decision: 'approve' }, reviewer),
+            decideReviewAtCurrentStage(
+              assessment,
+              f.t,
+              instanceId,
+              { decision: 'approve' },
+              reviewer,
+            ),
           )
           // the person who filed sees the ask on their own claim
           const mine = yield* assessment.getEntry(f.t, entry.id, s1)
@@ -908,7 +927,8 @@ describe.runIf(postgresAvailable)('the review workbench', () => {
             { batchId: g.batch.id },
             reviewer,
           )
-          const decided = yield* assessment.decideReview(
+          const decided = yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             instanceId,
             { decision: 'approve' },
@@ -978,7 +998,8 @@ describe.runIf(postgresAvailable)('the review workbench', () => {
           // an ask with more pieces than the rule allows is one issue for the
           // list, however many pieces it carries
           const crowded = yield* Effect.exit(
-            assessment.requestSupplement(
+            requestSupplementAtCurrentStage(
+              assessment,
               f.t,
               instanceId,
               {
@@ -992,7 +1013,8 @@ describe.runIf(postgresAvailable)('the review workbench', () => {
               reviewer,
             ),
           )
-          yield* assessment.requestSupplement(
+          yield* requestSupplementAtCurrentStage(
+            assessment,
             f.t,
             instanceId,
             {
@@ -1062,7 +1084,8 @@ describe.runIf(postgresAvailable)('the review workbench', () => {
           const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
           // nothing has been said against it yet
           const waiting = yield* assessment.getEntry(f.t, entry.id, s1)
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             sent.currentReviewInstanceId!,
             { decision: 'reject', reason: '材料不清晰', comment: '证书照片缺少落款。' },
@@ -1111,7 +1134,8 @@ describe.runIf(postgresAvailable)('the review workbench', () => {
             { batchId: g.batch.id },
             reviewer,
           )
-          yield* assessment.requestSupplement(
+          yield* requestSupplementAtCurrentStage(
+            assessment,
             f.t,
             instanceId,
             {
@@ -1146,7 +1170,13 @@ describe.runIf(postgresAvailable)('the review workbench', () => {
             reviewer,
           )
           // judged, and it leaves the list with the round it belonged to
-          yield* assessment.decideReview(f.t, instanceId, { decision: 'approve' }, reviewer)
+          yield* decideReviewAtCurrentStage(
+            assessment,
+            f.t,
+            instanceId,
+            { decision: 'approve' },
+            reviewer,
+          )
           const after = yield* assessment.listAwaitingSupplements(
             f.t,
             { batchId: g.batch.id },
@@ -1206,7 +1236,8 @@ describe.runIf(postgresAvailable)('the review workbench', () => {
             peer: assessment.listReviewInbox(f.t, { batchId: g.batch.id }, peer),
           })
 
-          yield* assessment.requestSupplement(
+          yield* requestSupplementAtCurrentStage(
+            assessment,
             f.t,
             instanceId,
             {
@@ -1283,7 +1314,8 @@ describe.runIf(postgresAvailable)('the review workbench', () => {
           )
           const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
           const ask = (instanceId: string) =>
-            assessment.requestSupplement(
+            requestSupplementAtCurrentStage(
+              assessment,
               f.t,
               instanceId,
               {
@@ -1312,7 +1344,8 @@ describe.runIf(postgresAvailable)('the review workbench', () => {
           const asked = yield* ask(round2)
           const openRequestId = asked.supplements.find((one) => one.status === 'open')!.id
           const cancelled = yield* assessment.cancelSupplement(f.t, openRequestId, reviewer)
-          const decided = yield* assessment.decideReview(
+          const decided = yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             round2,
             { decision: 'approve' },

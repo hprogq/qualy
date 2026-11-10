@@ -1,3 +1,4 @@
+import { decideReviewAtCurrentStage } from './review-stage.ts'
 import { Effect } from 'effect'
 import { sql } from 'kysely'
 import { Assessment } from '@qualy/plugin-assessment/testkit'
@@ -260,7 +261,8 @@ export const runSecondaryCollege = (world: World, story: Story) =>
           if (plan.active && path === 1) continue
           if (path === 2 || path === 3) {
             yield* step(
-              assessment.decideReview(
+              decideReviewAtCurrentStage(
+                assessment,
                 t,
                 roundId,
                 {
@@ -306,7 +308,8 @@ export const runSecondaryCollege = (world: World, story: Story) =>
           }
           if (path === 6) {
             yield* step(
-              assessment.decideReview(
+              decideReviewAtCurrentStage(
+                assessment,
                 t,
                 roundId,
                 {
@@ -319,7 +322,8 @@ export const runSecondaryCollege = (world: World, story: Story) =>
             )
             if (plan.active) continue
             yield* step(
-              assessment.decideReview(
+              decideReviewAtCurrentStage(
+                assessment,
                 t,
                 roundId,
                 { decision: 'approve', comment: '已核对学院活动记录，按参与情况认定' },
@@ -328,7 +332,8 @@ export const runSecondaryCollege = (world: World, story: Story) =>
             )
           } else {
             yield* step(
-              assessment.decideReview(
+              decideReviewAtCurrentStage(
+                assessment,
                 t,
                 roundId,
                 {

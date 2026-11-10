@@ -55,6 +55,7 @@ const SENTENCES: Record<string, Message> = {
   'not-requester': m.entry_refuseNotRequester,
   'awaiting-supplement': m.refuse_awaitingSupplement,
   'review-not-open': m.refuse_reviewNotOpen,
+  'review-stage-changed': m.refuse_reviewStageChanged,
   'item-not-fileable': m.entry_refuseNotFileable,
   'entry-not-returnable': m.entry_refuseNotReturnable,
   'owner-cannot-refile': m.entry_refuseOwnerCannotRefile,

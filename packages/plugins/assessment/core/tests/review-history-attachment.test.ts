@@ -1,3 +1,4 @@
+import { decideReviewAtCurrentStage } from './support/round.ts'
 import { Effect, Exit } from 'effect'
 import { sql } from 'kysely'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -76,7 +77,13 @@ describe.runIf(postgresAvailable)('review access to historical attachments', () 
               yield* Effect.exit(assessment.openAttachment(f.t, removed, f.principal(f.s2))),
             ),
           }
-          yield* assessment.decideReview(f.t, round, { decision: 'approve' }, reviewer)
+          yield* decideReviewAtCurrentStage(
+            assessment,
+            f.t,
+            round,
+            { decision: 'approve' },
+            reviewer,
+          )
           const after = answerOf(
             yield* Effect.exit(assessment.openAttachment(f.t, removed, reviewer)),
           )
@@ -135,7 +142,13 @@ describe.runIf(postgresAvailable)('review access to historical attachments', () 
           )
           const judgedRound = (yield* assessment.setEntryStatus(f.t, judged.id, 'in_review', other))
             .currentReviewInstanceId!
-          yield* assessment.decideReview(f.t, judgedRound, { decision: 'approve' }, reviewer)
+          yield* decideReviewAtCurrentStage(
+            assessment,
+            f.t,
+            judgedRound,
+            { decision: 'approve' },
+            reviewer,
+          )
           const draftFile = yield* staged(f.t, f.s3)
           yield* assessment.createEntry(
             f.t,

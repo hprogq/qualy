@@ -1,3 +1,4 @@
+import { decideReviewAtCurrentStage, requestSupplementAtCurrentStage } from './support/round.ts'
 import { sql } from 'kysely'
 import { Effect, Exit } from 'effect'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -204,7 +205,8 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
             )
           const borrowed = yield* queueOf()
           const judged = yield* Effect.exit(
-            assessment.decideReview(
+            decideReviewAtCurrentStage(
+              assessment,
               f.t,
               instanceId,
               { decision: 'approve' },
@@ -238,7 +240,8 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
           const { instanceId } = yield* submitted(f, g, g.p1, f.s1)
           const queue = yield* assessment.listReviewInbox(f.t, {}, f.principal(f.reviewer))
           const decided = yield* Effect.exit(
-            assessment.decideReview(
+            decideReviewAtCurrentStage(
+              assessment,
               f.t,
               instanceId,
               { decision: 'approve' },
@@ -316,14 +319,16 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
           const { entryId, instanceId } = yield* submitted(f, g, g.p1, f.s1)
           const reviewer = f.principal(f.reviewer)
           const before = yield* assessment.getReviewInstance(f.t, instanceId, reviewer)
-          const approved = yield* assessment.decideReview(
+          const approved = yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             instanceId,
             { decision: 'approve', comment: 'checked against the certificate' },
             reviewer,
           )
           const again = yield* Effect.exit(
-            assessment.decideReview(
+            decideReviewAtCurrentStage(
+              assessment,
               f.t,
               instanceId,
               { decision: 'reject', comment: 'no' },
@@ -374,7 +379,8 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
             sql`update entries set current_review_instance_id = null where id = ${entryId}`,
           )
           const decided = yield* Effect.exit(
-            assessment.decideReview(
+            decideReviewAtCurrentStage(
+              assessment,
               f.t,
               instanceId,
               { decision: 'approve' },
@@ -419,11 +425,18 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
           const instanceId = sent.currentReviewInstanceId!
 
           const wordless = yield* Effect.exit(
-            assessment.decideReview(f.t, instanceId, { decision: 'reject' }, reviewer),
+            decideReviewAtCurrentStage(
+              assessment,
+              f.t,
+              instanceId,
+              { decision: 'reject' },
+              reviewer,
+            ),
           )
           const fileB = yield* staged(f.t, f.s1)
           const growing = yield* Effect.exit(
-            assessment.decideReview(
+            decideReviewAtCurrentStage(
+              assessment,
               f.t,
               instanceId,
               {
@@ -435,14 +448,16 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
             ),
           )
           const advisedApproval = yield* Effect.exit(
-            assessment.decideReview(
+            decideReviewAtCurrentStage(
+              assessment,
               f.t,
               instanceId,
               { decision: 'approve', suggestedPayload: { files: [fileA] } },
               reviewer,
             ),
           )
-          const rejected = yield* assessment.decideReview(
+          const rejected = yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             instanceId,
             {
@@ -467,7 +482,8 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
             resent.currentReviewInstanceId!,
             reviewer,
           )
-          const closed = yield* assessment.decideReview(
+          const closed = yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             resent.currentReviewInstanceId!,
             { decision: 'approve' },
@@ -530,7 +546,8 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
 
           const s2Queue = yield* assessment.listReviewInbox(f.t, {}, f.principal(f.s2))
           const selfJudged = yield* Effect.exit(
-            assessment.decideReview(
+            decideReviewAtCurrentStage(
+              assessment,
               f.t,
               own.instanceId,
               { decision: 'approve' },
@@ -548,7 +565,8 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
             f.principal(f.admin),
           )
           const adminJudged = yield* Effect.exit(
-            assessment.decideReview(
+            decideReviewAtCurrentStage(
+              assessment,
               f.t,
               own.instanceId,
               { decision: 'approve' },
@@ -559,14 +577,16 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
             assessment.getReviewInstance(f.t, own.instanceId, f.principal(f.s3)),
           )
           const strangerJudged = yield* Effect.exit(
-            assessment.decideReview(
+            decideReviewAtCurrentStage(
+              assessment,
               f.t,
               own.instanceId,
               { decision: 'approve' },
               f.principal(f.s3),
             ),
           )
-          const settled = yield* assessment.decideReview(
+          const settled = yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             own.instanceId,
             { decision: 'approve' },
@@ -957,7 +977,8 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
           const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
           const instanceId = sent.currentReviewInstanceId!
           const reviewer = f.principal(f.reviewer)
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             instanceId,
             { decision: 'escalate', comment: '\u62ff\u4e0d\u51c6\uff0c\u63d0\u8bf7\u590d\u6838' },
@@ -966,7 +987,8 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
           const judge2 = f.principal(second.who)
           const midway = yield* assessment.getReviewInstance(f.t, instanceId, judge2)
           // the objection is an opinion that climbs, never a verdict here
-          const objected = yield* assessment.decideReview(
+          const objected = yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             instanceId,
             { decision: 'reject', comment: '\u590d\u6838\u8ba4\u4e3a\u4e0d\u5e94\u8ba4\u5b9a' },
@@ -986,7 +1008,8 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
             yield* runSql(sql`
               select state, blocked_reason from review_instances where id = ${instanceId}`),
           )
-          const settled = yield* assessment.decideReview(
+          const settled = yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             instanceId,
             { decision: 'reject', comment: '\u7ec8\u5ba1\u4e0d\u4e88\u8ba4\u5b9a' },
@@ -1151,7 +1174,8 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
           const reviewer = f.principal(f.reviewer)
 
           const onNormal = yield* assessment.getReviewInstance(f.t, instanceId, reviewer)
-          const raised = yield* assessment.decideReview(
+          const raised = yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             instanceId,
             { decision: 'escalate', comment: '\u62ff\u4e0d\u51c6\uff0c\u63d0\u8bf7\u590d\u6838' },
@@ -1173,7 +1197,8 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
             instanceId,
             f.principal(second),
           )
-          const opined = yield* assessment.decideReview(
+          const opined = yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             instanceId,
             { decision: 'approve', comment: '材料可信' },
@@ -1201,7 +1226,8 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
           yield* accept(f.t, g.batch.id, third, thirdGrant)
           yield* assessment.patrolReviewRounds
           const atEnd = yield* assessment.getReviewInstance(f.t, instanceId, f.principal(third))
-          const settled = yield* assessment.decideReview(
+          const settled = yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             instanceId,
             { decision: 'approve' },
@@ -1345,7 +1371,8 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
             s1,
           )
           const firstSent = yield* assessment.setEntryStatus(f.t, first.id, 'in_review', s1)
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             firstSent.currentReviewInstanceId!,
             { decision: 'escalate', comment: '\u63d0\u8bf7\u590d\u6838' },
@@ -1374,7 +1401,8 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
             'in_review',
             f.principal(f.s2),
           )
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             secondSent.currentReviewInstanceId!,
             { decision: 'escalate', comment: '\u63d0\u8bf7\u590d\u6838' },
@@ -1468,7 +1496,13 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
           // and one that was already through: an administrator can ask for
           // more even after it counted, and it is still not a rejection
           yield* runSql(sql`update role_grants set revoked_at = null where user_id = ${f.reviewer}`)
-          yield* assessment.decideReview(f.t, stuck.instanceId, { decision: 'approve' }, reviewer)
+          yield* decideReviewAtCurrentStage(
+            assessment,
+            f.t,
+            stuck.instanceId,
+            { decision: 'approve' },
+            reviewer,
+          )
           const afterApproval = yield* assessment.interveneOnEntry(
             f.t,
             stuck.entryId,
@@ -1540,7 +1574,8 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
           const approvedOf = (participantId: string, who: string) =>
             Effect.gen(function* () {
               const sent = yield* submitted(f, g, participantId, who)
-              yield* assessment.decideReview(
+              yield* decideReviewAtCurrentStage(
+                assessment,
                 f.t,
                 sent.instanceId,
                 { decision: 'approve' },
@@ -1622,7 +1657,13 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
           const admin = f.principal(f.admin)
           const reviewer = f.principal(f.reviewer)
           const sent = yield* submitted(f, g, g.p1, f.s1)
-          yield* assessment.decideReview(f.t, sent.instanceId, { decision: 'approve' }, reviewer)
+          yield* decideReviewAtCurrentStage(
+            assessment,
+            f.t,
+            sent.instanceId,
+            { decision: 'approve' },
+            reviewer,
+          )
           const pending = yield* submitted(f, g, g.p2, f.s2)
           const offerOf = (participantId: string) =>
             Effect.map(
@@ -1857,7 +1898,8 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
           yield* accept(f.t, g.batch.id, second, secondGrant)
           const { entryId, instanceId } = yield* submitted(f, g, g.p1, f.s1)
           // walk to the second step, so the walked-so-far is real
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             instanceId,
             { decision: 'approve' },
@@ -2064,7 +2106,8 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
             s1,
           )
           const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             sent.currentReviewInstanceId!,
             { decision: 'reject', comment: '材料不足' },
@@ -2126,7 +2169,8 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
           )
           // the replacement is decided like any appeal, and it is still the
           // one appeal: what it concludes cannot be appealed again
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             moved.id,
             { decision: 'approve' },
@@ -2178,7 +2222,8 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
             s1,
           )
           const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             sent.currentReviewInstanceId!,
             { decision: 'reject', comment: '材料不足' },
@@ -2233,7 +2278,8 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
             s1,
           )
           const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             sent.currentReviewInstanceId!,
             { decision: 'reject', comment: '材料不足' },
@@ -2323,7 +2369,8 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
           const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
           const round = sent.currentReviewInstanceId!
           const onTheNormalRoute = yield* assessment.getReviewInstance(f.t, round, reviewer)
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             round,
             { decision: 'escalate', comment: '请上一级看' },
@@ -2332,7 +2379,8 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
           const midLadder = yield* assessment.getReviewInstance(f.t, round, above)
           // and the server is the same answer, which is what the flag is for
           const advised = yield* Effect.exit(
-            assessment.decideReview(
+            decideReviewAtCurrentStage(
+              assessment,
               f.t,
               round,
               { decision: 'reject', comment: '不予认定', suggestedPayload: { hint: 'try again' } },
@@ -2407,7 +2455,8 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
           )
           const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
           const round = sent.currentReviewInstanceId!
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             round,
             { decision: 'escalate', comment: '拿不准，请上一级看' },
@@ -2419,7 +2468,8 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
           ).current_stage_id
           // the sitting says no, and there is no rung above it to say it to
           const settled = yield* Effect.exit(
-            assessment.decideReview(
+            decideReviewAtCurrentStage(
+              assessment,
               f.t,
               round,
               { decision: 'reject', comment: '仍不予认定' },
@@ -2523,7 +2573,8 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
           const [confirmed, refused] = yield* Effect.all(
             [
               Effect.exit(
-                assessment.decideReview(
+                decideReviewAtCurrentStage(
+                  assessment,
                   f.t,
                   round,
                   { decision: 'approve', comment: '与证书相符' },
@@ -2531,7 +2582,8 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
                 ),
               ),
               Effect.exit(
-                assessment.decideReview(
+                decideReviewAtCurrentStage(
+                  assessment,
                   f.t,
                   round,
                   { decision: 'reject', comment: '材料不足' },
@@ -2631,7 +2683,8 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
           const [confirmed, asked] = yield* Effect.all(
             [
               Effect.exit(
-                assessment.decideReview(
+                decideReviewAtCurrentStage(
+                  assessment,
                   f.t,
                   round,
                   { decision: 'approve', comment: '与证书相符' },
@@ -2641,7 +2694,8 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
               Effect.exit(
                 Effect.gen(function* () {
                   yield* Effect.sleep('20 millis')
-                  return yield* assessment.requestSupplement(
+                  return yield* requestSupplementAtCurrentStage(
+                    assessment,
                     f.t,
                     round,
                     {
@@ -2722,7 +2776,8 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
           )
           const firstSent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
           const first = firstSent.currentReviewInstanceId!
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             first,
             { decision: 'reject', comment: '材料不足' },
@@ -2733,7 +2788,8 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
           yield* assessment.appendEntryRevision(f.t, entry.id, { payload: {} }, s1)
           const secondSent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
           const second = secondSent.currentReviewInstanceId!
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             second,
             { decision: 'approve', comment: '这次齐了' },
@@ -2796,7 +2852,8 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
           )
           const firstSent = yield* assessment.setEntryStatus(f.t, one_.id, 'in_review', s1)
           const first = firstSent.currentReviewInstanceId!
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             first,
             { decision: 'reject', comment: '材料不足' },
@@ -2805,7 +2862,8 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
           yield* assessment.appendEntryRevision(f.t, one_.id, { payload: {} }, s1)
           const secondSent = yield* assessment.setEntryStatus(f.t, one_.id, 'in_review', s1)
           const second = secondSent.currentReviewInstanceId!
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             second,
             { decision: 'approve', comment: '这次齐了' },
@@ -2824,7 +2882,8 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
           )
           const earlySent = yield* assessment.setEntryStatus(f.t, two.id, 'in_review', s2)
           const early = earlySent.currentReviewInstanceId!
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             early,
             { decision: 'reject', comment: '不予认定' },
@@ -2832,7 +2891,8 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
           )
           const lateSent = yield* assessment.setEntryStatus(f.t, two.id, 'in_review', s2)
           const late = lateSent.currentReviewInstanceId!
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             late,
             { decision: 'reject', comment: '仍不予认定' },
@@ -2948,14 +3008,16 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
           const first = sent.currentReviewInstanceId!
           // escalating is shut off in this window, so the reviewer decides
           const escalationShut = yield* Effect.exit(
-            assessment.decideReview(
+            decideReviewAtCurrentStage(
+              assessment,
               f.t,
               first,
               { decision: 'escalate', comment: '\u60f3\u4e0a\u62a5' },
               reviewer,
             ),
           )
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             first,
             { decision: 'reject', comment: '\u6750\u6599\u4e0d\u8db3' },
@@ -2989,14 +3051,16 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
           )
           const midway = yield* assessment.getReviewInstance(f.t, second_, reviewer)
           // a middle rung's rejection is an opinion that climbs
-          const objected = yield* assessment.decideReview(
+          const objected = yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             second_,
             { decision: 'reject', comment: '\u4ecd\u8ba4\u4e3a\u4e0d\u5e94\u8ba4\u5b9a' },
             reviewer,
           )
           const atEnd = yield* assessment.getReviewInstance(f.t, second_, f.principal(second))
-          const settled = yield* assessment.decideReview(
+          const settled = yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             second_,
             { decision: 'reject', comment: '\u590d\u6838\u540e\u4ecd\u4e0d\u4e88\u8ba4\u5b9a' },

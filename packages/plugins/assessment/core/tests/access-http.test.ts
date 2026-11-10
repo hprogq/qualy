@@ -194,4 +194,23 @@ describe.runIf(postgresAvailable)('the staff list over http', () => {
       expect(refused.body, query).toMatchObject({ _tag: 'BAD_REQUEST' })
     }
   })
+
+  it('refuses review writes without the stage the client saw', async () => {
+    const id = '019fd31f-0a15-7092-b49e-000000000001'
+    for (const [suffix, body] of [
+      ['decisions', { decision: 'approve' }],
+      [
+        'supplement-requests',
+        { instructions: 'Proof', requirements: [{ label: 'Proof', kind: 'text', required: true }] },
+      ],
+    ] as const) {
+      const response = await fetch(`${base}/api/assessment/review/instances/${id}/${suffix}`, {
+        method: 'POST',
+        headers: { cookie: `${sessionCookieName}=${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      expect(response.status, suffix).toBe(400)
+      expect(await response.json()).toMatchObject({ _tag: 'BAD_REQUEST' })
+    }
+  })
 })

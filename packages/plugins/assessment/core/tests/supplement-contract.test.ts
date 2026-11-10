@@ -12,6 +12,7 @@ const decode = Schema.decodeUnknownExit(
 )
 
 const piece = { label: '说明', kind: 'text', required: true }
+const expectedStage = { route: 'normal', stageId: 'class' }
 
 describe('the supplement request on the wire', () => {
   it('reads a list the rule can still judge, and refuses one past the ceiling', () => {
@@ -19,7 +20,11 @@ describe('the supplement request on the wire', () => {
     // as a field issue the dialog can show
     expect(
       Exit.isSuccess(
-        decode({ instructions: '请补充', requirements: Array.from({ length: 9 }, () => piece) }),
+        decode({
+          instructions: '请补充',
+          requirements: Array.from({ length: 9 }, () => piece),
+          expectedStage,
+        }),
       ),
     ).toBe(true)
     expect(
@@ -27,8 +32,13 @@ describe('the supplement request on the wire', () => {
         decode({
           instructions: '请补充',
           requirements: Array.from({ length: 10_000 }, () => piece),
+          expectedStage,
         }),
       ),
     ).toBe(false)
+  })
+
+  it('requires the stage the requester saw', () => {
+    expect(Exit.isFailure(decode({ instructions: '请补充', requirements: [piece] }))).toBe(true)
   })
 })

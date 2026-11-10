@@ -1,3 +1,4 @@
+import { decideReviewAtCurrentStage, requestSupplementAtCurrentStage } from './support/round.ts'
 import { sql } from 'kysely'
 import { Effect, Exit, Fiber, Schedule } from 'effect'
 import { TestClock } from 'effect/testing'
@@ -179,7 +180,8 @@ describe.runIf(postgresAvailable)('the roster, as the results page reads it', ()
           // under review; asked for more; sent back
           yield* file(f.s3, g.p3)
           const asked = yield* file(f.s1, g.p1)
-          yield* assessment.requestSupplement(
+          yield* requestSupplementAtCurrentStage(
+            assessment,
             f.t,
             asked.currentReviewInstanceId!,
             {
@@ -540,7 +542,8 @@ describe.runIf(postgresAvailable)('the totals on a page of the roster', () => {
             owner,
           )
           const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', owner)
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             sent.currentReviewInstanceId!,
             { decision: 'approve' },

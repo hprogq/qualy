@@ -43,6 +43,10 @@ export type StagedDecision =
       readonly decision: 'approve' | 'reject' | 'escalate'
       readonly payload: {
         readonly decision: 'approve' | 'reject' | 'escalate'
+        readonly expectedStage: {
+          readonly route: 'normal' | 'escalation'
+          readonly stageId: string
+        }
         readonly reason?: string
         readonly comment?: string
         readonly suggestedPayload?: unknown
@@ -60,6 +64,10 @@ export type StagedDecision =
       readonly instanceId: string
       readonly payload: {
         readonly instructions: string
+        readonly expectedStage: {
+          readonly route: 'normal' | 'escalation'
+          readonly stageId: string
+        }
         readonly requirements: readonly {
           readonly label: string
           readonly kind: 'text' | 'file'

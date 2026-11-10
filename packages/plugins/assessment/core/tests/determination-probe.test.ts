@@ -1,3 +1,4 @@
+import { decideReviewAtCurrentStage } from './support/round.ts'
 import { sql } from 'kysely'
 import { Effect, Exit, Fiber } from 'effect'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
@@ -232,7 +233,8 @@ describe.runIf(postgresAvailable)('proving a determination before it is a fact',
           const { entryId, instanceId } = yield* claimed(f, g, g.p1)
           const decide = (ordinal: number) =>
             Effect.exit(
-              assessment.decideReview(
+              decideReviewAtCurrentStage(
+                assessment,
                 f.t,
                 instanceId,
                 { decision: 'approve', recognition: determination(ordinal) },
@@ -300,7 +302,8 @@ describe.runIf(postgresAvailable)('proving a determination before it is a fact',
           const { entryId, instanceId } = yield* claimed(f, g, g.p1)
           // the first reader's opinion: the rule would refuse it, and that is
           // the next reader's to correct - an opinion decides nothing
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             instanceId,
             { decision: 'approve', recognition: determination(7) },
@@ -309,7 +312,8 @@ describe.runIf(postgresAvailable)('proving a determination before it is a fact',
           const moved = yield* roundOf(instanceId)
           // the last word carrying the same determination is held to the rule
           const refused = yield* Effect.exit(
-            assessment.decideReview(
+            decideReviewAtCurrentStage(
+              assessment,
               f.t,
               instanceId,
               {
@@ -618,7 +622,8 @@ describe.runIf(postgresAvailable)('proving a determination before it is a fact',
           let release = holding()
           const deciding = yield* Effect.forkChild(
             Effect.exit(
-              assessment.decideReview(
+              decideReviewAtCurrentStage(
+                assessment,
                 f.t,
                 first.instanceId,
                 { decision: 'approve', recognition: determination(6) },
@@ -656,7 +661,8 @@ describe.runIf(postgresAvailable)('proving a determination before it is a fact',
           release = holding()
           const decidingAgain = yield* Effect.forkChild(
             Effect.exit(
-              assessment.decideReview(
+              decideReviewAtCurrentStage(
+                assessment,
                 f.t,
                 second.instanceId,
                 { decision: 'approve', recognition: determination(6) },
@@ -816,7 +822,8 @@ describe.runIf(postgresAvailable)('proving a determination before it is a fact',
           )
           yield* assessment.setItemStatus(f.t, item.id, { status: 'active' }, admin)
           const { entryId, instanceId } = yield* claimed(f, { item }, g.p1)
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             instanceId,
             { decision: 'escalate', comment: '提请合议' },
@@ -841,7 +848,8 @@ describe.runIf(postgresAvailable)('proving a determination before it is a fact',
           // the first approving ballot would fix a text the rule refuses:
           // no text is fixed, and the ballot itself is not cast
           const firstRefused = yield* Effect.exit(
-            assessment.decideReview(
+            decideReviewAtCurrentStage(
+              assessment,
               f.t,
               instanceId,
               { decision: 'approve', recognition: determination(7) },
@@ -850,7 +858,8 @@ describe.runIf(postgresAvailable)('proving a determination before it is a fact',
           )
           const afterFirst = { ballots: yield* ballots(), frozen: yield* frozen() }
           // a text the rule accepts is fixed by the first ballot
-          yield* assessment.decideReview(
+          yield* decideReviewAtCurrentStage(
+            assessment,
             f.t,
             instanceId,
             { decision: 'approve', recognition: determination(3) },
@@ -867,7 +876,8 @@ describe.runIf(postgresAvailable)('proving a determination before it is a fact',
           // the ballot that would conclude the sitting is proven against the
           // rule as it stands now, not the one the text was fixed under
           const lastRefused = yield* Effect.exit(
-            assessment.decideReview(
+            decideReviewAtCurrentStage(
+              assessment,
               f.t,
               instanceId,
               { decision: 'approve', recognition: determination(3) },

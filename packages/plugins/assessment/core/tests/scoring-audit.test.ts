@@ -1,3 +1,4 @@
+import { decideReviewAtCurrentStage } from './support/round.ts'
 import { Duration, Effect, Fiber, Option } from 'effect'
 import { sql } from 'kysely'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
@@ -60,7 +61,8 @@ const standing = (
       as,
     )
     const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', as)
-    yield* assessment.decideReview(
+    yield* decideReviewAtCurrentStage(
+      assessment,
       f.t,
       sent.currentReviewInstanceId!,
       {
