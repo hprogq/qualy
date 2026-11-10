@@ -209,3 +209,30 @@ it('waits under a modal that holds the page, and answers once it closes', async 
   await page.getByRole('button', { name: copy.reloadNow }).click()
   expect(reload).toHaveBeenCalledTimes(1)
 })
+
+it('keeps mandatory reload operable above an existing modal', async () => {
+  document.documentElement.dataset['locale'] = 'zh-CN'
+  const copy = bootstrapMessages['zh-CN']
+  const { coordinator, reload } = setUp(probeFor('B'))
+  await render(
+    <UiProvider scheme="light">
+      <ReleaseRecoveryGate coordinator={coordinator} copy={bootstrapMessages}>
+        <main>preserved editor</main>
+        <Dialog open>
+          <DialogContent showCloseButton={false}>
+            <DialogTitle>existing modal</DialogTitle>
+            <input aria-label="unsaved" defaultValue="kept" />
+          </DialogContent>
+        </Dialog>
+      </ReleaseRecoveryGate>
+    </UiProvider>,
+  )
+  await expect.element(page.getByRole('dialog')).toBeVisible()
+  coordinator.requireReload('release-skew', probeFor('B'))
+  const button = page.getByRole('button', { name: copy.reloadPage })
+  await expect.element(button).toBeVisible()
+  expect(button.element().closest('[inert]')).toBeNull()
+  expect(document.querySelector<HTMLInputElement>('[aria-label="unsaved"]')?.value).toBe('kept')
+  await button.click()
+  expect(reload).toHaveBeenCalledTimes(1)
+})

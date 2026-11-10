@@ -3,7 +3,6 @@ import { useQueryClient, type QueryKey } from '@tanstack/react-query'
 import type { NamespacedId } from '@qualy/ui-contract'
 import { toast } from '@qualy/ui/toast'
 
-import { signingOut } from './identity.ts'
 import { buildPageHref } from '../routing/pages.ts'
 import type { Manifest } from '../runtime-context.tsx'
 import {
@@ -99,8 +98,6 @@ export function SessionRecoveryGate({
 
   const [standing, setStanding] = useState<SessionRecoveryState | undefined>()
   const held = useRef<Held | undefined>(undefined)
-  // the reader chose to sign out: answers as nobody are taken as they come
-  const leaving = useRef(false)
   // somebody else is signed in: the page sends nothing more
   const frozen = useRef(false)
   const freeze = useCallback(() => {
@@ -118,7 +115,7 @@ export function SessionRecoveryGate({
     }
     const uninstall = installSessionRecovery({
       wait: (signal) => {
-        if (identityChanging() || leaving.current) return Promise.resolve(false)
+        if (identityChanging()) return Promise.resolve(false)
         const current = held.current
         // another call found out: it joins the wait, which says nothing new
         if (current !== undefined) return unlessAborted(current.promise, signal)
@@ -145,7 +142,7 @@ export function SessionRecoveryGate({
         return unlessAborted(mine.promise, signal)
       },
       lost: (identity, someoneElse) => {
-        if (identityChanging() || leaving.current) return false
+        if (identityChanging()) return false
         const current = held.current
         if (current !== undefined) {
           if (current.identity !== identity) return false
@@ -179,7 +176,7 @@ export function SessionRecoveryGate({
     let checking = false
     let checkAgain = false
     let verifiedAt = 0
-    const unchanged = () => !stopped && !frozen.current && !leaving.current && !identityChanging()
+    const unchanged = () => !stopped && !frozen.current && !identityChanging()
     const probe = (explicit = false) => {
       if (!unchanged()) return
       const pending = held.current
@@ -290,17 +287,9 @@ export function SessionRecoveryGate({
     setStanding('waiting')
   }
 
-  /** the reader leaves: what the page held fails, and it becomes a visitor's */
-  const signOut = () => {
-    leaving.current = true
-    const current = held.current
-    held.current = undefined
-    setStanding(undefined)
-    current?.settle(false)
-    // nothing the reader was shown stays readable, as after signing out
-    signingOut()
-    onLeave()
-  }
+  // A document navigation may be cancelled by beforeunload. Keep recovery,
+  // pending calls and the original account's drafts intact until unmount.
+  const signOut = () => onLeave()
 
   return (
     <SessionRecoveryDialog

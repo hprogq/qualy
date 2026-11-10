@@ -222,10 +222,9 @@ export function RuntimeProvider({
         onFreeze={freezeChannels}
         onLeave={() => {
           const entry = rendered.pages.find((page) => page.id === signInPage)
-          void queryClient.cancelQueries().then(() => {
-            queryClient.clear()
-            return navigateDocument(entry?.path ?? '/', { replace: true })
-          })
+          // Native beforeunload can cancel this attempt. Do not permanently
+          // freeze channels until the document actually leaves.
+          void navigate(entry?.path ?? '/', { replace: true })
         }}
       />
     </QueryClientProvider>

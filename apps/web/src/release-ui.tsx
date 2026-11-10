@@ -1,4 +1,12 @@
-import { useEffect, useState, useSyncExternalStore, type ReactNode } from 'react'
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from 'react'
+import { createPortal } from 'react-dom'
 import * as stylex from '@stylexjs/stylex'
 import type { SupportedLocale } from '@qualy/i18n-contract'
 import { defaultLocale } from '@qualy/i18n-contract'
@@ -27,6 +35,13 @@ const styles = stylex.create({
     position: 'fixed',
     inset: 0,
     zIndex: 3000,
+    margin: 0,
+    borderWidth: 0,
+    boxSizing: 'border-box',
+    width: '100vw',
+    height: '100dvh',
+    maxWidth: 'none',
+    maxHeight: 'none',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
@@ -180,14 +195,31 @@ function ReloadScreen({
   reloadLabel: string
   onReload: () => void
 }) {
-  return (
-    <div role="alert" data-release-recovery={reason} {...stylex.props(styles.screen)}>
+  const dialog = useRef<HTMLDialogElement>(null)
+  useLayoutEffect(() => {
+    const current = dialog.current
+    if (current === null) return
+    current.showModal()
+    return () => current.close()
+  }, [])
+  if (typeof document === 'undefined') return null
+  // A native top-layer modal remains operable above an existing widget modal,
+  // including its focus trap and the inert application root.
+  return createPortal(
+    <dialog
+      ref={dialog}
+      onCancel={(event) => event.preventDefault()}
+      role="alert"
+      data-release-recovery={reason}
+      {...stylex.props(styles.screen)}
+    >
       <h1 {...stylex.props(styles.title)}>{title}</h1>
       <p {...stylex.props(styles.hint)}>{hint}</p>
       <button type="button" {...stylex.props(styles.button, styles.action)} onClick={onReload}>
         {reloadLabel}
       </button>
-    </div>
+    </dialog>,
+    document.body,
   )
 }
 
