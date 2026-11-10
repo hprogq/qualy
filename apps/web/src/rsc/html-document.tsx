@@ -11,27 +11,11 @@ import { bootstrapMessages } from '@qualy/web-i18n/bootstrap'
 import * as m from '@qualy/web-i18n/messages'
 import { releases } from '../release.ts'
 import { ReleaseRecoveryGate } from '../release-ui.tsx'
+import { earlyDocumentScript } from './early-document.ts'
 import '../app.css'
 
 /** the scheme the page starts in, decided before any script of ours ran */
-const EARLY_DOCUMENT = `(function () {
-  var root = document.documentElement
-  if (!('noModule' in document.createElement('script')) ||
-      !window.fetch || !window.AbortController || !window.ReadableStream ||
-      !window.TextDecoder || !window.URL || !Object.hasOwn ||
-      !window.CSS || !CSS.supports || !CSS.supports('--qualy', '0')) {
-    root.setAttribute('data-browser-unsupported', '')
-    return
-  }
-  var choice = null
-  try { choice = localStorage.getItem('qualy.theme') } catch (error) {}
-  var dark = choice === 'dark' || (choice !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches)
-  root.setAttribute('data-mode', dark ? 'dark' : 'light')
-  root.setAttribute('data-mantine-color-scheme', dark ? 'dark' : 'light')
-  if (dark) root.classList.add('dark')
-  root.style.colorScheme = dark ? 'dark' : 'light'
-  ${earlyLayoutPreferences}
-})()`
+const EARLY_DOCUMENT = `(function(){var root=document.documentElement;if(!(${earlyDocumentScript})(root))return;${earlyLayoutPreferences}})()`
 
 // Plain selectors and colors: even a browser that cannot load the app must
 // be able to draw this explanation. The script only changes <html>, whose
@@ -45,7 +29,7 @@ const BROWSER_NOTICE_CSS = `
 .qualy-browser-notice p { margin: 0; }
 .qualy-scripts-off { position: fixed; left: 12px; right: 12px; bottom: 12px; width: auto; margin: 0 auto; padding: 10px 14px; z-index: 100; border: 1px solid #ddd; border-radius: 8px; background: #fafafa; color: #1b1b1b; pointer-events: none; }
 .qualy-scripts-off h1 { margin-bottom: 2px; font-size: 16px; }
-`
+`.replaceAll('\n', '')
 
 const escapeNotice = (words: string) =>
   words.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')

@@ -760,6 +760,18 @@ const underPolicy = async (browser: Browser) => {
   const response = await page.goto(`${site}/login`)
   const markup = await response!.text()
   check('draws the recent login method in the initial HTML', markup.includes('data-last="true"'))
+  const bootstrap = markup.match(
+    /<script\b[^>]*>(\(function\(\)\{var root=document\.documentElement;[\s\S]*?)<\/script>/,
+  )?.[1]
+  check(
+    'emits the first-paint bootstrap compactly',
+    bootstrap !== undefined && !bootstrap.includes('\n'),
+  )
+  const noticeStyle = markup.match(/<style>([^<]*#qualy-browser-notice[^<]*)<\/style>/)?.[1]
+  check(
+    'emits browser notice styles without line breaks',
+    noticeStyle !== undefined && !noticeStyle.includes('\n'),
+  )
   const policy = response?.headers()['content-security-policy'] ?? ''
   check(
     'sends an enforced policy that names a nonce',

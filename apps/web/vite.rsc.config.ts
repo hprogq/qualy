@@ -8,7 +8,7 @@ import * as stylexUnpluginModule from '@stylexjs/unplugin/vite'
 import react from '@vitejs/plugin-react'
 import rsc from '@vitejs/plugin-rsc'
 import { fileURLToPath } from 'node:url'
-import { defineConfig, type Plugin, type PluginOption } from 'vite'
+import { defineConfig, minifySync, parseSync, type Plugin, type PluginOption } from 'vite'
 import { QUALY_API_PREFIX } from '@qualy/api-kit'
 import { qualyEnvironmentModules, qualyRelease } from '@qualy/web-build/vite'
 import { qualyChunkGraph } from '../../packages/build/web/src/chunk-graph.ts'
@@ -72,6 +72,44 @@ const serverModulesInServerComponents = (plugin: PluginOption): Plugin[] =>
     })
 
 const repoRoot = fileURLToPath(new URL('../..', import.meta.url))
+
+// These two functions are serialized with toString() into the first-paint
+// document script. Embed a compact function string during production builds;
+// keep readable sources and development output. The functions must remain
+// self-contained.
+const compactDocumentBootstrap = (): Plugin => ({
+  name: 'qualy:compact-document-bootstrap',
+  apply: 'build',
+  enforce: 'post',
+  transform(code, id) {
+    const file = id.split('?', 1)[0]?.replaceAll('\\', '/')
+    if (
+      !file?.endsWith('/apps/web/src/rsc/early-document.ts') &&
+      !file?.endsWith('/packages/web/ui/src/lib/layout-preference-spec.ts')
+    )
+      return null
+    const name = file.endsWith('/early-document.ts') ? 'prepareDocument' : 'applyLayoutPreferences'
+    const declaration = parseSync(file, code)
+      .program.body.map((node) =>
+        node.type === 'ExportNamedDeclaration' ? node.declaration : node,
+      )
+      .find((node) => node?.type === 'FunctionDeclaration' && node.id?.name === name)
+    if (!declaration || declaration.type !== 'FunctionDeclaration')
+      throw new Error(`Missing bootstrap function ${name}`)
+    const result = minifySync(file, code.slice(declaration.start, declaration.end), {
+      module: false,
+      compress: false,
+      mangle: false,
+    })
+    if (result.errors.length > 0) throw result.errors[0]
+    const reference = `${name}.toString()`
+    if (!code.includes(reference)) throw new Error(`Missing bootstrap serialization ${name}`)
+    return {
+      code: code.replace(reference, JSON.stringify(result.code.replace(/;$/, ''))),
+      map: null,
+    }
+  },
+})
 
 // Public names identify bytes, never the plugin or component that produced
 // them; the entry stylesheet has a role of its own, so StyleX can append its
@@ -143,6 +181,7 @@ export default defineConfig(({ command, mode }) => ({
       }),
     ),
     react(),
+    compactDocumentBootstrap(),
     rsc({
       entries: {
         rsc: './src/rsc/entry.rsc.tsx',
