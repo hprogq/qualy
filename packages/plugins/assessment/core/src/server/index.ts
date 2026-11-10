@@ -5698,43 +5698,48 @@ export const make = Effect.fn('Assessment.make')(function* () {
         // both of the people this reader may open and nobody else
         const reach = yield* rosterReadingOf(tenantId, batchId, as, ACCOUNT_ROSTER_CODES)
         const filter = { ...query.filter, ...(reach === undefined ? {} : { reach }) }
-        const total = yield* dieQuery(withDb(rosterAccountsTotal(tenantId, batchId, filter)))
-        // Where one person stands is asked of the same filter - reach and
-        // all - so somebody it does not hold answers as nobody does: the
-        // page that was asked for, and not a word about whether they exist.
-        const rank =
-          query.around === undefined
-            ? null
-            : yield* dieQuery(
-                withDb(rosterAccountsRank(tenantId, batchId, filter, query.order, query.around)),
-              )
-        const window = pageWindow(
-          rank === null ? query.page : Math.ceil(rank / query.limit),
-          query.limit,
-          total,
-        )
-        const rows = yield* dieQuery(
+        return yield* dieQuery(
           withDb(
-            rosterAccountsPage(tenantId, batchId, filter, query.order, {
-              offset: window.offset,
-              limit: query.limit,
-            }),
-          ),
-        )
-        const filings = yield* dieQuery(
-          withDb(
-            rosterFilingsOf(
-              tenantId,
-              batchId,
-              rows.map((row) => row.id),
+            transaction(
+              Effect.gen(function* () {
+                const total = yield* rosterAccountsTotal(tenantId, batchId, filter)
+                // Where one person stands is asked of the same filter - reach and
+                // all - so somebody it does not hold answers as nobody does: the
+                // page that was asked for, and not a word about whether they exist.
+                const rank =
+                  query.around === undefined
+                    ? null
+                    : yield* rosterAccountsRank(
+                        tenantId,
+                        batchId,
+                        filter,
+                        query.order,
+                        query.around,
+                      )
+                const window = pageWindow(
+                  rank === null ? query.page : Math.ceil(rank / query.limit),
+                  query.limit,
+                  total,
+                )
+                const rows = yield* rosterAccountsPage(tenantId, batchId, filter, query.order, {
+                  offset: window.offset,
+                  limit: query.limit,
+                })
+                const filings = yield* rosterFilingsOf(
+                  tenantId,
+                  batchId,
+                  rows.map((row) => row.id),
+                )
+                return {
+                  rows: rows.map((row) => ({ ...row, filings: filings.get(row.id) ?? NO_FILINGS })),
+                  total,
+                  page: window.page,
+                }
+              }),
+              { isolation: 'repeatable read', readOnly: true },
             ),
           ),
         )
-        return {
-          rows: rows.map((row) => ({ ...row, filings: filings.get(row.id) ?? NO_FILINGS })),
-          total,
-          page: window.page,
-        }
       },
     ),
 
@@ -5747,19 +5752,33 @@ export const make = Effect.fn('Assessment.make')(function* () {
         // asked of everybody at once
         yield* requireRosterReach(as, tenantId, batchId)
         const held = yield* rbac.listAuthorizedScope(as, MANAGE)
-        const total = yield* dieQuery(
-          withDb(participantCandidatesTotal(tenantId, batchId, held, query.filter)),
-        )
-        const window = pageWindow(query.page, query.limit, total)
-        const rows = yield* dieQuery(
+        return yield* dieQuery(
           withDb(
-            participantCandidatesPage(tenantId, batchId, held, query.filter, {
-              offset: window.offset,
-              limit: query.limit,
-            }),
+            transaction(
+              Effect.gen(function* () {
+                const total = yield* participantCandidatesTotal(
+                  tenantId,
+                  batchId,
+                  held,
+                  query.filter,
+                )
+                const window = pageWindow(query.page, query.limit, total)
+                const rows = yield* participantCandidatesPage(
+                  tenantId,
+                  batchId,
+                  held,
+                  query.filter,
+                  {
+                    offset: window.offset,
+                    limit: query.limit,
+                  },
+                )
+                return { rows, total, page: window.page }
+              }),
+              { isolation: 'repeatable read', readOnly: true },
+            ),
           ),
         )
-        return { rows, total, page: window.page }
       },
     ),
 
@@ -6250,29 +6269,34 @@ export const make = Effect.fn('Assessment.make')(function* () {
         if (!batch) return yield* new BatchNotFound()
         // the same door as the alert panel these people are counted on
         yield* requireRosterReach(as, tenantId, batchId)
-        let levels: readonly string[] | null
-        if (query.route.kind === 'levels') {
-          levels = query.route.nodeTypeIds
-        } else {
-          const { itemId, route } = query.route
-          const demands = yield* dieQuery(withDb(itemDemandsOf(tenantId, batchId, itemId)))
-          if (demands === null) return yield* new ItemNotFound()
-          // a route that finds its person wherever they sit, or one nobody's
-          // claim walks, makes no demand and misses nobody
-          levels = demands.find((demand) => demand.route === route)?.levels ?? null
-        }
-        if (levels === null) return { rows: [], total: 0, page: 1 }
-        const total = yield* dieQuery(withDb(unreachableTotal(tenantId, batchId, levels)))
-        const window = pageWindow(query.page, query.limit, total)
-        const rows = yield* dieQuery(
+        return yield* dieQuery(
           withDb(
-            unreachablePage(tenantId, batchId, levels, {
-              offset: window.offset,
-              limit: query.limit,
-            }),
+            transaction(
+              Effect.gen(function* () {
+                let levels: readonly string[] | null
+                if (query.route.kind === 'levels') {
+                  levels = query.route.nodeTypeIds
+                } else {
+                  const { itemId, route } = query.route
+                  const demands = yield* itemDemandsOf(tenantId, batchId, itemId)
+                  if (demands === null) return yield* new ItemNotFound()
+                  // a route that finds its person wherever they sit, or one nobody's
+                  // claim walks, makes no demand and misses nobody
+                  levels = demands.find((demand) => demand.route === route)?.levels ?? null
+                }
+                if (levels === null) return { rows: [], total: 0, page: 1 }
+                const total = yield* unreachableTotal(tenantId, batchId, levels)
+                const window = pageWindow(query.page, query.limit, total)
+                const rows = yield* unreachablePage(tenantId, batchId, levels, {
+                  offset: window.offset,
+                  limit: query.limit,
+                })
+                return { rows, total, page: window.page }
+              }),
+              { isolation: 'repeatable read', readOnly: true },
+            ),
           ),
         )
-        return { rows, total, page: window.page }
       },
     ),
 
