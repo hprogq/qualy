@@ -41,7 +41,7 @@ const indexLabel = (grouping: Grouping) =>
 
 /** the room the index needs beside a list of rows worth reading */
 const BOARD_WIDE = reviewLayout.wide
-const TOOLBAR_HEIGHT = `calc(${reviewLayout.controlHeight} + ${reviewLayout.toolbarInsetStart} + ${reviewLayout.toolbarInsetEnd})`
+const TOOLBAR_CLEARANCE = `calc(${reviewLayout.controlHeight} + ${reviewLayout.toolbarStickyTop} + ${reviewLayout.toolbarFadeEdge})`
 /** the room a row needs to lay its answers out as columns */
 const ROWS_WIDE = '@container review-rows (min-width: 680px)'
 
@@ -81,10 +81,10 @@ const styles = stylex.create({
   index: {
     display: { default: 'none', [BOARD_WIDE]: 'flex' },
     position: 'sticky',
-    top: TOOLBAR_HEIGHT,
+    top: TOOLBAR_CLEARANCE,
     // A long index must still offer its last groups and pager, even when
     // the index itself is pinned above a much longer result list.
-    maxHeight: `calc(100cqh - ${TOOLBAR_HEIGHT})`,
+    maxHeight: `calc(100cqh - ${TOOLBAR_CLEARANCE})`,
     overflowY: 'auto',
     minWidth: 0,
     flexDirection: 'column',
@@ -177,7 +177,7 @@ const styles = stylex.create({
     containerType: 'inline-size',
     containerName: 'review-rows',
   },
-  clearToolbar: { scrollMarginBlockStart: { default: null, [BOARD_WIDE]: TOOLBAR_HEIGHT } },
+  clearToolbar: { scrollMarginBlockStart: { default: null, [BOARD_WIDE]: TOOLBAR_CLEARANCE } },
   groupHead: {
     display: 'flex',
     justifyContent: 'space-between',

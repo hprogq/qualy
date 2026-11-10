@@ -5,6 +5,6 @@ import * as stylex from '@stylexjs/stylex'
 export const reviewLayout = stylex.defineConsts({
   wide: '@container review-board (min-width: 880px)',
   controlHeight: '36px',
-  toolbarInsetStart: '8px',
-  toolbarInsetEnd: '16px',
+  toolbarStickyTop: '16px',
+  toolbarFadeEdge: '16px',
 })

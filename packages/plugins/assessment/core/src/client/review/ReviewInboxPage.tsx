@@ -102,23 +102,25 @@ const styles = stylex.create({
     rowGap: 8,
   }),
   // Only pin the toolbar when the board can lay it out on one line.
-  // The added insets paint over the cards as they pass under it without
-  // changing the normal spacing between the controls and the list.
+  // Keep the controls and cards in their normal positions before it sticks.
   pinnedControls: {
     position: { default: null, [BOARD_WIDE]: 'sticky' },
-    top: { default: null, [BOARD_WIDE]: 0 },
+    top: { default: null, [BOARD_WIDE]: reviewLayout.toolbarStickyTop },
     zIndex: { default: null, [BOARD_WIDE]: 2 },
-    backgroundColor: { default: null, [BOARD_WIDE]: tokens.background },
     minHeight: { default: null, [BOARD_WIDE]: reviewLayout.controlHeight },
-    boxSizing: 'content-box',
-    paddingBlock: {
-      default: null,
-      [BOARD_WIDE]: `${reviewLayout.toolbarInsetStart} ${reviewLayout.toolbarInsetEnd}`,
-    },
-    marginBlock: {
-      default: null,
-      [BOARD_WIDE]: `calc(0px - ${reviewLayout.toolbarInsetStart}) calc(0px - ${reviewLayout.toolbarInsetEnd})`,
-    },
+  },
+  // Bleed past the card edges. At the foot, let the cards fade in rather
+  // than cutting across their borders or text with a hard line. The scrim
+  // covers the sticky inset without taking up any space before scrolling.
+  toolbarScrim: {
+    display: { default: 'none', [BOARD_WIDE]: 'block' },
+    position: 'absolute',
+    insetBlockStart: `calc(0px - ${reviewLayout.toolbarStickyTop})`,
+    insetBlockEnd: `calc(0px - ${reviewLayout.toolbarFadeEdge})`,
+    insetInline: -12,
+    zIndex: -1,
+    pointerEvents: 'none',
+    backgroundImage: `linear-gradient(to bottom, ${tokens.background} calc(100% - 6px), transparent)`,
   },
   filters: {
     gridArea: 'filters',
@@ -558,6 +560,7 @@ function QueueBody({
             styles.pinnedControls,
           )}
         >
+          <span aria-hidden {...stylex.props(styles.toolbarScrim)} />
           <Tabs
             variant="segmented"
             value={view}

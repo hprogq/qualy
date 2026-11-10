@@ -230,16 +230,24 @@ describe('the queue in brief', () => {
     const top = main.getBoundingClientRect().top
     const before = first.getBoundingClientRect().top
     const stickAt = filters.getBoundingClientRect().top - top
+    const bodyInset = parseFloat(
+      getComputedStyle(filters.closest('[data-slot="page-container"]')!).paddingBlockStart,
+    )
+    expect(filters.getBoundingClientRect().top - band.getBoundingClientRect().bottom).toBeCloseTo(
+      bodyInset,
+      0,
+    )
 
     main.scrollTop = stickAt + 50
     expect(band.getBoundingClientRect().bottom).toBeLessThan(top)
-    expect(filters.getBoundingClientRect().top).toBeCloseTo(top, 0)
+    const pinnedTop = filters.getBoundingClientRect().top
+    expect(pinnedTop - top).toBeCloseTo(16, 0)
     const indexTop = projectIndex.getBoundingClientRect().top
     expect(indexTop).toBeGreaterThanOrEqual(filters.getBoundingClientRect().bottom - 0.5)
     expect(first.getBoundingClientRect().top).toBeLessThan(before)
 
     main.scrollTop += 60
-    expect(filters.getBoundingClientRect().top).toBeCloseTo(top, 0)
+    expect(filters.getBoundingClientRect().top).toBeCloseTo(pinnedTop, 0)
     expect(projectIndex.getBoundingClientRect().top).toBeCloseTo(indexTop, 0)
   })
 
