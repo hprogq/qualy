@@ -191,14 +191,9 @@ const resolve = Effect.fn('Auth.resolveSession')(function* (
     yield* clear()
     return { state: 'absent' as const }
   }
-  if (staleness(session.lastUsedAt) > TOUCH_INTERVAL_MS && (yield* readersRequest)) {
-    yield* touchSession(session.id).pipe(Effect.orDie)
-  }
-  // the request now has a session; whoever records the request - the audit
-  // trail, an error report - reads it from the request context
-  yield* bindSessionId(session.id)
   return {
     state: 'valid' as const,
+    lastUsedAt: session.lastUsedAt,
     principal: {
       tenantId: session.tenantId,
       userId: session.userId,
@@ -302,7 +297,7 @@ export const viewerLayer = Layer.effect(
       withDb(
         Effect.gen(function* () {
           const token = yield* presentedToken(config.sessionCookieName)
-          const found: PresentedSession =
+          const found =
             token === ''
               ? { state: 'absent' as const }
               : yield* resolve(clear, token, config.sessionIdleSeconds)
@@ -318,6 +313,12 @@ export const viewerLayer = Layer.effect(
                 session: found,
               }),
             )
+          }
+          if (found.state === 'valid') {
+            if (staleness(found.lastUsedAt) > TOUCH_INTERVAL_MS && (yield* readersRequest)) {
+              yield* touchSession(found.principal.sessionId).pipe(Effect.orDie)
+            }
+            yield* bindSessionId(found.principal.sessionId)
           }
           return yield* Effect.provideService(httpEffect, CurrentViewer, {
             principal: found.state === 'valid' ? found.principal : undefined,

@@ -11,7 +11,12 @@ import {
   postgresAvailable,
   runSql,
 } from '@qualy/plugin-database/testkit'
-import { ANONYMOUS_IDENTITY, QUALY_API_ID, QUALY_IDENTITY_HEADER } from '@qualy/api-kit'
+import {
+  ANONYMOUS_IDENTITY,
+  QUALY_ACTIVITY_HEADER,
+  QUALY_API_ID,
+  QUALY_IDENTITY_HEADER,
+} from '@qualy/api-kit'
 import { QUALY_CLIENT_PROTOCOL_HEADER } from '@qualy/release-contract'
 import {
   Authenticated,
@@ -117,6 +122,7 @@ const handlers = HttpApiBuilder.group(api, 'probe', (h) =>
 
 let scope: Scope.Closeable
 let db: Awaited<ReturnType<typeof createTestContext>>
+let infra: ReturnType<typeof databaseFor>
 let tenantId: string
 let ada: string
 let bob: string
@@ -174,7 +180,7 @@ const seed = Effect.fn('seed')(function* () {
 beforeAll(async () => {
   if (!postgresAvailable) return
   db = await createTestContext('effect-document-identity')
-  const infra = databaseFor(db.url, { entities: authClosure })
+  infra = databaseFor(db.url, { entities: authClosure })
   const authConfig = Layer.succeed(
     AuthConfig,
     AuthConfig.of({
@@ -209,12 +215,13 @@ afterAll(async () => {
 /** a request from a page of ours: its protocol, and whose it says it is */
 const fromPage = (
   path: string,
-  options: { token?: string; declared?: string; method?: string } = {},
+  options: { token?: string; declared?: string; method?: string; activity?: boolean } = {},
 ) =>
   fetch(`${base}${path}`, {
     method: options.method ?? 'GET',
     headers: {
       [QUALY_CLIENT_PROTOCOL_HEADER]: '5',
+      ...(options.activity ? { [QUALY_ACTIVITY_HEADER]: '1' } : {}),
       ...(options.token === undefined ? {} : { cookie: `${sessionCookieName}=${options.token}` }),
       ...(options.declared === undefined ? {} : { [QUALY_IDENTITY_HEADER]: options.declared }),
     },
@@ -308,6 +315,39 @@ describe.runIf(postgresAvailable)('a page and the session behind it', () => {
       expect(await tagOf(response)).toBe('IDENTITY_CHANGED')
     }
     expect(ran).toEqual(before)
+  })
+
+  it('does not count a refused viewer request as use of another session', async () => {
+    await Effect.runPromise(
+      runSql(sql`
+      update sessions set last_used_at = now() - interval '10 minutes'
+      where token_hash = ${hashSessionToken(tokens.bob)}
+    `).pipe(Effect.provide(infra)),
+    )
+    const age = () =>
+      Effect.runPromise(
+        Effect.map(
+          runSql(sql`
+        select extract(epoch from now() - last_used_at)::int as seconds
+        from sessions where token_hash = ${hashSessionToken(tokens.bob)}
+      `),
+          (result) => (result as { rows: { seconds: number }[] }).rows[0]!.seconds,
+        ).pipe(Effect.provide(infra)),
+      )
+    const rejected = await fromPage('/probe/viewed', {
+      token: tokens.bob,
+      declared: identityOf(ada),
+      activity: true,
+    })
+    expect(rejected.status).toBe(409)
+    expect(await age()).toBeGreaterThanOrEqual(600)
+    const accepted = await fromPage('/probe/viewed', {
+      token: tokens.bob,
+      declared: identityOf(bob),
+      activity: true,
+    })
+    expect(accepted.status).toBe(200)
+    expect(await age()).toBeLessThan(10)
   })
 
   it("tells A's page that A's session lapsed, so A can come back to it", async () => {
