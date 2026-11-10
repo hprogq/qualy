@@ -1692,9 +1692,9 @@ const DECIDING_KINDS = [
   'recommend-reject',
 ]
 
-/** midnight of today on a timezone's own calendar, as an instant */
-const startOfDayIn = (timezone: string) =>
-  sql<Date>`date_trunc('day', now() at time zone ${timezone}) at time zone ${timezone}`
+/** A calendar date includes both occurrences of a repeated local midnight. */
+const onTodayIn = (createdAt: Expression<Date>, timezone: string) =>
+  sql<boolean>`(${createdAt} at time zone ${timezone})::date = (now() at time zone ${timezone})::date`
 
 /**
  * Decisions this person recorded on this batch today, on the batch's own
@@ -1722,7 +1722,7 @@ export const decisionsToday = (input: {
         .where('e.batchId', '=', input.batchId)
         .where('re.actorId', '=', input.userId)
         .where('re.kind', 'in', DECIDING_KINDS)
-        .where('re.createdAt', '>=', startOfDayIn(input.timezone))
+        .where((eb) => onTodayIn(eb.ref('re.createdAt'), input.timezone))
         .executeTakeFirstOrThrow(),
     )
     .pipe(Effect.map((row) => Number(row.count)))
@@ -1756,7 +1756,7 @@ export const votesToday = (input: {
         .where('v.tenantId', '=', input.tenantId)
         .where('e.batchId', '=', input.batchId)
         .where('v.voterUserId', '=', input.userId)
-        .where('v.createdAt', '>=', startOfDayIn(input.timezone))
+        .where((eb) => onTodayIn(eb.ref('v.createdAt'), input.timezone))
         .executeTakeFirstOrThrow(),
     )
     .pipe(Effect.map((row) => Number(row.count)))
