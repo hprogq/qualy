@@ -1,7 +1,7 @@
 import { Effect } from 'effect'
 import type { NodeUsageReporter } from '@qualy/org-contract/plugin'
 import { withDatabase, type Orm } from '@qualy/plugin-database/server'
-import { db } from './db.ts'
+import { db, inForce } from './db.ts'
 import { text } from '@qualy/text'
 import { messageRefs } from '@qualy/text/node'
 import type * as M from '#messages'
@@ -12,7 +12,7 @@ const m = messageRefs<typeof M>(import.meta.url)
 // The duties held over a unit, said to whoever is about to delete it.
 //
 // Two kinds, because they are dealt with differently. A grant in force can
-// be withdrawn, and then it stops being one. A withdrawn grant is history -
+// be withdrawn, and then it stops being one. A withdrawn, expired or not-yet-active grant is retained history -
 // who held what over this unit, and until when - and history keeps the unit:
 // it is reported so the reader is told why a unit with nothing visible on it
 // still cannot go, rather than left to look for a holder who is not there.
@@ -36,17 +36,31 @@ export const grantsAtNode: NodeUsageReporter<Orm> = {
             )
             .where('g.tenantId', '=', tenantId)
             .where('g.orgNodeId', '=', orgNodeId)
+          const standing = held.where((eb) =>
+            inForce({
+              revokedAt: eb.ref('g.revokedAt'),
+              validFrom: eb.ref('g.validFrom'),
+              validUntil: eb.ref('g.validUntil'),
+            }),
+          )
+          const history = held.where((eb) =>
+            eb.not(
+              inForce({
+                revokedAt: eb.ref('g.revokedAt'),
+                validFrom: eb.ref('g.validFrom'),
+                validUntil: eb.ref('g.validUntil'),
+              }),
+            ),
+          )
           const countOf = async (live: boolean) =>
             Number(
               (
-                await held
-                  .where('g.revokedAt', live ? 'is' : 'is not', null)
+                await (live ? standing : history)
                   .select((eb) => eb.fn.countAll<string>().as('count'))
                   .executeTakeFirstOrThrow()
               ).count,
             )
-          const named = await held
-            .where('g.revokedAt', 'is', null)
+          const named = await standing
             .select(['r.name as roleName', 'u.displayName', 'u.id as userId'])
             .orderBy('u.displayName')
             .limit(EXAMPLES)

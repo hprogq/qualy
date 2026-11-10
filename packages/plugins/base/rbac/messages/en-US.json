@@ -143,7 +143,7 @@
   "grants_columnOrigin": "Comes from",
   "grants_windowOpen": "No end date",
   "nodeUsage_grants": "Role grants in force here",
-  "nodeUsage_grantHistory": "Withdrawn role grants kept as history",
+  "nodeUsage_grantHistory": "Withdrawn or currently inactive role grant records",
   "roles_exempt": "not restricted",
   "roles_exemptHint": "The tenant administrator role is not restricted by user type.",
   "roles_anyone": "any user type",

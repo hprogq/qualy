@@ -15,6 +15,7 @@ import { entities as orgEntities } from '@qualy/plugin-org/db'
 import { entities as authEntities } from '@qualy/plugin-auth/db'
 import { entities as rbacEntities } from '../src/db/entities.ts'
 import { transaction, type Orm } from '@qualy/plugin-database/server'
+import { grantsAtNode } from '../src/server/node-usage.ts'
 import { db as rbacDb } from '../src/server/db.ts'
 import { Rbac } from '@qualy/rbac-contract/effect'
 import { booted } from '@qualy/rbac-contract/testkit'
@@ -3750,3 +3751,47 @@ describe
       }
     })
   })
+
+describe.runIf(postgresAvailable)('organization grant usage', () => {
+  it('counts only in-force grants as live and retains expired and future records as history', async () => {
+    const db = await createTestContext('rbac-node-validity')
+    try {
+      const result = ok(
+        await run(
+          db.url,
+          Effect.gen(function* () {
+            const f = yield* seed()
+            const reporter = yield* grantsAtNode.bind
+            const live = yield* reporter(f.tenant, f.root)
+            yield* runSql(
+              sql`update role_grants set valid_until=now()-interval '1 day' where tenant_id=${f.tenant} and org_node_id=${f.root}`,
+            )
+            const expired = yield* reporter(f.tenant, f.root)
+            yield* runSql(
+              sql`update role_grants set valid_until=null,valid_from=now()+interval '1 day' where tenant_id=${f.tenant} and org_node_id=${f.root}`,
+            )
+            const future = yield* reporter(f.tenant, f.root)
+            return { live, expired, future }
+          }),
+        ),
+      )
+      const counts = (rows: typeof result.live) =>
+        rows.map((row) => [row.kind, row.count, row.clearable])
+      expect(counts(result.live)).toEqual([
+        ['grants', 1, true],
+        ['grant-history', 0, false],
+      ])
+      expect(counts(result.expired)).toEqual([
+        ['grants', 0, true],
+        ['grant-history', 1, false],
+      ])
+      expect(counts(result.future)).toEqual([
+        ['grants', 0, true],
+        ['grant-history', 1, false],
+      ])
+      expect(result.expired[0]!.examples).toEqual([])
+    } finally {
+      await db.dispose()
+    }
+  })
+})

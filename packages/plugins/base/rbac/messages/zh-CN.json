@@ -143,7 +143,7 @@
   "grants_columnOrigin": "来源",
   "grants_windowOpen": "长期有效",
   "nodeUsage_grants": "在该组织生效的角色授权",
-  "nodeUsage_grantHistory": "已撤销、作为历史保留的角色授权",
+  "nodeUsage_grantHistory": "已撤销或当前未生效的角色授权记录",
   "roles_exempt": "不受限制",
   "roles_exemptHint": "租户管理员角色不受用户类型限制",
   "roles_anyone": "所有用户类型",
