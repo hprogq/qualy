@@ -40,12 +40,19 @@ export function AttachmentPhotos({ children }: { children: ReactNode }) {
 }
 
 /** One failed load may acquire a fresh link; another failure stays visible. */
-export function RecoveringImage({
-  src,
-  renew,
-  initiallyFailed = false,
-  ...props
-}: ComponentProps<'img'> & { src: string; renew?: Renew | undefined; initiallyFailed?: boolean }) {
+type RecoveringImageProps = ComponentProps<'img'> & {
+  src: string
+  renew?: Renew | undefined
+  initiallyFailed?: boolean
+}
+
+// A new source starts its own bounded attempt. Unmounting the previous load
+// also makes any outstanding renewal unable to replace the newer source.
+export function RecoveringImage({ src, ...props }: RecoveringImageProps) {
+  return <ImageForSource key={src} src={src} {...props} />
+}
+
+function ImageForSource({ src, renew, initiallyFailed = false, ...props }: RecoveringImageProps) {
   const [state, setState] = useState<{
     url: string
     attempt: number
@@ -93,8 +100,18 @@ export function RecoveringImage({
       </span>
     )
   if (state.failed)
+    // PhotoView supplies the click handlers on its image child. The visible
+    // fallback must keep them so a failed thumbnail can still open the original.
     return (
-      <span role="img" aria-label={props.alt} {...stylex.props(styles.fallback)}>
+      <span
+        role="img"
+        aria-label={props.alt}
+        onClick={props.onClick as React.MouseEventHandler<HTMLSpanElement> | undefined}
+        onClickCapture={
+          props.onClickCapture as React.MouseEventHandler<HTMLSpanElement> | undefined
+        }
+        {...stylex.props(styles.fallback)}
+      >
         {m.entry_previewFailed()}
       </span>
     )

@@ -1,4 +1,7 @@
 import { Effect } from 'effect'
+import { useQueryClient } from '@tanstack/react-query'
+import { useState } from 'react'
+import { RecoveringImage } from '../src/client/entry/AttachmentPhotos.tsx'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { page, userEvent } from 'vitest/browser'
 import { AttachmentLink } from '../src/client/entry/AttachmentLink.tsx'
@@ -55,6 +58,152 @@ const serve = (reply: (url: string) => Response) => {
 }
 
 describe('attachment delivery in the browser', () => {
+  it('shows a new source after a failed thumbnail', async () => {
+    const renew = vi.fn(async () => null)
+    function Viewer() {
+      const [src, setSrc] = useState(brokenImage)
+      return (
+        <>
+          <button onClick={() => setSrc(image)}>Change source</button>
+          <RecoveringImage src={src} alt="attachment" renew={renew} />
+        </>
+      )
+    }
+    await renderScreen({
+      client: fakeClient({ app: { getManifest: emptyManifest() } }),
+      children: <Viewer />,
+    })
+    await expect.element(page.getByRole('img', { name: 'attachment' })).not.toHaveAttribute('src')
+    expect(renew).toHaveBeenCalledTimes(1)
+    await page.getByRole('button', { name: 'Change source' }).click()
+    await expect
+      .element(page.getByRole('img', { name: 'attachment' }))
+      .toHaveAttribute('src', image)
+    await expect
+      .poll(
+        () =>
+          (page.getByRole('img', { name: 'attachment' }).element() as HTMLImageElement)
+            .naturalWidth,
+      )
+      .toBeGreaterThan(0)
+  })
+
+  it('limits retries independently for each supplied source', async () => {
+    const renew = vi.fn(async () => null)
+    function Viewer() {
+      const [src, setSrc] = useState(brokenImage)
+      return (
+        <>
+          <button onClick={() => setSrc(`${brokenImage}#next`)}>Change source</button>
+          <RecoveringImage src={src} alt="attachment" renew={renew} />
+        </>
+      )
+    }
+    await renderScreen({
+      client: fakeClient({ app: { getManifest: emptyManifest() } }),
+      children: <Viewer />,
+    })
+    await expect.poll(() => renew.mock.calls.length).toBe(1)
+    await page.getByRole('button', { name: 'Change source' }).click()
+    await expect.poll(() => renew.mock.calls.length).toBe(2)
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    expect(renew).toHaveBeenCalledTimes(2)
+  })
+
+  it('ignores a previous source renewal after the source changes', async () => {
+    let finish!: (value: string | null) => void
+    const renew = vi.fn(
+      () =>
+        new Promise<string | null>((resolve) => {
+          finish = resolve
+        }),
+    )
+    function Viewer() {
+      const [src, setSrc] = useState(brokenImage)
+      return (
+        <>
+          <button onClick={() => setSrc(image)}>Change source</button>
+          <RecoveringImage src={src} alt="attachment" renew={renew} />
+        </>
+      )
+    }
+    await renderScreen({
+      client: fakeClient({ app: { getManifest: emptyManifest() } }),
+      children: <Viewer />,
+    })
+    await expect.poll(() => renew.mock.calls.length).toBe(1)
+    await page.getByRole('button', { name: 'Change source' }).click()
+    await expect
+      .element(page.getByRole('img', { name: 'attachment' }))
+      .toHaveAttribute('src', image)
+    finish(brokenImage)
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    await expect
+      .element(page.getByRole('img', { name: 'attachment' }))
+      .toHaveAttribute('src', image)
+    expect(renew).toHaveBeenCalledTimes(1)
+  })
+
+  it('recovers a thumbnail when a later descriptor supplies a new source', async () => {
+    let calls = 0
+    const describe = vi.fn(() =>
+      Effect.sync(() => ({
+        attachments: [descriptor(calls++ < 2 ? brokenImage : image, 'image/png')],
+      })),
+    )
+    function Refresh() {
+      const query = useQueryClient()
+      return (
+        <button
+          onClick={() =>
+            void query.invalidateQueries({ queryKey: ['assessment', 'attachment', ID] })
+          }
+        >
+          Refresh
+        </button>
+      )
+    }
+    await renderScreen({
+      client: fakeClient({
+        app: { getManifest: emptyManifest() },
+        assessment: { listAttachmentDescriptors: describe },
+      }),
+      children: (
+        <>
+          <Refresh />
+          <AttachmentLink attachmentId={ID} variant="preview" />
+        </>
+      ),
+    })
+    const thumbnail = page.getByRole('img', { name: NAME })
+    await expect.element(thumbnail).not.toHaveAttribute('src')
+    expect(describe).toHaveBeenCalledTimes(2)
+    await page.getByRole('button', { name: 'Refresh' }).click()
+    await expect.element(thumbnail).toHaveAttribute('src', image)
+    await expect
+      .poll(() => (thumbnail.element() as HTMLImageElement).naturalWidth)
+      .toBeGreaterThan(0)
+    await thumbnail.click()
+    await expect.poll(() => document.querySelector('.PhotoView-Portal')).not.toBeNull()
+  })
+
+  it('opens the original when a thumbnail has failed', async () => {
+    const describe = vi.fn(() =>
+      Effect.succeed({ attachments: [descriptor(brokenImage, 'image/png')] }),
+    )
+    await renderScreen({
+      client: fakeClient({
+        app: { getManifest: emptyManifest() },
+        assessment: { listAttachmentDescriptors: describe },
+      }),
+      children: <AttachmentLink attachmentId={ID} variant="preview" />,
+    })
+    const fallback = page.getByRole('img', { name: NAME })
+    await expect.element(fallback).not.toHaveAttribute('src')
+    await fallback.click()
+    await expect.poll(() => document.querySelector('.PhotoView-Portal')).not.toBeNull()
+  })
+
   it('uses the display rendition for a tile and independently renews the original lightbox', async () => {
     let descriptions = 0
     const describe = vi.fn(() =>
