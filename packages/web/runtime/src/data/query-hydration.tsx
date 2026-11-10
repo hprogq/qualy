@@ -1,5 +1,5 @@
 'use client'
-import { useContext, useEffect, useRef, useState, type ReactNode } from 'react'
+import { useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   HydrationBoundary,
   hashKey,
@@ -170,6 +170,16 @@ export function QueryHydration({
   const client = useQueryClient()
   const checked = useRef(new WeakMap<object, Set<string>>())
   const warm = useRef(new WeakMap<object, Map<string, { query: Query; updates: number } | null>>())
+  const refused = useMemo(() => {
+    const cache = client.getQueryCache()
+    return state.queries.flatMap((read) => {
+      if (read.state.status !== 'error') return []
+      const query = cache.get(read.queryHash)
+      return query?.state.data === undefined
+        ? []
+        : [{ read, query, updates: query.state.dataUpdateCount }]
+    })
+  }, [client, state])
   // set while rendering, before anything under this reads: the html and the
   // browser's first frame are drawn from it
   const [held] = useState(() => [
@@ -190,6 +200,17 @@ export function QueryHydration({
     }),
   ])
   useEffect(() => takeOver(), [])
+  useEffect(() => {
+    const cache = client.getQueryCache()
+    for (const { read, query, updates } of refused) {
+      if (cache.get(read.queryHash) !== query || query.state.dataUpdateCount !== updates) continue
+      // A server-side refusal is an authoritative answer for this response.
+      // Hydration compares only dataUpdatedAt, which is zero for refusals,
+      // and would silently keep a previously successful cache entry.
+      void query.cancel({ silent: true })
+      query.setState({ ...read.state, data: undefined, fetchStatus: 'idle' })
+    }
+  }, [client, refused])
   useEffect(() => {
     let active = true
     const cache = client.getQueryCache()

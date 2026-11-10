@@ -1,11 +1,12 @@
 import {
   QueryClient,
   QueryClientProvider,
+  dehydrate,
   useQuery,
   type QueryFunction,
   type QueryKey,
 } from '@tanstack/react-query'
-import { Suspense, lazy, useState, type ReactNode } from 'react'
+import { Suspense, lazy, useLayoutEffect, useState, type ReactNode } from 'react'
 import { hydrateRoot } from 'react-dom/client'
 import { renderToString } from 'react-dom/server'
 import { createMemoryRouter, RouterProvider } from 'react-router'
@@ -66,6 +67,139 @@ const held = () => {
 }
 
 describe('a read that follows the html', () => {
+  it('shows a server refusal instead of a stale successful cache value', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    client.setQueryData(KEY, 'cached', { updatedAt: Date.now() - 10_000 })
+    const server = new QueryClient()
+    server
+      .getQueryCache()
+      .build(server, { queryKey: KEY })
+      .setState({
+        status: 'error',
+        error: { _tag: 'REFUSED' } as unknown as Error,
+        errorUpdatedAt: Date.now(),
+        errorUpdateCount: 1,
+      })
+    const state = dehydrate(server, {
+      shouldDehydrateQuery: () => true,
+      shouldRedactErrors: () => false,
+    })
+    let aborted = false
+    const ask = vi.fn(
+      ({ signal }: { signal: AbortSignal }) =>
+        new Promise<string>((_resolve, reject) => {
+          signal.addEventListener('abort', () => {
+            aborted = true
+            reject(new Error('aborted'))
+          })
+        }),
+    )
+    const router = createMemoryRouter([
+      {
+        path: '*',
+        element: (
+          <QueryHydration state={state}>
+            <Reader ask={ask} />
+          </QueryHydration>
+        ),
+      },
+    ])
+    await render(
+      <QueryClientProvider client={client}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    )
+    await expect.poll(() => client.getQueryState(KEY)?.status).toBe('error')
+    expect(client.getQueryData(KEY)).toBeUndefined()
+    expect(client.getQueryState(KEY)?.error).toEqual({ _tag: 'REFUSED' })
+    expect(ask).toHaveBeenCalledTimes(1)
+    expect(aborted).toBe(true)
+  })
+
+  it('does not apply a refused snapshot over a cache entry changed before commit', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    client.setQueryData(KEY, 'cached')
+    const server = new QueryClient()
+    server
+      .getQueryCache()
+      .build(server, { queryKey: KEY })
+      .setState({
+        status: 'error',
+        error: { _tag: 'REFUSED' } as unknown as Error,
+        errorUpdatedAt: Date.now(),
+        errorUpdateCount: 1,
+      })
+    const state = dehydrate(server, {
+      shouldDehydrateQuery: () => true,
+      shouldRedactErrors: () => false,
+    })
+    function ChangeDuringCommit() {
+      useLayoutEffect(() => {
+        client.setQueryData(KEY, 'newer local result')
+      }, [])
+      return null
+    }
+    const router = createMemoryRouter([
+      {
+        path: '*',
+        element: (
+          <QueryHydration state={state}>
+            <ChangeDuringCommit />
+          </QueryHydration>
+        ),
+      },
+    ])
+    await render(
+      <QueryClientProvider client={client}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    )
+    expect(client.getQueryData(KEY)).toBe('newer local result')
+    expect(client.getQueryState(KEY)?.status).toBe('success')
+  })
+
+  it('does not apply a refused snapshot to a new identity cache', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    client.setQueryData(KEY, 'old identity')
+    const server = new QueryClient()
+    server
+      .getQueryCache()
+      .build(server, { queryKey: KEY })
+      .setState({
+        status: 'error',
+        error: { _tag: 'REFUSED' } as unknown as Error,
+        errorUpdatedAt: Date.now(),
+        errorUpdateCount: 1,
+      })
+    const state = dehydrate(server, {
+      shouldDehydrateQuery: () => true,
+      shouldRedactErrors: () => false,
+    })
+    function ChangeDuringCommit() {
+      useLayoutEffect(() => {
+        client.clear()
+        client.setQueryData(KEY, 'new identity')
+      }, [])
+      return null
+    }
+    const router = createMemoryRouter([
+      {
+        path: '*',
+        element: (
+          <QueryHydration state={state}>
+            <ChangeDuringCommit />
+          </QueryHydration>
+        ),
+      },
+    ])
+    await render(
+      <QueryClientProvider client={client}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    )
+    expect(client.getQueryData(KEY)).toBe('new identity')
+    expect(client.getQueryState(KEY)?.status).toBe('success')
+  })
   it('refreshes an arrival invalidated while it is in flight', async () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     const ask = vi.fn(() => Promise.resolve('new'))
