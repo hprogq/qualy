@@ -1449,6 +1449,49 @@ describe.runIf(postgresAvailable)('an administrative import', () => {
     expect(found.after).toEqual({ imports: 1, entries: 1 })
   })
 
+  it('refuses to replay an import after the recorder loses authority', async () => {
+    const found = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('ai-replay-authority')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f)
+          yield* numbered(f)
+          const item = yield* recordItem(f, g.batch.id, { maxEntries: 1 })
+          const attachmentId = yield* workbook(f, item.id, f.recorder, [
+            ['2023001', 'Zhang San', 'basis'],
+          ])
+          const revision = one<{ id: string }>(
+            yield* runSql(sql`
+              select current_revision_id as id from assessment_items where id = ${item.id}`),
+          ).id
+          const commit = () =>
+            assessment.commitAdministrativeImport(
+              f.t,
+              g.batch.id,
+              { attachmentId, itemId: item.id, expectedItemRevisionId: revision },
+              f.principal(f.recorder),
+            )
+          const first = yield* commit()
+          const retry = yield* raced(
+            g.batch.id,
+            runSql(sql`delete from batch_access_source_permissions
+              where tenant_id = ${f.t} and permission_code = 'assessment.entry.record'
+                and source_id in (select id from batch_access_sources
+                  where tenant_id = ${f.t} and batch_id = ${g.batch.id}
+                    and subject_id = ${f.recorder})`),
+            commit(),
+          )
+          return { first, retry, after: yield* counts(f) }
+        }),
+      ),
+    )
+    expect(found.retry.queued).toBe(true)
+    expect(errorOf<{ reason: string }>(found.retry.outcome)?.reason).toBe('permission-not-held')
+    expect(found.after).toEqual({ imports: 1, entries: 1 })
+  })
+
   // The answer to a second press is for the batch and the question the
   // upload went to. Named against another question, the same upload was
   // answered as a success carrying the other import's id and count.

@@ -1050,7 +1050,23 @@ export const makeAdministrativeImportMethods = (
           .metadata({ tenantId, attachmentId: input.attachmentId })
           .pipe(Effect.catch(() => Effect.fail(new AttachmentUnavailable())))
         if (staged.ownerUserId === as.userId) {
-          return { importId: earlier.importId, importedCount: earlier.importedCount }
+          // This is a read of the existing act, not another write. Require
+          // today's recording authority without reapplying the phase or quota.
+          return yield* withDb(
+            transaction(
+              Effect.gen(function* () {
+                const locked = yield* lockBatch(tenantId, batchId)
+                if (!locked) return yield* new BatchNotFound()
+                if (!(yield* deps.holdsRecord(tenantId, batchId, as.userId))) {
+                  return yield* new EntryActionRefused({
+                    action: 'import',
+                    reason: 'permission-not-held',
+                  })
+                }
+                return { importId: earlier.importId, importedCount: earlier.importedCount }
+              }),
+            ).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error))),
+          )
         }
       }
       // All outside any transaction: reading the file, judging it and
@@ -1112,6 +1128,12 @@ export const makeAdministrativeImportMethods = (
               // an upload another import already holds is not this one's
               if (already.batchId !== batchId || already.itemId !== input.itemId) {
                 return yield* new AttachmentUnavailable()
+              }
+              if (!(yield* deps.holdsRecord(tenantId, batchId, as.userId))) {
+                return yield* new EntryActionRefused({
+                  action: 'import',
+                  reason: 'permission-not-held',
+                })
               }
               return { importId: already.importId, importedCount: already.importedCount }
             }
