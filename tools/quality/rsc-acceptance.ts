@@ -24,6 +24,7 @@ import { RECENT_LOGIN_METHOD_COOKIE } from '@qualy/auth-contract/recent-method'
 import { SLOT_REFERENCE_PATH, slotReferenceHref } from '@qualy/ui-contract'
 import { collectWebPlugins } from '@qualy/web-build/collect'
 import {
+  CURRENT_CLIENT_PROTOCOL,
   QUALY_CLIENT_PROTOCOL_HEADER,
   QUALY_CLIENT_RELEASE_HEADER,
   QUALY_RENDER_REFUSED_HEADER,
@@ -525,7 +526,7 @@ const pageOf = async () => {
   const html = await (await fetch(`${site}/login`)).text()
   const release = /data-release="([^"]+)"/.exec(html)?.[1]
   if (release === undefined) throw new Error('the document names no release')
-  return { release, protocol: '5' }
+  return { release, protocol: String(CURRENT_CLIENT_PROTOCOL) }
 }
 
 const refusals = async () => {
@@ -612,8 +613,8 @@ const refusals = async () => {
 }
 
 const cookies = async (scratch: { query: (text: string) => Promise<unknown> }) => {
-  // a session the api refused is cleared in the document that says so, once:
-  // the administrator's newest session, run out
+  // An expired session is refused without deleting a cookie that a later
+  // login may already have replaced while this response was in flight.
   const cookie = await signIn('admin')
   await scratch.query(
     `update sessions set expires_at = now() - interval '1 minute'
@@ -622,13 +623,11 @@ const cookies = async (scratch: { query: (text: string) => Promise<unknown> }) =
   const response = await fetch(`${site}/login`, { headers: { cookie } })
   await response.text()
   const lines = response.headers.getSetCookie()
-  const cleared = lines.filter(
-    (line) => line.startsWith('qualy_session=;') && /max-age=0/i.test(line),
-  )
+  const manifest = await manifestOf(cookie)
   check(
-    'clears a refused session cookie in the document, once',
-    cleared.length === 1 && lines.length === 1,
-    lines,
+    'refuses an expired session without emitting a cookie deletion',
+    manifest.viewer === 'anonymous' && lines.length === 0,
+    { viewer: manifest.viewer, cookies: lines },
   )
   check(
     'sends a document privately',
