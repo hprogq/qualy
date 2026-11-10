@@ -536,6 +536,11 @@ describe.runIf(postgresAvailable)('an OpenID Connect account', () => {
       'AUTH_REQUIRED',
     )
     const beaCookie = await signedIn(bea, false)
+    const existingSession = await Effect.runPromise(
+      runSql<{ id: string }>(
+        sql`select id from sessions where token_hash = ${hashSessionToken(beaCookie.slice(`${sessionCookieName}=`.length))}`,
+      ).pipe(Effect.provide(probeInfra())),
+    )
     const afresh = await depart(
       'op',
       `?intent=reauthenticate&returnTo=${encodeURIComponent('/me')}`,
@@ -548,7 +553,22 @@ describe.runIf(postgresAvailable)('an OpenID Connect account', () => {
       afresh.browser,
     )
     expect(fresh.headers.get('location')).toBe('/me')
+    expect(
+      fresh.headers.getSetCookie().some((cookie) => cookie.startsWith(`${sessionCookieName}=`)),
+    ).toBe(false)
     expect(await newest()).toEqual(['qualy:reauthenticated'])
+    const originalGrants = await Effect.runPromise(
+      runSql<{ kind: string }>(
+        sql`select kind from session_auth_grants where session_id = ${existingSession.rows[0]!.id}`,
+      ).pipe(Effect.provide(probeInfra())),
+    )
+    expect(originalGrants.rows.map((row) => row.kind)).toEqual(['qualy:reauthenticated'])
+    const activity = await Effect.runPromise(
+      runSql<{ session_id: string }>(
+        sql`select session_id from sign_in_events where user_id = ${bea} and outcome = 'success' order by occurred_at desc, id desc limit 1`,
+      ).pipe(Effect.provide(probeInfra())),
+    )
+    expect(activity.rows[0]?.session_id).toBe(existingSession.rows[0]?.id)
 
     const otherCookie = await signedIn(ada, false)
     const differentPerson = await depart('op', '?intent=reauthenticate', otherCookie)
@@ -577,9 +597,13 @@ describe.runIf(postgresAvailable)('an OpenID Connect account', () => {
 
     // a provider that let an earlier sign-in through, or does not say when
     for (const claims of [{ sub: 'sub-bea', auth_time: now() - 3600 }, { sub: 'sub-bea' }]) {
-      const lax = await depart('op', '?intent=reauthenticate', beaCookie)
+      const unconfirmedCookie = await signedIn(bea, false)
+      const lax = await depart('op', '?intent=reauthenticate', unconfirmedCookie)
       const back = await visit(op.authorize(lax.away, claims), lax.browser)
       expect(back.status, JSON.stringify(claims)).toBe(303)
+      expect(
+        back.headers.getSetCookie().some((cookie) => cookie.startsWith(`${sessionCookieName}=`)),
+      ).toBe(false)
       expect(await newest(), JSON.stringify(claims)).toEqual([])
     }
 
@@ -589,6 +613,50 @@ describe.runIf(postgresAvailable)('an OpenID Connect account', () => {
     expect(plain.away.searchParams.get('max_age')).toBeNull()
     await visit(op.authorize(plain.away, { sub: 'sub-bea', auth_time: now() }), plain.browser)
     expect(await newest()).toEqual([])
+  })
+
+  it('does not issue a session cookie when a reauthentication response arrives late', async () => {
+    await Effect.runPromise(
+      runSql(sql`insert into user_auth_bindings (tenant_id, user_id, auth_provider_id, subject)
+        select tenant_id, ${ada}, ${providerId}, 'sub-ada' from users where id = ${ada} on conflict do nothing`).pipe(
+        Effect.provide(probeInfra()),
+      ),
+    )
+    const cookie = await signedIn(ada, false)
+    const departed = await depart('op', '?intent=reauthenticate', cookie)
+    let reached!: () => void
+    let release!: () => void
+    const waiting = new Promise<void>((resolve) => {
+      reached = resolve
+    })
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    op.gate = { reached, release: gate }
+    try {
+      const callback = visit(
+        op.authorize(departed.away, { sub: 'sub-ada', auth_time: now() }),
+        departed.browser,
+      )
+      await waiting
+      await signedIn(ada, false)
+      release()
+      const response = await callback
+      expect(response.headers.get('location')).toBe('/')
+      expect(
+        response.headers.getSetCookie().some((c) => c.startsWith(`${sessionCookieName}=`)),
+      ).toBe(false)
+      const grants = await Effect.runPromise(
+        runSql<{ kind: string }>(sql`
+        select g.kind from session_auth_grants g join sessions s on s.id = g.session_id
+        where s.token_hash = ${hashSessionToken(cookie.slice(`${sessionCookieName}=`.length))}
+          and g.kind = 'qualy:reauthenticated'`).pipe(Effect.provide(probeInfra())),
+      )
+      expect(grants.rows).toHaveLength(1)
+    } finally {
+      release()
+      op.gate = undefined
+    }
   })
 
   it('refuses a reauthentication whose session is revoked during the provider exchange', async () => {

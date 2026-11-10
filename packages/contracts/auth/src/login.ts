@@ -883,7 +883,8 @@ export interface LoginSessionsShape {
     },
   ) => Effect.Effect<void>
   /**
-   * The driver proved the user; create the session and set the cookie.
+   * The driver proved the user; create a session, or reauthenticate the
+   * initiating session without replacing the browser cookie.
    *
    * Answers undefined when the account state forbids signing in after all,
    * or when the entrance went out of service or stopped admitting the
@@ -894,8 +895,8 @@ export interface LoginSessionsShape {
    * after any write closing it has committed, so a session never outlives
    * the door it came through. On success the session (which remembers this
    * door and this binding), the binding's last-used stamp and the sign-in
-   * event commit as one transaction. The only place a session is ever
-   * created.
+   * event commit as one transaction. Reauthentication updates the initiating
+   * session's proof and grants instead. The only place a session is ever created.
    */
   readonly completeLogin: (input: {
     tenantId: string
@@ -906,14 +907,14 @@ export interface LoginSessionsShape {
     bindingCredentialHash?: string
     /** what the bound account is called over there now, when the driver learned it */
     bindingDisplayLabel?: string
-    /** The initiating session for a fresh sign-in that must remain valid. */
+    /** The initiating session for reauthentication; no new session or cookie is issued. */
     reauthenticationSessionId?: string
-    /** what the new session keeps from the other side, written with it */
+    /** what the session keeps from the other side, written with it */
     grants?: readonly SessionGrantInput[]
     /**
      * Whether the check just made proved the person at the keyboard now:
      * the password typed, the server seen to have asked for the credentials
-     * again. The new session then counts as having shown it is its owner's.
+     * again. The session then counts as having shown it is its owner's.
      * Said by the driver from what it checked, never worked out afterwards
      * from settings that may have moved since; absent is no.
      */

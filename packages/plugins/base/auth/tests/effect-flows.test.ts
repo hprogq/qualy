@@ -967,6 +967,50 @@ describe.runIf(postgresAvailable)('an account bound from the other side', () => 
 })
 
 describe.runIf(postgresAvailable)('what a session keeps from the other side', () => {
+  it('refreshes a provider grant on the initiating session during reauthentication', async () => {
+    const db = await createTestContext('flows-reauth-grant')
+    try {
+      const f = await seed(db.url)
+      const answer = ok(
+        await run(
+          db.url,
+          Effect.gen(function* () {
+            const sessions = yield* LoginSessions
+            const secrets = yield* Secrets
+            for (const value of ['first', 'second']) {
+              yield* sessions
+                .completeLogin({
+                  tenantId: f.tenant,
+                  providerId: f.door.id,
+                  userId: f.person,
+                  reauthenticationSessionId: f.session,
+                  grants: [{ kind: 'upstream-session', state: Redacted.make(value) }],
+                })
+                .pipe(inBrowser({ qualy_session: PERSON_TOKEN }))
+            }
+            const rows = yield* runSql<{ session_id: string; state_sealed: string }>(sql`
+          select session_id, state_sealed from session_auth_grants where kind = 'upstream-session'`)
+            const opened = yield* secrets.open(
+              {
+                tenantId: f.tenant,
+                ownerKind: 'session-grant',
+                ownerId: f.session,
+                key: `${f.door.id}:upstream-session:v1`,
+              },
+              rows.rows[0]!.state_sealed,
+            )
+            return { rows: rows.rows, opened }
+          }),
+        ),
+      )
+      expect(answer.rows).toHaveLength(1)
+      expect(answer.rows[0]?.session_id).toBe(f.session)
+      expect(Redacted.value(answer.opened)).toBe('second')
+    } finally {
+      await db.dispose()
+    }
+  })
+
   it('is written with the session, sealed under it, and goes with it', async () => {
     const db = await createTestContext('flows-grants')
     try {

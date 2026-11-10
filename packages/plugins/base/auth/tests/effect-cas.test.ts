@@ -532,6 +532,17 @@ describe.runIf(postgresAvailable)('signing in through a CAS server', () => {
         .split(';')[0]!
     }
     const cookie = await signIn()
+    await Effect.runPromise(
+      runSql(
+        sql`delete from session_auth_grants where session_id in (select id from sessions where user_id = ${userId})`,
+      ).pipe(Effect.provide(probeInfra())),
+    )
+    expect(await newestGrants()).toEqual([])
+    const sessionsBefore = await Effect.runPromise(
+      runSql<{ count: number }>(
+        sql`select count(*)::int as count from sessions where user_id = ${userId}`,
+      ).pipe(Effect.provide(probeInfra())),
+    )
     const fresh = async () => {
       const response = await visit(`${base}/auth/cas/legacy/start?intent=reauthenticate`, cookie)
       expect(response.status).toBe(302)
@@ -549,7 +560,16 @@ describe.runIf(postgresAvailable)('signing in through a CAS server', () => {
       good.browser,
     )
     expect(accepted.headers.get('location')).toBe('/')
+    expect(accepted.headers.getSetCookie().some((c) => c.startsWith(`${sessionCookieName}=`))).toBe(
+      false,
+    )
     expect(await newestGrants()).toEqual(['qualy:reauthenticated'])
+    const sessionsAfter = await Effect.runPromise(
+      runSql<{ count: number }>(
+        sql`select count(*)::int as count from sessions where user_id = ${userId}`,
+      ).pipe(Effect.provide(probeInfra())),
+    )
+    expect(sessionsAfter.rows[0]?.count).toBe(sessionsBefore.rows[0]?.count)
 
     const other = await fresh()
     const refused = await comeBack(

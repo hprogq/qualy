@@ -253,20 +253,27 @@ const insertGrant = (input: {
   kind: string
   sealed: string
   expiresAt: Date | undefined
+  replace?: boolean
 }) =>
-  db.query((k) =>
-    k
-      .insertInto('SessionAuthGrant')
-      .values({
-        tenantId: input.tenantId,
-        sessionId: input.sessionId,
-        authProviderId: input.providerId,
-        kind: input.kind,
-        stateSealed: input.sealed,
-        expiresAt: input.expiresAt ?? null,
-      })
-      .execute(),
-  )
+  db.query((k) => {
+    const insert = k.insertInto('SessionAuthGrant').values({
+      tenantId: input.tenantId,
+      sessionId: input.sessionId,
+      authProviderId: input.providerId,
+      kind: input.kind,
+      stateSealed: input.sealed,
+      expiresAt: input.expiresAt ?? null,
+    })
+    return (
+      input.replace
+        ? insert.onConflict((conflict) =>
+            conflict
+              .columns(['tenantId', 'sessionId', 'authProviderId', 'kind'])
+              .doUpdateSet({ stateSealed: input.sealed, expiresAt: input.expiresAt ?? null }),
+          )
+        : insert
+    ).execute()
+  })
 
 /** the bind flow this entrance just took up, for exactly this person */
 const consumedBindFlow = (input: {
@@ -1406,6 +1413,50 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
               })
               return undefined
             }
+            if (input.reauthenticationSessionId !== undefined) {
+              // This is proof for the session that initiated the flow, not
+              // another sign-in. A late response must not replace a newer
+              // session cookie in another tab.
+              if (input.bindingId) {
+                yield* touchBinding(input.bindingId, input.bindingDisplayLabel).pipe(Effect.orDie)
+              }
+              for (const grant of input.grants ?? []) {
+                const sealed = yield* secrets.seal(
+                  sessionGrantRef(
+                    input.tenantId,
+                    input.reauthenticationSessionId,
+                    input.providerId,
+                    grant.kind,
+                  ),
+                  grant.state,
+                )
+                yield* insertGrant({
+                  tenantId: input.tenantId,
+                  sessionId: input.reauthenticationSessionId,
+                  providerId: input.providerId,
+                  kind: grant.kind,
+                  sealed,
+                  expiresAt: grant.expiresAt,
+                  replace: true,
+                }).pipe(Effect.orDie)
+              }
+              if (present) {
+                yield* reauthentication
+                  .mark(input.tenantId, input.reauthenticationSessionId, 'sign-in')
+                  .pipe(Effect.orDie)
+              }
+              yield* record(provider, {
+                outcome: 'success',
+                userId: input.userId,
+                ...(input.bindingId === undefined ? {} : { bindingId: input.bindingId }),
+                sessionId: input.reauthenticationSessionId,
+              })
+              return {
+                sessionId: input.reauthenticationSessionId,
+                user: currentUser!,
+                reauthenticated: true,
+              }
+            }
             const session = yield* insertSession({
               tenantId: input.tenantId,
               userId: input.userId,
@@ -1445,12 +1496,13 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
               ...(input.bindingId === undefined ? {} : { bindingId: input.bindingId }),
               sessionId: session.id,
             })
-            return { sessionId: session.id, user: currentUser! }
+            return { sessionId: session.id, user: currentUser!, reauthenticated: false }
           }),
         )
         if (completed === undefined) return undefined
         // this request now has a session, before anything else records it
         yield* bindSessionId(completed.sessionId)
+        if (completed.reauthenticated) return completed.user
         yield* setCookie(token, device === 'shared' ? undefined : config.sessionTtlSeconds)
         // a secure deployment reads only the prefixed name; the bare one a
         // browser may still carry from before the rename is dropped here,
