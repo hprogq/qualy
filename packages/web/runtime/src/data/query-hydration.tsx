@@ -83,14 +83,14 @@ const takenOver = new Promise<void>((resolve) => {
 })
 
 /** the page's own asking, for a read the server could not answer for it */
-const askedBy = (client: QueryClient, query: Query) => {
+const askedBy = (client: QueryClient, query: Query, signal: AbortSignal) => {
   const ask = query.options.queryFn
   if (typeof ask !== 'function') throw new Error('no reader on the page asks for a handed read')
   return ask({
     client,
     queryKey: query.queryKey,
     meta: query.meta,
-    signal: new AbortController().signal,
+    signal,
   })
 }
 
@@ -102,15 +102,59 @@ const askedBy = (client: QueryClient, query: Query) => {
 const follow = (client: QueryClient, { queryKey, arrival }: Coming) => {
   const query = client.getQueryCache().build(client, client.defaultQueryOptions({ queryKey }))
   if (query.state.data !== undefined || query.state.fetchStatus !== 'idle') return
+  // invalidateQueries joins a pending initialPromise when no data exists.
+  // Remember the invalidation until that fetch settles: Query resets its
+  // invalidated bit on success, otherwise losing a live event entirely.
+  let invalidated = false
+  let active = true
+  const fallback = new AbortController()
+  const cache = client.getQueryCache()
+  const unsubscribe = cache.subscribe((event) => {
+    if (event.type === 'removed' && event.query === query) {
+      active = false
+      fallback.abort()
+    }
+    if (event.type === 'updated' && event.query === query && event.action.type === 'invalidate') {
+      invalidated = true
+    }
+  })
   void query
     .fetch(undefined, {
       // What crossed from the server is a thenable whose `then` hands back
       // nothing, not a promise; adopted into one first.
-      initialPromise: Promise.all([Promise.resolve(arrival), takenOver]).then(([landed]) =>
-        landed.kind === 'answer' ? landed.value : askedBy(client, query),
-      ),
+      initialPromise: Promise.all([Promise.resolve(arrival), takenOver]).then(([landed]) => {
+        if (!active || cache.get(query.queryHash) !== query) {
+          throw new Error('handed read was cancelled')
+        }
+        // A newer local write must not be replaced by the server's late
+        // snapshot. If an event preceded the arrival, ask for fresh data
+        // instead of presenting an already-known stale snapshot.
+        if (query.state.data !== undefined) return query.state.data
+        if (
+          landed.kind === 'answer' &&
+          (!invalidated || typeof query.options.queryFn !== 'function')
+        ) {
+          return landed.value
+        }
+        return askedBy(client, query, fallback.signal)
+      }),
     })
-    .catch(() => {})
+    .then(() => {
+      active = false
+      unsubscribe()
+      // The in-flight fallback itself can race another event, which Query
+      // coalesces while it is invalidated. Revalidate once after it lands.
+      // A cleared cache may now belong to a different identity; never touch
+      // a replacement query that merely happens to use the same key.
+      if (invalidated && cache.get(query.queryHash) === query) {
+        void client.invalidateQueries({ queryKey, exact: true })
+      }
+    })
+    .catch(() => {
+      active = false
+      fallback.abort()
+      unsubscribe()
+    })
 }
 
 export function QueryHydration({
