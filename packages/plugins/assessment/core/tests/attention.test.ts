@@ -26,6 +26,75 @@ describe.runIf(postgresAvailable)('the participant attention model', () => {
     await db?.dispose()
   })
 
+  it('uses one activity version across pages and changes it for a real new event', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('activity-version')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f, { profile: PROFILE })
+          const participant = f.principal(f.s1)
+          const entry = yield* assessment.createEntry(
+            f.t,
+            { itemId: g.item.id, participantId: g.p1, payload: {} },
+            participant,
+          )
+          const submitted = yield* assessment.setEntryStatus(
+            f.t,
+            entry.id,
+            'in_review',
+            participant,
+          )
+          const first = yield* assessment.listMyActivity(
+            f.t,
+            g.batch.id,
+            { limit: '1', page: '1' },
+            participant,
+          )
+          const second = yield* assessment.listMyActivity(
+            f.t,
+            g.batch.id,
+            { limit: '1', page: '2' },
+            participant,
+          )
+          const empty = yield* assessment.listMyActivity(
+            f.t,
+            g.batch.id,
+            { perspective: 'reviewer' },
+            participant,
+          )
+          yield* requestSupplementAtCurrentStage(
+            assessment,
+            f.t,
+            submitted.currentReviewInstanceId!,
+            {
+              instructions: 'Please provide more',
+              requirements: [{ label: 'Proof', kind: 'file', required: true }],
+            },
+            f.principal(f.reviewer),
+          )
+          const after = yield* assessment.listMyActivity(
+            f.t,
+            g.batch.id,
+            { limit: '1', page: '2' },
+            participant,
+          )
+          const emptyAfter = yield* assessment.listMyActivity(
+            f.t,
+            g.batch.id,
+            { perspective: 'reviewer' },
+            participant,
+          )
+          return { first, second, empty, after, emptyAfter }
+        }),
+      ),
+    )
+    expect(result.first.version).toBe(result.second.version)
+    expect(result.after.version).not.toBe(result.first.version)
+    expect(result.empty.version).toBe(result.emptyAfter.version)
+  })
+
   // Numbered pages must preserve PostgreSQL precision and the deterministic
   // tie-breakers when several events land within the same millisecond.
   it('pages the feed without dropping rows that share an instant', async () => {

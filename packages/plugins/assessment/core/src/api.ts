@@ -2359,6 +2359,8 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
         total: Schema.Number,
         page: Schema.Number,
         pageSize: Schema.Number,
+        /** an opaque version of this reader's filtered activity, shared across pages */
+        version: Schema.String,
       }),
       error: [BatchNotFound, BadRequest],
     }).middleware(Authenticated),

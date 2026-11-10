@@ -1977,6 +1977,7 @@ export const userActivityPage = (input: {
       total: 0,
       page: 1,
       pageSize: input.limit,
+      version: '0:0:0',
     })
   return db
     .query(async (k) => {
@@ -2523,8 +2524,22 @@ export const userActivityPage = (input: {
       for (const branch of rest) union = union.unionAll(branch)
       const activity = () =>
         k.selectFrom(union.as('activity')).where('activity.kind', 'is not', null)
+      // A bounded, order-independent fingerprint of the authorized rows,
+      // including their ordering and the fields projected by this query.
+      // Two seeded 64-bit
+      // hashes make accidental collisions negligible without materializing
+      // the entire timeline in memory. The surrounding repeatable-read
+      // transaction gives the fingerprint and page the same snapshot.
       const counted = await activity()
-        .select((eb) => eb.fn.countAll<string>().as('total'))
+        .select((eb) => [
+          eb.fn.countAll<string>().as('total'),
+          sql<string>`coalesce(sum(hashtextextended(to_jsonb(activity)::text, 0)::numeric), 0)::text`.as(
+            'fingerprint',
+          ),
+          sql<string>`coalesce(sum(hashtextextended(to_jsonb(activity)::text, 1)::numeric), 0)::text`.as(
+            'fingerprint2',
+          ),
+        ])
         .executeTakeFirstOrThrow()
       const total = Number(counted.total)
       const window = pageWindow(input.page, input.limit, total)
@@ -2553,7 +2568,13 @@ export const userActivityPage = (input: {
         .limit(input.limit)
         .offset(window.offset)
         .execute()
-      return { rows, total, page: window.page, pageSize: input.limit }
+      return {
+        rows,
+        total,
+        page: window.page,
+        pageSize: input.limit,
+        version: `${total}:${counted.fingerprint}:${counted.fingerprint2}`,
+      }
     })
     .pipe(
       Effect.map(({ rows, ...pagination }) => ({

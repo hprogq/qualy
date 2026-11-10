@@ -1094,6 +1094,7 @@ export interface MyActivityPage {
   readonly total: number
   readonly page: number
   readonly pageSize: number
+  readonly version: string
 }
 
 export class Assessment extends Context.Service<
@@ -4069,6 +4070,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
         total: rows.total,
         page: rows.page,
         pageSize: rows.pageSize,
+        version: rows.version,
       }
     }),
 

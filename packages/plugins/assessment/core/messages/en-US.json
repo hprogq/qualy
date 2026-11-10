@@ -1621,6 +1621,7 @@
   "overview_goSupplement": "Supply it",
   "overview_goRevision": "Revise it",
   "overview_activityTitle": "Recent activity",
+  "overview_activityUpdates": "Activity has changed. Refresh",
   "overview_activityUnread": "{count, plural, one {# entry has news} other {# entries have news}}",
   "overview_batchNote": "About this batch",
   "overview_batchNoteMore": "Read all",

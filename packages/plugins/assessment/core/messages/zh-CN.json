@@ -1621,6 +1621,7 @@
   "overview_goSupplement": "去补充",
   "overview_goRevision": "去修改",
   "overview_activityTitle": "最近动态",
+  "overview_activityUpdates": "动态有更新，点击刷新",
   "overview_activityUnread": "{count} 条申报有新变化",
   "overview_batchNote": "批次说明",
   "overview_batchNoteMore": "查看全部",

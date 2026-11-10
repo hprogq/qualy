@@ -4,6 +4,7 @@ import { formatDateTime, useLocale, useList } from '@qualy/web-i18n'
 import {
   lazy,
   Suspense,
+  useEffect,
   useId,
   useLayoutEffect,
   useMemo,
@@ -11,7 +12,7 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { CheckIcon, ChevronRightIcon, HistoryIcon, RotateCwIcon } from 'lucide-react'
 import {
@@ -655,6 +656,7 @@ export interface DrawnNote {
 export default function BatchOverviewPage({ drawnNote }: { drawnNote?: DrawnNote } = {}) {
   const { batchId } = usePageRouteParams('batchId')
   const query = useApiQuery(assessmentApi)
+  const [activityWake, setActivityWake] = useState(0)
 
   // the reads and their freshness are the server's too (overview-reads.ts)
   const reads = overviewReads(batchId, { lane: 'all', page: undefined })
@@ -668,7 +670,7 @@ export default function BatchOverviewPage({ drawnNote }: { drawnNote?: DrawnNote
     staleTime: OVERVIEW_FRESH_MS,
   })
 
-  useBatchLive(batchId, ({ kinds, stale }) => {
+  const { live } = useBatchLive(batchId, ({ kinds, stale }) => {
     const moves = [
       'sync',
       'phase-changed',
@@ -679,8 +681,14 @@ export default function BatchOverviewPage({ drawnNote }: { drawnNote?: DrawnNote
     ] as const
     if (!moves.some((kind) => kinds.has(kind))) return
     stale(query.assessment.getMyOverview.key({ params: { batchId } }))
-    stale(query.assessment.listMyActivity.key({ params: { batchId }, query: {} }))
+    setActivityWake((value) => value + 1)
   })
+
+  useEffect(() => {
+    if (live) return
+    const timer = setInterval(() => setActivityWake((value) => value + 1), OVERVIEW_FRESH_MS)
+    return () => clearInterval(timer)
+  }, [live])
 
   return (
     <BatchScreen title={m.overview_tab()} description={m.overview_hint()}>
@@ -695,6 +703,7 @@ export default function BatchOverviewPage({ drawnNote }: { drawnNote?: DrawnNote
             <MyDesk
               batchId={batchId}
               overview={overview}
+              activityWake={activityWake}
               manage={batch.capabilities.manage}
               owed={owesAdministration(batch)}
               note={
@@ -893,12 +902,14 @@ const waitingOn = (row: TodoRow) => row.kind !== 'retry'
 function MyDesk({
   batchId,
   overview,
+  activityWake,
   manage,
   owed,
   note,
 }: {
   batchId: string
   overview: DeskRead
+  activityWake: number
   /** the reader administers this batch, by the batch's own word */
   manage: boolean
   /** and the batch can still be mended, so what it owes is worth asking for */
@@ -909,9 +920,21 @@ function MyDesk({
   // the administrator's counts are asked for by administrators only: to
   // anybody else every one of those reads is a refusal
   return manage ? (
-    <AdministeredDesk batchId={batchId} overview={overview} owed={owed} note={note} />
+    <AdministeredDesk
+      batchId={batchId}
+      overview={overview}
+      activityWake={activityWake}
+      owed={owed}
+      note={note}
+    />
   ) : (
-    <Desk batchId={batchId} overview={overview} alerts={null} note={note} />
+    <Desk
+      batchId={batchId}
+      overview={overview}
+      activityWake={activityWake}
+      alerts={null}
+      note={note}
+    />
   )
 }
 
@@ -923,16 +946,26 @@ function MyDesk({
 function AdministeredDesk({
   batchId,
   overview,
+  activityWake,
   owed,
   note,
 }: {
   batchId: string
   overview: DeskRead
+  activityWake: number
   owed: boolean
   note: ReactNode
 }) {
   const alerts = useAdminAlerts(batchId, owed)
-  return <Desk batchId={batchId} overview={overview} alerts={alerts} note={note} />
+  return (
+    <Desk
+      batchId={batchId}
+      overview={overview}
+      activityWake={activityWake}
+      alerts={alerts}
+      note={note}
+    />
+  )
 }
 
 /** the reader's desk as the page read it */
@@ -948,17 +981,20 @@ interface DeskRead {
 function Desk({
   batchId,
   overview,
+  activityWake,
   alerts,
   note,
 }: {
   batchId: string
   overview: DeskRead
+  activityWake: number
   /** what the batch's administrators owe it, when the reader is one */
   alerts: AdminAlerts | null
   /** the batch's note, which stands under what needs doing */
   note: ReactNode
 }) {
   const query = useApiQuery(assessmentApi)
+  const queryClient = useQueryClient()
   const navigate = usePageNavigate()
   const locale = useLocale()
   const failure = useLoadFailure()
@@ -977,13 +1013,88 @@ function Desk({
     ...query.assessment.listMyActivity.queryOptions(
       overviewReads(batchId, { lane, page: pageParam }).activity,
     ),
-    staleTime: OVERVIEW_FRESH_MS,
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
     meta: { lane, batchId },
     placeholderData: (previous, previousQuery) =>
       previousQuery?.meta?.['lane'] === lane && previousQuery.meta['batchId'] === batchId
         ? previous
         : undefined,
   })
+  const [activityChanged, setActivityChanged] = useState(false)
+  const [probeAgain, setProbeAgain] = useState(0)
+  const wake = useRef(activityWake)
+  wake.current = activityWake
+  const baseline = useRef<{ scope: string; version: string } | null>(null)
+  const scope = `${batchId}:${lane}`
+  const scopeRef = useRef(scope)
+  scopeRef.current = scope
+  const probeKey = useMemo(
+    () => ['assessment-activity-probe', batchId, lane] as const,
+    [batchId, lane],
+  )
+  useEffect(() => {
+    if (activity.isPlaceholderData || activity.data === undefined) return
+    const version = activity.data.version
+    if (typeof version !== 'string') return
+    if (baseline.current?.scope !== scope) {
+      baseline.current = { scope, version }
+      setActivityChanged(false)
+    } else if (baseline.current.version !== version) setActivityChanged(true)
+  }, [scope, activity.data, activity.isPlaceholderData])
+
+  useEffect(() => {
+    if (activityWake === 0 || baseline.current?.scope !== scope) return
+    let active = true
+    const expected = baseline.current
+    const options = query.assessment.listMyActivity.queryOptions({
+      params: { batchId },
+      query: { page: '1', limit: '1', ...(lane === 'all' ? {} : { perspective: lane }) },
+    })
+    void queryClient
+      .fetchQuery({ ...options, queryKey: probeKey, staleTime: 0, gcTime: 0, retry: false })
+      .then(
+        (current) => {
+          if (active && baseline.current === expected && current.version !== expected.version)
+            setActivityChanged(true)
+        },
+        () => {},
+      )
+    return () => {
+      active = false
+      void queryClient.cancelQueries({ queryKey: probeKey, exact: true })
+    }
+  }, [
+    activityWake,
+    probeAgain,
+    scope,
+    batchId,
+    lane,
+    query,
+    queryClient,
+    probeKey,
+    activity.data?.version,
+  ])
+
+  const refreshActivity = async () => {
+    const startedAt = wake.current
+    await queryClient.invalidateQueries({
+      queryKey: query.assessment.listMyActivity.key({ params: { batchId }, query: {} }),
+      refetchType: 'none',
+    })
+    const refreshed = await activity.refetch()
+    if (
+      scopeRef.current === scope &&
+      refreshed.isSuccess &&
+      refreshed.data !== undefined &&
+      typeof refreshed.data.version === 'string'
+    ) {
+      baseline.current = { scope, version: refreshed.data.version }
+      setActivityChanged(false)
+      if (wake.current !== startedAt) setProbeAgain((value) => value + 1)
+    }
+  }
   const rows = useMemo(() => activity.data?.items ?? [], [activity.data])
   // "today" as the html said it while the page takes the html over
   const now = useDocumentNow()
@@ -1281,6 +1392,18 @@ function Desk({
               </Tabs>
             )}
           </div>
+
+          {activityChanged && (
+            <button
+              type="button"
+              data-testid="activity-updates"
+              onClick={() => void refreshActivity()}
+              disabled={activity.isFetching}
+              {...stylex.props(styles.noteKey)}
+            >
+              {m.overview_activityUpdates()}
+            </button>
+          )}
 
           {activity.isPending ? (
             <ActivitySkeleton mixed={mixed} />

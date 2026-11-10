@@ -14,7 +14,7 @@ import { BatchLocalTime, BatchZone } from '../src/client/batch/BatchZone.tsx'
 import { Link, Route, Routes } from 'react-router'
 import { describe, expect, it, vi } from 'vitest'
 import { commands, page, userEvent } from 'vitest/browser'
-import { Effect } from 'effect'
+import { Effect, Queue, Stream } from 'effect'
 import type { ApiResult, ClientOf } from '@qualy/web-runtime/api'
 import { DocumentNow, WorkspaceCapabilityScope, useWorkspaceCapabilities } from '@qualy/web-runtime'
 import type { assessmentApi } from '@qualy/plugin-assessment/client/api'
@@ -342,6 +342,7 @@ describe('numbered batch activity', () => {
       total: 3,
       page: 1,
       pageSize: 50,
+      version: '3:initial',
       items: [
         row('one', '2026-03-03T10:00:00.000Z', true),
         row('two', '2026-03-03T09:00:00.000Z', false),
@@ -410,6 +411,116 @@ describe('numbered batch activity', () => {
       finish(activity)
       await page.viewport(1280, 800)
     }
+  })
+
+  it('offers an explicit refresh only when the activity actually changes', async () => {
+    let wake = (_kind: string) => {}
+    let version = 'first'
+    let refuseRefresh = false
+    let holdRefresh = false
+    let releaseRefresh: (() => void) | undefined
+    const reads: Request[] = []
+    const watchBatch = () =>
+      Effect.succeed(
+        Stream.callback<{ kind: string }>((queue) =>
+          Effect.sync(() => {
+            wake = (kind) => void Queue.offerUnsafe(queue, { kind })
+          }),
+        ),
+      )
+    await screen(
+      {
+        watchBatch,
+        getMyOverview: () =>
+          Effect.succeed({
+            participant: { unreadEntryIds: [], actions: [] },
+            reviewer: { pendingCount: 0, answeredAskCount: 0, queueGroups: [], answeredAsks: [] },
+          }),
+        listMyActivity: (request: Request) => {
+          reads.push(request)
+          if (refuseRefresh && request.query?.['limit'] !== '1')
+            return Effect.fail(apiError('SERVICE_UNAVAILABLE'))
+          const number = Number(request.query?.['page'] ?? 1)
+          const response = {
+            version,
+            total: 101,
+            page: number,
+            pageSize: 50,
+            items: [
+              {
+                id: `event-${number}-${version}`,
+                perspective: 'participant',
+                kind: 'review-approved',
+                entryId: 'entry',
+                itemId: 'item',
+                itemTitle: `Activity ${number} ${version}`,
+                subjectName: null,
+                instanceId: null,
+                actorName: null,
+                reason: null,
+                comment: null,
+                summary: [],
+                at: '2026-03-02T09:00:00.000Z',
+              },
+            ],
+          }
+          if (holdRefresh && request.query?.['limit'] !== '1') {
+            return Effect.promise(
+              () =>
+                new Promise<typeof response>((resolve) => {
+                  releaseRefresh = () => resolve(response)
+                }),
+            )
+          }
+          return Effect.succeed(response)
+        },
+      },
+      `/assessment/batches/${BATCH_ID}`,
+    )
+    await expect
+      .poll(() => page.getByTestId('overview-activity').element().textContent)
+      .toContain('Activity 1 first')
+    const initial = reads.length
+    wake('sync')
+    await expect.poll(() => reads.length, { timeout: 4_000 }).toBeGreaterThan(initial)
+    expect(page.getByTestId('activity-updates').elements()).toHaveLength(0)
+    version = 'second'
+    wake('entries-changed')
+    await expect.element(page.getByTestId('activity-updates')).toBeVisible()
+    expect(page.getByTestId('overview-activity').element().textContent).toContain(
+      'Activity 1 first',
+    )
+    await page.getByTestId('activity-pager').getByRole('button', { name: '3', exact: true }).click()
+    await expect.element(page.getByTestId('activity-pager')).toHaveAttribute('data-page', '3')
+    await expect.element(page.getByTestId('activity-updates')).toBeVisible()
+    refuseRefresh = true
+    await page.getByTestId('activity-updates').click()
+    await expect.element(page.getByTestId('activity-updates')).toBeVisible()
+    await expect.element(page.getByTestId('activity-updates')).toBeEnabled()
+    refuseRefresh = false
+    await page.getByTestId('activity-updates').click()
+    await expect.element(page.getByTestId('activity-updates')).not.toBeInTheDocument()
+    await expect.element(page.getByTestId('activity-pager')).toHaveAttribute('data-page', '3')
+    expect(addressNow()).toContain('activityPage=3')
+    await page.getByRole('tab', { name: '审核', exact: true }).click()
+    await expect.element(page.getByTestId('activity-pager')).toHaveAttribute('data-page', '1')
+    version = 'third'
+    wake('sync')
+    await expect.element(page.getByTestId('activity-updates')).toBeVisible()
+    holdRefresh = true
+    await page.getByTestId('activity-updates').click()
+    await expect.poll(() => releaseRefresh !== undefined).toBe(true)
+    version = 'fourth'
+    const beforeWake = reads.length
+    wake('entries-changed')
+    await expect.poll(() => reads.length).toBeGreaterThan(beforeWake)
+    holdRefresh = false
+    releaseRefresh?.()
+    await expect.element(page.getByTestId('activity-updates')).toBeVisible()
+    await expect.element(page.getByTestId('activity-updates')).toBeEnabled()
+    await page.getByTestId('activity-updates').click()
+    await expect.element(page.getByTestId('activity-updates')).not.toBeInTheDocument()
+    expect(addressNow()).toContain('activityLane=reviewer')
   })
 
   it('jumps without accumulating rows and resets the page with its perspective', async () => {
