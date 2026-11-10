@@ -4,23 +4,21 @@ import {
   DOCUMENT_CONTEXT_BUDGET,
   DocumentContext,
   compileDocumentContext,
-  type DocumentContextProvider,
 } from '../src/document-context.ts'
+
+type Provider = Parameters<typeof compileDocumentContext>[0][number]['value']
 
 // What a whole page reads with its manifest: every provider's answer by its
 // key, for the reader and in the language asked, and never more than a page
 // should carry.
 
-const provider = (
-  key: `${string}/${string}`,
-  answer: (locale: string) => unknown,
-): DocumentContextProvider => ({
+const provider = (key: `${string}/${string}`, answer: (locale: string) => unknown): Provider => ({
   key,
   bind: Effect.succeed((reader) => Effect.succeed(answer(reader.locale))),
 })
 
 const ask = (
-  contributions: { pluginId: string; value: DocumentContextProvider<any> }[],
+  contributions: { pluginId: string; value: Provider }[],
   locale: 'zh-CN' | 'en-US' = 'en-US',
 ) =>
   Effect.runPromiseExit(

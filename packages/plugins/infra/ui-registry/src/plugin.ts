@@ -162,7 +162,7 @@ export const Ui = {
    */
   collection: <TContribution>(
     token: UiCollectionToken<TContribution, any>,
-    item: Omit<CollectionDeclaration<TContribution>, 'collection'>,
+    item: Omit<CollectionDeclaration<NoInfer<TContribution>>, 'collection'>,
   ): PluginFeature =>
     Plugin.contribute(UiSurfaceDeclarations, { collections: [{ ...item, collection: token }] }),
 

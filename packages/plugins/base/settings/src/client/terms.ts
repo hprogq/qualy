@@ -27,7 +27,7 @@ export function useTerminology() {
 
 /** the tenant's word for a term in the page's language */
 export function useTerm(term: TermRef): string {
-  const words = useDocumentContext<Readonly<Record<string, string>>>(TERMS_CONTEXT)
+  const words = useDocumentContext(TERMS_CONTEXT)
   // every declared term is in the context; its id stands in only where no
   // settings plugin provides one, which is a harness and never a product
   return words?.[term.id] ?? term.id

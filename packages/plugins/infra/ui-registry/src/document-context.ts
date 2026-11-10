@@ -1,7 +1,7 @@
 import { Context, Effect, Layer } from 'effect'
 import type { SupportedLocale } from '@qualy/i18n-contract'
 import type { Principal } from '@qualy/rbac-contract'
-import type { NamespacedId } from '@qualy/ui-contract'
+import type { NamespacedId, DocumentContextKey, DocumentContextTypes } from '@qualy/ui-contract'
 import { ExtensionPoint, Plugin, type PluginFeature } from '@qualy/plugin-kit'
 
 // What a whole page reads while it is open, delivered with the manifest
@@ -23,14 +23,26 @@ export interface DocumentReader {
   readonly locale: SupportedLocale
 }
 
-export interface DocumentContextProvider<R = never> {
+export interface DocumentContextProvider<
+  K extends DocumentContextKey = DocumentContextKey,
+  R = never,
+> {
   /** the key a screen reads it by, namespaced by the plugin that provides it */
-  readonly key: NamespacedId
+  readonly key: K
   /** runs once while the catalog builds, taking what it needs from the running graph */
-  readonly bind: Effect.Effect<(reader: DocumentReader) => Effect.Effect<unknown>, never, R>
+  readonly bind: Effect.Effect<
+    (reader: DocumentReader) => Effect.Effect<DocumentContextTypes[K]>,
+    never,
+    R
+  >
 }
 
-export const DocumentContexts = ExtensionPoint.make<DocumentContextProvider<any>>(
+interface DocumentContextContribution {
+  readonly key: NamespacedId
+  readonly bind: Effect.Effect<(reader: DocumentReader) => Effect.Effect<unknown>, never, unknown>
+}
+
+export const DocumentContexts = ExtensionPoint.make<DocumentContextContribution>(
   '@qualy/plugin-ui-registry/document-context',
   { phase: 'runtime' },
 )
@@ -47,14 +59,15 @@ export class DocumentContext extends Context.Service<
 >()('@qualy/plugin-ui-registry/DocumentContext') {}
 
 /** declares what of this plugin's a whole page reads */
-export const documentContext = <R>(provider: DocumentContextProvider<R>): PluginFeature =>
-  Plugin.contribute(DocumentContexts, provider as DocumentContextProvider<any>)
+export const documentContext = <K extends DocumentContextKey, R>(
+  provider: DocumentContextProvider<K, R>,
+): PluginFeature => Plugin.contribute(DocumentContexts, provider)
 
 /** every provider bound once, asked together per manifest */
 export const compileDocumentContext = (
   contributions: readonly {
     readonly pluginId: string
-    readonly value: DocumentContextProvider<any>
+    readonly value: DocumentContextContribution
   }[],
 ) =>
   Layer.effect(

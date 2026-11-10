@@ -10,3 +10,9 @@ export interface SiteRegistration {
   readonly icp?: SiteRegistrationLink
   readonly publicSecurity?: SiteRegistrationLink
 }
+
+declare module '@qualy/ui-contract' {
+  interface DocumentContextTypes {
+    readonly 'site/registration': SiteRegistration
+  }
+}

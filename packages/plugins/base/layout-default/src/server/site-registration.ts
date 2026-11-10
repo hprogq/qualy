@@ -56,7 +56,7 @@ const PublicSecurityUrl = Schema.Struct({
   ),
 })
 
-export const siteRegistrationContext: DocumentContextProvider = {
+export const siteRegistrationContext: DocumentContextProvider<typeof SITE_REGISTRATION_CONTEXT> = {
   key: SITE_REGISTRATION_CONTEXT,
   bind: Effect.gen(function* () {
     const settings = yield* Schema.decodeEffect(Settings)({

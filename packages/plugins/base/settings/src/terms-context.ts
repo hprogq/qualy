@@ -3,3 +3,9 @@
 // declared term present (docs/adr/0011-i18n-paraglide.md, decision 10).
 // Shared by the server that provides it and the hook that reads it.
 export const TERMS_CONTEXT = 'settings/terms'
+
+declare module '@qualy/ui-contract' {
+  interface DocumentContextTypes {
+    readonly 'settings/terms': Readonly<Record<string, string>>
+  }
+}

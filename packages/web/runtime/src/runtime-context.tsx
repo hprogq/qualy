@@ -1,6 +1,6 @@
 import { useContext } from 'react'
 import type { Effect } from 'effect'
-import type { NamespacedId } from '@qualy/ui-contract'
+import type { NamespacedId, DocumentContextKey, DocumentContextTypes } from '@qualy/ui-contract'
 import type { HttpApi } from 'effect/http-api'
 import { Api } from '@qualy/api-kit/local'
 import { appApiGroup } from '@qualy/app-contract'
@@ -70,10 +70,12 @@ export const useManifest = () => useRuntime().manifest
  * (docs/adr/0011-i18n-paraglide.md, decision 10). Undefined where nothing in
  * this assembly provides the key.
  */
-export function useDocumentContext<T>(key: string): T | undefined {
+export function useDocumentContext<K extends DocumentContextKey>(
+  key: K,
+): DocumentContextTypes[K] | undefined {
   // a harness's hand-written manifest may carry no context at all
   const context = useManifest().context as Readonly<Record<string, unknown>> | undefined
-  return context?.[key] as T | undefined
+  return context?.[key] as DocumentContextTypes[K] | undefined
 }
 
 /**
