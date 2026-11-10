@@ -284,8 +284,8 @@ export const inboxNumberedPage = (input: InboxQuery) =>
           : requested
         : undefined
     let scoped = filtered
-    // A queue of at most three filings is shown whole; larger queues fetch only the open group.
-    if (grouped && filteredTotal > 3 && selected !== undefined)
+    // A short queue is shown whole until the reader explicitly selects a group.
+    if (grouped && selected !== undefined && (requested !== undefined || filteredTotal > 3))
       scoped = scoped.where(sql<boolean>`${groupKey} = ${selected}`)
     const total = await count(scoped)
     const anchor =

@@ -1,3 +1,6 @@
+import { Schema } from 'effect'
+import { boundedText, uuidInput } from '@qualy/api-kit/schema'
+import { isoDate } from '../../api.ts'
 import type { QueueRequest } from './queue.ts'
 
 // What the review queue reads, and with what (ReviewInboxPage.tsx).
@@ -62,6 +65,15 @@ export const queueRequestOf = (place: QueuePlace): QueueRequest => {
     ...(place.search.trim() !== '' ? { search: place.search.trim() } : {}),
   }
 }
+
+const isUuid = Schema.is(uuidInput)
+const isDay = Schema.is(isoDate)
+const isSearch = Schema.is(boundedText(200))
+
+export const validQueueFilters = (request: QueueRequest): boolean =>
+  [request.itemId, request.person, request.unitId].every((id) => id === undefined || isUuid(id)) &&
+  (request.day === undefined || isDay(request.day)) &&
+  (request.search === undefined || isSearch(request.search))
 
 /** the input of the queue's read for a batch and a request */
 export const queueReadOf = (batchId: string, request: QueueRequest) => ({

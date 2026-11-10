@@ -945,6 +945,7 @@
   "review_searchPlaceholder": "搜索姓名、学号或申报内容",
   "review_matchesNone": "没有符合筛选条件的待审项目",
   "review_matchesHint": "调整筛选条件，或清除后查看全部待审项目",
+  "review_invalidFilters": "链接中的部分审核筛选条件无效",
   "review_matchesClear": "清除筛选",
   "review_groupCount": "{count} 条待审核",
   "review_columnParticipant": "参评人员",

@@ -2,7 +2,13 @@ import { QueryHydration } from '@qualy/web-runtime/query-hydration'
 import { renderRequest } from '@qualy/web-rsc/request'
 import { answersOf, settle } from '@qualy/web-rsc/queries'
 import { batchIdOf, keyed, readBatch } from '../batch/batch-reads.server.ts'
-import { awaitingReadOf, queuePlaceOf, queueReadOf, queueRequestOf } from './inbox-reads.ts'
+import {
+  awaitingReadOf,
+  queuePlaceOf,
+  queueReadOf,
+  queueRequestOf,
+  validQueueFilters,
+} from './inbox-reads.ts'
 import ReviewInboxPage from './ReviewInboxPage.tsx'
 
 // The review queue as a server draws it (docs/adr/0012-rsc-data-mode.md):
@@ -22,12 +28,15 @@ export default async function ReviewInbox({
   if (subject.kind !== 'answer' || !subject.value.batch.capabilities.review) {
     return <ReviewInboxPage />
   }
-  const queue = queueReadOf(batchId, queueRequestOf(queuePlaceOf(renderRequest().url.searchParams)))
+  const request = queueRequestOf(queuePlaceOf(renderRequest().url.searchParams))
+  const queue = queueReadOf(batchId, request)
   const awaiting = awaitingReadOf(batchId)
   const plan = { params: { batchId } }
   const handed = await answersOf([
     keyed('getTimeline', plan, (client) => client.assessment.getTimeline(plan)),
-    keyed('listReviewInbox', queue, (client) => client.assessment.listReviewInbox(queue)),
+    ...(validQueueFilters(request)
+      ? [keyed('listReviewInbox', queue, (client) => client.assessment.listReviewInbox(queue))]
+      : []),
     keyed('listAwaitingSupplements', awaiting, (client) =>
       client.assessment.listAwaitingSupplements(awaiting),
     ),

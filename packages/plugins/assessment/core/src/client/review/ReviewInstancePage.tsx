@@ -707,6 +707,7 @@ function Workbench({ batch }: { batch: BatchDto }) {
   // this sitting's decisions, newest last; the queue rail and the closing
   // screen both read it
   const [log, setLog] = useState<readonly SessionEntry[]>([])
+  const stagedIds = useRef(new Set<string>())
   const startedAt = useRef(Date.now())
   const decidedIds = useMemo(() => new Set(log.map((entry) => entry.instanceId)), [log])
   // what this sitting actually handled: a round that was gone by the time
@@ -736,6 +737,11 @@ function Workbench({ batch }: { batch: BatchDto }) {
     setLog((current) =>
       current.map((entry) => (entry.instanceId === id ? { ...entry, status } : entry)),
     )
+
+  const forgetDecision = (id: string) => {
+    stagedIds.current.delete(id)
+    setLog((current) => current.filter((entry) => entry.instanceId !== id))
+  }
 
   /**
    * The words of every act that came back, one per round, for its dialog to
@@ -767,7 +773,7 @@ function Workbench({ batch }: { batch: BatchDto }) {
       refresh()
     },
     onRejected: (staged) => {
-      setLog((current) => current.filter((entry) => entry.instanceId !== staged.instanceId))
+      forgetDecision(staged.instanceId)
       hold(staged)
       refresh()
     },
@@ -785,7 +791,7 @@ function Workbench({ batch }: { batch: BatchDto }) {
       if (gone) {
         mark(staged.instanceId, 'gone')
       } else {
-        setLog((current) => current.filter((entry) => entry.instanceId !== staged.instanceId))
+        forgetDecision(staged.instanceId)
         hold(staged)
       }
       switch (error._tag) {
@@ -919,7 +925,7 @@ function Workbench({ batch }: { batch: BatchDto }) {
   )
   const actionStage = useRef<{ route: 'normal' | 'escalation'; stageId: string } | null>(null)
   const openAction = (next: 'approve' | 'reject' | 'escalate' | 'supplement') => {
-    if (review === undefined) return
+    if (review === undefined || stagedIds.current.has(instanceId)) return
     actionStage.current = { route: review.chain.route, stageId: review.chain.stageId }
     setDialog(next)
   }
@@ -1045,6 +1051,8 @@ function Workbench({ batch }: { batch: BatchDto }) {
     participantName: string,
     receipt?: Promise<DraftReceipt | null>,
   ) => {
+    if (stagedIds.current.has(instanceId)) return
+    stagedIds.current.add(instanceId)
     setLog((current) => [
       ...current,
       { instanceId, participantName, itemTitle, decision, status: 'waiting' },
@@ -1113,12 +1121,12 @@ function Workbench({ batch }: { batch: BatchDto }) {
   })
 
   const may = (act: 'approve' | 'reject' | 'escalate' | 'supplement') =>
-    !lostTurn && review?.actions[act].state === 'available'
+    !settledHere && !lostTurn && review?.actions[act].state === 'available'
 
   const undoStaged = () => {
     const staged = deferred.undo()
     if (staged === null) return
-    setLog((current) => current.filter((entry) => entry.instanceId !== staged.instanceId))
+    forgetDecision(staged.instanceId)
     // taken back is not thrown away: the dialog reopens on the same words
     hold(staged)
     goTo(staged.instanceId)
@@ -1247,7 +1255,8 @@ function Workbench({ batch }: { batch: BatchDto }) {
   // over only when this sitting decided something: an already-closed round
   // opened from elsewhere is a page to read, not a run to finish
   const done = inbox.data?.total === 0 && log.length > 0 && !inbox.isPending
-  const bar = !done && !lostTurn && review !== undefined && review.capabilities.canDecide
+  const bar =
+    !done && !settledHere && !lostTurn && review !== undefined && review.capabilities.canDecide
   // Hold the shell's mobile foot while the review is still resolving. An
   // actionable review replaces it with the decision bar; waiting for the
   // response before claiming made the shell control flash for one frame.

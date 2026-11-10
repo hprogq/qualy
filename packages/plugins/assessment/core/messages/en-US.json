@@ -945,6 +945,7 @@
   "review_searchPlaceholder": "Search name, ID, or submission content",
   "review_matchesNone": "No pending submissions match these filters",
   "review_matchesHint": "Change the filters, or clear them to see everything",
+  "review_invalidFilters": "Some review filters in this address are invalid.",
   "review_matchesClear": "Clear filters",
   "review_groupCount": "{count} pending",
   "review_columnParticipant": "Participant",

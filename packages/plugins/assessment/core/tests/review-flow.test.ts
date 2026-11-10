@@ -762,6 +762,16 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
             },
             reviewer,
           )
+          const small = yield* assessment.listReviewInbox(
+            f.t,
+            {
+              batchId: g.batch.id,
+              view: 'person',
+              person: g.p2,
+              exclude: created.slice(1).map((row) => row.instanceId),
+            },
+            reviewer,
+          )
           const unrelated = yield* assessment.listReviewInbox(
             f.t,
             { batchId: g.batch.id, view: 'person', limit: '7' },
@@ -774,6 +784,7 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
             people,
             focused,
             narrowed,
+            small,
             unrelated,
             p1: g.p1,
             p2: g.p2,
@@ -802,6 +813,8 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
     expect(result.narrowed.items.map((item) => item.instanceId)).toEqual([
       result.created[21]!.instanceId,
     ])
+    expect(result.small).toMatchObject({ total: 1, filteredTotal: 2, selected: result.p2 })
+    expect(result.small.items.map((item) => item.instanceId)).toEqual([result.other.instanceId])
     expect(result.unrelated).toMatchObject({
       total: 0,
       queueTotal: 0,

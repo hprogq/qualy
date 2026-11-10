@@ -37,7 +37,13 @@ import { useBatchLive } from '../live.ts'
 import { BatchScreen } from '../batch/BatchScreen.tsx'
 import { AwaitingSection } from './AwaitingSection.tsx'
 import { useAwaitingQuery, useQueueRefresh, useReviewQueueQuery, type QueuePage } from './queue.ts'
-import { queuePlaceOf, queueRequestOf, viewOf, type View } from './inbox-reads.ts'
+import {
+  queuePlaceOf,
+  queueRequestOf,
+  validQueueFilters,
+  viewOf,
+  type View,
+} from './inbox-reads.ts'
 import { readRunScope, writeRunScope } from './run-scope.ts'
 import { useDraftSweep } from './use-draft.ts'
 import { rememberQueuePlace } from './queue-place.ts'
@@ -360,6 +366,7 @@ function useQueue(batchId: string, reviewing: boolean) {
     page,
     groupPage,
   })
+  const invalid = !validQueueFilters(request)
   const groupingKey = query.assessment.listReviewInbox.key({
     query: { batchId, view: request.view, layout: request.layout },
   })
@@ -369,7 +376,7 @@ function useQueue(batchId: string, reviewing: boolean) {
     // grouping cannot interpret the old response's group keys or row order.
     placeholderData: (previous, previousQuery) =>
       previousQuery && partialMatchKey(previousQuery.queryKey, groupingKey) ? previous : undefined,
-    enabled: reviewing,
+    enabled: reviewing && !invalid,
     refetchInterval: live ? 60_000 : 30_000,
   })
   // Keep the batch-wide controls steady while the new grouping is read.
@@ -411,8 +418,9 @@ function useQueue(batchId: string, reviewing: boolean) {
     (last?.batchId === batchId && last.filterKey === filterKey)
   return {
     inbox,
-    summary,
-    start,
+    invalid,
+    summary: invalid ? undefined : summary,
+    start: invalid ? undefined : start,
     startCurrent,
     scoped: selected !== '',
     loadingSelection,
@@ -428,9 +436,9 @@ function useOpenRow(batchId: string) {
   const location = useLocation()
   return (row: Pick<InboxItemDto, 'instanceId'>, run: string) => {
     rememberQueuePlace(batchId, location.search)
-    const { search, unitId, mark } = queueRequestOf(
-      queuePlaceOf(new URLSearchParams(location.search)),
-    )
+    const request = queueRequestOf(queuePlaceOf(new URLSearchParams(location.search)))
+    if (!validQueueFilters(request)) return
+    const { search, unitId, mark } = request
     const scoped = writeRunScope({
       ...readRunScope(run),
       filters: {
@@ -525,6 +533,7 @@ export default function ReviewInboxPage() {
  * is tight. Only show the last count when there is any material awaited.
  */
 function QueueStanding({ queue }: { queue: Queue }) {
+  if (queue.invalid) return null
   if (queue.summary === undefined) {
     return queue.inbox.isPending ? (
       <Skeleton className={stylex.props(styles.standingBones).className} />
@@ -603,11 +612,12 @@ function QueueBody({
   const onGroupPage = (next: number) =>
     update({ groupPage: String(next), item: '', person: '', day: '', page: '' })
   useEffect(() => {
-    if (data === undefined || queue.inbox.isPlaceholderData || view === 'asked') return
+    if (data === undefined || queue.inbox.isPlaceholderData || queue.invalid || view === 'asked')
+      return
     const corrected: Record<string, string> = {}
     if (page !== data.page) corrected.page = data.page === 1 ? '' : String(data.page)
     if (Object.keys(corrected).length > 0) update(corrected)
-  }, [data, queue.inbox.isPlaceholderData, page, view, update])
+  }, [data, queue.inbox.isPlaceholderData, queue.invalid, page, view, update])
   const onPage = (next: number) => update({ page: next === 1 ? '' : String(next) })
   const searchInput = useRef<HTMLInputElement>(null)
   const focusSearch = useRef(false)
@@ -774,6 +784,20 @@ function QueueBody({
             about the queue alone, so all-done gets its whole screen back */}
       {view === 'asked' ? (
         <AwaitingSection batchId={batchId} page={page} onPage={onPage} />
+      ) : queue.invalid ? (
+        <QueueEmpty
+          state="invalid-filters"
+          icon={<SearchXIcon aria-hidden className={stylex.props(styles.emptyIcon).className} />}
+          title={m.review_invalidFilters()}
+          action={
+            <Button
+              variant="outline"
+              onClick={() => narrow({ item: '', person: '', day: '', unit: '', mark: '', q: '' })}
+            >
+              {m.review_matchesClear()}
+            </Button>
+          }
+        />
       ) : (
         <AsyncSection
           pending={queue.inbox.isPending}
