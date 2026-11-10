@@ -114,6 +114,8 @@
     "@qualy/testkit": "workspace:*",
     "@qualy/tsconfig": "workspace:*",
     "@types/react": "catalog:",
-    "altcha-lib": "catalog:"
+    "@types/react-dom": "catalog:",
+    "altcha-lib": "catalog:",
+    "react-dom": "catalog:"
   }
 }

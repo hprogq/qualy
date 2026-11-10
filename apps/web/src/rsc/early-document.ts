@@ -25,6 +25,19 @@ export function prepareDocument(root: HTMLElement): boolean {
   root.setAttribute('data-mantine-color-scheme', dark ? 'dark' : 'light')
   if (dark) root.classList.add('dark')
   root.style.colorScheme = dark ? 'dark' : 'light'
+  // Login-provider images can complete before their React component is
+  // hydrated. Record their state without running or inlining uploaded SVG.
+  const imageFinished = (event: Event) => {
+    const image = event.target
+    if (!(image instanceof HTMLImageElement) || !image.hasAttribute('data-login-glyph-image'))
+      return
+    const glyph = image.parentElement
+    if (glyph?.hasAttribute('data-login-glyph-state')) {
+      glyph.setAttribute('data-login-glyph-state', event.type === 'load' ? 'loaded' : 'error')
+    }
+  }
+  root.addEventListener('load', imageFinished, true)
+  root.addEventListener('error', imageFinished, true)
   return true
 }
 

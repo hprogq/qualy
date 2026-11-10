@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import {
   GlobeIcon,
@@ -16,6 +16,7 @@ import type { LoginMethodIcon } from '@qualy/auth-contract/login'
 import { authUrls } from '../api.ts'
 import type { Message } from '@qualy/i18n-contract'
 import * as m from '#messages'
+import { glyphRoot } from './glyph.stylex.ts'
 
 // How a way in is drawn wherever it appears: on the sign-in page, and on the
 // screens that set it up. One drawing per key, owned by the browser; an
@@ -73,15 +74,55 @@ const LETTERED: Partial<Record<BuiltinLoginIcon, Lettered>> = {
   qq: { letter: m.login_iconQq, ...both('#12B7F5') },
 }
 
+const shimmer = stylex.keyframes({
+  '0%': { opacity: 0.12 },
+  '50%': { opacity: 0.24 },
+  '100%': { opacity: 0.12 },
+})
+const REDUCE = '@media (prefers-reduced-motion: reduce)'
 const styles = stylex.create({
   glyph: {
+    position: 'relative',
     display: 'inline-flex',
     flexShrink: 0,
     alignItems: 'center',
     justifyContent: 'center',
     lineHeight: 1,
   },
-  picture: { display: 'block', objectFit: 'contain' },
+  picture: {
+    display: 'block',
+    objectFit: 'contain',
+    visibility: {
+      default: 'visible',
+      [stylex.when.ancestor('[data-login-glyph-state="error"]', glyphRoot)]: 'hidden',
+    },
+  },
+  placeholder: {
+    position: 'absolute',
+    inset: 0,
+    borderRadius: 4,
+    backgroundColor: 'currentColor',
+    opacity: 0.12,
+    pointerEvents: 'none',
+    animationName: { default: shimmer, [REDUCE]: 'none' },
+    animationDuration: '1.5s',
+    animationIterationCount: 'infinite',
+    display: {
+      default: 'block',
+      [stylex.when.ancestor('[data-login-glyph-state="loaded"]', glyphRoot)]: 'none',
+      [stylex.when.ancestor('[data-login-glyph-state="error"]', glyphRoot)]: 'none',
+    },
+  },
+  fallback: {
+    position: 'absolute',
+    inset: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    display: {
+      default: 'none',
+      [stylex.when.ancestor('[data-login-glyph-state="error"]', glyphRoot)]: 'flex',
+    },
+  },
   letter: {
     display: 'inline-flex',
     alignItems: 'center',
@@ -127,8 +168,8 @@ export function LoginMethodGlyph({
 }) {
   const derived = useIconSurface(tone)
   const surface = given ?? derived
-  // an image that will not load is drawn by its initial instead
-  const [broken, setBroken] = useState<string | null>(null)
+  const [finished, setFinished] = useState<{ src: string; state: 'loaded' | 'error' } | null>(null)
+  const image = useRef<HTMLImageElement | null>(null)
   const initial = (
     <span {...stylex.props(styles.initial)} style={{ fontSize: Math.round(size * 0.72) }}>
       {Array.from(name.trim())[0]?.toUpperCase() ?? '?'}
@@ -137,23 +178,46 @@ export function LoginMethodGlyph({
   // the image for a dark ground where the tenant gave one, else the only one
   const dark = icon?.kind === 'image' && surface === 'dark' && icon.onDark !== null
   const version = icon?.kind === 'image' ? (dark ? icon.onDark : icon.version) : undefined
+  const src =
+    version === undefined
+      ? undefined
+      : authUrls.loginIcon.getLoginMethodIcon({
+          params: { providerCode: code },
+          query: dark ? { v: version, surface: 'dark' } : { v: version },
+        })
+  const imageState = finished !== null && finished.src === src ? finished.state : 'pending'
+  // The load or error event may have happened before React attached its
+  // handlers. The bootstrap already paints it; adopt that fact on takeover.
+  useEffect(() => {
+    const current = image.current
+    if (src !== undefined && current?.complete) {
+      setFinished({ src, state: current.naturalWidth > 0 ? 'loaded' : 'error' })
+    }
+  }, [src])
   const body = (() => {
     if (icon === null) return initial
     if (icon.kind === 'image') {
-      if (version === undefined || broken === version) return initial
+      if (src === undefined) return initial
       return (
-        <img
-          alt=""
-          width={size}
-          height={size}
-          draggable={false}
-          src={authUrls.loginIcon.getLoginMethodIcon({
-            params: { providerCode: code },
-            query: dark ? { v: version, surface: 'dark' } : { v: version },
-          })}
-          onError={() => setBroken(version)}
-          {...stylex.props(styles.picture)}
-        />
+        <>
+          <span aria-hidden data-login-glyph-placeholder="" {...stylex.props(styles.placeholder)} />
+          <span aria-hidden {...stylex.props(styles.fallback)}>
+            {initial}
+          </span>
+          <img
+            key={src}
+            ref={image}
+            alt=""
+            width={size}
+            height={size}
+            draggable={false}
+            src={src}
+            data-login-glyph-image=""
+            onLoad={() => setFinished({ src, state: 'loaded' })}
+            onError={() => setFinished({ src, state: 'error' })}
+            {...stylex.props(styles.picture)}
+          />
+        </>
       )
     }
     const Outlined = OUTLINED[icon.key]
@@ -185,7 +249,9 @@ export function LoginMethodGlyph({
       data-icon={icon === null ? 'initial' : icon.kind === 'image' ? 'image' : icon.key}
       data-surface={surface}
       data-version={version}
-      {...stylex.props(styles.glyph)}
+      data-login-glyph-state={icon?.kind === 'image' && src !== undefined ? imageState : undefined}
+      suppressHydrationWarning
+      {...stylex.props(styles.glyph, glyphRoot)}
       style={{ width: size, height: size }}
     >
       {body}
