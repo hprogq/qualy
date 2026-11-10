@@ -30,6 +30,19 @@ describe('client navigation discipline', () => {
     expect(offenders).toEqual([])
   })
 
+  it('routes production query observers through the response-aware adapter', () => {
+    const offenders = ['apps', 'packages']
+      .flatMap((root) => walk(root))
+      .filter((file) => file.includes(`${path.sep}src${path.sep}`))
+      .filter((file) => !file.endsWith(`${path.sep}data${path.sep}query.ts`))
+      .filter((file) =>
+        /import\s*\{[^}]*\buseQuer(?:y|ies)\b[^}]*\}\s*from\s*['"]@tanstack\/react-query['"]/s.test(
+          fs.readFileSync(file, 'utf8'),
+        ),
+      )
+    expect(offenders).toEqual([])
+  })
+
   it('never hardcodes an internal route in plugin client code', () => {
     const offenders = CLIENT_ROOTS.flatMap((root) => walk(root))
       .filter((file) => file.includes(`${path.sep}client${path.sep}`))
