@@ -2388,9 +2388,13 @@ try {
   if (host !== undefined) await Effect.runPromise(Fiber.interrupt(host)).catch(() => {})
   // the backend first: a database is not dropped from under its own server
   await server?.stop().catch(() => {})
-  await scratch
-    .dispose()
-    .catch((error: unknown) => console.error('rsc-acceptance: drop failed', error))
+  await scratch.dispose().catch((error: unknown) => {
+    console.error('rsc-acceptance: drop failed', error)
+    failure =
+      failure === undefined
+        ? error
+        : new AggregateError([failure, error], 'acceptance and cleanup failed')
+  })
 }
 
 for (const result of results) {
