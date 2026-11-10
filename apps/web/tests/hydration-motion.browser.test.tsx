@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, expect, it } from 'vitest'
+import { afterAll, beforeAll, expect, it } from 'vitest'
 import { useState } from 'react'
 import { flushSync } from 'react-dom'
 import { renderToString } from 'react-dom/server'
@@ -7,8 +7,8 @@ import { Drill, Portion, Reveal, Stagger } from '@qualy/ui/reveal'
 import { commands, page } from 'vitest/browser'
 import { render } from 'vitest-browser-react'
 
-beforeEach(() => commands.emulateMedia({ reducedMotion: 'no-preference' }))
-afterEach(() => commands.emulateMedia({ reducedMotion: 'reduce' }))
+beforeAll(() => commands.emulateMedia({ reducedMotion: 'no-preference' }))
+afterAll(() => commands.emulateMedia({ reducedMotion: 'reduce' }))
 
 function Example() {
   const [view, setView] = useState(0)
@@ -35,6 +35,7 @@ function Example() {
 }
 
 it('keeps server-rendered entrances visible and animates newly opened content', async () => {
+  await expect.poll(() => matchMedia('(prefers-reduced-motion: no-preference)').matches).toBe(true)
   const content = <Example />
   const host = document.createElement('div')
   document.body.append(host)
@@ -74,7 +75,6 @@ it('keeps server-rendered entrances visible and animates newly opened content', 
 })
 
 it('keeps a horizontal drill inside its scrollport without removing the movement', async () => {
-  await commands.emulateMedia({ reducedMotion: 'no-preference' })
   function Navigation() {
     const [detail, setDetail] = useState(false)
     return (
@@ -92,31 +92,28 @@ it('keeps a horizontal drill inside its scrollport without removing the movement
       </>
     )
   }
-  try {
-    await render(<Navigation />)
-    const scrollport = page.getByTestId('drill-scrollport').element()
-    const open = page.getByRole('button', { name: 'Open detail' }).element() as HTMLButtonElement
-    const travel = () => {
-      const animated = page.getByTestId('drill-content').element().parentElement!
-      return new DOMMatrixReadOnly(getComputedStyle(animated).transform).m41
-    }
-    const overflow = () => scrollport.scrollWidth - scrollport.clientWidth
-    // Read the arrival in the same browser task as the commit. A Playwright
-    // click round trip can outlast the entire transition on a loaded runner.
-    flushSync(() => open.click())
-    expect(travel()).toBeGreaterThan(0)
-    const widths = [overflow()]
-    await expect
-      .poll(() => {
-        widths.push(overflow())
-        return travel()
-      })
-      .toBe(0)
-    expect(Math.max(...widths)).toBeLessThanOrEqual(1)
-    expect(scrollport.scrollHeight).toBeGreaterThan(scrollport.clientHeight)
-    scrollport.scrollTop = 120
-    expect(scrollport.scrollTop).toBe(120)
-  } finally {
-    await commands.emulateMedia({ reducedMotion: 'reduce' })
+  await expect.poll(() => matchMedia('(prefers-reduced-motion: no-preference)').matches).toBe(true)
+  await render(<Navigation />)
+  const scrollport = page.getByTestId('drill-scrollport').element()
+  const open = page.getByRole('button', { name: 'Open detail' }).element() as HTMLButtonElement
+  const travel = () => {
+    const animated = page.getByTestId('drill-content').element().parentElement!
+    return new DOMMatrixReadOnly(getComputedStyle(animated).transform).m41
   }
+  const overflow = () => scrollport.scrollWidth - scrollport.clientWidth
+  // Read the arrival in the same browser task as the commit. A Playwright
+  // click round trip can outlast the entire transition on a loaded runner.
+  flushSync(() => open.click())
+  expect(travel()).toBeGreaterThan(0)
+  const widths = [overflow()]
+  await expect
+    .poll(() => {
+      widths.push(overflow())
+      return travel()
+    })
+    .toBe(0)
+  expect(Math.max(...widths)).toBeLessThanOrEqual(1)
+  expect(scrollport.scrollHeight).toBeGreaterThan(scrollport.clientHeight)
+  scrollport.scrollTop = 120
+  expect(scrollport.scrollTop).toBe(120)
 })

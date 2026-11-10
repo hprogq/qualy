@@ -59,7 +59,12 @@ describe('choosing an instant', () => {
     await open()
     const close = page.getByRole('button', { name: 'close calendar' })
     await expect.element(close).toBeVisible()
+    // The popover installs its focus trap on the next frame.
+    await expect
+      .poll(() => Boolean(document.activeElement?.closest('[data-dates-dropdown]')))
+      .toBe(true)
     ;(close.element() as HTMLButtonElement).focus()
+    expect(document.activeElement).toBe(close.element())
     await userEvent.keyboard('{Enter}')
     await expect.element(hourBox()).not.toBeInTheDocument()
     ;(clear.element() as HTMLButtonElement).focus()
