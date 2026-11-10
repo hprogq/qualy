@@ -2484,11 +2484,18 @@ describe('judging a submission', () => {
       .toHaveAttribute('data-decision', 'approve')
     expect(decided).not.toHaveBeenCalled()
     // the run had one submission, so the closing screen is already up
-    await expect.element(page.getByTestId('run-done')).toHaveAttribute('data-handled', '1')
+    await expect.element(page.getByTestId('run-done')).toHaveAttribute('data-handled', '0')
+    await expect.element(page.getByTestId('run-done')).toHaveAttribute('data-unconfirmed', '1')
+    await expect.element(page.getByRole('heading', { name: '1 条审核结果尚未确认' })).toBeVisible()
     await expect.element(page.getByTestId('review-done-left')).toHaveAttribute('data-count', '0')
     expect(page.getByTestId('review-next-run').elements()).toHaveLength(0)
     expect(decided).not.toHaveBeenCalled()
     await vi.waitFor(() => expect(decided).toHaveBeenCalledOnce(), { timeout: 8000 })
+    await expect.element(page.getByTestId('run-done')).toHaveAttribute('data-handled', '1')
+    await expect.element(page.getByTestId('run-done')).toHaveAttribute('data-unconfirmed', '0')
+    await expect
+      .element(page.getByRole('heading', { name: '当前分组的 1 条申报已全部审核' }))
+      .toBeVisible()
     await expect.poll(() => refreshes).toBeGreaterThan(0)
     try {
       await expect.element(page.getByTestId('run-done')).toBeVisible()
@@ -2603,7 +2610,8 @@ describe('judging a submission', () => {
       .getByRole('button', { name: /确认退回/ })
       .click()
     // staged: the run is over for now, with the one send-back in it
-    await expect.element(page.getByTestId('run-done')).toHaveAttribute('data-handled', '1')
+    await expect.element(page.getByTestId('run-done')).toHaveAttribute('data-handled', '0')
+    await expect.element(page.getByTestId('run-done')).toHaveAttribute('data-unconfirmed', '1')
     await vi.waitFor(() => expect(decided).toHaveBeenCalledOnce(), { timeout: 8000 })
 
     // it did not go through, so it was not handled: the submission is back

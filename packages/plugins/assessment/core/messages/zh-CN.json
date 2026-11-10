@@ -1408,6 +1408,8 @@
   "review_keyVersions": "选择对比版本",
   "review_keyTrail": "查看完整记录",
   "review_keyCancel": "关闭当前面板",
+  "review_doneUnconfirmed": "{count} 条审核结果尚未确认",
+  "review_doneNone": "当前分组暂无可继续审核的申报",
   "review_doneTitle": "当前分组的 {count} 条申报已全部审核",
   "review_doneSpent": "用时",
   "review_doneNext": "继续审核 {title}（{count} 条）",

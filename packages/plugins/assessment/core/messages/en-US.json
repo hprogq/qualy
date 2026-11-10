@@ -1408,6 +1408,8 @@
   "review_keyVersions": "Select a comparison version",
   "review_keyTrail": "Open full review history",
   "review_keyCancel": "Close the open panel",
+  "review_doneUnconfirmed": "{count} review results have not been confirmed",
+  "review_doneNone": "There are no more submissions to review in this group",
   "review_doneTitle": "All {count} submissions in this group have been reviewed",
   "review_doneSpent": "Time spent",
   "review_doneNext": "Continue with {title} ({count})",

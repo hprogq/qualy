@@ -1956,10 +1956,12 @@ function DoneScreen({
     ...useReviewQueueQuery(batchId, { view: 'item', groupOrder: 'largest', limit: '1', exclude }),
     refetchInterval: 30_000,
   })
+  const confirmed = log.filter((entry) => entry.status === 'sent')
+  const unconfirmed = log.filter((entry) => entry.status === 'waiting').length
   const counts = {
-    approve: log.filter((entry) => entry.decision === 'approve').length,
-    reject: log.filter((entry) => entry.decision === 'reject').length,
-    escalate: log.filter((entry) => entry.decision === 'escalate').length,
+    approve: confirmed.filter((entry) => entry.decision === 'approve').length,
+    reject: confirmed.filter((entry) => entry.decision === 'reject').length,
+    escalate: confirmed.filter((entry) => entry.decision === 'escalate').length,
   }
   const spent = Math.max(0, Math.round((Date.now() - startedAt) / 1000))
   const spentLabel = `${Math.floor(spent / 60)}:${String(spent % 60).padStart(2, '0')}`
@@ -1969,13 +1971,20 @@ function DoneScreen({
     <div
       // the run is finished, and this many were handled in it
       data-testid="run-done"
-      data-handled={String(log.length)}
+      data-handled={String(confirmed.length)}
+      data-unconfirmed={String(unconfirmed)}
       {...stylex.props(styles.doneScreen)}
     >
       <Stagger className={stylex.props(styles.doneStack).className} step={0.08}>
         <div {...stylex.props(styles.doneHead)}>
           <DoneMark className={stylex.props(styles.doneMark).className} />
-          <h2 {...stylex.props(styles.doneTitle)}>{m.review_doneTitle({ count: log.length })}</h2>
+          <h2 {...stylex.props(styles.doneTitle)}>
+            {unconfirmed > 0
+              ? m.review_doneUnconfirmed({ count: unconfirmed })
+              : confirmed.length > 0
+                ? m.review_doneTitle({ count: confirmed.length })
+                : m.review_doneNone()}
+          </h2>
         </div>
         <div {...stylex.props(styles.doneStats)}>
           <DoneStat label={m.review_approve()} value={counts.approve} />
