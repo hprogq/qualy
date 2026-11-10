@@ -285,6 +285,10 @@ jobs:
       # stops answering never finishes, and the default reporter then says
       # nothing about which of its tests was running.
       - run: pnpm test:browser:coverage --reporter=verbose
+      - name: Verify scheduling across device time zones
+        run: |
+          pnpm exec vitest run --config vitest.browser.new-york.config.ts apps/web/tests/date-time-picker.browser.test.tsx
+          pnpm exec vitest run --config vitest.browser.new-york.config.ts packages/plugins/assessment/core/tests/batch-admin.browser.test.tsx -t 'submits the UTC time typed'
       # The coverage of the run just made, for Codecov's history and file view
       # (tools/quality/coverage-scope.ts says what it is a fraction of). Only
       # shown, never a gate: a failed upload - Codecov down, or a pull

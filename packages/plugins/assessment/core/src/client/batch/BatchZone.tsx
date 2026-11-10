@@ -4,7 +4,13 @@ import * as stylex from '@stylexjs/stylex'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@qualy/ui/tooltip'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 
-import { BatchZoneContext, deviceDiffers, readableZone, useBatchZone } from './zone.ts'
+import {
+  BatchZoneContext,
+  BatchZoneUnavailableContext,
+  deviceDiffers,
+  readableZone,
+  useBatchZone,
+} from './zone.ts'
 import { useHydrating } from '@qualy/web-runtime'
 import { useZoneLabel } from './zone-label.ts'
 import * as m from '#messages'
@@ -46,8 +52,11 @@ export function BatchZone({
   zone: string | null | undefined
   children: ReactNode
 }) {
+  const readable = readableZone(zone)
   return (
-    <BatchZoneContext.Provider value={readableZone(zone)}>{children}</BatchZoneContext.Provider>
+    <BatchZoneUnavailableContext.Provider value={zone != null && readable === undefined}>
+      <BatchZoneContext.Provider value={readable}>{children}</BatchZoneContext.Provider>
+    </BatchZoneUnavailableContext.Provider>
   )
 }
 

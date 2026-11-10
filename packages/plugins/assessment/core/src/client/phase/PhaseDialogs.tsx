@@ -11,7 +11,7 @@ import { NativeSelect } from '@qualy/ui/native-select'
 
 import { ZoneNote } from '../batch/BatchZone.tsx'
 import { useZoneLabel } from '../batch/zone-label.ts'
-import { useBatchZone } from '../batch/zone.ts'
+import { useBatchZone, useBatchZoneUnavailable } from '../batch/zone.ts'
 import * as commonMessages from '@qualy/web-i18n/messages'
 import * as m from '#messages'
 
@@ -68,6 +68,7 @@ export function ScheduleDialog({
   // the time is typed on the batch's clock: "00:00" is the school's midnight
   // whatever zone the device keeps
   const zone = useBatchZone()
+  const zoneUnavailable = useBatchZoneUnavailable()
   // a time typed into the hour the batch's clocks skip, and the time it will
   // be saved as instead; said only while that is still the value
   const [movedTo, setMovedTo] = useState<string | null>(null)
@@ -93,7 +94,7 @@ export function ScheduleDialog({
             {m.action_cancel()}
           </Button>
           <Button
-            disabled={pending || (start === 'later' && value === null)}
+            disabled={pending || (start === 'later' && (value === null || zoneUnavailable))}
             onClick={start === 'now' ? onStartNow : onSchedule}
           >
             {(start === 'now' ? m.schedule_startNow : m.schedule_confirm)()}
@@ -120,6 +121,9 @@ export function ScheduleDialog({
           hint={
             <>
               <ZoneNote purpose="enter" at={value} />
+              {zoneUnavailable && (
+                <span {...stylex.props(styles.skipped)}>{m.zone_unavailable()}</span>
+              )}
               {moved !== null && (
                 <span
                   data-testid="time-skipped"
@@ -142,6 +146,7 @@ export function ScheduleDialog({
               onChange={onChange}
               onSkippedTime={setMovedTo}
               timeZone={zone}
+              disabled={zoneUnavailable}
               placeholder={m.phase_pickDatetime()}
               clearLabel={m.phase_clearTime()}
               hourLabel={commonMessages.clock_hour()}

@@ -3028,6 +3028,65 @@ describe('the stage plan', () => {
     await vi.waitFor(() => expect(page.getByTestId('time-skipped').elements()).toHaveLength(0))
   })
 
+  it('refuses scheduled input when the device cannot interpret the batch zone', async () => {
+    const schedule = vi.fn()
+    await renderScreen({
+      client: fakeClient({ app: { getManifest: () => Effect.succeed(emptyManifest()) } }),
+      children: (
+        <BatchZone zone="Unknown/Zone">
+          <ScheduleDialog
+            open
+            name="审核"
+            canStartNow={false}
+            value="2027-03-14T05:00:00.000Z"
+            pending={false}
+            onChange={() => {}}
+            onCancel={() => {}}
+            onSchedule={schedule}
+            onStartNow={() => {}}
+          />
+        </BatchZone>
+      ),
+    })
+    const dialog = page.getByRole('dialog')
+    await expect.element(dialog.getByLabelText('开始时间')).toBeDisabled()
+    await expect.element(dialog.getByRole('button', { name: '确认排期' })).toBeDisabled()
+    await expect.element(dialog.getByText(/当前浏览器无法识别批次时区/)).toBeVisible()
+    expect(schedule).not.toHaveBeenCalled()
+  })
+
+  it('submits the UTC time typed on the spring transition day', async () => {
+    const schedule = vi.fn()
+    function Scheduling() {
+      const [value, setValue] = useState<string | null>('2027-03-14T00:00:00.000Z')
+      return (
+        <BatchZone zone="UTC">
+          <ScheduleDialog
+            open
+            name="审核"
+            canStartNow={false}
+            value={value}
+            pending={false}
+            onChange={setValue}
+            onCancel={() => {}}
+            onSchedule={() => schedule(value)}
+            onStartNow={() => {}}
+          />
+        </BatchZone>
+      )
+    }
+    await renderScreen({
+      client: fakeClient({ app: { getManifest: () => Effect.succeed(emptyManifest()) } }),
+      children: <Scheduling />,
+    })
+    const dialog = page.getByRole('dialog')
+    await dialog.getByLabelText('开始时间').click()
+    await userEvent.click(page.getByRole('spinbutton', { name: '小时' }))
+    await userEvent.keyboard('023000{Enter}')
+    await dialog.getByRole('button', { name: '确认排期' }).click()
+    expect(schedule).toHaveBeenCalledWith('2027-03-14T02:30:00.000Z')
+  })
+
   it.each(['zh-CN', 'en-US'] as const)(
     'describes the start time and its offset in %s',
     async (locale) => {

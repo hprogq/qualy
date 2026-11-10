@@ -177,6 +177,53 @@ describe('choosing an instant', () => {
     expect(page.getByTestId('value').element().textContent).toBe('2026-08-25T08:15:00.000Z')
   })
 
+  it('keeps UTC wall time through the device clock spring transition', async () => {
+    await render(<Harness initial="2027-03-14T00:00:00.000Z" timeZone="UTC" />)
+    await open()
+    await userEvent.click(hourBox())
+    await userEvent.keyboard('023000')
+    expect(page.getByTestId('value').element().textContent).toBe('2027-03-14T02:30:00.000Z')
+    expect(page.getByTestId('moved-to').element().textContent).toBe('')
+    await expect.element(hourBox()).toHaveValue('02')
+    await expect.element(minuteBox()).toHaveValue('30')
+  })
+
+  it('shows an existing UTC instant that falls in the device clock gap', async () => {
+    await render(<Harness initial="2027-03-14T02:30:00.000Z" timeZone="UTC" />)
+    await open()
+    await expect.element(hourBox()).toHaveValue('02')
+    await expect.element(minuteBox()).toHaveValue('30')
+    await userEvent.click(minuteBox())
+    await userEvent.keyboard('45')
+    expect(page.getByTestId('value').element().textContent).toBe('2027-03-14T02:45:00.000Z')
+  })
+
+  it('keeps the chosen wall time when selecting the device clock transition day', async () => {
+    await render(<Harness initial="2027-03-13T02:30:00.000Z" timeZone="UTC" />)
+    await open()
+    await userEvent.click(page.getByRole('button', { name: /March 14, 2027/ }))
+    expect(page.getByTestId('value').element().textContent).toBe('2027-03-14T02:30:00.000Z')
+    await expect.element(hourBox()).toHaveValue('02')
+  })
+
+  it('keeps Shanghai wall time through the device clock spring transition', async () => {
+    await render(<Harness initial="2027-03-13T16:00:00.000Z" timeZone="Asia/Shanghai" />)
+    await open()
+    await userEvent.click(hourBox())
+    await userEvent.keyboard('023000')
+    expect(page.getByTestId('value').element().textContent).toBe('2027-03-13T18:30:00.000Z')
+    expect(page.getByTestId('moved-to').element().textContent).toBe('')
+  })
+
+  it('chooses the first occurrence of a repeated batch wall time', async () => {
+    await render(<Harness initial="2027-11-07T04:00:00.000Z" timeZone="America/New_York" />)
+    await open()
+    await userEvent.click(hourBox())
+    await userEvent.keyboard('013000')
+    expect(page.getByTestId('value').element().textContent).toBe('2027-11-07T05:30:00.000Z')
+    expect(page.getByTestId('moved-to').element().textContent).toBe('')
+  })
+
   // New York's clocks jump from 02:00 to 03:00 on 14 March 2027, so 02:30
   // that morning is on no wall there. It is kept as the first time that
   // exists rather than an hour before it, the boxes keep what was typed so

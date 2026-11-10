@@ -96,6 +96,7 @@
   "zone_localRangeEnd": "to {time}",
   "zone_away": "Times in this batch are shown in {zone} and may differ from your device’s local time.",
   "zone_skipped": "That time is skipped by a daylight-saving change and will be saved as {time}",
+  "zone_unavailable": "Your browser does not recognize this batch's time zone. Update your browser before scheduling a start time.",
   "batch_stageUntil": "This stage until {date}",
   "batch_startsOn": "Starts {date}",
   "batch_previous": "Previous batch",

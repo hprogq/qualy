@@ -96,6 +96,7 @@
   "zone_localRangeEnd": "至 {time}",
   "zone_away": "本批次的时间按{zone}显示，可能与你的本地时间不同。",
   "zone_skipped": "该时刻因夏令时调整并不存在，将按{time}保存",
+  "zone_unavailable": "当前浏览器无法识别批次时区，请更新浏览器后再设置开始时间。",
   "batch_stageUntil": "本阶段至 {date}",
   "batch_startsOn": "{date} 开始",
   "batch_previous": "上一个批次",

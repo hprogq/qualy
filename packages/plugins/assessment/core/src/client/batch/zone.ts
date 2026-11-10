@@ -31,9 +31,12 @@ export const readableZone = (zone: string | null | undefined): string | undefine
 }
 
 export const BatchZoneContext = createContext<string | undefined>(undefined)
+export const BatchZoneUnavailableContext = createContext(false)
 
 /** the zone of the batch this screen belongs to; unset outside one */
 export const useBatchZone = (): string | undefined => useContext(BatchZoneContext)
+/** True when a batch names a zone this device cannot interpret. */
+export const useBatchZoneUnavailable = (): boolean => useContext(BatchZoneUnavailableContext)
 
 const pad = (part: number) => String(part).padStart(2, '0')
 

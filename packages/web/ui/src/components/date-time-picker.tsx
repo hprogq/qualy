@@ -4,9 +4,10 @@
 
 import '@mantine/dates/styles.layer.css'
 
-import { useState, type MouseEvent } from 'react'
+import { useRef, useState, type MouseEvent } from 'react'
 import * as stylex from '@stylexjs/stylex'
-import { DateTimePicker as MDateTimePicker } from '@mantine/dates'
+import { ActionIcon, CheckIcon, Input, Popover } from '@mantine/core'
+import { DatePicker, TimePicker } from '@mantine/dates'
 import { formatDateTime } from '@qualy/date-format'
 
 import { calendarLook } from '../lib/calendar.ts'
@@ -27,10 +28,21 @@ import { seatOf } from '../lib/xstyle.ts'
 // The time is typed rather than scrolled: 093000 fills hours, minutes and
 // seconds and moves between them, which is what a round hour costs two
 // keystrokes for.
+// The combined Mantine widget parses wall time in the device's zone, so a
+// different zone's valid time can move during a DST jump. Keep the date and
+// time strings separate until conversion. The calendar substrate still
+// cannot represent a day skipped entirely by the device's zone, such as
+// 2011-12-30 in Pacific/Apia.
 
 const styles = stylex.create({
   field: {
     width: '100%',
+  },
+  time: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 12,
   },
 })
 
@@ -103,56 +115,103 @@ export function DateTimePicker({
   // 03 the moment somebody types 02 would move the hour under their fingers
   // halfway through typing 023000.
   const [typed, setTyped] = useState<{ local: string; instant: string } | null>(null)
+  const [opened, setOpened] = useState(false)
+  const hourRef = useRef<HTMLInputElement>(null)
   const held = typed !== null && typed.instant === value ? typed.local : null
+  const local = held ?? instantToLocal(value, timeZone)
+  const day = local?.slice(0, 10) ?? null
+  const time = local?.slice(11) ?? ''
+  const change = (next: string | null) => {
+    const instant = localToInstant(next, timeZone)
+    const skipped = next !== null && instant !== null && !wallClockExists(next, timeZone)
+    setTyped(skipped ? { local: next, instant } : null)
+    onSkippedTime?.(skipped ? instant : null)
+    onChange(instant)
+  }
+  const at = value === null ? NaN : Date.parse(value)
+  const label = Number.isNaN(at)
+    ? ''
+    : formatDateTime(new Date(at), localeTag ?? 'en-US', 'event-time', timeZone)
   return (
-    <MDateTimePicker
-      id={id}
-      // Mantine's Input sets aria-describedby from its own wrapper after
-      // spreading native props. The input slot is applied last.
-      attributes={
-        describedBy === undefined ? undefined : { input: { 'aria-describedby': describedBy } }
-      }
-      data-slot="date-time-picker"
-      value={held ?? instantToLocal(value, timeZone)}
-      onChange={(next) => {
-        const local = typeof next === 'string' ? next : null
-        const instant = localToInstant(local, timeZone)
-        const skipped = local !== null && instant !== null && !wallClockExists(local, timeZone)
-        setTyped(skipped ? { local, instant } : null)
-        onSkippedTime?.(skipped ? instant : null)
-        onChange(instant)
-      }}
-      placeholder={placeholder}
-      disabled={disabled}
-      {...calendarLook}
-      withSeconds
-      // the fields this serves are optional, so clearing has to be reachable
-      clearable
-      clearButtonProps={{ 'aria-label': clearLabel }}
-      timePickerProps={{
-        hoursInputLabel: hourLabel,
-        minutesInputLabel: minuteLabel,
-        secondsInputLabel: secondLabel,
-        hoursInputProps: { onMouseDown: selectTimeField },
-        minutesInputProps: { onMouseDown: selectTimeField },
-        secondsInputProps: { onMouseDown: selectTimeField },
-      }}
-      valueFormat={(local) => {
-        const at = localToInstant(local, timeZone)
-        return at === null
-          ? ''
-          : formatDateTime(new Date(at), localeTag ?? 'en-US', 'event-time', timeZone)
-      }}
-      {...dateWordsIn(localeTag)}
-      {...(monthLabel === undefined && yearLabel === undefined
-        ? {}
-        : {
-            ariaLabels: {
-              ...(monthLabel === undefined ? {} : { monthLevelControl: monthLabel }),
-              ...(yearLabel === undefined ? {} : { yearLevelControl: yearLabel }),
-            },
-          })}
-      {...seatOf(stylex.props(styles.field, xstyle), className)}
-    />
+    <Popover
+      opened={opened && !disabled}
+      onChange={setOpened}
+      position="bottom-start"
+      withRoles={false}
+      trapFocus
+      returnFocus={false}
+      {...calendarLook.popoverProps}
+    >
+      <Popover.Target>
+        <Input
+          id={id}
+          aria-describedby={describedBy}
+          attributes={
+            describedBy === undefined ? undefined : { input: { 'aria-describedby': describedBy } }
+          }
+          data-slot="date-time-picker"
+          component="button"
+          type="button"
+          multiline
+          disabled={disabled}
+          onClick={() => setOpened(!opened)}
+          __clearable={value !== null && !disabled}
+          __clearSection={
+            <Input.ClearButton aria-label={clearLabel} onClick={() => change(null)} />
+          }
+          {...seatOf(stylex.props(styles.field, xstyle), className)}
+        >
+          {label || <Input.Placeholder>{placeholder}</Input.Placeholder>}
+        </Input>
+      </Popover.Target>
+      <Popover.Dropdown data-dates-dropdown="true" data-mantine-stop-propagation="true">
+        <DatePicker
+          value={day}
+          defaultDate={day ?? undefined}
+          onChange={(next) => {
+            if (typeof next === 'string') {
+              change(`${next} ${time || '00:00:00'}`)
+              hourRef.current?.focus()
+            }
+          }}
+          withCellSpacing={calendarLook.withCellSpacing}
+          classNames={calendarLook.classNames}
+          {...dateWordsIn(localeTag)}
+          {...(monthLabel === undefined && yearLabel === undefined
+            ? {}
+            : {
+                ariaLabels: {
+                  ...(monthLabel === undefined ? {} : { monthLevelControl: monthLabel }),
+                  ...(yearLabel === undefined ? {} : { yearLevelControl: yearLabel }),
+                },
+              })}
+        />
+        <div {...stylex.props(styles.time)}>
+          <TimePicker
+            value={time}
+            hoursRef={hourRef}
+            withSeconds
+            hoursInputLabel={hourLabel}
+            minutesInputLabel={minuteLabel}
+            secondsInputLabel={secondLabel}
+            hoursInputProps={{ onMouseDown: selectTimeField }}
+            minutesInputProps={{ onMouseDown: selectTimeField }}
+            secondsInputProps={{ onMouseDown: selectTimeField }}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault()
+                setOpened(false)
+              }
+            }}
+            onChange={(next) => {
+              if (day !== null && next !== '') change(`${day} ${next}`)
+            }}
+          />
+          <ActionIcon variant="default" size="input-sm" onClick={() => setOpened(false)}>
+            <CheckIcon size="30%" />
+          </ActionIcon>
+        </div>
+      </Popover.Dropdown>
+    </Popover>
   )
 }
