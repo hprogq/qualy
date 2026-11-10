@@ -27,6 +27,7 @@ import { decodePluginConfig } from '@qualy/plugin-kit/config'
 import { renderLogging } from '../render-log.ts'
 import { RELEASE_STORE_VARIABLE, WebManifestConfig, rootsFrom, serverRoot } from '../config.ts'
 import { addReportRoute } from './csp-reports.ts'
+import { relayRenderStream } from './render-stream.ts'
 import {
   CSP_HEADER,
   policyLayer,
@@ -458,28 +459,7 @@ const drawDocument = (
       parent.attribute('qualy.web.request_kind', kind)
     }
     const body = response.body
-    const relayed =
-      body === null
-        ? null
-        : new ReadableStream<Uint8Array>({
-            async start(sink) {
-              const reader = body.getReader()
-              try {
-                for (;;) {
-                  const { done, value } = await reader.read()
-                  if (done) break
-                  sink.enqueue(value)
-                }
-                sink.close()
-              } catch (error) {
-                sink.error(error)
-              }
-            },
-            cancel(reason) {
-              controller.abort(reason)
-              return body.cancel(reason)
-            },
-          })
+    const relayed = body === null ? null : relayRenderStream(body, controller)
     const headers = new Headers(response.headers)
     if (response.status >= 500)
       yield* Effect.logError('Web render returned a server error', response.status)
