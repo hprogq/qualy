@@ -139,7 +139,7 @@ prerelease。这个标记可以事后修改,不触发任何工作流,也不改 t
 **SourceMap**(同一工作流的 `sourcemaps` job,2026-09-28):浏览器构建以 `hidden` 生成 map,它们带着 `sourcesContent`,永不进镜像
 与 release store。`build-images.ts --export-web <dir>` 在同一个构建上下文里再取一次 `web` 阶段(命中同一批缓存层)导出 `apps/web/dist`,
 并核对它的 web release id 就是 server 镜像里 `current.json` 的那个,否则整个 release 作废;`release` job 把它作为保留七天的 artifact
-交给 `sourcemaps` job。后者在 `rum-sourcemaps` 环境(只允许 `v*` tag)里,先核对 map 属于已发布 `release.json` 的 `webRelease`,再以
+交给 `sourcemaps` job；artifact 上传成功后才发布 `release.json`。后者在 `rum-sourcemaps` 环境(只允许 `v*` tag)里,先核对 map 属于已发布 `release.json` 的 `webRelease`,再以
 `qualy rum sourcemaps` 按与浏览器相同的版本映射交给腾讯 RUM;上传凭据(`QUALY_RUM_TENCENT_SOURCEMAP_*`,子账号 `qualy-rum-uploader`)
 只给上传那一步。它排在发布之后:map 没交上是一个要看的红 job,不是一个没发出去的 release(docs/archive/designs/browser-rum.md 的失败策略)。
 runner 在境外、RUM 的桶在境内,桶会以 `RequestTimeOut`「User network is too slow」丢弃过慢的连接(SDK 对 4xx 不重试;
@@ -526,7 +526,7 @@ current,旧镜像的 server 要这一步才肯启动;旧 release 已被保留策
   }
   ```
 
-  密钥放 GitHub 的 `recovery-drill` 环境:secret `QUALY_RECOVERY_COS_SECRET_ID` / `_SECRET_KEY`,variable `QUALY_RECOVERY_COS_BUCKET`(完整桶名)
+  定时与手动演练仅从 `main` 运行，`recovery-drill` 环境也只允许 `main`。密钥放在该环境中:secret `QUALY_RECOVERY_COS_SECRET_ID` / `_SECRET_KEY`,variable `QUALY_RECOVERY_COS_BUCKET`(完整桶名)
   与 `QUALY_RECOVERY_COS_REGION`(`ap-beijing`)。没配时 workflow 第一步点名缺哪一项失败,不做别的。
 
 ## 4. 发布验证

@@ -70,9 +70,11 @@ jobs:
             QUALY_STORAGE_COS_BUCKET QUALY_TEST_COS_VERSIONED_BUCKET; do
             [ -n "${!name}" ] || { echo "$name is not set in the cos-test environment"; exit 1; }
           done
-      - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 24.22.2
           cache: pnpm
@@ -95,8 +97,9 @@ jobs:
       REGISTRY: ${{ vars.QUALY_REGISTRY }}
       GH_TOKEN: ${{ github.token }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          persist-credentials: false
           fetch-depth: 0
       - name: the tag is on main, and not published yet
         run: |
@@ -106,8 +109,8 @@ jobs:
             echo "$RELEASE is published already; a release name names one set of images"
             exit 1
           fi
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 24.22.2
           cache: pnpm
@@ -125,6 +128,17 @@ jobs:
         run: printf '%s' "$TOKEN" | docker login "${REGISTRY%%/*}" -u cnb --password-stdin
       - name: push the images and record their digests
         run: node tools/release/push-images.ts "$RELEASE" "$REGISTRY" --out release.json
+      # The source is public; the maps are kept for a week so a filing that
+      # failed can be finished after the uploader is fixed, without building
+      # the release again - a rebuild would be another web release.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: web-dist
+          path: web-dist
+          include-hidden-files: true
+          retention-days: 7
+          overwrite: true
+          if-no-files-found: error
       - name: publish release.json on the tag
         run: |
           {
@@ -146,16 +160,6 @@ jobs:
             gh release create "$RELEASE" release.json --verify-tag --title "$RELEASE" --notes-file notes.md "$stage"
           fi
           cat notes.md >> "$GITHUB_STEP_SUMMARY"
-      # The source is public; the maps are kept for a week so a filing that
-      # failed can be finished after the uploader is fixed, without building
-      # the release again - a rebuild would be another web release.
-      - uses: actions/upload-artifact@v7
-        with:
-          name: web-dist
-          path: web-dist
-          include-hidden-files: true
-          retention-days: 7
-          if-no-files-found: error
       - if: always()
         run: docker logout "${REGISTRY%%/*}"
 
@@ -176,14 +180,16 @@ jobs:
       RELEASE: ${{ github.ref_name }}
       GH_TOKEN: ${{ github.token }}
     steps:
-      - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 24.22.2
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: web-dist
           path: web-dist
