@@ -85,7 +85,10 @@ const styles = stylex.create({
     display: 'flex',
     flexDirection: 'column',
     borderRadius: tokens.radiusLg,
-    boxShadow: tokens.elevation1,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    boxShadow: '0 1px 2px rgb(0 0 0 / 0.04)',
     backgroundColor: tokens.surface,
   },
   skBand: {

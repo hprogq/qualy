@@ -335,15 +335,15 @@ export function BatchScreen({
         xstyle={[styles.fillColumn, fill && styles.boundedColumn]}
       >
         {batch && (
-          <div
-            data-arrival="still"
+          <Reveal
+            lift={false}
             className={stylex.props(styles.bareColumn, fill && styles.boundedColumn).className}
           >
             {chrome === 'bare' && batch.status === 'draft' && (
               <p {...stylex.props(styles.draftNote, styles.bareNote)}>{m.batch_draftBanner()}</p>
             )}
             <BatchZone zone={batch.timezone}>{children(batch)}</BatchZone>
-          </div>
+          </Reveal>
         )}
       </AsyncSection>
     )

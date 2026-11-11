@@ -498,7 +498,7 @@ export function PersonStrip({
               )
             )}
             <span aria-hidden {...stylex.props(styles.contextDivider)}>
-              ·
+              ,
             </span>
             <p
               title={

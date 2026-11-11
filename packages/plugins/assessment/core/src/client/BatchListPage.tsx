@@ -299,7 +299,10 @@ const styles = stylex.create({
     overflow: 'hidden',
     borderRadius: tokens.radiusLg,
     backgroundColor: tokens.surface,
-    boxShadow: tokens.elevation1,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    boxShadow: '0 1px 2px rgb(0 0 0 / 0.04)',
   },
   rowCard: {
     display: 'flex',
@@ -364,14 +367,18 @@ const styles = stylex.create({
     overflow: 'hidden',
     borderRadius: tokens.radiusLg,
     backgroundColor: tokens.surface,
-    boxShadow: tokens.elevation1,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    boxShadow: '0 1px 2px rgb(0 0 0 / 0.04)',
   },
   // a phone's list with nothing in it stands on the page, not on a sheet
   // (the sheet's own values restated: a later style's property replaces the
   // earlier one whole, conditions and all)
   sheetBarePhone: {
     backgroundColor: { default: tokens.surface, [breakpoints.phone]: 'transparent' },
-    boxShadow: { default: tokens.elevation1, [breakpoints.phone]: 'none' },
+    borderWidth: { default: 1, [breakpoints.phone]: 0 },
+    boxShadow: { default: '0 1px 2px rgb(0 0 0 / 0.04)', [breakpoints.phone]: 'none' },
     overflow: { default: 'hidden', [breakpoints.phone]: 'visible' },
   },
   sheetScroller: {

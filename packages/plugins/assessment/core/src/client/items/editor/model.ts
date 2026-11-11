@@ -1543,14 +1543,14 @@ export const problemsOf = (input: {
   } else if (draft.scoring.language === 'v2') {
     if (!draft.scoring.configured) {
       found.push({ area: 'scoring', block: 'method', code: 'calculator-unset', tone: 'pending' })
-    } else if (contract === null) {
+    } else if (contract === null && input.contractRefused) {
       found.push({
         area: 'scoring',
         block: 'method',
-        code: input.contractRefused ? 'contract-refused' : 'contract-pending',
-        tone: input.contractRefused ? 'error' : 'pending',
+        code: 'contract-refused',
+        tone: 'error',
       })
-    } else {
+    } else if (contract !== null) {
       for (const parameter of inputOrder(contract.inputSchema)) {
         const schema = parameterSchemaOf(contract, parameter)!
         const title = displayTitle(schema, parameter, input.locale)

@@ -318,7 +318,7 @@ function ContextProgress({
   return (
     <span {...clockFacts(progress)} {...stylex.props(styles.contextLine, xstyle)}>
       <VisuallyHidden>
-        {stage === null ? (full ?? primary) : `${stage} · ${full ?? primary}`}
+        {stage === null ? (full ?? primary) : `${stage}，${full ?? primary}`}
       </VisuallyHidden>
       {rows.map((row) => (
         <span

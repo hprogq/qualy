@@ -226,7 +226,10 @@ const styles = stylex.create({
     overflow: 'hidden',
     borderRadius: tokens.radiusLg,
     backgroundColor: tokens.surface,
-    boxShadow: tokens.elevation1,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    boxShadow: '0 1px 2px rgb(0 0 0 / 0.04)',
   },
   // The plan is a list of what has happened and what is to come, not a thing
   // with a face: given a sheet of its own it read as a third card competing

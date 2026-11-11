@@ -31,6 +31,7 @@ export function Reveal({
   const enter = useEntryMotion()
   return (
     <motion.div
+      data-reveal=""
       className={className}
       initial={enter ? (lift ? { opacity: 0, y: 8 } : { opacity: 0 }) : false}
       animate={lift ? { opacity: 1, y: 0 } : { opacity: 1 }}

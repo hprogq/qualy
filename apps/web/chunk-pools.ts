@@ -46,7 +46,7 @@ export const chunkPools: NonNullable<Rolldown.OutputOptions['codeSplitting']> = 
     // Product surfaces and the providers that use them remain outside it.
     {
       name: 'document-foundation',
-      test: /[\\/]packages[\\/]web[\\/](?:brand[\\/]src[\\/]|ui[\\/]src[\\/](?:theme[\\/]|lib[\\/](?:heading-rank|visually-hidden|veil|xstyle|overlay-motion|panel|layout-preference-spec|inert-background)\.|hooks[\\/](?:use-hydrating|use-mobile)\.|components[\\/](?:spinner|portal|at-width|avatar|badge|field-fill|screen[\\/]band-foot|layout-preferences|page-container|pager|popover|skeleton|ticker|toggle-group|tooltip)\.)|runtime[\\/]src[\\/](?:shared-context|runtime-context|routing[\\/](?:links|navigation(?:-progress)?)|document[\\/](?:entrance|page-title|document-now|screen-aside|screen-fill|screen-foot|subject|workspace-capabilities))\.tsx?$)/,
+      test: /[\\/]packages[\\/]web[\\/](?:brand[\\/]src[\\/]|ui[\\/]src[\\/](?:theme[\\/]|lib[\\/](?:heading-rank|visually-hidden|veil|xstyle|overlay-motion|panel|layout-preference-spec|inert-background)\.|hooks[\\/](?:use-hydrating|use-mobile)\.|components[\\/](?:spinner|portal|at-width|avatar|badge|field-fill|screen[\\/]band-foot|layout-preferences|page-container|pager|popover|reveal|skeleton|ticker|toggle-group|tooltip)\.)|runtime[\\/]src[\\/](?:shared-context|runtime-context|routing[\\/](?:links|navigation(?:-progress)?)|document[\\/](?:entrance|page-title|document-now|screen-aside|screen-fill|screen-foot|subject|workspace-capabilities))\.tsx?$)/,
       priority: 4,
       includeDependenciesRecursively: false,
     },

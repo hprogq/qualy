@@ -18,7 +18,7 @@
   "sheet_headerRow": "表头所在行",
   "sheet_headerRowHint": "请在上方输入表头所在行号，表头行后一行一人",
   "inspect_rowCount": "{count} 行",
-  "sheet_shape": "{rows} 行 · {columns} 列",
+  "sheet_shape": "{rows} 行 / {columns} 列",
   "sheet_count": "{count} 个工作表",
   "upload_scope": "所有人员都将归在 {path} 之下",
   "step_next": "下一步",

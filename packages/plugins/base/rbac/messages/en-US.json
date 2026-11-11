@@ -117,7 +117,7 @@
   "roles_searchPermissions": "Search permissions",
   "roles_searchEmpty": "No permission matches.",
   "roles_pickedOf": "{picked}/{total}",
-  "roles_memberLine": "{holders, plural, =0 {nobody holds it} one {1 holder} other {# holders}} · appointed by {appointers, plural, =0 {no role} one {1 role} other {# roles}}",
+  "roles_memberLine": "{holders, plural, =0 {nobody holds it} one {1 holder} other {# holders}} / appointed by {appointers, plural, =0 {no role} one {1 role} other {# roles}}",
   "roles_savePermissions": "Save permissions",
   "roles_factStatus": "Status",
   "roles_factHolders": "Held by",

@@ -366,6 +366,7 @@ const open = (
     panel?: string
     surfaces?: { collections: Record<string, unknown[]>; slots: Record<string, unknown[]> }
     preview?: unknown
+    previewRead?: () => Effect.Effect<unknown, unknown>
     /** what the formula plugin offers this round to bind */
     formulas?: unknown
     /** what the live reading finds, asked of each composition as it settles */
@@ -563,6 +564,7 @@ const open = (
         checkItem: (call: { payload: { config: unknown } }) =>
           Effect.succeed({ issues: had.check?.(call.payload) ?? [], standing: had.standing ?? [] }),
         previewScoring: (call: { payload: { calculator: { ref: string } } }) =>
+          had.previewRead?.() ??
           Effect.succeed(had.preview ?? previewFor(call.payload.calculator.ref)),
       },
       assessmentFormula: {
@@ -1277,6 +1279,24 @@ describe('the submission form', () => {
 })
 
 describe('records and review', () => {
+  it('does not count a pending calculator contract as a configuration problem', async () => {
+    let release!: () => void
+    const pending = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    await open({
+      items: [formulaItem()],
+      question: ITEM_ID,
+      previewRead: () => Effect.promise(() => pending).pipe(Effect.as(previewFor('formula@1'))),
+    })
+    await expect.element(page.getByTestId('item-editor')).toBeVisible()
+    expect(page.getByTestId('pending-trigger').elements()).toHaveLength(0)
+    release()
+    await tab(/表单与计分/).click()
+    await expect.element(page.getByTestId('scoring-parameters')).toBeVisible()
+    expect(page.getByTestId('pending-trigger').elements()).toHaveLength(0)
+  })
+
   it('counts the entries the folding rule keeps, not every entry that may be filed', async () => {
     await composeQuestion()
     await tab(/表单与计分/).click()

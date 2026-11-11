@@ -40,7 +40,10 @@ const styles = stylex.create({
     overflow: 'hidden',
     borderRadius: 14,
     backgroundColor: tokens.surface,
-    boxShadow: `0 0 0 1px ${tokens.border}, 0 1px 2px rgb(0 0 0 / 0.04)`,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    boxShadow: '0 1px 2px rgb(0 0 0 / 0.04)',
   },
   cardHead: {
     display: 'flex',

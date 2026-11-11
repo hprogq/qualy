@@ -203,11 +203,11 @@ export function SidePanel({
         side={phone ? 'bottom' : 'right'}
         xstyle={phone ? [styles.panel, styles.panelBelow] : styles.panel}
       >
-        <SheetHeader compact>
+        <SheetHeader>
           <SheetTitle>{title}</SheetTitle>
           {description && <SheetDescription>{description}</SheetDescription>}
         </SheetHeader>
-        <SheetBody compact data-slot="dialog-body" xstyle={styles.panelBody}>
+        <SheetBody data-slot="dialog-body" xstyle={styles.panelBody}>
           <div {...stylex.props(styles.panelStack)}>{children}</div>
         </SheetBody>
         {footer && <SheetFooter xstyle={styles.panelFooter}>{footer}</SheetFooter>}

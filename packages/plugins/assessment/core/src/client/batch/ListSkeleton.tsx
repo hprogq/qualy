@@ -64,7 +64,10 @@ const phone = stylex.create({
     overflow: 'hidden',
     borderRadius: tokens.radiusLg,
     backgroundColor: tokens.surface,
-    boxShadow: tokens.elevation1,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    boxShadow: '0 1px 2px rgb(0 0 0 / 0.04)',
   },
   row: {
     display: 'flex',
