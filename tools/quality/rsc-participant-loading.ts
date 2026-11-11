@@ -175,11 +175,15 @@ export async function acceptParticipantLoading({
           if (!ids.has(row)) ids.set(row, ++serial)
           const rect = row.getBoundingClientRect()
           let steady = true
+          const moving = []
           for (let parent = row; parent; parent = parent.parentElement) {
             const css = getComputedStyle(parent)
-            if (css.opacity !== '1' || css.transform !== 'none') steady = false
+            if (css.opacity !== '1' || css.transform !== 'none') {
+              steady = false
+              moving.push({ tag: parent.tagName, testId: parent.getAttribute('data-testid'), reveal: parent.hasAttribute('data-reveal'), opacity: css.opacity, transform: css.transform })
+            }
           }
-          globalThis.__scorePaints.push({ id: ids.get(row), x: rect.x, width: rect.width, steady, state: row.querySelector('[data-testid="participant-score"]')?.getAttribute('data-score-state') })
+          globalThis.__scorePaints.push({ id: ids.get(row), x: rect.x, width: rect.width, steady, moving, state: row.querySelector('[data-testid="participant-score"]')?.getAttribute('data-score-state') })
         }
         requestAnimationFrame(sample)
       }
@@ -207,6 +211,7 @@ export async function acceptParticipantLoading({
               x: number
               width: number
               steady: boolean
+              moving: unknown[]
               state: string
             }[]
           }

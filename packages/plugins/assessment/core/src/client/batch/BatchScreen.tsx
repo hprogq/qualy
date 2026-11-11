@@ -214,6 +214,7 @@ export function BatchScreen({
   banner,
   notes,
   requires,
+  enter = true,
   children,
 }: {
   /** which of the batch's pages this is; the bar above says which batch */
@@ -260,12 +261,14 @@ export function BatchScreen({
    * rather than meeting whatever the screen's own reads refuse them with.
    */
   requires?: BatchStanding
+  /** A streaming page can carry the decision made before its Suspense boundary. */
+  enter?: boolean
   /** rendered once the batch is loaded, because a section without one is blank */
   children: (batch: BatchDto) => ReactNode
 }) {
   const { batchId } = usePageRouteParams('batchId')
   const query = useApiQuery(assessmentApi)
-  const enter = useEntryMotion()
+  const animateEntry = useEntryMotion() && enter
 
   const [slot, setSlot] = useState<HTMLDivElement | null>(null)
   // the section's own name is what shows unless it says otherwise
@@ -337,7 +340,7 @@ export function BatchScreen({
       >
         {batch && (
           <Reveal
-            enter={enter}
+            enter={animateEntry}
             lift={false}
             className={stylex.props(styles.bareColumn, fill && styles.boundedColumn).className}
           >
@@ -423,7 +426,7 @@ export function BatchScreen({
                Mount-only, so a section that draws its own movement inside
                (a row opening, a claim stepped to) is not animated twice. */
             <Reveal
-              enter={enter}
+              enter={animateEntry}
               className={stylex.props(styles.sectionStack).className}
               lift={!fixedNotices}
             >

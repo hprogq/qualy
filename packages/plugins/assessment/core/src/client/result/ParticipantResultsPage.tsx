@@ -10,7 +10,7 @@ import {
   usePageQueryUpdate,
   useScreenAsideOffered,
 } from '@qualy/web-runtime'
-import { Drill, type DrillMove } from '@qualy/ui/reveal'
+import { Drill, useEntryMotion, type DrillMove } from '@qualy/ui/reveal'
 import { assessmentApi } from '../api.ts'
 import { useParticipantEntries } from './participant-entries.ts'
 import { ParticipantResultDetail } from './ParticipantResultDetail.tsx'
@@ -65,8 +65,15 @@ const styles = stylex.create({
 
 type ResultsHandoff = Pick<ComponentProps<typeof QueryHydration>, 'state' | 'coming'> | null
 
-export function ParticipantResultsReady({ handed }: { handed: ResultsHandoff }) {
-  const page = <ParticipantResultsPage />
+export function ParticipantResultsReady({
+  handed,
+  enter,
+}: {
+  handed: ResultsHandoff
+  enter?: boolean
+}) {
+  const enterOnArrival = useEntryMotion()
+  const page = <ParticipantResultsPage enter={enter ?? enterOnArrival} />
   return handed === null ? page : <QueryHydration {...handed}>{page}</QueryHydration>
 }
 
@@ -80,18 +87,25 @@ export function ParticipantResultsStream({
   response: Promise<ResultsHandoff>
   detail: boolean
 }) {
+  const enter = useEntryMotion()
   return (
     <Suspense fallback={<ParticipantResultsPending detail={detail} />}>
-      <StreamedResults response={response} />
+      <StreamedResults response={response} enter={enter} />
     </Suspense>
   )
 }
 
-function StreamedResults({ response }: { response: Promise<ResultsHandoff> }) {
-  return <ParticipantResultsReady handed={use(response)} />
+function StreamedResults({
+  response,
+  enter,
+}: {
+  response: Promise<ResultsHandoff>
+  enter: boolean
+}) {
+  return <ParticipantResultsReady handed={use(response)} enter={enter} />
 }
 
-export default function ParticipantResultsPage() {
+export default function ParticipantResultsPage({ enter }: { enter?: boolean } = {}) {
   const [participantId] = usePageQueryState('participant', '', { history: 'push' })
   return (
     <BatchScreen
@@ -101,6 +115,7 @@ export default function ParticipantResultsPage() {
       // beside the work, in the column the rail gives up for it.
       chrome={participantId === '' ? 'bare' : 'none'}
       requires="results"
+      enter={enter}
     >
       {(batch) => <Results batch={batch} participantId={participantId} />}
     </BatchScreen>
