@@ -39,6 +39,23 @@ describe('review tracking entry point', () => {
     await expect.element(page.getByText('专业初审', { exact: true })).toBeVisible()
     await expect.element(page.getByText('李老师（T202001）', { exact: true })).toBeVisible()
     await expect.element(page.getByText('当前节点', { exact: true })).toBeVisible()
+    expect(page.getByRole('heading', { name: '复核审核', exact: true }).elements()).toHaveLength(0)
+  })
+
+  it('names a concluded review without leaving a current reviewer on screen', async () => {
+    await renderScreen({
+      client: fakeClient({
+        app: { getManifest: emptyManifest() },
+        assessment: {
+          getReviewTracking: () =>
+            Effect.succeed({ available: true, state: 'completed', roundNo: 1, stages: [] }),
+        },
+      }),
+      children: <ReviewTracking entryId={entryId} />,
+    })
+    await page.getByRole('button', { name: '审核去向' }).click()
+    await expect.element(page.getByText('当前没有进行中的审核', { exact: true })).toBeVisible()
+    expect(document.body.textContent).not.toContain('T202001')
   })
 
   it('does not offer a route or expose staff when the permission is withheld', async () => {

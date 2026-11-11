@@ -6316,6 +6316,8 @@ export const make = Effect.fn('Assessment.make')(function* () {
         withDb(trackingInstanceOf(tenantId, entry.currentReviewInstanceId)),
       )
       if (row === null) return yield* new EntryNotFound()
+      if (row.state === 'completed')
+        return { available: true, state: row.state, roundNo: row.roundNo, stages: [] } as const
       const stages = yield* dieQuery(
         withDb(
           readReviewRoutes({

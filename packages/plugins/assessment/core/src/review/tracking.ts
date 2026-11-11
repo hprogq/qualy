@@ -33,7 +33,12 @@ export const readReviewRoutes = (input: {
   }
 }) =>
   Effect.gen(function* () {
-    const stages = [...input.policy.normal, ...input.policy.escalation]
+    const configured = [...input.policy.normal, ...input.policy.escalation]
+    const cursor = input.current
+    const stages =
+      cursor === undefined
+        ? configured
+        : configured.filter((stage) => stage.route === cursor.route && stage.id === cursor.stageId)
     const names = yield* chainNames({
       tenantId: input.tenantId,
       nodeIds: stages.flatMap((stage) => (stage.nodeId === null ? [] : [stage.nodeId])),

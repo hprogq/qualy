@@ -30,7 +30,7 @@ export function ReviewTracking({ entryId }: { entryId: string }) {
         {tracking.stages.length === 0 ? (
           <p>{m.review_trackingConcluded()}</p>
         ) : (
-          <ReviewRoutes stages={tracking.stages} />
+          <ReviewRoutes stages={tracking.stages} currentOnly />
         )}
       </SidePanel>
     </>
