@@ -294,7 +294,14 @@ describe('a delivery the link grants', () => {
       new Request(await linkFor(), { headers: { origin: 'https://evil.example' } }),
     )
     expect(theirs.status).toBe(200)
-    expect(theirs.headers.get('access-control-allow-origin')).toBeNull()
+    expect(theirs.headers.get('access-control-allow-origin')).toBe(APP)
+    const navigation = await deliver(
+      new Request(await linkFor(), {
+        headers: { 'cache-control': 'no-cache', pragma: 'no-cache' },
+      }),
+    )
+    expect(navigation.headers.get('access-control-allow-origin')).toBe(APP)
+    expect(navigation.headers.get('cache-control')).toBe('private, no-store')
   })
 
   it('answers the application’s preflight without reading anything', async () => {

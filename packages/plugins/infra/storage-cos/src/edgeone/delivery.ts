@@ -236,10 +236,12 @@ export const createDelivery = (dependencies: DeliveryDependencies) => {
     // the application origin, when this request is a script on it
     const app = setting(env, 'APP_ORIGIN')
     const reader = app !== null && request.headers.get('origin') === app ? app : null
+    // Redirected reads and native downloads can arrive without Origin.
+    // Their response must still permit the configured application to read it.
     const cors: Record<string, string> =
-      reader === null
+      app === null
         ? {}
-        : { 'access-control-allow-origin': reader, 'access-control-expose-headers': EXPOSED }
+        : { 'access-control-allow-origin': app, 'access-control-expose-headers': EXPOSED }
 
     /** no file: a status, a reason a person or a script can read, and nothing of any object */
     const refuse = (reason: Reason, extra: Record<string, string> = {}) => {
