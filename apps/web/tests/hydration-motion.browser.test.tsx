@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { flushSync } from 'react-dom'
 import { renderToString } from 'react-dom/server'
 import { hydrateRoot } from 'react-dom/client'
-import { Drill, Portion, Reveal, Stagger } from '@qualy/ui/reveal'
+import { Drill, Portion, Reveal, Stagger, useEntryMotion } from '@qualy/ui/reveal'
 import { commands, page } from 'vitest/browser'
 import { render } from 'vitest-browser-react'
 
@@ -116,4 +116,45 @@ it('keeps a horizontal drill inside its scrollport without removing the movement
   expect(scrollport.scrollHeight).toBeGreaterThan(scrollport.clientHeight)
   scrollport.scrollTop = 120
   expect(scrollport.scrollTop).toBe(120)
+})
+
+it('inherits the first-screen entrance decision when its body arrives after hydration', async () => {
+  let release = () => {}
+  function Screen() {
+    const enter = useEntryMotion()
+    const [ready, setReady] = useState(false)
+    release = () => setReady(true)
+    return (
+      <div>
+        {ready && (
+          <Reveal enter={enter}>
+            <span data-testid="late-body">Body</span>
+          </Reveal>
+        )}
+      </div>
+    )
+  }
+  const host = document.createElement('div')
+  document.body.append(host)
+  host.innerHTML = renderToString(<Screen />)
+  const errors: unknown[] = []
+  const root = hydrateRoot(host, <Screen />, { onRecoverableError: (error) => errors.push(error) })
+  try {
+    await new Promise(requestAnimationFrame)
+    await new Promise(requestAnimationFrame)
+    flushSync(() => release())
+    const body = host.querySelector('[data-testid="late-body"]')!.parentElement!
+    expect(getComputedStyle(body).opacity).toBe('1')
+    expect(new DOMMatrixReadOnly(getComputedStyle(body).transform).m42).toBe(0)
+    expect(errors).toEqual([])
+  } finally {
+    root.unmount()
+    host.remove()
+  }
+
+  await render(<Screen />)
+  flushSync(() => release())
+  const body = page.getByTestId('late-body').element().parentElement!
+  expect(Number(getComputedStyle(body).opacity)).toBeLessThan(1)
+  await expect.poll(() => getComputedStyle(body).opacity).toBe('1')
 })

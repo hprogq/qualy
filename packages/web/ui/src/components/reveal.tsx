@@ -20,20 +20,23 @@ export function Reveal({
   className,
   delay = 0,
   lift = true,
+  enter = true,
   children,
 }: {
   className?: string
   delay?: number
   /** Disable translation when a descendant needs viewport positioning. */
   lift?: boolean
+  /** Retain the screen's entrance decision while its delayed body arrives. */
+  enter?: boolean
   children: ReactNode
 }) {
-  const enter = useEntryMotion()
+  const animateEntry = useEntryMotion() && enter
   return (
     <motion.div
       data-reveal=""
       className={className}
-      initial={enter ? (lift ? { opacity: 0, y: 8 } : { opacity: 0 }) : false}
+      initial={animateEntry ? (lift ? { opacity: 0, y: 8 } : { opacity: 0 }) : false}
       animate={lift ? { opacity: 1, y: 0 } : { opacity: 1 }}
       transition={{ duration: 0.24, delay, ease: 'easeOut' }}
     >

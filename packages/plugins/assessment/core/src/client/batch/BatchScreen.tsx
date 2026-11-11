@@ -8,7 +8,7 @@ import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { AsyncSection, PageHeader } from '@qualy/ui/admin'
 import { PageContainer } from '@qualy/ui/page-container'
 import { Portal } from '@qualy/ui/portal'
-import { Resizing, Reveal } from '@qualy/ui/reveal'
+import { Resizing, Reveal, useEntryMotion } from '@qualy/ui/reveal'
 import { assessmentApi } from '../api.ts'
 
 import type { BatchDto } from '../phase/model.ts'
@@ -265,6 +265,7 @@ export function BatchScreen({
 }) {
   const { batchId } = usePageRouteParams('batchId')
   const query = useApiQuery(assessmentApi)
+  const enter = useEntryMotion()
 
   const [slot, setSlot] = useState<HTMLDivElement | null>(null)
   // the section's own name is what shows unless it says otherwise
@@ -336,6 +337,7 @@ export function BatchScreen({
       >
         {batch && (
           <Reveal
+            enter={enter}
             lift={false}
             className={stylex.props(styles.bareColumn, fill && styles.boundedColumn).className}
           >
@@ -420,7 +422,11 @@ export function BatchScreen({
                twitch each time somebody looks at another part of it.
                Mount-only, so a section that draws its own movement inside
                (a row opening, a claim stepped to) is not animated twice. */
-            <Reveal className={stylex.props(styles.sectionStack).className} lift={!fixedNotices}>
+            <Reveal
+              enter={enter}
+              className={stylex.props(styles.sectionStack).className}
+              lift={!fixedNotices}
+            >
               {/* said on the section, not over a question being composed:
                   the band has handed over, and the body is the question's */}
               {batch.status === 'draft' && noting && (
