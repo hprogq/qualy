@@ -70,6 +70,7 @@ export const BATCH_STAFF_CODES = [
   // not phase gated: correcting a conclusion is not a window the calendar
   // opens, and the batch's acceptance is what bounds it
   'assessment.entry.redetermine',
+  'assessment.review.track',
   'assessment.review.process',
   'assessment.review.reopen',
   'assessment.result.view-peers',

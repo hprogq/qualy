@@ -1,3 +1,5 @@
+import { ReviewTracking } from '../review/ReviewTracking.tsx'
+import { recognitionRows } from './recognition-values.ts'
 import { EntryFiles } from '../../attachment/contexts.ts'
 import { AttachmentScope } from './AttachmentScope.tsx'
 import { useLocale } from '@qualy/web-i18n'
@@ -23,7 +25,6 @@ import { AttachmentLink } from './AttachmentLink.tsx'
 import { sourceLabelOf } from './source.ts'
 import { EntryTrail } from './EntryHistory.tsx'
 import { EntryStanding } from './EntryStanding.tsx'
-import { choiceLabel, displayTitle, kindOf, type AtomicSchema } from '@qualy/value-schema'
 import { answerOf, displayValueOf, fieldsOf, type EntryDto, type ItemDto } from './model.ts'
 import { LineParts } from './workspace/LineText.tsx'
 import { useWorkspaceMode } from './workspace/layout.ts'
@@ -761,6 +762,7 @@ export function EntryDetail({
                     office's drawer says more about a determination than this
                     does, and two of them would disagree the moment one of
                     them is the one being corrected. */}
+                  <ReviewTracking entryId={entry.id} />
                   {aside === undefined && <RecognizedValues entry={entry} />}
 
                   <section {...stylex.props(styles.section)}>
@@ -904,25 +906,7 @@ function RecognizedValues({ entry }: { entry: EntryDto }) {
   const zone = useBatchZone()
   const standing = entry.recognition ?? null
   if (standing === null) return null
-  const values = (standing.values ?? {}) as Record<string, unknown>
-  const rows = standing.fields.flatMap((field) => {
-    if (!Object.hasOwn(values, field.id)) return []
-    const value = values[field.id]
-    if (value === null || value === undefined || value === '') return []
-    const schema = field.schema as AtomicSchema
-    return [
-      {
-        id: field.id,
-        label: displayTitle(schema, field.id, locale),
-        text:
-          kindOf(schema) === 'choice'
-            ? (choiceLabel(schema as never, String(value), locale) ?? String(value))
-            : typeof value === 'boolean'
-              ? (value ? m.recognition_yes : m.recognition_no)()
-              : String(value),
-      },
-    ]
-  })
+  const rows = recognitionRows(standing, locale)
   if (rows.length === 0) return null
   // a determination judges one version of a filing; a later revision means
   // the reader is looking at a decision about older material

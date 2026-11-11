@@ -1,3 +1,4 @@
+import { recognitionViewOf } from '../scoring/recognition-view.ts'
 import { Effect, Result } from 'effect'
 import {
   insertRecognition,
@@ -20,7 +21,6 @@ import { recognitionHash, seedFromEvidence } from '../scoring/recognition.ts'
 import { ProbeNeeded, probeIdentity, settleWithProbe } from '../scoring/failure-boundary.ts'
 import { ScoringRuntimeCatalog } from '../plugin.ts'
 import { readScoringPlan } from '../scoring/plan.ts'
-import { recognitionFormFields } from '../scoring/recognition.ts'
 import { fillBoundEvidence } from '../scoring/bound-evidence.ts'
 
 /**
@@ -348,6 +348,10 @@ export interface EntryHistoryView {
     readonly formConfig: unknown
   })[]
   readonly rounds: readonly EntryRoundView[]
+  readonly recognitions: readonly (EntryRecognitionView & {
+    readonly reviewInstanceId: string | null
+    readonly reviewEventId: string | null
+  })[]
   /**
    * What happened to the claim that no round explains - being sent back
    * because the question changed, most of all. Its own list rather than a
@@ -1474,20 +1478,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
       if (entry.status !== 'approved') return null
       const standing = (yield* currentRecognitionsOfEntries(tenantId, [entry.id]))[0]
       if (standing === undefined) return null
-      const judged = yield* revisionOf(tenantId, standing.itemRevisionId)
-      const plan = judged === null ? null : yield* readScoringPlan(judged).pipe(Effect.option)
-      const fields =
-        plan === null || plan._tag !== 'Some' ? null : recognitionFormFields(plan.value)
-      return {
-        id: standing.id,
-        source: standing.source,
-        entryRevisionId: standing.entryRevisionId,
-        fields: fields ?? [],
-        values: standing.values,
-        createdAt: standing.createdAt,
-        actorName: veiled ? null : standing.createdByName,
-        byPanel: byPanel(standing),
-      }
+      return yield* recognitionViewOf(standing, veiled)
     })
 
   const getEntry: EntryMethods['getEntry'] = Effect.fn('Assessment.getEntry')(
@@ -2562,7 +2553,8 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
           const rounds = yield* roundsOfEntry(tenantId, entryId)
           // every determination the claim has had, for telling what each
           // round that revisited a conclusion did to it
-          const determinations = (yield* recognitionsOfEntry(tenantId, entryId)).map((one) => ({
+          const historicalRecognitions = yield* recognitionsOfEntry(tenantId, entryId)
+          const determinations = historicalRecognitions.map((one) => ({
             id: one.id,
             reviewInstanceId: one.reviewInstanceId,
             hash: recognitionHash(one.values),
@@ -2594,6 +2586,15 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
           })
           return {
             reviewersShown: !veiled,
+            recognitions: yield* Effect.forEach(historicalRecognitions, (one) =>
+              recognitionViewOf(one, veiled).pipe(
+                Effect.map((recognition) => ({
+                  ...recognition,
+                  reviewInstanceId: one.reviewInstanceId,
+                  reviewEventId: one.reviewEventId,
+                })),
+              ),
+            ),
             entry: veil(
               view(
                 entry,

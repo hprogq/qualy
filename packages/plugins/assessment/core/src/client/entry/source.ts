@@ -12,8 +12,9 @@ export const sourceLabelOf = (source: string) => {
     case 'proxy':
       return m.entry_sourceProxy
     case 'record':
-    case 'review':
       return m.entry_sourceRecord
+    case 'review':
+      return m.entry_sourceReview
     case 'import':
       return m.entry_sourceImport
     case 'system':

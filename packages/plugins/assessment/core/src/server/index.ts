@@ -1,3 +1,10 @@
+import { validateReviewPolicy } from '../item/policy.ts'
+import { readReviewRoutes, type ReviewRouteStage } from '../review/tracking.ts'
+import {
+  readPolicy as trackingPolicyOf,
+  resolvePolicy as resolveTrackingPolicy,
+} from '../review/chain.ts'
+import { instanceOf as trackingInstanceOf } from '../review/db.ts'
 import { AttachmentUnavailable } from '../errors.ts'
 import { entryFileIds, historyFileIds, reviewFileIds } from '../attachment/citations.ts'
 import { siblingFileIds } from '../attachment/db.ts'
@@ -165,6 +172,7 @@ import {
   PlanInvalid,
   DeterminationRefused,
   EntryPayloadInvalid,
+  EntryNotFound,
   ItemNotFound,
   EntryActionRefused,
   ItemRevisionConflict,
@@ -1774,6 +1782,29 @@ export class Assessment extends Context.Service<
       tenantId: string,
       as: Principal,
     ) => Effect.Effect<readonly { id: string; code: string; name: string }[], AccessDenied>
+    readonly getReviewTracking: (
+      tenantId: string,
+      entryId: string,
+      as: Principal,
+    ) => Effect.Effect<
+      | { available: false }
+      | {
+          available: true
+          state: string
+          roundNo: number | null
+          stages: readonly ReviewRouteStage[]
+        },
+      EntryNotFound | AccessDenied
+    >
+    readonly previewReviewRoutes: (
+      tenantId: string,
+      batchId: string,
+      input: { participantId: string; policy: unknown },
+      as: Principal,
+    ) => Effect.Effect<
+      { stages: readonly ReviewRouteStage[] },
+      BatchNotFound | AccessDenied | ParticipantNotFound | EntryPayloadInvalid
+    >
     readonly reviewCoverage: (
       tenantId: string,
       batchId: string,
@@ -6257,6 +6288,86 @@ export const make = Effect.fn('Assessment.make')(function* () {
       }
     }),
 
+    getReviewTracking: Effect.fn('Assessment.getReviewTracking')(function* (tenantId, entryId, as) {
+      const entry = yield* entryMethods.getEntry(tenantId, entryId, as)
+      const participant = yield* dieQuery(
+        withDb(participantOf(tenantId, entry.batchId, entry.participantId)),
+      )
+      if (participant === null) return yield* new EntryNotFound()
+      const administration = yield* Effect.result(requireRosterReach(as, tenantId, entry.batchId))
+      const allowed =
+        (Result.isSuccess(administration) &&
+          (yield* rbac.canAt(as, 'assessment.review.track', participant.anchorNodeId))) ||
+        (yield* dieQuery(
+          withDb(
+            staffReachesParticipant({
+              tenantId,
+              batchId: entry.batchId,
+              userId: as.userId,
+              permissionCode: 'assessment.review.track',
+              participant,
+            }),
+          ),
+        ))
+      if (!allowed) return { available: false } as const
+      if (entry.currentReviewInstanceId === null)
+        return { available: true, state: entry.status, roundNo: null, stages: [] } as const
+      const row = yield* dieQuery(
+        withDb(trackingInstanceOf(tenantId, entry.currentReviewInstanceId)),
+      )
+      if (row === null) return yield* new EntryNotFound()
+      const stages = yield* dieQuery(
+        withDb(
+          readReviewRoutes({
+            tenantId,
+            batchId: row.batchId,
+            policy: row.effectivePolicy,
+            subjectUserId: row.subjectUserId,
+            actorId: row.actorId,
+            current: { instanceId: row.id, route: row.currentRoute, stageId: row.currentStageId },
+          }),
+        ),
+      )
+      return { available: true, state: row.state, roundNo: row.roundNo, stages } as const
+    }),
+    previewReviewRoutes: Effect.fn('Assessment.previewReviewRoutes')(
+      function* (tenantId, batchId, input, as) {
+        yield* requireBatchAdministration(tenantId, batchId, as)
+        const issues = validateReviewPolicy(input.policy)
+        if (issues.length > 0)
+          return yield* new EntryPayloadInvalid({
+            issues: issues.map((issue) => ({ field: issue.path, reason: issue.reason })),
+          })
+        const participant = yield* dieQuery(
+          withDb(participantOf(tenantId, batchId, input.participantId)),
+        )
+        if (participant === null || participant.status !== 'active')
+          return yield* new ParticipantNotFound()
+        const policy = yield* dieQuery(
+          withDb(
+            resolveTrackingPolicy({
+              tenantId,
+              batchId,
+              policy: trackingPolicyOf(input.policy),
+              lineage: participant.anchorLineage,
+            }),
+          ),
+        )
+        const stages = yield* dieQuery(
+          withDb(
+            readReviewRoutes({
+              tenantId,
+              batchId,
+              policy,
+              subjectUserId: participant.userId,
+              actorId: participant.userId,
+            }),
+          ),
+        )
+        return { stages }
+      },
+    ),
+
     /**
      * Whether a review stage, as it is being composed, has anybody in it.
      *
@@ -6861,6 +6972,7 @@ const reviewDto = (review: ReviewDetailView) => ({
     reason: event.reason,
     comment: event.comment,
     suggestedPayload: event.suggestedPayload,
+    ...(event.recognition === undefined ? {} : { recognition: event.recognition }),
     at: new Date(event.at).toISOString(),
   })),
   supplements: review.supplements.map(supplementDto),
@@ -8420,6 +8532,11 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
         return {
           files,
           reviewersShown: history.reviewersShown,
+          recognitions: history.recognitions.map((one) => ({
+            ...one,
+            createdAt: new Date(one.createdAt).toISOString(),
+          })),
+
           entry: {
             ...entryDto(history.entry),
             files: entryFileIds(history.entry).flatMap((id) => {
@@ -8773,6 +8890,27 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
           params.batchId,
           principal,
           pageNumber(query.groupPage),
+        )
+      }),
+    )
+    .handle(
+      'getReviewTracking',
+      Effect.fn('assessment.getReviewTracking.handler')(function* ({ params }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        return yield* assessment.getReviewTracking(principal.tenantId, params.entryId, principal)
+      }),
+    )
+    .handle(
+      'previewReviewRoutes',
+      Effect.fn('assessment.previewReviewRoutes.handler')(function* ({ params, payload }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        return yield* assessment.previewReviewRoutes(
+          principal.tenantId,
+          params.batchId,
+          payload,
+          principal,
         )
       }),
     )

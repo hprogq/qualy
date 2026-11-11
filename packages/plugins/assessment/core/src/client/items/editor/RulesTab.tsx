@@ -1,3 +1,4 @@
+import { ReviewRouteTest } from './ReviewRouteTest.tsx'
 import { useLocale } from '@qualy/web-i18n'
 import { type ReactNode } from 'react'
 import { useQueries } from '@qualy/web-runtime/query'
@@ -30,8 +31,7 @@ import { problemWords, sentences } from './words.ts'
 import * as m from '#messages'
 
 // How many records one person may hold and how they fold into a score, then
-// the steps a submission walks. The rules are one card of three cells - two
-// to set, one that says what the two add up to. A route is a chain read top
+// the steps a submission walks. Each rule takes one line in the same card. A route is a chain read top
 // to bottom: where a record enters, every step it passes, where it leaves,
 // strung on one line so that the order is something seen rather than read.
 //
@@ -50,11 +50,8 @@ const MONO = "'SFMono-Regular', ui-monospace, Menlo, Consolas, monospace"
 const styles = stylex.create({
   stack: { display: 'flex', flexDirection: 'column', gap: 32 },
   rules: {
-    display: 'grid',
-    gridTemplateColumns: {
-      default: 'minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.3fr)',
-      [breakpoints.phone]: 'minmax(0, 1fr)',
-    },
+    display: 'flex',
+    flexDirection: 'column',
     overflow: 'hidden',
     borderRadius: 14,
     backgroundColor: tokens.background,
@@ -65,16 +62,14 @@ const styles = stylex.create({
     boxShadow: '0 1px 2px rgb(0 0 0 / 0.04)',
   },
   cell: {
-    display: 'flex',
+    display: 'grid',
     minWidth: 0,
-    flexDirection: 'column',
-    gap: 10,
+    gridTemplateColumns: { default: '12rem minmax(0, 1fr)', [breakpoints.phone]: 'minmax(0, 1fr)' },
+    alignItems: 'baseline',
+    gap: 12,
     paddingInline: 20,
     paddingBlock: 16,
-    borderRightWidth: { default: 1, [breakpoints.phone]: 0 },
-    borderRightStyle: 'solid',
-    borderRightColor: tokens.divider,
-    borderBottomWidth: { default: 0, [breakpoints.phone]: 1 },
+    borderBottomWidth: { default: 1, ':last-child': 0 },
     borderBottomStyle: 'solid',
     borderBottomColor: tokens.divider,
   },
@@ -86,7 +81,7 @@ const styles = stylex.create({
   },
   cellLabel: { fontSize: 12.5, fontWeight: 500, color: tokens.mutedForeground },
   mono: { fontFamily: MONO, fontSize: 13 },
-  radios: { display: 'flex', flexDirection: 'column', gap: 2 },
+  radios: { display: 'flex', flexWrap: 'wrap', alignItems: 'center', columnGap: 24, rowGap: 8 },
   // a choice, and to its right the number that choice asks for. Every line
   // is as tall as the box, chosen or not, so choosing moves nothing.
   choiceLine: { display: 'flex', alignItems: 'center', gap: 12, minHeight: 36, flexWrap: 'wrap' },
@@ -128,6 +123,7 @@ const styles = stylex.create({
   problemLine: { margin: 0, fontSize: 12, color: tokens.danger },
   ceilingValue: { fontSize: 18, fontWeight: 600, letterSpacing: '-0.01em' },
   ceilingProse: {
+    gridColumn: '1 / -1',
     margin: 0,
     fontSize: 12,
     lineHeight: 1.55,
@@ -411,6 +407,7 @@ export function RulesTab({
         />
       </EditorSection>
 
+      <ReviewRouteTest batchId={batchId} draft={draft} />
       {draft.mode === 'review' ? (
         <>
           <StepChain
@@ -445,7 +442,7 @@ export function RulesTab({
   )
 }
 
-/** the three cells: how many, how they fold, and what the two come to */
+/** Entry limits and score aggregation, with an exact ceiling when it can be computed. */
 function RulesCard({
   draft,
   placement,
@@ -624,29 +621,31 @@ function RulesCard({
         )}
       </div>
 
-      <div
-        {...stylex.props(styles.cell, styles.cellLast)}
-        data-testid="item-ceiling"
-        data-ceiling={!perEntryAmount ? 'by-rule' : (ceiling ?? 'unlimited')}
-      >
-        <span {...stylex.props(styles.cellLabel)}>{m.items_ceiling()}</span>
-        <span {...stylex.props(styles.ceilingValue)}>
-          {!perEntryAmount
-            ? m.items_ceilingByRule()
-            : ceiling === null
-              ? m.items_ceilingOpen()
-              : m.items_ceilingAmount({ value: ceiling })}
-        </span>
-        <p {...stylex.props(styles.ceilingProse)}>
-          {sentences(
-            [
-              perEntryAmount ? m.items_ceilingHowLine({ how }) : how,
-              chain === '' ? '' : m.items_ceilingNote({ chain }),
-            ],
-            locale,
-          )}
-        </p>
-      </div>
+      {perEntryAmount && (
+        <div
+          {...stylex.props(styles.cell, styles.cellLast)}
+          data-testid="item-ceiling"
+          data-ceiling={!perEntryAmount ? 'by-rule' : (ceiling ?? 'unlimited')}
+        >
+          <span {...stylex.props(styles.cellLabel)}>{m.items_ceiling()}</span>
+          <span {...stylex.props(styles.ceilingValue)}>
+            {!perEntryAmount
+              ? m.items_ceilingByRule()
+              : ceiling === null
+                ? m.items_ceilingOpen()
+                : m.items_ceilingAmount({ value: ceiling })}
+          </span>
+          <p {...stylex.props(styles.ceilingProse)}>
+            {sentences(
+              [
+                perEntryAmount ? m.items_ceilingHowLine({ how }) : how,
+                chain === '' ? '' : m.items_ceilingNote({ chain }),
+              ],
+              locale,
+            )}
+          </p>
+        </div>
+      )}
     </div>
   )
 }

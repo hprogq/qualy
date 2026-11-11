@@ -172,11 +172,14 @@ export interface RecognitionDetail extends RecognitionRow {
   readonly createdAt: number
   readonly createdBy: string | null
   readonly createdByName: string | null
+  readonly reviewInstanceId: string | null
+  readonly reviewEventId: string | null
+  readonly scoringPlan: unknown
   /** the round that wrote it resolved a sitting of several reviewers */
   readonly panelResolved: boolean
 }
 
-export const currentRecognitionsOfEntries = (tenantId: string, entryIds: readonly string[]) =>
+const recognitionDetails = (tenantId: string, entryIds: readonly string[], currentOnly: boolean) =>
   entryIds.length === 0
     ? Effect.succeed([] as readonly RecognitionDetail[])
     : db
@@ -184,10 +187,12 @@ export const currentRecognitionsOfEntries = (tenantId: string, entryIds: readonl
           k
             .selectFrom('EntryRecognition as r')
             .innerJoin('Entry as e', (join) =>
-              join
-                .onRef('e.tenantId', '=', 'r.tenantId')
-                .onRef('e.currentRecognitionId', '=', 'r.id'),
+              join.onRef('e.tenantId', '=', 'r.tenantId').onRef('e.id', '=', 'r.entryId'),
             )
+            .innerJoin('AssessmentItemRevision as ir', (join) =>
+              join.onRef('ir.tenantId', '=', 'r.tenantId').onRef('ir.id', '=', 'r.itemRevisionId'),
+            )
+            .$if(currentOnly, (query) => query.whereRef('e.currentRecognitionId', '=', 'r.id'))
             .leftJoin('User as u', (join) =>
               join.onRef('u.tenantId', '=', 'r.tenantId').onRef('u.id', '=', 'r.createdBy'),
             )
@@ -200,6 +205,9 @@ export const currentRecognitionsOfEntries = (tenantId: string, entryIds: readonl
               'r.itemRevisionId',
               'r.source',
               'r.createdBy',
+              'r.reviewInstanceId',
+              'r.reviewEventId',
+              'ir.scoringPlan',
               'u.displayName as createdByName',
             ])
             .select([epoch('r.created_at').as('createdMs')])
@@ -220,6 +228,8 @@ export const currentRecognitionsOfEntries = (tenantId: string, entryIds: readonl
             )
             .where('r.tenantId', '=', tenantId)
             .where('r.entryId', 'in', [...entryIds])
+            .orderBy('r.createdAt')
+            .orderBy('r.id')
             .execute(),
         )
         .pipe(
@@ -237,31 +247,19 @@ export const currentRecognitionsOfEntries = (tenantId: string, entryIds: readonl
                 createdAt: Number(one['createdMs'] ?? 0),
                 createdBy: one['createdBy'] == null ? null : String(one['createdBy']),
                 createdByName: one['createdByName'] == null ? null : String(one['createdByName']),
+                reviewInstanceId:
+                  one['reviewInstanceId'] == null ? null : String(one['reviewInstanceId']),
+                reviewEventId: one['reviewEventId'] == null ? null : String(one['reviewEventId']),
+                scoringPlan: one['scoringPlan'],
                 panelResolved: one['panelResolved'] === true,
               } satisfies RecognitionDetail
             }),
           ),
         )
 
-/** every determination one claim has had, oldest first, for telling its history */
+export const currentRecognitionsOfEntries = (tenantId: string, entryIds: readonly string[]) =>
+  recognitionDetails(tenantId, entryIds, true)
+
+/** Only authoritative determinations are stored here; stage opinions remain review events. */
 export const recognitionsOfEntry = (tenantId: string, entryId: string) =>
-  db
-    .query((k) =>
-      k
-        .selectFrom('EntryRecognition')
-        .select(['id', 'reviewInstanceId', 'values'])
-        .where('tenantId', '=', tenantId)
-        .where('entryId', '=', entryId)
-        .orderBy('createdAt')
-        .orderBy('id')
-        .execute(),
-    )
-    .pipe(
-      Effect.map((rows) =>
-        rows.map((row) => ({
-          id: String(row.id),
-          reviewInstanceId: row.reviewInstanceId == null ? null : String(row.reviewInstanceId),
-          values: row.values ?? {},
-        })),
-      ),
-    )
+  recognitionDetails(tenantId, [entryId], false)

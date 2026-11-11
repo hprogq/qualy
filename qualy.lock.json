@@ -1,7 +1,7 @@
 {
   "lockfileVersion": 2,
   "manifestHash": "sha256:5981ac1966d5b429f0b6290b636f57344bd8daad4ddefb73292fc6ea6d48d213",
-  "resolutionHash": "sha256:ed3e7377f1f69380c2c395e5a4386f22be382925a712644f5785a545e097c61d",
+  "resolutionHash": "sha256:cb1c66d300031c2c1a9f1240b4da8d4f45044840db8a9e98d7951e0a58615970",
   "plugins": {
     "@qualy/plugin-assessment": {
       "version": "0.0.0",
@@ -65,7 +65,8 @@
             "assessment.ranking.view",
             "assessment.result.view-peers",
             "assessment.review.process",
-            "assessment.review.reopen"
+            "assessment.review.reopen",
+            "assessment.review.track"
           ]
         }
       }

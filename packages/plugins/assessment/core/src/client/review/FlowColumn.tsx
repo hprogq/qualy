@@ -1,3 +1,6 @@
+import { ReviewTracking } from './ReviewTracking.tsx'
+import { ReviewRecognitions } from './ReviewRecognitions.tsx'
+import { RecognitionValues } from '../entry/RecognitionValues.tsx'
 import { useLocale } from '@qualy/web-i18n'
 import { memo } from 'react'
 import * as stylex from '@stylexjs/stylex'
@@ -499,6 +502,8 @@ export const FlowColumn = memo(function FlowColumn({
             <p {...stylex.props(styles.quiet)}>{m.review_awaitingYou()}</p>
           )}
         </div>
+        <ReviewRecognitions entryId={review.entryId} currentRound={review.id} />
+        <ReviewTracking entryId={review.entryId} />
         {review.events.length === 0 ? (
           <p {...stylex.props(styles.emptyMark)}>–</p>
         ) : (
@@ -538,6 +543,12 @@ export const FlowColumn = memo(function FlowColumn({
                       <span {...stylex.props(styles.spacer)} />
                       <p {...stylex.props(styles.eventWhen)}>{timeLabel(event.at, locale, zone)}</p>
                     </div>
+                    {event.recognition !== undefined && (
+                      <div {...stylex.props(styles.eventComment)}>
+                        <RecognitionValues snapshot={event.recognition} />
+                        {event.recognition.reason !== null && <p>{event.recognition.reason}</p>}
+                      </div>
+                    )}
                     {event.comment !== null && (
                       <p {...stylex.props(styles.eventComment)}>{event.comment}</p>
                     )}

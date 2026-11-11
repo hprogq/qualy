@@ -307,6 +307,12 @@ export interface ReviewDetailView {
     readonly reason: string | null
     readonly comment: string | null
     readonly suggestedPayload: unknown
+    readonly recognition?: {
+      readonly fields: readonly { readonly id: string; readonly schema: unknown }[]
+      readonly values: Readonly<Record<string, unknown>>
+      readonly reason: string | null
+    }
+
     readonly at: number
   }[]
   /** what this round asked for beyond the filing, and what came back */
@@ -784,6 +790,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
       canDecide: boolean
       mayEscalate?: boolean
       resolveReviewers: boolean
+      workingRecognitions?: boolean
       /**
        * Leave out what stands after the step being judged at: the steps to
        * come and who holds them. The phase decides; the shape of the route
@@ -811,6 +818,17 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
       const attachments = yield* revisionAttachmentsOf(tenantId, row.revisionId)
       const veiled = view.veilReviewers === true
       const events = yield* reviewEventsOf(tenantId, row.id)
+      const recognitionContract =
+        (view.workingRecognitions ?? view.canDecide)
+          ? yield* revisionOf(tenantId, row.recognitionRevisionId)
+          : null
+      const recognitionPlan =
+        recognitionContract === null
+          ? null
+          : yield* readScoringPlan(recognitionContract).pipe(Effect.option)
+      const workingFields =
+        recognitionPlan?._tag === 'Some' ? recognitionFormFields(recognitionPlan.value) : null
+
       const asked = yield* supplementsOf(tenantId, row.id)
       const supplements = veiled
         ? asked.map((one) => ({ ...one, requestedBy: '', requestedByName: null }))
@@ -1028,6 +1046,16 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
           reason: event.reason,
           comment: event.comment,
           suggestedPayload: event.suggestedPayload,
+          ...(workingFields === null || event.recognitionPayload === null
+            ? {}
+            : {
+                recognition: {
+                  fields: workingFields,
+                  values: event.recognitionPayload,
+                  reason: event.recognitionReason,
+                },
+              }),
+
           at: event.createdAt,
         })),
         supplements,
@@ -1235,6 +1263,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
       withDb(
         assembleDetail(tenantId, row, {
           canDecide,
+          workingRecognitions: judge,
           mayEscalate: escalationDecision.allowed,
           resolveReviewers: true,
           veilReviewers,

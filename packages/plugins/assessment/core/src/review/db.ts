@@ -1049,6 +1049,8 @@ export interface ReviewEventRow {
   reason: string | null
   comment: string | null
   suggestedPayload: unknown
+  recognitionPayload: Record<string, unknown> | null
+  recognitionReason: string | null
   createdAt: number
 }
 
@@ -1068,6 +1070,8 @@ export const reviewEventsOf = (tenantId: string, instanceId: string) =>
           're.reason',
           're.comment',
           're.suggestedPayload',
+          're.recognitionPayload',
+          're.recognitionReason',
           'u.displayName as actorName',
         ])
         .select([epoch('re.created_at').as('createdMs')])
@@ -1088,6 +1092,8 @@ export const reviewEventsOf = (tenantId: string, instanceId: string) =>
           reason: row.reason,
           comment: row.comment,
           suggestedPayload: row.suggestedPayload ?? null,
+          recognitionPayload: row.recognitionPayload,
+          recognitionReason: row.recognitionReason,
           createdAt: msOf(row.createdMs),
         })),
       ),

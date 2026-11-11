@@ -65,6 +65,14 @@ export const permissions = [
     target: 'org-node',
   },
   {
+    code: 'assessment.review.track',
+    name: text(m.permission_reviewTrack),
+    description: text(m.permissionHint_reviewTrack),
+    groupKey: 'assessment',
+    group: text(m.permissionGroup_assessment),
+    target: 'org-node',
+  },
+  {
     code: 'assessment.review.process',
     name: text(m.permission_reviewProcess),
     groupKey: 'assessment',

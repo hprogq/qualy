@@ -140,6 +140,8 @@ describe.runIf(postgresAvailable)('the escalation route as a pipeline', () => {
             f.principal(w.mid),
           )
           const midway = yield* standing(entry.id)
+          const privateHistory = yield* assessment.getEntryHistory(f.t, entry.id, s1)
+          const ownerReview = yield* assessment.getReviewInstance(f.t, round, s1)
           const atEnd = yield* assessment.getReviewInstance(f.t, round, f.principal(w.end))
           // the last step judges for itself: a different determination from
           // the one it was handed has to say why
@@ -172,7 +174,20 @@ describe.runIf(postgresAvailable)('the escalation route as a pipeline', () => {
             yield* runSql(sql`
               select values, created_by from entry_recognitions where entry_id = ${entry.id}`),
           )
-          return { atMiddle, opined, midway, atEnd, unexplained, settled, fact, end: w.end }
+          const publicHistory = yield* assessment.getEntryHistory(f.t, entry.id, s1)
+          return {
+            atMiddle,
+            opined,
+            midway,
+            atEnd,
+            unexplained,
+            settled,
+            fact,
+            privateHistory,
+            publicHistory,
+            ownerReview,
+            end: w.end,
+          }
         }),
       ),
     )
@@ -192,6 +207,17 @@ describe.runIf(postgresAvailable)('the escalation route as a pipeline', () => {
     })
     const opinion = result.atEnd.events.find((event) => event.kind === 'opinion-approved')
     expect(opinion?.comment).toBe('建议认定为省级')
+    expect(opinion?.recognition?.values).toEqual({ 'rec-level': 'provincial', 'rec-ordinal': 2 })
+    expect(result.privateHistory.recognitions).toEqual([])
+    expect(result.ownerReview.events.every((event) => event.recognition === undefined)).toBe(true)
+    expect(result.publicHistory.recognitions.map((one) => one.values)).toEqual([
+      { 'rec-level': 'national', 'rec-ordinal': 2 },
+    ])
+    expect(result.publicHistory.recognitions[0]?.fields.map((field) => field.id)).toEqual([
+      'rec-level',
+      'rec-ordinal',
+    ])
+
     expect(
       errorOf<{ issues: readonly { field: string; reason: string }[] }>(result.unexplained)?.issues,
     ).toEqual([{ field: 'recognition.reason', reason: 'required' }])

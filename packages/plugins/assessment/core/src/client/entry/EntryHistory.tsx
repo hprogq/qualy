@@ -1,3 +1,5 @@
+import { RecognitionValues } from './RecognitionValues.tsx'
+import { sourceLabelOf } from './source.ts'
 import { EntryFiles } from '../../attachment/contexts.ts'
 import { AttachmentScope } from './AttachmentScope.tsx'
 import type { SupportedLocale } from '@qualy/i18n-contract'
@@ -669,6 +671,11 @@ function useTrail(data: History, subject: string | undefined): readonly TrailIte
       }
     }
 
+    for (const recognition of data.recognitions ?? []) {
+      if (recognition.reviewInstanceId !== round.id) continue
+      nodes.push(recognitionNode(recognition, seq++))
+    }
+
     nodes.sort(newestFirst)
     items.push({
       kind: 'round',
@@ -722,6 +729,12 @@ function useTrail(data: History, subject: string | undefined): readonly TrailIte
     })
   }
 
+  for (const recognition of data.recognitions ?? []) {
+    if (recognition.reviewInstanceId !== null && byId.has(recognition.reviewInstanceId)) continue
+    const node = recognitionNode(recognition, seq++)
+    items.push({ kind: 'loose', key: node.key, at: node.at, node })
+  }
+
   // Sections and loose pieces share one clock, newest first. A re-route
   // ends one round and opens the next in the same instant, so the tie goes
   // to the higher round: the section that says where the work went sits
@@ -731,6 +744,36 @@ function useTrail(data: History, subject: string | undefined): readonly TrailIte
       Date.parse(b.at) - Date.parse(a.at) ||
       (b.kind === 'round' ? b.round.roundNo : -1) - (a.kind === 'round' ? a.round.roundNo : -1),
   )
+}
+
+function recognitionNode(
+  recognition: NonNullable<History['recognitions']>[number],
+  seq: number,
+): Node {
+  return {
+    key: `recognition:${recognition.id}`,
+    at: recognition.createdAt,
+    seq,
+    kind: 'act',
+    weight: 'strong',
+    render: () => (
+      <div
+        {...stylex.props(styles.stack)}
+        data-testid="history-recognition"
+        data-recognition-id={recognition.id}
+      >
+        <Line
+          title={m.recognition_history()}
+          at={recognition.createdAt}
+          aside={<Badge variant="outline">{sourceLabelOf(recognition.source)()}</Badge>}
+        />
+        {recognition.actorName !== null && (
+          <p {...stylex.props(styles.quietNote)}>{recognition.actorName}</p>
+        )}
+        <RecognitionValues snapshot={recognition} />
+      </div>
+    ),
+  }
 }
 
 /** the head of a node: what it is, and when - always in that order */

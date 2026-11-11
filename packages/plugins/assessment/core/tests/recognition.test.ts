@@ -264,6 +264,7 @@ describe.runIf(postgresAvailable)('recognitions', () => {
             first,
             rows: yield* recognitionsOf(entryId),
             pointer: yield* pointerOf(entryId),
+            history: yield* assessment.getEntryHistory(f.t, entryId, f.principal(f.s1)),
           }
         }),
       ),
@@ -277,6 +278,9 @@ describe.runIf(postgresAvailable)('recognitions', () => {
     expect(older).toEqual(result.first[0])
     expect(newer!.supersedesId).toBe(older!.id)
     expect(result.pointer).toBe(newer!.id)
+    expect(result.history.recognitions.map((one) => one.id)).toEqual(
+      result.rows.map((one) => one.id),
+    )
   })
 
   // Where the next reviewer starts from.

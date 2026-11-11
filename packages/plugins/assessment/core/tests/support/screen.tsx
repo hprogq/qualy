@@ -99,6 +99,10 @@ export const renderScreen = (options: Parameters<typeof render>[0]) =>
       {
         ...options.client,
         auth: { getSession: () => Effect.succeed(signedIn), ...options.client['auth'] },
+        assessment: {
+          getReviewTracking: () => Effect.succeed({ available: false }),
+          ...options.client['assessment'],
+        },
       },
       termsIn(options.locale ?? 'zh-CN'),
     ),

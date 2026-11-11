@@ -1174,6 +1174,21 @@ const administrativeImportRowView = Schema.Struct({
   ),
 })
 
+const recognitionSnapshotView = Schema.Struct({
+  fields: Schema.Array(Schema.Struct({ id: Schema.String, schema: configJson })),
+  values: configJson,
+})
+
+const entryRecognitionView = Schema.Struct({
+  ...recognitionSnapshotView.fields,
+  id: Schema.String,
+  source: Schema.Literals(['review', 'record', 'import', 'system', 'redetermination']),
+  entryRevisionId: Schema.String,
+  createdAt: Schema.String,
+  actorName: Schema.NullOr(Schema.String),
+  byPanel: Schema.Boolean,
+})
+
 const entryView = Schema.Struct({
   files: Schema.optional(Schema.Array(contentDescriptor)),
   id: Schema.String,
@@ -1242,22 +1257,7 @@ const entryView = Schema.Struct({
    * under review has no conclusion to show (§32.85). Null where nothing has
    * been determined, and on the write paths.
    */
-  recognition: Schema.NullOr(
-    Schema.Struct({
-      id: Schema.String,
-      source: Schema.Literals(['review', 'record', 'import', 'system', 'redetermination']),
-      /** the filing version it judged; a later one means it judged older material */
-      entryRevisionId: Schema.String,
-      /** opaque ids with the frozen schemas that name them, in order */
-      fields: Schema.Array(Schema.Struct({ id: Schema.String, schema: configJson })),
-      values: configJson,
-      createdAt: Schema.String,
-      /** null where this reader is not told who determined it */
-      actorName: Schema.NullOr(Schema.String),
-      /** a sitting of several reviewers determined it, not one person */
-      byPanel: Schema.Boolean,
-    }),
-  ),
+  recognition: Schema.NullOr(entryRecognitionView),
   /**
    * Each act in one of three states: offered, offered disabled with the
    * reason on hover, or not spoken of. Discovery through the same gate the
@@ -1307,6 +1307,24 @@ const reviewInboxItem = Schema.Struct({
 })
 
 /** one step of a route, named by the id it keeps across policy edits */
+const reviewRouteStageView = Schema.Struct({
+  id: Schema.String,
+  route: Schema.Literals(['normal', 'escalation']),
+  label: Schema.NullOr(Schema.String),
+  nodeName: Schema.NullOr(Schema.String),
+  roleNames: Schema.Array(Schema.String),
+  current: Schema.Boolean,
+  skipped: Schema.NullOr(Schema.String),
+  blockedReason: Schema.NullOr(Schema.String),
+  reviewers: Schema.Array(
+    Schema.Struct({
+      id: Schema.String,
+      name: Schema.String,
+      businessNo: Schema.NullOr(Schema.String),
+    }),
+  ),
+})
+
 const reviewStageView = Schema.Struct({
   id: Schema.String,
   index: Schema.Number,
@@ -1477,6 +1495,14 @@ const reviewDetailView = Schema.Struct({
       reason: Schema.NullOr(Schema.String),
       comment: Schema.NullOr(Schema.String),
       suggestedPayload: configJson,
+      /** Present only to the current reviewer, never to the filing owner. */
+      recognition: Schema.optional(
+        Schema.Struct({
+          ...recognitionSnapshotView.fields,
+          reason: Schema.NullOr(Schema.String),
+        }),
+      ),
+
       at: Schema.String,
     }),
   ),
@@ -1658,6 +1684,33 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
       }),
       error: [BatchNotFound, AccessDenied],
     }).middleware(Authenticated),
+  )
+  .add(
+    HttpApiEndpoint.get('getReviewTracking', '/assessment/entries/:entryId/review-tracking', {
+      params: Schema.Struct({ entryId: uuidInput }),
+      success: Schema.Union([
+        Schema.Struct({ available: Schema.Literal(false) }),
+        Schema.Struct({
+          available: Schema.Literal(true),
+          state: Schema.String,
+          roundNo: Schema.NullOr(Schema.Number),
+          stages: Schema.Array(reviewRouteStageView),
+        }),
+      ]),
+      error: [EntryNotFound, AccessDenied],
+    }).middleware(Authenticated),
+  )
+  .add(
+    HttpApiEndpoint.post(
+      'previewReviewRoutes',
+      '/assessment/batches/:batchId/review-routes/preview',
+      {
+        params: Schema.Struct({ batchId: uuidInput }),
+        payload: Schema.Struct({ participantId: uuidInput, policy: configJson }),
+        success: Schema.Struct({ stages: Schema.Array(reviewRouteStageView) }),
+        error: [BatchNotFound, AccessDenied, ParticipantNotFound, EntryPayloadInvalid],
+      },
+    ).middleware(Authenticated),
   )
   .add(
     // whether a review stage as composed has anybody in it, unit by unit
@@ -2341,6 +2394,16 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
         files: Schema.optional(Schema.Array(contentDescriptor)),
         /** false where the phase keeps from the participant who judged the claim */
         reviewersShown: Schema.Boolean,
+        recognitions: Schema.optional(
+          Schema.Array(
+            Schema.Struct({
+              ...entryRecognitionView.fields,
+              reviewInstanceId: Schema.NullOr(Schema.String),
+              reviewEventId: Schema.NullOr(Schema.String),
+            }),
+          ),
+        ),
+
         entry: entryView,
         revisions: Schema.Array(
           Schema.Struct({
