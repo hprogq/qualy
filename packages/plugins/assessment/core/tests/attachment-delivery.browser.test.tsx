@@ -211,6 +211,53 @@ describe('attachment delivery in the browser', () => {
     expect(describe).not.toHaveBeenCalled()
   })
 
+  it('keeps an in-flight PDF read through metadata rerenders', async () => {
+    let refresh = () => {}
+    let finish: ReadableStreamDefaultController<Uint8Array> | undefined
+    const received = serve(
+      () =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              finish = controller
+            },
+          }),
+        ),
+    )
+    function Viewer() {
+      const [version, setVersion] = useState(0)
+      refresh = () => setVersion((current) => current + 1)
+      return (
+        <AttachmentScope
+          files={[{ ...descriptor(), filename: NAME }]}
+          context={EntryFiles.at({ entryId: ENTRY_ID })}
+        >
+          <span data-testid="metadata-version">{version}</span>
+          <AttachmentLink attachmentId={ID} variant="line" />
+        </AttachmentScope>
+      )
+    }
+    await renderScreen({
+      client: fakeClient({
+        app: { getManifest: { ...emptyManifest(), viewer: 'authenticated', identity: 'reader' } },
+      }),
+      children: <Viewer />,
+    })
+    await page.getByRole('button', { name: NAME }).click()
+    await expect.poll(() => received.length).toBe(1)
+    for (let version = 1; version <= 3; version += 1) {
+      refresh()
+      await expect.element(page.getByTestId('metadata-version')).toHaveTextContent(String(version))
+    }
+    expect(received).toHaveLength(1)
+    finish!.enqueue(new TextEncoder().encode('%PDF-1.7\n'))
+    finish!.close()
+    await expect
+      .poll(() => document.querySelector('iframe[title="certificate.pdf"]'))
+      .not.toBeNull()
+    expect(received).toHaveLength(1)
+  })
+
   it('retries a failed PDF once through the same identity-bound application URL', async () => {
     const received = serve((url) => {
       if (!new URL(url, location.origin).searchParams.has('retry'))

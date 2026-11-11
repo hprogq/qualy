@@ -125,22 +125,21 @@ export function useAttachmentDescriptor(attachmentId: string) {
   const beginPreview = useCallback(() => {
     attempted.original = false
   }, [attempted])
+  const originalUrl = data?.contentUrl
+  const thumbnailUrl = data?.thumbnailUrl
   const renewFor = useCallback(
     async (kind: 'original' | 'thumbnail'): Promise<string | null> => {
       if (attempted[kind]) return null
       attempted[kind] = true
       // Re-read the stable application URL. A retry never substitutes the
       // current global identity or signs a new reference for an old page.
-      const answer = data
-      if (answer == null) return null
-      const url = new URL(
-        kind === 'thumbnail' ? answer.thumbnailUrl : answer.contentUrl,
-        window.location.origin,
-      )
+      const target = kind === 'thumbnail' ? thumbnailUrl : originalUrl
+      if (target === undefined) return null
+      const url = new URL(target, window.location.origin)
       url.searchParams.set('retry', '1')
       return url.pathname + url.search
     },
-    [data, attempted],
+    [originalUrl, thumbnailUrl, attempted],
   )
   const renew = useCallback(() => renewFor('original'), [renewFor])
   const renewThumbnail = useCallback(() => renewFor('thumbnail'), [renewFor])
